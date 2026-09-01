@@ -48,7 +48,9 @@ pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
-use crate::std_literal_elaboration::LiteralUnfolding::{BooleanUnfold, PeanoUnfold};
+use crate::std_literal_elaboration::LiteralUnfolding::{
+    BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
+};
 pub use crate::std_literal_elaboration::{
     elaborate_literal_at, literal_elaboration_refusal_message, literal_source_kind_of,
 };
@@ -93,7 +95,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    effective_visible_binding, empty_symbol_index, empty_type_env_cache,
+    declaration_file_of, effective_visible_binding, empty_symbol_index, empty_type_env_cache,
     env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
@@ -8375,10 +8377,27 @@ pub fn literal_boundary_elaboration(
                     Some(destination) => {
                         let kind =
                             crate::std_literal_elaboration::literal_source_kind_of(lit.clone());
+                        let element = if ((exp.children.clone().len() as i64) == 1) {
+                            match exp.children.clone().first().cloned() {
+                                Some(arg) => {
+                                    crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                                        arg.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                        scope.type_env.clone(),
+                                    )
+                                }
+                                std::option::Option::None => std::option::Option::None,
+                            }
+                        } else {
+                            std::option::Option::None
+                        };
                         let natively = crate::v1_compiler_coercion::decl_file_realizes_natively(
-                            crate::v1_compiler_coercion::type_reference_decl_file(exp.clone()),
+                            crate::v1_compiler_infer_env::declaration_file_of(
+                                destination.clone(),
+                                scope.type_env.clone(),
+                            ),
                         );
-                        match (*crate::std_literal_elaboration::elaborate_literal_at(literal_homomorphism_rows(), kind.clone(), destination.clone(), natively.clone())).clone() {
+                        match (*crate::std_literal_elaboration::elaborate_literal_at(literal_homomorphism_rows(), kind.clone(), destination.clone(), element.clone(), natively.clone())).clone() {
     LiteralElaborationOutcome::DirectLiteral => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
     LiteralElaborationOutcome::ViaHomomorphism { homomorphism: h, .. } => Rc::new(LiteralBoundary::LiteralBoundaryElaborated {
     elaboration: Rc::new(LiteralElaboration {
@@ -8493,6 +8512,40 @@ pub fn unfold_peano_image(
     })
 }
 
+pub fn unfold_scalar_sequence_image(
+    s: String,
+    destination_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    {
+        let scalar_nodes = Rc::new({
+            let mut __result = Vec::new();
+            for cp in Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+                .iter()
+                .cloned()
+            {
+                __result.push(crate::v1_std_core::make_expr_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    Rc::new(ExprData::ExprLiteral {
+                        value: Rc::new(LiteralValue::LitInt { value: cp.clone() }),
+                    }),
+                    Rc::new(vec![]),
+                    Some(Rc::new(InferredNode::Resolved { node: int_type() })),
+                    span.clone(),
+                ));
+            }
+            __result
+        });
+        elaborated_expr_node(
+            "<unicode-scalar-sequence>".to_string(),
+            Rc::new(ExprData::ExprListLit),
+            scalar_nodes.clone(),
+            destination_type.clone(),
+            span.clone(),
+        )
+    }
+}
+
 pub fn unfold_literal_image(
     lit: Rc<LiteralValue>,
     elaboration: Rc<LiteralElaboration>,
@@ -8500,6 +8553,10 @@ pub fn unfold_literal_image(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     match (*elaboration.homomorphism.clone().producer.clone()).clone() {
+    LiteralUnfolding::UnicodeScalarSequenceUnfold => match (*lit.clone()).clone() {
+    LiteralValue::LitStr { value: s, .. } => unfold_scalar_sequence_image(s.clone(), destination_type.clone(), span.clone()),
+    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)".to_string(), span.clone()),
+},
     LiteralUnfolding::PeanoUnfold { zero, succ, prev_field, .. } => match (*lit.clone()).clone() {
     LiteralValue::LitInt { value: n, .. } => unfold_peano_image(n.clone(), zero.decl_name.clone(), succ.decl_name.clone(), prev_field.clone(), elaboration.destination.clone().decl_name.clone(), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)".to_string(), span.clone()),

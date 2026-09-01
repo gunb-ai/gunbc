@@ -48,6 +48,7 @@ type SystemdUnitProperty
   | MemorySwapMax
   | MemoryHigh
   | CPUWeight
+  | CPUQuota
   | MemoryCurrent
   | TasksMax
   | TasksCurrent
@@ -74,6 +75,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemorySwapMax => "MemorySwapMax" as NonEmptyStr
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
+    CPUQuota => "CPUQuota" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
@@ -105,6 +107,14 @@ data systemd_memory_swap_max_property: NonEmptyStr = systemd_unit_property_wire(
 data systemd_memory_high_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryHigh)
 
 data systemd_cpu_weight_property: NonEmptyStr = systemd_unit_property_wire(property: CPUWeight)
+
+// CPUQuota= IS A CEILING AND CPUWeight= IS A SHARE, AND THEY ARE NOT ALIASES.
+// systemd.resource-control(5): CPUWeight assigns a RELATIVE share against sibling cgroups and
+// guarantees no amount of anything; CPUQuota assigns an ABSOLUTE maximum of CPU time per wall
+// second. A boundary that must not be exceeded is expressible in exactly one of them, so
+// carrying only the weight -- as this vocabulary did -- left the ceiling unsayable rather than
+// merely unset.
+data systemd_cpu_quota_property: NonEmptyStr = systemd_unit_property_wire(property: CPUQuota)
 
 data systemd_memory_current_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryCurrent)
 
