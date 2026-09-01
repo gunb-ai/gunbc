@@ -7762,11 +7762,24 @@ fn bare_reference_pull_paths_for_source(
             service_prefixes.insert((*service_key).to_string());
         }
     }
+    // A dotted head is asked BOTH as a service prefix (above) and, here, as a plain bare
+    // name, because `X.y` is a service call when X is a service key and a member reference
+    // otherwise. But when the services census DOES answer for the head, the bare attempt is
+    // asking a question the source already settled: `Filesystem.Write(path: ...)` is a
+    // capability invocation on the `resource Filesystem` in std.resources, and it is
+    // ambiguous only if you discard the `.Write` that says so. Keeping the bare attempt
+    // manufactured 7 refusals against `type Filesystem` in v2.extdeps.file_system -- a name
+    // none of those 7 files mentions undotted even once.
+    //
+    // This is specificity, not widening: the more specific reading (a resolved service key)
+    // wins over the less specific one, and a head the services census does NOT answer for
+    // still goes to the census exactly as before.
     let dotted_head_refs: Vec<String> = candidates
         .dotted_chains
         .iter()
         .filter_map(|chain| chain.split('.').next())
         .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
+        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
