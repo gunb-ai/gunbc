@@ -15,7 +15,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // WHY THIS EXISTS. The current compiler admits ARBITRARY excess fields on a payload-carrying
 // coproduct arm literal -- not just fields borrowed from a sibling arm, but any name at all, and
 // the excess field's initializer is ANALYSED even though the field is dropped. Both facts are
-// measured in test.claim.fleet_converge_launch_scope_constructor_compile_control, and the mechanism
+// measured in test.claim.payload_arm_excess_field_admission, and the mechanism
 // is owned by the compiler-floor lane (dashboard adhoc-0f99c6bc-193, session sharp-otter-269): a
 // payload arm is not projected to its arm record, so the record-literal field roster is Absent and
 // the unknown-field arm's Absent case is silence. So the type declaration is NOT the wall, and the

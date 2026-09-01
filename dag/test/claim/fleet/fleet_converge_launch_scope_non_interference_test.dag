@@ -48,7 +48,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The asymmetry is the tell: presence checking reads the selected arm through variant_owner_node and
 // has no such hole, so the literal REFUSES a missing field and ADMITS an invented one. That pair is
-// executed in test.claim.fleet_converge_launch_scope_constructor_compile_control, which is written
+// executed in test.claim.payload_arm_excess_field_admission, which is written
 // as a substrate CHARACTERIZATION rather than as a wall.
 //
 // SO THE GUARANTEE IS RELOCATED, NOT ABANDONED. The property this file executes is:
