@@ -1,0 +1,97 @@
+module gunbc.required_ci_epoch_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.contract_identity { ContractEpoch }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_env_key }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+
+// THE OBSERVED EPOCH IS A PROPERTY OF THE TREE THE RUN EXECUTED, NOT OF THE JUDGE. The Required CI
+// contract's epoch is emitted into the workflow artifact itself (gunbc.witness_floor_workflow), so
+// the bytes GitHub executed for a push-triggered run ARE the bytes carrying the epoch: reading them
+// at the triggering event's exact head_sha observes what ran, while reading the ambient checkout,
+// or calling the contract authority for both sides, would only restate what the judge expects. That
+// distinction is the whole point of the component -- an epoch stamped from the judge's own authority
+// would make a cross-epoch admission unobservable while looking exactly like a check.
+//
+// THE PARSE IS STRUCTURAL, NEVER A SUBSTRING. The epoch is a top-level env member, so it is found by
+// walking the ingested document's mapping entries. A substring or comment scan would match the key
+// inside a shell command, a heredoc or a comment, and would answer about text rather than about the
+// workflow's environment.
+//
+// WHY THIS FOLD TAKES SOURCE TEXT RATHER THAN PERFORMING THE READ. Keeping the decision pure is what
+// makes every refusal arm authorable from a fixture: absent, duplicated and malformed are properties
+// of a document, and a test can hand this function exactly the document that exhibits one. The read
+// itself is the caller's effect, and its two failure modes stay separate arms here because a commit
+// that cannot be read and a path that does not exist in a readable commit have different remedies.
+type RequiredCiEpochObservation
+  = RequiredCiEpochObserved { epoch: ContractEpoch }
+  | RequiredCiEpochCommitUnreadable { detail: String }
+  | RequiredCiEpochPathUnreadable { detail: String }
+  | RequiredCiEpochDocumentUnparsable { detail: String }
+  | RequiredCiEpochAbsent
+  | RequiredCiEpochDuplicated { occurrences: Int }
+  | RequiredCiEpochMalformed { detail: String }
+
+fn yaml_top_level_entries(doc: YamlValue) -> List<YamlKeyValue> {
+  match doc {
+    YamlMapping { entries: es } => es
+    _ => []
+  }
+}
+
+fn yaml_env_entries(doc: YamlValue) -> List<YamlKeyValue> {
+  fold(
+    yaml_top_level_entries(doc: doc),
+    init: [],
+    f: fn(acc, kv) {
+      if kv.key == "env" {
+        match kv.value {
+          YamlMapping { entries: es } => es
+          _ => acc
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn epoch_entries_in(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
+  filter(entries, kv => kv.key == (required_ci_contract_epoch_env_key as String))
+}
+
+// The container decides the whole outcome, which is why there is no undecodable arm: once the value
+// is a nonempty string there is no further decoding step that could refuse, and an arm for it would
+// be a permanently unreachable RED (std.contract_identity states that law on ContractEpoch itself).
+fn epoch_from_entry(kv: YamlKeyValue) -> RequiredCiEpochObservation {
+  match kv.value {
+    YamlString { value: s } =>
+      if s == "" {
+        RequiredCiEpochMalformed { detail: "epoch member is the empty string" }
+      } else {
+        RequiredCiEpochObserved { epoch: s as ContractEpoch }
+      }
+    _ => RequiredCiEpochMalformed { detail: "epoch member is not a string" }
+  }
+}
+
+fn required_ci_epoch_from_workflow_source(src: String) -> RequiredCiEpochObservation {
+  match ingest_yaml_source(src: src) {
+    YamlIngestRejected { reason: r } => RequiredCiEpochDocumentUnparsable { detail: r }
+    IngestedYaml { value: doc } => {
+      let hits = epoch_entries_in(entries: yaml_env_entries(doc: doc))
+      let n = hits.length()
+      if n == 0 {
+        RequiredCiEpochAbsent
+      } else if n > 1 {
+        RequiredCiEpochDuplicated { occurrences: n }
+      } else {
+        match first(hits) {
+          Present { value: kv } => epoch_from_entry(kv: kv)
+          Absent => RequiredCiEpochAbsent
+        }
+      }
+    }
+  }
+}
