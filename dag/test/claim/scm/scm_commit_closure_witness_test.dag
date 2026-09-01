@@ -549,7 +549,7 @@ test fn a_non_string_at_is_refused_against_at() -> Bool {
 //
 // The three cells below differ by ONE FACT -- what, if anything, sits at the child's locator -- and
 // they exist because the branch's own carrier cannot tell two of them apart. store_contains_node_target
-// asks store_holds_node_at, which asks for a SEMANTIC NODE, so an authored source at L answers false;
+// resolved through find_node_record, which asks for a SEMANTIC NODE, so a file at L is not a node;
 // uncontained_in_record reads every false as a fetchable missing locator and has no wrong-kind arm.
 //
 // THE ASSERTION IS A PROHIBITION, NOT A DESCRIPTION, and that distinction is the whole design of this

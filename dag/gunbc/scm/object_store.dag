@@ -428,23 +428,6 @@ fn find_node_record(store: ObjectStore, identity: ObjectId) -> NodeRecordLookup 
   }
 }
 
-// PRESENCE AT A NODE POSITION, WHICH IS NOT PRESENCE AT A LOCATOR. Completeness over a closure asks
-// whether every child edge RESOLVES TO A PROGRAM in this store; a file sitting under that locator
-// answers the locator question yes and the closure question no. Asking store_contains here counted a
-// file as a contained child, which is one of the consequences external review derived from the
-// untyped-locator defect. The brand carries the requirement; this carries the store-relative answer.
-fn store_contains_node(store: ObjectStore, node: SemanticNodeObjectRef) -> Bool {
-  store_holds_node_at(store: store, locator: node.locator)
-}
-
-fn store_holds_node_at(store: ObjectStore, locator: ObjectId) -> Bool {
-  match find_node_record(store: store, identity: locator) {
-    NodeRecordFound(_) => true
-    NodeRecordAbsent { identity: _ } => false
-    NodeRecordIsAuthoredSource { identity: _ } => false
-  }
-}
-
 // A CHILD EDGE IS RESOLVED THREE WAYS, NEVER TWO.
 //
 // This replaces store_contains_node_target, which answered Bool. That Bool is the whole defect the
