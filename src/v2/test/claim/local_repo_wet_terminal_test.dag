@@ -5,7 +5,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.local_repo_wet_terminal {
   LocalRepoWetVerdict, LocalRepoWetPassed, LocalRepoWetFailed, LocalRepoWetRefused,
-  LocalRepoWetNonterminal,
+  LocalRepoWetNonterminal, LocalRepoWetCompletedOverBudget,
   LocalRepoWetExpectation, LocalRepoWetExpectPassed,
   LocalRepoWetScheduled, LocalRepoWetTerminal,
   LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused,
@@ -215,6 +215,7 @@ test fn every_non_passing_observation_refuses_the_pass_expectation() -> Bool {
   pass_expectation_refuses(observed: LocalRepoWetFailed)
     && pass_expectation_refuses(observed: LocalRepoWetRefused { detail: "the route had no arm" })
     && pass_expectation_refuses(observed: LocalRepoWetNonterminal { detail: "interrupted by its budget" })
+    && pass_expectation_refuses(observed: LocalRepoWetCompletedOverBudget { detail: "Cpu 640ms over the 500ms line" })
 }
 
 // THE NARROW PER-IDENTITY PREDICATE THE GATE CONSULTS, discriminated on all three of its facts.

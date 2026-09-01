@@ -22,11 +22,20 @@ import v2.std.algebra { Cons, Empty }
 // deleted workflow read as coverage for months. The candidate is carried so a receipt from another
 // tree is a typed refusal rather than an accepted substitute.
 
+// COMPLETED-OVER-BUDGET IS ITS OWN ARM, NOT A NONTERMINAL ONE. It was folded into Nonterminal,
+// which contradicted the producer: the claim REACHED its verdict and then the run exceeded a
+// declared line. Interruption and completion send a reader to different remedies -- one to the
+// route or the program, the other to the budget -- and the floor's own terminal authority already
+// keeps them apart, so collapsing them here re-forked a distinction that exists upstream.
+//
+// It still refuses against this lane's only expectation. A member that passes only by running past
+// its line is not a member this lane can carry; what changes is that the refusal says so.
 type LocalRepoWetVerdict
   = LocalRepoWetPassed
   | LocalRepoWetFailed
   | LocalRepoWetRefused { detail: String }
   | LocalRepoWetNonterminal { detail: String }
+  | LocalRepoWetCompletedOverBudget { detail: String }
 
 fn local_repo_wet_verdict_is_passed(v: LocalRepoWetVerdict) -> Bool {
   match v {
@@ -34,6 +43,7 @@ fn local_repo_wet_verdict_is_passed(v: LocalRepoWetVerdict) -> Bool {
     LocalRepoWetFailed => false
     LocalRepoWetRefused { detail: _ } => false
     LocalRepoWetNonterminal { detail: _ } => false
+    LocalRepoWetCompletedOverBudget { detail: _ } => false
   }
 }
 
@@ -159,22 +169,11 @@ fn local_repo_wet_expectation_met(expected: LocalRepoWetExpectation, observed: L
         LocalRepoWetFailed => false
         LocalRepoWetRefused { detail: _ } => false
         LocalRepoWetNonterminal { detail: _ } => false
+        LocalRepoWetCompletedOverBudget { detail: _ } => false
       }
   }
 }
 
-fn local_repo_wet_verdict_is(a: LocalRepoWetVerdict, b: LocalRepoWetVerdict) -> Bool {
-  match a {
-    LocalRepoWetPassed =>
-      match b { LocalRepoWetPassed => true, LocalRepoWetFailed => false, LocalRepoWetRefused { detail: _ } => false, LocalRepoWetNonterminal { detail: _ } => false }
-    LocalRepoWetFailed =>
-      match b { LocalRepoWetPassed => false, LocalRepoWetFailed => true, LocalRepoWetRefused { detail: _ } => false, LocalRepoWetNonterminal { detail: _ } => false }
-    LocalRepoWetRefused { detail: _ } =>
-      match b { LocalRepoWetPassed => false, LocalRepoWetFailed => false, LocalRepoWetRefused { detail: _ } => true, LocalRepoWetNonterminal { detail: _ } => false }
-    LocalRepoWetNonterminal { detail: _ } =>
-      match b { LocalRepoWetPassed => false, LocalRepoWetFailed => false, LocalRepoWetRefused { detail: _ } => false, LocalRepoWetNonterminal { detail: _ } => true }
-  }
-}
 
 // THE WHOLE JOIN, both directions. Empty scheduled and empty terminals is the positive control: no
 // rows in, no causes out, and the lane holds with nothing claimed.

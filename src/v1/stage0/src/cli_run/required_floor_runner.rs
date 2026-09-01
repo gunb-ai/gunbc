@@ -1077,6 +1077,7 @@ pub(crate) enum LocalRepoWetObserved {
     Failed,
     Refused(String),
     Nonterminal(String),
+    CompletedOverBudget(String),
 }
 
 impl LocalRepoWetObserved {
@@ -1086,13 +1087,16 @@ impl LocalRepoWetObserved {
             LocalRepoWetObserved::Failed => "failed",
             LocalRepoWetObserved::Refused(_) => "refused",
             LocalRepoWetObserved::Nonterminal(_) => "nonterminal",
+            LocalRepoWetObserved::CompletedOverBudget(_) => "completed-over-budget",
         }
     }
 
     fn detail(&self) -> &str {
         match self {
             LocalRepoWetObserved::Passed | LocalRepoWetObserved::Failed => "",
-            LocalRepoWetObserved::Refused(d) | LocalRepoWetObserved::Nonterminal(d) => d.as_str(),
+            LocalRepoWetObserved::Refused(d)
+            | LocalRepoWetObserved::Nonterminal(d)
+            | LocalRepoWetObserved::CompletedOverBudget(d) => d.as_str(),
         }
     }
 
@@ -1103,6 +1107,13 @@ impl LocalRepoWetObserved {
     }
 }
 
+/// EVERY ARM IS SPELLED, AND THE WILDCARD IS GONE ON PURPOSE.
+///
+/// This read `other => Refused(...)`, which quietly absorbed every FUTURE `ClaimOutcome` variant
+/// into one class. A producer arm added upstream would have been classified by a catch-all that
+/// never considered it, and nothing would have said so — the compiler's exhaustiveness check is
+/// the only thing that can make a new outcome a decision rather than a default, and a wildcard
+/// disables exactly that. A new variant must now fail this match until someone classifies it.
 fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> LocalRepoWetObserved {
     use crate::cli_run::ClaimOutcome as O;
     match outcome {
@@ -1111,15 +1122,35 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
         // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
         // as reaching a verdict this lane disagrees with.
         O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
-        O::CompletedOverBudget { .. } => {
-            LocalRepoWetObserved::Nonterminal("completed over budget".to_string())
-        }
         O::NotAttempted { halted_by } => {
             LocalRepoWetObserved::Nonterminal(format!("not attempted: {halted_by}"))
         }
-        // THE ROUTE OR THE PROGRAM REFUSED. Each of these is a located typed refusal in its own
-        // right; the lane keeps the class and hands the reader its own diagnostic.
-        other => LocalRepoWetObserved::Refused(format!("{other:?}")),
+        // IT COMPLETED. Calling this nonterminal contradicted the producer: the claim reached its
+        // verdict and then the run exceeded a declared line, which is a cost fact and not an
+        // absence of one. The lane still refuses it — a member that only passes by running past
+        // its budget is not a member this lane can carry — but it refuses it AS a completed
+        // over-budget observation, so the reader is sent to the budget rather than to the route.
+        O::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => LocalRepoWetObserved::CompletedOverBudget(format!(
+            "{kind:?} {elapsed_ms}ms over the {budget_ms}ms line"
+        )),
+        // THE ROUTE OR THE PROGRAM REFUSED. Each is a located typed refusal in its own right; the
+        // lane keeps the class and hands the reader that diagnostic.
+        O::NotBool { got } => LocalRepoWetObserved::Refused(format!("not a Bool: {got}")),
+        O::RuntimeError { cause, message } => {
+            LocalRepoWetObserved::Refused(format!("runtime error {cause:?}: {message}"))
+        }
+        O::HostToolUnresolved { name, probed } => LocalRepoWetObserved::Refused(format!(
+            "host tool {name} unresolved after probing {} path(s)",
+            probed.len()
+        )),
+        O::HostEffectRefused { operation, ground } => {
+            LocalRepoWetObserved::Refused(format!("host effect {operation} refused: {ground:?}"))
+        }
+        O::Panicked { .. } => LocalRepoWetObserved::Refused("panicked".to_string()),
     }
 }
 
