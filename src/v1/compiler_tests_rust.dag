@@ -293,6 +293,49 @@ fn ct_parse_tests() -> String {
     "    }\n\n")
 }
 
+fn ct_fixture_closure_rustc_discrimination_test() -> String {
+  concat(
+    "    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.\n",
+    "    ///\n",
+    "    /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the\n",
+    "    /// emitted text and asserts on substrings. A meaning-level emitter defect is invisible to\n",
+    "    /// that whenever the wrong bytes still contain the right substring -- and it is exactly\n",
+    "    /// what rustc's type checker refuses. This arm is the one that asks rustc.\n",
+    "    ///\n",
+    "    /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below\n",
+    "    /// proves only that something in the tree is broken. The red must be refused BY RUSTC and\n",
+    "    /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the\n",
+    "    /// hundreds of modules in its closure would pass for the fixture's own defect.\n",
+    "    ///\n",
+    "    /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and\n",
+    "    /// compiles two emitted crates, which is minutes rather than milliseconds, and\n",
+    "    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It\n",
+    "    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib\n",
+    "    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and\n",
+    "    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.\n",
+    "    #[test]\n",
+    "    #[ignore]\n",
+    "    fn fixture_closure_rustc_discrimination() {\n",
+    "        let probe_root = crate::cli_run::local_emit_compile_probe_root();\n",
+    "        let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);\n",
+    "        for line in crate::cli_run::fixture_discrimination_report(&pair) {\n",
+    "            eprintln!(\"{}\", line);\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
+    "            \"the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "        );\n",
+    "        assert!(\n",
+    "            crate::cli_run::fixture_discrimination_passed(&pair),\n",
+    "            \"the control must compile and the meaning-level red must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}\",\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.green),\n",
+    "            crate::cli_run::fixture_closure_summary(&pair.red),\n",
+    "            crate::cli_run::fixture_closure_attributed_line(&pair.red)\n",
+    "        );\n",
+    "    }\n\n")
+}
+
 fn ct_import_lines_follow_resolved_binding_identity_test() -> String {
   concat(
     "    #[test]\n",
@@ -3203,6 +3246,7 @@ fn compiler_tests_source() -> String {
     ct_parse_tests(),
     ct_pipeline_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
+    ct_fixture_closure_rustc_discrimination_test(),
     ct_unlisted_import_use_witness_test(),
     ct_call_shape_wall_witness_test(),
     ct_call_deficit_red_witness_test(),

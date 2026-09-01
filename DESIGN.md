@@ -221,6 +221,8 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `restoration_promise_names_a_route_that_does_not_exist`
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
+- `accepted_source_emits_uncompilable_target`
+- `incidental_denominator_as_wall`
 - `one_refusal_two_destinations`
 
 ## Building & checks
