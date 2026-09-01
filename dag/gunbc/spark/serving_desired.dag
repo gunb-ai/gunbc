@@ -6,7 +6,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_resolution }
-import gunbc.ollama_model_resolution { gpt_oss_20b_resolution }
+import gunbc.ollama_model_resolution { OllamaResolvedManifest, gpt_oss_120b_manifest, ollama_resolved_manifest_reference }
 import extdeps.ollama.api {
   OllamaModelRef,
 
@@ -26,7 +26,6 @@ import extdeps.ollama.capability {
   OllamaPlatformSupportUnobserved,
   OllamaPlatformSupportUncatalogued,
   ollama_runtime_model_compatibility_verdict,
-  ollama_gpt_oss_20b_model_ref,
 }
 import gunbc.spark.serving_release {
   SparkServingRelease,
@@ -64,11 +63,16 @@ import gunbc.spark.serving_realization {
 // one list read in two directions.
 data spark_serving_desired_hosts: List<HostIdentity> = spark_serving_cell_hosts()
 
-// OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model,
-// executor-owned serving process under gunbc-automation. Runtime closure identity derives from
-// extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery
-// (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not
-// the serving label.
+// OPERATOR DECLARATION, as amended (2026-08-12, model amended 2026-09-01 by SPARK-PAIR-0 P1): LAN
+// boundary, ollama runtime, gpt-oss:120b model, executor-owned serving process under
+// gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest
+// — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model
+// identity is the manifest digest from /api/tags, not the serving label.
+//
+// The model is named here in the same breath as the boundary and the runtime because all three are
+// one declaration of current intent. Amending the row below without amending this sentence would
+// leave two statements of what the cell is FOR, which is the meaning fork this file otherwise
+// spends its length preventing.
 
 data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBindListen {
   host: "0.0.0.0" as NonEmptyStr,
@@ -106,7 +110,20 @@ fn spark_serving_local_api_version_url() -> String {
 
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
 
-data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
+// THE ONE ROW THAT SELECTS. Everything downstream -- the reference, the artifact identity, the
+// manifest digest a materializer checks bytes against, and the blob closure it installs -- is
+// DERIVED from this manifest rather than named again beside it.
+//
+// It was not always so, and the failure that forced this shape is worth keeping. When the reference
+// alone moved to 120b, the materializer went on naming the 20b digest and the 20b closure as
+// free-standing constants: the plan then fetched the 120b manifest by reference, declared the 20b
+// digest as its expected checksum, and installed the 20b blobs. The checksum step would have caught
+// it -- loudly, which is the system working -- but only at apply time on a real host, because
+// nothing in the corpus tied the three facts together. Three independent spellings of "which model"
+// is DESIGN §3's fork sitting in the input to an install plan.
+data spark_serving_desired_manifest: OllamaResolvedManifest = gpt_oss_120b_manifest
+
+data spark_serving_desired_model_ref: OllamaModelRef = ollama_resolved_manifest_reference(m: spark_serving_desired_manifest)
 
 // DESIRED MODEL IDENTITY IS A RESOLUTION, NOT A LITERAL.
 //
@@ -122,11 +139,30 @@ data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_
 // `ollama pull gpt-oss:20b` and fetches whatever the tag names NOW. A digest pin behind a
 // tag-addressed remedy is unenforceable by construction.
 //
-// THE RE-SELECTION IS AN OPERATOR DECISION AND IT WAS TAKEN (2026-08-19): desired state now names the
-// identity the reference currently resolves to. That is not "follow latest at apply" -- execution
-// still names one exact identity and never consults upstream to find it. It is an authored change of
-// desired state whose result happens already to exist on srv6, so reconciliation should plan zero
-// model action rather than a pull.
+// A RE-SELECTION IS AN OPERATOR DECISION, AND THE 2026-08-19 ONE ESTABLISHED THE PATTERN: desired
+// state names the identity the reference currently resolves to. That is not "follow latest at apply"
+// -- execution still names one exact identity and never consults upstream to find it. It is an
+// authored change of desired state, and where the result already exists on the host, reconciliation
+// plans zero model action rather than a pull.
+//
+// THE SELECTION THIS ROW CARRIES NOW (SPARK-PAIR-0 P1, operator decision): gpt-oss:120b, not 20b.
+// The basis is that the larger model fits on ONE serving cell, so the selection does not depend on a
+// second host -- and the 120b bytes were already resolved onto srv5, so it plans zero model action
+// for the same reason the 2026-08-19 re-selection did.
+//
+// The capacity claim is re-derived by spark_serving_observe_ci_wet, which reads the cell's /api/tags
+// and its host memory; the resolved identity and its three readings are gpt_oss_120b_resolution.
+// Neither the model's footprint nor the host's memory is transcribed here, because a number copied
+// into prose is unreachable from the instrument that owns it and rots without either end being
+// touched.
+//
+// WHAT THIS ROW STILL DOES NOT DECIDE. How many sessions the cell serves concurrently is not modeled
+// anywhere in desired state, so it is inherited from whatever the launcher defaults to. That default
+// is not observed by any instrument in this corpus either -- which is the whole defect, and the
+// reason no value for it is quoted here: there is nothing to cite. Selecting the model does not
+// address it, and the two facts trade against each other inside one memory budget, because the slot
+// count divides the context window. The concurrency row is P1b and is deliberately not smuggled in
+// here, because its value is an operator decision this row cannot make.
 //
 // The evidence, the superseded 2026-08-12 identity, and the resolution timestamp live in
 // gunbc.ollama_model_resolution, whose carrier cannot be constructed without its evidence. This
@@ -139,7 +175,7 @@ type SparkServingDesiredAdmission
 fn spark_serving_desired_model_artifact() -> ModelArtifact {
   model_artifact_from_resolution(
     publisher: "ollama" as NonEmptyStr,
-    resolution: gpt_oss_20b_resolution(),
+    resolution: spark_serving_desired_manifest.resolution,
   )
 }
 
