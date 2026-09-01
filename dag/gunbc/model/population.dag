@@ -1,6 +1,7 @@
 module gunbc.model.population
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import std.nat { Nat }
 import gunbc.model.publication {
   ModelRelease, ReleaseIdentity, DistributionChannel, DistributionObservation,
   release_identity, release_is_open_weight, distribution_channel_wire,
@@ -70,7 +71,7 @@ type ReleaseDiscoverySource {
 // only population anyone authors directly.
 type PopulationProvenance
   = DiscoveredRoot { sources: List<ReleaseDiscoverySource> }
-  | NarrowedFrom { parent_stage: PopulationStage, rejected_count: Int }
+  | NarrowedFrom { parent_stage: PopulationStage, rejected_count: Nat }
 
 type ModelPopulation {
   stage: PopulationStage
@@ -127,7 +128,7 @@ fn identity_in(roster: List<ReleaseIdentity>, candidate: ReleaseIdentity) -> Boo
 // the axis being asked about. Answering from a single distributor's catalog about the open-weight
 // universe is the original defect in its general form: a real count over the wrong population.
 type CompletenessVerdict
-  = CompletenessAnswerable { member_count: Int }
+  = CompletenessAnswerable { member_count: Nat }
   | CompletenessRefused { reason: String }
 
 fn open_weight_completeness(population: ModelPopulation) -> CompletenessVerdict {

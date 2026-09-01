@@ -176,29 +176,31 @@ fn choose_serving_candidate(
   let verdicts = map(candidates, c =>
     evaluate_candidate(candidate: c, capacity: capacity, constraints: constraints))
   let admissible = filter(verdicts, v => verdict_is_admissible(verdict: v))
-  match length(admissible) == 0 {
-    true => NoCandidateAdmissible { rejections: verdicts }
-    false => ChoseCandidate { verdict: highest_quality(verdicts: admissible) }
+  match highest_quality(verdicts: admissible) {
+    Absent => NoCandidateAdmissible { rejections: verdicts }
+    Present { value: best } => ChoseCandidate { verdict: best }
   }
 }
 
-// Maximum by quality rank. Ties keep the earlier candidate, which makes the result stable under
-// re-ordering of the input roster rather than dependent on it.
-fn highest_quality(verdicts: List<CandidateVerdict>) -> CandidateVerdict {
-  fold(verdicts, head_of(verdicts), (best, v) =>
-    match verdict_quality(verdict: v) > verdict_quality(verdict: best) {
-      true => v
-      false => best
+// Maximum by quality rank, TOTAL over the empty list because it answers with an option rather than
+// a value. The predecessor seeded the fold with a head-or-fabricate helper that manufactured a
+// ServingCandidateRejected { model_name: "none", ... DoesNotFitMemory { 0, 0 } } when the list was
+// empty. That row was unreachable from the only caller, which is exactly what made it dangerous: it
+// is a synthetic verdict a later consumer would read as a real rejection of a real model against a
+// real zero-byte capacity, and nothing in the type would mark it as invented. A failure arm must
+// refuse rather than fabricate, so emptiness is now carried in the RESULT and the caller turns it
+// into the honest NoCandidateAdmissible. The seed is `none`, which needs no candidate to exist.
+//
+// Ties keep the earlier candidate, so the result is stable under re-ordering of the input roster
+// rather than dependent on it.
+fn highest_quality(verdicts: List<CandidateVerdict>) -> CandidateVerdict? {
+  fold(verdicts, none, (best, v) =>
+    match best {
+      Absent => Present { value: v }
+      Present { value: b } =>
+        match verdict_quality(verdict: v) > verdict_quality(verdict: b) {
+          true => Present { value: v }
+          false => Present { value: b }
+        }
     })
-}
-
-fn head_of(verdicts: List<CandidateVerdict>) -> CandidateVerdict {
-  match first(verdicts) {
-    Present { value: v } => v
-    Absent => ServingCandidateRejected {
-      model_name: "none" as NonEmptyStr,
-      quant_label: "none" as NonEmptyStr,
-      axis: DoesNotFitMemory { required: byte_size(count: 0), allocatable: byte_size(count: 0) },
-    }
-  }
 }

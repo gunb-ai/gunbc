@@ -2,6 +2,8 @@ module gunbc.model.publication
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
 import std.content_hash { ContentHash, serialize_content_hash }
+import std.nat { Nat }
+import std.measure { TokenCount }
 
 // WHAT A MODEL RELEASE IS, modeled independently of anyone who serves, packages or hosts it.
 //
@@ -53,9 +55,9 @@ type WeightLicense
 // activated is the per-token count for a mixture-of-experts release and equals total for a dense
 // one. It governs decode bandwidth; total governs whether the release is resident at all.
 type ParameterCounts {
-  base_total: Int
-  activated_per_token: Int
-  attached_speculative: Int
+  base_total: Nat
+  activated_per_token: Nat
+  attached_speculative: Nat
 }
 
 // WEIGHTS AS A PUBLISHED FACT: a repository, a revision, a license. This is what makes a release
@@ -76,10 +78,10 @@ type WeightPublication {
 // population that requires context is derived from OBSERVED retrieval elsewhere.
 type ContextScaling
   = NoScaling
-  | YarnScaling { original_positions: Int, factor: Int }
+  | YarnScaling { original_positions: TokenCount, factor: Int }
 
 type DeclaredContext {
-  max_positions: Int
+  max_positions: TokenCount
   scaling: ContextScaling
 }
 
@@ -143,7 +145,7 @@ fn distribution_channel_wire(channel: DistributionChannel) -> String {
 // nothing about the release and everything about that registry's loader.
 type ArtifactPackaging
   = SingleFileWeights { quantization: NonEmptyStr }
-  | ShardedWeights { quantization: NonEmptyStr, shard_count: Int }
+  | ShardedWeights { quantization: NonEmptyStr, shard_count: Nat }
   | PublisherNativeCheckpoint
 
 // AN OBSERVATION ABOUT ONE CHANNEL, AND ONLY ONE CHANNEL.

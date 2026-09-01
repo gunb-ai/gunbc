@@ -1,6 +1,8 @@
 module test.claim.model.model_population_narrowing_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
 import gunbc.model.publication {
   ModelRelease, OpenWeightRelease, ClosedWeightRelease,
   ReleaseIdentity, WeightPublication, ParameterCounts, DeclaredContext,
@@ -45,8 +47,8 @@ data deepseek_v4_flash: ModelRelease = OpenWeightRelease {
     },
   },
   declared_context: DeclaredContext {
-    max_positions: 1048576,
-    scaling: YarnScaling { original_positions: 65536, factor: 16 },
+    max_positions: token_count(count: 1048576),
+    scaling: YarnScaling { original_positions: token_count(count: 65536), factor: 16 },
   },
 }
 
@@ -56,7 +58,7 @@ data a_closed_release: ModelRelease = ClosedWeightRelease {
     family: "Proprietary-XL" as NonEmptyStr,
     revision: "1" as NonEmptyStr,
   },
-  declared_context: DeclaredContext { max_positions: 200000, scaling: NoScaling },
+  declared_context: DeclaredContext { max_positions: token_count(count: 200000), scaling: NoScaling },
 }
 
 data probed_at: Timestamp = 1788240000 as Timestamp
