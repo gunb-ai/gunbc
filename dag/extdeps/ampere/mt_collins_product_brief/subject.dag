@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor, ampere_customer_reference_boards_authority }
@@ -32,8 +33,38 @@ data mt_collins_product_brief_title: NonEmptyStr = "Mt. Collins 2U product brief
 
 data mt_collins_product_brief_version_label: NonEmptyStr = "2022 V2"
 
-data mt_collins_engineering_facts_route: EngineeringFactsRoute = EngineeringFactsUnderNda {
+// THE NDA ROUTE COVERS THE DESIGN PACKAGE, NOT EVERY ENGINEERING DOCUMENT. What is gated is the
+// reference-BOARD collateral -- the motherboard design package, UEFI, OpenBMC and CPLD source --
+// which is the population extdeps.cpu.ampere_altra_package names as barred. The getting started
+// guide is a different document on a different route: it is publicly retrievable, and this module
+// used to imply otherwise. Keeping one route row answer for both documents was a meaning fork, and
+// it held a lane for hours on a premise a sibling module already contradicted.
+data mt_collins_design_package_route: EngineeringFactsRoute = EngineeringFactsUnderNda {
   access_route: ampere_customer_reference_boards_authority,
+}
+
+data mt_collins_engineering_facts_route: EngineeringFactsRoute = mt_collins_design_package_route
+
+// THE GETTING STARTED GUIDE, AND ITS PUBLICATION STATUS AS A DECLARED FACT RATHER THAN A SILENCE.
+// The locator below was fetched with NO credentials -- no Customer Connect session, no cookie --
+// returning HTTP 200, 9409569 bytes of application/pdf whose SHA-256 equals the digest
+// memory_population cites, so the retrieved bytes are the same Issue 1.05 document the tables were
+// read from. That is the discriminating observation the carriage axis turns on: the guide is
+// PUBLICLY PUBLISHED. Its every page is footed proprietary and confidential, and per
+// extdeps.publication that marking is recorded and decides nothing.
+//
+// The status is declared here because gunbc.upstream_document_carriage reads a status it does not
+// own, and a module that declares none never enters the rule's domain at all -- which is how facts
+// from this guide reached the public tree without the carriage question ever being asked.
+data mt_collins_gsg_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=Mt_Collins_DVT_PVT_MP_GSG_v1_05_20260720_52a0348e87.pdf&type=technical-document&documentId=z6zenr250qdpa8eq4irolgds",
+  }
+}
+
+data mt_collins_gsg_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+  marking: "Ampere Computing Proprietary and Confidential, document AMP 2021-00511",
 }
 
 type MtCollinsPublicProductBrief {
