@@ -3,7 +3,6 @@ module v2.workflow.required_floor
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool, True, False }
-import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
