@@ -28,8 +28,8 @@ import gunbc.scm.repository_envelope { empty_repository }
 import gunbc.scm.log { CommitLog }
 import gunbc.scm.status { RepositoryStatus }
 import gunbc.scm.read_command { ScmReadResult, scm_read_log, scm_read_status }
-import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response, scm_save_cli_response }
-import gunbc.scm.repository_save { RepositorySave, save_repository }
+import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response, scm_init_cli_response }
+import gunbc.scm.init { ScmInitOutcome, initialize_repository }
 
 data plain_terminal_capability: RenderCapability = RenderCapability {
   color: false,
@@ -74,24 +74,17 @@ fn scm_status(path: String) -> CliWireResponse {
   scm_status_response(result: scm_read_status(path: path, pending: empty_proposal()))
 }
 
-// INIT WRITES AN EMPTY REPOSITORY DOCUMENT, and is the first verb here that performs a host
-// EFFECT rather than reading one. It is split the same way the read verbs are: `scm_init_response`
-// renders an outcome and is witnessable in substrate, while `scm_init` is the effectful half that
-// produces one.
-//
-// IT DOES NOT REFUSE AN EXISTING REPOSITORY, and that is a real gap rather than a decision:
-// `save_repository` writes unconditionally, so `init` over a populated path would overwrite it.
-// Refusing needs a read-before-write this module cannot express as one outcome -- the honest
-// close is a modeled init that loads first and refuses a present document, which is its own
-// change and is why this verb is not yet offered as a safe default.
-fn scm_init_response(save: RepositorySave) -> CliWireResponse {
-  scm_save_cli_response(
-    save: save,
+// INIT REFUSES AN OCCUPIED PATH. The decision lives in gunbc.scm.init, not here: whether there is
+// anything to destroy is a fact about the repository, and a CLI module deciding it would put policy
+// in the realization layer. This module supplies the terminal capability and nothing else.
+fn scm_init_response(outcome: ScmInitOutcome) -> CliWireResponse {
+  scm_init_cli_response(
+    outcome: outcome,
     target: plain_terminal_target,
     capability: plain_terminal_capability
   )
 }
 
 fn scm_init(path: String) -> CliWireResponse {
-  scm_init_response(save: save_repository(path: path, repo: empty_repository()))
+  scm_init_response(outcome: initialize_repository(path: path))
 }

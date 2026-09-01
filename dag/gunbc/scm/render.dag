@@ -49,6 +49,12 @@ import std.render {
 }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
 import gunbc.scm.repository_load { repository_load_refusal_lines }
+import gunbc.scm.init {
+  ScmInitOutcome,
+  ScmInitialized,
+  ScmInitRefusedRepositoryPresent,
+  ScmInitRefusedForeignFilePresent
+}
 import gunbc.scm.repository_save {
   RepositorySave,
   RepositorySaved,
@@ -251,5 +257,47 @@ fn scm_save_cli_response(
     target: target,
     capability: capability,
     exit: scm_save_exit(save: save),
+  )
+}
+
+// A REFUSED INIT PRINTS WHY AND EXITS FAILURE. The two refusals render differently because the
+// operator's next action differs: an existing repository is not a mistake to correct, while a
+// foreign file at that path is a choice about someone else's bytes.
+fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
+  match outcome {
+    ScmInitialized { save: save } => repository_save_lines(save: save)
+    ScmInitRefusedRepositoryPresent { path: p } =>
+      [
+        concat("refusing to initialize ", p),
+        "  a repository is already there, and init would replace its whole history"
+      ]
+    ScmInitRefusedForeignFilePresent { path: p } =>
+      [
+        concat("refusing to initialize ", p),
+        "  a file is already there that is not a repository, and init would destroy it"
+      ]
+  }
+}
+
+fn scm_init_exit(outcome: ScmInitOutcome) -> ProcessExit {
+  match outcome {
+    ScmInitialized { save: save } => scm_save_exit(save: save)
+    ScmInitRefusedRepositoryPresent { path: _ } =>
+      exit_failure(reason: "repository already present")
+    ScmInitRefusedForeignFilePresent { path: _ } =>
+      exit_failure(reason: "path occupied by a non-repository file")
+  }
+}
+
+fn scm_init_cli_response(
+  outcome: ScmInitOutcome,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: text_lines_document(lines: scm_init_lines(outcome: outcome)),
+    target: target,
+    capability: capability,
+    exit: scm_init_exit(outcome: outcome),
   )
 }

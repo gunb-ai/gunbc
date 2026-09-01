@@ -1,0 +1,61 @@
+module gunbc.scm.init
+
+// INITIALIZING A REPOSITORY IS A DECISION BEFORE IT IS A WRITE.
+//
+// `save_repository` writes unconditionally -- correctly, because it is the persistence operation
+// and not a policy. So a verb that offers initialization to an operator has to decide, itself,
+// whether there is anything at the path it would destroy. An earlier revision skipped that
+// decision, called save directly, and NAMED the overwrite in a comment. Naming a destructive
+// default does not make it fail-closed: DESIGN §5's review bar is that a diff landing a
+// non-fail-closed failure arm is a hard reject regardless of what else it delivers, and an
+// annotation is not a refusal. External review was right to block it.
+//
+// THE DECISION IS THE LOAD. A path that already carries a repository refuses; a path carrying a
+// file that is NOT a valid repository also refuses, because an unparseable or rejected document is
+// still someone's bytes and overwriting them is the same loss; only a path the host could not read
+// at all proceeds to write.
+//
+// THE RESIDUAL, STATED RATHER THAN IMPLIED. `RepositoryFileUnreadable` fuses "absent" with
+// "present but unreadable" -- it carries the host's `error` string and this module refuses to
+// branch on that text, because deciding a destructive question by matching an errno spelling is
+// exactly the stringly reasoning the substrate exists to remove. So the proceed arm is
+// "unreadable", not "absent", and it is narrower than it looks: a file present but unreadable to
+// the load is one the subsequent write generally cannot replace either. Closing the residual needs
+// a modeled path-existence observation distinct from a read failure, which does not exist yet and
+// is this module's next-rung trigger.
+import std.types { String }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
+import gunbc.scm.repository_load {
+  RepositoryLoaded,
+  RepositoryLoadRefused,
+  RepositoryFileUnreadable,
+  RepositoryDocumentUnparseable,
+  RepositoryDocumentRefused,
+  load_repository
+}
+import gunbc.scm.repository_save { RepositorySave, save_repository }
+
+// THE ARMS ARE THE ANSWER. There is no `initialized: Bool` beside a save outcome: a value whose
+// flag disagreed with its shape would have a spelling, and the two refusals are distinguished
+// because an operator's next action differs -- one path already IS a repository, the other holds
+// something else that would be destroyed.
+type ScmInitOutcome
+  = ScmInitialized { save: RepositorySave }
+  | ScmInitRefusedRepositoryPresent { path: String }
+  | ScmInitRefusedForeignFilePresent { path: String }
+
+fn initialize_repository(path: String) -> ScmInitOutcome {
+  match load_repository(path: path) {
+    RepositoryLoaded { path: p, envelope: _ } =>
+      ScmInitRefusedRepositoryPresent { path: p }
+    RepositoryLoadRefused { cause: cause } =>
+      match cause {
+        RepositoryFileUnreadable { path: _, error: _ } =>
+          ScmInitialized { save: save_repository(path: path, repo: empty_repository()) }
+        RepositoryDocumentUnparseable { path: p, gap: _ } =>
+          ScmInitRefusedForeignFilePresent { path: p }
+        RepositoryDocumentRefused { path: p, cause: _ } =>
+          ScmInitRefusedForeignFilePresent { path: p }
+      }
+  }
+}
