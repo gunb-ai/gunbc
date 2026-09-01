@@ -25,7 +25,7 @@ import gunbc.spark.serving_realization {
   RemoveUserUnitFile,
   ReloadUserManagerAfterRemoval,
 }
-import gunbc.spark.serving_desired { spark_serving_automation_principal_login, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
+import gunbc.spark.serving_desired { spark_serving_automation_principal_login, spark_serving_desired_manifest, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
 import extdeps.ollama.api { ollama_model_ref_wire }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv, PlannedRemoteStep }
@@ -38,8 +38,8 @@ import gunbc.typed_remote_file_write {
 import gunbc.file_access { FileTreeScope }
 import gunbc.ollama_model_resolution {
   OllamaBlobDigest,
-  gpt_oss_20b_blob_closure,
-  gpt_oss_20b_manifest_digest_2026_08_19,
+  ollama_resolved_manifest_closure,
+  ollama_resolved_manifest_sha256_digest,
 }
 import gunbc.spark.serving_install_paths {
   spark_serving_desired_model_blobs_dir,
@@ -266,7 +266,21 @@ fn spark_serving_api_readiness_connect_timeout_word() -> String {
   to_string(second_count(spark_serving_api_readiness_connect_timeout()))
 }
 
+// THE DIGEST AND THE CLOSURE COME FROM THE SELECTED MANIFEST, NOT FROM CONSTANTS NAMED HERE.
+//
+// They used to be `gpt_oss_20b_manifest_digest_2026_08_19` and `gpt_oss_20b_blob_closure`, imported
+// directly. That made this function a THIRD independent statement of which model the cell runs,
+// beside the reference and the artifact -- so moving desired state to 120b left the plan fetching
+// the 120b manifest by reference while declaring the 20b digest as its expected checksum and
+// installing the 20b blob closure. Reading the selection instead of restating it is what makes that
+// state unwritable rather than merely caught.
 fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  match ollama_resolved_manifest_sha256_digest(m: spark_serving_desired_manifest) {
+    Absent =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "desired manifest identity is not a sha256 digest, so no sha256sum check line can be written for it",
+      }
+    Present { value: manifest_digest } =>
   spark_serving_concat_step_verdicts(verdicts: concat(
     concat(
       [
@@ -290,7 +304,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
           identity: "declare-manifest-checksum" as NonEmptyStr,
           path: spark_serving_manifest_checksum_path(),
           content: spark_serving_checksum_line(
-            hex: gpt_oss_20b_manifest_digest_2026_08_19.hex,
+            hex: manifest_digest.hex,
             path: spark_serving_staged_manifest_path() as String,
           ),
         ),
@@ -302,7 +316,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
           ],
         ),
       ],
-      flat_map(gpt_oss_20b_blob_closure, b => spark_serving_materialize_blob_steps(blob: b)),
+      flat_map(ollama_resolved_manifest_closure(m: spark_serving_desired_manifest), b => spark_serving_materialize_blob_steps(blob: b)),
     ),
     [
       spark_serving_admit_portable_remote_argv(
@@ -319,6 +333,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
       ),
     ],
   ))
+  }
 }
 
 // ONE BLOB, FETCHED BY DIGEST AND VERIFIED BEFORE IT IS PUBLISHED INTO THE STORE.

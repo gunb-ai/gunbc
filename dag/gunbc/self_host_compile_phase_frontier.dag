@@ -127,13 +127,16 @@ fn canonical_identity_set(identities: List<String>) -> List<String> {
   deduplicate_identities(identities: identities) |> sort_by(identity => identity)
 }
 
-// Duplicate handling is a POPULATION fact, and the two populations answer it at different sites.
-// raw_identities is set-deduplicated by the live producer before the fold, and on the persisted
-// path a repeat makes the deduplicated total disagree with the raw count, which receipt coherence
-// refuses. parse_refused_files had neither wall: a path rustfmt refused twice would be counted
-// twice in the Parse row and kept twice in the digest, so the digest would answer about a multiset
-// while its name claims a set. Refusing is the right arm rather than deduplicating here, because
-// collapsing the repeat would hide the producer defect behind a well-formed-looking census.
+// A census population carries no repeats, and this predicate is where that is decided. Refusal is
+// the arm rather than collapsing the repeat: deduplicating here would make a duplicated population
+// indistinguishable from a clean one, hiding a producer defect behind a census that still looked
+// well-formed -- widening instead of refusing.
+//
+// It answers for BOTH populations reaching receipt coherence, and the refused-file population is
+// the reason it exists: a path refused twice would be counted twice in the Parse row and kept twice
+// in the digest, so the digest would answer about a multiset while its name claims a set.
+// The falsifier is enrolled: deleting either call in receipt_population_coherent must turn
+// a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence red.
 fn census_population_is_duplicate_free(identities: List<String>) -> Bool {
   count(deduplicate_identities(identities: identities)) == count(identities)
 }
@@ -178,20 +181,19 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
 // refuses a receipt whose census is in fact identical. The two populations stay separate segments:
 // canonicalizing them jointly would let a refused path and an identity trade places.
 //
-// EmissionOrderedV1 is retired and NO PRODUCER CONSTRUCTS IT. Its justification is NOT that it
-// labels a live value -- it does not. docs/design-ledgers.md published an emission-order digest
-// until this change, and regenerating that projection replaces it, so after this commit no
-// artifact in the tree carries one and the retired value survives only in git history.
+// EmissionOrderedV1 is retired and no producer constructs it. It is kept because an algorithm
+// identity with exactly ONE inhabitant distinguishes nothing: the field exists so two incompatible
+// digest meanings cannot hide behind one unlabeled hash, and that requires both meanings to be
+// nameable. Keeping the tag while deleting its only contrast is the worse of the two shapes, so the
+// fork is the arm AND the field together, never the arm alone. A second fold is then a row rather
+// than a migration.
 //
-// It is kept because an algorithm identity with exactly ONE inhabitant distinguishes nothing. The
-// field exists to stop two incompatible digest meanings hiding behind a single unlabeled hash, and
-// that requires both meanings to be nameable. So the honest fork is not "drop the arm" but "drop
-// the arm AND the field": a one-inhabitant tag is decoration, and keeping the tag while deleting
-// its only contrast is the worse of the two shapes.
-//
-// It is read by production -- census_identity_domain_separator matches it exhaustively -- and by a
-// witness asserting the two separators differ, so it is not an inert carrier under
-// v2.lens.inert_carrier, whose scope is carriers read by no production code.
+// The evidence that the arm is not decorative is the witness:
+// the_census_digest_carries_the_algorithm_that_produced_it asserts the two separators differ, so
+// unifying them goes red. Supporting that, census_identity_domain_separator must handle the arm in
+// an exhaustive match -- a compile-time read, not a runtime one, since nothing constructs the arm.
+// That forces an edit on deletion but does not by itself distinguish a live arm from an inert one,
+// which is true of every arm of every coproduct.
 type CensusIdentityAlgorithm
   = EmissionOrderedV1
   | CanonicalIdentitySetV1
@@ -210,6 +212,15 @@ type CensusIdentityDigest {
   digest: Fnv1a64Structural
 }
 
+// NEITHER SORT MAY BE REMOVED ON THE GROUNDS THAT A CALLER ALREADY CANONICALIZES. The PERSISTED
+// path calls this function with receipt.raw_error_diagnostic_identities directly, and that list
+// passes through no caller-side canonicalization at all -- so no property of any caller, present or
+// future, can substitute for these sorts. Delete either one and the live path stays correct while
+// the persisted path silently returns to being order-contaminated, which is the defect this fold
+// exists to close, reintroduced by a plausible cleanup.
+//
+// The falsifier is enrolled rather than described: removing a sort must turn
+// the_census_digest_is_invariant_under_reordering_of_either_population red.
 fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> CensusIdentityDigest {
   CensusIdentityDigest {
     algorithm: CanonicalIdentitySetV1,
@@ -1074,6 +1085,88 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
       Absent => CompilePhaseFrontierInvalid { reason: "held ledger had no latest receipt" as NonEmptyStr }
       Present { value: latest } => CompilePhaseFrontierValidated { latest: latest }
     }
+  }
+}
+
+// THE RATCHET ABOVE JUDGES RECEIPTS AGAINST EACH OTHER, AND NOTHING IN IT LOOKS AT THE TREE BEING
+// MERGED. compile_phase_frontier_standing answers Validated{latest} from the persisted series
+// alone, so its verdict is a claim about the TREE THE LATEST RECEIPT NAMES -- a past tree by
+// construction, since a receipt is authored after the observation it records. A reader who takes
+// that verdict as a statement about the tree under judgment has read a stronger claim than the
+// series can carry, which is DESIGN 4b(1) rung inflation on the compiler's own self-description.
+//
+// THIS JUDGMENT IS THE JOIN THAT MAKES THE DIFFERENCE DECIDABLE, and it is the whole of what can
+// be decided cheaply: given the tree under judgment, does the latest validated receipt name that
+// same tree? Identity grain, one comparison, no measurement.
+//
+// IT GATES NOTHING TODAY AND THAT IS DELIBERATE. Actuating it as a merge-blocking arm would refuse
+// every merge, because receipts are authored rarely and the live tree moves on every commit; the
+// non-blocking spelling is the inert-lens tier DESIGN 6 names.
+//
+// WHAT IT IS FOR, AND THE CONDITIONS ARE TWO RATHER THAN ONE. This annotation named only the
+// budget condition when it landed, and that was a trigger pointing at something that is not what
+// blocks -- which gets SATISFIED WHILE THE CAPABILITY STAYS DEAD, the mirror of the 4b(3) failure
+// where a trigger names less than it restores. The BINDING condition is a receipt in the required
+// runners' COMPARISON EPOCH: without one, a live population has nothing it may legally be compared
+// against, and the series fold above refuses a cross-epoch comparison unless the predecessor is
+// reclassified. The ENABLING condition is the one first recorded: taking such a receipt means
+// measuring a whole-closure entry, which gunbc.whole_corpus_compile_admission refuses on budget --
+// so an execution surface exposing a real, readable cgroup memory limit makes the measurement
+// TAKEABLE and leaves the epoch condition standing. The figures behind that refusal belong to that
+// authority and to gunbc.host_budget_source memory_stall_refusal and are not transcribed here.
+//
+// AND THE CONSUMER IS BUILT, NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate
+// -- the live measured population joined to the latest receipt through this module's own fold and
+// ratchet -- witnessed and enrolled under the required floor's test.claim.self_host_ prefix, and
+// PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on a defect. When it is
+// unparked it must CONSUME this judgment rather than grow its own tree-identity comparison: this
+// answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the
+// PRECONDITION of that module's population question, since a regression comparison against a
+// receipt that does not describe this tree is meaningless. One module answering the precondition
+// and another consuming it is composition; two modules deciding tree identity is the section 3
+// fork this note exists to prevent.
+//
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller that cannot supply the tree under
+// judgment gets a typed refusal, never Covered and never a pass-shaped unknown: a coverage
+// judgment that answers "covered" when it could not observe the subject is the absorbing fallback
+// of DESIGN 5 wearing this function's name.
+type CompilePhaseFrontierCoverage
+  = FrontierCoversSubjectTree { latest: CompilePhaseFrontierReceipt }
+  | FrontierReceiptTreeStale { receipt_tree: String, subject_tree: String }
+  | FrontierCoverageRefused { reason: NonEmptyStr }
+
+fn compile_phase_frontier_coverage(
+  series: List<CompilePhaseFrontierReceipt>,
+  subject_tree: FloorDiscoveryTreeId?
+) -> CompilePhaseFrontierCoverage {
+  match subject_tree {
+    Absent => FrontierCoverageRefused {
+      reason: "the tree under judgment was not observed, so no coverage claim is available" as NonEmptyStr
+    }
+    Present { value: tree } => match compile_phase_frontier_standing(series: series) {
+      CompilePhaseFrontierEmpty => FrontierCoverageRefused {
+        reason: "the frontier receipt series is empty, so no receipt names any tree" as NonEmptyStr
+      }
+      CompilePhaseFrontierInvalid { reason: why } => FrontierCoverageRefused { reason: why }
+      CompilePhaseFrontierValidated { latest: latest } => {
+        let receipt_tree = floor_discovery_tree_identity(tree: latest.subject.git_tree_object)
+        let judged_tree = floor_discovery_tree_identity(tree: tree)
+        if receipt_tree == judged_tree {
+          FrontierCoversSubjectTree { latest: latest }
+        } else {
+          FrontierReceiptTreeStale { receipt_tree: receipt_tree, subject_tree: judged_tree }
+        }
+      }
+    }
+  }
+}
+
+fn compile_phase_frontier_coverage_label(c: CompilePhaseFrontierCoverage) -> String {
+  match c {
+    FrontierCoversSubjectTree { latest: _ } => "the latest validated receipt names the tree under judgment"
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      concat(concat("the latest validated receipt names tree ", r), concat(", not the tree under judgment ", s))
+    FrontierCoverageRefused { reason: why } => concat("no coverage claim: ", why as String)
   }
 }
 

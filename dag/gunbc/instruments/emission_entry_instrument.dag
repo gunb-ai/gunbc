@@ -622,15 +622,31 @@ fn measure_cargo_half(
         )
         match cargo_scan_diagnostics(stdout: build.stdout) {
           CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: _ } =>
-            EmissionMeasured {
-              subject: subject,
-              emitted_files: emitted_files,
-              emit_diagnostics: emit_diagnostics,
-              emitted_artifact_identity: artifact_identity,
-              rustfmt_parse_observation: parse_observation,
-              cargo_clean: ok,
-              cargo_diagnostics: ds,
-              cargo_lines_scanned: n
+            if !ok && count(cargo_error_identity_rows(ds: ds)) == 0 {
+              EmissionCargoUnreached {
+                subject: subject,
+                stage: StageCargo,
+                cause: concat(
+                  concat(
+                    concat("cargo reported the build FAILED while decoding to ZERO error diagnostics (message lines scanned: ", to_string(n)),
+                    "). A failing cargo run must carry at least one error diagnostic, so this stream did not measure the tree: the failure was reported outside the compiler-message channel (dependency resolution, a manifest error, an OOM, a killed process) and no diagnostic population can be derived from it. Refusing rather than emitting a board whose cargo_population and codeless fields would read 0 -- indistinguishable from a clean tree, which is the state this instrument exists to certify. cargo stderr: "
+                  ),
+                  build.stderr
+                ),
+                emit_diagnostics: emit_diagnostics,
+                emitted_files: emitted_files
+              }
+            } else {
+              EmissionMeasured {
+                subject: subject,
+                emitted_files: emitted_files,
+                emit_diagnostics: emit_diagnostics,
+                emitted_artifact_identity: artifact_identity,
+                rustfmt_parse_observation: parse_observation,
+                cargo_clean: ok,
+                cargo_diagnostics: ds,
+                cargo_lines_scanned: n
+              }
             }
           scan =>
             EmissionCargoUnreached {

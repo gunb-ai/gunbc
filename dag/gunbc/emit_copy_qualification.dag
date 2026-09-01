@@ -1,0 +1,902 @@
+module gunbc.emit_copy_qualification
+
+import std.types { Bool, Int, List, String }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_le }
+import std.nat { Nat }
+
+// EMIT-COST-QUAL-0 grid authority (side-chat ruling 2026-08-31, dispatched under XL-N).
+// Qualifies the production Rust emitter's copy/share behavior over ONE named, finite permutation
+// population: fixture programs generated from this grid, traveling the production
+// source -> resolve/infer -> Rust emission path, judged on two INDEPENDENT axes —
+// CloneMinimality and CopyRealizationCost — with behavior agreement and typed refusals.
+// The claim is bounded: it establishes nothing about "all possible Dag programs" and nothing
+// about clone prevalence in the real emitted compiler closure (that audit is a separate,
+// unauthorized lane). Case identity is the structural tuple below, never an ordinal, and the
+// denominator is EXACTLY what this grid derives — no padding or trimming toward any target count.
+//
+// Expectations are DERIVED from axis relations plus existing cost facts (v2.lens.cost is the
+// symbolic-cost authority; v2.lens.complexity_accumulator_copy owns the copied-accumulator
+// shape); where a fact is missing the derivation REFUSES (ExpectationUnderivable), never
+// assumes zero. Constant-time is not zero-cost (DESIGN §6 bare-minimum-cost): a redundant
+// Rc::clone fails clone minimality even though its realized cost is a refcount bump.
+// ── Axis-mapping documentation (operator-approved dedup, 2026-08-31) ─────────────────────────
+// The ruling's §4 names ten "control shapes" that overlap its ownership-pattern list almost 1:1.
+// A Cartesian product of both lists would double-count one distinction and flood
+// CaseNotApplicable, making the denominator lie. Approved resolution: control_shape is the
+// four-member axis below, and each ruling-named shape is assigned to EXACTLY ONE axis, as data
+// rows a witness counts — the ruling's roster is covered by construction, not by prose.
+type GridAxis
+  = OwnershipPatternAxis
+  | CarrierRealizationAxis
+  | ControlShapeAxis
+  | ConsumerContractAxis
+  | InputSizeBasisAxis
+
+type RulingShapeAssignment {
+  ruling_shape: String
+  axis: GridAxis
+  member: String
+}
+
+data ruling_shape_assignments: List<RulingShapeAssignment> = [
+  RulingShapeAssignment { ruling_shape: "linear use", axis: ControlShapeAxis, member: "straight_line" },
+  RulingShapeAssignment { ruling_shape: "reuse after pass", axis: OwnershipPatternAxis, member: "by_value_then_reused" },
+  RulingShapeAssignment { ruling_shape: "branch split and join", axis: ControlShapeAxis, member: "if_split" },
+  RulingShapeAssignment { ruling_shape: "loop-carried accumulator", axis: OwnershipPatternAxis, member: "loop_carried_accumulator" },
+  RulingShapeAssignment { ruling_shape: "closure capture", axis: OwnershipPatternAxis, member: "move_into_closure" },
+  RulingShapeAssignment { ruling_shape: "match binding", axis: ControlShapeAxis, member: "match_binding" },
+  RulingShapeAssignment { ruling_shape: "field projection", axis: OwnershipPatternAxis, member: "field_extract_then_reuse_enclosing" },
+  RulingShapeAssignment { ruling_shape: "fold/map", axis: ControlShapeAxis, member: "loop_recursion" },
+  RulingShapeAssignment { ruling_shape: "text construction", axis: CarrierRealizationAxis, member: "owned_string" },
+  RulingShapeAssignment { ruling_shape: "nested records", axis: CarrierRealizationAxis, member: "nested_cheap_deep_record" }
+]
+
+// ── The five axes ────────────────────────────────────────────────────────────────────────────
+type OwnershipPattern
+  = ConsumedOnce
+  | BorrowedReadOnly
+  | ByValueThenReused
+  | BranchExclusive
+  | ReuseAcrossJoin
+  | AliasThenMutate
+  | MoveIntoClosure
+  | BorrowIntoClosure
+  | LoopCarriedAccumulator
+  | FieldExtractThenReuseEnclosing
+
+type CarrierRealization
+  = CopyScalarControl
+  | OwnedStringCarrier
+  | DeepCloningSequenceCarrier
+  | SharedRecordCarrier
+  | PersistentSequenceCarrier
+  | PersistentMapCarrier
+  | NestedCheapDeepRecordCarrier
+
+type ControlShape
+  = StraightLine
+  | IfSplit
+  | MatchBinding
+  | LoopRecursion
+
+type ConsumerContract
+  = ConsumesByValue
+  | BorrowsByRef
+
+type InputSizeBasis
+  = ScalarUnitBasis
+  | SizedCardinalityBasis
+
+// Cardinalities every size-parametric case executes at: the declared boundary (0) plus
+// increasing sizes. Symbolic expectations are evaluated at these exact cardinalities against
+// deterministic allocation counters; no complexity class is ever fitted from noisy wall time.
+data declared_cardinalities: List<Int> = [0, 4, 16, 64]
+
+data scalar_cardinality: Int = 1
+
+type EmitCopyQualificationCaseId {
+  ownership_pattern: OwnershipPattern
+  carrier_realization: CarrierRealization
+  control_shape: ControlShape
+  consumer_contract: ConsumerContract
+  input_size_basis: InputSizeBasis
+}
+
+// ── Slugs (receipt/fixture identity rendering; one authority for the spelling) ───────────────
+fn ownership_pattern_slug(p: OwnershipPattern) -> String {
+  match p {
+    ConsumedOnce => "consumed_once"
+    BorrowedReadOnly => "borrowed_read_only"
+    ByValueThenReused => "by_value_then_reused"
+    BranchExclusive => "branch_exclusive"
+    ReuseAcrossJoin => "reuse_across_join"
+    AliasThenMutate => "alias_then_mutate"
+    MoveIntoClosure => "move_into_closure"
+    BorrowIntoClosure => "borrow_into_closure"
+    LoopCarriedAccumulator => "loop_carried_accumulator"
+    FieldExtractThenReuseEnclosing => "field_extract_then_reuse_enclosing"
+  }
+}
+
+fn carrier_realization_slug(c: CarrierRealization) -> String {
+  match c {
+    CopyScalarControl => "copy_scalar"
+    OwnedStringCarrier => "owned_string"
+    DeepCloningSequenceCarrier => "deep_cloning_sequence"
+    SharedRecordCarrier => "shared_record"
+    PersistentSequenceCarrier => "persistent_sequence"
+    PersistentMapCarrier => "persistent_map"
+    NestedCheapDeepRecordCarrier => "nested_cheap_deep_record"
+  }
+}
+
+fn control_shape_slug(s: ControlShape) -> String {
+  match s {
+    StraightLine => "straight_line"
+    IfSplit => "if_split"
+    MatchBinding => "match_binding"
+    LoopRecursion => "loop_recursion"
+  }
+}
+
+fn consumer_contract_slug(c: ConsumerContract) -> String {
+  match c {
+    ConsumesByValue => "by_value"
+    BorrowsByRef => "by_ref"
+  }
+}
+
+fn input_size_basis_slug(b: InputSizeBasis) -> String {
+  match b {
+    ScalarUnitBasis => "scalar"
+    SizedCardinalityBasis => "sized"
+  }
+}
+
+fn case_slug(id: EmitCopyQualificationCaseId) -> String {
+  concat(ownership_pattern_slug(p: id.ownership_pattern),
+  concat("__", concat(carrier_realization_slug(c: id.carrier_realization),
+  concat("__", concat(control_shape_slug(s: id.control_shape),
+  concat("__", concat(consumer_contract_slug(c: id.consumer_contract),
+  concat("__", input_size_basis_slug(b: id.input_size_basis)))))))))
+}
+
+// ── Closed axis rosters (witness-counted; the Cartesian denominator derives from these) ──────
+data all_ownership_patterns: List<OwnershipPattern> = [
+  ConsumedOnce, BorrowedReadOnly, ByValueThenReused, BranchExclusive, ReuseAcrossJoin,
+  AliasThenMutate, MoveIntoClosure, BorrowIntoClosure, LoopCarriedAccumulator,
+  FieldExtractThenReuseEnclosing
+]
+
+data all_carrier_realizations: List<CarrierRealization> = [
+  CopyScalarControl, OwnedStringCarrier, DeepCloningSequenceCarrier, SharedRecordCarrier,
+  PersistentSequenceCarrier, PersistentMapCarrier, NestedCheapDeepRecordCarrier
+]
+
+data all_control_shapes: List<ControlShape> = [StraightLine, IfSplit, MatchBinding, LoopRecursion]
+
+data all_consumer_contracts: List<ConsumerContract> = [ConsumesByValue, BorrowsByRef]
+
+data all_input_size_bases: List<InputSizeBasis> = [ScalarUnitBasis, SizedCardinalityBasis]
+
+// ── Applicability: every Cartesian member is CaseApplicable or CaseNotApplicable with a
+//    STRUCTURAL, typed reason. No silent filter, no hand-maintained exclusion list. ────────────
+// DeepCloningSequenceCarrier is declared on the axis because the ruling names it, and derived
+// inapplicable because the production realization has no .dag surface type that realizes to a
+// deep-cloning Rust sequence: List realizes to the structurally-sharing im vector (the emitted
+// crate root aliases `im::Vector as Vec`; grounded per-run by the wet transport's
+// emitted-prelude assertion, not by this comment). If a deep-cloning sequence realization ever
+// lands, that assertion flips, this derivation arm is the one edit, and the column enters the
+// applicable population — the reason is a dissolution trigger, not an exclusion list.
+type StructuralInapplicability
+  = CarrierUnrealizedInProductionEmission
+  | ScalarBasisRequiresCopyScalarCarrier
+  | SizedBasisRequiresSizedCarrier
+  | PatternRequiresBranchShape
+  | PatternRequiresLoopShape
+  | PatternRequiresStraightLineShape
+  | PatternRequiresRecordCarrier
+  | PatternRequiresConsumingContract
+  | PatternRequiresBorrowingContract
+
+type CaseApplicability
+  = CaseApplicable
+  | CaseNotApplicable { reason: StructuralInapplicability }
+
+fn structural_inapplicability_slug(r: StructuralInapplicability) -> String {
+  match r {
+    CarrierUnrealizedInProductionEmission => "carrier_unrealized_in_production_emission"
+    ScalarBasisRequiresCopyScalarCarrier => "scalar_basis_requires_copy_scalar_carrier"
+    SizedBasisRequiresSizedCarrier => "sized_basis_requires_sized_carrier"
+    PatternRequiresBranchShape => "pattern_requires_branch_shape"
+    PatternRequiresLoopShape => "pattern_requires_loop_shape"
+    PatternRequiresStraightLineShape => "pattern_requires_straight_line_shape"
+    PatternRequiresRecordCarrier => "pattern_requires_record_carrier"
+    PatternRequiresConsumingContract => "pattern_requires_consuming_contract"
+    PatternRequiresBorrowingContract => "pattern_requires_borrowing_contract"
+  }
+}
+
+// Each ownership pattern carries its own control flow, so the pattern DERIVES its admitted
+// shape and any other shape member is structurally inapplicable (the approved dedup: shape is
+// still an axis, and the derivation is the documented relation between the two).
+fn pattern_admits_shape(p: OwnershipPattern, s: ControlShape) -> CaseApplicability {
+  match p {
+    BranchExclusive =>
+      match s {
+        IfSplit => CaseApplicable
+        MatchBinding => CaseApplicable
+        StraightLine => CaseNotApplicable { reason: PatternRequiresBranchShape }
+        LoopRecursion => CaseNotApplicable { reason: PatternRequiresBranchShape }
+      }
+    ReuseAcrossJoin =>
+      match s {
+        IfSplit => CaseApplicable
+        MatchBinding => CaseApplicable
+        StraightLine => CaseNotApplicable { reason: PatternRequiresBranchShape }
+        LoopRecursion => CaseNotApplicable { reason: PatternRequiresBranchShape }
+      }
+    LoopCarriedAccumulator => shape_admits_only_loop(s: s)
+    ConsumedOnce => shape_admits_only_straight_line(s: s)
+    BorrowedReadOnly => shape_admits_only_straight_line(s: s)
+    ByValueThenReused => shape_admits_only_straight_line(s: s)
+    AliasThenMutate => shape_admits_only_straight_line(s: s)
+    MoveIntoClosure => shape_admits_only_straight_line(s: s)
+    BorrowIntoClosure => shape_admits_only_straight_line(s: s)
+    FieldExtractThenReuseEnclosing => shape_admits_only_straight_line(s: s)
+  }
+}
+
+fn shape_admits_only_loop(s: ControlShape) -> CaseApplicability {
+  match s {
+    LoopRecursion => CaseApplicable
+    StraightLine => CaseNotApplicable { reason: PatternRequiresLoopShape }
+    IfSplit => CaseNotApplicable { reason: PatternRequiresLoopShape }
+    MatchBinding => CaseNotApplicable { reason: PatternRequiresLoopShape }
+  }
+}
+
+fn shape_admits_only_straight_line(s: ControlShape) -> CaseApplicability {
+  match s {
+    StraightLine => CaseApplicable
+    LoopRecursion => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
+    IfSplit => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
+    MatchBinding => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
+  }
+}
+
+fn carrier_is_record(c: CarrierRealization) -> Bool {
+  match c {
+    SharedRecordCarrier => true
+    NestedCheapDeepRecordCarrier => true
+    CopyScalarControl => false
+    OwnedStringCarrier => false
+    DeepCloningSequenceCarrier => false
+    PersistentSequenceCarrier => false
+    PersistentMapCarrier => false
+  }
+}
+
+fn pattern_admits_carrier(p: OwnershipPattern, c: CarrierRealization) -> CaseApplicability {
+  match p {
+    FieldExtractThenReuseEnclosing =>
+      if carrier_is_record(c: c) { CaseApplicable }
+      else { CaseNotApplicable { reason: PatternRequiresRecordCarrier } }
+    ConsumedOnce => CaseApplicable
+    BorrowedReadOnly => CaseApplicable
+    ByValueThenReused => CaseApplicable
+    BranchExclusive => CaseApplicable
+    ReuseAcrossJoin => CaseApplicable
+    AliasThenMutate => CaseApplicable
+    MoveIntoClosure => CaseApplicable
+    BorrowIntoClosure => CaseApplicable
+    LoopCarriedAccumulator => CaseApplicable
+  }
+}
+
+// Patterns whose definition names consumption fix the consuming contract; patterns named on
+// reading fix the borrowing contract; the rest are judged under both contracts.
+fn pattern_admits_contract(p: OwnershipPattern, k: ConsumerContract) -> CaseApplicability {
+  match p {
+    ConsumedOnce =>
+      match k {
+        ConsumesByValue => CaseApplicable
+        BorrowsByRef => CaseNotApplicable { reason: PatternRequiresConsumingContract }
+      }
+    ByValueThenReused =>
+      match k {
+        ConsumesByValue => CaseApplicable
+        BorrowsByRef => CaseNotApplicable { reason: PatternRequiresConsumingContract }
+      }
+    MoveIntoClosure =>
+      match k {
+        ConsumesByValue => CaseApplicable
+        BorrowsByRef => CaseNotApplicable { reason: PatternRequiresConsumingContract }
+      }
+    BorrowedReadOnly =>
+      match k {
+        BorrowsByRef => CaseApplicable
+        ConsumesByValue => CaseNotApplicable { reason: PatternRequiresBorrowingContract }
+      }
+    BorrowIntoClosure =>
+      match k {
+        BorrowsByRef => CaseApplicable
+        ConsumesByValue => CaseNotApplicable { reason: PatternRequiresBorrowingContract }
+      }
+    BranchExclusive => CaseApplicable
+    ReuseAcrossJoin => CaseApplicable
+    AliasThenMutate => CaseApplicable
+    LoopCarriedAccumulator => CaseApplicable
+    FieldExtractThenReuseEnclosing => CaseApplicable
+  }
+}
+
+fn basis_admits_carrier(b: InputSizeBasis, c: CarrierRealization) -> CaseApplicability {
+  match b {
+    ScalarUnitBasis =>
+      if carrier_is_sized(c: c) { CaseNotApplicable { reason: ScalarBasisRequiresCopyScalarCarrier } }
+      else { CaseApplicable }
+    SizedCardinalityBasis =>
+      if carrier_is_sized(c: c) { CaseApplicable }
+      else { CaseNotApplicable { reason: SizedBasisRequiresSizedCarrier } }
+  }
+}
+
+fn carrier_is_sized(c: CarrierRealization) -> Bool {
+  match c {
+    CopyScalarControl => false
+    OwnedStringCarrier => true
+    DeepCloningSequenceCarrier => true
+    SharedRecordCarrier => true
+    PersistentSequenceCarrier => true
+    PersistentMapCarrier => true
+    NestedCheapDeepRecordCarrier => true
+  }
+}
+
+fn carrier_realized(c: CarrierRealization) -> CaseApplicability {
+  match c {
+    DeepCloningSequenceCarrier => CaseNotApplicable { reason: CarrierUnrealizedInProductionEmission }
+    CopyScalarControl => CaseApplicable
+    OwnedStringCarrier => CaseApplicable
+    SharedRecordCarrier => CaseApplicable
+    PersistentSequenceCarrier => CaseApplicable
+    PersistentMapCarrier => CaseApplicable
+    NestedCheapDeepRecordCarrier => CaseApplicable
+  }
+}
+
+fn first_refusal(a: CaseApplicability, b: CaseApplicability) -> CaseApplicability {
+  match a {
+    CaseNotApplicable { reason: _ } => a
+    CaseApplicable => b
+  }
+}
+
+fn case_applicability(id: EmitCopyQualificationCaseId) -> CaseApplicability {
+  first_refusal(a: carrier_realized(c: id.carrier_realization),
+  b: first_refusal(a: basis_admits_carrier(b: id.input_size_basis, c: id.carrier_realization),
+  b: first_refusal(a: pattern_admits_shape(p: id.ownership_pattern, s: id.control_shape),
+  b: first_refusal(a: pattern_admits_carrier(p: id.ownership_pattern, c: id.carrier_realization),
+  b: pattern_admits_contract(p: id.ownership_pattern, k: id.consumer_contract)))))
+}
+
+// ── The roster: the full Cartesian product, each member with its derived applicability ───────
+type EmitCopyQualificationCaseRow {
+  id: EmitCopyQualificationCaseId
+  applicability: CaseApplicability
+}
+
+fn full_case_roster() -> List<EmitCopyQualificationCaseRow> {
+  all_ownership_patterns |> flat_map(p =>
+    all_carrier_realizations |> flat_map(c =>
+      all_control_shapes |> flat_map(s =>
+        all_consumer_contracts |> flat_map(k =>
+          all_input_size_bases |> map(b =>
+            let id = EmitCopyQualificationCaseId {
+              ownership_pattern: p,
+              carrier_realization: c,
+              control_shape: s,
+              consumer_contract: k,
+              input_size_basis: b
+            }
+            EmitCopyQualificationCaseRow { id: id, applicability: case_applicability(id: id) }
+          )
+        )
+      )
+    )
+  )
+}
+
+fn roster_denominator() -> Int {
+  full_case_roster() |> count
+}
+
+fn row_is_applicable(r: EmitCopyQualificationCaseRow) -> Bool {
+  match r.applicability {
+    CaseApplicable => true
+    CaseNotApplicable { reason: _ } => false
+  }
+}
+
+fn applicable_case_rows() -> List<EmitCopyQualificationCaseRow> {
+  full_case_roster() |> filter(r => row_is_applicable(r: r))
+}
+
+fn applicable_case_count() -> Int {
+  applicable_case_rows() |> count
+}
+
+// ── Expectation derivation (from axis relations + carrier realization facts) ─────────────────
+// The two independent judgment axes the ruling fixes. CopyCostClass is the expected/observed
+// realization-cost class; CloneMinimality judges whether every clone present is necessary.
+type CopyCostClass
+  = NoCopyWork
+  | ShareCloneWork
+  | DeepCopyWork
+  | CopiedAccumulatorWork
+  | CopyCostUnobservable
+
+type CloneMinimality
+  = CloneNecessary
+  | CloneRedundant
+  | CloneNecessityUnjudgeable { ground: CloneUnjudgeableGround }
+
+// Unjudgeability has TWO grounds and they are not the same fact. Either the static observation
+// did not run at all, or it ran and could not discriminate: on a Copy-eligible receiver rustc
+// performs the same bitwise copy whether or not the clone is written, so redundant_clone's
+// delete-and-rebuild arm returns the SAME answer for a necessary clone and a redundant one.
+// Collapsing the second into CloneNecessary would read a silent lint on the Copy-scalar control
+// as an ESTABLISHED necessary clone -- the one cell where nothing was established.
+type CloneUnjudgeableGround
+  = StaticObservationDidNotRun { cause: String }
+  | StaticObservationNonDiscriminating { reason: String }
+
+// Whether a clean redundant_clone report carries information about THIS carrier.
+type CloneLintDiscrimination
+  = LintDiscriminates
+  | LintNonDiscriminating { reason: String }
+
+fn clone_lint_discrimination(c: CarrierRealization) -> CloneLintDiscrimination {
+  match carrier_clone_realization(c: c) {
+    BitCopyRealization =>
+      LintNonDiscriminating { reason: "receiver is Copy-eligible: the realized copy is a bitwise move performed with or without the written clone, so a clean redundant_clone report is the same report a redundant clone would produce" }
+    CloneRealizationUnknown { unresolved_fact: uf } => LintNonDiscriminating { reason: uf }
+    DeepBytesRealization => LintDiscriminates
+    ShareBumpRealization => LintDiscriminates
+    StructuralShareRealization => LintDiscriminates
+  }
+}
+
+fn copy_cost_class_slug(c: CopyCostClass) -> String {
+  match c {
+    NoCopyWork => "no_copy_work"
+    ShareCloneWork => "share_clone_work"
+    DeepCopyWork => "deep_copy_work"
+    CopiedAccumulatorWork => "copied_accumulator_work"
+    CopyCostUnobservable => "copy_cost_unobservable"
+  }
+}
+
+// How a whole-value materialization of each carrier is realized under the production emission
+// (blanket Rc + structural sharing + host String). BitCopyRealization and ShareBumpRealization
+// cost constant allocation work; DeepBytesRealization is linear in the carried size;
+// StructuralShareRealization is constant for whole-value sharing with bounded per-update node
+// work at the divergence point.
+type CloneRealizationFact
+  = BitCopyRealization
+  | DeepBytesRealization
+  | ShareBumpRealization
+  | StructuralShareRealization
+  | CloneRealizationUnknown { unresolved_fact: String }
+
+fn carrier_clone_realization(c: CarrierRealization) -> CloneRealizationFact {
+  match c {
+    CopyScalarControl => BitCopyRealization
+    OwnedStringCarrier => DeepBytesRealization
+    DeepCloningSequenceCarrier => CloneRealizationUnknown { unresolved_fact: "carrier has no production realization; cases are structurally inapplicable" }
+    SharedRecordCarrier => ShareBumpRealization
+    PersistentSequenceCarrier => StructuralShareRealization
+    PersistentMapCarrier => StructuralShareRealization
+    NestedCheapDeepRecordCarrier => ShareBumpRealization
+  }
+}
+
+// Allocation-growth class over the declared cardinalities, evaluated against deterministic
+// allocation counters inside the case window (input is built before the window opens, so
+// construction never charges the subject).
+type AllocGrowthClass
+  = ConstantAllocGrowth
+  | LinearAllocGrowth
+
+fn alloc_growth_class_slug(g: AllocGrowthClass) -> String {
+  match g {
+    ConstantAllocGrowth => "constant"
+    LinearAllocGrowth => "linear"
+  }
+}
+
+type ExpectedCopyCost {
+  cost_class: CopyCostClass
+  alloc_growth: AllocGrowthClass
+  whole_value_materializations: Int
+}
+
+type ExpectationDerivation
+  = DerivedExpectation { expected: ExpectedCopyCost }
+  | ExpectationUnderivable { unresolved_fact: String }
+
+// The number of whole-value materializations the case's SEMANTICS requires under its contract —
+// the modeled minimum, independent of how the emitter realizes it. Zero for every pattern whose
+// reuse can be served by sharing; one where an independently-owned second version is required.
+fn required_whole_value_materializations(p: OwnershipPattern, k: ConsumerContract) -> Int {
+  match p {
+    ConsumedOnce => 0
+    BorrowedReadOnly => 0
+    ByValueThenReused => 1
+    BranchExclusive => 0
+    ReuseAcrossJoin =>
+      match k {
+        ConsumesByValue => 1
+        BorrowsByRef => 0
+      }
+    AliasThenMutate => 1
+    MoveIntoClosure => 0
+    BorrowIntoClosure => 0
+    LoopCarriedAccumulator => 0
+    FieldExtractThenReuseEnclosing =>
+      match k {
+        ConsumesByValue => 1
+        BorrowsByRef => 0
+      }
+  }
+}
+
+fn materialization_cost_class(f: CloneRealizationFact) -> CopyCostClass {
+  match f {
+    BitCopyRealization => NoCopyWork
+    DeepBytesRealization => DeepCopyWork
+    ShareBumpRealization => ShareCloneWork
+    StructuralShareRealization => ShareCloneWork
+    CloneRealizationUnknown { unresolved_fact: _ } => CopyCostUnobservable
+  }
+}
+
+fn materialization_alloc_growth(f: CloneRealizationFact) -> AllocGrowthClass {
+  match f {
+    DeepBytesRealization => LinearAllocGrowth
+    BitCopyRealization => ConstantAllocGrowth
+    ShareBumpRealization => ConstantAllocGrowth
+    StructuralShareRealization => ConstantAllocGrowth
+    CloneRealizationUnknown { unresolved_fact: _ } => ConstantAllocGrowth
+  }
+}
+
+// derive_expectation: the LoopCarriedAccumulator arm expects LINEAR growth whatever the
+// carrier's clone realization — the accumulator BUILDS a size-n result inside the window, and
+// the violation class is the copied accumulator's quadratic shape
+// (v2.lens.complexity_accumulator_copy Poly2Suspect), which the linear bound refuses. For
+// PersistentMapCarrier operations allocate tree-node path work per touch (measured: reads and
+// updates at the declared cardinalities carry a small per-element residue above an otherwise
+// flat plateau), so every map expectation is bounded LINEAR, never the constant plateau.
+// AliasThenMutate on a structurally-sharing carrier diverges by copying the update path, whose
+// node/chunk work is bounded by the structure itself — the derivable upper bound is LINEAR in n
+// (measured: im updates allocate chunk-sized nodes at the declared cardinalities), never the
+// realization's constant clone class.
+fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation {
+  match carrier_clone_realization(c: id.carrier_realization) {
+    CloneRealizationUnknown { unresolved_fact: uf } =>
+      ExpectationUnderivable { unresolved_fact: uf }
+    realization =>
+      match id.ownership_pattern {
+        LoopCarriedAccumulator =>
+          DerivedExpectation { expected: ExpectedCopyCost {
+            cost_class: NoCopyWork,
+            alloc_growth: LinearAllocGrowth,
+            whole_value_materializations: 0
+          } }
+        AliasThenMutate =>
+          let growth = match realization {
+            StructuralShareRealization => LinearAllocGrowth
+            other => materialization_alloc_growth(f: other)
+          }
+          DerivedExpectation { expected: ExpectedCopyCost {
+            cost_class: materialization_cost_class(f: realization),
+            alloc_growth: growth,
+            whole_value_materializations: 1
+          } }
+        _ =>
+          let m = required_whole_value_materializations(p: id.ownership_pattern, k: id.consumer_contract)
+          let base_growth = if m == 0 { ConstantAllocGrowth } else { materialization_alloc_growth(f: realization) }
+          let growth = match id.carrier_realization {
+            PersistentMapCarrier => LinearAllocGrowth
+            other_carrier => base_growth
+          }
+          if m == 0 {
+            DerivedExpectation { expected: ExpectedCopyCost {
+              cost_class: NoCopyWork,
+              alloc_growth: growth,
+              whole_value_materializations: 0
+            } }
+          } else {
+            DerivedExpectation { expected: ExpectedCopyCost {
+              cost_class: materialization_cost_class(f: realization),
+              alloc_growth: growth,
+              whole_value_materializations: m
+            } }
+          }
+      }
+  }
+}
+
+// Per-element allocation bound for the linear class, in bytes, applied as
+// bytes(n2) - bytes(n1) <= bound * (n2 - n1) over consecutive declared cardinalities.
+// Justification: fixture elements are at most 16 bytes of payload ("ab" text units, i64
+// elements, small map entries); capacity-doubling, structural-node and boxing slack is priced
+// at 8x (measured: im record-accumulator pushes cost ~73 bytes/element at the declared
+// cardinalities — chunk nodes amortize above the payload; the earlier 4x pricing refused them).
+// The bound exists to separate growth CLASSES at the declared cardinalities — a copied
+// accumulator's quadratic shape crosses it at n=64 by an order of magnitude — not to price
+// exact constants. It is a RATE (bytes per element of cardinality delta), not a byte quantity,
+// so it stays Int and is lifted into the ByteSize carrier only when multiplied by a delta at the
+// one consuming site in judge_alloc_growth — typing the rate itself as ByteSize would be the
+// opposite unit fork.
+data linear_alloc_growth_bound_bytes_per_element: Int = 128
+
+// ── Observations (two independent arms; typed unavailability, never fabricated zeros) ────────
+type StaticCloneObservation
+  = NoRedundantCloneReported
+  | RedundantCloneReported { lint: String, emitted_item: String, line: Int, message: String }
+  | StaticObservationUnavailable { cause: String }
+
+type CopyWorkDimension
+  = DimensionObserved { n: Int }
+  | DimensionUnavailable { cause: String }
+
+// The observation transport is test-workspace-only (a counting allocator in the generated
+// runner binary); the production runtime, emitter, interpreter, and stage0 hand Rust carry no
+// counters. Dimensions with no transport are typed unavailable — the repository already
+// deleted counters that always rendered zero because nothing incremented them, and a rendered
+// zero here would repeat that class.
+type ObservedCopyWork {
+  share_clone_operations: CopyWorkDimension
+  deep_clone_operations: CopyWorkDimension
+  elements_copied: CopyWorkDimension
+  allocation_operations: CopyWorkDimension
+  allocated_bytes: CopyWorkDimension
+  copy_on_write_materializations: CopyWorkDimension
+}
+
+data copy_work_dimension_unavailable_cause: String = "no test-workspace transport for this dimension: the counting allocator observes allocation operations and bytes only, and planting per-clone counters would require hooks in production carriers"
+
+fn observed_copy_work_from_allocator(alloc_ops: Int, alloc_bytes: Int) -> ObservedCopyWork {
+  ObservedCopyWork {
+    share_clone_operations: DimensionUnavailable { cause: copy_work_dimension_unavailable_cause },
+    deep_clone_operations: DimensionUnavailable { cause: copy_work_dimension_unavailable_cause },
+    elements_copied: DimensionUnavailable { cause: copy_work_dimension_unavailable_cause },
+    allocation_operations: DimensionObserved { n: alloc_ops },
+    allocated_bytes: DimensionObserved { n: alloc_bytes },
+    copy_on_write_materializations: DimensionUnavailable { cause: copy_work_dimension_unavailable_cause }
+  }
+}
+
+type AllocObservationRow {
+  cardinality: Int
+  allocation_operations: Int
+  allocated_bytes: ByteSize
+}
+
+// The one sanctioned Int -> ByteSize crossing for allocator readings (review 57849: byte
+// quantities ride the std.measure carrier, never bare Int). The Int -> Nat identity is admitted
+// at a function RETURN position (std.checked_arithmetic documents the crossing), so the Nat hop
+// is its own declaration; allocator readings are nonnegative by construction of the counter.
+fn alloc_reading_nat(bytes: Int) -> Nat {
+  bytes
+}
+
+fn allocated_byte_size(bytes: Int) -> ByteSize {
+  byte_size(count: alloc_reading_nat(bytes: bytes))
+}
+
+fn byte_size_gt(a: ByteSize, b: ByteSize) -> Bool {
+  !measure_le(a: a, b: b)
+}
+
+fn byte_size_ne(a: ByteSize, b: ByteSize) -> Bool {
+  !(measure_le(a: a, b: b) && measure_le(a: b, b: a))
+}
+
+// Runtime observation for one case: either the per-cardinality allocator rows (already proven
+// repeatable by the transport: identical across the declared repeat count) or a typed
+// unavailability (counter disconnected, nondeterministic repeats, runner refused).
+type RuntimeObservation
+  = RuntimeRowsObserved { rows: List<AllocObservationRow> }
+  | RuntimeObservationUnavailable { cause: String }
+
+// ── The verdict family (ruling §6) ───────────────────────────────────────────────────────────
+type EmitCopyQualification
+  = Qualified {
+      case: EmitCopyQualificationCaseId
+      behavior_agreement: Bool
+      clone_minimality: CloneMinimality
+      expected: ExpectedCopyCost
+      observed_rows: List<AllocObservationRow>
+      lint_observation: StaticCloneObservation
+    }
+  | QualificationRefusedBehaviorMismatch { case: EmitCopyQualificationCaseId, expected_line: String, observed_line: String }
+  | QualificationRefusedCaseNotExecutable { case: EmitCopyQualificationCaseId, phase: String, detail: String }
+  | QualificationRefusedCostOracleUnavailable { case: EmitCopyQualificationCaseId, unresolved_fact: String }
+  | QualificationRefusedObservationUnavailable { case: EmitCopyQualificationCaseId, cause: String }
+  | QualificationRefusedExcessCopy { case: EmitCopyQualificationCaseId, cardinality: Int, observed_bytes: ByteSize, allowed_bytes: ByteSize }
+  | QualificationRefusedRedundantClone { case: EmitCopyQualificationCaseId, lint: String, emitted_item: String, line: Int }
+
+fn qualification_is_qualified(q: EmitCopyQualification) -> Bool {
+  match q {
+    Qualified { case: _, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => true
+    QualificationRefusedBehaviorMismatch { case: _, expected_line: _, observed_line: _ } => false
+    QualificationRefusedCaseNotExecutable { case: _, phase: _, detail: _ } => false
+    QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => false
+    QualificationRefusedObservationUnavailable { case: _, cause: _ } => false
+    QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+    QualificationRefusedRedundantClone { case: _, lint: _, emitted_item: _, line: _ } => false
+  }
+}
+
+fn qualification_case(q: EmitCopyQualification) -> EmitCopyQualificationCaseId {
+  match q {
+    Qualified { case: id, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => id
+    QualificationRefusedBehaviorMismatch { case: id, expected_line: _, observed_line: _ } => id
+    QualificationRefusedCaseNotExecutable { case: id, phase: _, detail: _ } => id
+    QualificationRefusedCostOracleUnavailable { case: id, unresolved_fact: _ } => id
+    QualificationRefusedObservationUnavailable { case: id, cause: _ } => id
+    QualificationRefusedExcessCopy { case: id, cardinality: _, observed_bytes: _, allowed_bytes: _ } => id
+    QualificationRefusedRedundantClone { case: id, lint: _, emitted_item: _, line: _ } => id
+  }
+}
+
+fn qualification_slug(q: EmitCopyQualification) -> String {
+  match q {
+    Qualified { case: _, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => "qualified"
+    QualificationRefusedBehaviorMismatch { case: _, expected_line: _, observed_line: _ } => "refused_behavior_mismatch"
+    QualificationRefusedCaseNotExecutable { case: _, phase: _, detail: _ } => "refused_case_not_executable"
+    QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => "refused_cost_oracle_unavailable"
+    QualificationRefusedObservationUnavailable { case: _, cause: _ } => "refused_observation_unavailable"
+    QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => "refused_excess_copy"
+    QualificationRefusedRedundantClone { case: _, lint: _, emitted_item: _, line: _ } => "refused_redundant_clone"
+  }
+}
+
+// ── Growth judgment: observed allocator rows against the derived class, at the declared
+//    cardinalities, with the declared linear bound. Refusal carries the violating row. ────────
+type GrowthJudgment
+  = GrowthWithinExpectation
+  | GrowthExceeds { cardinality: Int, observed_bytes: ByteSize, allowed_bytes: ByteSize }
+
+type ConsecutivePairScan {
+  prev_cardinality: Int
+  prev_bytes: ByteSize
+  have_prev: Bool
+  verdict: GrowthJudgment
+}
+
+// Constant class: every POSITIVE cardinality must sit on one plateau (exact counters, no
+// noise), and the size-0 boundary row may sit at or below it — the empty input legitimately
+// short-circuits per-call work (measured: emitted subjects allocate a small fixed box per call
+// that the empty case skips), and "constant" is a claim about n-independence, not about
+// equality with the degenerate point.
+// Linear class: consecutive-pair deltas within the declared per-element bound.
+fn judge_alloc_growth(expected: AllocGrowthClass, rows: List<AllocObservationRow>) -> GrowthJudgment {
+  match expected {
+    ConstantAllocGrowth =>
+      let plateau = match rows |> filter(r => r.cardinality > 0) |> first {
+        Present { value: r0 } => r0.allocated_bytes
+        Absent =>
+          match rows |> first {
+            Present { value: r0 } => r0.allocated_bytes
+            Absent => byte_size(count: 0)
+          }
+      }
+      let violation = rows |> filter(r =>
+        if r.cardinality > 0 { byte_size_ne(a: r.allocated_bytes, b: plateau) } else { byte_size_gt(a: r.allocated_bytes, b: plateau) }
+      ) |> first
+      match violation {
+        Present { value: v } => GrowthExceeds { cardinality: v.cardinality, observed_bytes: v.allocated_bytes, allowed_bytes: plateau }
+        Absent => GrowthWithinExpectation
+      }
+    LinearAllocGrowth =>
+      let scan = rows |> fold(
+        init: ConsecutivePairScan { prev_cardinality: 0, prev_bytes: byte_size(count: 0), have_prev: false, verdict: GrowthWithinExpectation },
+        f: (acc, r) =>
+          match acc.verdict {
+            GrowthExceeds { cardinality: _, observed_bytes: _, allowed_bytes: _ } => acc
+            GrowthWithinExpectation =>
+              if acc.have_prev {
+                let allowed = measure_add(a: acc.prev_bytes, b: allocated_byte_size(bytes: linear_alloc_growth_bound_bytes_per_element * (r.cardinality - acc.prev_cardinality)))
+                if byte_size_gt(a: r.allocated_bytes, b: allowed) {
+                  ConsecutivePairScan { prev_cardinality: r.cardinality, prev_bytes: r.allocated_bytes, have_prev: true, verdict: GrowthExceeds { cardinality: r.cardinality, observed_bytes: r.allocated_bytes, allowed_bytes: allowed } }
+                } else {
+                  ConsecutivePairScan { prev_cardinality: r.cardinality, prev_bytes: r.allocated_bytes, have_prev: true, verdict: GrowthWithinExpectation }
+                }
+              } else {
+                ConsecutivePairScan { prev_cardinality: r.cardinality, prev_bytes: r.allocated_bytes, have_prev: true, verdict: GrowthWithinExpectation }
+              }
+          }
+      )
+      scan.verdict
+  }
+}
+
+// ── The qualification join: one total decision per applicable case ───────────────────────────
+// Prerequisite order is the ruling's: executability, then behavior, then cost. The static arm
+// is an observation, not the cost oracle — a redundant-clone report refuses on the MINIMALITY
+// axis; a clean report proves nothing about copy-on-write or accumulator cost, which the
+// runtime arm judges independently.
+type BehaviorAgreement
+  = BehaviorAgreed
+  | BehaviorDisagreed { expected_line: String, observed_line: String }
+  | BehaviorUnavailable { phase: String, detail: String }
+
+fn judge_case(
+  id: EmitCopyQualificationCaseId,
+  behavior: BehaviorAgreement,
+  static_obs: StaticCloneObservation,
+  runtime_obs: RuntimeObservation
+) -> EmitCopyQualification {
+  match behavior {
+    BehaviorUnavailable { phase: ph, detail: d } =>
+      QualificationRefusedCaseNotExecutable { case: id, phase: ph, detail: d }
+    BehaviorDisagreed { expected_line: e, observed_line: o } =>
+      QualificationRefusedBehaviorMismatch { case: id, expected_line: e, observed_line: o }
+    BehaviorAgreed =>
+      match derive_expectation(id: id) {
+        ExpectationUnderivable { unresolved_fact: uf } =>
+          QualificationRefusedCostOracleUnavailable { case: id, unresolved_fact: uf }
+        DerivedExpectation { expected: expected } =>
+          match runtime_obs {
+            RuntimeObservationUnavailable { cause: c } =>
+              QualificationRefusedObservationUnavailable { case: id, cause: c }
+            RuntimeRowsObserved { rows: rows } =>
+              match static_obs {
+                RedundantCloneReported { lint: l, emitted_item: item, line: ln, message: _ } =>
+                  QualificationRefusedRedundantClone { case: id, lint: l, emitted_item: item, line: ln }
+                NoRedundantCloneReported =>
+                  judge_growth_arm(id: id, expected: expected, rows: rows, static_obs: static_obs)
+                StaticObservationUnavailable { cause: _ } =>
+                  judge_growth_arm(id: id, expected: expected, rows: rows, static_obs: static_obs)
+              }
+          }
+      }
+  }
+}
+
+fn judge_growth_arm(
+  id: EmitCopyQualificationCaseId,
+  expected: ExpectedCopyCost,
+  rows: List<AllocObservationRow>,
+  static_obs: StaticCloneObservation
+) -> EmitCopyQualification {
+  match judge_alloc_growth(expected: expected.alloc_growth, rows: rows) {
+    GrowthExceeds { cardinality: n, observed_bytes: ob, allowed_bytes: ab } =>
+      QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab }
+    GrowthWithinExpectation =>
+      let minimality = match static_obs {
+        NoRedundantCloneReported =>
+          match clone_lint_discrimination(c: id.carrier_realization) {
+            LintDiscriminates => CloneNecessary
+            LintNonDiscriminating { reason: r } =>
+              CloneNecessityUnjudgeable { ground: StaticObservationNonDiscriminating { reason: r } }
+          }
+        StaticObservationUnavailable { cause: c } =>
+          CloneNecessityUnjudgeable { ground: StaticObservationDidNotRun { cause: c } }
+        RedundantCloneReported { lint: _, emitted_item: _, line: _, message: _ } => CloneRedundant
+      }
+      Qualified {
+        case: id,
+        behavior_agreement: true,
+        clone_minimality: minimality,
+        expected: expected,
+        observed_rows: rows,
+        lint_observation: static_obs
+      }
+  }
+}
