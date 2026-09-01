@@ -210,22 +210,26 @@ fn admitted_with_no_diagnostic_change(c: CompileDiagnosticCensus, inserted_field
 // ---------------------------------------------------------------------------
 // (ii) HARNESS SIGHT -- ASSERTED FIRST, because every row after it is conditional on it.
 //
-// THE ABSOLUTE THAT IS HONEST HERE IS THE BLOCKING ONE, AND ONLY THAT ONE. This probe closes over
-// almost nothing, so its BLOCKING census really is empty but for the diagnostic the mutation causes
-// -- blocking == 0 clean, blocking == 1 mutated, and the exact sentinel identity present exactly
-// once. Its TOTAL is not zero and asserting so would be false: the census module's own closure
-// contributes 95 nonblocking counts (DeclaredTypeInhabitanceUndecided on list elements,
-// WhereRefinementUnenforced on non_empty) to BOTH sides. Measured, not assumed.
+// THE ONLY ABSOLUTE THIS PAIR CAN HONESTLY CARRY IS THE BLOCKING ONE. An earlier cut asserted the
+// clean census total at zero and the mutant's at one. That is FALSE and was measured false: this
+// source's closure contributes a common population of NONBLOCKING rows -- inhabitance-undecided and
+// unenforced-refinement rows belonging to the census module itself -- to BOTH sides. The count is
+// deliberately not written here; it is whatever compile_dag_diagnostic_census reports for these two
+// sources, and freezing it as prose would make an acceptance number out of a corpus property.
 //
-// So the residue is pinned by DIFFERENCE instead, which is strictly stronger than the absolute would
-// have been: total is clean + 1 exactly, and the identity multiset delta between the two is empty
-// except the sentinel. That is what forbids matching nonblocking residue on both sides from being
-// read as "nothing happened" -- every other identity is required equal, not merely equal in sum.
+// SO THE RESIDUE IS PINNED BY DIFFERENCE. Blocking is 0 clean and 1 mutated, the exact sentinel
+// identity is absent clean and present exactly once mutated, the total is clean + 1 exactly, and
+// every OTHER diagnostic identity's multiplicity is required EQUAL across the pair. Together those
+// establish that the inserted field causes exactly one new blocking diagnostic and that nothing
+// unrelated appeared, disappeared, or cancelled numerically.
+//
+// WHAT THAT IS AND IS NOT. It is stronger than a net-count comparison, and it is the strongest
+// SUBJECT-RELATIVE control available under a shared nonblocking closure residue. It is NOT stronger
+// than a genuinely clean absolute would be: a true total-zero-versus-total-one pair would also prove
+// the ABSENCE of all common residue, which this pair cannot and does not claim. The earlier wording
+// here said "strictly stronger than the absolute", which overstated it in exactly the direction that
+// flatters the author.
 // ---------------------------------------------------------------------------
-// The absolutes on this pair are honest where they would not be on a launch probe: this source
-// closes over almost nothing, so its census really is empty but for the one diagnostic the mutation
-// causes. Asserting total == 0 on the clean side rather than only blocking == 0 is what stops
-// matching NONBLOCKING residue on both sides from being read as "nothing happened".
 data sentinel_field_not_found_identity: String = field_not_found_identity(field: "__launch_excess_field_probe")
 
 // THE EXACT IDENTITY AN UNRESOLVED INITIALIZER PRODUCES, measured rather than guessed: the census
