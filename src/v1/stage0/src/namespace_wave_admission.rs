@@ -65,6 +65,14 @@ use crate::cli_run::declaration_index::{
 };
 use crate::v1_std_core::qualified_last_segment;
 
+/// The declaration identity of an ambient kernel type in binding rows.
+///
+/// Kernel types have no declaring module, but that does not make them unresolved:
+/// `v1.compiler.resolve` appends `std.types.kernel_type_set` to every visible-name set. Keeping
+/// this identity distinct from every module path prevents an empty candidate set from conflating
+/// "resolved by the kernel" with "denotes nothing".
+const KERNEL_DECLARATION_IDENTITY: &str = "<kernel>";
+
 /// The nine dispositions of `gunbc.compiler_frontend_program_interlock`
 /// `NamespaceDeltaDisposition`, realized for the host reader.
 ///
@@ -460,14 +468,16 @@ pub struct TransitionAdmission {
 /// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
 /// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
 /// empty and remains fail-closed for any new namespace delta.
-/// NINTH DISSOLUTION (2026-09-01). The SPARK-PAIR-0 P0-C3a consolidation merged, so base and head
-/// both carry the linger-probe relocation into `gunbc.spark.serving_observe`. The required run on
-/// gunbc#9832 reported both of its rows as `CONSUMED ADMISSION ... already satisfied at the base --
-/// consumed by its own merge; deletion is owed on the roster's next touch`. This IS that next
-/// touch, so they are removed here by their own trigger rather than left to be re-observed
-/// consumed on every unrelated PR.
-///
-/// TENTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
+/// NINTH, AND THIS ONE WAS AN ADDITION RATHER THAN A SHRINK (2026-08-31). The two rows were
+/// the SPARK-PAIR-0 P0-C3a consolidation's own adjudication, carried across main's eighth
+/// dissolution, which emptied the roster. They are NOT stale: the required run that reported the
+/// five BootArtifact rows stale reported `0 unadjudicated delta(s)` on the same line, and that
+/// zero is these two rows doing their job.
+/// TENTH DISSOLUTION (2026-09-01). SPARK-PAIR-0 P0-C3a merged, and the required run for
+/// gunbc#9896 proved both rows consumed at the base. This change touches the roster to teach the
+/// wall that ambient kernel identities are resolved, so the roster's own next-touch obligation
+/// deletes both receipts. The roster is empty and remains fail-closed for new namespace motion.
+/// ELEVENTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
 /// gunbc#9832): ONE relocation, rostered by its author under the rule this ledger states -- a run
 /// carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row here.
 /// `fleet_converge_plan_spark_typed_actions_wire_path` is the on-disk path of one of the three
@@ -598,8 +608,9 @@ fn module_prefix_of(index: &DeclarationIndex, spelling: &str) -> Option<(String,
     None
 }
 
-/// The declaring modules a spelling admits inside one module — the candidate POPULATION, not
-/// a winner. An empty set is unresolved-at-this-grain; two or more is ambiguity.
+/// The declaring identities a spelling admits inside one module — module paths for authored
+/// declarations and `<kernel>` for an ambient kernel type. An empty set is
+/// unresolved-at-this-grain; two or more is ambiguity.
 fn declaring_candidates(
     index: &DeclarationIndex,
     record: &ModuleDeclarationRecord,
@@ -617,8 +628,17 @@ fn declaring_candidates(
     if spelling.contains('.') {
         return out;
     }
-    if record.declared.contains(spelling) || record.variants.contains(spelling) {
+    let locally_declared = record.declared.contains(spelling) || record.variants.contains(spelling);
+    if locally_declared {
         out.insert(record.module_path.clone());
+    }
+    // Locals precede kernel names, and kernel names precede imports in the compiler's one
+    // precedence authority. A structural `String` import therefore never makes bare `String`
+    // denote that module: both with and without the import it denotes the ambient kernel type.
+    // The early return is the discriminator the previous module-only set lacked.
+    if !locally_declared && crate::std_types::kernel_type_set().contains_key(spelling) {
+        out.insert(KERNEL_DECLARATION_IDENTITY.to_string());
+        return out;
     }
     for claim in &record.imports {
         let Some(target) = index_get(index, &claim.target) else {
