@@ -113,6 +113,7 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
 import v1.compiler.infer_env {
+  resolved_node_is_kernel_identity_for_name,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -13043,11 +13044,14 @@ fn rewire_str_binding_overlay(str_bindings: Map<String, TypeBinding>, rewrites: 
 }
 
 // THE KERNEL LAYER IS NOT AN IMPORT IDENTITY TO CANONICALIZE (2026-08-31, frontier receipt 1
-// follow-up). This rewire replaces an inherited binding with the corpus-wide canonical EXPORTED
-// declaration when exactly one module exports the name. A KERNEL binding in ancestry is not an
-// inherited import identity: it is the precedence layer build_ancestry_precedence installed ABOVE
-// the import union (locals > kernel > direct-selected > union), and String has exactly one
-// corpus exporter (v2.std.text), so the unguarded rewrite substituted the structural declaration
+// follow-up). This rewire replaces an inherited binding with the canonical EXPORTED declaration
+// when exactly one module in THE RUN'S ASSEMBLED MODULE POPULATION exports the name --
+// build_export_indexes is scoped to the invocation's module list (the entry closure under
+// reference-derived resolution), never to the corpus, so the exporter count is a run fact.
+// A KERNEL binding in ancestry is not an inherited import identity: it is the precedence layer
+// build_ancestry_precedence installed ABOVE the import union (locals > kernel > direct-selected
+// > union), and String has exactly one exporter in the 00_compile entry closure (v2.std.text;
+// std.string_type sits outside it), so the unguarded rewrite substituted the structural declaration
 // for the kernel identity in every module's persisted env -- inference (pre-rewire) answered
 // kernel while emit (post-rewire) read the substituted authority, the divergence behind the
 // pub-use String shadow measured as 139 of receipt 1's 146 E0308 rows. The guard is keyed on the
@@ -13060,10 +13064,7 @@ fn rewire_str_binding_overlay(str_bindings: Map<String, TypeBinding>, rewrites: 
 fn ancestry_binding_is_kernel_identity(bindings: Map<String, TypeBinding>, name: String) -> Bool {
   match map_get(bindings, name) {
     Absent => false
-    Present { value: binding } => match binding.resolved.ident_span {
-      Present { value: sp } => sp.file == concat("<kernel:", concat(name, ">"))
-      Absent => false
-    }
+    Present { value: binding } => resolved_node_is_kernel_identity_for_name(node: binding.resolved, name: name)
   }
 }
 
@@ -13081,6 +13082,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
     let ancestry_keys = m.type_env.ancestry_str_bindings
       |> map_keys
       |> filter(name => !ancestry_binding_is_kernel_identity(bindings: m.type_env.ancestry_str_bindings, name: name))
+
     let str_keys = m.type_env.str_bindings |> map_keys
     let inherited_keys = concat(ancestry_keys, str_keys)
     let rewrites = rewire_canonical_rewrites(

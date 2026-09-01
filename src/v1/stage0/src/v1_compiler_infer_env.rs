@@ -1740,6 +1740,19 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     }
 }
 
+pub fn resolved_node_is_kernel_identity_for_name(node: Rc<Node>, name: String) -> bool {
+    match node.ident_span.clone() {
+        Some(sp) => {
+            (sp.file.clone()
+                == v1_rt::concat(
+                    "<kernel:".to_string(),
+                    v1_rt::concat(name.clone(), ">".to_string()),
+                ))
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
         Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())

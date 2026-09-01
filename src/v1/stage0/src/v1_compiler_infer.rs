@@ -101,9 +101,9 @@ pub use crate::v1_compiler_infer_env::{
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
     node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup, type_reference_declaration,
-    type_reference_declaration_ref, unit_variant_index_shadow_insert,
+    resolved_node_is_kernel_identity_for_name, str_bindings_from_bindings, symbol_index_insert,
+    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
+    type_reference_declaration, type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -24783,16 +24783,10 @@ pub fn ancestry_binding_is_kernel_identity(
 ) -> bool {
     match v1_rt::map_get(&bindings, name.clone()) {
         std::option::Option::None => false,
-        Some(binding) => match binding.resolved.clone().ident_span.clone() {
-            Some(sp) => {
-                (sp.file.clone()
-                    == v1_rt::concat(
-                        "<kernel:".to_string(),
-                        v1_rt::concat(name.clone(), ">".to_string()),
-                    ))
-            }
-            std::option::Option::None => false,
-        },
+        Some(binding) => crate::v1_compiler_infer_env::resolved_node_is_kernel_identity_for_name(
+            binding.resolved.clone(),
+            name.clone(),
+        ),
     }
 }
 
