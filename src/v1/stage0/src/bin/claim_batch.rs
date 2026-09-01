@@ -195,6 +195,65 @@ struct DiscoveryConfig {
     notice_title: String,
 }
 
+/// Names callable declarations from an entry's source without loading or resolving its closure.
+/// This is deliberately an entry-local CLI preflight: a miss can be decided from the file the
+/// caller already named, so paying the whole-corpus index and resolve costs first is redundant.
+fn entry_function_names(source: &str) -> std::collections::BTreeSet<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_start();
+            [
+                "pub test fn ",
+                "test fn ",
+                "pub fn ",
+                "fn ",
+                "pub func ",
+                "func ",
+            ]
+            .iter()
+            .find_map(|prefix| line.strip_prefix(prefix))
+            .map(|rest| {
+                rest.chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .filter(|name| !name.is_empty())
+        })
+        .collect()
+}
+
+fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
+    for group in entry_groups {
+        if group.functions.is_empty() {
+            continue;
+        }
+        let source = std::fs::read_to_string(&group.entry).map_err(|e| {
+            eprintln!(
+                "claim_batch: cannot read --entry {} while validating functions: {e}",
+                group.entry
+            );
+            ExitCode::from(2)
+        })?;
+        let declared = entry_function_names(&source);
+        let missing: Vec<&str> = group
+            .functions
+            .iter()
+            .filter(|function| !declared.contains(function.as_str()))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            eprintln!(
+                "claim_batch: --entry {} does not declare requested function(s): {}",
+                group.entry,
+                missing.join(", ")
+            );
+            return Err(ExitCode::from(2));
+        }
+    }
+    Ok(())
+}
+
 fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut entry_groups: Vec<EntryGroup> = Vec::new();
@@ -589,6 +648,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
+    // Explicit names are entry-local facts. Refuse stale/typoed argv before the whole-tree
+    // bare-reference warm, output-policy resolution, module-index construction, or entry resolve.
+    // Discovery-produced rows are validated by their producer and join later in this function.
+    validate_explicit_functions(&parsed.entry_groups)?;
+
     // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
     // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
     // required floor it was charged in full to whichever claim resolved an entry first.
@@ -955,7 +1019,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod cli_path_resolution_wiring_tests {
-    use super::parse_args;
+    use super::{entry_function_names, parse_args, validate_explicit_functions, EntryGroup};
     use v1_compiler::cli_run::workspace_root;
 
     fn args(v: &[&str]) -> Vec<String> {
@@ -971,7 +1035,7 @@ mod cli_path_resolution_wiring_tests {
         let ws = workspace_root();
         let root = ws.join("dag").to_string_lossy().into_owned();
         let entry = ws
-            .join("dag/test/claim/commit_workflow_witness_test.dag")
+            .join("dag/test/claim/discovery_census_witness_test.dag")
             .to_string_lossy()
             .into_owned();
         let parsed = parse_args(&args(&[
@@ -980,7 +1044,7 @@ mod cli_path_resolution_wiring_tests {
             "--entry",
             &entry,
             "--function",
-            "witness_roster_nonempty",
+            "w_site_label_is_the_module_path_as_package",
         ]))
         .unwrap_or_else(|_| panic!("absolute existing paths must parse"));
         assert_eq!(parsed.source_roots, vec![root]);
@@ -1008,9 +1072,9 @@ mod cli_path_resolution_wiring_tests {
             "--source-root",
             "dag",
             "--entry",
-            "dag/test/claim/commit_workflow_witness_test.dag",
+            "dag/test/claim/discovery_census_witness_test.dag",
             "--function",
-            "witness_roster_nonempty",
+            "w_site_label_is_the_module_path_as_package",
         ]));
         assert_eq!(
             result.is_ok(),
@@ -1019,6 +1083,43 @@ mod cli_path_resolution_wiring_tests {
             cwd.display(),
             workspace_root().display()
         );
+    }
+
+    #[test]
+    fn entry_function_scan_covers_claimable_declaration_forms_only() {
+        let source = r#"
+module fixture
+
+fn ordinary_holds() -> Bool { true }
+pub fn public_holds() -> Bool { true }
+test fn witness_holds() -> Bool { true }
+func block_holds() -> Bool { return true }
+data not_callable: Bool = true
+// fn commented_out() -> Bool { true }
+"#;
+        let names = entry_function_names(source);
+        assert_eq!(
+            names.into_iter().collect::<Vec<_>>(),
+            vec![
+                "block_holds",
+                "ordinary_holds",
+                "public_holds",
+                "witness_holds"
+            ]
+        );
+    }
+
+    #[test]
+    fn nonexistent_explicit_function_refuses_before_resolution() {
+        let entry = workspace_root()
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let groups = vec![EntryGroup {
+            entry,
+            functions: vec!["this_function_does_not_exist".to_string()],
+        }];
+        assert!(validate_explicit_functions(&groups).is_err());
     }
 }
 
