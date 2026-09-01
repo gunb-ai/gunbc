@@ -59,15 +59,17 @@ data sc_sealed_at_payload_red: String = "module probe_sc_sealed_at_payload_red\n
 // this one silent, and a one-direction wall would read as covering the class.
 data sc_payload_at_sealed_red: String = "module probe_sc_payload_at_sealed_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_wrapped(x: Wrapped) -> Int { 0 }\nfn f(i: Inner) -> Int { takes_wrapped(x: i) }\n"
 
-// A MEASURED REMAINING HOLE, PINNED RATHER THAN CLAIMED CLOSED. A sealed carrier at a KERNEL
-// formal is still ACCEPTED after this repair -- measured on the repaired compiler, in the same run
-// that shows the two record positions above now refusing, so this is an executed negative and not
-// an untested guess. record_at_scalar_needs_identity reads the exposure this change repairs, so the
-// head is now visible and something ELSE declines the judgment at this position; what that is has
-// not been established and is not guessed at here. The probe therefore asserts what the compiler
-// ACTUALLY DOES, so it flips to a permanent regression control the moment the position climbs, and
-// nobody can read this module as covering a position it does not cover.
-data sc_sealed_at_kernel_known_hole: String = "module probe_sc_sealed_at_kernel_known_hole\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
+// RED 3 -- a sealed carrier at a KERNEL formal, which this repair does NOT close. Measured on the
+// repaired compiler, in the same run that shows the two record positions above now refusing:
+// record_at_scalar_needs_identity reads the exposure this change repairs, so the head is now
+// visible and something ELSE declines the judgment at this position; what that is has not been
+// established and is not guessed at here. This probe asserts the REFUSAL the floor requires, not
+// the accepting answer the compiler gives today, and is therefore enrolled in
+// v2.workflow.floor_expected_red -- where it still executes and is still asserted, its failure
+// counts as agreement, and it REDS THE BUILD the moment it starts passing, naming itself for
+// removal. An earlier revision asserted `!sc_refuses_inhabitance` instead; that made the defective
+// answer required green behaviour, which DESIGN section 4b(4) forbids.
+data sc_sealed_at_kernel_red: String = "module probe_sc_sealed_at_kernel_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
 
 // THE NO-FORK CONTROL. Identical to RED 1 except the actual's declaration is not sealed. It
 // refused BEFORE the repair and must keep refusing after it: if this ever goes silent the repair
@@ -75,7 +77,7 @@ data sc_sealed_at_kernel_known_hole: String = "module probe_sc_sealed_at_kernel_
 data sc_plain_at_payload_red: String = "module probe_sc_plain_at_payload_red\ntype Inner { v: Int }\ntype PlainW { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: PlainW) -> Int { takes_inner(x: w) }\n"
 
 // THE POSITIVE CONTROL. A conforming binding through the sealed carrier's own payload. Without it
-// a compiler that refused EVERY argument would satisfy both reds and the pinned hole alike.
+// a compiler that refused EVERY argument would satisfy all three reds alike.
 data sc_conforming_green: String = "module probe_sc_conforming_green\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: Wrapped) -> Int { takes_inner(x: w.root) }\n"
 
 // THE SEALING-STILL-WORKS CONTROL. sole_constructor's own guarantee -- that no site outside the
@@ -92,8 +94,8 @@ test fn payload_at_sealed_carrier_formal_refuses() -> Bool {
   sc_refuses_inhabitance(source: sc_payload_at_sealed_red)
 }
 
-test fn sealed_carrier_at_kernel_formal_is_still_accepted_known_hole() -> Bool {
-  !sc_refuses_inhabitance(source: sc_sealed_at_kernel_known_hole)
+test fn sealed_carrier_at_kernel_formal_refuses() -> Bool {
+  sc_refuses_inhabitance(source: sc_sealed_at_kernel_red)
 }
 
 test fn unsealed_twin_still_refuses() -> Bool {
