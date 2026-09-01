@@ -1124,19 +1124,30 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// consequence of the comparator's denominator, which is exactly the shape DESIGN section 3
 /// forbids: one fact with no home, inferred from another fact that is free to move.
 ///
-/// It is not hypothetical that a non-`.rs` artifact reaches the candidate tree. The emitter
-/// produces a bare `Cargo.toml` (`v1.compiler.emit_rust`), `write_emitted_tree` writes it
-/// through verbatim, `observe_complete_candidate_artifact_population` sees it, and
-/// `produce_candidate_manifest` gives it a `GeneratedSurface` row declared by
-/// `v1.compiler.emit_rust`. Every stage between the emitter and this copy admits it. The `.rs`
-/// filter on the compared population is the sole reason it never becomes an install target, and
-/// a widening of that denominator — the natural next step the moment a non-Rust generated
-/// artifact wants drift coverage — would silently turn it into one.
+/// THIS GUARD DELIBERATELY DOES NOT ASK WHETHER THE ARTIFACT IS RUST, and the omission is the
+/// considered part. An earlier revision refused every non-`.rs` install target on the reasoning
+/// that non-Rust emitted artifacts are not installable into the seed. That reasoning is wrong in
+/// the direction that matters: the emitted `Cargo.toml` is stage0's OWN package manifest emitted
+/// incompletely (17 lines carrying `[package] name = "v1_compiler"` against the committed
+/// 172-line `v1-compiler` manifest), standing in the same relation to its committed file as the
+/// emitted `main.rs` does. `v2.compiler.self_host.stage0_crate_layout`
+/// `emitter_produced_divergent_note` settles that relation: the reachable end state is that the
+/// emitter produces the committed bytes and the divergent family is EMPTY. So an extension arm
+/// would refuse the correct end state by construction, writing an accidental comparison
+/// denominator into a second place as deliberate policy — the dual of widening the compared
+/// population, and the same error.
 ///
-/// So the boundary asks for itself, and refuses rather than widening (DESIGN section 5):
+/// What keeps a non-Rust artifact out of the install roster is therefore left where it already
+/// is, and the deficit it rests on is named rather than re-implemented here: destinations are
+/// addressed as BARE BASENAMES under `stage0_src`, `produce_candidate_manifest` has already
+/// discarded the package-root distinction, and so a declared non-Rust `GeneratedSurface` is
+/// invisible to the fixed point instead of dispositioned. That is the subject of the projection
+/// identity work, not of this boundary.
+///
+/// So the boundary asks only what it can answer on its own, and refuses rather than widening
+/// (DESIGN section 5) — both arms kind-agnostic:
 ///
 /// - a path that is not a bare basename cannot address anything outside `stage0_src`;
-/// - a non-`.rs` artifact is not a member of the generated Rust population this seed tree holds;
 /// - a hand-maintained mirror is authored, never installed — the remedy for an emitted/committed
 ///   divergence there is `verify_hand_maintained`'s declared-divergence roster, not a copy over
 ///   the author's bytes.
@@ -1145,8 +1156,8 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// of `drifted`, which is computed by `compare_generated_surfaces` over
 /// `committed_generated_basenames`/`generated_basenames_from_emit` — both already `.rs`-only and
 /// both already hand-maintained-excluded. The live corpus is this wall's positive control; its
-/// discriminating RED is authored in `install_target_admission_refuses_non_rust_artifacts`,
-/// which hands the installer the `Cargo.toml` the emitter really produces.
+/// discriminating RED is authored in
+/// `install_target_admission_refuses_unaddressable_and_hand_maintained`.
 ///
 /// RUNG, HONESTLY: mechanically preventable. The invalid state stays writable — the plan
 /// projection hands this function a `Vec<String>`, so a non-installable path is expressible right
@@ -1163,13 +1174,6 @@ fn admit_install_target(basename: &str) -> Result<(), String> {
         return Err(format!(
             "InstallTargetNotABareBasename: {basename} is not a bare stage0 basename, so the \
              install destination is not inside the committed generated surface"
-        ));
-    }
-    if !is_compared_generated_basename(basename) {
-        return Err(format!(
-            "InstallTargetOutsideGeneratedRustPopulation: {basename} is not a generated Rust \
-             surface. The candidate tree carries non-Rust emitted artifacts (the emitter's bare \
-             Cargo.toml among them); none of them is installable into the committed seed"
         ));
     }
     if HAND_MAINTAINED_STAGE0_FILES.contains(&basename) {
@@ -5474,24 +5478,21 @@ mod regen_convergence_host_instrument_tests {
     /// It is the CAUSE that discriminates: these arms pass only if the install boundary answered
     /// before the manifest was consulted at all.
     #[test]
-    fn install_target_admission_refuses_non_rust_artifacts() {
+    fn install_target_admission_refuses_unaddressable_and_hand_maintained() {
         let (workspace, stage0, candidate, subject) = fixture_workspace();
         let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
-        // The path the emitter really produces: `v1.compiler.emit_rust` returns a `TextFile` at
-        // the bare path "Cargo.toml", `write_emitted_tree` writes it into the candidate tree
-        // verbatim (it is not rustfmt-normalizable), and `produce_candidate_manifest` rows it as
-        // a `GeneratedSurface` declared by `v1.compiler.emit_rust`. It is on disk in every real
-        // candidate tree; only the comparator's `.rs` denominator kept it off the install roster.
-        fs::write(
-            candidate.join("Cargo.toml"),
-            "[package]\nname = \"gunbc\"\n",
-        )
-        .unwrap();
+        // NO Cargo.toml ARM HERE, deliberately. The emitted manifest is stage0's own package
+        // manifest emitted incompletely, so it is a self-host GAP and not a foreign artifact;
+        // refusing it on its extension would cement the comparator's accidental denominator as
+        // this boundary's policy and refuse the correct end state. What keeps it off the roster
+        // stays upstream, and making its absence a typed disposition is the projection-identity
+        // subject, not this one.
         let subject_before = fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap();
+        let mut mismatches: Vec<String> = Vec::new();
 
         for (basename, cause) in [
-            ("Cargo.toml", "InstallTargetOutsideGeneratedRustPopulation"),
             ("../Cargo.toml", "InstallTargetNotABareBasename"),
+            ("nested/mod.rs", "InstallTargetNotABareBasename"),
             ("cli_run.rs", "InstallTargetHandMaintained"),
         ] {
             let refused = install_convergence_stage_with_backend(
@@ -5518,16 +5519,23 @@ mod regen_convergence_host_instrument_tests {
                 },
             )
             .unwrap_err();
-            assert!(
-                refused.contains(cause),
-                "installing {basename} refused with {refused}, expected {cause}"
-            );
+            // ACCUMULATED, NOT ASSERTED PER ARM. Asserting inside the loop aborts at the first
+            // mismatch, so a run proves only the FIRST arm discriminates and says nothing about
+            // the rest — and the arms exercise different branches. Collecting every mismatch
+            // makes one red run report all three causes at once.
+            if !refused.contains(cause) {
+                mismatches.push(format!(
+                    "installing {basename} refused with {refused}, expected {cause}"
+                ));
+            }
         }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 
         // The refusal is BEFORE the mutation boundary, not a rollback of one: no artifact landed,
         // and no authoritative byte moved and came back.
         assert!(!stage0.join("Cargo.toml").exists());
         assert!(!stage0.join("cli_run.rs").exists());
+        assert!(!stage0.join("nested").exists());
         assert_eq!(
             fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
             subject_before
