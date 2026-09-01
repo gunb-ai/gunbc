@@ -5796,10 +5796,8 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
   }
 }
 
-fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>, marker_type_names: List<String>) -> String {
-  if marker_type_names |> any(name => name == n) {
-    ""
-  } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>) -> String {
+  if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
     ""
   } else if import_module_enums |> any(e => e == n) {
     ""
@@ -5875,20 +5873,20 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   let deduped_names = unique_strings(items: filtered_names
     |> filter(n => local_names |> all(ln => ln != n))
     |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env)))
-  let marker_type_names = unique_strings(items: type_position_names |> filter(n =>
+  let marker_type_names = unique_strings(items: deduped_names |> filter(n =>
+    (type_position_names |> any(name => name == n)) &&
     match module_env {
       Present { value: env } => is_phantom_unit_variant_type_arg(env: env, variant_name: n)
       Absent => false
     }
   ))
+  let non_marker_names = deduped_names |> filter(n => marker_type_names |> all(name => name != n))
   if deduped_names |> count == 0 {
     ""
   } else {
     let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let top_level = deduped_names |> filter(n =>
-      if marker_type_names |> any(name => name == n) {
-        true
-      } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+    let top_level = non_marker_names |> filter(n =>
+      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
         true
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
         import_module_enums |> any(e => e == n)
@@ -5898,19 +5896,20 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
         false
       } else { true }
     )
-    let imported_enums = deduped_names |> filter(n => import_module_enums |> any(e => e == n))
-    let all_parents = deduped_names |> map(n =>
-      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, marker_type_names: marker_type_names)
+    let imported_enums = non_marker_names |> filter(n => import_module_enums |> any(e => e == n))
+    let all_parents = non_marker_names |> map(n =>
+      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums)
     ) |> filter(p => p != "")
     let parent_list = unique_strings(items: all_parents)
     let non_variant_top = top_level |> filter(n =>
-      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, marker_type_names: marker_type_names) != "" {
+      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
         false
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
         import_module_enums |> any(e => e == n)
       } else { true }
     )
-    let direct_names = unique_strings(items: non_variant_top)
+    let direct_names = unique_strings(items: deduped_names |> filter(n =>
+      (marker_type_names |> any(name => name == n)) || (non_variant_top |> any(name => name == n))))
 
     let local_parent_names = parent_list |> filter(p =>
       deduped_names |> any(n =>
