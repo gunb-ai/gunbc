@@ -1,0 +1,151 @@
+module test.claim.model.serving_choice_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import gunbc.model.choice {
+  NodeCapacity, QuantizedCandidate, ServingConstraints,
+  CandidateVerdict, Admissible, Rejected,
+  RejectionAxis, DoesNotFitMemory, ContextBelowFloor, PrefillBelowFloor,
+  ServingChoice, ChoseCandidate, NoCandidateAdmissible,
+  evaluate_candidate, choose_serving_candidate,
+  allocatable_bytes, firmware_carveout_bytes, kv_bytes,
+}
+
+// THE FIXTURE IS MEASURED, not invented. Every number here was read off the running nodes or
+// computed from the served model's own GGUF metadata, because a selector validated against
+// plausible-looking inputs would agree with whatever the author already believed.
+//
+//   kernel_visible  130,660,151,296 B = 121.69 GiB   (/proc/meminfo MemTotal, both nodes)
+//   nominal         137,438,953,472 B = 128 GiB      (vendor sheet)
+//   carveout          6,778,802,176 B =   6.31 GiB   (firmware, never reaches the kernel)
+//
+// KV is exact rather than estimated: the architecture reports 43 blocks, ONE latent KV head (MLA),
+// and key/value lengths of 512, so a token costs 43 * 1 * (512+512) * 2 = 88,064 bytes.
+data node_capacity: NodeCapacity = NodeCapacity {
+  node_name: "spark-a3ee" as NonEmptyStr,
+  nominal_bytes: 137438953472,
+  kernel_visible_bytes: 130660151296,
+  runtime_overhead_bytes: 3000000000,
+}
+
+data kv_per_token: Int = 88064
+
+// The two builds actually installed. Quality rank is ordinal WITHIN this release: 3-bit outranks
+// 2-bit. It says nothing about any other model, which is why cross-release quality never enters
+// this function as a comparable number.
+data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
+  model_name: "DeepSeek-V4-Flash-0731" as NonEmptyStr,
+  quant_label: "IQ2_XXS" as NonEmptyStr,
+  weight_bytes: 86720111200,
+  quality_rank: 2,
+  declared_context: 1048576,
+  kv_bytes_per_token: kv_per_token,
+  measured_prefill_tokens_per_second: 197,
+}
+
+data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
+  model_name: "DeepSeek-V4-Flash-0731" as NonEmptyStr,
+  quant_label: "UD-IQ3_S" as NonEmptyStr,
+  weight_bytes: 116100000000,
+  quality_rank: 3,
+  declared_context: 1048576,
+  kv_bytes_per_token: kv_per_token,
+  measured_prefill_tokens_per_second: 197,
+}
+
+fn installed() -> List<QuantizedCandidate> {
+  [build_iq2_xxs, build_iq3_s]
+}
+
+// The operator's stated floor: 400k of context, one hot session, no prefill floor asserted (that
+// axis is a known cost rather than a refusal threshold today).
+data floor_400k: ServingConstraints = ServingConstraints {
+  context_floor_tokens: 400000,
+  hot_sessions: 1,
+  prefill_floor_tokens_per_second: 0,
+}
+
+data floor_8k: ServingConstraints = ServingConstraints {
+  context_floor_tokens: 8192,
+  hot_sessions: 1,
+  prefill_floor_tokens_per_second: 0,
+}
+
+fn chosen_label(choice: ServingChoice) -> String {
+  match choice {
+    NoCandidateAdmissible { rejections: _ } => "none"
+    ChoseCandidate { verdict: v } =>
+      match v {
+        Admissible { candidate: c, resident_bytes: _, headroom_bytes: _ } => c.quant_label as String
+        Rejected { model_name: _, quant_label: _, axis: _ } => "none"
+      }
+  }
+}
+
+// ============================ THE CLAIMS ============================
+
+// The three capacity grains are DIFFERENT, and only one of them is a capacity. Quoting the vendor
+// figure is what made a 128.1 GB build look feasible.
+test fn w_capacity_grains_differ_and_only_kernel_visible_is_spendable() -> Bool {
+  firmware_carveout_bytes(capacity: node_capacity) == 6778802176
+    && allocatable_bytes(capacity: node_capacity) == 127660151296
+    && allocatable_bytes(capacity: node_capacity) < node_capacity.nominal_bytes
+}
+
+// KV at the operator's floor, from the model's own dimensions: 400,000 * 88,064 = 35.2 GB.
+test fn w_kv_at_the_context_floor_is_derived_from_architecture() -> Bool {
+  kv_bytes(candidate: build_iq2_xxs, context_tokens: 400000, hot_sessions: 1) == 35225600000
+}
+
+// THE CLAIM THE MODULE EXISTS FOR. At a 400k floor the HIGHER-quality build is REJECTED ON MEMORY
+// and the selector returns the 2-bit one. This is the answer that reversed the session's working
+// assumption -- precision and the context floor compete for one node's memory, and the selector
+// says so from the numbers rather than from an argument.
+test fn w_at_the_400k_floor_the_higher_quality_build_is_rejected_on_memory() -> Bool {
+  match evaluate_candidate(candidate: build_iq3_s, capacity: node_capacity, constraints: floor_400k) {
+    Rejected { model_name: _, quant_label: _, axis: a } =>
+      match a {
+        DoesNotFitMemory { required_bytes: _, allocatable_bytes: _ } => true
+        ContextBelowFloor { declared: _, floor: _ } => false
+        PrefillBelowFloor { measured: _, floor: _ } => false
+      }
+    Admissible { candidate: _, resident_bytes: _, headroom_bytes: _ } => false
+  }
+}
+
+test fn w_at_the_400k_floor_the_two_bit_build_is_chosen() -> Bool {
+  chosen_label(choice: choose_serving_candidate(
+    candidates: installed(), capacity: node_capacity, constraints: floor_400k)) == "IQ2_XXS"
+}
+
+// THE DISCRIMINATING CONTROL. Drop the context floor and the selector must flip to the HIGHER
+// quality build -- proving it maximizes quality and is not simply always picking the smaller file.
+// Without this, every claim above is satisfied by a function that returns the first candidate.
+test fn w_without_the_context_floor_the_higher_quality_build_wins() -> Bool {
+  chosen_label(choice: choose_serving_candidate(
+    candidates: installed(), capacity: node_capacity, constraints: floor_8k)) == "UD-IQ3_S"
+}
+
+// When nothing is admissible the selector REFUSES and hands back every rejection, so the binding
+// axis is read rather than argued. A best-effort pick here would reintroduce the silent degradation
+// the whole exercise removes.
+test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
+  let impossible = ServingConstraints {
+    context_floor_tokens: 8000000,
+    hot_sessions: 1,
+    prefill_floor_tokens_per_second: 0,
+  }
+  match choose_serving_candidate(
+    candidates: installed(), capacity: node_capacity, constraints: impossible) {
+    NoCandidateAdmissible { rejections: r } => length(r) == 2
+    ChoseCandidate { verdict: _ } => false
+  }
+}
+
+test fn w_all_serving_choice_claims_hold() -> Bool {
+  w_capacity_grains_differ_and_only_kernel_visible_is_spendable()
+    && w_kv_at_the_context_floor_is_derived_from_architecture()
+    && w_at_the_400k_floor_the_higher_quality_build_is_rejected_on_memory()
+    && w_at_the_400k_floor_the_two_bit_build_is_chosen()
+    && w_without_the_context_floor_the_higher_quality_build_wins()
+    && w_nothing_admissible_refuses_and_reports_every_rejection()
+}
