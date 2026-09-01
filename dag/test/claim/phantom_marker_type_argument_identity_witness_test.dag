@@ -113,3 +113,33 @@ test fn nested_applied_argument_keeps_inner_marker_identity() -> Bool {
     ["Inner<()>"]
   )
 }
+
+// HONESTY WITNESS, NOT A COMPILED-TARGET DISCRIMINATOR. The source model accepts
+// a non-applied unit-variant field at its parent Quantity boundary, and the
+// positional emitter preserves that authored/value spelling rather than silently
+// substituting the distinct phantom marker struct. compile_dag_rust_emit_check
+// stops at emitted text; it does not invoke rustc. Consequently this row proves
+// the modeled parent relation reaches emission and proves the spelling decision,
+// but it MUST NOT be cited as evidence that the emitted crate compiles.
+test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_non_applied_parent_honesty\n\nimport test.fixture.phantom_marker_identity.non_applied_consumer { NonAppliedMarkerField, non_applied_field_as_parent }\n\ntype Subject { value: NonAppliedMarkerField }\n",
+    "src/test_fixture_phantom_marker_identity_non_applied_consumer.rs",
+    ["pub value: Time", "-> Quantity", "Quantity::{Time}"],
+    ["pub use crate::test_fixture_phantom_marker_identity_non_applied_provider::{Time}"]
+  )
+}
+
+// CEILING, NOT A RUNG DROP. The meaning-level two-arm discriminator is authorable
+// and has been executed: the broad classifier substitutes a marker struct and
+// rustc reports E0308 at the parent boundary; the positional classifier exposes
+// the unsupported non-applied projection and rustc reports E0573. It is not
+// enrollable today. compile_dag_rust_emit_check and compile_dag_multi_module_fixture
+// stop at emitted text, while emitted_closure_compile_host is wired to the live
+// required-entry roster and offers no fixture-callable operation.
+//
+// NEXT-RUNG TRIGGER (capability, not artifact): a fixture-callable emitted-crate
+// compilation route sufficient to execute a two-arm emitter discriminator to
+// rustc termination over a synthetic emitted closure and report each arm's
+// diagnostic. Route owner: node://adhoc-da8c65c0-b3b.
+data non_applied_marker_meaning_discriminator_ceiling: String = "Executed but not enrolled: source-to-emitted-text honesty is covered here; the meaning-level broad E0308 versus positional E0573 discriminator awaits a fixture-callable emitted-crate compilation route owned by node://adhoc-da8c65c0-b3b."

@@ -1,0 +1,3 @@
+module test.fixture.phantom_marker_identity.non_applied_provider
+
+type Quantity = Time | Memory
