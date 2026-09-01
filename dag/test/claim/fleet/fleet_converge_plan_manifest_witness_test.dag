@@ -502,6 +502,15 @@ test fn every_rostered_persisted_member_is_classified() -> Bool {
 // joined at identity grain -- and an identity appearing twice is not a harmless bag entry, it means
 // the population the map is over is not what the map says it is.
 //
+// THE RUNG THIS REACHES IS MECHANICALLY ENFORCED AND NOT STRUCTURAL, said here because the word
+// "wall" invites the higher reading. The roster is a List<String>, so a repeated identity stays
+// perfectly WRITABLE and safety depends on this row executing and staying enrolled. Construction
+// would mean a carrier whose type cannot express a second occurrence of one identity at all, and
+// calling a raw list "a closed map" does not elevate it -- a name is not a constructor. The
+// next-rung trigger, named as the capability rather than as an artifact: a keyed-roster carrier
+// whose construction admits at most one member per identity, so that the duplicate this row
+// catches has nowhere to be written.
+//
 // NO LENGTH LITERAL, DELIBERATELY, for the same reason the row above refuses one: a count copied
 // from the tree it checks collapses to measure() == measure(). Multiplicity is asserted per
 // identity instead -- each member occurs exactly once in the roster -- which is a property of the
