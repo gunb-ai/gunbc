@@ -7,7 +7,7 @@ import tools.prose_citation_census {
   prose_citation_names_in_line,
   prose_citation_line_carrier,
   prose_citation_sites_in_source,
-  prose_citation_retired_rows,
+  prose_citation_retirement_scan,
   prose_citation_retired_index,
   prose_citation_census_of,
   prose_citation_baseline_row,
@@ -228,7 +228,8 @@ test fn a_row_still_declared_in_its_own_module_is_not_retired() -> Bool {
     prose_citation_qualified(module_path: live_module_a, decl_name: "kept_note"),
     prose_citation_qualified(module_path: live_module_b, decl_name: "moved_note")
   ])
-  (prose_citation_retired_rows(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: live) |> count) == 0
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: live)
+  (scan.retired |> count) == 0 && (scan.unidentified |> count) == 0
 }
 
 test fn a_row_whose_bare_name_survives_only_in_another_module_is_retired() -> Bool {
@@ -236,16 +237,46 @@ test fn a_row_whose_bare_name_survives_only_in_another_module_is_retired() -> Bo
     prose_citation_qualified(module_path: live_module_a, decl_name: "kept_note"),
     prose_citation_qualified(module_path: live_module_a, decl_name: "moved_note")
   ])
-  let retired = prose_citation_retired_rows(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: live)
-  (retired |> count) == 1
-    && fold(retired, init: true, f: (ok, r) => ok && r.decl_name == "moved_note")
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: live)
+  (scan.retired |> count) == 1
+    && (scan.unidentified |> count) == 0
+    && fold(scan.retired, init: true, f: (ok, r) => ok && r.decl_name == "moved_note")
 }
 
 // A baseline path with no module line establishes no identity, so it is not judged either way. Without
 // this arm the fold would have to invent a module or default to retired, and defaulting to retired
 // would enrol every unparsed file's rows into the population.
-test fn a_baseline_row_whose_module_is_unknown_is_not_judged() -> Bool {
-  (prose_citation_retired_rows(baseline_rows: two_module_baseline, modules: empty_map(), live_qualified: empty_map()) |> count) == 0
+//
+// BUT NOT JUDGED IS NOT THE SAME AS NOT COUNTED, and this control is the discriminating RED for review
+// 58281: an empty module index is exactly what a FAILED module read produces, so a scan that answered
+// "zero retired" here -- and nothing else -- would render an acquisition failure as a clean census.
+// The unidentified list is what carries that state out, and the arm below asserts it is non-empty and
+// holds EVERY row, so a future edit that quietly drops them again cannot leave this green.
+test fn a_baseline_row_whose_module_is_unknown_is_carried_not_dropped() -> Bool {
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: empty_map(), live_qualified: empty_map())
+  (scan.retired |> count) == 0
+    && (scan.unidentified |> count) == (two_module_baseline |> count)
+}
+
+// THE COUNTER PAIR: the same baseline rows against a POPULATED index leave the unidentified list empty
+// while retired becomes non-empty. Without this, the control above is satisfied by a scan that files
+// every row as unidentified unconditionally -- a constant, which discriminates nothing.
+test fn a_populated_module_index_leaves_nothing_unidentified() -> Bool {
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: empty_map())
+  (scan.unidentified |> count) == 0
+    && (scan.retired |> count) == (two_module_baseline |> count)
+}
+
+// A PARTIAL index is the state the live refusal actually names -- the module read covering some files
+// and not others. Both lists are non-empty at once, which no single-list return could have expressed.
+test fn a_partial_module_index_splits_the_rows_across_both_lists() -> Bool {
+  let scan = prose_citation_retirement_scan(
+    baseline_rows: two_module_baseline,
+    modules: map_insert(empty_map(), "dag/gunbc/module_a.dag", live_module_a),
+    live_qualified: empty_map()
+  )
+  (scan.retired |> count) > 0 && (scan.unidentified |> count) > 0
+    && ((scan.retired |> count) + (scan.unidentified |> count)) == (two_module_baseline |> count)
 }
 
 // THE CENSUS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY. lists_agree compares membership in both

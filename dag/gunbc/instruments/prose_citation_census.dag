@@ -286,14 +286,42 @@ fn prose_citation_baseline_rows(matches: String, ref_len: Int) -> List<ProseRowR
 }
 
 // A baseline row is RETIRED when its QUALIFIED identity is no longer declared. A row whose module is
-// unknown at the baseline is not judged either way and contributes nothing, because "retired" would
-// then be decided against an identity that was never established.
-fn prose_citation_retired_rows(baseline_rows: List<ProseRowRef>, modules: Map<String, String>, live_qualified: Map<String, Bool>) -> List<ProseRowRef> {
-  baseline_rows |> filter(row =>
-    match lookup(modules, row.path) {
-      Absent => false
-      Present { value: m } => !map_contains_key(live_qualified, prose_citation_qualified(module_path: m, decl_name: row.decl_name))
-    })
+// unknown at the baseline is NOT judged either way -- but it is also NOT DROPPED, and the difference
+// between those two is the whole of this carrier.
+//
+// THE FIRST CUT DROPPED THEM, AND REVIEW 58281 IS RIGHT THAT IT WAS FAIL-OPEN. The module read is an
+// acquisition, so it can fail; when it does the index is empty, EVERY baseline row is unidentified,
+// and a silent drop renders that as "nothing was retired" -- an acquisition failure returned as a
+// reassuring Observed census. That is the empty-observation narrow this module's own header argues
+// against, introduced by me while fixing the previous review: I checked exit_code on the first git
+// query and reasoned about it at length, then added a second query during the same rework and
+// consumed its output inline with no outcome check at all.
+//
+// SO THE UNIDENTIFIED ROWS ARE COUNTED AND CARRIED, and the caller refuses on any of them. Measured
+// at the pre-sweep baseline: 4807 prose rows against 4412 module lines, and ZERO rows without a
+// module identity -- every .dag source declaring a row also declares its module. So this arm cannot
+// fire spuriously on a healthy read; it fires exactly when the acquisition is broken, which is what
+// makes it a wall rather than a nuisance.
+type ProseCitationRetirementScan {
+  retired: List<ProseRowRef>
+  unidentified: List<ProseRowRef>
+}
+
+fn prose_citation_retirement_scan(baseline_rows: List<ProseRowRef>, modules: Map<String, String>, live_qualified: Map<String, Bool>) -> ProseCitationRetirementScan {
+  fold(
+    baseline_rows,
+    init: ProseCitationRetirementScan { retired: [], unidentified: [] },
+    f: (acc, row) =>
+      match lookup(modules, row.path) {
+        Absent => ProseCitationRetirementScan { retired: acc.retired, unidentified: concat(acc.unidentified, [row]) }
+        Present { value: m } =>
+          if map_contains_key(live_qualified, prose_citation_qualified(module_path: m, decl_name: row.decl_name)) {
+            acc
+          } else {
+            ProseCitationRetirementScan { retired: concat(acc.retired, [row]), unidentified: acc.unidentified }
+          }
+      }
+  )
 }
 
 // THE ORIGIN OF A RETIRED NAME IS NOT ALWAYS ONE PATH, and this carrier exists because the first cut
@@ -668,17 +696,27 @@ fn prose_citation_census_live(baseline: String) -> ProseCitationCensusOutcome {
       if !listed.success || (paths |> count) == 0 {
         ProseCitationCensusUnreadable { reason: "the tree listing returned no .dag sources under the declared roots, so no citation site could be observed" }
       } else {
-        let modules = prose_citation_module_index(
-          matches: git.Inspect.GrepMatchesAtRevision(pattern: prose_citation_module_pattern, ref: baseline as GitRef, pathspec: prose_citation_baseline_pathspec).matches,
-          ref_len: string_length(s: baseline)
+        let module_read = git.Inspect.GrepMatchesAtRevision(
+          pattern: prose_citation_module_pattern,
+          ref: baseline as GitRef,
+          pathspec: prose_citation_baseline_pathspec
         )
-        let retired = prose_citation_retired_rows(baseline_rows: baseline_rows, modules: modules, live_qualified: prose_citation_live_qualified_names())
-        ProseCitationCensusObserved {
-          census: prose_citation_census_of(
-            baseline: baseline,
-            sites: prose_citation_scan_sources(paths: paths, retired: prose_citation_retired_index(rows: retired), live_bare: prose_citation_live_bare_names()),
-            retired_row_count: retired |> count
-          )
+        if module_read.exit_code != 0 {
+          ProseCitationCensusUnreadable { reason: concat(concat("the baseline module read failed, so no baseline row carries a qualified identity and every retirement would read as absent: ", baseline), concat(": ", module_read.stderr)) }
+        } else {
+          let modules = prose_citation_module_index(matches: module_read.matches, ref_len: string_length(s: baseline))
+          let scan = prose_citation_retirement_scan(baseline_rows: baseline_rows, modules: modules, live_qualified: prose_citation_live_qualified_names())
+          if (scan.unidentified |> count) > 0 {
+            ProseCitationCensusUnreadable { reason: concat(concat("the baseline module read covered only part of the corpus: ", to_string(scan.unidentified |> count)), " prose row(s) carry no module identity, and judging them either way would report an acquisition gap as a retirement answer") }
+          } else {
+            ProseCitationCensusObserved {
+              census: prose_citation_census_of(
+                baseline: baseline,
+                sites: prose_citation_scan_sources(paths: paths, retired: prose_citation_retired_index(rows: scan.retired), live_bare: prose_citation_live_bare_names()),
+                retired_row_count: scan.retired |> count
+              )
+            }
+          }
         }
       }
     }
