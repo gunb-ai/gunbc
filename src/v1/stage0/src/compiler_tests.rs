@@ -984,6 +984,101 @@ mod compiler_tests {
             .expect("shell_service_output_projection_fabricates_stdout_known_hole_probe panicked");
     }
 
+    // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing
+    // else would notice losing. DESIGN section 4b(4): the evidence stays enrolled.
+    //
+    // A function-VALUE realizes as `Rc<dyn Fn(..)>`; a function-typed PARAMETER realizes as an
+    // `impl Fn(..) + Clone` bound, and `Rc<F>` carries no blanket `impl Fn`, so passing the first
+    // into the second is an E0277 seam. rust_call_arg_function_value_adapt closes it by wrapping
+    // the argument in a forwarding closure, and it decides on
+    // `param_node_type_expr(n: param).params |> count > 0`.
+    //
+    // THAT IS THE SAME EXPRESSION ON THE SAME NODE that emit_param/emit_rust_param_type use to
+    // decide whether to emit the `impl Fn` bound at all. So the adapter fires exactly where the
+    // seam exists, and cannot fire where it does not -- the two predicates cannot disagree while
+    // they remain one expression. This control is what notices if they are ever forked.
+    //
+    // WHY THE BARE TYPE VARIABLE IS THE DISCRIMINATING HALF. It was reported (by me, wrongly) as a
+    // silent defect: a parameter declared `T` has arity 0, so no adapter is emitted, and nothing
+    // refuses. The bytes below are the refutation -- `T` renders as a plain generic with NO Fn
+    // bound, so there is no seam to close, and adapting there would be a fabricated repair.
+    // Arity is invariant under substitution anyway: instantiation changes an arrow's type
+    // ARGUMENTS, never its parameter count.
+    #[test]
+    fn function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nfn add_one(x: Int) -> Int { x + 1 }\nfn make_adder() -> fn(Int) -> Int { fn(n) { add_one(x: n) } }\nfn hold_tv<T>(value: T) -> T { value }\nfn apply_arrow(f: fn(Int) -> Int, v: Int) -> Int { f(v) }\nfn through_type_variable() -> Int { apply_arrow(f: hold_tv(value: make_adder()), v: 1) }\nfn through_declared_arrow() -> Int { apply_arrow(f: make_adder(), v: 1) }\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let errors: Vec<_> = r
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "the fixture is ordinary admissible source; a refusal here is a compiler \
+                     defect rather than a defect in the fixture. Got: {:?}",
+                    errors
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("probe module must emit src/probe.rs");
+
+                // (1) the producer side of the seam: a function VALUE is the Rc carrier.
+                assert!(
+                    emitted.contains("pub fn make_adder() -> Rc<dyn Fn(i64) -> i64>"),
+                    "a function-valued return must realize as the Rc carrier, got:\n{}",
+                    emitted
+                );
+                // (2) a DECLARED-ARROW parameter carries the impl Fn bound -- the seam exists here.
+                assert!(
+                    emitted.contains("pub fn apply_arrow(f: impl Fn(i64) -> i64 + Clone, v: i64)"),
+                    "a declared-arrow parameter must carry the impl Fn bound, got:\n{}",
+                    emitted
+                );
+                // (3) a BARE TYPE VARIABLE parameter carries NO Fn bound -- no seam exists here.
+                assert!(
+                    emitted.contains("pub fn hold_tv<T: Clone>(value: T) -> T"),
+                    "a bare type-variable parameter must render as a plain generic with no Fn \
+                     bound -- if this ever gains one, the adapter predicate must move with it, \
+                     got:\n{}",
+                    emitted
+                );
+                // (4) THE ALIGNMENT, both directions. The adapter wraps the argument at the
+                // impl-Fn-bound parameter, and does NOT wrap it at the type-variable parameter --
+                // whose argument is equally a call result, so shape alone does not explain it.
+                assert!(
+                    emitted.contains(
+                        "apply_arrow({ let __adapt_f = hold_tv(make_adder()); move |__adapt_a0| __adapt_f(__adapt_a0) }, 1)"
+                    ),
+                    "the adapter must close the seam at the impl Fn parameter, got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("hold_tv({ let __adapt_f"),
+                    "no adapter may be injected at a parameter that carries no Fn bound -- that \
+                     would be a fabricated repair of a seam that does not exist, got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted panicked",
+        );
+    }
+
     #[test]
     fn method_existence_wall_witness() {
         // DISCRIMINATING RED for method_existence_wall_note. Before the wall an
