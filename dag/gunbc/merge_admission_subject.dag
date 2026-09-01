@@ -133,9 +133,9 @@ fn render_git_object_id_wire(oid: GitObjectId) -> String {
 fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
   if !(length(split(s: raw, delimiter: ":")) == 2) {
     none
-  } else if split(s: raw, delimiter: ":").first() == "sha1" {
+  } else if match split(s: raw, delimiter: ":").first() { Present { value: algorithm } => algorithm == "sha1"  Absent => false } {
     git_sha1_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
-  } else if split(s: raw, delimiter: ":").first() == "sha256" {
+  } else if match split(s: raw, delimiter: ":").first() { Present { value: algorithm } => algorithm == "sha256"  Absent => false } {
     git_sha256_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
   } else {
     none
@@ -160,13 +160,13 @@ fn parse_tested_subject_wire(text: String) -> TestedSubject? {
   let lines = receipt_wire_lines(text: text)
   if !(length(lines) == 5) {
     none
-  } else if !(lines.first() == merge_admission_tested_subject_schema) {
+  } else if match lines.first() { Present { value: schema_line } => !(schema_line == merge_admission_tested_subject_schema)  Absent => true } {
     none
-  } else if lines.skip(n: 2).first() == "" {
+  } else if match lines.skip(n: 2).first() { Present { value: field } => field == ""  Absent => true } {
     none
-  } else if lines.skip(n: 3).first() == "" {
+  } else if match lines.skip(n: 3).first() { Present { value: field } => field == ""  Absent => true } {
     none
-  } else if lines.skip(n: 4).first() == "" {
+  } else if match lines.skip(n: 4).first() { Present { value: field } => field == ""  Absent => true } {
     none
   } else {
     match walk_attempt_id(raw: lines.skip(n: 1).first()) {
