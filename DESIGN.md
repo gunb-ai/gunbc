@@ -33,6 +33,8 @@ Redundancy is removed along two directions — one move seen two ways:
 - **Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use. At the right layer there is nothing fundamentally different between scales, so the same concept spans nanosecond memoization and broad infra deployment. *e.g.* `dag/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows — one axis, not 10 types.
 - **Deep — every concept decomposed to grounded atoms.** Nothing is opaque that is not *genuinely* atomic. The move is `decompress → map → reduce`: reveal the structure the source names, map each part onto the concept that already exists (DFS the concept DAG first), reduce duplicates. A `String` leaf hiding named parts is anemic modeling. *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }`, where the number is a grounded `Int` rather than a fresh enum.
 
+**Minimize the demand graph before materializing its answers.** A repeated computation is first evidence about why the same semantic fact is demanded again, not yet a cache obligation. When several demands have a shared-state least common ancestor, the repetition is authored duplication: carry, rewire, or share the first value — caching a later request only makes redundant work cheap and suppresses the signal that would make it rank for deletion. One undeclared pure demand may recompute; isolated consumers, declared replay, or unbounded future siblings instead create one reuse obligation at their least common visible ancestor. One computation identity must join those demands to a provider whose scope reaches that ancestor, whose coverage includes the identity, whose key represents every declared input the result depends on, and whose retention spans the obligated lifetime; otherwise refuse with a typed cause. Demand minimization decides whether another production may exist, and cache purity decides whether a materialized value denotes the same fact. Only after both hold does §6 choose the economically optimal realization: unavoidable recurrence may explicitly recompute below the cost floor, and a provider is an optimization only when measured total serving cost is below recomputation. The structural authority is `std.materialization_ladder`; a cache may discharge unavoidable recurrence, and may never excuse authored duplication.
+
 The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is a failed decomposition.
 
 ## 3. Single authority (what keeps §2 from being undone)
@@ -114,13 +116,15 @@ At a service boundary, rung honesty has a commercial consequence: a dimension ma
 
 Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-ledgers.md](docs/design-ledgers.md), authority `gunbc.rung_drop`. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The ones standing today:
 
+- **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
+- **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
-- **Regen candidate-tree producer** — declared 2026-08-20
-- **Cited-symbol resolution as a required check** — declared 2026-08-23
 - **Blocking emit-stage diagnostics on main** — declared 2026-08-25
 - **Corpus-wide lens enforcement censuses** — declared 2026-08-11
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
+- **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
+- **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
 
 **The floor first, the differentiator above it.** gunbc must first hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and a failure there is a below-baseline safety regression, never compensated by higher-order capability. The differentiating claim begins above that floor: because the substrate carries causal, cardinality, algebraic, effect, ownership, cost, and realization facts structurally, the same ladder applies to classes ordinary compilers leave to tests, review, profiling, or production postmortems — a possibly-empty collection flowing into a nonempty consumer, recursion without a descent proof, a non-idempotent effect under automatic retry, a computation exceeding its declared complexity bound, a realization that does not preserve modeled behavior.
 
@@ -199,9 +203,26 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `remediation_mutated_view`
 - `diagnostic_name_mechanism_silent`
 - `identity_absent_graph_traversal`
+- `generated_binding_shadows_bare_render`
+- `resolved_reference_outside_execution_closure`
 - `surface_shorthand_preempts_resolved_identity`
 - `meaning_fork`
 - `externalized_degradation`
+- `mistyped_body_radiates_nonlocal_diagnostics`
+- `instrument_output_read_as_subject_content`
+- `executed_conjunct_discriminates_nothing`
+- `unbacked_execution_claim`
+- `admitted_module_without_judged_standing`
+- `mitigation_injected_where_judgment_declined`
+- `merge_region_excludes_shared_tail`
+- `sealing_property_erases_structure`
+- `disagreement_census_blind_to_agreed_wrong`
+- `undecided_fraction_read_as_denominator`
+- `restoration_promise_names_a_route_that_does_not_exist`
+- `restored_bytes_reviewed_as_authorship`
+- `review_summary_inverts_roles_and_affirms_the_join`
+- `accepted_source_emits_uncompilable_target`
+- `incidental_denominator_as_wall`
 
 ## Building & checks
 

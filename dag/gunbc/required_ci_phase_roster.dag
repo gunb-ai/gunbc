@@ -38,13 +38,26 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 
 // THE PHASE IDENTITIES ARE A CLOSED VOCABULARY. Adding a phase means adding a variant, at which
 // point required_ci_phase_name and required_ci_phase_lane refuse to compile until the phase states
-// its CLI word and lane -- construction, not a list a phase can be omitted from. The four phases
-// are the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29): parse,
-// namespace-wave-admission, regen, floor.
+// its CLI word and lane -- construction, not a list a phase can be omitted from. Four phases are
+// the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29), with the
+// generated-artifact wall restored after its declared population produced a real drift incident:
+// parse, namespace-wave-admission, regen, generated-artifact, floor.
+//
+// WALL-CLOCK PRICE OF THIS WIDENING, recorded here because `gunbc.rung_drop`
+// `required_gate_bankruptcy` requires every static-roster widening to be priced on the roster's
+// own header. GitHub Actions run 33392747727 is the first required execution: the timestamped
+// generated-artifact phase ran from 12:50:53.0230951Z to 12:53:00.5811355Z -- 127.558 seconds --
+// over rostered=35, adjudicated=35, unadjudicated=0. Its would-be-drifted tree found exactly one
+// drift (`docs/design-ledgers.md`), stopped the build lane, and thereby supplied the live RED this
+// restoration exists for. The first regenerated-head execution, run 33394205676, ran the same
+// phase from 13:19:53.9903928Z to 13:22:04.8572336Z -- 130.867 seconds -- and reported
+// rostered=35, adjudicated=35, matches=35, drifted=0, absent=0, unadjudicated=0. Thus both prices
+// name the same instrument and roster grain: 127.558 seconds would-be-drifted, 130.867 clean.
 type RequiredCiPhase
   = ParsePhase
   | NamespaceWaveAdmissionPhase
   | RegenPhase
+  | GeneratedArtifactPhase
   | FloorPhase
 
 fn required_ci_phase_name(p: RequiredCiPhase) -> String {
@@ -52,6 +65,7 @@ fn required_ci_phase_name(p: RequiredCiPhase) -> String {
     ParsePhase => "parse"
     NamespaceWaveAdmissionPhase => "namespace-wave-admission"
     RegenPhase => "regen"
+    GeneratedArtifactPhase => "generated-artifact"
     FloorPhase => "floor"
   }
 }
@@ -63,6 +77,7 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
     ParsePhase => WitnessesLane
     NamespaceWaveAdmissionPhase => WitnessesLane
     RegenPhase => BuildLane
+    GeneratedArtifactPhase => BuildLane
     FloorPhase => WitnessesLane
   }
 }
@@ -75,6 +90,7 @@ data required_ci_phases: List<RequiredCiPhase> = [
   ParsePhase,
   NamespaceWaveAdmissionPhase,
   RegenPhase,
+  GeneratedArtifactPhase,
   FloorPhase,
 ]
 

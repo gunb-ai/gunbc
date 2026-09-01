@@ -11,7 +11,8 @@ import extdeps.cargo_diagnostic {
   RustcDiagnosticIdentity,
   RustcCoded,
   RustcUncoded,
-  rustc_diagnostic_row
+  rustc_diagnostic_row,
+  rustc_diagnostic_row_code
 }
 import extdeps.languages.rust.compiler_phases {
   RustcPhase,
@@ -57,7 +58,7 @@ type RustcPhaseBoard {
   rows: List<RustcPhaseBoardRow>
   furthest_phase_reached: RustcPhase
   furthest_phase_evidence: PhaseCountEvidence
-  census_identity_digest: Fnv1a64Structural
+  census_identity_digest: CensusIdentityDigest
   total_error_diagnostics: Int
   coded_error_diagnostics: Int
   codeless_error_diagnostics: Int
@@ -117,14 +118,37 @@ fn deduplicate_identities(identities: List<String>) -> List<String> {
   )
 }
 
+// RustcPhaseBoard is a census at identity grain, not a transcript of cargo's diagnostic stream.
+// Every consumer asks membership, cardinality, or set difference; none gives encounter order a
+// meaning. Give that set one representation here so structural board equality cannot accidentally
+// make cargo/rustfmt emission order semantic. Duplicate refusal remains separate and upstream:
+// canonicalizing a board does not canonicalize either raw population before coherence checks it.
+fn canonical_identity_set(identities: List<String>) -> List<String> {
+  deduplicate_identities(identities: identities) |> sort_by(identity => identity)
+}
+
+// A census population carries no repeats, and this predicate is where that is decided. Refusal is
+// the arm rather than collapsing the repeat: deduplicating here would make a duplicated population
+// indistinguishable from a clean one, hiding a producer defect behind a census that still looked
+// well-formed -- widening instead of refusing.
+//
+// It answers for BOTH populations reaching receipt coherence, and the refused-file population is
+// the reason it exists: a path refused twice would be counted twice in the Parse row and kept twice
+// in the digest, so the digest would answer about a multiset while its name claims a set.
+// The falsifier is enrolled: deleting either call in receipt_population_coherent must turn
+// a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence red.
+fn census_population_is_duplicate_free(identities: List<String>) -> Bool {
+  count(deduplicate_identities(identities: identities)) == count(identities)
+}
+
 fn phase_identities(ds: List<RustcCodedDiagnostic>, phase: RustcPhase) -> List<String> {
-  deduplicate_identities(
+  canonical_identity_set(
     identities: ds |> filter(d => diagnostic_is_phase(d: d, phase: phase)) |> map(d => rustc_diagnostic_row(d: d))
   )
 }
 
 fn unplaced_identities(ds: List<RustcCodedDiagnostic>) -> List<String> {
-  deduplicate_identities(
+  canonical_identity_set(
     identities: ds |> filter(d => match diagnostic_phase(d: d) {
       ErrorCodePlaced { phase: _, authority: _ } => false
       ErrorCodeUnplaced { code: _, index: _ } => true
@@ -151,16 +175,65 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
   else { Borrowck }
 }
 
-fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> Fnv1a64Structural {
-  content_hash_atom(
-    value: (concat(
-      ["self-host-compile-phase-census-v1"],
-      concat(
-        parse_refused_files |> map(path => concat("rustfmt-refused\t", path)),
-        raw_identities
-      )
-    ) |> join(separator: "\n")) as NonEmptyStr
-  )
+// The digest names the census as a SET, so it is folded over a canonical ordering of each
+// population rather than the encounter order cargo and rustfmt happened to emit. Without the sort
+// the same census reordered upstream produces a different digest, and receipt_population_coherent
+// refuses a receipt whose census is in fact identical. The two populations stay separate segments:
+// canonicalizing them jointly would let a refused path and an identity trade places.
+//
+// EmissionOrderedV1 is retired and no producer constructs it. It is kept because an algorithm
+// identity with exactly ONE inhabitant distinguishes nothing: the field exists so two incompatible
+// digest meanings cannot hide behind one unlabeled hash, and that requires both meanings to be
+// nameable. Keeping the tag while deleting its only contrast is the worse of the two shapes, so the
+// fork is the arm AND the field together, never the arm alone. A second fold is then a row rather
+// than a migration.
+//
+// The evidence that the arm is not decorative is the witness:
+// the_census_digest_carries_the_algorithm_that_produced_it asserts the two separators differ, so
+// unifying them goes red. Supporting that, census_identity_domain_separator must handle the arm in
+// an exhaustive match -- a compile-time read, not a runtime one, since nothing constructs the arm.
+// That forces an edit on deletion but does not by itself distinguish a live arm from an inert one,
+// which is true of every arm of every coproduct.
+type CensusIdentityAlgorithm
+  = EmissionOrderedV1
+  | CanonicalIdentitySetV1
+
+// The domain separator is DERIVED from the algorithm rather than authored beside it. A separate
+// version literal would be a second authority for the same fact, and the two would drift.
+fn census_identity_domain_separator(algorithm: CensusIdentityAlgorithm) -> String {
+  match algorithm {
+    EmissionOrderedV1 => "self-host-compile-phase-census-v1"
+    CanonicalIdentitySetV1 => "self-host-compile-phase-census-canonical-identity-set-v1"
+  }
+}
+
+type CensusIdentityDigest {
+  algorithm: CensusIdentityAlgorithm
+  digest: Fnv1a64Structural
+}
+
+// NEITHER SORT MAY BE REMOVED ON THE GROUNDS THAT A CALLER ALREADY CANONICALIZES. The PERSISTED
+// path calls this function with receipt.raw_error_diagnostic_identities directly, and that list
+// passes through no caller-side canonicalization at all -- so no property of any caller, present or
+// future, can substitute for these sorts. Delete either one and the live path stays correct while
+// the persisted path silently returns to being order-contaminated, which is the defect this fold
+// exists to close, reintroduced by a plausible cleanup.
+//
+// The falsifier is enrolled rather than described: removing a sort must turn
+// the_census_digest_is_invariant_under_reordering_of_either_population red.
+fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> CensusIdentityDigest {
+  CensusIdentityDigest {
+    algorithm: CanonicalIdentitySetV1,
+    digest: content_hash_atom(
+      value: (concat(
+        [census_identity_domain_separator(algorithm: CanonicalIdentitySetV1)],
+        concat(
+          parse_refused_files |> map(path => concat("rustfmt-refused\t", path)) |> sort_by(line => line),
+          raw_identities |> sort_by(identity => identity)
+        )
+      ) |> join(separator: "\n")) as NonEmptyStr
+    )
+  }
 }
 
 fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
@@ -173,20 +246,21 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
     RustcCoded { code: _ } => false
     RustcUncoded => true
   })
-  let coded_identities = deduplicate_identities(identities: coded_errors |> map(d => rustc_diagnostic_row(d: d)))
-  let codeless_identities = deduplicate_identities(identities: codeless_errors |> map(d => rustc_diagnostic_row(d: d)))
+  let coded_identities = canonical_identity_set(identities: coded_errors |> map(d => rustc_diagnostic_row(d: d)))
+  let codeless_identities = canonical_identity_set(identities: codeless_errors |> map(d => rustc_diagnostic_row(d: d)))
   let unplaced = unplaced_identities(ds: errors)
-  let parse_errors = count(parse_observation.refused_files)
+  let parse_identities = canonical_identity_set(identities: parse_observation.refused_files)
+  let parse_errors = count(parse_identities)
   let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
   let furthest_order = rustc_phase_order(phase: furthest)
-  let raw_identities = deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
+  let raw_identities = canonical_identity_set(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
   PhaseBoardDerived {
     board: RustcPhaseBoard {
         rows: [
           RustcPhaseBoardRow {
             phase: Parse,
             standing: PhaseCount { count: parse_errors, evidence: Observed },
-            identities: parse_observation.refused_files
+            identities: parse_identities
           },
           phase_row(ds: errors, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
           phase_row(ds: errors, phase: Resolve, reached: furthest_order >= rustc_phase_order(phase: Resolve)),
@@ -224,8 +298,10 @@ fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
   }
 }
 
+// The row layout is owned by `rustc_diagnostic_row`, which produced these identities; this asks
+// that authority for the code rather than re-deriving a field index here.
 fn census_identity_code(identity: String) -> String? {
-  get(xs: split(s: identity, sep: "\t"), index: 3)
+  rustc_diagnostic_row_code(row: identity)
 }
 
 fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
@@ -236,21 +312,21 @@ fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
 }
 
 fn census_identities_for_phase(identities: List<String>, phase: RustcPhase) -> List<String> {
-  deduplicate_identities(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
+  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
     ErrorCodePlaced { phase: placed, authority: _ } => rustc_phase_order(phase: placed) == rustc_phase_order(phase: phase)
     ErrorCodeUnplaced { code: _, index: _ } => false
   }))
 }
 
 fn census_unplaced_identities(identities: List<String>) -> List<String> {
-  deduplicate_identities(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
+  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
     ErrorCodePlaced { phase: _, authority: _ } => false
     ErrorCodeUnplaced { code: _, index: _ } => true
   }))
 }
 
 fn census_codeless_identities(identities: List<String>) -> List<String> {
-  deduplicate_identities(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
+  canonical_identity_set(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
     Present { value: code } => code == "uncoded"
     Absent => false
   }))
@@ -267,8 +343,9 @@ fn phase_board_from_census_identities(
   let borrowck_ids = census_identities_for_phase(identities: raw_identities, phase: Borrowck)
   let unplaced = census_unplaced_identities(identities: raw_identities)
   let codeless = census_codeless_identities(identities: raw_identities)
-  let unique_errors = deduplicate_identities(identities: raw_identities)
-  let parse_errors = count(parse_observation.refused_files)
+  let unique_errors = canonical_identity_set(identities: raw_identities)
+  let parse_identities = canonical_identity_set(identities: parse_observation.refused_files)
+  let parse_errors = count(parse_identities)
   let furthest = if parse_errors > 0 { Parse }
     else if count(resolve_ids) > 0 { Resolve }
     else if count(typeck_ids) > 0 { Typeck }
@@ -277,7 +354,7 @@ fn phase_board_from_census_identities(
   PersistedPhaseBoardFold {
     board: RustcPhaseBoard {
       rows: [
-        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: Observed }, identities: parse_observation.refused_files },
+        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: Observed }, identities: parse_identities },
         if furthest_order >= rustc_phase_order(phase: Expand) {
           RustcPhaseBoardRow { phase: Expand, standing: PhaseCount { count: 0, evidence: DerivedFromRustcErrorIndex }, identities: [] }
         } else { RustcPhaseBoardRow { phase: Expand, standing: PhaseNotYetReached, identities: [] } },
@@ -336,6 +413,7 @@ type CompilePhaseFrontierReceipt {
 type NewlyExposedCause
   = ExposedByRemovedMaskingIdentity { removed_identity: String }
   | ExposedByPhaseAdvance { previous_phase: RustcPhase, reached_phase: RustcPhase }
+  | ExposedByNewEmittedModule { module: String }
 
 type NewlyExposedDiagnostic {
   identity: String
@@ -422,6 +500,7 @@ fn newly_exposed_row(row: NewlyExposedDiagnostic) -> String {
         "\tphase-advance\t",
         concat(rustc_phase_name(phase: old), concat("\t", rustc_phase_name(phase: reached)))
       )
+      ExposedByNewEmittedModule { module: file } => concat("\tnew-emitted-module\t", file)
     }
   )
 }
@@ -460,7 +539,7 @@ fn parse_evidence_rows(evidence: ParsePhaseEvidence) -> List<String> {
 fn optional_reclassified_digest(board: RustcPhaseBoard?) -> String {
   match board {
     Absent => "not-reclassified"
-    Present { value: b } => concat("reclassified:", b.census_identity_digest.digest as String)
+    Present { value: b } => concat("reclassified:", b.census_identity_digest.digest.digest as String)
   }
 }
 
@@ -482,7 +561,8 @@ fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Stru
       receipt.producer.module_path,
       receipt.producer.function,
       receipt.producer.entry,
-      receipt.board.census_identity_digest.digest as String,
+      census_identity_domain_separator(algorithm: receipt.board.census_identity_digest.algorithm),
+      receipt.board.census_identity_digest.digest.digest as String,
       rustc_phase_name(phase: receipt.board.furthest_phase_reached)
     ], "\n") as NonEmptyStr
   )
@@ -654,11 +734,14 @@ fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -
     |> filter(identity => !any(board_all_identities(board: previous), prior => prior == identity))
 }
 
+fn diagnostic_identity_file(identity: String) -> String {
+  let location = split(s: split(s: identity, delimiter: "\t")[0], delimiter: ":")
+  location.take(n: count(location) - 2) |> join(separator: ":")
+}
+
 fn diagnostic_semantic_key(identity: String) -> String {
   let fields = split(s: identity, delimiter: "\t")
-  let location = split(s: fields[0], delimiter: ":")
-  let file = location.take(n: count(location) - 2) |> join(separator: ":")
-  join([file, fields[1], fields[2]], "\t")
+  join([diagnostic_identity_file(identity: identity), fields[1], fields[2]], "\t")
 }
 
 fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
@@ -796,6 +879,7 @@ fn apply_regression_transition(
         PhaseRatchetRefused { phase: _, identities: ids, reason: _ } =>
           count(ids) > 0 && all(ids, identity =>
             any(unadmitted, row => row == identity)
+              || any(admitted, row => row == identity)
               || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
           )
       }
@@ -834,6 +918,9 @@ fn newly_exposed_identity_admitted(
       rustc_phase_order(phase: old) == rustc_phase_order(phase: previous.furthest_phase_reached)
         && rustc_phase_order(phase: reached) == rustc_phase_order(phase: current.furthest_phase_reached)
         && rustc_phase_order(phase: reached) > rustc_phase_order(phase: old)
+    ExposedByNewEmittedModule { module: file } =>
+      diagnostic_identity_file(identity: identity) == file
+        && !any(board_all_identities(board: previous), prior => diagnostic_identity_file(identity: prior) == file)
   })
 }
 
@@ -910,7 +997,9 @@ fn receipt_population_coherent(receipt: CompilePhaseFrontierReceipt) -> Bool {
       parse_observation: parse,
       raw_identities: receipt.raw_error_diagnostic_identities
       )
-      derived.board.census_identity_digest == receipt.board.census_identity_digest
+      census_population_is_duplicate_free(identities: parse.refused_files)
+        && census_population_is_duplicate_free(identities: receipt.raw_error_diagnostic_identities)
+        && derived.board.census_identity_digest == receipt.board.census_identity_digest
         && derived.board.furthest_phase_reached == receipt.board.furthest_phase_reached
         && derived.board.rows == receipt.board.rows
         && phase_board_error_population_reconciles(board: receipt.board)
@@ -999,16 +1088,109 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
   }
 }
 
-fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
+// THE RATCHET ABOVE JUDGES RECEIPTS AGAINST EACH OTHER, AND NOTHING IN IT LOOKS AT THE TREE BEING
+// MERGED. compile_phase_frontier_standing answers Validated{latest} from the persisted series
+// alone, so its verdict is a claim about the TREE THE LATEST RECEIPT NAMES -- a past tree by
+// construction, since a receipt is authored after the observation it records. A reader who takes
+// that verdict as a statement about the tree under judgment has read a stronger claim than the
+// series can carry, which is DESIGN 4b(1) rung inflation on the compiler's own self-description.
+//
+// THIS JUDGMENT IS THE JOIN THAT MAKES THE DIFFERENCE DECIDABLE, and it is the whole of what can
+// be decided cheaply: given the tree under judgment, does the latest validated receipt name that
+// same tree? Identity grain, one comparison, no measurement.
+//
+// IT GATES NOTHING TODAY AND THAT IS DELIBERATE. Actuating it as a merge-blocking arm would refuse
+// every merge, because receipts are authored rarely and the live tree moves on every commit; the
+// non-blocking spelling is the inert-lens tier DESIGN 6 names.
+//
+// WHAT IT IS FOR, AND THE CONDITIONS ARE TWO RATHER THAN ONE. This annotation named only the
+// budget condition when it landed, and that was a trigger pointing at something that is not what
+// blocks -- which gets SATISFIED WHILE THE CAPABILITY STAYS DEAD, the mirror of the 4b(3) failure
+// where a trigger names less than it restores. The BINDING condition is a receipt in the required
+// runners' COMPARISON EPOCH: without one, a live population has nothing it may legally be compared
+// against, and the series fold above refuses a cross-epoch comparison unless the predecessor is
+// reclassified. The ENABLING condition is the one first recorded: taking such a receipt means
+// measuring a whole-closure entry, which gunbc.whole_corpus_compile_admission refuses on budget --
+// so an execution surface exposing a real, readable cgroup memory limit makes the measurement
+// TAKEABLE and leaves the epoch condition standing. The figures behind that refusal belong to that
+// authority and to gunbc.host_budget_source memory_stall_refusal and are not transcribed here.
+//
+// AND THE CONSUMER IS BUILT, NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate
+// -- the live measured population joined to the latest receipt through this module's own fold and
+// ratchet -- witnessed and enrolled under the required floor's test.claim.self_host_ prefix, and
+// PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on a defect. When it is
+// unparked it must CONSUME this judgment rather than grow its own tree-identity comparison: this
+// answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the
+// PRECONDITION of that module's population question, since a regression comparison against a
+// receipt that does not describe this tree is meaningless. One module answering the precondition
+// and another consuming it is composition; two modules deciding tree identity is the section 3
+// fork this note exists to prevent.
+//
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller that cannot supply the tree under
+// judgment gets a typed refusal, never Covered and never a pass-shaped unknown: a coverage
+// judgment that answers "covered" when it could not observe the subject is the absorbing fallback
+// of DESIGN 5 wearing this function's name.
+type CompilePhaseFrontierCoverage
+  = FrontierCoversSubjectTree { latest: CompilePhaseFrontierReceipt }
+  | FrontierReceiptTreeStale { receipt_tree: String, subject_tree: String }
+  | FrontierCoverageRefused { reason: NonEmptyStr }
+
+fn compile_phase_frontier_coverage(
+  series: List<CompilePhaseFrontierReceipt>,
+  subject_tree: FloorDiscoveryTreeId?
+) -> CompilePhaseFrontierCoverage {
+  match subject_tree {
+    Absent => FrontierCoverageRefused {
+      reason: "the tree under judgment was not observed, so no coverage claim is available" as NonEmptyStr
+    }
+    Present { value: tree } => match compile_phase_frontier_standing(series: series) {
+      CompilePhaseFrontierEmpty => FrontierCoverageRefused {
+        reason: "the frontier receipt series is empty, so no receipt names any tree" as NonEmptyStr
+      }
+      CompilePhaseFrontierInvalid { reason: why } => FrontierCoverageRefused { reason: why }
+      CompilePhaseFrontierValidated { latest: latest } => {
+        let receipt_tree = floor_discovery_tree_identity(tree: latest.subject.git_tree_object)
+        let judged_tree = floor_discovery_tree_identity(tree: tree)
+        if receipt_tree == judged_tree {
+          FrontierCoversSubjectTree { latest: latest }
+        } else {
+          FrontierReceiptTreeStale { receipt_tree: receipt_tree, subject_tree: judged_tree }
+        }
+      }
+    }
+  }
+}
+
+fn compile_phase_frontier_coverage_label(c: CompilePhaseFrontierCoverage) -> String {
+  match c {
+    FrontierCoversSubjectTree { latest: _ } => "the latest validated receipt names the tree under judgment"
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      concat(concat("the latest validated receipt names tree ", r), concat(", not the tree under judgment ", s))
+    FrontierCoverageRefused { reason: why } => concat("no coverage claim: ", why as String)
+  }
+}
+
+// PASSES is a claim about the phase, not about this row's arithmetic. A zero count means only that
+// no ATTRIBUTED identity landed in the phase, so while the census still holds identities no phase
+// row accounts for, every one of those unattributed identities is a candidate member of this phase
+// and the zero establishes nothing. Rendering PASSES there is the absorbing arm of DESIGN section
+// 5 pointed at the compiler's own self-description: a reader cannot tell "this phase passed" from
+// "the census could not be partitioned". The honest arm names the shortfall instead of hiding it.
+fn render_phase_standing(row: RustcPhaseBoardRow, partition_complete: Bool) -> String {
   match row.standing {
     PhaseNotYetReached => concat(rustc_phase_name(phase: row.phase), " not yet reached")
-    PhaseCount { count: 0, evidence: _ } => concat(rustc_phase_name(phase: row.phase), " PASSES")
+    PhaseCount { count: 0, evidence: _ } =>
+      if partition_complete {
+        concat(rustc_phase_name(phase: row.phase), " PASSES")
+      } else {
+        concat(rustc_phase_name(phase: row.phase), " 0 attributed (census partition incomplete)")
+      }
     PhaseCount { count: n, evidence: _ } => concat(concat(rustc_phase_name(phase: row.phase), " "), concat(to_string(n), " remaining"))
   }
 }
 
 fn render_phase_board(board: RustcPhaseBoard) -> String {
-  board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
+  board.rows |> map(r => render_phase_standing(row: r, partition_complete: board.partition_complete)) |> join(separator: " / ")
 }
 data genesis_5006ddc6_raw_error_diagnostic_identities: List<String> = [
   "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",
@@ -1290,6 +1472,245 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
+// Receipt 1 was produced by the same one-entry instrument (tools.emission_entry_instrument
+// measure_entry_emission) in BuildBuddy invocation 44d90e35-ccba-41d1-9a90-928a914b26a2, over the
+// merged main tree at eced9d24c599 -- the first tree carrying the #9828 + #9813 + #9829
+// composition. That composition was never branch-verified: main's own green required run at this
+// revision was its first joint test. THIS receipt is the attribution boundary for the
+// post-kernel-precedence corpus: no error identity absent from this receipt's census may be
+// attributed to any pre-boundary lane, and every later delta is measured against this census, not
+// against the genesis one. The 78-identity net reduction against genesis is credited to the
+// precedence/emission composition as a whole, not to any single successor lane. The four
+// v2_lens_undecidable_verdict_collapse.rs identities are not regressions: that module entered the
+// emitted closure after the genesis tree (it does not exist in tree 1c7c79fbc0), which is exactly
+// what ExposedByNewEmittedModule admits, checked against the predecessor board.
+data receipt_1_eced9d24_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt --emit stdout --edition 2021",
+  files_observed: 165,
+  refused_files: []
+}
+
+data receipt_1_eced9d24_raw_error_diagnostic_identities: List<String> = [
+  "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs:206:18	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs:208:16	E0308	mismatched types",
+  "src/v2_std_text.rs:64:13	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_text.rs:72:22	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_text.rs:90:18	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_collection.rs:94:5	E0560	struct `Rc<FinitelySupportedFunction<_, _>>` has no field named `lookup`",
+  "src/v2_std_collection.rs:93:13	E0308	mismatched types",
+  "src/v2_std_compilers_lexing.rs:182:72	E0282	type annotations needed",
+  "src/v2_std_compilers_lexing.rs:182:55	E0308	mismatched types",
+  "src/v2_std_integer.rs:1356:25	E0308	mismatched types",
+  "src/v2_std_integer.rs:1514:23	E0308	mismatched types",
+  "src/v2_compiler_tokenize.rs:700:13	E0308	mismatched types",
+  "/root/workspace/.home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/im-15.1.0/src/vector/mod.rs:97:13	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:231:196	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:238:68	E0599	no method named `split` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_qualified_name.rs:265:72	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:259:5	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:254:75	E0599	no method named `concat` found for struct `std::string::String` in the current scope",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2011:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2023:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2035:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2047:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2059:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2071:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2083:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2095:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2107:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2119:77	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:669:13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:736:48	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:2607:15	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:4007:13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:7225:90	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:7982:13	E0308	mismatched types",
+  "src/v2_compiler_target_carriers.rs:106:90	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1172:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1197:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1199:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1201:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1203:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1205:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1207:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1209:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1254:14	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:79:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:88:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:97:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:106:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:115:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:124:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:133:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:142:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:151:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:160:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:169:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:663:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:228	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:307	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:385	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:461	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:536	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:609	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:681	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:753	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:826	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:902	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:976	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1049	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1124	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1199	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1275	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1349	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1424	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1495	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1564	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1633	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1702	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1773	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1846	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1919	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1989	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2059	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2128	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2198	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2270	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2339	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2409	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2476	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2546	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2616	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2684	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2753	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2824	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2895	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2966	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3037	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3110	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3183	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3250	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3317	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3390	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3474	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:168	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:243	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:315	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:386	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:458	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1652:28	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1707:1	E0308	arguments to this function are incorrect",
+  "src/v2_compiler_parse.rs:529:143	E0282	type annotations needed",
+  "src/v2_compiler_parse.rs:533:617	E0308	mismatched types",
+  "src/v2_compiler_parse.rs:653:67	E0308	mismatched types",
+  "src/v2_compiler_parse.rs:773:28	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:61:83	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:67:21	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:67:81	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:74:21	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:74:86	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs:77:67	E0308	arguments to this function are incorrect",
+  "src/v2_lens_mandatory_tag.rs:81:67	E0308	arguments to this function are incorrect",
+  "src/v2_lens_mandatory_tag.rs:85:8	E0308	arguments to this function are incorrect",
+  "src/v2_lens_undecidable_verdict_collapse.rs:47:13	E0308	mismatched types",
+  "src/v2_lens_undecidable_verdict_collapse.rs:65:13	E0308	mismatched types",
+  "src/v2_lens_undecidable_verdict_collapse.rs:112:21	E0308	mismatched types",
+  "src/v2_lens_undecidable_verdict_collapse.rs:112:86	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs:2356:87	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs:2357:92	E0308	mismatched types",
+  "src/v2_lens_complexity_accumulator_copy_compile_gate.rs:35:13	E0308	mismatched types",
+  "src/v2_compiler_infer.rs:489:29	E0282	type annotations needed",
+  "src/v2_compiler_infer.rs:1323:12	E0308	mismatched types",
+  "src/v2_compiler_name_resolve.rs:150:177	E0308	mismatched types",
+  "src/v2_compiler_emit.rs:20:5	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:79:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:113:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:213:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:222:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:268:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:277:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:286:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:324:105	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:371:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:379:56	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:414:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:463:27	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:509:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:530:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:787:111	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:795:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:970:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:1008:8	E0308	arguments to this function are incorrect",
+  "src/v2_compiler_program_assembly.rs:92:13	E0308	mismatched types",
+  "src/v2_compiler_compile.rs:185:13	E0308	mismatched types",
+  "src/v2_compiler_compile.rs:289:108	E0308	mismatched types",
+  "src/v2_compiler_compile.rs:333:5	E0308	mismatched types",
+]
+
+data receipt_1_eced9d24_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: receipt_1_eced9d24_parse_observation,
+  raw_identities: receipt_1_eced9d24_raw_error_diagnostic_identities
+)
+
+fn receipt_1_eced9d24_receipt() -> CompilePhaseFrontierReceipt {
+  let genesis = genesis_5006ddc6_receipt()
+  seal_compile_phase_receipt(
+    sequence: 1,
+    observed_at: "2026-08-31T20:44:59Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "eced9d24c599b33f19442e0bd1eee57223f3d763" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "d424154bb6fb8c40b149be07f2ddd8d61e89108e" } }),
+      emitted_artifact_identity: sha256_digest(hex: "be548fca7285992bfe49466e66398cc67f22559b07b3b32b389822f89c13d0c7" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "a2d7425518eb23e7c723f1593d41d40417d230721118efdd62439525b3bfad29" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "b26a96dff0f232a8db97f60919e6ddc31d97e4baf0a293108b10bcc426d68d74" as NonEmptyStr),
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "x86_64-unknown-linux-gnu",
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-x86_64-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "buildbuddy-44d90e35-ccba-41d1-9a90-928a914b26a2" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "buildbuddy-b779daaf-cefa-4379-ab27-dbea5a8d2919" as NonEmptyStr },
+    previous_prefix_digest: Present { value: genesis.prefix_digest },
+    parse_evidence: ParseReached { evidence: receipt_1_eced9d24_parse_observation },
+    board: receipt_1_eced9d24_phase_board_fold.board,
+    raw_error_diagnostic_identities: receipt_1_eced9d24_raw_error_diagnostic_identities,
+    unplaced_identities: receipt_1_eced9d24_phase_board_fold.unplaced_identities,
+    newly_exposed: [
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:47:13	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    },
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:65:13	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    },
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:112:21	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    },
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:112:86	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    }
+    ],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
 data self_host_compile_phase_frontier_receipts: List<CompilePhaseFrontierReceipt> = [
-  genesis_5006ddc6_receipt()
+  genesis_5006ddc6_receipt(),
+  receipt_1_eced9d24_receipt()
 ]

@@ -153,10 +153,17 @@ pub enum RegenReceipt {
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub enum RegenCandidateManifestSurfaceRole {
+    GeneratedSurface,
+    BootstrapSourceMirror,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct RegenCandidateManifestSurface {
     pub declaring_module: String,
     pub projected_path: String,
     pub content_digest: String,
+    pub role: RegenCandidateManifestSurfaceRole,
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -531,13 +538,20 @@ pub fn run_required_regen_scoped(
         convergence_surface_roles(&workspace, &convergence_roots)?;
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
+    // This is the writer's own exact artifact population, including non-Rust products such as
+    // the crate manifest.  It is deliberately distinct from `selected_basenames`, whose authority
+    // is the compared generated-Rust population and therefore cannot name these products.
+    let emitted_artifact_paths = emitted
+        .keys()
+        .map(|path| candidate_relative_emit_path(path))
+        .collect::<Result<BTreeSet<_>, _>>()?;
     let candidate_manifest = produce_candidate_manifest(
         &fresh_src,
         &selected_basenames,
+        &emitted_artifact_paths,
         &basename_to_module,
         &producer_seed_digest,
         &candidate_tree_id,
-        &candidate_digest,
     )?;
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
@@ -1100,6 +1114,116 @@ fn is_compared_generated_basename(basename: &str) -> bool {
     basename.ends_with(".rs")
 }
 
+/// WHAT MAY BE WRITTEN INTO THE COMMITTED SEED, ASKED AT THE MUTATION BOUNDARY.
+///
+/// The installer used to ask nothing. It copied `candidate_src/<basename>` to
+/// `stage0_src/<basename>` for whatever roster it was handed, and the only thing keeping a
+/// non-Rust artifact out of that roster was `is_compared_generated_basename` — a predicate
+/// upstream, in a different function, answering a DIFFERENT question ("what does the drift
+/// comparison denominate?"). Install admissibility had no authority of its own; it was a
+/// consequence of the comparator's denominator, which is exactly the shape DESIGN section 3
+/// forbids: one fact with no home, inferred from another fact that is free to move.
+///
+/// THIS GUARD DELIBERATELY DOES NOT ASK WHETHER THE ARTIFACT IS RUST, and the omission is the
+/// considered part. An earlier revision refused every non-`.rs` install target on the reasoning
+/// that non-Rust emitted artifacts are not installable into the seed. That reasoning is wrong in
+/// the direction that matters: the emitted `Cargo.toml` is stage0's OWN package manifest emitted
+/// incompletely (17 lines carrying `[package] name = "v1_compiler"` against the committed
+/// 172-line `v1-compiler` manifest), standing in the same relation to its committed file as the
+/// emitted `main.rs` does. `v2.compiler.self_host.stage0_crate_layout`
+/// `emitter_produced_divergent_note` settles that relation: the reachable end state is that the
+/// emitter produces the committed bytes and the divergent family is EMPTY. So an extension arm
+/// would refuse the correct end state by construction, writing an accidental comparison
+/// denominator into a second place as deliberate policy — the dual of widening the compared
+/// population, and the same error.
+///
+/// What keeps a non-Rust artifact out of the install roster is therefore left where it already
+/// is, and the deficit it rests on is named rather than re-implemented here: destinations are
+/// addressed as BARE BASENAMES under `stage0_src`, `produce_candidate_manifest` has already
+/// discarded the package-root distinction, and so a declared non-Rust `GeneratedSurface` is
+/// invisible to the fixed point instead of dispositioned. That is the subject of the projection
+/// identity work, not of this boundary.
+///
+/// So the boundary asks only what it can answer on its own, and refuses rather than widening
+/// (DESIGN section 5) — both arms kind-agnostic:
+///
+/// - a path that is not a bare basename cannot address anything outside `stage0_src`;
+/// - a hand-maintained mirror is authored, never installed — the remedy for an emitted/committed
+///   divergence there is `verify_hand_maintained`'s declared-divergence roster, not a copy over
+///   the author's bytes.
+///
+/// REFUSES NOTHING TODAY, BY MEASUREMENT AND BY CONSTRUCTION. Every install roster is a subset
+/// of `drifted`, which is computed by `compare_generated_surfaces` over
+/// `committed_generated_basenames`/`generated_basenames_from_emit` — both already `.rs`-only and
+/// both already hand-maintained-excluded. The live corpus is this wall's positive control; its
+/// discriminating RED is authored in
+/// `install_admission_refuses_unaddressable_and_hand_maintained`.
+///
+/// RUNG, HONESTLY: mechanically preventable. The invalid state stays writable — the plan
+/// projection hands this function a `Vec<String>`, so a non-installable path is expressible right
+/// up to the call — and safety depends on this admission executing. The attainable ceiling is
+/// structural impossibility: membership is decidable and fully modeled, so the state has no
+/// constructor once `v2.workflow.regen_convergence_transaction` `regen_stage_plan_surface_paths`
+/// projects a typed surface identity (declaring module + projected path, as the same module's
+/// `RegenSurfaceIdentity` already carries for the candidate manifest) instead of a
+/// `List<String>`, and the installer takes that type rather than `&[String]`. That
+/// projection is the next-rung trigger; this admission dissolves with it, while the RED below
+/// stays enrolled as the regression control the climb does not retire (DESIGN 4b(4)).
+fn admit_install_target(basename: &str) -> Result<(), String> {
+    if basename.is_empty() || emit_path_basename(basename) != basename {
+        return Err(format!(
+            "InstallTargetNotABareBasename: {basename} is not a bare stage0 basename, so the \
+             install destination is not inside the committed generated surface"
+        ));
+    }
+    if HAND_MAINTAINED_STAGE0_FILES.contains(&basename) {
+        return Err(format!(
+            "InstallTargetHandMaintained: {basename} is a hand-maintained stage0 mirror. An \
+             emitted/committed divergence there is adjudicated by verify_hand_maintained, never \
+             by installing over the authored bytes"
+        ));
+    }
+    Ok(())
+}
+
+/// THE NAME IS NOT THE DESTINATION: the lexical admission above proves only that the basename
+/// SPELLS a bare stage0 entry, never where that name RESOLVES. Git tracks symlinks (mode 120000),
+/// so a committed stage0 entry can be one, and `fs::copy` follows the DESTINATION link -- the
+/// bytes land wherever it points, outside the committed surface, with the lexical check fully
+/// satisfied and nothing refused. That indirection is the second route to the harm the failure-mode
+/// row under-enumerated: it reaches a path outside `stage0_src` without the join ever changing.
+///
+/// RUNG, HONESTLY: this is a BOUNDARY OBSERVATION, not a construction, and deliberately not on the
+/// ladder (DESIGN 4b, "outside the modeled guarantee"). The filesystem is external reality that no
+/// modeled type can make impossible, so the only honest arms are LOOK and REFUSE. It refuses on
+/// unreadable as well as on symlink: an unreadable destination is ignorance about containment, and
+/// answering ignorance with "proceed" is the absorbing fallback DESIGN 5 forbids.
+fn admit_install_destination(stage0_src: &Path, basename: &str) -> Result<(), String> {
+    let destination = stage0_src.join(basename);
+    // symlink_metadata, never metadata: metadata FOLLOWS the link and would report the target's
+    // kind, so the one question being asked would be answered about the wrong file.
+    match fs::symlink_metadata(&destination) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
+            "InstallDestinationNotARegularFile: {basename} is a symlink. fs::copy follows the \
+             destination link, so the installed bytes would land outside the committed generated \
+             surface"
+        )),
+        Ok(metadata) if !metadata.file_type().is_file() => Err(format!(
+            "InstallDestinationNotARegularFile: {basename} exists and is not a regular file, so \
+             the install destination is not a committed generated artifact"
+        )),
+        Ok(_) => Ok(()),
+        // A first-time emitted artifact legitimately has no committed destination yet. A DANGLING
+        // symlink is not this arm: symlink_metadata reports it Ok and is_symlink, so it refuses
+        // above rather than reading as absent here.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!(
+            "InstallDestinationUnreadable: {basename}: {e}. Containment is unknown, and unknown \
+             containment refuses rather than proceeds"
+        )),
+    }
+}
+
 /// THE EMITTED ROSTER IS READ FROM THE EMITTER'S DECLARATION, NOT FROM WHAT IT HANDED BACK.
 ///
 /// This used to walk the keys of the returned map -- the files this emit RENDERED. That was the
@@ -1518,6 +1642,22 @@ fn verify_hand_maintained(
 /// the round does with it is install the drifted ones, and the drifted set is a subset of the
 /// selection by construction (`compare_generated_surfaces` is run over exactly this set). It is
 /// not a crate and is not offered as one.
+fn candidate_relative_emit_path(emitted_path: &str) -> Result<String, String> {
+    let path = Path::new(emitted_path);
+    let relative = path.strip_prefix("src").unwrap_or(path);
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "refusal: emitted artifact path {emitted_path} has no safe candidate-root-relative projection"
+        ));
+    }
+    Ok(relative.to_string_lossy().into_owned())
+}
+
 fn write_emitted_tree(
     formatter: &ResolvedFormatter,
     dest_src: &Path,
@@ -1534,12 +1674,17 @@ fn write_emitted_tree(
                 continue;
             }
         }
-        let out_path = dest_src.join(emit_path_basename(path));
+        let relative_path = candidate_relative_emit_path(path)?;
+        let out_path = dest_src.join(&relative_path);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create emitted parent {}: {e}", parent.display()))?;
+        }
         // Only `.rs` surfaces are the generated-Rust population this comparator reasons
         // about (see committed_generated_basenames / generated_basenames_from_emit); a
         // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
         // rustfmt-normalizable and is written through verbatim.
-        let normalized = if emit_path_basename(path).ends_with(".rs") {
+        let normalized = if relative_path.ends_with(".rs") {
             normalize_generated_source(formatter, content)
                 .map_err(|e| format!("normalize emitted {path}: {e}"))?
         } else {
@@ -2996,6 +3141,106 @@ fn path_digest(path: &Path) -> Result<String, String> {
         .map_err(|e| format!("read {} for digest: {e}", path.display()))
 }
 
+fn observe_complete_candidate_artifact_population_from_entries<I>(
+    candidate_src: &Path,
+    phase: &str,
+    entries: I,
+) -> Result<Vec<String>, String>
+where
+    I: IntoIterator<Item = Result<PathBuf, String>>,
+{
+    let mut population = Vec::new();
+    for entry in entries {
+        let path = entry.map_err(|error| {
+            format!(
+                "CandidateManifestPopulationUnreadable: candidate_path={} phase={phase} error={error}",
+                candidate_src.display()
+            )
+        })?;
+        let relative = path.strip_prefix(candidate_src).map_err(|error| {
+            format!(
+                "CandidateManifestPopulationUnreadable: candidate_path={} phase={phase} error=observed file {} is outside the candidate root: {error}",
+                candidate_src.display(),
+                path.display()
+            )
+        })?;
+        population.push(
+            relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+        );
+    }
+    population.sort();
+    population.dedup();
+    Ok(population)
+}
+
+fn observe_complete_candidate_artifact_population(
+    candidate_src: &Path,
+    phase: &str,
+) -> Result<Vec<String>, String> {
+    fn visit(candidate_src: &Path, directory: &Path, entries: &mut Vec<Result<PathBuf, String>>) {
+        let directory_entries = match fs::read_dir(directory) {
+            Ok(value) => value,
+            Err(error) => {
+                entries.push(Err(format!("read {}: {error}", directory.display())));
+                return;
+            }
+        };
+        for entry in directory_entries {
+            let entry = match entry {
+                Ok(value) => value,
+                Err(error) => {
+                    entries.push(Err(format!(
+                        "read directory entry under {}: {error}",
+                        directory.display()
+                    )));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(file_type) if file_type.is_dir() => visit(candidate_src, &path, entries),
+                Ok(file_type) if file_type.is_file() => entries.push(Ok(path)),
+                Ok(_) => entries.push(Err(format!(
+                    "unsupported non-file candidate entry {}",
+                    path.display()
+                ))),
+                Err(error) => entries.push(Err(format!(
+                    "read candidate entry type {}: {error}",
+                    path.display()
+                ))),
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    visit(candidate_src, candidate_src, &mut entries);
+    observe_complete_candidate_artifact_population_from_entries(candidate_src, phase, entries)
+}
+
+fn candidate_artifact_tree_digest(
+    candidate_src: &Path,
+    paths: &[String],
+    label: &str,
+) -> Result<String, String> {
+    if paths.is_empty() {
+        return Err(format!(
+            "CandidateManifestPopulationMismatch: cannot compute {label} over an empty artifact"
+        ));
+    }
+    let mut payload = String::new();
+    for relative_path in paths {
+        payload.push_str(relative_path);
+        payload.push('\0');
+        payload.push_str(&path_digest(&candidate_src.join(relative_path))?);
+        payload.push('\n');
+    }
+    Ok(bytes_digest(payload.as_bytes()))
+}
+
 fn candidate_manifest_aggregate(
     producer_seed_digest: &str,
     generation_id: &str,
@@ -3018,44 +3263,86 @@ fn candidate_manifest_aggregate(
 fn produce_candidate_manifest(
     candidate_src: &Path,
     selected_basenames: &[String],
+    emitted_artifact_paths: &BTreeSet<String>,
     basename_to_module: &HashMap<String, String>,
     producer_seed_digest: &str,
     candidate_tree_id: &str,
-    candidate_tree_digest: &str,
 ) -> Result<RegenCandidateManifest, String> {
-    let mut names = selected_basenames.to_vec();
-    names.sort();
-    names.dedup();
+    let selected = selected_basenames.iter().cloned().collect::<BTreeSet<_>>();
+    let bootstrap_mirrors = HAND_MAINTAINED_STAGE0_FILES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<BTreeSet<_>>();
+    let names =
+        observe_complete_candidate_artifact_population(candidate_src, "manifest-production")?;
     let generation_id =
         bytes_digest(format!("{producer_seed_digest}:{candidate_tree_id}").as_bytes());
     let surfaces = names
         .iter()
         .map(|basename| {
-            let declaring_module = basename_to_module.get(basename).cloned().ok_or_else(|| {
-                format!(
-                    "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
-                     declaring module"
+            let bootstrap_directory = HAND_MAINTAINED_STAGE0_DIRS
+                .iter()
+                .find(|directory| {
+                    basename
+                        .strip_prefix(**directory)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                });
+            let (declaring_module, role) = if bootstrap_mirrors.contains(basename)
+                || bootstrap_directory.is_some()
+            {
+                (
+                    basename
+                        .strip_suffix(".rs")
+                        .unwrap_or(basename)
+                        .replace('/', "::"),
+                    RegenCandidateManifestSurfaceRole::BootstrapSourceMirror,
                 )
-            })?;
+            } else if selected.contains(basename) {
+                (
+                    basename_to_module.get(basename).cloned().ok_or_else(|| {
+                        format!(
+                            "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
+                             declaring module"
+                        )
+                    })?,
+                    RegenCandidateManifestSurfaceRole::GeneratedSurface,
+                )
+            } else if emitted_artifact_paths.contains(basename) {
+                // Non-Rust aggregate products do not have a same-named DAG module. Their
+                // authority is the emitter transaction that returned this exact path and whose
+                // writer installed it into this candidate tree. A path merely observed on disk
+                // cannot enter this arm.
+                (
+                    "v1.compiler.emit_rust".to_string(),
+                    RegenCandidateManifestSurfaceRole::GeneratedSurface,
+                )
+            } else {
+                return Err(format!(
+                    "CandidateManifestPopulationMismatch: candidate artifact surface {basename} is neither a generated surface nor a modeled bootstrap-source mirror"
+                ));
+            };
             Ok(RegenCandidateManifestSurface {
                 declaring_module,
                 projected_path: basename.clone(),
                 content_digest: path_digest(&candidate_src.join(basename))?,
+                role,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let complete_candidate_tree_digest =
+        candidate_artifact_tree_digest(candidate_src, &names, "complete candidate manifest")?;
     let aggregate_digest = candidate_manifest_aggregate(
         producer_seed_digest,
         &generation_id,
         candidate_tree_id,
-        candidate_tree_digest,
+        &complete_candidate_tree_digest,
         &surfaces,
     )?;
     Ok(RegenCandidateManifest {
         producer_seed_digest: producer_seed_digest.to_string(),
         generation_id,
         candidate_tree_id: candidate_tree_id.to_string(),
-        candidate_tree_digest: candidate_tree_digest.to_string(),
+        candidate_tree_digest: complete_candidate_tree_digest,
         surfaces,
         aggregate_digest,
     })
@@ -3154,21 +3441,8 @@ fn admit_candidate_manifest(
             manifest.aggregate_digest, aggregate
         ));
     }
-    let mut observed_population = fs::read_dir(candidate_src)
-        .map_err(|e| {
-            format!(
-                "read candidate manifest population {}: {e}",
-                candidate_src.display()
-            )
-        })?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let path = entry.path();
-            (path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
-                .then(|| entry.file_name().to_string_lossy().into_owned())
-        })
-        .collect::<Vec<_>>();
-    observed_population.sort();
+    let observed_population =
+        observe_complete_candidate_artifact_population(candidate_src, "manifest-admission")?;
     let recorded_population = manifest
         .surfaces
         .iter()
@@ -3179,13 +3453,8 @@ fn admit_candidate_manifest(
             "CandidateManifestPopulationMismatch: recorded {recorded_population:?} observed {observed_population:?}"
         ));
     }
-    let formatter = ResolvedFormatter::admit()?;
-    let observed_tree_digest = tree_digest_for_basenames(
-        &formatter,
-        candidate_src,
-        &recorded_population,
-        "candidate manifest",
-    )?;
+    let observed_tree_digest =
+        candidate_artifact_tree_digest(candidate_src, &recorded_population, "candidate manifest")?;
     if observed_tree_digest != manifest.candidate_tree_digest {
         return Err(format!(
             "CandidateManifestTreeDigestMismatch: recorded {} observed {}",
@@ -3516,22 +3785,6 @@ fn host_name() -> String {
         }
     }
     "unreadable".to_string()
-}
-
-/// Install the candidate's drifted mirrors into the committed seed — the manual step of the
-/// recipe, performed from the SAME candidate tree the regen just wrote and judged.
-fn install_candidate_paths(
-    candidate_src: &Path,
-    stage0_src: &Path,
-    basenames: &[String],
-) -> Result<(), String> {
-    for basename in basenames {
-        let from = candidate_src.join(basename);
-        let to = stage0_src.join(basename);
-        fs::copy(&from, &to)
-            .map_err(|e| format!("install {} -> {}: {e}", from.display(), to.display()))?;
-    }
-    Ok(())
 }
 
 fn round_cost_entry(source_roots: &[String]) -> Result<String, String> {
@@ -4528,6 +4781,14 @@ where
     Build: FnMut(&Path) -> Result<CargoBuildObservation, String>,
     SeedDigest: FnMut() -> Result<String, String>,
 {
+    // THE FIRST THING THE INSTALL BOUNDARY DOES, over the WHOLE roster, before a digest is read
+    // or a journal is written. A per-file check inside the copy loop would refuse the fourth
+    // entry with three already installed -- a partial mutation whose only remedy is the
+    // checkpoint restore, i.e. a widen dressed as a refusal.
+    for basename in basenames {
+        admit_install_target(basename)?;
+        admit_install_destination(stage0_src, basename)?;
+    }
     let changed_before = git_changed_stage0_paths(workspace)?
         .into_iter()
         .collect::<BTreeSet<_>>();
@@ -5202,17 +5463,16 @@ mod regen_convergence_host_instrument_tests {
                 declaring_module: (*module).to_string(),
                 projected_path: (*path).to_string(),
                 content_digest: path_digest(&candidate.join(path)).unwrap(),
+                role: RegenCandidateManifestSurfaceRole::GeneratedSurface,
             })
             .collect::<Vec<_>>();
         surfaces.sort_by(|left, right| left.projected_path.cmp(&right.projected_path));
-        let formatter = ResolvedFormatter::admit().unwrap();
         let population = surfaces
             .iter()
             .map(|surface| surface.projected_path.clone())
             .collect::<Vec<_>>();
         let candidate_tree_digest =
-            tree_digest_for_basenames(&formatter, candidate, &population, "fixture candidate")
-                .unwrap();
+            candidate_artifact_tree_digest(candidate, &population, "fixture candidate").unwrap();
         let aggregate_digest = candidate_manifest_aggregate(
             "seed-0",
             "generation-0",
@@ -5247,12 +5507,349 @@ mod regen_convergence_host_instrument_tests {
             .collect()
     }
 
+    /// THE DISCRIMINATING RED FOR `admit_install_target`, and the reason the wall is not a
+    /// decoration: the forbidden state is authorable here even though no production roster can
+    /// currently express it.
+    ///
+    /// Each negative arm passes an EMPTY admitted manifest. Without the boundary admission the
+    /// call still returns `Err` — `CandidateManifestPopulationMismatch`, from the re-admit loop —
+    /// so a test asserting only "it refused" would be permanently green and carry no information.
+    /// It is the CAUSE that discriminates: these arms pass only if the install boundary answered
+    /// before the manifest was consulted at all.
+    /// CONTAINMENT, PROVEN AGAINST THE COPY AND NOT AGAINST A MESSAGE.
+    ///
+    /// This is a separate test from the cause-arms above for one reason found by running the RED:
+    /// with the destination admission neutered, those arms never reach `fs::copy` at all -- the
+    /// install stops earlier at `CandidateManifestPopulationMismatch`, because a bare basename with
+    /// no admitted manifest row is refused upstream. So an "the outside file survived" assertion
+    /// placed there is satisfied by the UPSTREAM refusal and discriminates nothing about
+    /// containment (DESIGN `executed_conjunct_discriminates_nothing`).
+    ///
+    /// Here the basename carries a real admitted manifest row and real candidate bytes, so every
+    /// upstream gate passes and `admit_install_destination` is the ONLY thing standing between the
+    /// copy and a file outside `stage0_src`. The surviving bytes are then evidence of containment
+    /// rather than evidence that something else refused first.
+    #[test]
+    fn install_admission_contains_the_destination_against_a_symlink() {
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+
+        // The link points OUTSIDE stage0_src, so a following copy writes somewhere observably
+        // wrong rather than merely somewhere else.
+        let outside = workspace.join("outside_the_surface.rs");
+        let preserved = "// must not be overwritten by an install\n";
+        fs::write(&outside, preserved).unwrap();
+        std::os::unix::fs::symlink(&outside, stage0.join("linked_generated.rs")).unwrap();
+
+        let rows = [(
+            "linked_generated.rs",
+            "fixture.linked",
+            "// bytes that must never reach the link target\n",
+        )];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+
+        let refused = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "closure-0",
+            &subject,
+            |_| -> Result<CargoBuildObservation, String> {
+                panic!("a refused install must never reach the seed build")
+            },
+            || -> Result<String, String> {
+                panic!("a refused install must never reach a seed digest")
+            },
+        )
+        .unwrap_err();
+
+        assert!(
+            refused.contains("InstallDestinationNotARegularFile"),
+            "expected the destination admission to refuse, got: {refused}"
+        );
+        assert_eq!(
+            fs::read_to_string(&outside).unwrap(),
+            preserved,
+            "an install escaped stage0_src through a destination symlink"
+        );
+    }
+
+    #[test]
+    fn install_admission_refuses_unaddressable_and_hand_maintained() {
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        // NO Cargo.toml ARM HERE, deliberately. The emitted manifest is stage0's own package
+        // manifest emitted incompletely, so it is a self-host GAP and not a foreign artifact;
+        // refusing it on its extension would cement the comparator's accidental denominator as
+        // this boundary's policy and refuse the correct end state. What keeps it off the roster
+        // stays upstream, and making its absence a typed disposition is the projection-identity
+        // subject, not this one.
+        let subject_before = fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap();
+        let mut mismatches: Vec<String> = Vec::new();
+
+        for (basename, cause) in [
+            ("../Cargo.toml", "InstallTargetNotABareBasename"),
+            ("nested/mod.rs", "InstallTargetNotABareBasename"),
+            ("cli_run.rs", "InstallTargetHandMaintained"),
+        ] {
+            let refused = install_convergence_stage_with_backend(
+                &model,
+                &workspace,
+                &stage0,
+                &candidate,
+                &[basename.to_string()],
+                &HashMap::new(),
+                &HashMap::new(),
+                1,
+                RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
+                "seed-0",
+                "generation-0",
+                "tree-0",
+                "manifest-0",
+                "closure-0",
+                &subject,
+                |_| -> Result<CargoBuildObservation, String> {
+                    panic!("a refused install must never reach the seed build")
+                },
+                || -> Result<String, String> {
+                    panic!("a refused install must never reach a seed digest")
+                },
+            )
+            .unwrap_err();
+            // ACCUMULATED, NOT ASSERTED PER ARM. Asserting inside the loop aborts at the first
+            // mismatch, so a run proves only the FIRST arm discriminates and says nothing about
+            // the rest — and the arms exercise different branches. Collecting every mismatch
+            // makes one red run report all three causes at once.
+            if !refused.contains(cause) {
+                mismatches.push(format!(
+                    "installing {basename} refused with {refused}, expected {cause}"
+                ));
+            }
+        }
+        // POSITIVE CONTROL for the symlink arm: the SAME basename shape with an ordinary regular
+        // destination must NOT refuse for containment. Without this, an admission that refused
+        // every destination would pass the arm above while discriminating nothing.
+        fs::write(stage0.join("plain_generated.rs"), "// regular file\n").unwrap();
+        let control = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &["plain_generated.rs".to_string()],
+            &HashMap::new(),
+            &HashMap::new(),
+            1,
+            RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "closure-0",
+            &subject,
+            |_| -> Result<CargoBuildObservation, String> {
+                panic!("this control must never reach the seed build")
+            },
+            || -> Result<String, String> { panic!("this control must never reach a seed digest") },
+        )
+        .unwrap_err();
+        if control.contains("InstallDestinationNotARegularFile")
+            || control.contains("InstallTargetNotABareBasename")
+        {
+            mismatches.push(format!(
+                "a regular destination was refused by admission: {control}"
+            ));
+        }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+
+        // The refusal is BEFORE the mutation boundary, not a rollback of one: no artifact landed,
+        // and no authoritative byte moved and came back.
+        assert!(!stage0.join("Cargo.toml").exists());
+        assert!(!stage0.join("cli_run.rs").exists());
+        assert!(!stage0.join("nested").exists());
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
+            subject_before
+        );
+
+        // POSITIVE CONTROL. The same entry point, one generated Rust surface, installs — so the
+        // arms above measure the artifact kind and not a call that refuses everything.
+        let rows = [("fixture_subject.rs", "fixture.subject", "// new subject\n")];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+        install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "generation-input-cut",
+            &subject,
+            |_| {
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
+            "// new subject\n"
+        );
+    }
+
+    #[test]
+    fn complete_candidate_population_refuses_an_unreadable_entry_and_sorts_successes() {
+        let candidate = PathBuf::from("fixture-candidate");
+        let refused = observe_complete_candidate_artifact_population_from_entries(
+            &candidate,
+            "fixture-observation",
+            vec![
+                Ok(candidate.join("a.rs")),
+                Err("injected read_dir entry failure".to_string()),
+                Ok(candidate.join("b.rs")),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused,
+            "CandidateManifestPopulationUnreadable: candidate_path=fixture-candidate phase=fixture-observation error=injected read_dir entry failure"
+        );
+
+        let observed = observe_complete_candidate_artifact_population_from_entries(
+            &candidate,
+            "fixture-observation",
+            vec![Ok(candidate.join("b.rs")), Ok(candidate.join("a.rs"))],
+        )
+        .unwrap();
+        assert_eq!(observed, vec!["a.rs".to_string(), "b.rs".to_string()]);
+    }
+
     /// HOST-PATH INSTRUMENT: this calls the same journal/install/build/admission orchestration as
     /// production. Only the external seed build and executable digest are hermetic callbacks.
     #[test]
     fn mutating_transaction_binds_candidates_restores_and_reaches_staged_fixed_point() {
         let roots = fixture_roots();
         let model = RegenConvergenceModel::load(&roots).unwrap();
+
+        // An emitted non-Rust artifact is admitted from the writer's exact output population,
+        // not from a basename exception. This is the crate-layout-product shape without naming
+        // any particular product path in the manifest authority.
+        let (_, _, emitted_artifact_candidate, _) = fixture_workspace();
+        fs::write(
+            emitted_artifact_candidate.join("fixture-layout.artifact"),
+            "emitted layout bytes\n",
+        )
+        .unwrap();
+        let emitted_artifact_manifest = produce_candidate_manifest(
+            &emitted_artifact_candidate,
+            &[],
+            &["fixture-layout.artifact".to_string()]
+                .into_iter()
+                .collect(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-emitted-artifact",
+        )
+        .unwrap();
+        assert_eq!(emitted_artifact_manifest.surfaces.len(), 1);
+        assert!(matches!(
+            emitted_artifact_manifest.surfaces[0].role,
+            RegenCandidateManifestSurfaceRole::GeneratedSurface
+        ));
+
+        // Relative-path identity is load-bearing: a nested file cannot borrow the generated role
+        // of an emitted root artifact merely because their basenames collide.
+        let (_, _, emitted_collision_candidate, _) = fixture_workspace();
+        fs::create_dir_all(emitted_collision_candidate.join("nested")).unwrap();
+        fs::write(
+            emitted_collision_candidate.join("nested/fixture-layout.artifact"),
+            "nested foreign bytes\n",
+        )
+        .unwrap();
+        assert!(produce_candidate_manifest(
+            &emitted_collision_candidate,
+            &[],
+            &["fixture-layout.artifact".to_string()]
+                .into_iter()
+                .collect(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-emitted-collision",
+        )
+        .unwrap_err()
+        .contains("CandidateManifestPopulationMismatch"));
+
+        // Bootstrap-source mirrors inhabit the same immutable candidate artifact as generated
+        // surfaces. Their role is bound by the manifest, and changing their bytes after
+        // production refuses before any install journal exists.
+        let (_, _, bootstrap_candidate, _) = fixture_workspace();
+        fs::create_dir_all(bootstrap_candidate.join("cli_run")).unwrap();
+        fs::write(
+            bootstrap_candidate.join("cli_run/fixture_support.txt"),
+            "original support bytes\n",
+        )
+        .unwrap();
+        let bootstrap_manifest = produce_candidate_manifest(
+            &bootstrap_candidate,
+            &[],
+            &BTreeSet::new(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-bootstrap",
+        )
+        .unwrap();
+        assert!(matches!(
+            bootstrap_manifest.surfaces[0].role,
+            RegenCandidateManifestSurfaceRole::BootstrapSourceMirror
+        ));
+        fs::write(
+            bootstrap_candidate.join("cli_run/fixture_support.txt"),
+            "tampered support bytes\n",
+        )
+        .unwrap();
+        assert!(admit_candidate_manifest(
+            &model,
+            &bootstrap_candidate,
+            &bootstrap_manifest,
+            "seed-0"
+        )
+        .unwrap_err()
+        .contains("CandidateManifestTreeDigestMismatch"));
+
+        // A file with neither a generated-surface row nor a bootstrap-source-mirror row remains
+        // foreign to the complete artifact and is refused at the population wall.
+        let (_, _, foreign_candidate, _) = fixture_workspace();
+        let foreign_rows = [(
+            "fixture_generated.rs",
+            "fixture.generated",
+            "// generated\n",
+        )];
+        let (foreign_manifest, _) = fixture_manifest(&foreign_candidate, &foreign_rows);
+        fs::write(foreign_candidate.join("foreign.bin"), b"foreign bytes\n").unwrap();
+        assert!(
+            admit_candidate_manifest(&model, &foreign_candidate, &foreign_manifest, "seed-0")
+                .unwrap_err()
+                .contains("CandidateManifestPopulationMismatch")
+        );
 
         // A candidate changed after its generation manifest is refused before a journal exists.
         let (workspace, stage0, candidate, subject) = fixture_workspace();
@@ -5484,7 +6081,7 @@ mod regen_convergence_host_instrument_tests {
         let journal_root = regen_convergence_journal_path(&workspace);
         let backup = fs::read_dir(&journal_root)
             .unwrap()
-            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.expect("fixture journal directory entry must remain readable"))
             .map(|entry| entry.path())
             .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bak"))
             .unwrap();

@@ -26,6 +26,7 @@ import gunbc.spark.serving_membership {
   SparkServingUserUnitAddress,
   SparkServingUserUnitRegistrationAddress,
   SparkServingUserUnitEnablementAddress,
+  SparkServingUserUnitActivityAddress,
   SparkServingModelSlotAddress,
   SparkServingLingerAddress,
   spark_serving_resource_address_wire,
@@ -691,6 +692,151 @@ fn scheduled_rows_from_frozen_schedule<Row>(
   }
 }
 
+// THE SPARK AXIS IS A DISPOSITION, NOT A PAIR OF LISTS.
+//
+// The full-host artifact took `observed_spark` (which feeds the observed baseline) and the scheduled
+// rows as two independent parameters, so a caller could hand it members from one observation and a
+// schedule planned from another. The baseline would then fingerprint a state the rows were never
+// derived from -- and the baseline is precisely what apply re-checks to decide the plan still
+// applies, so the disagreement would be invisible at exactly the moment it mattered. That is the
+// same class #9754 closed one field over: a fact carried twice, joinable only by convention.
+//
+// A PAIR WAS NOT ENOUGH, AND THE FIRST ATTEMPT HERE WAS ONE. Binding members to rows fixes the
+// splice but leaves three different situations sharing one representation: a subject that is not a
+// Spark at all, a Spark whose observation REFUSED, and a Spark that was observed and owes no writes.
+// The first version answered all three with empty-members-plus-empty-rows through a standalone
+// `spark_serving_axis_product_unobserved()` mint -- which also falsified the claim that only the row
+// producer could mint the carrier. Collapsing a refusal into "observed nothing, do nothing" is the
+// absorbing fallback DESIGN §5 names, sitting in the input to a converge.
+//
+// So the arms are distinct and the empty mint is deleted rather than kept beside them. NotApplicable
+// is honest for a non-Spark host; Unobserved is honest for a Spark nobody probed; Refused carries
+// why and cannot become an empty plan; Planned carries the members and the rows TOGETHER, minted
+// only where both were derived from one observation.
+//
+// UNOBSERVED IS A SEPARATE ARM BECAUSE THE FIRST VERSION HAD THE CLI CALL EVERY HOST NotApplicable,
+// AND THAT WAS A LIE. srv5 and srv6 are enrolled Sparks; saying the Spark axis does not apply to
+// them ASSERTS a fact, where the empty product it replaced merely failed to carry one. That is
+// strictly worse -- it converted missing evidence into a false claim. Unobserved says what is true,
+// and it refuses at the artifact's exhaustive match rather than planning an empty schedule, so the
+// unwired observer is LOUD instead of quietly producing a plan with no Spark axis in it. The host travels in the arm rather than as a second parameter, so it cannot disagree
+// with the observation that produced it.
+//
+// It is generic in the row for the same reason ScheduledRows is: the row type is declared upstream
+// in the plan layer, and naming it here would close an import cycle.
+// THE PLANNED PAYLOAD IS OPAQUE, SO A PLAN CANNOT BE ASSEMBLED OUT OF ARBITRARY PARTS.
+//
+// SparkServingAxisPlanned used to carry host, observed_members and rows as three public fields, so
+// anything could author one: srv3's identity beside srv5's members beside rows from a third place,
+// and the artifact's host join would happily accept it because all three agreed with each other by
+// the author's arrangement rather than by provenance. The host guard was a real mechanical wall, but
+// it walled the wrong thing -- it checked that two supplied values matched, not that either was
+// obtained by observing anything.
+//
+// BoundSparkServingAxisPlan is sole_constructor and lives here, so the only mint is the row producer
+// that consumed a transaction. Everything in it -- the host, the members, the rows, and the attempt
+// and locus they were read under -- is a projection of ONE producer's output rather than a record
+// somebody filled in. The artifact may project members and rows back out of it precisely because it
+// can no longer have been assembled from independent arguments.
+// IT CARRIES THE PROVENANCE VALUE, NOT TWO STRINGS COPIED OUT OF IT.
+//
+// The first cut lifted attempt and locus out of the projection's provenance into two flat fields,
+// which quietly re-created the thing provenance exists to stop: two facts travelling beside each
+// other with nothing binding them, and no way to ask whether the observation behind them was
+// acquired, refused, or hermetic. The whole value travels, so a consumer can ask.
+type BoundSparkServingAxisPlan<Row> sole_constructor {
+  host: HostIdentity
+  provenance: SparkServingObservationProvenance
+  observed_members: List<SparkServingMember>
+  rows: ScheduledRows<Row>
+}
+
+// COMPUTATION AND PRIVILEGE ARE TWO FACTS, SO THEY ARE TWO TYPES.
+//
+// The row producer used to hold the mint, which conflated "these are the rows this observation
+// implies" -- a pure derivation any caller may perform -- with "this schedule is bound to an
+// ACQUIRED observation", which is the claim the whole carrier exists to make. Holding both meant the
+// producer bound whatever provenance it was handed, including a refused or hermetic one, and nothing
+// on the path ever matched the arm. The producer now answers with the computation alone; the binding
+// is a separate, sealed step performed only where the acquired arm has actually been matched.
+type SparkServingComputedRows<Row> sole_constructor {
+  host: HostIdentity
+  observed_members: List<SparkServingMember>
+  rows: ScheduledRows<Row>
+}
+
+fn spark_serving_computed_rows<Row>(
+  host: HostIdentity,
+  observed_members: List<SparkServingMember>,
+  rows: ScheduledRows<Row>,
+) -> SparkServingComputedRows<Row>
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_converge_plan",
+      decl_name: "spark_serving_scheduled_rows_for_release",
+    ),
+  ]
+{
+  SparkServingComputedRows { host: host, observed_members: observed_members, rows: rows }
+}
+
+// THE BINDING IS THE PRIVILEGE, AND IT IS ADMITTED TO ONE CALLER.
+//
+// sole_constructor stopped an outside record literal; it did not stop an outside module calling this
+// factory with arbitrary members and rows, which is the forgery the opaque payload was introduced to
+// prevent. The single admitted caller reaches this only from inside the SparkServingObservationAcquired
+// arm, so a bound plan cannot exist over a refused or hermetic observation -- which is what makes the
+// provenance field evidence rather than a label.
+//
+// The host is taken from the COMPUTATION rather than supplied, and the caller is required to have
+// established that it equals the acquired provenance's host before arriving here; there is no second
+// host parameter for the first to disagree with.
+fn spark_serving_bound_axis_plan<Row>(
+  provenance: SparkServingObservationProvenance,
+  computed: SparkServingComputedRows<Row>,
+) -> BoundSparkServingAxisPlan<Row>
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_converge_plan",
+      decl_name: "spark_serving_axis_for_observation",
+    ),
+  ]
+{
+  BoundSparkServingAxisPlan {
+    host: computed.host,
+    provenance: provenance,
+    observed_members: computed.observed_members,
+    rows: computed.rows,
+  }
+}
+
+type SparkServingAxisDisposition<Row>
+  = SparkServingAxisNotApplicable { host: HostIdentity }
+  | SparkServingAxisUnobserved { host: HostIdentity }
+  | SparkServingAxisRefused { host: HostIdentity, cause: String }
+  | SparkServingAxisPlanned { plan: BoundSparkServingAxisPlan<Row> }
+
+// The members the artifact's observed baseline must fingerprint. A refusal contributes none -- and
+// that is not the same as an observed-empty population, which is why the caller must consult the
+// arm rather than this projection alone.
+fn spark_serving_axis_host<Row>(a: SparkServingAxisDisposition<Row>) -> HostIdentity {
+  match a {
+    SparkServingAxisNotApplicable { host: h } => h
+    SparkServingAxisUnobserved { host: h } => h
+    SparkServingAxisRefused { host: h, cause: _ } => h
+    SparkServingAxisPlanned { plan: p } => p.host
+  }
+}
+
+// THE PROJECTIONS ARE DELETED, NOT NARROWED: A REFUSAL HAS NO ROWS.
+//
+// spark_serving_axis_observed_members, spark_serving_axis_rows and spark_serving_axis_refusal used
+// to answer three separate questions about one disposition, and both non-plannable arms projected to
+// an empty member list and an empty schedule. That is an executable empty schedule minted FROM a
+// refusal: a caller that asked for rows without also asking for the refusal assembled a well-formed
+// plan for a host nobody observed, and the artifact was safe only because it happened to ask in the
+// right order. The disposition is a closed sum, so matching it exhaustively is enforced by the
+// compiler and costs nothing; that is now the only way to read it.
 fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> List<Row> {
   scheduled.rows
 }

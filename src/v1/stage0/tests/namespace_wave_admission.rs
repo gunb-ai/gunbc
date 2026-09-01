@@ -284,6 +284,55 @@ fn a_spelling_that_stops_denoting_anything_refuses_as_new_unresolvedness() {
     assert!(!report_unadjudicated(&report).is_empty());
 }
 
+#[test]
+fn removing_a_structural_import_keeps_a_kernel_name_resolved() {
+    let structural = "module probe.structural\n\ntype String = List<Int>\n";
+    let with_import = "module probe.consumer\n\nimport probe.structural { String }\n\nfn use_it(value: String) -> String { value }\n";
+    let without_import = "module probe.consumer\n\nfn use_it(value: String) -> String { value }\n";
+    let report = compare(
+        "kernel_string_import_removed",
+        &[
+            ("structural.dag", structural),
+            ("consumer.dag", with_import),
+        ],
+        &[
+            ("structural.dag", structural),
+            ("consumer.dag", without_import),
+        ],
+    );
+    assert!(
+        dispositions_for(&report, "String").is_empty(),
+        "bare String resolves to the ambient kernel identity on both sides; removing an import \
+         the kernel precedence never selected must not fabricate unresolvedness: {:?}",
+        report.deltas
+    );
+    assert_eq!(
+        membership_dispositions(&report, "probe.structural"),
+        vec![NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved],
+        "the structural import supplied no selected binding and its removal must be measured as \
+         unused membership: {:?}",
+        report.deltas
+    );
+    assert!(report_unadjudicated(&report).is_empty());
+}
+
+#[test]
+fn an_unknown_bare_name_still_refuses_as_unresolvedness_beside_kernel_control() {
+    let base = "module probe.consumer\n\ndata widget: String = \"w\"\n\nfn use_it() -> String { widget }\n";
+    let head = "module probe.consumer\n\nfn use_it() -> String { widget }\n";
+    let report = compare(
+        "unknown_beside_kernel_control",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert_eq!(
+        dispositions_for(&report, "widget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "recognizing ambient kernel names must not widen arbitrary bare names: {:?}",
+        report.deltas
+    );
+}
+
 // ── `0 -> 1` IS TWO STATES, AND THESE TWO ARMS ARE THE DISCRIMINATING PAIR ──
 //
 // The two fixtures differ in ONE fact: which side's author wrote something. In the first the
@@ -435,6 +484,7 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
             module: "probe.consumer",
             in_declaration: "use_it",
             spelling: "widget",
+            target: "probe.other",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -485,6 +535,7 @@ const AUTHORED_LIKE_PRODUCTION: &[TransitionAdmission] = &[TransitionAdmission {
         module: "probe.consumer",
         in_declaration: "use_it",
         spelling: "widget",
+        target: "probe.other",
     },
     disposition: NamespaceDeltaDisposition::TargetChanged,
 }];
@@ -555,6 +606,7 @@ fn a_row_naming_the_empty_module_refuses_rather_than_admitting_silently() {
             module: "",
             in_declaration: "",
             spelling: "",
+            target: "",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -595,6 +647,7 @@ fn an_admission_naming_a_different_subject_does_not_admit_and_reports_stale() {
             module: "probe.consumer",
             in_declaration: "use_it",
             spelling: "gadget",
+            target: "probe.other",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -1603,5 +1656,181 @@ fn deleting_a_type_a_variant_payload_field_still_names_is_still_unresolvedness()
         "`Gadget` is a variant payload field's declared TYPE; deleting its only declaration \
          leaves the payload denoting nothing and the wall must say so. got: {:?}",
         report.deltas
+    );
+}
+
+// ── THE CONSUMED/UNMATCHED SPLIT (the eighth-dissolution class made a wall) ──
+//
+// Eight roster generations conflated consumed-by-merge with author-error in one stale refusal,
+// billing the cleanup to whichever unrelated PR pushed next. The split's evidence is the three
+// arms below: the RED (an unmatched row still refuses, and specifically does NOT acquire an
+// expiry), the positive control (a provably consumed row is typed and refuses nothing), and the
+// discriminator (one run holding both rows lands exactly one in each vec — two arms that agree
+// on every tested input are one arm).
+
+/// THE RED, run against the split itself: a row provable against neither side must refuse as an
+/// UnmatchedAdmission. The revert arm is the second assertion — under the wrong implementation
+/// (ConsumedByMerge as the else-arm of "matched no delta"), this row would land in
+/// `consumed_admissions` and vanish from `stale_admissions`, so the pair of assertions
+/// discriminates on the split and not on anything beneath it.
+#[test]
+fn an_unmatched_row_refuses_and_is_never_typed_consumed() {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+    ];
+    let admissions = [TransitionAdmission {
+        label: "matches-nothing-anywhere",
+        subject: AdmissionSubject::Binding {
+            module: "probe.consumer",
+            in_declaration: "use_it",
+            spelling: "gadget",
+            target: "probe.other",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    }];
+    let report = compare_with("unmatched_never_consumed", &sides, &sides, &admissions);
+    assert!(
+        report
+            .stale_admissions
+            .iter()
+            .any(|s| s.contains("matches-nothing-anywhere")),
+        "an author-error row must refuse as an UnmatchedAdmission: {:?}",
+        report.stale_admissions
+    );
+    assert!(
+        report.consumed_admissions.is_empty(),
+        "the consumed arm must be unreachable by fallthrough — a row provable against neither \
+         side acquired an expiry: {:?}",
+        report.consumed_admissions
+    );
+}
+
+/// THE POSITIVE CONTROL: the base already binds the spelling to exactly the admitted target
+/// (the relocation merged), so the row is typed ConsumedByMerge and refuses nothing.
+#[test]
+fn a_consumed_row_is_typed_and_does_not_red_an_unrelated_run() {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let report = compare_with(
+        "consumed_row_inert",
+        &sides,
+        &sides,
+        AUTHORED_LIKE_PRODUCTION,
+    );
+    assert!(
+        report
+            .consumed_admissions
+            .iter()
+            .any(|c| c.contains("authored-in-a-const")),
+        "a row whose relocation the base already satisfies must be typed consumed: stale={:?} \
+         consumed={:?}",
+        report.stale_admissions,
+        report.consumed_admissions
+    );
+    assert!(
+        report.stale_admissions.is_empty(),
+        "a consumed row must not also refuse: {:?}",
+        report.stale_admissions
+    );
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "the unrelated run itself must stay admitted"
+    );
+}
+
+/// THE DISCRIMINATOR: one run holding a consumed row AND an unmatched row must land exactly one
+/// in each vec. A split whose arms cannot be separated on one input is one arm.
+#[test]
+fn one_run_separates_a_consumed_row_from_an_unmatched_one() {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let admissions = [
+        TransitionAdmission {
+            label: "consumed-here",
+            subject: AdmissionSubject::Binding {
+                module: "probe.consumer",
+                in_declaration: "use_it",
+                spelling: "widget",
+                target: "probe.other",
+            },
+            disposition: NamespaceDeltaDisposition::TargetChanged,
+        },
+        TransitionAdmission {
+            label: "unmatched-here",
+            subject: AdmissionSubject::Binding {
+                module: "probe.consumer",
+                in_declaration: "use_it",
+                spelling: "gadget",
+                target: "probe.other",
+            },
+            disposition: NamespaceDeltaDisposition::TargetChanged,
+        },
+    ];
+    let report = compare_with("split_discriminator", &sides, &sides, &admissions);
+    assert_eq!(
+        report
+            .consumed_admissions
+            .iter()
+            .filter(|c| c.contains("consumed-here"))
+            .count(),
+        1,
+        "consumed={:?}",
+        report.consumed_admissions
+    );
+    assert_eq!(
+        report
+            .stale_admissions
+            .iter()
+            .filter(|s| s.contains("unmatched-here"))
+            .count(),
+        1,
+        "stale={:?}",
+        report.stale_admissions
+    );
+    assert!(
+        !report
+            .consumed_admissions
+            .iter()
+            .any(|c| c.contains("unmatched-here")),
+        "the unmatched row leaked into the consumed arm: {:?}",
+        report.consumed_admissions
+    );
+}
+
+/// A row whose spelling the base binds AMBIGUOUSLY (two declarers) is not provably consumed —
+/// the singleton-set requirement is load-bearing, not decoration.
+#[test]
+fn an_ambiguous_base_binding_is_not_consumption() {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_BOTH),
+    ];
+    let report = compare_with(
+        "ambiguous_not_consumed",
+        &sides,
+        &sides,
+        AUTHORED_LIKE_PRODUCTION,
+    );
+    assert!(
+        report.consumed_admissions.is_empty(),
+        "an ambiguous base binding must not prove consumption: {:?}",
+        report.consumed_admissions
+    );
+    assert!(
+        report
+            .stale_admissions
+            .iter()
+            .any(|s| s.contains("authored-in-a-const")),
+        "the unprovable row must still refuse: {:?}",
+        report.stale_admissions
     );
 }
