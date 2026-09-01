@@ -5,6 +5,7 @@ use self::ClockBasis::*;
 use self::ClockDomain::*;
 use self::InstantOrder::*;
 use self::PositiveCelsiusDelta::*;
+use self::PositiveSlotCount::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
@@ -561,6 +562,19 @@ pub fn positive_measure_count_value(count: Rc<PositiveMeasureCount>) -> i64 {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum PositiveSlotCount {
+    PositiveSlotCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveSlotCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveSlotCount::PositiveSlotCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum PositiveCelsiusDelta {
     PositiveCelsiusDeltaValue { count: Rc<PositiveMeasureCount> },
 }
@@ -714,6 +728,20 @@ pub fn celsius_delta(count: i64) -> CelsiusDelta {
 
 pub fn celsius_delta_count(delta: CelsiusDelta) -> i64 {
     measure_count(delta.clone())
+}
+
+pub fn positive_slot_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveSlotCount> {
+    Rc::new(PositiveSlotCount::PositiveSlotCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_slot_count_value(slots: Rc<PositiveSlotCount>) -> i64 {
+    match (*slots.clone()).clone() {
+        PositiveSlotCount::PositiveSlotCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
 }
 
 pub fn positive_celsius_delta(count: Rc<PositiveMeasureCount>) -> Rc<PositiveCelsiusDelta> {

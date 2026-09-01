@@ -1,7 +1,7 @@
 module gunbc.spark.serving_install_paths
 
 import std.types { String, FilePath, NonEmptyStr }
-import std.measure { TokenCount }
+import std.measure { TokenCount, PositiveSlotCount }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.spark.serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
@@ -57,7 +57,7 @@ type SparkServingUserUnitSpec {
   restart: NonEmptyStr
   wanted_by: NonEmptyStr
   default_context: TokenCount
-  serving_slots: Nat
+  serving_slots: PositiveSlotCount
 }
 
 // THE MODEL STORE PATHS, derived from the same models root the unit's OLLAMA_MODELS points at, so
@@ -320,7 +320,7 @@ fn spark_serving_user_unit_path() -> FilePath {
 fn spark_serving_user_unit_spec(
   bind_host_port: NonEmptyStr,
   default_context: TokenCount,
-  serving_slots: Nat,
+  serving_slots: PositiveSlotCount,
 ) -> SparkServingUserUnitSpec {
   SparkServingUserUnitSpec {
     description: "gunbc Spark serving (Ollama gpt-oss:20b)" as NonEmptyStr,

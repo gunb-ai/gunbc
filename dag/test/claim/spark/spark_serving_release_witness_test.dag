@@ -1,7 +1,7 @@
 module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.measure { token_count, token_count_value }
+import std.measure { token_count, token_count_value, positive_slot_count, positive_measure_count }
 import std.content_hash { content_hash_of_value, ContentHash }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_realization {
@@ -81,7 +81,7 @@ fn profile_base() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
     bind: witness_bind(),
     default_context: token_count(count: 4096),
-    serving_slots: 4,
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
   }
 }
 
@@ -89,7 +89,7 @@ fn profile_other_window() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
     bind: witness_bind(),
     default_context: token_count(count: 8192),
-    serving_slots: 4,
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
   }
 }
 

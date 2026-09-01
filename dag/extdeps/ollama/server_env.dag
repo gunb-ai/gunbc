@@ -1,8 +1,7 @@
 module extdeps.ollama.server_env
 
 import std.types { NonEmptyStr, String }
-import std.nat { Nat }
-import std.measure { TokenCount, token_count_value }
+import std.measure { TokenCount, token_count_value, PositiveSlotCount, positive_slot_count_value }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -115,9 +114,9 @@ fn ollama_context_length_env_assignment(default_context: TokenCount) -> NonEmpty
 // and the per-slot price is a property of the REALIZATION -- a compressed-cache architecture pays
 // little per slot and an uncompressed one pays a great deal. A slot count chosen against one model's
 // per-slot cost is not evidence for another's.
-fn ollama_num_parallel_env_assignment(slots: Nat) -> NonEmptyStr {
+fn ollama_num_parallel_env_assignment(slots: PositiveSlotCount) -> NonEmptyStr {
   ollama_server_env_assignment(
     variable: OllamaNumParallel,
-    value: to_string(slots) as NonEmptyStr,
+    value: to_string(positive_slot_count_value(slots: slots)) as NonEmptyStr,
   )
 }
