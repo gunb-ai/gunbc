@@ -1,0 +1,180 @@
+module v2.workflow.local_repo_wet_terminal
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { Cons, Empty }
+
+// WHY THIS AUTHORITY EXISTS. `v2.workflow.floor_route_gap` gives an enrolled hermetic route gap a
+// truthful DEBT disposition: the identity executed, reached a host effect the hermetic route has no
+// arm for, and is counted and held. Held is not a verdict, and the changed-witness gate is right to
+// block on it -- a witness that reached no verdict on the day it was authored has established
+// nothing, and two enrolment rows added in the same change would otherwise let an author authorize
+// their own witness's permanent non-execution.
+//
+// What was missing is not awareness of route gaps; it is an ALTERNATE TERMINAL to join against
+// them. This module is that terminal: one receipt per scheduled identity, bound to the candidate it
+// ran against, so "the hermetic route could not reach it" can be paired with "a route that can
+// reach it did, on THIS tree, and it passed".
+//
+// THE RECEIPT IS BOUND TO A CANDIDATE, AND THAT BINDING IS THE WHOLE POINT. A terminal fact with no
+// candidate is a claim that the witness passed SOMEWHERE, which is exactly the standing that let a
+// deleted workflow read as coverage for months. The candidate is carried so a receipt from another
+// tree is a typed refusal rather than an accepted substitute.
+
+type LocalRepoWetVerdict
+  = LocalRepoWetPassed
+  | LocalRepoWetFailed
+  | LocalRepoWetRefused { detail: String }
+  | LocalRepoWetNonterminal { detail: String }
+
+fn local_repo_wet_verdict_is_passed(v: LocalRepoWetVerdict) -> Bool {
+  match v {
+    LocalRepoWetPassed => true
+    LocalRepoWetFailed => false
+    LocalRepoWetRefused { detail: _ } => false
+    LocalRepoWetNonterminal { detail: _ } => false
+  }
+}
+
+// ONE SCHEDULED IDENTITY. The entry and function are the two halves of the identity the executor is
+// asked to run; `expected` is what the roster says the terminal must be, so a witness enrolled as
+// an expected-red is not silently required to pass.
+type LocalRepoWetScheduled {
+  identity: String
+  entry: String
+  function: String
+  expected: LocalRepoWetVerdict
+}
+
+// ONE TERMINAL RECEIPT. `candidate` is the tree or commit the executor actually ran against.
+type LocalRepoWetTerminal {
+  identity: String
+  entry: String
+  function: String
+  candidate: String
+  observed: LocalRepoWetVerdict
+}
+
+// THE REFUSALS ARE SEPARATED BY REMEDY, not collapsed into "the receipt is bad". A missing receipt
+// means the executor did not run the identity; a foreign candidate means it ran somewhere else; a
+// foreign entry or function means the roster and the executor disagree about what was run; a
+// duplicate means two rows claim one fact and neither can be trusted over the other. Each sends a
+// reader to a different place.
+type LocalRepoWetJoinRefusal
+  = LocalRepoWetTerminalMissing { identity: String }
+  | LocalRepoWetTerminalDuplicated { identity: String, occurrences: Int }
+  | LocalRepoWetTerminalForeignCandidate { identity: String, observed: String, required: String }
+  | LocalRepoWetTerminalForeignEntry { identity: String, observed: String, required: String }
+  | LocalRepoWetTerminalForeignFunction { identity: String, observed: String, required: String }
+  | LocalRepoWetTerminalVerdictNotExpected { identity: String }
+  | LocalRepoWetTerminalUnscheduled { identity: String }
+
+type LocalRepoWetJoin
+  = LocalRepoWetJoinHolds
+  | LocalRepoWetJoinRefused { causes: List<LocalRepoWetJoinRefusal> }
+
+fn local_repo_wet_terminals_for(identity: String, terminals: List<LocalRepoWetTerminal>) -> List<LocalRepoWetTerminal> {
+  filter(terminals, t => t.identity == identity)
+}
+
+fn local_repo_wet_scheduled_has(identity: String, scheduled: List<LocalRepoWetScheduled>) -> Bool {
+  any(scheduled, s => s.identity == identity)
+}
+
+// THE FORWARD JOIN: every scheduled identity has exactly one terminal, for this candidate, naming
+// the entry and function the roster scheduled, with the verdict the roster expects.
+fn local_repo_wet_forward_causes(
+  scheduled: List<LocalRepoWetScheduled>,
+  terminals: List<LocalRepoWetTerminal>,
+  candidate: String,
+) -> List<LocalRepoWetJoinRefusal> {
+  fold(scheduled, init: [], f: fn(acc, s) {
+    let hits = local_repo_wet_terminals_for(identity: s.identity, terminals: terminals)
+    let n = hits.length()
+    if n == 0 {
+      concat(acc, [LocalRepoWetTerminalMissing { identity: s.identity }])
+    } else if n > 1 {
+      concat(acc, [LocalRepoWetTerminalDuplicated { identity: s.identity, occurrences: n }])
+    } else {
+      match first(hits) {
+        Absent => concat(acc, [LocalRepoWetTerminalMissing { identity: s.identity }])
+        Present { value: t } =>
+          if t.candidate != candidate {
+            concat(acc, [LocalRepoWetTerminalForeignCandidate { identity: s.identity, observed: t.candidate, required: candidate }])
+          } else if t.entry != s.entry {
+            concat(acc, [LocalRepoWetTerminalForeignEntry { identity: s.identity, observed: t.entry, required: s.entry }])
+          } else if t.function != s.function {
+            concat(acc, [LocalRepoWetTerminalForeignFunction { identity: s.identity, observed: t.function, required: s.function }])
+          } else if !local_repo_wet_verdict_is(a: t.observed, b: s.expected) {
+            concat(acc, [LocalRepoWetTerminalVerdictNotExpected { identity: s.identity }])
+          } else {
+            acc
+          }
+      }
+    }
+  })
+}
+
+// THE REVERSE JOIN, which is what makes this a SET EQUALITY rather than a coverage count. A
+// terminal for an identity nobody scheduled means the executor ran something the roster does not
+// describe, and accepting it would let an unscheduled row supply evidence for itself.
+fn local_repo_wet_reverse_causes(
+  scheduled: List<LocalRepoWetScheduled>,
+  terminals: List<LocalRepoWetTerminal>,
+) -> List<LocalRepoWetJoinRefusal> {
+  fold(terminals, init: [], f: fn(acc, t) {
+    if local_repo_wet_scheduled_has(identity: t.identity, scheduled: scheduled) {
+      acc
+    } else {
+      concat(acc, [LocalRepoWetTerminalUnscheduled { identity: t.identity }])
+    }
+  })
+}
+
+fn local_repo_wet_verdict_is(a: LocalRepoWetVerdict, b: LocalRepoWetVerdict) -> Bool {
+  match a {
+    LocalRepoWetPassed =>
+      match b { LocalRepoWetPassed => true, LocalRepoWetFailed => false, LocalRepoWetRefused { detail: _ } => false, LocalRepoWetNonterminal { detail: _ } => false }
+    LocalRepoWetFailed =>
+      match b { LocalRepoWetPassed => false, LocalRepoWetFailed => true, LocalRepoWetRefused { detail: _ } => false, LocalRepoWetNonterminal { detail: _ } => false }
+    LocalRepoWetRefused { detail: _ } =>
+      match b { LocalRepoWetPassed => false, LocalRepoWetFailed => false, LocalRepoWetRefused { detail: _ } => true, LocalRepoWetNonterminal { detail: _ } => false }
+    LocalRepoWetNonterminal { detail: _ } =>
+      match b { LocalRepoWetPassed => false, LocalRepoWetFailed => false, LocalRepoWetRefused { detail: _ } => false, LocalRepoWetNonterminal { detail: _ } => true }
+  }
+}
+
+// THE WHOLE JOIN, both directions. Empty scheduled and empty terminals is the positive control: no
+// rows in, no causes out, and the lane holds with nothing claimed.
+fn local_repo_wet_join(
+  scheduled: List<LocalRepoWetScheduled>,
+  terminals: List<LocalRepoWetTerminal>,
+  candidate: String,
+) -> LocalRepoWetJoin {
+  let causes = concat(
+    local_repo_wet_forward_causes(scheduled: scheduled, terminals: terminals, candidate: candidate),
+    local_repo_wet_reverse_causes(scheduled: scheduled, terminals: terminals),
+  )
+  if causes.length() == 0 { LocalRepoWetJoinHolds } else { LocalRepoWetJoinRefused { causes: causes } }
+}
+
+// THE ONE FACT THE CHANGED-WITNESS GATE ASKS FOR, per identity: is there a terminal for THIS
+// candidate, for this exact identity, whose observed verdict is Passed. It is deliberately narrower
+// than the join above -- the join answers whether the LANE is honest, this answers whether ONE
+// identity may be admitted -- and both must hold before the gate admits anything.
+fn local_repo_wet_identity_passed_on_candidate(
+  identity: String,
+  terminals: List<LocalRepoWetTerminal>,
+  candidate: String,
+) -> Bool {
+  let hits = filter(terminals, t => t.identity == identity && t.candidate == candidate)
+  if hits.length() != 1 {
+    false
+  } else {
+    match first(hits) {
+      Absent => false
+      Present { value: t } => local_repo_wet_verdict_is_passed(v: t.observed)
+    }
+  }
+}
