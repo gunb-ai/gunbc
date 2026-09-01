@@ -201,18 +201,14 @@ fn any_dominates(verdicts: List<DominanceVerdict>) -> Bool {
   fold(verdicts, init: false, f: (acc, v) => acc || verdict_dominates(v: v))
 }
 
-fn verdict_is_undecided(v: DominanceVerdict) -> Bool {
-  match v {
+fn any_undecided(verdicts: List<DominanceVerdict>) -> Bool {
+  fold(verdicts, init: false, f: (acc, v) => acc || match v {
     DominanceUndecided => true
     Dominates => false
     Dominated => false
     Equivalent => false
     Incomparable => false
-  }
-}
-
-fn any_undecided(verdicts: List<DominanceVerdict>) -> Bool {
-  fold(verdicts, init: false, f: (acc, v) => acc || verdict_is_undecided(v: v))
+  })
 }
 
 // on_pareto_front WAS HERE AND IS DELETED, for the reason pair_dominates was deleted above and now

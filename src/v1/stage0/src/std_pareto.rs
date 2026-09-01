@@ -233,22 +233,18 @@ pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
         })
 }
 
-pub fn verdict_is_undecided(v: DominanceVerdict) -> bool {
-    match v.clone() {
-        DominanceVerdict::DominanceUndecided => true,
-        DominanceVerdict::Dominates => false,
-        DominanceVerdict::Dominated => false,
-        DominanceVerdict::Equivalent => false,
-        DominanceVerdict::Incomparable => false,
-    }
-}
-
 pub fn any_undecided(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
     verdicts
         .iter()
         .cloned()
         .fold(false, |acc: bool, v: DominanceVerdict| {
-            (acc || verdict_is_undecided(v.clone()))
+            (acc || match v.clone() {
+                DominanceVerdict::DominanceUndecided => true,
+                DominanceVerdict::Dominates => false,
+                DominanceVerdict::Dominated => false,
+                DominanceVerdict::Equivalent => false,
+                DominanceVerdict::Incomparable => false,
+            })
         })
 }
 
