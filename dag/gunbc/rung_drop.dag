@@ -145,15 +145,15 @@ data rung_drop_roster: List<RungDrop> = [
   fabric_evidence_gating,
 ]
 
-// THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two.
-fn rung_drop_is_standing(drop: RungDrop) -> Bool {
-  match drop.standing {
+// THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
+// standing arm is read AT THE ONE SITE THAT CONSUMES IT rather than through a reusable
+// RungDropStanding -> Bool accessor: a named predicate beside a coproduct is a second, weaker
+// spelling of the variant the row already carries, and every later caller reaches for the Bool
+// instead of the arm it came from.
+fn standing_rung_drops() -> List<RungDrop> {
+  filter(rung_drop_roster, d => match d.standing {
     Standing => true
     Retired { trigger_fired: _ } => false
-  }
-}
-
-fn standing_rung_drops() -> List<RungDrop> {
-  filter(rung_drop_roster, d => rung_drop_is_standing(d))
+  })
 }
 
