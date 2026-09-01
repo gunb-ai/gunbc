@@ -76,6 +76,15 @@ import gunbc.scm.object_store {
   copy_object,
   StoredEdge,
   insert_from_structure,
+  store_authored_source,
+  find_object,
+  ScmObject,
+  SemanticNodeObject,
+  AuthoredSourceObject,
+  AuthoredSourceContent,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
+  authored_source_content,
 }
 import gunbc.scm.checkout {
   Commit,
@@ -1390,4 +1399,143 @@ fn scm_image_role_over_a_node_document() -> JsonValue {
 
 test fn scm_image_a_role_whose_value_is_a_node_merges() -> Bool {
   scm_image_merge_tag_for(document: scm_image_role_over_a_node_document()) == "merged"
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE AUTHORED-SOURCE ROUND TRIP, BOTH ARMS, THROUGH THE REAL CODEC.
+//
+// The re-review's bar asked for this and it was the one item still missing. Every other source claim
+// in this file drives a HAND-AUTHORED document into the decoder, which is the right shape for
+// refusals -- a refusal fixture must be able to author bytes no encoder would emit. It is the wrong
+// shape for the question this asks, which is whether the encoder and decoder agree about a file:
+// bytes in, document out, document in, and the SAME object back.
+//
+// BOTH ARMS, because AuthoredSourceContent has two constructors and the empty one is the one with a
+// reason to differ: it has no NonEmptyStr to carry, its identity comes from a different payload, and
+// an encoder that dropped it entirely would leave a document that still decodes. The claim compares
+// the decoded content against the content the store derived from the original text, so a codec that
+// round-tripped the empty file as a one-space file, or as nothing at all, goes red.
+//
+// The root is a NODE, not either file: a root naming a file is its own refusal
+// (scm_image_a_root_naming_a_file_refuses_at_decode), so a round trip rooted at one would be
+// asserting the refusal rather than the round trip.
+type SourceRoundTrip {
+  store: ObjectStore
+  root: NodeTarget
+  empty_locator: ObjectId
+  text_locator: ObjectId
+  ok: Bool
+}
+
+fn scm_image_source_round_trip_fixture() -> SourceRoundTrip {
+  match store_authored_source(store: empty_store(), text: "") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      SourceRoundTrip {
+        store: empty_store(),
+        root: NodeTargetUnresolved(content_hash(n: closure_doc_atom(identity: ^unused))),
+        empty_locator: content_hash(n: closure_doc_atom(identity: ^unused)),
+        text_locator: content_hash(n: closure_doc_atom(identity: ^unused)),
+        ok: false,
+      }
+    SourceStored { store: with_empty, source: empty_ref } =>
+      match store_authored_source(store: with_empty, text: "a nonempty file\n") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+          SourceRoundTrip {
+            store: empty_store(),
+            root: NodeTargetUnresolved(empty_ref.locator),
+            empty_locator: empty_ref.locator,
+            text_locator: empty_ref.locator,
+            ok: false,
+          }
+        SourceStored { store: with_both, source: text_ref } =>
+          match store_node(store: with_both, n: closure_doc_atom(identity: ^round_trip_root)) {
+            LocatorCollision { identity: _, existing: _, incoming: _ } =>
+              SourceRoundTrip {
+                store: empty_store(),
+                root: NodeTargetUnresolved(empty_ref.locator),
+                empty_locator: empty_ref.locator,
+                text_locator: text_ref.locator,
+                ok: false,
+              }
+            Stored { store: full, node: root } =>
+              SourceRoundTrip {
+                store: full,
+                root: NodeTargetResolved(root),
+                empty_locator: empty_ref.locator,
+                text_locator: text_ref.locator,
+                ok: true,
+              }
+          }
+      }
+  }
+}
+
+fn scm_image_content_at(store: ObjectStore, locator: ObjectId) -> AuthoredSourceContent? {
+  match find_object(store: store, identity: locator) {
+    Absent => none
+    Present { value: object } =>
+      match object {
+        SemanticNodeObject(_) => none
+        AuthoredSourceObject(record) => Present { value: record.content }
+      }
+  }
+}
+
+fn scm_image_content_matches(store: ObjectStore, locator: ObjectId, text: String) -> Bool {
+  match scm_image_content_at(store: store, locator: locator) {
+    Absent => false
+    Present { value: content } => content == authored_source_content(text: text)
+  }
+}
+
+test fn scm_image_an_authored_source_survives_the_wire_in_both_arms() -> Bool {
+  let fx = scm_image_source_round_trip_fixture()
+  fx.ok
+    && match decode_closure_document(
+      v: encode_closure_document(store: fx.store, root: fx.root)
+    ) {
+      ClosureDocRefused { cause: _ } => false
+      ClosureDocLoaded { store: back, root: _ } =>
+        (store_object_count(store: back) == store_object_count(store: fx.store))
+          && scm_image_content_matches(store: back, locator: fx.empty_locator, text: "")
+          && scm_image_content_matches(
+            store: back,
+            locator: fx.text_locator,
+            text: "a nonempty file\n",
+          )
+    }
+}
+
+// THE DISCRIMINATOR THE CLAIM ABOVE NEEDS, and it is about the two arms rather than about presence.
+// The empty file and a nonempty one are DIFFERENT objects with different locators, so a codec that
+// collapsed the arms -- decoding every source as empty, or the empty one as some fixed text -- would
+// satisfy a claim that merely found two objects. This asserts the arms are distinguished on the way
+// back: the locator that went in as empty comes back as AuthoredSourceEmpty, and the other as
+// AuthoredSourceText.
+test fn scm_image_the_two_authored_arms_stay_distinct_across_the_wire() -> Bool {
+  let fx = scm_image_source_round_trip_fixture()
+  fx.ok
+    && !object_id_eq(left: fx.empty_locator, right: fx.text_locator)
+    && match decode_closure_document(
+      v: encode_closure_document(store: fx.store, root: fx.root)
+    ) {
+      ClosureDocRefused { cause: _ } => false
+      ClosureDocLoaded { store: back, root: _ } =>
+        match scm_image_content_at(store: back, locator: fx.empty_locator) {
+          Absent => false
+          Present { value: empty_content } =>
+            match scm_image_content_at(store: back, locator: fx.text_locator) {
+              Absent => false
+              Present { value: text_content } =>
+                match empty_content {
+                  AuthoredSourceEmpty =>
+                    match text_content {
+                      AuthoredSourceText(_) => true
+                      AuthoredSourceEmpty => false
+                    }
+                  AuthoredSourceText(_) => false
+                }
+            }
+        }
+    }
 }
