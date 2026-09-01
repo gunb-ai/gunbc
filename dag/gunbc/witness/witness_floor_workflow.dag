@@ -1412,29 +1412,24 @@ fn wet_receipts_run_step() -> Step {
   }
 }
 
-// THE RECEIPT LANDS EVEN WHEN THE LANE IS RED — `!cancelled()` rather than the implicit
-// success() — because an honest fail receipt is the routed witnesses' verdict channel and an
-// absent receipt refuses every open pull request three days later. The lane's own red stays
-// on this job.
-data wet_receipts_pr_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: wet_receipts_pr_script -- hand-shell `run:` carrier committing the lane's generated receipt pair to its refresh branch and opening the carrying pull request. The git/gh body is a foreign-executor shell string. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled Pipeline step for this sequence AND a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on -- at which point this data row, wet_receipts_pr_body and the concat below delete together. The receipt pair itself is the modeled artifact (v2.workflow.floor_wet_route: JSON envelope authority, TSV canonical projection, floor-refused on drift).")
-
-data wet_receipts_pr_body: String = "cd \"$ROOT\"\ngit config user.name gunbc-ci-auto-heal\ngit config user.email gunbc-ci-auto-heal@users.noreply.github.com\ngit checkout -B 'wet-receipts/refresh'\ngit add dag/gunbc/witness/wet_lane\ngit commit -m \"wet-receipts: refresh lane receipt envelope (run $\{GITHUB_RUN_ID\})\"\ngit push -f origin 'wet-receipts/refresh'\nif ! gh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt envelope' --body \"Generated artifact pair: the wet-lane latest-attempt receipt envelope and its canonical TSV projection (v2.workflow.floor_wet_route), produced by workflow run $\{GITHUB_RUN_ID\} on $\{GITHUB_SHA\}. The required floor re-projects the TSV from the JSON and refuses on drift; regenerate via the wet-receipts job, never by hand.\"; then\n  state=$(gh pr view 'wet-receipts/refresh' --json state --jq .state 2>/dev/null || echo NONE)\n  if [ \"$state\" != 'OPEN' ]; then\n    echo \"::error::gh pr create failed and no open pull request carries wet-receipts/refresh (observed state: $state) - the receipt pair was pushed but is not carried by any PR; this is a publication failure, not the already-open case\" >&2\n    exit 1\n  fi\n  echo 'PR already open; the push refreshed it'\nfi\n"
-
-fn wet_receipts_pr_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: wet_receipts_pr_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      "set -eu\n",
-      concat("ROOT=", concat(ci_repo_root_shell(), concat("\n", wet_receipts_pr_body)))
-    )
-  )
-}
-
-// THE ARTIFACT UPLOAD RUNS ON EVERY EVENT AND THE COMMIT ONLY ON MAIN. A workflow_dispatch on
-// a branch is how a receipt is seeded or refreshed for an in-flight change (the changed-witness
-// remedy, and how this lane's own first receipt was produced): the dispatching author downloads
-// the artifact and commits it on their branch, so no lane run ever pushes to a ref it does not
-// own. The BuildBuddy remote executors cannot produce this receipt at all — the first attempt
+// THE UPLOAD IS THE LANE'S ONLY PUBLICATION, AND IT RUNS ON EVERY EVENT. This job executes the
+// routed rows and hands the receipt pair out as an artifact; it holds no repository-write step on
+// any ref, so no lane run pushes anywhere. Two consequences, and the second is the one that gets
+// forgotten. A workflow_dispatch is how a receipt is seeded or refreshed for an in-flight change
+// (the changed-witness remedy, and how this lane's own first receipt was produced): the
+// dispatching author downloads the artifact and commits it on their branch. AND THE SCHEDULED RUN
+// IS THE SAME SHAPE — it executes on its cron and uploads, and a person must land the pair before
+// the envelope ages past v2.workflow.floor_wet_route floor_wet_route_receipt_staleness_budget_secs
+// or the required floor refuses every open pull request. That recurring obligation is declared as
+// admitted debt, with its dissolution, at v2.workflow.floor_wet_route
+// wet_receipt_hand_commit_dissolve_on; read the window from that module rather than from a figure
+// repeated here. The hand step can only DELAY a receipt — the floor re-projects, re-digests and
+// re-joins every committed pair, so a hand-committed envelope the tree does not support is refused
+// exactly as a lane-committed one would be. THE RECEIPT IS UPLOADED EVEN WHEN THE LANE IS RED —
+// `!cancelled()` rather than the implicit success() — because an honest fail receipt is the routed
+// witnesses' verdict channel and an absent one refuses every open pull request once the budget
+// above elapses; the lane's own red stays on this job.
+// The BuildBuddy remote executors cannot produce this receipt at all — the first attempt
 // was OOM-killed at a ~0.9 GiB availability floor against the ~5 GiB the wet chain resides at —
 // which is why the lane is pinned to the repository's own runners and no local fallback is
 // documented.
@@ -1458,20 +1453,6 @@ fn wet_receipts_artifact_step() -> Step {
   }
 }
 
-fn wet_receipts_pr_step() -> Step {
-  RunStep {
-    name: Present { value: "Commit the receipt and open its pull request" },
-    id: none,
-    run: wet_receipts_pr_script(),
-    shell: none,
-    env: Present { value: [kv(key: "GH_TOKEN", value: yaml_string(s: "${{ github.token }}"))] },
-    working_directory: none,
-    if_condition: Present { value: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped' && github.ref == 'refs/heads/main'" },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
 fn wet_receipts_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: repo_self_build_command(bins: wet_receipts_required_bins)),
@@ -1485,11 +1466,6 @@ fn wet_receipts_bound_steps() -> List<WitnessFloorBoundStep> {
         step: wet_receipts_artifact_step(),
         role: capability_neutral,
         step_name: "Upload the receipt artifact",
-      },
-      WitnessFloorBoundStep {
-        step: wet_receipts_pr_step(),
-        role: capability_neutral,
-        step_name: "Commit the receipt and open its pull request",
       },
     ],
   )

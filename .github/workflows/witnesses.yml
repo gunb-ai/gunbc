@@ -314,29 +314,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped'"
-      - name: Commit the receipt and open its pull request
-        run: |
-          # dissolve-on: wet_receipts_pr_script -- hand-shell `run:` carrier committing the lane's generated receipt pair to its refresh branch and opening the carrying pull request. The git/gh body is a foreign-executor shell string. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled Pipeline step for this sequence AND a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on -- at which point this data row, wet_receipts_pr_body and the concat below delete together. The receipt pair itself is the modeled artifact (v2.workflow.floor_wet_route: JSON envelope authority, TSV canonical projection, floor-refused on drift).
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          cd "$ROOT"
-          git config user.name gunbc-ci-auto-heal
-          git config user.email gunbc-ci-auto-heal@users.noreply.github.com
-          git checkout -B 'wet-receipts/refresh'
-          git add dag/gunbc/witness/wet_lane
-          git commit -m "wet-receipts: refresh lane receipt envelope (run ${GITHUB_RUN_ID})"
-          git push -f origin 'wet-receipts/refresh'
-          if ! gh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt envelope' --body "Generated artifact pair: the wet-lane latest-attempt receipt envelope and its canonical TSV projection (v2.workflow.floor_wet_route), produced by workflow run ${GITHUB_RUN_ID} on ${GITHUB_SHA}. The required floor re-projects the TSV from the JSON and refuses on drift; regenerate via the wet-receipts job, never by hand."; then
-            state=$(gh pr view 'wet-receipts/refresh' --json state --jq .state 2>/dev/null || echo NONE)
-            if [ "$state" != 'OPEN' ]; then
-              echo "::error::gh pr create failed and no open pull request carries wet-receipts/refresh (observed state: $state) - the receipt pair was pushed but is not carried by any PR; this is a publication failure, not the already-open case" >&2
-              exit 1
-            fi
-            echo 'PR already open; the push refreshed it'
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-        if: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped' && github.ref == 'refs/heads/main'"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor]
