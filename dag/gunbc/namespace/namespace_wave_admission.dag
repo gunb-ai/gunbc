@@ -166,6 +166,38 @@ data namespace_wave_admission_note: String = "THE REQUIRED WAVE-ADMISSION WALL o
 // a required phase, armed on every push and pull request, whose RED is authorable at the
 // FIXTURE boundary and is authored there. It is not structurally guaranteed and this row does
 // not claim it: the motion stays perfectly writable and safety depends on the phase executing.
+// THE RENDERED BLAST RADIUS IS A MEASUREMENT ON MEMBERSHIP ROWS AND A CONSTANT ON BINDING ROWS,
+// AND BOTH PRINT IDENTICALLY. Recorded because the pair that discriminates them is transient.
+//
+// The paragraph above states the design correctly: closure is a pure function of MEMBERSHIP, so a
+// moved closure row is grouped under the membership delta that generates it and each such delta
+// carries the count of modules whose subject it moves. That is true of membership rows. It is not
+// true of what the reader sees, because v1_compiler.namespace_wave_admission render_delta appends
+// the same bracketed clause to EVERY delta, and on a binding delta the field it prints is the
+// literal 0 written at the binding construction site -- blast_radius is called only at the two
+// membership construction sites. So a binding row cannot report a nonzero radius for any input:
+// the zero is structural, not observed, and it is rendered in the shape of an observation.
+//
+// THE SPECIMEN, kept because a later reader cannot reconstruct it. gunbc#9907 qualified twenty
+// type positions in v2.compiler.tokenize from the kernel String to the structural declaration. The
+// wall enumerated sixteen TargetChanged binding deltas, every one rendering `closure blast radius:
+// 0 module(s)`, while the required floor refused the SAME head with typed errors at three call
+// sites in v2.compiler.source_authority -- a module the sixteen zeros appear to exonerate. Both
+// statements are about one commit. Neither instrument is wrong about its own question; the clause
+// answers a question about membership and is printed on rows that asked about binding.
+//
+// SO: A ZERO ON A BINDING ROW MUST NOT BE READ, QUOTED, OR RELIED ON AS EVIDENCE THAT A REBINDING
+// IS CONTAINED. It is not evidence of anything. Any lane currently treating it that way is reading
+// a constant as a measurement -- the reachability-read-as-occupancy shape, arrived at through the
+// renderer rather than the analysis.
+//
+// THIS ROW ESTABLISHES WHAT THE FIELD MEASURES AND DOES NOT REPAIR IT. The repair is a choice this
+// row deliberately leaves open, because it is a decision about the carrier and not about the
+// specimen: either the clause is omitted on rows whose subject is a binding, or the field stops
+// being an Int that a construction site can default and becomes a typed answer that can say the
+// question was not asked. The second is the DESIGN-consistent one -- an unasked question and a
+// measured zero are different states and share a spelling today -- but it changes the type every
+// construction site fills, so it is not a rider on a qualification lap.
 data namespace_wave_admission_occurrence_grain_stall: GuaranteeStall = GuaranteeStall {
   subject: "v1_compiler.namespace_wave_admission -- WHICH occurrence of a spelling took which member of its declaring-candidate set, where one declaration carries two occurrences of one spelling",
   current: Mitigatable,
