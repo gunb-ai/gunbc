@@ -18258,9 +18258,14 @@ mod map_shell_outputs_optional_stream_tests {
             span.clone(),
         );
         // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
+        // MINTED UNDER THE AUTHORITY, not under a literal. The fixture used to
+        // spell "from_key" here and passed only because extract_from_key carried
+        // a lenient arm accepting that spelling alongside "from". With the arm
+        // gone the literal names a property nothing reads, so the fixture would
+        // be testing a field the mechanism never sees.
         let from_key_prop = make_field_init_node(
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "from_key".to_string(),
+            crate::v1_std_core::field_from_key_property_name(),
             make_text_part_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
