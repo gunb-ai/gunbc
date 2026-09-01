@@ -49,16 +49,16 @@ fn local_repo_wet_verdict_is_passed(v: LocalRepoWetVerdict) -> Bool {
 
 // THE SCHEDULED EXPECTATION IS SINGLE-ARMED, AND THAT IS THE HONEST WIDTH.
 //
-// It carried the full four-arm LocalRepoWetVerdict, so the roster could declare a member expected
-// to fail, refuse, or reach no verdict. The executing host could realize none of that: it mapped
-// Passed to true, the other three arms to false, and compared Bools -- so Failed, Refused and
-// Nonterminal were one state to production, and a roster row declaring any of them would have been
+// It carried the whole LocalRepoWetVerdict, so the roster could declare a member expected to fail,
+// refuse, or reach no verdict. The executing host could realize none of that: it mapped Passed to
+// true, every other arm to false, and compared Bools -- so the non-passing arms were one state to
+// production, and a roster row declaring any of them would have been
 // an authority claiming a behaviour the only executor cannot perform. DESIGN section 4b calls that
 // rung inflation and section 5 calls the collapse a widened failure arm; both are closed by making
 // the type as wide as the contract and no wider.
 //
-// The OBSERVED side keeps all four arms, because the four are real outcomes and the refusal must
-// say which one occurred. What is narrowed is only what a roster may DEMAND. Admitting an
+// The OBSERVED side keeps every arm, because each is a real outcome and the refusal must say which
+// one occurred. What is narrowed is only what a roster may DEMAND. Admitting an
 // expected-red member is a widening of this type, arriving with the executor arm that realizes it.
 type LocalRepoWetExpectation = | LocalRepoWetExpectPassed
 
@@ -242,4 +242,72 @@ fn local_repo_wet_schedule() -> List<LocalRepoWetScheduled> {
 // second list beside this one.
 fn local_repo_wet_scheduled_identities() -> List<String> {
   local_repo_wet_schedule() |> map(s => s.identity)
+}
+
+// THE INVOCATION TOOTH. The join above enforces completeness CONDITIONAL ON THE HOST HAVING RUN THE
+// EXECUTOR: it compares a schedule against terminals, so it is silent about the one state where
+// there are no terminals because nothing was ever called. That is not a hypothetical residue, it is
+// the exact class this lane exists to repair -- `falsifier.yml` was deleted and five cadences went
+// on claiming a scheduled route for months, because the predicate that claimed the route and the
+// workflow that realized it were joined by nothing. `std.witness_admission` now returns true for
+// LocalRepoWetLane, so this module owes an independent wall for the same failure at its own grain:
+// schedule still nonempty, executor invocation gone, nobody notices.
+//
+// THE WALL CANNOT LIVE INSIDE THE EXECUTOR, because an assertion in a function that was deleted
+// does not execute. So execution becomes a VALUE the finalizer must be handed, absence is one of
+// its arms, and the floor's finalization asks this fold rather than asking the executor.
+type LocalRepoWetExecution
+  = LocalRepoWetExecutorNotInvoked
+  | LocalRepoWetExecutorRan { candidate: String, terminals: List<LocalRepoWetTerminal> }
+
+// SEPARATED BY REMEDY, like the join causes. An absent executor sends a reader to the floor's call
+// site; a foreign candidate says the executor ran, but not against this tree, which is a receipt
+// imported from elsewhere and is the standing this lane refuses by construction; a join cause sends
+// them to the roster or the member.
+type LocalRepoWetFinalizationRefusal
+  = LocalRepoWetExecutorAbsent { scheduled: Int }
+  | LocalRepoWetExecutionForeignCandidate { observed: String, required: String }
+  | LocalRepoWetFinalizationJoinCause { cause: LocalRepoWetJoinRefusal }
+
+type LocalRepoWetFinalization
+  = LocalRepoWetFinalizationHolds
+  | LocalRepoWetFinalizationRefused { causes: List<LocalRepoWetFinalizationRefusal> }
+
+// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once, with execution as an argument rather than
+// as an assumption.
+//
+// NOT-INVOKED WITH AN EMPTY SCHEDULE HOLDS, and that is not a hole: a lane that scheduled nobody
+// claims nobody, so there is nothing for an executor to have failed to run. It is `scheduled > 0`
+// that turns absence into a refusal, and `local_repo_wet_schedule` is non-empty by construction with
+// a witness of its own -- so the accepting cell of this arm is unreachable from production and
+// reachable from a fixture, which is where its control lives.
+fn local_repo_wet_finalize(
+  scheduled: List<LocalRepoWetScheduled>,
+  execution: LocalRepoWetExecution,
+  candidate: String,
+) -> LocalRepoWetFinalization {
+  match execution {
+    LocalRepoWetExecutorNotInvoked =>
+      if scheduled.length() == 0 {
+        LocalRepoWetFinalizationHolds
+      } else {
+        LocalRepoWetFinalizationRefused {
+          causes: [LocalRepoWetExecutorAbsent { scheduled: scheduled.length() }]
+        }
+      }
+    LocalRepoWetExecutorRan { candidate: ran_candidate, terminals: terminals } =>
+      if ran_candidate != candidate {
+        LocalRepoWetFinalizationRefused {
+          causes: [LocalRepoWetExecutionForeignCandidate { observed: ran_candidate, required: candidate }]
+        }
+      } else {
+        match local_repo_wet_join(scheduled: scheduled, terminals: terminals, candidate: candidate) {
+          LocalRepoWetJoinHolds => LocalRepoWetFinalizationHolds
+          LocalRepoWetJoinRefused { causes: cs } =>
+            LocalRepoWetFinalizationRefused {
+              causes: map(cs, c => LocalRepoWetFinalizationJoinCause { cause: c })
+            }
+        }
+      }
+  }
 }

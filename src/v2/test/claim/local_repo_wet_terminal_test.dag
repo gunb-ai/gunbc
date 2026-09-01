@@ -13,7 +13,11 @@ import v2.workflow.local_repo_wet_terminal {
   LocalRepoWetTerminalForeignCandidate, LocalRepoWetTerminalForeignEntry,
   LocalRepoWetTerminalForeignFunction, LocalRepoWetTerminalVerdictNotExpected,
   LocalRepoWetTerminalUnscheduled,
-  local_repo_wet_join, local_repo_wet_identity_passed_on_candidate,
+  LocalRepoWetExecution, LocalRepoWetExecutorNotInvoked, LocalRepoWetExecutorRan,
+  LocalRepoWetFinalization, LocalRepoWetFinalizationHolds, LocalRepoWetFinalizationRefused,
+  LocalRepoWetFinalizationRefusal, LocalRepoWetExecutorAbsent,
+  LocalRepoWetExecutionForeignCandidate, LocalRepoWetFinalizationJoinCause,
+  local_repo_wet_join, local_repo_wet_identity_passed_on_candidate, local_repo_wet_finalize,
 }
 
 // THE ACCEPTANCE MATRIX FOR THE WET TERMINAL JOIN, one arm per refusal, each discriminating on its
@@ -245,4 +249,95 @@ test fn the_gate_predicate_admits_only_an_exact_identity_candidate_and_pass() ->
       terminals: [terminal_matching(), terminal_matching()],
       candidate: fixture_candidate,
     )
+}
+
+// THE INVOCATION ARM, one cell per state of `LocalRepoWetExecution` against a nonempty schedule.
+// These are the fixture side of the wall; the executing side is the required floor itself, which
+// holds an execution value that is `NotInvoked` until the executor returns and hands this fold the
+// answer either way.
+
+fn finalize_of(execution: LocalRepoWetExecution) -> LocalRepoWetFinalization {
+  local_repo_wet_finalize(
+    scheduled: scheduled_one(expected: LocalRepoWetExpectPassed),
+    execution: execution,
+    candidate: fixture_candidate,
+  )
+}
+
+fn finalize_refused_with_one(f: LocalRepoWetFinalization, p: fn(LocalRepoWetFinalizationRefusal) -> Bool) -> Bool {
+  match f {
+    LocalRepoWetFinalizationHolds => false
+    LocalRepoWetFinalizationRefused { causes: cs } =>
+      cs.length() == 1 && match first(cs) { Absent => false, Present { value: c } => p(c) }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE DELETED INVOCATION. A schedule with members and no executor call
+// refuses BY NAME, naming how many members went unrun -- which is what the old shape could not say,
+// because with nothing invoked there are no terminals and a join over zero terminals and zero
+// members holds.
+test fn a_nonempty_schedule_with_no_executor_invocation_refuses_as_executor_absent() -> Bool {
+  finalize_refused_with_one(finalize_of(execution: LocalRepoWetExecutorNotInvoked), p: c =>
+    match c {
+      LocalRepoWetExecutorAbsent { scheduled: n } => n == 1
+      LocalRepoWetExecutionForeignCandidate { observed: _, required: _ } => false
+      LocalRepoWetFinalizationJoinCause { cause: _ } => false
+    })
+}
+
+// THE OPPOSITE CELL OF THE SAME ARM: absence is a refusal because members were scheduled, not
+// because absence is refused unconditionally. Without this the arm above would also pass an
+// implementation that refuses every not-invoked execution, including the vacuous one.
+test fn an_empty_schedule_with_no_executor_invocation_holds() -> Bool {
+  match local_repo_wet_finalize(scheduled: [], execution: LocalRepoWetExecutorNotInvoked, candidate: fixture_candidate) {
+    LocalRepoWetFinalizationHolds => true
+    LocalRepoWetFinalizationRefused { causes: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE WALL. The executor ran, against this candidate, and produced the one
+// terminal the schedule demands: finalization holds. A wall that refused here would be permanently
+// red and equally uninformative.
+test fn an_executor_that_ran_this_candidate_completely_holds() -> Bool {
+  match finalize_of(execution: LocalRepoWetExecutorRan { candidate: fixture_candidate, terminals: [terminal_matching()] }) {
+    LocalRepoWetFinalizationHolds => true
+    LocalRepoWetFinalizationRefused { causes: _ } => false
+  }
+}
+
+// A RUN AGAINST ANOTHER TREE IS NOT THIS TREE'S EVIDENCE, and it is refused before the join so the
+// reader is sent to the receipt's provenance rather than to a roster that is not at fault.
+test fn an_executor_that_ran_another_candidate_refuses_as_foreign_candidate() -> Bool {
+  finalize_refused_with_one(
+    finalize_of(execution: LocalRepoWetExecutorRan { candidate: fixture_other_candidate, terminals: [terminal_matching()] }),
+    p: c =>
+      match c {
+        LocalRepoWetExecutorAbsent { scheduled: _ } => false
+        LocalRepoWetExecutionForeignCandidate { observed: o, required: r } =>
+          o == fixture_other_candidate && r == fixture_candidate
+        LocalRepoWetFinalizationJoinCause { cause: _ } => false
+      })
+}
+
+// AN INVOKED EXECUTOR STILL ANSWERS TO THE JOIN. The invocation wall is added beside the
+// completeness join, never in front of it: an executor that ran and skipped a member reaches the
+// same missing-terminal cause it always did, now carried as a finalization cause.
+test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> Bool {
+  finalize_refused_with_one(
+    finalize_of(execution: LocalRepoWetExecutorRan { candidate: fixture_candidate, terminals: [] }),
+    p: c =>
+      match c {
+        LocalRepoWetExecutorAbsent { scheduled: _ } => false
+        LocalRepoWetExecutionForeignCandidate { observed: _, required: _ } => false
+        LocalRepoWetFinalizationJoinCause { cause: j } =>
+          match j {
+            LocalRepoWetTerminalMissing { identity: i } => i == fixture_identity
+            LocalRepoWetTerminalDuplicated { identity: _, occurrences: _ } => false
+            LocalRepoWetTerminalForeignCandidate { identity: _, observed: _, required: _ } => false
+            LocalRepoWetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+            LocalRepoWetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+            LocalRepoWetTerminalVerdictNotExpected { identity: _ } => false
+            LocalRepoWetTerminalUnscheduled { identity: _ } => false
+          }
+      })
 }
