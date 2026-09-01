@@ -1,0 +1,11 @@
+module fixture.closure.rustc_text_nonliteral_probe
+
+import v2.std.text { string_is_empty }
+
+// The MEANING-LEVEL red arm, and the fixture gunbc.rung_drop text_boundary_identity_wall names.
+// `concat` answers the kernel string; the return boundary declares the structural
+// v2.std.text.String; no homomorphism row stands between them, and the corpus-wide compatibility
+// relation admits the pairing by leaf-name spelling. A substring oracle over the emitted text
+// cannot see this -- the emitted bytes contain every substring a spelling assertion would look
+// for -- which is why the subject needs rustc rather than a text check.
+fn rustc_text_nonliteral_probe() -> v2.std.text.String { concat("x", "y") }

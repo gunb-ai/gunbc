@@ -1893,7 +1893,7 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 /// `resolve_imports_transitively` — the same BFS over `extract_import_paths` on the same module
 /// index the floor uses, so a `.dag` witness can compile an arbitrary in-memory program without
 /// a second resolver.
-fn resolve_virtual_source_with_imports(
+pub(crate) fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, String>,
@@ -38756,10 +38756,14 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
-    required_ci_emit_compile_probe_root, required_emit_compile_entries,
-    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
-    EmitCompileSelection, MutationVerdict,
+    emit_compile_selection_universe_digest, fixture_arm_diagnostic_lines,
+    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
+    required_emit_compile_entries, retain_not_selected_identities,
+    run_fixture_closure_discrimination, run_required_emit_compile, CargoVerdict,
+    EmitCompileOutcome, EmitCompileSelection, FixtureClosureOutcome, FixtureDiscrimination,
+    MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

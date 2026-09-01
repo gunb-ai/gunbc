@@ -212,6 +212,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `instrument_output_read_as_subject_content`
 - `executed_conjunct_discriminates_nothing`
 - `unbacked_execution_claim`
+- `instrument_reenters_its_own_build_tool`
 - `mitigation_injected_where_judgment_declined`
 
 ## Building & checks

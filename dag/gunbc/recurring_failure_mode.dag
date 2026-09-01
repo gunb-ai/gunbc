@@ -228,6 +228,12 @@ data unbacked_execution_claim: RecurringFailureMode = RecurringFailureMode {
   evidence: [],
 }
 
+data instrument_reenters_its_own_build_tool: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_reenters_its_own_build_tool" as NonEmptyStr,
+  authored: "**instrument re-enters its own build tool** (a check whose SUBJECT is the build -- does this emitted crate compile, does this generated tree link, does this artifact still build under the real toolchain -- is hosted inside a process that the same build tool launched, so the check spawns the tool that is already holding the lock on the directory it needs. It does not fail; it BLOCKS, which is the whole reason the class earns a row: a refusal names itself in one line, and a lock wait is indistinguishable from a slow legitimate build for as long as anyone is willing to watch. Measured here rather than reasoned about (gunbc, 2026-09-01, node adhoc-da8c65c0-b3b): a `#[cfg(test)]` consumer of a new emit-then-rustc route, run under `cargo test --release -p v1-compiler --lib`, spawning `cargo build` with `CARGO_TARGET_DIR` pointing at the same workspace `target/` the outer `cargo test` holds -- thirty minutes of remote runner time producing no output at all, terminated rather than concluded, which is why the cost is recorded: the failure mode's signature is that it charges you the timeout to learn anything. **RECOGNITION RULE, and it is available BEFORE the run rather than after: name the process that will launch your check, name the directory your check's subprocess will lock, and refuse the pairing if they are the same tool over the same directory.** The two escapes differ in kind and only one is usually right. Giving the inner invocation its OWN target directory removes the contention and pays a full cold dependency rebuild for every run, which for a check hosted in a unit-test suite is a cost the suite cannot carry. Hosting the check in a BINARY the build tool has already finished producing -- built, then executed as its own process -- keeps the warm shared directory and is what the existing required emit-compile phase already does; the new route simply had to be homed the same way. **THE GENERALIZATION IS THE POINT AND IT IS NOT ABOUT CARGO:** any instrument whose subject is a build reaches for the build tool, and the most convenient host for an instrument is the test harness that same tool runs, so the pairing is what a reasonable author reaches for first. It recurs wherever the two facts are true together -- a generated-artifact check under `npm test` shelling out to `npm run build`, a bazel-hosted test invoking bazel, a make-driven check calling make -- and the guard is the same: **an instrument may not be hosted by its own subject's actuator.** Neighbouring but distinct from `absorbing_fallback`: nothing widens and nothing is fabricated here, the check is simply never able to answer, so the harm is an unanswerable instrument rather than a wrong answer -- and an instrument that hangs will, under any timeout that reports leniently, eventually be read as one that passed.)",
+  evidence: [],
+}
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   hollow_alias,
   state_space_conflation,
@@ -258,5 +264,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   instrument_output_read_as_subject_content,
   executed_conjunct_discriminates_nothing,
   unbacked_execution_claim,
+  instrument_reenters_its_own_build_tool,
   mitigation_injected_where_judgment_declined,
 ]
