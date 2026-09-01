@@ -157,6 +157,41 @@ endpoint rows that named consumers can reach is. Second, enrolment will turn tha
 the change-detector DESIGN §5 names, and completeness here is an identity join, not a count
 equality. Enrolment is the occasion to fix the oracle, and that repair belongs in this gate.
 
+**ENROLMENT IS TWO ACTS, NOT ONE, AND ONLY ONE OF THEM IS INERT.** The census above covers
+`fleet_intent_network.endpoints`. `fleet_intent`'s `fleet_intent_known_hosts` is its opposite —
+censused by eager-pike-541 and verified here — with three production consumers:
+
+- `gunbc.generated_artifact` maps the list to `RunnerHostSudoersArtifact`, so enrolment **mints two
+  new generated artifacts**; the rows cannot land without a regeneration in the same commit or the
+  drift gate reds. Mechanical consequence, mechanical receipt.
+- `gunbc.runner.runner_host_deploy` `admit_runner_host` returns `RunnerHostUnenrolled` for any host
+  absent from the list. Its annotation calls itself **the enrollment wall** and is explicit that it
+  is construction rather than a check: no function in the module takes a bare `RunnerHostDeploy` and
+  yields a command, so "run the installer on an unenrolled host" is unrepresentable rather than
+  discouraged. It prices the srv4 host-convergence OOM — converge against an unenrolled host derives
+  nothing for it, or stamps drop-ins carrying another host's widths — and names the enrolled row as
+  exactly where `runner_deployment_plan`'s conservation wall gets the host RAM to check slot caps
+  against. **So enrolling srv5/srv6 removes a fail-closed refusal that currently protects them.**
+- `gunbc.fleet_converge_apply` finds hosts by identity in that list, so enrolment is precisely what
+  makes a Spark reachable by the apply path this lane measured as `PartiallyApplied` / refused.
+
+The inertness argument had two independent legs — no executor, and no consumer. `ComputeHost`
+knocks out the second. **Only the executor leg survives**, and it is the leg that changes the moment
+anyone installs the timer.
+
+**So DCH-0 lands the endpoints half only.** Author `srv5_host_lan_endpoint` / `srv6_host_lan_endpoint`
+as rows the named-import consumers can reach, add them to the list as the authority's completeness
+statement, repair the count oracle. The `ComputeHost` half is **DCH-0c**, and it is a decision
+rather than a row: it needs the host facts the conservation wall consumes (RAM at minimum), the two
+sudoers artifacts regenerated in the same commit, and someone stating out loud that the enrollment
+wall is coming down for these two machines on purpose.
+
+Note the row/list split holds on both sides and inverts between them: `srv1_host` and `srv2_host` are
+imported by name in at least `os_install_actuator_selection`, `deployed_intent_v1`,
+`nbd_proxy_virtual_media_install`, `ci_deploy_access` and `srv3_install_media_fetch`, so authoring
+`srv5_host`/`srv6_host` rows is separable from list membership here too — except that here the LIST
+is the load-bearing half and the row is the quiet one.
+
 **Owner: eager-pike-541**, agreed 2026-09-01.
 
 ### DCH-0b — Make residency representable
