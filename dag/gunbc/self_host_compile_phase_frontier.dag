@@ -1088,6 +1088,70 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
   }
 }
 
+// THE RATCHET ABOVE JUDGES RECEIPTS AGAINST EACH OTHER, AND NOTHING IN IT LOOKS AT THE TREE BEING
+// MERGED. compile_phase_frontier_standing answers Validated{latest} from the persisted series
+// alone, so its verdict is a claim about the TREE THE LATEST RECEIPT NAMES -- a past tree by
+// construction, since a receipt is authored after the observation it records. A reader who takes
+// that verdict as a statement about the tree under judgment has read a stronger claim than the
+// series can carry, which is DESIGN 4b(1) rung inflation on the compiler's own self-description.
+//
+// THIS JUDGMENT IS THE JOIN THAT MAKES THE DIFFERENCE DECIDABLE, and it is the whole of what can
+// be decided cheaply: given the tree under judgment, does the latest validated receipt name that
+// same tree? Identity grain, one comparison, no measurement.
+//
+// IT GATES NOTHING TODAY AND THAT IS DELIBERATE. Actuating it as a merge-blocking arm would refuse
+// every merge, because receipts are authored rarely and the live tree moves on every commit; the
+// non-blocking spelling is the inert-lens tier DESIGN 6 names. What it is FOR is the consumer that
+// arrives with (c) below: an execution surface exposing a real, readable cgroup memory limit
+// sufficient to run the whole-closure measurement of the receipt subject entry through
+// tools.emission_entry_instrument to completion. gunbc.whole_corpus_compile_admission and
+// gunbc.host_budget_source memory_stall_refusal are the authorities that price why that surface
+// does not exist here; the figures are theirs and are not transcribed into this module.
+//
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller that cannot supply the tree under
+// judgment gets a typed refusal, never Covered and never a pass-shaped unknown: a coverage
+// judgment that answers "covered" when it could not observe the subject is the absorbing fallback
+// of DESIGN 5 wearing this function's name.
+type CompilePhaseFrontierCoverage
+  = FrontierCoversSubjectTree { latest: CompilePhaseFrontierReceipt }
+  | FrontierReceiptTreeStale { receipt_tree: String, subject_tree: String }
+  | FrontierCoverageRefused { reason: NonEmptyStr }
+
+fn compile_phase_frontier_coverage(
+  series: List<CompilePhaseFrontierReceipt>,
+  subject_tree: FloorDiscoveryTreeId?
+) -> CompilePhaseFrontierCoverage {
+  match subject_tree {
+    Absent => FrontierCoverageRefused {
+      reason: "the tree under judgment was not observed, so no coverage claim is available" as NonEmptyStr
+    }
+    Present { value: tree } => match compile_phase_frontier_standing(series: series) {
+      CompilePhaseFrontierEmpty => FrontierCoverageRefused {
+        reason: "the frontier receipt series is empty, so no receipt names any tree" as NonEmptyStr
+      }
+      CompilePhaseFrontierInvalid { reason: why } => FrontierCoverageRefused { reason: why }
+      CompilePhaseFrontierValidated { latest: latest } => {
+        let receipt_tree = floor_discovery_tree_identity(tree: latest.subject.git_tree_object)
+        let judged_tree = floor_discovery_tree_identity(tree: tree)
+        if receipt_tree == judged_tree {
+          FrontierCoversSubjectTree { latest: latest }
+        } else {
+          FrontierReceiptTreeStale { receipt_tree: receipt_tree, subject_tree: judged_tree }
+        }
+      }
+    }
+  }
+}
+
+fn compile_phase_frontier_coverage_label(c: CompilePhaseFrontierCoverage) -> String {
+  match c {
+    FrontierCoversSubjectTree { latest: _ } => "the latest validated receipt names the tree under judgment"
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      concat(concat("the latest validated receipt names tree ", r), concat(", not the tree under judgment ", s))
+    FrontierCoverageRefused { reason: why } => concat("no coverage claim: ", why as String)
+  }
+}
+
 // PASSES is a claim about the phase, not about this row's arithmetic. A zero count means only that
 // no ATTRIBUTED identity landed in the phase, so while the census still holds identities no phase
 // row accounts for, every one of those unattributed identities is a candidate member of this phase
