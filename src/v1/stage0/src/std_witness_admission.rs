@@ -20,7 +20,7 @@ use std::rc::Rc;
 pub fn witness_admission_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands.\n\nLIVE-EXECUTION CAVEAT (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9; operator ruling relayed by royal-hawk-392, revised same day to withdraw an earlier restore-the-executor instruction): the sentence above describes what each cadence arm MEANS, not that a scheduler for it is currently running. falsifier.yml, the workflow that scheduled FalsifierSelfHostWet / FalsifierRehomedBinWet / FalsifierSubstrateLongLane / BinWitnessWet / QuarantineProbeExpectRed, was deleted at 611fd02770 (2026-08-15, #8283) — FLOOR-Y's deliberate cut, which reserved re-adding a scheduled executor for a separate future operator agreement rather than restoring or improvising one here. Cadence membership (WitnessConsumerCadence) is a classification of WHICH policy claims a row and stays correct; it is not proof anything executes that row — v2.workflow.witness_admission witness_execution_standing_for_row answers coverage only through DeclaredCadenceUnrealized | WitnessHasExecutingConsumer, gated on a closed per-cadence predicate naming which of the nine cadences presently have a live scheduled route (today: DiscoverySelection, OfflineLocalRecipe, FixtureExplicitRoster only), never on enum membership alone and never on a registry carrier — no WitnessCadenceRealization mechanism exists or is planned by this change. This is a RETROSPECTIVE declaration, not a new drop: the five falsifier-family cadences above lost their executing consumer at 611fd02770/#8283, and every row classified into one of them has read as covered ever since despite executing nowhere. DeclaredCadenceUnrealized types that gap rather than closing it; restoring a scheduled route for any of these cadences is a separate, later operator decision, not implied by this note.".to_string()
+            "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands.\n\nLIVE-EXECUTION CAVEAT (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9; operator ruling relayed by royal-hawk-392, revised same day to withdraw an earlier restore-the-executor instruction): the sentence above describes what each cadence arm MEANS, not that a scheduler for it is currently running. falsifier.yml, the workflow that scheduled FalsifierSelfHostWet / FalsifierRehomedBinWet / FalsifierSubstrateLongLane / BinWitnessWet / QuarantineProbeExpectRed, was deleted at 611fd02770 (2026-08-15, #8283) — FLOOR-Y's deliberate cut, which reserved re-adding a scheduled executor for a separate future operator agreement rather than restoring or improvising one here. Cadence membership (WitnessConsumerCadence) is a classification of WHICH policy claims a row and stays correct; it is not proof anything executes that row — v2.workflow.witness_admission witness_execution_standing_for_row answers coverage only through DeclaredCadenceUnrealized | WitnessHasExecutingConsumer, gated on a closed per-cadence predicate naming which of the ten cadences presently have a live scheduled route (today: DiscoverySelection, OfflineLocalRecipe, FixtureExplicitRoster, LocalRepoWetLane), never on enum membership alone and never on a registry carrier — no WitnessCadenceRealization mechanism exists or is planned by this change. This is a RETROSPECTIVE declaration, not a new drop: the five falsifier-family cadences above lost their executing consumer at 611fd02770/#8283, and every row classified into one of them has read as covered ever since despite executing nowhere. DeclaredCadenceUnrealized types that gap rather than closing it; restoring a scheduled route for any of these cadences is a separate, later operator decision, not implied by this note.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36,6 +36,7 @@ pub enum WitnessConsumerCadence {
     FalsifierRehomedBinWet,
     FalsifierSubstrateLongLane,
     BinWitnessWet,
+    LocalRepoWetLane,
     QuarantineProbeExpectRed,
     OfflineLocalRecipe,
     FixtureExplicitRoster,
@@ -50,6 +51,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -61,6 +63,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -72,6 +75,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => true,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -83,6 +87,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => true,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -94,6 +99,19 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => true,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
+            WitnessConsumerCadence::QuarantineProbeExpectRed => false,
+            WitnessConsumerCadence::OfflineLocalRecipe => false,
+            WitnessConsumerCadence::FixtureExplicitRoster => false,
+            WitnessConsumerCadence::NoConsumer => false,
+        },
+        WitnessConsumerCadence::LocalRepoWetLane => match b.clone() {
+            WitnessConsumerCadence::DiscoverySelection => false,
+            WitnessConsumerCadence::FalsifierSelfHostWet => false,
+            WitnessConsumerCadence::FalsifierRehomedBinWet => false,
+            WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
+            WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => true,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -105,6 +123,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => true,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -116,6 +135,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => true,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -127,6 +147,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => true,
@@ -138,6 +159,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
             WitnessConsumerCadence::FalsifierRehomedBinWet => false,
             WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
             WitnessConsumerCadence::BinWitnessWet => false,
+            WitnessConsumerCadence::LocalRepoWetLane => false,
             WitnessConsumerCadence::QuarantineProbeExpectRed => false,
             WitnessConsumerCadence::OfflineLocalRecipe => false,
             WitnessConsumerCadence::FixtureExplicitRoster => false,
@@ -149,7 +171,7 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
 pub fn witness_cadence_has_scheduled_route_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "THE CLOSED PER-CADENCE REALIZATION GATE (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9). Cadence membership answers WHICH POLICY a row belongs to; this answers whether that policy currently has anything executing it. It is an exhaustive match over the nine WitnessConsumerCadence arms, not a registry carrier — no WitnessCadenceRealization mechanism exists, per the operator's explicit reversal of an earlier instruction to build one. Today exactly three arms have a live scheduled route: DiscoverySelection (per-PR discovery), OfflineLocalRecipe (an explicit local-recipe consumer is, by definition, the executing consumer), and FixtureExplicitRoster (an explicit admission row IS the enrollment). The five falsifier-family arms — FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed — return false: falsifier.yml, the workflow that scheduled all five, was deleted at 611fd02770 (2026-08-15, #8283), and no replacement executor exists. NoConsumer also returns false and is unreachable at the one call site that consults this gate, since that site only reaches it after NoConsumer has already been dispatched separately. Restoring a scheduled route for any of the five is a separate, later, explicitly-agreed operator decision — this gate is the mechanical fact of today's state, not a policy choice made here.".to_string()
+            "THE CLOSED PER-CADENCE REALIZATION GATE (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9). Cadence membership answers WHICH POLICY a row belongs to; this answers whether that policy currently has anything executing it. It is an exhaustive match over the ten WitnessConsumerCadence arms, not a registry carrier — no WitnessCadenceRealization mechanism exists, per the operator's explicit reversal of an earlier instruction to build one. Today exactly three arms have a live scheduled route: DiscoverySelection (per-PR discovery), OfflineLocalRecipe (an explicit local-recipe consumer is, by definition, the executing consumer), and FixtureExplicitRoster (an explicit admission row IS the enrollment). The five falsifier-family arms — FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed — return false: falsifier.yml, the workflow that scheduled all five, was deleted at 611fd02770 (2026-08-15, #8283), and no replacement executor exists. NoConsumer also returns false and is unreachable at the one call site that consults this gate, since that site only reaches it after NoConsumer has already been dispatched separately. Restoring a scheduled route for any of the five is a separate, later, explicitly-agreed operator decision — this gate is the mechanical fact of today's state, not a policy choice made here. LocalRepoWetLane RETURNS TRUE, and it is the one arm added with its executor rather than before it (ROOT-2A-WET-0, operator ruling 2026-09-01 selecting a real wet executor over enrolment-only relief). IT IS A NARROWER REALIZATION AND NOT A REVIVAL OF BinWitnessWet: that cadence spans ISO downloads, network fetches, real cargo builds and remote-host provisioning, so a cadence-wide route claim over it would be false, and the ruling forbids exactly that. This arm claims only witnesses whose real effects are confined to a temporary directory and a local git repository, which the required lane can run in its own checkout. THE TRUTH OF THIS TRUE IS ENFORCED, NOT ASSERTED: the lane's complete roster is joined to the executor's terminal receipts at identity grain by v2.workflow.local_repo_wet_terminal local_repo_wet_join, in both directions, so a member with no receipt and a receipt with no member are each a typed refusal. If a member is ever added that the executor cannot run, that member reds the lane rather than quietly widening what this arm claims.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -162,6 +184,7 @@ pub fn witness_cadence_has_scheduled_route(cadence: WitnessConsumerCadence) -> b
         WitnessConsumerCadence::FalsifierRehomedBinWet => false,
         WitnessConsumerCadence::FalsifierSubstrateLongLane => false,
         WitnessConsumerCadence::BinWitnessWet => false,
+        WitnessConsumerCadence::LocalRepoWetLane => true,
         WitnessConsumerCadence::QuarantineProbeExpectRed => false,
         WitnessConsumerCadence::OfflineLocalRecipe => true,
         WitnessConsumerCadence::FixtureExplicitRoster => true,
@@ -187,6 +210,9 @@ pub fn witness_consumer_cadence_content_hash_structural(
         }
         WitnessConsumerCadence::BinWitnessWet => {
             crate::std_content_hash::content_hash_atom("BinWitnessWet".to_string())
+        }
+        WitnessConsumerCadence::LocalRepoWetLane => {
+            crate::std_content_hash::content_hash_atom("LocalRepoWetLane".to_string())
         }
         WitnessConsumerCadence::QuarantineProbeExpectRed => {
             crate::std_content_hash::content_hash_atom("QuarantineProbeExpectRed".to_string())
@@ -341,6 +367,8 @@ pub struct FalsifierRehomedBinWet;
 pub struct FalsifierSubstrateLongLane;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BinWitnessWet;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LocalRepoWetLane;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QuarantineProbeExpectRed;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
