@@ -307,12 +307,19 @@ type TimerRetirementMemberAt = NonEmptyStr
 // WHAT THAT DOES AND DOES NOT BUY, STATED EXACTLY, BECAUSE THIS SENTENCE PREVIOUSLY CLAIMED THE TOP
 // RUNG AND WAS WRONG. It said a launch-environment plan carrying a foreign axis "has no
 // constructor". The compiler admits one: see the excess-field measurement in the annotation above
-// the scope type. What holds instead, and what is executed rather than read off the declaration:
+// the scope type. What holds instead, separated by WHETHER THE GATE EXECUTES IT:
 //
-//   the arm declares only host and observed_timers, and the exact production constructors on this
-//   tree supply only those two -- mechanically closed over WHERE construction happens by
-//   test.claim.fleet_converge_launch_scope_constructor_site_census, which folds the parsed corpus
-//   and joins every production construction site against a declared roster at identity grain;
+//   NOT ESTABLISHED AT THE GATE, and this bullet previously sat under a heading that said
+//   "executed", which was rung inflation (codex review 58047). The arm declares only host and
+//   observed_timers, and test.claim.fleet_converge_launch_scope_constructor_site_census joins every
+//   production construction site against a declared roster at identity grain -- but that witness is
+//   BUDGET-REFUSED BEFORE VERDICT by the required floor and reaches no verdict there, so it
+//   establishes nothing at the gate grain. It passes when run directly, which is not the same claim.
+//   Two blockers filed outside this module keep it that way: the floor tests changed-witness
+//   membership before the long-home decline, so the move to a lane with its own ceiling cannot be
+//   performed; and FalsifierCadenceJob, the lane that would declare one, has no executing
+//   realization. Until one of those clears, WHERE construction happens is covered by review of the
+//   two named declarations and by nothing executing;
 //
 //   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
 //   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or

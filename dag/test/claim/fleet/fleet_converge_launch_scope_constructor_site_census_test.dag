@@ -1,7 +1,9 @@
 module test.claim.fleet_converge_launch_scope_constructor_site_census
 
 import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.node { Node, Symbol }
+import v2.std.decl_facts_skeleton { skeleton_atom_lexeme_census_fold }
+import v2.std.algebra { count_where }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -56,27 +58,20 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // that rather than assuming it.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// ONE FOLD PER TARGET. An earlier cut of this module carried BOTH counts in a single fold state so
-// the corpus was traversed once for two targets. That was reverted: only the sentinel row needs two
-// counts, so under the pair fold the two single-target rows computed a FullHostConverge count they
-// never read. Work that is unnecessary by construction for a consumer is DESIGN 2 redundancy
-// whatever the realized n, and DESIGN 6 bare-minimum-cost does not price per-site exceptions.
-type ConstructionCount {
-  constructions: Int
-  self_is_target: Bool
-}
-
-fn edge_is_construction(e: Edge) -> Bool {
-  match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
-    Positional => false
-  }
-}
-
-// THE DOTTED SUFFIXES ARE BUILT ONCE, NOT PER NODE. An earlier cut evaluated "." + (target as
-// String) inside the fold's init arm, which runs for EVERY Atom node in the production corpus, so a
-// two-token concatenation was allocated corpus-many times to compare against a constant. The fold
-// receives the finished strings instead.
+// THE CONSTRUCTION-EDGE WALK IS THE SKELETON'S, NOT THIS FILE'S. An earlier cut of this module
+// declared its own edge_is_construction predicate (match on Named { name } == record_construction_spelling)
+// and its own fold_node algebra to count target constructions. Both were forks:
+// v2.std.decl_facts_skeleton already owns that interpretation as
+// skeleton_edge_is_construction_spelling and already walks a node with it in
+// skeleton_atom_lexeme_census_fold, whose construction_spelling_lexemes field IS the population this
+// census needs. Re-deriving it here was a second authority over one fact (DESIGN 3) and a second
+// walker over one traversal (DESIGN 6's one-catamorphism rule). Found by codex review 58047.
+// WHAT THE SKELETON'S CENSUS GIVES, AND THE GRAIN IT DOES NOT. construction_spelling_lexemes is the
+// list of atom lexemes reached by a construction-spelling edge, once per occurrence, so counting the
+// members that name a target IS the per-declaration construction count. The lexeme is the AUTHORED
+// spelling and carries no resolved identity, which is why the roster claim below is an
+// over-approximation and why that direction is the safe one for an "exactly these sites" verdict --
+// a foreign homonym makes this red, never green. Stated once here rather than re-derived per row.
 data launch_bare: String = ^LaunchEnvironmentConverge as String
 data launch_dotted: String = "." + launch_bare
 data sentinel_bare: String = ^FullHostConverge as String
@@ -86,33 +81,11 @@ fn spelling_names(spelling: String, bare: String, dotted: String) -> Bool {
   spelling == bare || ends_with(spelling, dotted)
 }
 
-fn construction_fold(n: Node, bare: String, dotted: String) -> ConstructionCount {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match n0.kind {
-          TypeNode { connective: Atom { identity: s } } =>
-            ConstructionCount {
-              constructions: 0,
-              self_is_target: spelling_names(spelling: s as String, bare: bare, dotted: dotted),
-            }
-          _ => ConstructionCount { constructions: 0, self_is_target: false }
-        }
-      },
-      step: fn(acc, e, child) {
-        ConstructionCount {
-          constructions: acc.constructions + child.constructions
-            + (if edge_is_construction(e: e) && child.self_is_target { 1 } else { 0 }),
-          self_is_target: acc.self_is_target,
-        }
-      }
-    }
-  )
-}
-
 fn construction_count(n: Node, bare: String, dotted: String) -> Int {
-  construction_fold(n: n, bare: bare, dotted: dotted).constructions
+  count_where(
+    skeleton_atom_lexeme_census_fold(n: n).construction_spelling_lexemes,
+    lex => spelling_names(spelling: lex, bare: bare, dotted: dotted),
+  )
 }
 
 // decl_facts SKIPS test .dag files, so this population IS the production corpus -- the filter is a
