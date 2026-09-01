@@ -9,6 +9,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, Minute, minute, minute_count }
+import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
 import gunbc.ci_release_bins {
