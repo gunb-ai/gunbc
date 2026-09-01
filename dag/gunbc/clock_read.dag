@@ -33,12 +33,3 @@ fn probed_at_word(reading: NonEmptyStr?) -> NonEmptyStr {
 fn clock_now_probed_at_or_unknown() -> NonEmptyStr {
   probed_at_word(reading: clock_now_probed_at())
 }
-
-type LaneVisibilityControl {
-  reason: String
-}
-
-data lane_visibility_control: LaneVisibilityControl = LaneVisibilityControl {
-  reason: "control",
-  authority: "undeclared-field",
-}
