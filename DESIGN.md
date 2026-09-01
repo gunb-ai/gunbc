@@ -217,6 +217,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `merge_region_excludes_shared_tail`
 - `sealing_property_erases_structure`
 - `restoration_promise_names_a_route_that_does_not_exist`
+- `one_refusal_two_destinations`
 
 ## Building & checks
 
