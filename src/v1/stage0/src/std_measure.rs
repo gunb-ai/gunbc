@@ -936,6 +936,19 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub type TokensPerSecond = Rc<Measure<(), (), i64>>;
+
+pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
 pub fn millicore(count: Nat) -> Millicore {
     Rc::new(Measure {
         count: count.clone(),
