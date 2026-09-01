@@ -41,6 +41,8 @@ import gunbc.scm.checkout {
   CheckoutOutcome,
   CheckedOut,
   CheckoutRefused,
+  MissingObject,
+  ObjectIsAuthoredSource,
   checkout_object,
 }
 
@@ -207,6 +209,7 @@ type MergeRefusal
   = TargetRootMissing { identity: ObjectId }
   | TargetRootIsAuthoredSource { identity: ObjectId }
   | TargetChildMissing { role: Symbol, identity: ObjectId }
+  | TargetChildIsAuthoredSource { role: Symbol, identity: ObjectId }
   | BindingLocatorCollision { role: Symbol, identity: ObjectId }
   | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
   | DependencyKindUnsupportedForMerge { dependent: Symbol, required: Symbol, kind: Symbol }
@@ -616,12 +619,30 @@ fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> Mer
   }
 }
 
+// EVERY CHECKOUT REFUSAL WAS COLLAPSED TO "MISSING", AND ONE OF THEM IS NOT MISSING.
+//
+// This mapped `CheckoutRefused { cause: _ }` to TargetChildMissing, which was total and correct while
+// checkout had exactly one refusal. It stopped being correct the moment the store grew a second kind
+// of object: a role whose value names an AUTHORED SOURCE is present, readable, and simply not a
+// program, and reporting it as missing sends an operator looking for bytes that are right there.
+// That is the same not-applicable-rendered-as-malformed failure the two kinds were introduced to
+// avoid, reintroduced one layer up by a wildcard that used to be exhaustive.
+//
+// The wildcard is now a match on the cause, so a third checkout refusal cannot be absorbed either:
+// it will fail to compile here instead of arriving as a fourth spelling of "missing". Found by
+// external review of gunbc#9891, which is also the review that added the arm this consumer ignored.
 fn root_edge_for(store: ObjectStore, acc: MergeRootAcc, role: Symbol, object: ObjectId) -> MergeRootAcc {
   match checkout_object(store: store, identity: object) {
-    CheckoutRefused { cause: _ } =>
+    CheckoutRefused { cause: cause } =>
       MergeRootAcc {
         edges: acc.edges,
-        refusal: Present { value: TargetChildMissing { role: role, identity: object } },
+        refusal: Present {
+          value: match cause {
+            MissingObject { identity: _ } => TargetChildMissing { role: role, identity: object }
+            ObjectIsAuthoredSource { identity: _ } =>
+              TargetChildIsAuthoredSource { role: role, identity: object }
+          },
+        },
       }
     CheckedOut { program: program } =>
       MergeRootAcc {

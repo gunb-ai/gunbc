@@ -26,6 +26,7 @@ import extdeps.languages.json.emit {
   json_array,
   json_object,
   json_string,
+  json_null,
   serialize_json,
 }
 import extdeps.languages.json.parse {
@@ -80,6 +81,20 @@ import gunbc.scm.checkout {
   ObjectIsAuthoredSource,
 }
 import gunbc.scm.commit_closure { CommitClosure }
+import gunbc.scm.merge {
+  MergeOutcome,
+  Merged,
+  MergeRefused,
+  MergeRolesContested,
+  TargetRootMissing,
+  TargetRootIsAuthoredSource,
+  TargetChildMissing,
+  TargetChildIsAuthoredSource,
+  BindingLocatorCollision,
+  RequiredDependencyRemoved,
+  DependencyKindUnsupportedForMerge,
+  merge,
+}
 import gunbc.scm.object_table_json {
   ObjectTableUnknownKindTag,
   ObjectTableUnknownConnectiveTag,
@@ -980,4 +995,221 @@ test fn scm_image_the_same_document_shape_checks_out_over_a_node() -> Bool {
   scm_image_checkout_cause_tag(
     loaded: decode_closure_document(v: scm_image_program_over_a_node_document())
   ) == "checked_out"
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SOURCE CLASSIFIER'S OWNERS, EXECUTED.
+//
+// The classifier that decides node-entry vs authored-source-entry first reads `source`. Its initial
+// cut treated every failed read as "no source member, try the node arm", so a null source, a
+// DUPLICATED source, and a non-object entry were each reported as a missing `kind` or an unexpected
+// member -- refusing, but attributing the fault to the wrong owner. These claims pin the owner, not
+// merely the refusal, which is the distinction this file's cause-tag reader exists to make.
+fn scm_image_document_with_object_entry(entry: JsonValue) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(key: "objects", value: json_array(elements: [entry])),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])
+      ),
+    ]
+  )
+}
+
+fn scm_image_entry_cause_tag(entry: JsonValue) -> String {
+  scm_image_cause_tag(loaded: decode_closure_document(v: scm_image_document_with_object_entry(entry: entry)))
+}
+
+// A null `source` is a WRONG-SHAPED source member, not an absent one.
+test fn scm_image_a_null_source_is_a_wrong_shaped_source() -> Bool {
+  scm_image_entry_cause_tag(
+    entry: json_object(members: [json_kv(key: "source", value: json_null())])
+  ) == "member_read"
+}
+
+// A DUPLICATED `source` refuses as duplicated rather than being read last-wins or reclassified as a
+// node. This is the arm a naive reader accepts while holding two answers.
+test fn scm_image_a_duplicated_source_refuses() -> Bool {
+  scm_image_entry_cause_tag(
+    entry: json_object(
+      members: [
+        json_kv(key: "source", value: json_string(s: "one")),
+        json_kv(key: "source", value: json_string(s: "two")),
+      ]
+    )
+  ) == "member_read"
+}
+
+// AN ENTRY CARRYING BOTH SHAPES IS NOT ONE ARM. The source read succeeds, so the member set is
+// checked against the authored-source set and `kind`/`children` are unexpected there.
+test fn scm_image_an_entry_carrying_both_shapes_refuses() -> Bool {
+  scm_image_entry_cause_tag(
+    entry: json_object(
+      members: [
+        json_kv(key: "source", value: json_string(s: "text")),
+        json_kv(
+          key: "kind",
+          value: json_object(
+            members: [
+              json_kv(key: "kind", value: json_string(s: "type")),
+              json_kv(key: "connective", value: json_string(s: "conj")),
+            ]
+          )
+        ),
+        json_kv(key: "children", value: json_array(elements: [])),
+      ]
+    )
+  ) == "unexpected_member"
+}
+
+// CONTROL, and it is what makes the three claims above about the SOURCE MEMBER rather than about
+// this document scaffold: an ordinary authored-source entry loads through the same scaffold.
+test fn scm_image_an_ordinary_source_entry_loads() -> Bool {
+  scm_image_entry_cause_tag(
+    entry: json_object(members: [json_kv(key: "source", value: json_string(s: "text"))])
+  ) == "loaded"
+}
+
+// THE MERGE CHILD ARM, WITNESSED HERE BECAUSE THIS IS WHERE ITS INPUT CAN BE BUILT.
+//
+// `TargetChildIsAuthoredSource` is unreachable from a proposal: RequireBinding carries a `Node`, so
+// every role value a proposal supplies is a semantic node by construction. It is reachable only when
+// the TARGET ROOT's own child edge names a file -- which no encoder emits and only the decoder can
+// produce, by resolving an edge position into an authored entry. So the same document the checkout
+// claim above uses is merged rather than checked out, and the refusal must name the child's KIND.
+//
+// Before this PR's repair, root_edge_for mapped every checkout refusal to TargetChildMissing, so this
+// returned "child_missing" for a file that is present. That is the discriminating red.
+fn scm_image_merge_refusal_tag(o: MergeOutcome) -> String {
+  match o {
+    Merged { store: _, commit: _, roles: _ } => "merged"
+    MergeRolesContested { role: _, alternatives: _ } => "contested"
+    MergeRefused { cause: cause } =>
+      match cause {
+        TargetRootMissing { identity: _ } => "root_missing"
+        TargetRootIsAuthoredSource { identity: _ } => "root_source"
+        TargetChildMissing { role: _, identity: _ } => "child_missing"
+        TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
+        BindingLocatorCollision { role: _, identity: _ } => "collision"
+        RequiredDependencyRemoved { dependency: _, removed_role: _ } => "dependency"
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => "kind"
+      }
+  }
+}
+
+// The child edge must be NAMED for merge to read it as a role, so this document differs from the
+// checkout one in exactly that: label "named" rather than "positional".
+fn scm_image_named_node_entry_targeting(position: String, name: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+          ]
+        )
+      ),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "label", value: json_string(s: "named")),
+                json_kv(key: "name", value: json_string(s: name)),
+                json_kv(
+                  key: "target",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: position))])
+                ),
+              ]
+            )
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+fn scm_image_role_over_a_file_document() -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(
+        key: "objects",
+        value: json_array(
+          elements: [
+            scm_image_authored_entry(),
+            scm_image_named_node_entry_targeting(position: "0", name: "s"),
+          ]
+        )
+      ),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])
+      ),
+    ]
+  )
+}
+
+fn scm_image_merge_tag_for(document: JsonValue) -> String {
+  match decode_closure_document(v: document) {
+    ClosureDocRefused { cause: _ } => "document_refused"
+    ClosureDocLoaded { store: store, root: root } =>
+      scm_image_merge_refusal_tag(
+        o: merge(
+          store: store,
+          target: commit_of_root(root: root),
+          target_dependencies: [],
+          proposals: [],
+        )
+      )
+  }
+}
+
+test fn scm_image_a_role_whose_value_is_a_file_refuses_as_authored_source() -> Bool {
+  scm_image_merge_tag_for(document: scm_image_role_over_a_file_document()) == "child_source"
+}
+
+// CONTROL: the identical document with a NODE at position 0 merges, so the refusal above is about
+// the child's kind rather than about a single-role target or an empty proposal list.
+fn scm_image_role_over_a_node_document() -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(
+        key: "objects",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(
+                  key: "kind",
+                  value: json_object(
+                    members: [
+                      json_kv(key: "kind", value: json_string(s: "type")),
+                      json_kv(key: "connective", value: json_string(s: "conj")),
+                    ]
+                  )
+                ),
+                json_kv(key: "children", value: json_array(elements: [])),
+              ]
+            ),
+            scm_image_named_node_entry_targeting(position: "0", name: "s"),
+          ]
+        )
+      ),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])
+      ),
+    ]
+  )
+}
+
+test fn scm_image_a_role_whose_value_is_a_node_merges() -> Bool {
+  scm_image_merge_tag_for(document: scm_image_role_over_a_node_document()) == "merged"
 }

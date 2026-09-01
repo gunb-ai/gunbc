@@ -878,14 +878,41 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             acc: acc,
             cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
           )
-        MemberFailed { cause: _ } =>
-          match member_set_refusal(
-            v: object_value,
-            allowed: ["kind", "children"],
-            context: ClosureDocObjectRecordMembers
-          ) {
-            Present { value: c } => decode_acc_refused(acc: acc, cause: c)
-            Absent => decode_object_members(acc: acc, object_value: object_value)
+        // ONLY *MISSING* IS EVIDENCE THAT THE ENTRY MIGHT BE A NODE, and the first cut of this
+        // classifier ignored that. It matched every MemberFailed cause and fell through to the node
+        // arm, so `{"source": null}`, a DUPLICATED source, and a source whose subject is not an
+        // object were all reclassified as "not a source" and then reported as a missing `kind` or
+        // an unexpected member. Each of those still refused, but for the WRONG OWNER -- the
+        // not-applicable-rendered-as-malformed failure this module's own header names, reintroduced
+        // by the classifier added to avoid it. gunbc.scm.json_member separates the four causes
+        // precisely so a consumer does not have to collapse them; collapsing them here threw that
+        // away. Found by external review of gunbc#9891.
+        MemberFailed { cause: c } =>
+          match c {
+            MemberReadMissing { key: _ } =>
+              match member_set_refusal(
+                v: object_value,
+                allowed: ["kind", "children"],
+                context: ClosureDocObjectRecordMembers
+              ) {
+                Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
+                Absent => decode_object_members(acc: acc, object_value: object_value)
+              }
+            MemberReadDuplicated { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: k } }
+              )
+            MemberReadWrongShape { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: k } }
+              )
+            MemberReadSubjectNotObject =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
+              )
           }
       }
   }

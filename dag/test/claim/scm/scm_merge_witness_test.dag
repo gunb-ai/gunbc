@@ -21,6 +21,7 @@ import gunbc.scm.object_store {
   LocatorCollision,
   empty_store,
   store_node,
+  store_authored_source,
   object_id_eq,
 }
 
@@ -43,6 +44,7 @@ import gunbc.scm.merge {
   MergeRefused,
   MergeRefusal,
   TargetRootIsAuthoredSource,
+  TargetChildIsAuthoredSource,
   RequiredDependencyRemoved,
   DependencyKindUnsupportedForMerge,
   ResolvedRole,
@@ -161,6 +163,7 @@ fn refusal_locates(
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
+        TargetChildIsAuthoredSource { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
       }
@@ -285,6 +288,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
+        TargetChildIsAuthoredSource { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
@@ -483,6 +487,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
+        TargetChildIsAuthoredSource { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
@@ -604,3 +609,71 @@ test fn an_empty_proposal_set_preserves_the_target() -> Bool {
   outcome_is_merged(o: out)
     && role_holds_target_object(roles: merged_roles(o: out), role: ^f, expected: f_id)
 }
+
+// ------------------------------------------------------------------------------------------------
+// THE TWO WRONG-KIND ARMS, EXECUTED THROUGH THE PRODUCTION `merge` FUNCTION.
+//
+// Both arms were added to MergeRefusal when the store grew a second kind of object, and both were
+// initially reachable only as match arms in this file's readers returning `false` -- imported to
+// satisfy exhaustiveness and never produced by any input. That is the specification-without-execution
+// shape DESIGN section 5 names, and an arm nothing constructs is indistinguishable from an arm that
+// cannot be constructed. External review of gunbc#9891 called it, correctly.
+//
+// Each claim is paired with a control that substitutes a NODE at the same position, so the refusal is
+// attributable to the object's KIND rather than to the fixture being unmergeable.
+fn merge_witness_source_store() -> StoreOutcome {
+  store_authored_source(store: empty_store(), text: "not a program\n")
+}
+
+fn merge_witness_source_fixture() -> Fixture {
+  let outcome = merge_witness_source_store()
+  Fixture {
+    store: store_or_empty(outcome: outcome),
+    target: Commit { root: identity_or(outcome: outcome, fallback: fallback_id()) },
+  }
+}
+
+fn merge_refusal_tag(o: MergeOutcome) -> String {
+  match o {
+    Merged { store: _, commit: _, roles: _ } => "merged"
+    MergeRolesContested { role: _, alternatives: _ } => "contested"
+    MergeRefused { cause: cause } =>
+      match cause {
+        TargetRootMissing { identity: _ } => "root_missing"
+        TargetRootIsAuthoredSource { identity: _ } => "root_source"
+        TargetChildMissing { role: _, identity: _ } => "child_missing"
+        TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
+        BindingLocatorCollision { role: _, identity: _ } => "collision"
+        RequiredDependencyRemoved { dependency: _, removed_role: _ } => "dependency"
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => "kind"
+      }
+  }
+}
+
+// A MERGE TARGET WHOSE ROOT IS A FILE refuses naming the authored source, not TargetRootMissing --
+// the file is present, and telling an operator their target root is missing sends them looking for
+// something that is there.
+test fn merge_a_target_root_that_is_a_file_refuses_as_authored_source() -> Bool {
+  let fx = merge_witness_source_fixture()
+  merge_refusal_tag(
+    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+  ) == "root_source"
+}
+
+// CONTROL: the same shape with a NODE root merges, so the refusal above is about the kind and not
+// about an empty proposal list or a single-object store.
+test fn merge_a_target_root_that_is_a_node_does_not_refuse() -> Bool {
+  let fx = paired_fixture()
+  merge_refusal_tag(
+    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+  ) == "merged"
+}
+
+// WHERE THE CHILD ARM IS WITNESSED, AND WHY NOT HERE. A proposal cannot reach
+// TargetChildIsAuthoredSource: `RequireBinding` carries a `Node`, so every role value a proposal
+// supplies is stored through store_node and is a semantic node by construction. The only way a role
+// value names a file is for the TARGET ROOT's own child edge to point at one, and the only producer
+// of that shape is the decoder resolving an edge position into an authored entry. So that claim lives
+// beside the document builder, in test.claim.scm_commit_closure_json_v2_witness, where the input can
+// actually be constructed -- rather than here, where it would need a constructor the model correctly
+// does not offer.

@@ -82,12 +82,13 @@ type AuthoredSourceContent
   = AuthoredSourceEmpty
   | AuthoredSourceText(NonEmptyStr)
 
-// THE TAGS ARE THE FAMILY SEPARATION, AND THEY ARE NOT DECORATION. Without them an authored source
-// whose text digest happened to equal a node's structural digest would be indistinguishable at the
-// locator, and the store would answer `contains` for the wrong kind of thing. Tagging does not make
-// a collision impossible -- nothing at the declared fnv1a64 rung does -- it makes the two families
-// disjoint by construction under the hash rule, so a collision between them is the same accident as
-// a collision within one, and insert_derived refuses it identically.
+// THE TAGS DOMAIN-SEPARATE THE PREIMAGES, AND THAT IS A WEAKER CLAIM THAN THE ONE THIS COMMENT
+// FIRST MADE. It said tagging makes the families "disjoint by construction under the hash rule",
+// which overstates what a 64-bit digest can deliver: the canonical PREIMAGES are separated, the
+// OUTPUTS are not mathematically disjoint. So an honest collision between an authored source and a
+// node remains possible at the declared fnv1a64 rung, exactly as a collision within one family
+// does, and insert_object refuses it identically. Corrected on external review of gunbc#9891, which
+// also disproved the payload rationale below.
 data authored_source_text_tag: NonEmptyStr = "gunbc.scm.authored_source.text"
 data authored_source_empty_tag: NonEmptyStr = "gunbc.scm.authored_source.empty"
 
@@ -111,11 +112,14 @@ fn authored_source_content(text: String) -> AuthoredSourceContent {
 // invariant with one exception is worse than no invariant, and the exception is the arm a reader is
 // least likely to check.
 //
-// Both arms now apply the SAME combinator under DIFFERENT tags. The empty arm's payload is its own
-// tag, which is degenerate and deliberately so: what the payload must not be is some file's content,
-// because then an empty file and a file holding that content would collide BY CONSTRUCTION rather
-// than by accident. Distinct tags are what keep the two arms apart, and the shared combinator is
-// what makes "tagged" true of the family rather than of most of it.
+// WHAT THE EMPTY PAYLOAD IS NOT DOING, because the first repair claimed a reason that is false.
+// It said the payload must not be some file's content, or an empty file and a file holding that
+// content would collide BY CONSTRUCTION. That is wrong: content_hash_tagged_structural combines the
+// OUTER TAG and the payload as distinct inputs, so the empty arm's preimage carries E and a text
+// arm's carries T no matter what either payload is. The self-tag payload is therefore harmless and
+// also unnecessary -- any fixed domain constant would do. It is kept because a constant that names
+// the arm reads better than an arbitrary one, not because it prevents a collision. Disproved by
+// external review of gunbc#9891, which constructed the inverse the original claim ruled out.
 fn authored_source_identity(content: AuthoredSourceContent) -> ObjectId {
   match content {
     AuthoredSourceEmpty =>
