@@ -213,6 +213,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `executed_conjunct_discriminates_nothing`
 - `unbacked_execution_claim`
 - `mitigation_injected_where_judgment_declined`
+- `preserved_apparent_behaviour_across_a_representation_change`
 
 ## Building & checks
 
