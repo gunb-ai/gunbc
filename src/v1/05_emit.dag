@@ -1195,16 +1195,18 @@ fn bind_shell_operation(t: Node, op_node: Node, source_indices: Map<String, Newl
       Present { value: f } => [f]
       Absent => []
     })
-  if declared |> count <= 1 {
+  let declared_count = declared |> count
+  let bound_count = bound |> count
+  let unmodeled = declared |> filter(ch =>
+    match shell_bind_result_field(ch: ch, source_indices: source_indices) {
+      Present { value: _ } => false
+      Absent => true
+    }) |> first
+  if declared_count < 2 {
     ShellBound { transport: t, result_fields: bound }
-  } else if bound |> count == declared |> count {
+  } else if bound_count == declared_count {
     ShellBound { transport: t, result_fields: bound }
   } else {
-    let unmodeled = declared |> filter(ch =>
-      match shell_bind_result_field(ch: ch, source_indices: source_indices) {
-        Present { value: _ } => false
-        Absent => true
-      }) |> first
     match unmodeled {
       Present { value: ch } => BindingRefused {
         cause: ShellBindingRefused {
