@@ -801,6 +801,7 @@ pub(crate) fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        resolved_graph_memo_cross_process_subjects: RefCell::new(std::collections::HashSet::new()),
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
@@ -1392,12 +1393,23 @@ pub(crate) fn resolved_graph_from_sources_with_index(
 > {
     let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
-    // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
-    // front of the opt-in cross-process store. A subject this process has already
-    // assembled is served by reference, eliminating the per-entry reconcile assembly
-    // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
+    // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in front of the
+    // opt-in cross-process store. `install_cross_process_materialization_hit` can populate this
+    // otherwise process-local map from disk, so its companion provenance set is load-bearing:
+    // an in-run judgment and a content-addressed prior judgment remain separate observations.
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
+        if typecheck_gate == ResolveTypecheckGate::Strict {
+            if index
+                .resolved_graph_memo_cross_process_subjects
+                .borrow()
+                .contains(&subject)
+            {
+                record_required_lane_cross_process_content_judged_sources(&sources);
+            } else {
+                record_required_lane_judged_sources(&sources);
+            }
+        }
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Arming the optional tier while its JSON representation cannot serve is a
@@ -1524,6 +1536,13 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
             .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+    if typecheck_gate == ResolveTypecheckGate::Strict {
+        // `typed` carries the completed per-module typecheck and its diagnostics. Record the
+        // verdict before testing whether it is positive: a blocking diagnostic is stronger
+        // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
+        // produced no typed result never reach this boundary and are not credited.
+        record_required_lane_judged_sources(&sources);
+    }
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -1625,6 +1644,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // leak D0.1 removes (ci-two-tier §5). Per-module typed-cache warming already happened
     // above, in reconcile, and is unaffected.
     if memo_share == ResolvedGraphMemoShare::Memoize {
+        index
+            .resolved_graph_memo_cross_process_subjects
+            .borrow_mut()
+            .remove(&subject);
         index.resolved_graph_memo.borrow_mut().insert(
             subject.clone(),
             (
@@ -1710,6 +1733,7 @@ pub(crate) fn resolved_graph_from_sources(
     ),
     String,
 > {
+    let strict_sources = (typecheck_gate == ResolveTypecheckGate::Strict).then(|| sources.clone());
     let result = match typecheck_gate {
         ResolveTypecheckGate::Strict => {
             v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
@@ -1720,6 +1744,14 @@ pub(crate) fn resolved_graph_from_sources(
             ))
         }
     };
+
+    if typecheck_gate == ResolveTypecheckGate::Strict && result.graph.is_some() {
+        // A produced graph is the compile-to-resolved path's completed strict judgment receipt,
+        // whether its diagnostics are positive or negative.
+        if let Some(strict_sources) = strict_sources.as_ref() {
+            record_required_lane_judged_sources(strict_sources);
+        }
+    }
 
     let has_errors = result
         .diagnostics
@@ -1758,6 +1790,59 @@ pub(crate) fn resolved_graph_from_sources(
         .clone()
         .ok_or_else(|| "compilation produced no graph".to_string())?;
     Ok((graph, result.source_indices.clone()))
+}
+
+fn required_lane_judged_module_identities_store() -> &'static Mutex<BTreeSet<String>> {
+    static STORE: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn required_lane_cross_process_content_judged_module_identities_store(
+) -> &'static Mutex<BTreeSet<String>> {
+    static STORE: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn record_required_lane_judged_sources(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let mut identities = required_lane_judged_module_identities_store()
+        .lock()
+        .expect("required-lane resolved-module identity store poisoned");
+    for source in sources {
+        if let Some(module_path) = extract_module_path(&source.content) {
+            identities.insert(module_path);
+        }
+    }
+}
+
+fn record_required_lane_cross_process_content_judged_sources(
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+) {
+    let mut identities = required_lane_cross_process_content_judged_module_identities_store()
+        .lock()
+        .expect("required-lane cross-process-content judgment identity store poisoned");
+    for source in sources {
+        if let Some(module_path) = extract_module_path(&source.content) {
+            identities.insert(module_path);
+        }
+    }
+}
+
+pub fn required_lane_judged_module_identities() -> Vec<String> {
+    required_lane_judged_module_identities_store()
+        .lock()
+        .expect("required-lane resolved-module identity store poisoned")
+        .iter()
+        .cloned()
+        .collect()
+}
+
+pub fn required_lane_cross_process_content_judged_module_identities() -> Vec<String> {
+    required_lane_cross_process_content_judged_module_identities_store()
+        .lock()
+        .expect("required-lane cross-process-content judgment identity store poisoned")
+        .iter()
+        .cloned()
+        .collect()
 }
 
 pub fn whole_tree_strict_sources(
