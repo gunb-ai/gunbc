@@ -239,6 +239,22 @@ data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
 // authors correcting one sentence into a conflict. They are censused rather than skipped
 // because a census that omitted its already-owned rows would report a completeness it
 // does not have.
+//
+// THE FIVE WITNESS-TEST SITES (added 2026-09-01, XL-0-RECEIPT follow-on) are the last five rows
+// below. The twelve before them are authority rows that RELIED on the cadence for a coverage claim;
+// these five are witness tests whose own annotations asserted the cadence EXECUTES them, which is
+// the same subject reached from the other side -- the row's coverage rests on a dark cadence either
+// way. The precedent is `tools.namespace_import_closure_behavioral_transport` `nic_doc`, already
+// censused here and already carrying the exact correction these five now match, so this is
+// enrollment in an existing subject rather than a widening of it. The site is the declaration the
+// annotation is attached to, because §4c annotations have no symbol of their own for a
+// `DeclarationRef` to name.
+//
+// NONE OF THE FIVE IS `ReboundToExecutingConsumer`, INCLUDING THE TWO THAT CARRY A LOCAL RECIPE.
+// `std.witness_admission` answers OfflineLocalRecipe true, which is a statement about routes; this
+// census asks the stricter question and its own note answers it -- a command with no workflow is a
+// local recipe, not a scheduled entry point. Two authorities, two questions, and reading the looser
+// answer into the stricter one would have manufactured coverage.
 fn deleted_cadence_references() -> List<DeletedCadenceReference> {
   [
     DeletedCadenceReference {
@@ -337,20 +353,6 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
         current_coverage: self_host_wet_roster_coverage,
       },
     },
-    // FIVE WITNESS-TEST SITES (added 2026-09-01, XL-0-RECEIPT follow-on). The twelve rows above are
-    // authority rows that RELIED on the cadence for a coverage claim; these five are witness tests
-    // whose own annotations asserted the cadence EXECUTES them, which is the same subject reached
-    // from the other side -- the row's coverage rests on a dark cadence either way. The precedent is
-    // `tools.namespace_import_closure_behavioral_transport` `nic_doc`, already censused here and
-    // already carrying the exact correction these five now match, so this is enrollment in an
-    // existing subject rather than a widening of it. The site is the declaration the annotation is
-    // attached to, because §4c annotations have no symbol of their own for a `DeclarationRef` to name.
-    //
-    // NONE OF THE FIVE IS `ReboundToExecutingConsumer`, INCLUDING THE TWO THAT CARRY A LOCAL RECIPE.
-    // `std.witness_admission` answers OfflineLocalRecipe true, which is a statement about routes;
-    // this census asks the stricter question and its own note answers it -- a command with no
-    // workflow is a local recipe, not a scheduled entry point. Two authorities, two questions, and
-    // reading the looser answer into the stricter one would have manufactured coverage.
     DeletedCadenceReference {
       site: decl_ref(module_path: "test.claim.instrument_sandbox_witness", decl_name: "fixture_line_remaining"),
       standing: PremiseInvalidated {
