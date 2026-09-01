@@ -1175,77 +1175,180 @@ pub(crate) struct LocalRepoWetLaneOutcome {
     pub refusals: Vec<String>,
 }
 
+/// ONE TERMINAL RECEIPT, at the width of `v2.workflow.local_repo_wet_terminal.LocalRepoWetTerminal`.
+/// `entry` is the source the prepared subject RESOLVED for the module and `candidate` is the tree
+/// the executor ran against — both recorded rather than restated from the roster, because the join
+/// below decides whether they agree with what was scheduled.
+#[derive(Debug, Clone)]
+pub(crate) struct LocalRepoWetTerminalRow {
+    pub identity: String,
+    pub entry: String,
+    pub function: String,
+    pub candidate: String,
+    pub observed: LocalRepoWetObserved,
+}
+
 /// WHETHER THE EXECUTOR RAN AT ALL, as a value the finalizer is handed.
 ///
-/// Host realization of `v2.workflow.local_repo_wet_terminal.LocalRepoWetExecution`. The join this
-/// module already performed enforces completeness CONDITIONAL on the executor having been called:
-/// with no invocation there are no terminals, and a join of an empty terminal set against a
-/// schedule that was never read holds vacuously. That is the deleted-`falsifier.yml` shape at this
-/// lane's own grain — `std.witness_admission` claims a live route for `LocalRepoWetLane`, and
-/// nothing independently observed that the route's one caller still exists.
+/// Host realization of `v2.workflow.local_repo_wet_terminal.LocalRepoWetExecution`, and it carries
+/// the same payload the modeled arm does: the candidate and the TERMINAL POPULATION. It carried a
+/// pre-adjudicated `LocalRepoWetLaneOutcome` instead — a count, a candidate and an admitted set —
+/// which meant the finalizer could only re-read the executor's own verdict, so a run that skipped a
+/// scheduled member, mis-stated its count, or admitted an identity nobody scheduled finalized
+/// green. The `.dag` fold refuses all three; a host arm that trusts its payload realizes none of it.
 ///
-/// So absence is an ARM, `NotInvoked` is what the floor holds before the call, and `Ran` has one
-/// producer: `run_local_repo_wet_lane` itself. Deleting or short-circuiting the invocation leaves
-/// the floor holding `NotInvoked` and reaches a named refusal in `finalize_local_repo_wet_lane`,
-/// which is outside the function that would have been deleted.
+/// The join this lane already models is the completeness half of the wall; `NotInvoked` is the
+/// liveness half. With no invocation there are no terminals, and a join over an unread schedule
+/// holds vacuously — the deleted-`falsifier.yml` shape at this lane's grain, now that
+/// `std.witness_admission` claims a live route for `LocalRepoWetLane`. So absence is an ARM, and
+/// `Ran` has one producer: `run_local_repo_wet_lane` itself.
 #[derive(Debug)]
 pub(crate) enum LocalRepoWetExecution {
     NotInvoked,
-    Ran(LocalRepoWetLaneOutcome),
+    Ran {
+        candidate: String,
+        terminals: Vec<LocalRepoWetTerminalRow>,
+    },
 }
 
 /// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once and unconditionally, with execution as an
-/// argument. Host realization of `v2.workflow.local_repo_wet_terminal.local_repo_wet_finalize`;
-/// the `.dag` fold is the authority for which states refuse and this returns the same three causes
-/// as located diagnostics.
+/// argument. Host realization of `v2.workflow.local_repo_wet_terminal.local_repo_wet_finalize` and
+/// of the `local_repo_wet_join` it defers to: the same three finalization causes and the same
+/// bidirectional join, separated by remedy rather than collapsed into "the receipt is bad".
 ///
 /// An empty schedule with no invocation HOLDS: a lane that scheduled nobody claims nobody. It is
 /// `scheduled > 0` that turns absence into a refusal, and the schedule is non-empty by construction
 /// on this tree, so production reaches only the refusing cell of that arm.
+///
+/// `LocalRepoWetLaneOutcome` is DERIVED from a join that held, never accepted from the executor.
 pub(crate) fn finalize_local_repo_wet_lane(
     schedule: &[LocalRepoWetScheduledRow],
     execution: LocalRepoWetExecution,
     candidate: &str,
 ) -> Result<LocalRepoWetLaneOutcome, String> {
-    match execution {
+    let (ran_candidate, terminals) = match execution {
         LocalRepoWetExecution::NotInvoked => {
             if schedule.is_empty() {
-                Ok(LocalRepoWetLaneOutcome {
+                return Ok(LocalRepoWetLaneOutcome {
                     scheduled: 0,
                     candidate: candidate.to_string(),
                     admitted: HashSet::new(),
                     refusals: Vec::new(),
-                })
-            } else {
-                Err(format!(
-                    "local-repo wet lane: LocalRepoWetExecutorAbsent — the executor was not invoked \
-                     while {} member(s) were scheduled, so the lane's schedule-to-terminal join had \
-                     nothing to disagree with and `std.witness_admission`'s LocalRepoWetLane route \
-                     claim would have been asserted rather than executed",
-                    schedule.len()
-                ))
+                });
             }
+            return Err(format!(
+                "local-repo wet lane: LocalRepoWetExecutorAbsent — the executor was not invoked \
+                 while {} member(s) were scheduled, so the lane's schedule-to-terminal join had \
+                 nothing to disagree with and `std.witness_admission`'s LocalRepoWetLane route \
+                 claim would have been asserted rather than executed",
+                schedule.len()
+            ));
         }
-        LocalRepoWetExecution::Ran(outcome) => {
-            if outcome.candidate != candidate {
-                return Err(format!(
-                    "local-repo wet lane: LocalRepoWetExecutionForeignCandidate — the executor ran \
-                     against {} while this floor is evaluating {candidate}",
-                    outcome.candidate
-                ));
+        LocalRepoWetExecution::Ran {
+            candidate,
+            terminals,
+        } => (candidate, terminals),
+    };
+    if ran_candidate != candidate {
+        return Err(format!(
+            "local-repo wet lane: LocalRepoWetExecutionForeignCandidate — the executor ran against \
+             {ran_candidate} while this floor is evaluating {candidate}"
+        ));
+    }
+    let mut refusals: Vec<String> = Vec::new();
+    let mut admitted: HashSet<String> = HashSet::new();
+    // FORWARD: every scheduled identity has exactly one terminal, for this candidate, naming the
+    // entry and function that were scheduled, with the verdict the roster expects.
+    for row in schedule {
+        let hits: Vec<&LocalRepoWetTerminalRow> = terminals
+            .iter()
+            .filter(|t| t.identity == row.identity)
+            .collect();
+        match hits.len() {
+            0 => refusals.push(format!(
+                "{}: LocalRepoWetTerminalMissing — scheduled, and the executor produced no terminal \
+                 for it",
+                row.identity
+            )),
+            1 => {
+                let t = hits[0];
+                if t.candidate != candidate {
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalForeignCandidate — terminal names {}, this floor \
+                         is evaluating {candidate}",
+                        row.identity, t.candidate
+                    ));
+                } else if t.entry != row.entry {
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalForeignEntry — the roster's entry {:?} is not the \
+                         source the prepared subject resolved ({})",
+                        row.identity, row.entry, t.entry
+                    ));
+                } else if t.function != row.function {
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalForeignFunction — terminal names {}, the roster \
+                         scheduled {}",
+                        row.identity, t.function, row.function
+                    ));
+                } else if !t.observed.meets_pass_expectation() {
+                    let detail = t.observed.detail();
+                    let suffix = if detail.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" — {detail}")
+                    };
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalVerdictNotExpected — expected passed, observed \
+                         {}{suffix}",
+                        row.identity,
+                        t.observed.name()
+                    ));
+                } else {
+                    admitted.insert(row.identity.clone());
+                }
             }
-            for refusal in &outcome.refusals {
-                eprintln!("required-floor: LOCAL-REPO-WET REFUSAL {refusal}");
-            }
-            if !outcome.refusals.is_empty() {
-                return Err(format!(
-                    "local-repo wet lane: {} refusal(s) — the lane's schedule and its terminals disagree",
-                    outcome.refusals.len()
-                ));
-            }
-            Ok(outcome)
+            n => refusals.push(format!(
+                "{}: LocalRepoWetTerminalDuplicated — {n} terminals claim this identity and neither \
+                 can be trusted over the other",
+                row.identity
+            )),
         }
     }
+    // REVERSE: a terminal for an identity nobody scheduled is a refusal, not a bonus. Without it an
+    // executor could admit anything it liked as long as it also ran the roster.
+    for t in &terminals {
+        if !schedule.iter().any(|row| row.identity == t.identity) {
+            refusals.push(format!(
+                "{}: LocalRepoWetTerminalUnscheduled — a terminal for an identity this lane never \
+                 scheduled",
+                t.identity
+            ));
+        }
+    }
+    for refusal in &refusals {
+        eprintln!("required-floor: LOCAL-REPO-WET REFUSAL {refusal}");
+    }
+    if !refusals.is_empty() {
+        // THE CAUSES TRAVEL WITH THE COUNT. A count alone sends a reader back to the log to find
+        // out WHICH member and which cause, and makes every join cell indistinguishable to any
+        // caller that can only see the returned diagnostic.
+        return Err(format!(
+            "local-repo wet lane: {} refusal(s) — the lane's schedule and its terminals disagree: {}",
+            refusals.len(),
+            refusals.join("; ")
+        ));
+    }
+    eprintln!(
+        "[local-repo-wet] scheduled={} admitted={} refusals=0",
+        schedule.len(),
+        admitted.len()
+    );
+    Ok(LocalRepoWetLaneOutcome {
+        scheduled: schedule.len(),
+        candidate: candidate.to_string(),
+        admitted,
+        refusals: Vec::new(),
+    })
 }
 
 /// Decode the lane's schedule from its `.dag` authority.
@@ -1310,7 +1413,8 @@ fn local_repo_wet_schedule(
                     "LocalRepoWetExpectPassed" => {}
                     other => {
                         return Err(format!(
-                            "local_repo_wet_schedule: expectation {other} has no executor arm in                              this lane; only LocalRepoWetExpectPassed is realizable today"
+                            "local_repo_wet_schedule: expectation {other} has no executor arm in this \
+                             lane; only LocalRepoWetExpectPassed is realizable today"
                         ));
                     }
                 }
@@ -1345,16 +1449,18 @@ fn local_repo_wet_schedule(
 /// `ExecutionMode::Wet`, so the members execute their real effects against the very tree being
 /// evaluated. That is what makes the terminal candidate-bound by construction: there is no receipt
 /// to carry from elsewhere and no artifact handoff that could answer for another tree.
+///
+/// IT PRODUCES TERMINALS AND ADJUDICATES NOTHING. Every disagreement between the roster and what
+/// ran — a member with no receipt, a receipt naming another entry, a verdict that was not the
+/// expected one — is decided by `finalize_local_repo_wet_lane` against the SAME schedule, which is
+/// the host realization of `local_repo_wet_join`. An executor that judged its own completeness
+/// would be a second authority for the join, and the one whose payload the finalizer then trusted.
 pub(crate) fn run_local_repo_wet_lane(
     prepared: &PreparedRepository,
     schedule: &[LocalRepoWetScheduledRow],
     published: Option<Rc<HashSet<String>>>,
-) -> Result<LocalRepoWetExecution, String> {
-    let mut outcome = LocalRepoWetLaneOutcome {
-        scheduled: schedule.len(),
-        candidate: prepared.subject_digest.clone(),
-        ..Default::default()
-    };
+) -> LocalRepoWetExecution {
+    let mut terminals: Vec<LocalRepoWetTerminalRow> = Vec::new();
     // Group by module so one scope is prepared per entry rather than per witness.
     let mut by_module: Vec<(String, Vec<&LocalRepoWetScheduledRow>)> = Vec::new();
     for row in schedule {
@@ -1364,36 +1470,29 @@ pub(crate) fn run_local_repo_wet_lane(
         }
     }
     for (module, rows) in &by_module {
-        // THE AUTHORED ENTRY IS JOINED AGAINST THE FILE PREPARATION ACTUALLY RESOLVED. Without
-        // this the roster could name any path at all: the module is derived from the identity, so
-        // a stale `entry` would sit unread beside a module the executor found by another route --
-        // three writable fields with only two of them load-bearing.
+        // THE TERMINAL CARRIES THE SOURCE PREPARATION ACTUALLY RESOLVED, never the path the roster
+        // authored. That is what lets the join decide `ForeignEntry`: comparing the two here would
+        // put the same comparison in two places, and the executor's copy would be the one deciding
+        // what the finalizer never sees.
         let resolved_file = prepared
             .graph
             .modules
             .iter()
             .find(|m| m.func_env.name.as_str() == module.as_str())
             .map(|m| m.module.span.file.to_string());
-        if let Some(file) = resolved_file.as_deref() {
-            for row in rows {
-                if row.entry != file {
-                    outcome.refusals.push(format!(
-                        "{}: the roster's entry {:?} is not the source the prepared subject                          resolved for module {module} ({file})",
-                        row.identity, row.entry
-                    ));
-                }
-            }
-        }
         let scope = match claim_scope_for(prepared, module) {
             Ok(s) => s,
             Err(e) => {
-                // A SCHEDULED MEMBER THE SUBJECT CANNOT REACH IS A REFUSAL, never a skip: it
-                // would leave the lane claiming a route for something it never ran.
+                // A SCHEDULED MEMBER THE SUBJECT CANNOT REACH PRODUCES NO TERMINAL, and the join
+                // then refuses it as missing — which is the truthful shape: nothing ran, so there
+                // is nothing to report a verdict for. The reason is printed here, where it is
+                // observed, so the identity the finalizer names has a located cause beside it.
                 for row in rows {
-                    outcome.refusals.push(format!(
-                        "{}: scheduled module {module} has no scope in this subject: {e}",
+                    eprintln!(
+                        "[local-repo-wet] identity={} unreachable: scheduled module {module} has \
+                         no scope in this subject: {e}",
                         row.identity
-                    ));
+                    );
                 }
                 continue;
             }
@@ -1407,54 +1506,31 @@ pub(crate) fn run_local_repo_wet_lane(
         for row in rows {
             let observed =
                 local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function));
-            let agrees = observed.meets_pass_expectation();
             eprintln!(
-                "[local-repo-wet] identity={} expected=passed observed={} agrees={}",
+                "[local-repo-wet] identity={} expected=passed observed={}",
                 row.identity,
                 observed.name(),
-                agrees
             );
-            if agrees {
-                outcome.admitted.insert(row.identity.clone());
-            } else {
-                let detail = observed.detail();
-                let suffix = if detail.is_empty() {
-                    String::new()
-                } else {
-                    format!(" — {detail}")
-                };
-                outcome.refusals.push(format!(
-                    "{}: wet terminal did not reach the expected verdict (expected passed, \
-                     observed {}){suffix}",
-                    row.identity,
-                    observed.name(),
-                ));
-            }
+            terminals.push(LocalRepoWetTerminalRow {
+                identity: row.identity.clone(),
+                entry: resolved_file.clone().unwrap_or_default(),
+                function: row.function.clone(),
+                candidate: prepared.subject_digest.clone(),
+                observed,
+            });
         }
     }
-    // A NONEMPTY SCHEDULE THAT ADMITTED NOBODY AND REFUSED NOTHING IS THE LANE SILENTLY NOT
-    // RUNNING. Every path above either admits or refuses, so this state is unreachable today --
-    // and that is exactly why it is written as a refusal rather than left to be true by
-    // inspection: a future arm that returns early, skips a module, or filters the schedule would
-    // otherwise turn the whole lane into a permanently green decoration, which is the failure
-    // `std.witness_admission`'s route claim for this cadence would then be asserting.
-    if outcome.scheduled > 0 && outcome.admitted.is_empty() && outcome.refusals.is_empty() {
-        outcome.refusals.push(format!(
-            "the lane scheduled {} member(s) and produced neither an admission nor a refusal for \
-             any of them — the executor did not run",
-            outcome.scheduled
-        ));
-    }
     eprintln!(
-        "[local-repo-wet] scheduled={} admitted={} refusals={}",
-        outcome.scheduled,
-        outcome.admitted.len(),
-        outcome.refusals.len()
+        "[local-repo-wet] scheduled={} terminals={}",
+        schedule.len(),
+        terminals.len()
     );
-    // THE ONLY PRODUCER OF `Ran`. The floor holds `NotInvoked` until this line returns, so the
-    // execution value the finalizer reads is a fact about whether this function ran, not an
-    // assumption made at the call site.
-    Ok(LocalRepoWetExecution::Ran(outcome))
+    // THE ONLY PRODUCER OF `Ran`. The floor holds `NotInvoked` until this function returns, so the
+    // execution value the finalizer reads is a fact about whether this function ran.
+    LocalRepoWetExecution::Ran {
+        candidate: prepared.subject_digest.clone(),
+        terminals,
+    }
 }
 
 /// Print the projection — one `[changed-witness]` line per CHANGED identity (never one per
@@ -6524,7 +6600,7 @@ pub fn run_required_floor(
     // have: with nothing invoked there are no terminals, and a join over zero terminals and an
     // unread schedule holds vacuously while `std.witness_admission` goes on claiming the route.
     let wet_execution: LocalRepoWetExecution =
-        run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone())?;
+        run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone());
     let wet_lane = finalize_local_repo_wet_lane(
         &local_repo_wet_schedule_rows,
         wet_execution,
@@ -6872,81 +6948,6 @@ mod scope_fragment_memo_equivalence {
 mod changed_witness_projection_tests {
     use super::*;
 
-    /// THE OPPOSITE CONTROL FOR THE INVOCATION WALL, run through the SAME finalizer the required
-    /// floor calls. A nonempty schedule with the executor never invoked reds by name, and the
-    /// message names the arm and the count so the reader is sent to the call site rather than to
-    /// the roster.
-    ///
-    /// It is deliberately not a grep for `run_local_repo_wet_lane` and not a `.dag`-only
-    /// comparison: those establish that a call is spelled somewhere, never that finalization
-    /// refuses when it is not.
-    #[test]
-    fn a_nonempty_schedule_with_no_executor_invocation_refuses_at_finalization() {
-        let schedule = [LocalRepoWetScheduledRow {
-            identity: "test.claim.x.w_holds".to_string(),
-            entry: "dag/test/claim/x_test.dag".to_string(),
-            entry_module: "test.claim.x".to_string(),
-            function: "w_holds".to_string(),
-        }];
-        let refused = finalize_local_repo_wet_lane(
-            &schedule,
-            LocalRepoWetExecution::NotInvoked,
-            "subject-8993beb0d2808db6",
-        )
-        .expect_err("a scheduled lane whose executor never ran must refuse");
-        assert!(
-            refused.contains("LocalRepoWetExecutorAbsent") && refused.contains("1 member(s)"),
-            "the refusal must name the arm and how many members went unrun, got: {refused}"
-        );
-    }
-
-    /// THE PAIRED POSITIVE. The same finalizer, the same schedule, an executor that ran this
-    /// candidate and admitted the member: it holds. Without this cell the control above would also
-    /// pass a finalizer that refuses everything.
-    #[test]
-    fn an_executor_that_ran_this_candidate_completely_finalizes() {
-        let schedule = [LocalRepoWetScheduledRow {
-            identity: "test.claim.x.w_holds".to_string(),
-            entry: "dag/test/claim/x_test.dag".to_string(),
-            entry_module: "test.claim.x".to_string(),
-            function: "w_holds".to_string(),
-        }];
-        let outcome = finalize_local_repo_wet_lane(
-            &schedule,
-            LocalRepoWetExecution::Ran(LocalRepoWetLaneOutcome {
-                scheduled: 1,
-                candidate: "subject-8993beb0d2808db6".to_string(),
-                admitted: ["test.claim.x.w_holds".to_string()].into_iter().collect(),
-                refusals: Vec::new(),
-            }),
-            "subject-8993beb0d2808db6",
-        )
-        .expect("a complete run against this candidate must finalize");
-        assert_eq!(outcome.admitted.len(), 1);
-    }
-
-    /// A RECEIPT FROM ANOTHER TREE IS REFUSED BEFORE THE ROSTER IS BLAMED. The executor ran, and
-    /// the schedule is satisfied on its own terms -- what fails is provenance, which is the
-    /// standing this lane's candidate binding exists to make unavailable.
-    #[test]
-    fn an_executor_that_ran_another_candidate_refuses_at_finalization() {
-        let refused = finalize_local_repo_wet_lane(
-            &[],
-            LocalRepoWetExecution::Ran(LocalRepoWetLaneOutcome {
-                scheduled: 0,
-                candidate: "subject-another-tree".to_string(),
-                admitted: HashSet::new(),
-                refusals: Vec::new(),
-            }),
-            "subject-8993beb0d2808db6",
-        )
-        .expect_err("a receipt bound to another candidate must refuse");
-        assert!(
-            refused.contains("LocalRepoWetExecutionForeignCandidate"),
-            "got: {refused}"
-        );
-    }
-
     /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
     /// and admitted nobody. Named once so the wet witnesses below differ from the others by
     /// exactly the fact under test.
@@ -6957,6 +6958,176 @@ mod changed_witness_projection_tests {
             admitted: HashSet::new(),
             refusals: Vec::new(),
         }
+    }
+
+    /// One scheduled row, named once so every cell below differs from the positive by exactly the
+    /// fact under test.
+    fn scheduled_row(identity: &str) -> LocalRepoWetScheduledRow {
+        LocalRepoWetScheduledRow {
+            identity: identity.to_string(),
+            entry: "dag/test/claim/x_test.dag".to_string(),
+            entry_module: "test.claim.x".to_string(),
+            function: "w_holds".to_string(),
+        }
+    }
+
+    fn terminal_row(identity: &str, candidate: &str) -> LocalRepoWetTerminalRow {
+        LocalRepoWetTerminalRow {
+            identity: identity.to_string(),
+            entry: "dag/test/claim/x_test.dag".to_string(),
+            function: "w_holds".to_string(),
+            candidate: candidate.to_string(),
+            observed: LocalRepoWetObserved::Passed,
+        }
+    }
+
+    fn finalize(
+        schedule: &[LocalRepoWetScheduledRow],
+        terminals: Vec<LocalRepoWetTerminalRow>,
+    ) -> Result<LocalRepoWetLaneOutcome, String> {
+        finalize_local_repo_wet_lane(
+            schedule,
+            LocalRepoWetExecution::Ran {
+                candidate: TEST_CANDIDATE.to_string(),
+                terminals,
+            },
+            TEST_CANDIDATE,
+        )
+    }
+
+    /// THE OPPOSITE CONTROL FOR THE INVOCATION WALL, run through the SAME finalizer the required
+    /// floor calls. A nonempty schedule with the executor never invoked reds by name, and the
+    /// message names the arm and the count so the reader is sent to the call site rather than to
+    /// the roster.
+    ///
+    /// It is deliberately not a grep for `run_local_repo_wet_lane` and not a `.dag`-only
+    /// comparison: those establish that a call is spelled somewhere, never that finalization
+    /// refuses when it is not.
+    #[test]
+    fn a_nonempty_schedule_with_no_executor_invocation_refuses_at_finalization() {
+        let refused = finalize_local_repo_wet_lane(
+            &[scheduled_row("test.claim.x.w_holds")],
+            LocalRepoWetExecution::NotInvoked,
+            TEST_CANDIDATE,
+        )
+        .expect_err("a scheduled lane whose executor never ran must refuse");
+        assert!(
+            refused.contains("LocalRepoWetExecutorAbsent") && refused.contains("1 member(s)"),
+            "the refusal must name the arm and how many members went unrun, got: {refused}"
+        );
+    }
+
+    /// THE PAIRED POSITIVE. The same finalizer, the same schedule, an executor that ran this
+    /// candidate and produced the terminal the schedule demands: it holds, and the admitted set is
+    /// DERIVED from that join rather than accepted from the executor.
+    #[test]
+    fn an_executor_that_ran_this_candidate_completely_finalizes() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let outcome = finalize(
+            &schedule,
+            vec![terminal_row("test.claim.x.w_holds", TEST_CANDIDATE)],
+        )
+        .expect("a complete run against this candidate must finalize");
+        assert_eq!(outcome.scheduled, 1);
+        assert!(outcome.admitted.contains("test.claim.x.w_holds"));
+    }
+
+    /// A RECEIPT FROM ANOTHER TREE IS REFUSED BEFORE THE ROSTER IS BLAMED. The executor ran, and
+    /// the schedule is satisfied on its own terms -- what fails is provenance, which is the
+    /// standing this lane's candidate binding exists to make unavailable.
+    #[test]
+    fn an_executor_that_ran_another_candidate_refuses_at_finalization() {
+        let refused = finalize_local_repo_wet_lane(
+            &[],
+            LocalRepoWetExecution::Ran {
+                candidate: "subject-another-tree".to_string(),
+                terminals: Vec::new(),
+            },
+            TEST_CANDIDATE,
+        )
+        .expect_err("a receipt bound to another candidate must refuse");
+        assert!(
+            refused.contains("LocalRepoWetExecutionForeignCandidate"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE FORWARD DIRECTION OF THE JOIN, IN THE HOST. An executor that ran and skipped a scheduled
+    /// member must refuse HERE, not merely in the `.dag` fold: the carrier this finalizer reads
+    /// used to be the executor's own admitted set, so a skipped member finalized green while the
+    /// modeled authority refused it.
+    #[test]
+    fn an_executor_that_ran_but_skipped_a_scheduled_member_refuses_as_missing() {
+        let schedule = [
+            scheduled_row("test.claim.x.w_holds"),
+            scheduled_row("test.claim.x.w_other"),
+        ];
+        let refused = finalize(
+            &schedule,
+            vec![terminal_row("test.claim.x.w_holds", TEST_CANDIDATE)],
+        )
+        .expect_err("a scheduled member with no terminal must refuse");
+        assert!(
+            refused.contains("1 refusal(s)")
+                && refused.contains("LocalRepoWetTerminalMissing")
+                && refused.contains("w_other"),
+            "exactly the skipped member refuses, by name, got: {refused}"
+        );
+    }
+
+    /// THE REVERSE DIRECTION. A terminal for an identity nobody scheduled is a refusal, not a
+    /// bonus admission -- without this an executor could admit anything at all as long as it also
+    /// ran the roster.
+    #[test]
+    fn a_terminal_for_an_unscheduled_identity_refuses_at_finalization() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let refused = finalize(
+            &schedule,
+            vec![
+                terminal_row("test.claim.x.w_holds", TEST_CANDIDATE),
+                terminal_row("test.claim.x.w_nobody_scheduled", TEST_CANDIDATE),
+            ],
+        )
+        .expect_err("an unscheduled terminal must refuse");
+        assert!(
+            refused.contains("1 refusal(s)")
+                && refused.contains("LocalRepoWetTerminalUnscheduled")
+                && refused.contains("w_nobody_scheduled"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE VERDICT CELL. The member ran, for this candidate, from the scheduled source -- and did
+    /// not pass. The lane's one expectation is not met, so it cannot be admitted.
+    #[test]
+    fn a_member_that_ran_and_failed_refuses_at_finalization() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let mut terminal = terminal_row("test.claim.x.w_holds", TEST_CANDIDATE);
+        terminal.observed = LocalRepoWetObserved::Failed;
+        let refused =
+            finalize(&schedule, vec![terminal]).expect_err("a failed member must not be admitted");
+        assert!(
+            refused.contains("LocalRepoWetTerminalVerdictNotExpected")
+                && refused.contains("observed failed"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE ENTRY CELL, which is why the schedule keeps a third writable field. The roster's entry
+    /// must be the source the prepared subject actually resolved for the module; a stale one is a
+    /// refusal rather than an unread string beside a module the executor reached another way.
+    #[test]
+    fn a_terminal_resolved_from_another_source_refuses_as_foreign_entry() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let mut terminal = terminal_row("test.claim.x.w_holds", TEST_CANDIDATE);
+        terminal.entry = "dag/test/claim/somewhere_else_test.dag".to_string();
+        let refused = finalize(&schedule, vec![terminal])
+            .expect_err("a roster entry that is not the resolved source must refuse");
+        assert!(
+            refused.contains("LocalRepoWetTerminalForeignEntry")
+                && refused.contains("somewhere_else_test.dag"),
+            "got: {refused}"
+        );
     }
 
     const TEST_CANDIDATE: &str = "subject-8993beb0d2808db6";
