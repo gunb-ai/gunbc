@@ -161,7 +161,7 @@ fn sites_of(path: String, text: String, retired: List<String>, home: String) -> 
   prose_citation_sites_in_source(rel_path: path, text: text, retired: retired_index_of(names: retired, home: home), live_bare: empty_map())
 }
 
-test fn a_cross_file_annotation_citation_is_one_site_at_its_line() -> Bool {
+test fn an_annotation_citation_in_another_file_is_one_site_at_its_line() -> Bool {
   let sites = sites_of(path: specimen_other, text: annotation_specimen, retired: ["probe_note"], home: specimen_home)
   (sites |> count) == 1
     && fold(sites, init: true, f: (ok, s) => ok && s.cited_name == "probe_note" && s.line == 3
@@ -174,9 +174,9 @@ test fn a_prose_row_citation_is_a_prose_row_site() -> Bool {
   (sites |> count) == 1 && fold(sites, init: true, f: (ok, s) => ok && match s.carrier { InAnnotationBlock => false, InProseRowLiteral => true })
 }
 
-// SAME-FILE IS THE OTHER ARM OF cross_file, and it is the arm a disposition turns on: a citation in
-// the file the row was retired from can be read against the annotation that replaced it.
-test fn a_citation_in_the_retiring_file_is_not_cross_file() -> Bool {
+// InRetiringFile IS THE ARM A DISPOSITION TURNS ON: a citation in the file the row was retired from
+// can be read against the annotation that replaced it, and one in another file cannot.
+test fn a_citation_in_the_retiring_file_is_local_to_it() -> Bool {
   let sites = sites_of(path: specimen_home, text: annotation_specimen, retired: ["probe_note"], home: specimen_home)
   (sites |> count) == 1 && fold(sites, init: true, f: (ok, s) => ok && match s.locality { InRetiringFile => true, InAnotherFile => false, RetiringFileAmbiguous => false })
 }
