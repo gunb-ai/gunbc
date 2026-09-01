@@ -42,9 +42,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // wrong workflow path means the fleet is reading the wrong producer, wrong repository means
 // another repo entirely, a fork's head means an untrusted tree, a non-push event means a PR run
 // reached a wall meant for branch history. Collapsing them answers the question nobody asks and
-// discards the one an operator acts on. The precedent is deliberate: the floor receipt binds a
-// receipt to its run through three distinct mismatch arms and refuses to project a Bool over them
-// (gunbc.floor_component_receipt_document, its no-Bool-projection row).
+// discards the one an operator acts on. This module owns that reasoning outright: it previously
+// cited gunbc.floor_component_receipt_document's no-Bool-projection row as precedent, and that
+// module was deleted on 2026-09-01 as unreachable residue of the 2026-08-15 CI cut. The argument
+// never depended on it — a Bool over these arms is lossy because the arms have different remedies,
+// which is a fact about THESE arms and is stated above.
 
 // The Required CI contract's IDENTITY -- which contract completed, not what it did internally.
 // The fleet policy asks whether the exact contract succeeded for the exact revision; it does not
