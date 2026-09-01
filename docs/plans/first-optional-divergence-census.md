@@ -45,6 +45,35 @@ agree. So the entire match-scrutinee population was green on a divergence it is 
 to observe. **A witness whose RED is not authorable is a decoration**; for this class the
 match-scrutinee shape is exactly that, and the two shapes in the table are the ones that are not.
 
+## SUPERSEDED: this census's population was keyed on a SPELLING, and missed the larger half
+
+**Read this before citing anything below it.** The census's declared population is "every terminal
+`|> first` occurrence in `dag/**.dag` and `src/v2/**.dag`". That is a *syntax*, not the operation.
+The corpus writes the same declared operation two ways, and the pipe form is the smaller: **224**
+pipe-form occurrences against **661** `.first()`, **19** `.last()`, **41** `.lookup()` and **7**
+`.get()` across 183 files. Everything below measured one spelling of an operation whose identity
+`dag/std/algebra.dag` already fixes.
+
+Every consumer that has actually failed in production is in the half this document never looked at
+— `parse_int(s: fields.first())`, `matches.first().shape`, `lines.first() == schema`.
+
+A re-derivation scoped to the 944-module import closure of `tools.generated_artifact_gate` — the
+population that actually gates landing — finds **270 consumer sites**, classified by what consumes
+the result: 137 match-eliminated, 96 propagated, **14 compared to a bare value**, 11 declared-fn
+arguments, **5 field accesses on the result**, **3 builtin arguments**, **1 method call on the
+result**. Twenty-three of those are un-migrated and block the closure from loading.
+
+**The class this document never named is the largest and the worst of them.** Fourteen sites compare
+a `first()` result to a bare value with `==` / `!=`. None of the dispositions below covers it, and
+comparison is the shape with no pattern for a compensation arm to intercept — which this very
+document establishes from the other side, in the probe table above, where the comparison case
+diverges. Nine of the fourteen are merge-admission receipt parsing.
+
+**What stays true:** the divergence, the root cause, the two-sided argument, and the probe table are
+all unaffected — they are about the mechanism, not the population. **What must not be cited:** the
+disposition counts below, as a population or as a completeness claim. A census that names its shapes
+gets cited as complete whether or not it says it is.
+
 ## The census — a disposition roster, not a shape tally
 
 Population: every terminal `|> first` occurrence in `dag/**.dag` and `src/v2/**.dag` on `main`.
