@@ -3,7 +3,7 @@ module test.claim.rung_drop_standing_partition_witness_test
 import gunbc.rung_drop {
   rung_drop_roster,
   standing_rung_drops,
-  rung_drop_is_standing,
+  cited_symbol_census,
 }
 
 // THE DEFECT THIS WITNESS EXISTS FOR, stated as the state that must stay unwritable: DESIGN.md's
@@ -32,7 +32,12 @@ import gunbc.rung_drop {
 // witness closes the projection fork -- one authority for the standing list -- and leaves the
 // prose-to-field agreement as the honest open residue.
 
+// THE JOIN IS ON IDENTITY, NOT ON A RE-DERIVED PREDICATE. Asking each row "are you standing?" a
+// second time here would test this file's copy of the arm rather than the projection's, and it
+// would need the coproduct -> Bool accessor gunbc.rung_drop deliberately does not carry. So the
+// witness names the retired row and asks where it appears: absent from the derived list, present
+// exactly once in the roster it was retired in place within.
 test fn standing_list_excludes_every_retired_drop() -> Bool {
-  length(xs: filter(standing_rung_drops(), d => !rung_drop_is_standing(d))) == 0
-    && length(xs: filter(rung_drop_roster, d => !rung_drop_is_standing(d))) > 0
+  length(xs: filter(map(standing_rung_drops(), d => d.identity), i => i == cited_symbol_census.identity)) == 0
+    && length(xs: filter(map(rung_drop_roster, d => d.identity), i => i == cited_symbol_census.identity)) == 1
 }
