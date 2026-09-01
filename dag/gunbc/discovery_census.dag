@@ -14,7 +14,6 @@ import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
-  DeclinedRoutedToWetLane,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -266,8 +265,6 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedDiscoveryExcluded { matched_substring: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
-    DeclinedRoutedToWetLane =>
-      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
   }
 }
 
@@ -341,7 +338,6 @@ type CensusCounts {
   declined_outside_required_gate: Int
   declined_outside_gate_closure: Int
   declined_discovery_excluded: Int
-  declined_routed_to_wet_lane: Int
 }
 
 fn census_counts_zero() -> CensusCounts {
@@ -353,8 +349,7 @@ fn census_counts_zero() -> CensusCounts {
     declined_cost_debt: 0,
     declined_outside_required_gate: 0,
     declined_outside_gate_closure: 0,
-    declined_discovery_excluded: 0,
-    declined_routed_to_wet_lane: 0
+    declined_discovery_excluded: 0
   }
 }
 
@@ -369,8 +364,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     PlannedAsChangedWitness =>
       CensusCounts {
@@ -381,8 +375,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusCounts {
@@ -393,8 +386,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedFixtureMember { matched_prefix: _ } =>
       CensusCounts {
@@ -405,8 +397,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedCostDebt =>
       CensusCounts {
@@ -417,8 +408,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt + 1,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedOutsideRequiredGate =>
       CensusCounts {
@@ -429,8 +419,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate + 1,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedOutsideGateClosure =>
       CensusCounts {
@@ -441,8 +430,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure + 1,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedDiscoveryExcluded { matched_substring: _ } =>
       CensusCounts {
@@ -453,20 +441,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_cost_debt: counts.declined_cost_debt,
         declined_outside_required_gate: counts.declined_outside_required_gate,
         declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded + 1,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
-      }
-    DeclinedRoutedToWetLane =>
-      CensusCounts {
-        offered: counts.offered + 1,
-        planned: counts.planned,
-        declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member,
-        declined_cost_debt: counts.declined_cost_debt,
-        declined_outside_required_gate: counts.declined_outside_required_gate,
-        declined_outside_gate_closure: counts.declined_outside_gate_closure,
-        declined_discovery_excluded: counts.declined_discovery_excluded,
-        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane + 1
+        declined_discovery_excluded: counts.declined_discovery_excluded + 1
       }
   }
 }

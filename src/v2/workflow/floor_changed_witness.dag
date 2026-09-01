@@ -3,7 +3,6 @@ module v2.workflow.floor_changed_witness
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
-  DeclinedRoutedToWetLane,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
@@ -13,10 +12,6 @@ import v2.workflow.floor_terminal_ledger {
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
   NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
-}
-import v2.workflow.floor_wet_route {
-  WetLaneReceiptStanding,
-  wet_route_standing_blocks_floor,
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -50,7 +45,6 @@ type ChangedWitnessExecutionStanding =
   | PlannedAndPassedWithCostDebtObserved { observation: ChangedWitnessCostObservation }
   | CostObservationMissingUnderVerdictOnly
   | PlannedWithoutTerminalVerdict
-  | RoutedWithCandidateExactReceipt
   | Declined { disposition: RequiredFloorDisposition }
   | MissingDisposition
 
@@ -144,19 +138,6 @@ type ChangedWitnessDispositionReading =
 // are spelled rather than wildcarded so a thirteenth `ClaimDisposition` arm must be classified
 // here, never absorbed.
 //
-// `DeclinedRoutedToWetLane` IS ADMITTED ONLY UNDER A CANDIDATE-EXACT FRESH RECEIPT (parent
-// amendment 2026-08-30, #9717 composition): the wet subject digest covers every routed
-// witness's closure, so `ReceiptFreshExactSubject` PROVES the wet lane executed exactly this
-// candidate's wet subject — the changed declaration included — and that is the terminal
-// verdict a merge may stand on, `RoutedWithCandidateExactReceipt`. Under EVERY other standing
-// the edit blocks: an ancestor-subject receipt is a verdict about a tree without the edit
-// (blocked by ruling, no cadence-lag arm), and greening the edit by decline would be the
-// coverage inflation `v2.workflow.floor_wet_route` exists to refuse. The polarity is read
-// from `wet_route_standing_blocks_floor` rather than re-enumerated, so the two consumers of
-// the standing cannot disagree about which arm is clean. The red's remedy is live, not dead:
-// dispatch the wet receipts lane on the head (workflow_dispatch executes the routed roster
-// with the edit applied) and land its envelope with the change.
-//
 // `PlannedAndPassedWithCostDebtObserved` and `CostObservationMissingUnderVerdictOnly` are the two
 // arms the FLOOR-CHANGED-COST-0 ruling adds, and they exist only under
 // `ChangedCostDebtVerdictOnly` -- the join of changed selection with cost-debt enrollment. The
@@ -236,7 +217,6 @@ fn changed_witness_planned_standing(
 
 fn changed_witness_execution_standing(
   reading: ChangedWitnessDispositionReading,
-  wet_standing: WetLaneReceiptStanding,
 ) -> ChangedWitnessExecutionStanding {
   match reading {
     NoDispositionRow => MissingDisposition {}
@@ -251,22 +231,14 @@ fn changed_witness_execution_standing(
         DeclinedOutsideGateClosure => Declined { disposition: d }
         DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
         DeclinedCostDebt => Declined { disposition: d }
-        DeclinedRoutedToWetLane =>
-          if wet_route_standing_blocks_floor(standing: wet_standing) {
-            Declined { disposition: d }
-          } else {
-            RoutedWithCandidateExactReceipt {}
-          }
       }
   }
 }
 
-// THE BLOCKING POLARITY, STATED ONCE. Exactly three standings are green, and each carries an
-// executed verdict for the candidate: a hermetic pass, an enrolled expected-red holding exactly
-// as enrolled, or a wet receipt whose subject digest proves the lane ran this candidate's wet
-// subject. Everything else — a changed witness identity that did not run to such a verdict, for
-// any reason, including a decline that is perfectly lawful for the STANDING population — is a
-// red at the changed-set grain, because the change is precisely the moment its author is
+// THE BLOCKING POLARITY, STATED ONCE. Exactly two standings are green, and both required
+// execution: a changed witness identity that did not run to a passing or enrolled-held verdict
+// — for any reason, including a decline that is perfectly lawful for the STANDING population —
+// is a red at the changed-set grain, because the change is precisely the moment its author is
 // present to route it, rename it into the gate, or remove it deliberately.
 fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) -> Bool {
   match standing {
@@ -275,7 +247,6 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedAndPassedWithCostDebtObserved { observation: _ } => false
     CostObservationMissingUnderVerdictOnly => true
     PlannedWithoutTerminalVerdict => true
-    RoutedWithCandidateExactReceipt => false
     Declined { disposition: _ } => true
     MissingDisposition => true
   }

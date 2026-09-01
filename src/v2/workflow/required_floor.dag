@@ -9,7 +9,6 @@ import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
-import v2.workflow.floor_wet_route { floor_wet_route_holds }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
@@ -99,33 +98,18 @@ type RequiredFloorDisposition =
   | DeclinedOutsideGateClosure
   | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
-  | DeclinedRoutedToWetLane
 
 // The changed-witness sublane is a second selector over the SAME identity-grain disposition,
 // not a widening of `required_gate_prefixes` and not a terminal row beside a decline. Selection
 // therefore replaces the static gate's answer with one planned arm before execution; every
 // identity still has exactly one disposition and the ordinary answer is preserved unchanged for
-// the standing population. ONE ARM IS PRESERVED EVEN WHEN SELECTED: `DeclinedRoutedToWetLane`
-// asserts the identity's subject is a real host-effect chain the hermetic route refuses by
-// construction (`v2.workflow.floor_wet_route`), so planning a changed wet-routed identity here
-// would manufacture a route-gap red rather than execute it. Its changed-set verdict comes from
-// the candidate-exact wet receipt admission in `floor_changed_witness` instead.
+// the standing population.
 fn required_floor_disposition_with_changed_selection(
   ordinary: RequiredFloorDisposition,
   selected_as_changed_witness: Bool,
 ) -> RequiredFloorDisposition {
   if selected_as_changed_witness {
-    match ordinary {
-      DeclinedRoutedToWetLane => ordinary
-      Planned => PlannedAsChangedWitness {}
-      PlannedAsChangedWitness => PlannedAsChangedWitness {}
-      DeclinedLongModule { matched_prefix: _ } => PlannedAsChangedWitness {}
-      DeclinedFixtureMember { matched_prefix: _ } => PlannedAsChangedWitness {}
-      DeclinedOutsideRequiredGate => PlannedAsChangedWitness {}
-      DeclinedOutsideGateClosure => PlannedAsChangedWitness {}
-      DeclinedDiscoveryExcluded { matched_substring: _ } => PlannedAsChangedWitness {}
-      DeclinedCostDebt => PlannedAsChangedWitness {}
-    }
+    PlannedAsChangedWitness {}
   } else {
     ordinary
   }
@@ -228,7 +212,6 @@ fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRos
         DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedOutsideRequiredGate => CostDebtDeclaredButNotWithheld {}
-        DeclinedRoutedToWetLane => CostDebtDeclaredButNotWithheld {}
       }
   }
 }
@@ -692,13 +675,9 @@ fn required_floor_site_disposition(
           if floor_cost_debt_holds(name: identity) {
             DeclinedCostDebt {}
           } else {
-            if floor_wet_route_holds(name: identity) {
-              DeclinedRoutedToWetLane {}
-            } else {
-              match first_module_prefix_match(module_path: module_path, prefixes: required_gate_prefixes()) {
-                ModulePrefixUnmatched => DeclinedOutsideRequiredGate {}
-                ModulePrefixMatched { prefix: _ } => Planned {}
-              }
+            match first_module_prefix_match(module_path: module_path, prefixes: required_gate_prefixes()) {
+              ModulePrefixUnmatched => DeclinedOutsideRequiredGate {}
+              ModulePrefixMatched { prefix: _ } => Planned {}
             }
           }
       }

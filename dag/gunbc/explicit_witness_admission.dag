@@ -272,84 +272,12 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "every leaf reaches LeafEstablished by execution — this row deletes in the completing change, promoting the unchanged group root to ordinary DiscoverySelection as the lane's permanent regression wall")
   ),
   known_red_probe(
-    entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag",
-    f: "self_host_00_compile_behavioral_receipt_holds",
+    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+    f: "self_host_parse_engine_hooks_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag",
-    f: "self_host_01_tokenize_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag",
-    f: "self_host_02_parse_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag",
-    f: "self_host_03_ingest_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag",
-    f: "self_host_03_resolve_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag",
-    f: "self_host_04_infer_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag",
-    f: "self_host_materialization_carriers_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag",
-    f: "self_host_program_assembly_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag",
-    f: "self_host_program_partition_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
-  ),
-  known_red_probe(
-    entry: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag",
-    f: "self_host_source_authority_behavioral_receipt_holds",
-    kind: ExecutionWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Wet-route behavioral receipt, MEASURED assertion-false in the committed wet-lane envelope — the in-tree receipt dag/gunbc/witness/wet_lane/latest-attempt.json carries this identity's row and its run provenance (the instrument is the wet receipts lane, claim_batch --wet-route; re-derive by dispatching it): the emitted self-host crate refuses at rustc under the declared toolchain/lint contract (non-snake-case emitted module names such as `pub mod Optional`, plus v1_compiled type errors), so the behavioral comparison never reaches agreement. Enrolled per the per-identity join ruling 2026-08-30 (wall 3: this authority is the ONLY expected-red roster the wet join consumes).",
-    dissolution: unbound_dissolution(description: "this identity produces Pass in a fresh candidate-exact wet receipt after the emitted self-host crate is accepted under the declared Rust toolchain/lint contract — at which point the pass is observed as now-passing by the wet join and this row deletes in the same change")
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Phase-0 forbids SelfEmitted-with-zero-executing-consumer, so it runs Wet expect_red on the falsifier quarantine batch; still-red is agreement. Owner: #7199 falsifier lane / self-host assemble.",
+    dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
   ),
   known_red_probe(
     entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
