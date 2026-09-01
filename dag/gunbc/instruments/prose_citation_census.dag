@@ -84,13 +84,56 @@ import tools.opaque_realization_census { is_identifier_code_point }
 // prose_citation_scan_sources and prose_citation_line_carrier DELETE and the recogniser above is fed
 // annotation text keyed by subject instead of by line shape.
 //
-// THIS ROW DOES NOT ADMIT THE SCAFFOLD, and the distinction is the whole point of writing it down. The
-// realization disposition for a new source-text recogniser is an operator judgment -- DESIGN
-// gunbc.bare_reference_scanner_admission lists "additional source-text recognizers" among the things
-// its own admission explicitly does NOT cover -- and a row that granted its own admission would be the
-// self-authorized dissolution this corpus names. The census gates nothing while that judgment is
-// outstanding, which is why it can stand unadmitted at all: an unadmitted INSTRUMENT costs a reader's
-// attention, whereas an unadmitted WALL would be spending someone else's merges.
+// THIS ROW DOES NOT ADMIT THE SCAFFOLD; THE OPERATOR DID, FROM OUTSIDE THE ARTIFACT. The realization
+// disposition for a new source-text recogniser is an operator judgment, and a row that granted its own
+// admission would be the self-authorized dissolution this corpus names -- an author who can write a
+// scaffold can equally write a row claiming it was approved. So the verdict below is RECORDED here and
+// was not decided here. Relayed by bright-ram-778; this session cannot read the operator thread, so the
+// relay is the carrier and is recorded as such rather than as a first-hand reading.
+//
+// OPERATOR DISPOSITION: ScaffoldAdmitted, 2026-09-01, bound to gunbc#9940 at head 4a14b72d1f3c.
+//
+// THIS IS A NEW DISPOSITION AND NOT AN EXTENSION OF AN OLDER ONE, which has to be said or a later
+// reader will find two source-text recognisers standing under one admission.
+// gunbc.bare_reference_scanner_admission lists "additional source-text recognizers" among the things it
+// explicitly does NOT cover, RESERVING them for a fresh judgment rather than extending its own. This
+// ruling supplies that judgment for this recogniser only. Nothing here borrows that admission.
+//
+// THE ADMITTED SCOPE, exactly:
+//   git.Inspect.GrepMatchesAtRevision
+//   tools.prose_citation_census's raw-source text acquisition
+//   the pure citation recognizer, join, carrier, and report
+//   the current executing witness population
+//   manual/on-demand invocation with caller-supplied baseline and report
+//
+// THE BOUNDARY, exactly, each item requiring a NEW disposition:
+//   no required or advisory workflow invocation
+//   no merge gate
+//   no automatic source rewrite or citation repointing
+//   no widening of gunbc.prose_row_frontier membership
+//   no reuse as a general source-language recognizer
+//   no baked baseline or persisted count
+//
+// RENEWAL IS REQUIRED FOR: a new workflow consumer, automatic judgment, an additional source-text
+// recognizer, or a materially broader scan. A review correction that preserves the scope is not a
+// renewal.
+//
+// THE DISSOLUTION, in the terms the ruling used, because the wording is the whole guarantee: when
+// annotation text AND ITS ATTACHMENT IDENTITY are published corpus-wide beside the declaration index,
+// the raw-line acquisition DELETES. It does not survive as a fallback. A fallback is the failure mode
+// this sentence exists to forbid -- a deleted-in-name acquisition that still answers whenever the
+// published surface is unavailable would leave two authorities for one fact and retire nothing.
+//
+// TEXT ACQUISITION REMAINS Scaffold UNDER THIS ADMISSION. Being admitted is not being terminal: the
+// ruling grants that it may stand, not that it should survive. Relabelling this row Terminal on the
+// strength of the admission would convert a bounded exception into a permanent construction, which is
+// the one move the dissolution sentence above forbids. The recogniser half stays Terminal on its own
+// executed controls, which is a different claim about a different half.
+//
+// WHY IT COULD STAND UNADMITTED WHILE THE JUDGMENT WAS OUTSTANDING, kept because it is the argument
+// that made the question answerable rather than a request for a blanket blessing: the census gates
+// nothing, and an unadmitted INSTRUMENT costs a reader's attention, whereas an unadmitted WALL would be
+// spending someone else's merges.
 data prose_citation_text_acquisition_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
