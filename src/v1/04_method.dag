@@ -3,6 +3,15 @@ module v1.compiler.infer_method
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan }
+
+import std.algebra {
+  AlgebraProfile, FreeMonoidCollectionProfile, all_algebra_profiles,
+  AlgebraFieldTemplate, algebra_templates_for_profile,
+  AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
+  NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
+  OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable
+}
+
 import v1.std.core {
   Node, TypeVariable, Resolved,
   NoConnective,
@@ -28,6 +37,57 @@ import v1.compiler.infer_types {
 // field's type is read from the declaration instead of invented. Any future builtin returning a
 // product declares it the same way; a bare type variable is correct only where the result genuinely
 // IS parametric.
+
+type BuiltinParam {
+  name: String
+  ty: AlgebraTypeTemplate
+}
+
+type BuiltinSignature {
+  params: List<BuiltinParam>
+  returns: Node
+}
+
+fn algebra_param_templates(method: String) -> List<AlgebraTypeTemplate> {
+  match all_algebra_profiles()
+    |> flat_map(p => algebra_templates_for_profile(profile: p) |> filter(t => t.name == method))
+    |> first {
+    Present { value: t } => t.param_types
+    Absent => []
+  }
+}
+
+fn algebra_param_templates_in(profile: AlgebraProfile, method: String) -> List<AlgebraTypeTemplate> {
+  match algebra_templates_for_profile(profile: profile) |> filter(t => t.name == method) |> first {
+    Present { value: t } => t.param_types
+    Absent => []
+  }
+}
+
+fn pair_declared_names(names: List<String>, templates: List<AlgebraTypeTemplate>) -> List<BuiltinParam> {
+  names |> enumerate |> map(pair =>
+    BuiltinParam {
+      name: pair.second,
+      ty: match templates |> get(pair.first) {
+        Present { value: t } => t
+        Absent => AlgebraTypeVariable { id: "unpaired_declared_parameter" }
+      }
+    })
+}
+
+fn derived_signature(names: List<String>, method: String, returns: Node) -> BuiltinSignature {
+  BuiltinSignature {
+    params: pair_declared_names(names: names, templates: algebra_param_templates(method: method)),
+    returns: returns
+  }
+}
+
+fn derived_signature_in(profile: AlgebraProfile, names: List<String>, method: String, returns: Node) -> BuiltinSignature {
+  BuiltinSignature {
+    params: pair_declared_names(names: names, templates: algebra_param_templates_in(profile: profile, method: method)),
+    returns: returns
+  }
+}
 
 fn filesystem_read_result_type() -> Node {
   make_kernel_record_type(
@@ -167,143 +227,150 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // (the `kernel_type_set` shape in `std.types`), so the map is built once per thread and read
 // by key. Same keys, same value expressions, same answers -- the `set_ty` local is inlined at
 // its three uses because a `data` initializer has no let bindings.
-data builtin_function_registry: Map<String, Node> = {
-  "count": int_type,
-  "string_length": int_type,
-  "code_point": int_type,
-  "to_int": int_type,
-  "scan_while": int_type,
-  "scan_string_end": int_type,
-  "scan_to_eol": int_type,
-  "skip_horizontal_ws": int_type,
-  "parse_int": with_optional_cardinality(n: int_type),
-  "char_at": string_type,
-  "substring": string_type,
-  "from_code_point": string_type,
-  "chars_to_string": string_type,
-  "record_source_chars_index_lookup": unit_type,
-  "resolution_silent_pick_is_enabled": bool_type,
-  "name_resolution_policy_is_namespace_only": bool_type,
-  "type_ref_hit_ne_bind_measure_active": bool_type,
-  "resolution_silent_pick_record_global_bare_lcp_pick": unit_type,
-  "resolution_silent_pick_record_global_bare_lcp_tie": unit_type,
-  "resolution_silent_pick_record_fn_parent_first_hit": unit_type,
-  "to_string": string_type,
-  "discriminant": string_type,
-  "concat": string_type,
-  "map_insert": map_of_type_variables(),
-  "map_merge": map_of_type_variables(),
-  "with": map_of_type_variables(),
-  "empty_set": make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty,
-  "set_insert": make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty,
-  "set_union": make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty,
-  "map_contains_key": bool_type,
-  "map_has": bool_type,
-  "map_is_empty": bool_type,
-  "rc_ptr_eq": bool_type,
-  "rc_vec_ptr_eq": bool_type,
-  "set_contains": bool_type,
-  "lookup": with_optional_cardinality(n: type_variable_node(id: "map_value")),
-  "map_get": with_optional_cardinality(n: type_variable_node(id: "map_value")),
-  "Some": with_optional_cardinality(n: type_variable_node(id: "some_inner")),
-  "map_keys": list_of_type_variable(id: "collection_element"),
-  "sorted_map_keys": list_of_type_variable(id: "collection_element"),
-  "map_values": list_of_type_variable(id: "collection_element"),
-  "get": with_optional_cardinality(n: type_variable_node(id: "collection_element")),
-  "reverse": list_of_type_variable(id: "collection_element"),
-  "list_push": list_of_type_variable(id: "collection_element"),
-  "hash_combine": hash_type,
-  "atom_identity_hash": hash_type,
-  "trace_mark": unit_type,
-  "observed_peak_resident_bytes": int_type,
-  "observed_monotonic_nanos": int_type,
-  "string_contains": bool_type,
-  "length": int_type,
-  "starts_with": bool_type,
-  "replace": string_type,
-  "filesystem_read": filesystem_read_result_type(),
-  "toolchain_home_interference_probe": type_variable_node(id: "toolchain_interference_probe_result"),
-  "emit_host_run_transport": type_variable_node(id: "emit_host_run_transport_result"),
-  "emit_host_run_transport_cached": type_variable_node(id: "emit_host_run_transport_result"),
-  "emit_host_native_cache_evict": bool_type,
-  "contiguous_loop_elementwise_kernel": list_of_type_variable(id: "collection_element"),
-  "contiguous_loop_elementwise_float_kernel": list_of_type_variable(id: "collection_element"),
-  "shell_materialize_operation_argv": type_variable_node(id: "argv_materialization_result"),
-  "shell_transport_operation_rows": list_of_type_variable(id: "shell_transport_operation_row_elem"),
-  "namespace_structural_observation_admissions": list_of_type_variable(id: "ordinary_compile_structural_admission_elem"),
-  "extdeps_shape_transport_policy_facts_for_qualified_name": type_variable_node(id: "extdeps_module_facts_record"),
-  "extdeps_qualified_name_resolves_in_derived_module_set": bool_type,
-  "extdeps_external_authority_facts_for_qualified_name": type_variable_node(id: "extdeps_external_authority_module_facts_record"),
-  "extdeps_external_authority_live_clean_tree_holds": bool_type,
-  "extdeps_external_authority_live_roster_module_count": int_type,
-  "seed_runner_bool_false_failure_detail": string_type,
-  "doc_graph_orphan_count": int_type,
-  "doc_graph_admitted_root_count": int_type,
-  "doc_graph_dangling_link_count": int_type,
-  "doc_graph_doc_count": int_type,
-  "compile_dag_rust_emit_check": bool_type,
-  "compile_dag_diagnostic_census": type_variable_node(id: "compile_diagnostic_census_result"),
-  "compile_dag_multi_module_fixture": type_variable_node(id: "multi_module_compile_fixture_result"),
-  "observe_declared_import_closure_symbol_binding": type_variable_node(id: "declared_import_closure_binding_result"),
-  "class_b_import_closure_gate_not_affected_skip": bool_type,
-  "witness_layer_roots_compile_clean_check": bool_type,
-  "witness_layer_roots_compile_clean_emit_check": bool_type,
-  "install_or_consume_floor_compile_clean_gate_receipt": type_variable_node(id: "gate_receipt_result"),
-  "record_generated_artifact_drift_gate_failure_detail": unit_type,
-  "record_generated_artifact_drift_gate_clean": unit_type,
-  "consume_generated_artifact_drift_gate_receipt": type_variable_node(id: "gate_receipt_result"),
-  "witness_compile_clean_cli_floor_verdicts_agree": bool_type,
-  "test_migration_debt_module_names": list_of_type_variable(id: "test_migration_debt_module_name_elem"),
-  "test_migration_legacy_behavior_ids": list_of_type_variable(id: "test_migration_legacy_behavior_id_elem"),
-  "test_migration_witness_behavior_ids": list_of_type_variable(id: "test_migration_witness_behavior_id_elem"),
-  "test_migration_behavior_discovery_holds": bool_type,
-  "inert_carrier_names_live": list_of_type_variable(id: "inert_carrier_name_elem"),
-  "inert_carrier_declared_count": int_type,
-  "non_fold_residue_count": int_type,
-  "non_fold_residue_unrostered_count": int_type,
-  "non_fold_residue_stale_roster_count": int_type,
-  "non_fold_residue_coproduct_universe_count": int_type,
-  "parse_stage0_cargo_manifest_bins": type_variable_node(id: "cargo_manifest_bin_parse"),
-  "parse_roadmap_acceptance_event_history_jsonl": type_variable_node(id: "roadmap_acceptance_event_history_parse"),
-  "project_roadmap_acceptance_event_history_from_authority_text_host": type_variable_node(id: "roadmap_acceptance_history_projection"),
-  "commit_witness_claim_roster_unresolvable_count": int_type,
-  "commit_witness_claim_pair_resolvable": bool_type,
-  "non_fold_residue_wildcard_red_fixture_holds": bool_type,
-  "non_fold_residue_total_fold_green_fixture_holds": bool_type,
-  "non_fold_residue_roster_red_fixture_holds": bool_type,
-  "non_fold_residue_synthetic_unrostered_red_holds": bool_type,
-  "complexity_linearity_syntactic_finding_count": int_type,
-  "complexity_linearity_wildcard_facts": list_of_type_variable(id: "complexity_linearity_wildcard_fact_elem"),
-  "complexity_linearity_syntactic_site_fired": bool_type,
-  "fallback_arm_census_facts": list_of_type_variable(id: "fallback_arm_census_fact_elem"),
-  "fallback_arm_census_class_count": int_type,
-  "fallback_arm_census_total": int_type,
-  "fallback_arm_census_reconciliation_holds": bool_type,
-  "census_corpus_roots_follow_layer_authority": bool_type,
-  "transport_script_position_facts_for_path": list_of_type_variable(id: "transport_script_position_fact_elem"),
-  "layer_import_facts": list_of_type_variable(id: "layer_import_fact_elem"),
-  "import_resolution_facts": list_of_type_variable(id: "import_resolution_fact_elem"),
-  "reference_resolution_facts": list_of_type_variable(id: "import_resolution_fact_elem"),
-  "dependency_resolution_facts": list_of_type_variable(id: "module_dependency_edge_elem"),
-  "module_declaration_facts": list_of_type_variable(id: "module_declaration_fact_elem"),
-  "concept_decl_facts": list_of_type_variable(id: "concept_decl_elem"),
-  "decl_facts": list_of_type_variable(id: "decl_fact_elem"),
-  "export_signature_facts": list_of_type_variable(id: "decl_fact_elem"),
-  "data_decl_type_facts": list_of_type_variable(id: "data_decl_type_fact_elem"),
-  "fact_cardinality_decl_facts": list_of_type_variable(id: "fact_cardinality_decl_fact_elem"),
-  "languages_consumer_census_data_decl_count": int_type,
-  "languages_consumer_census_per_language_row_count": int_type,
-  "languages_consumer_census_format_row_count": int_type,
-  "languages_consumer_census_external_consumer_count": int_type,
-  "languages_consumer_census_is_composition_only": bool_type,
-  "languages_consumer_census_has_external_consumer": bool_type,
-  "is_xid_start": bool_type,
-  "is_xid_continue": bool_type,
-  "is_emoji_ident": bool_type
+data builtin_function_registry: Map<String, BuiltinSignature> = {
+  "count": derived_signature(names: ["xs"], method: "count", returns: int_type),
+  "string_length": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "code_point": BuiltinSignature { params: [BuiltinParam { name: "c", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "to_int": derived_signature(names: ["s"], method: "to_int", returns: int_type),
+  "scan_while": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "pred", ty: CallableOf { params: [NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "Bool" } } }], returns: int_type },
+  "scan_string_end": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }], returns: int_type },
+  "scan_to_eol": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }], returns: int_type },
+  "skip_horizontal_ws": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }], returns: int_type },
+  "parse_int": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: int_type) },
+  "char_at": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pos", ty: NamedTemplate { name: "Int" } }], returns: string_type },
+  "substring": derived_signature(names: ["s", "start", "end"], method: "substring", returns: string_type),
+  "from_code_point": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: string_type },
+  "chars_to_string": BuiltinSignature { params: [BuiltinParam { name: "chars", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "end", ty: NamedTemplate { name: "Int" } }], returns: string_type },
+  "record_source_chars_index_lookup": BuiltinSignature { params: [], returns: unit_type },
+  "resolution_silent_pick_is_enabled": BuiltinSignature { params: [], returns: bool_type },
+  "name_resolution_policy_is_namespace_only": BuiltinSignature { params: [], returns: bool_type },
+  "type_ref_hit_ne_bind_measure_active": BuiltinSignature { params: [], returns: bool_type },
+  "resolution_silent_pick_record_global_bare_lcp_pick": BuiltinSignature { params: [BuiltinParam { name: "env_module_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "name", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "candidate_count", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "chosen_module_path", ty: NamedTemplate { name: "String" } }], returns: unit_type },
+  "resolution_silent_pick_record_global_bare_lcp_tie": BuiltinSignature { params: [BuiltinParam { name: "env_module_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "name", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "candidate_count", ty: NamedTemplate { name: "Int" } }], returns: unit_type },
+  "resolution_silent_pick_record_fn_parent_first_hit": BuiltinSignature { params: [BuiltinParam { name: "env_module_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "name", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "parent_match_count", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "chosen_parent_module", ty: NamedTemplate { name: "String" } }], returns: unit_type },
+  "to_string": derived_signature(names: ["value"], method: "to_string", returns: string_type),
+  "discriminant": BuiltinSignature { params: [BuiltinParam { name: "v", ty: AlgebraTypeVariable { id: "discriminant_subject" } }], returns: string_type },
+  "concat": derived_signature(names: ["a", "b"], method: "concat", returns: string_type),
+  "map_insert": derived_signature(names: ["m", "key", "value"], method: "map_insert", returns: map_of_type_variables()),
+  "map_merge": derived_signature(names: ["m", "overlay"], method: "map_merge", returns: map_of_type_variables()),
+  "with": derived_signature(names: ["m", "key", "value"], method: "with", returns: map_of_type_variables()),
+  "empty_set": BuiltinSignature { params: [], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
+  "set_insert": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
+  "set_union": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "other", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
+  "map_contains_key": derived_signature(names: ["m", "key"], method: "map_contains_key", returns: bool_type),
+  "map_has": derived_signature(names: ["m", "key"], method: "map_has", returns: bool_type),
+  "map_is_empty": BuiltinSignature { params: [BuiltinParam { name: "m", ty: AlgebraTypeVariable { id: "map_subject" } }], returns: bool_type },
+  "rc_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: AlgebraTypeVariable { id: "rc_subject" } }, BuiltinParam { name: "b", ty: AlgebraTypeVariable { id: "rc_subject" } }], returns: bool_type },
+  "rc_vec_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }, BuiltinParam { name: "b", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }], returns: bool_type },
+  "set_contains": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: bool_type },
+  "lookup": derived_signature(names: ["m", "key"], method: "lookup", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
+  "map_get": derived_signature(names: ["m", "key"], method: "map_get", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
+  "Some": BuiltinSignature { params: [BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "some_inner" } }], returns: with_optional_cardinality(n: type_variable_node(id: "some_inner")) },
+  "map_keys": derived_signature(names: ["m"], method: "map_keys", returns: list_of_type_variable(id: "collection_element")),
+  "sorted_map_keys": BuiltinSignature { params: [BuiltinParam { name: "m", ty: AlgebraTypeVariable { id: "map_subject" } }], returns: list_of_type_variable(id: "collection_element") },
+  "map_values": derived_signature(names: ["m"], method: "map_values", returns: list_of_type_variable(id: "collection_element")),
+  "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: with_optional_cardinality(n: type_variable_node(id: "collection_element"))),
+  "reverse": derived_signature(names: ["xs"], method: "reverse", returns: list_of_type_variable(id: "collection_element")),
+  "list_push": derived_signature(names: ["xs", "item"], method: "list_push", returns: list_of_type_variable(id: "collection_element")),
+  "hash_combine": BuiltinSignature { params: [BuiltinParam { name: "a", ty: NamedTemplate { name: "Hash" } }, BuiltinParam { name: "b", ty: NamedTemplate { name: "Hash" } }], returns: hash_type },
+  "atom_identity_hash": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: hash_type },
+  "trace_mark": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: unit_type },
+  "observed_peak_resident_bytes": BuiltinSignature { params: [], returns: int_type },
+  "observed_monotonic_nanos": BuiltinSignature { params: [], returns: int_type },
+  "string_contains": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pattern", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "length": derived_signature(names: ["xs"], method: "length", returns: int_type),
+  "starts_with": derived_signature(names: ["s", "prefix"], method: "starts_with", returns: bool_type),
+  "replace": derived_signature(names: ["s", "from", "to"], method: "replace", returns: string_type),
+  "filesystem_read": BuiltinSignature { params: [BuiltinParam { name: "path", ty: NamedTemplate { name: "String" } }], returns: filesystem_read_result_type() },
+  "toolchain_home_interference_probe": BuiltinSignature { params: [], returns: type_variable_node(id: "toolchain_interference_probe_result") },
+  "emit_host_run_transport": BuiltinSignature { params: [BuiltinParam { name: "admission", ty: AlgebraTypeVariable { id: "emit_host_admission" } }, BuiltinParam { name: "files", ty: AlgebraTypeVariable { id: "emit_host_files" } }, BuiltinParam { name: "build", ty: AlgebraTypeVariable { id: "emit_host_build" } }, BuiltinParam { name: "run", ty: AlgebraTypeVariable { id: "emit_host_run" } }, BuiltinParam { name: "environment", ty: AlgebraTypeVariable { id: "emit_host_environment" } }], returns: type_variable_node(id: "emit_host_run_transport_result") },
+  "emit_host_run_transport_cached": BuiltinSignature { params: [BuiltinParam { name: "admission", ty: AlgebraTypeVariable { id: "emit_host_admission" } }, BuiltinParam { name: "workspace_dir", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "files", ty: AlgebraTypeVariable { id: "emit_host_files" } }, BuiltinParam { name: "build", ty: AlgebraTypeVariable { id: "emit_host_build" } }, BuiltinParam { name: "run", ty: AlgebraTypeVariable { id: "emit_host_run" } }, BuiltinParam { name: "environment", ty: AlgebraTypeVariable { id: "emit_host_environment" } }], returns: type_variable_node(id: "emit_host_run_transport_result") },
+  "emit_host_native_cache_evict": BuiltinSignature { params: [BuiltinParam { name: "workspace_dir", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "contiguous_loop_elementwise_kernel": BuiltinSignature { params: [BuiltinParam { name: "op_codes", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "a", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "b", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "c", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }], returns: list_of_type_variable(id: "collection_element") },
+  "contiguous_loop_elementwise_float_kernel": BuiltinSignature { params: [BuiltinParam { name: "op_codes", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "fma_contraction_policy", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "a", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "b", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "c", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }], returns: list_of_type_variable(id: "collection_element") },
+  "shell_materialize_operation_argv": BuiltinSignature { params: [BuiltinParam { name: "operation", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "workspace_dir", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "files", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "environment", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "argv_materialization_result") },
+  "shell_transport_operation_rows": BuiltinSignature { params: [], returns: list_of_type_variable(id: "shell_transport_operation_row_elem") },
+  "namespace_structural_observation_admissions": BuiltinSignature { params: [BuiltinParam { name: "file", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "neighbour_name", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "branch_binder_name", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "later_name", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "homonym_name", ty: NamedTemplate { name: "String" } }], returns: list_of_type_variable(id: "ordinary_compile_structural_admission_elem") },
+  "extdeps_shape_transport_policy_facts_for_qualified_name": BuiltinSignature { params: [BuiltinParam { name: "module", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "extdeps_module_facts_record") },
+  "extdeps_qualified_name_resolves_in_derived_module_set": BuiltinSignature { params: [BuiltinParam { name: "module", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "extdeps_external_authority_facts_for_qualified_name": BuiltinSignature { params: [BuiltinParam { name: "module", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "extdeps_external_authority_module_facts_record") },
+  "extdeps_external_authority_live_clean_tree_holds": BuiltinSignature { params: [], returns: bool_type },
+  "extdeps_external_authority_live_roster_module_count": BuiltinSignature { params: [], returns: int_type },
+  "seed_runner_bool_false_failure_detail": BuiltinSignature { params: [BuiltinParam { name: "witness", ty: NamedTemplate { name: "String" } }], returns: string_type },
+  "doc_graph_orphan_count": BuiltinSignature { params: [BuiltinParam { name: "roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: int_type },
+  "doc_graph_admitted_root_count": BuiltinSignature { params: [BuiltinParam { name: "roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: int_type },
+  "doc_graph_dangling_link_count": BuiltinSignature { params: [], returns: int_type },
+  "doc_graph_doc_count": BuiltinSignature { params: [], returns: int_type },
+  "compile_dag_rust_emit_check": BuiltinSignature { params: [BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "entry", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "expected", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "mode", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "compile_dag_diagnostic_census": BuiltinSignature { params: [BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "compile_diagnostic_census_result") },
+  "compile_dag_multi_module_fixture": BuiltinSignature { params: [BuiltinParam { name: "sources", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "entry", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "function", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "multi_module_compile_fixture_result") },
+  "observe_declared_import_closure_symbol_binding": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "entry_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "consumer_module", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "symbol", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "declared_import_closure_binding_result") },
+  "class_b_import_closure_gate_not_affected_skip": BuiltinSignature { params: [], returns: bool_type },
+  "witness_layer_roots_compile_clean_check": BuiltinSignature { params: [], returns: bool_type },
+  "witness_layer_roots_compile_clean_emit_check": BuiltinSignature { params: [], returns: bool_type },
+  "install_or_consume_floor_compile_clean_gate_receipt": BuiltinSignature { params: [], returns: type_variable_node(id: "gate_receipt_result") },
+  "record_generated_artifact_drift_gate_failure_detail": BuiltinSignature { params: [BuiltinParam { name: "detail", ty: NamedTemplate { name: "String" } }], returns: unit_type },
+  "record_generated_artifact_drift_gate_clean": BuiltinSignature { params: [], returns: unit_type },
+  "consume_generated_artifact_drift_gate_receipt": BuiltinSignature { params: [], returns: type_variable_node(id: "gate_receipt_result") },
+  "witness_compile_clean_cli_floor_verdicts_agree": BuiltinSignature { params: [], returns: bool_type },
+  "test_migration_debt_module_names": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_debt_module_name_elem") },
+  "test_migration_legacy_behavior_ids": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_legacy_behavior_id_elem") },
+  "test_migration_witness_behavior_ids": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_witness_behavior_id_elem") },
+  "test_migration_behavior_discovery_holds": BuiltinSignature { params: [], returns: bool_type },
+  "inert_carrier_names_live": BuiltinSignature { params: [], returns: list_of_type_variable(id: "inert_carrier_name_elem") },
+  "inert_carrier_declared_count": BuiltinSignature { params: [], returns: int_type },
+  "non_fold_residue_count": BuiltinSignature { params: [], returns: int_type },
+  "non_fold_residue_unrostered_count": BuiltinSignature { params: [], returns: int_type },
+  "non_fold_residue_stale_roster_count": BuiltinSignature { params: [], returns: int_type },
+  "non_fold_residue_coproduct_universe_count": BuiltinSignature { params: [], returns: int_type },
+  "parse_stage0_cargo_manifest_bins": BuiltinSignature { params: [BuiltinParam { name: "manifest", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "cargo_manifest_bin_parse") },
+  "parse_roadmap_acceptance_event_history_jsonl": BuiltinSignature { params: [BuiltinParam { name: "text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_event_history_parse") },
+  "project_roadmap_acceptance_event_history_from_authority_text_host": BuiltinSignature { params: [BuiltinParam { name: "authority_text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_history_projection") },
+  "commit_witness_claim_roster_unresolvable_count": BuiltinSignature { params: [], returns: int_type },
+  "commit_witness_claim_pair_resolvable": BuiltinSignature { params: [BuiltinParam { name: "entry", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "function", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "non_fold_residue_wildcard_red_fixture_holds": BuiltinSignature { params: [], returns: bool_type },
+  "non_fold_residue_total_fold_green_fixture_holds": BuiltinSignature { params: [], returns: bool_type },
+  "non_fold_residue_roster_red_fixture_holds": BuiltinSignature { params: [], returns: bool_type },
+  "non_fold_residue_synthetic_unrostered_red_holds": BuiltinSignature { params: [], returns: bool_type },
+  "complexity_linearity_syntactic_finding_count": BuiltinSignature { params: [], returns: int_type },
+  "complexity_linearity_wildcard_facts": BuiltinSignature { params: [], returns: list_of_type_variable(id: "complexity_linearity_wildcard_fact_elem") },
+  "complexity_linearity_syntactic_site_fired": BuiltinSignature { params: [BuiltinParam { name: "site", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "fallback_arm_census_facts": BuiltinSignature { params: [], returns: list_of_type_variable(id: "fallback_arm_census_fact_elem") },
+  "fallback_arm_census_class_count": BuiltinSignature { params: [BuiltinParam { name: "class", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "fallback_arm_census_total": BuiltinSignature { params: [], returns: int_type },
+  "fallback_arm_census_reconciliation_holds": BuiltinSignature { params: [], returns: bool_type },
+  "census_corpus_roots_follow_layer_authority": BuiltinSignature { params: [], returns: bool_type },
+  "transport_script_position_facts_for_path": BuiltinSignature { params: [BuiltinParam { name: "path", ty: NamedTemplate { name: "String" } }], returns: list_of_type_variable(id: "transport_script_position_fact_elem") },
+  "layer_import_facts": BuiltinSignature { params: [BuiltinParam { name: "std_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "extdeps_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "layer_import_fact_elem") },
+  "import_resolution_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "import_resolution_fact_elem") },
+  "reference_resolution_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "import_resolution_fact_elem") },
+  "dependency_resolution_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "module_dependency_edge_elem") },
+  "module_declaration_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "module_declaration_fact_elem") },
+  "concept_decl_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "concept_decl_elem") },
+  "decl_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "decl_fact_elem") },
+  "export_signature_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "decl_fact_elem") },
+  "data_decl_type_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "data_decl_type_fact_elem") },
+  "fact_cardinality_decl_facts": BuiltinSignature { params: [], returns: list_of_type_variable(id: "fact_cardinality_decl_fact_elem") },
+  "languages_consumer_census_data_decl_count": BuiltinSignature { params: [], returns: int_type },
+  "languages_consumer_census_per_language_row_count": BuiltinSignature { params: [], returns: int_type },
+  "languages_consumer_census_format_row_count": BuiltinSignature { params: [], returns: int_type },
+  "languages_consumer_census_external_consumer_count": BuiltinSignature { params: [BuiltinParam { name: "decl_name", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "languages_consumer_census_is_composition_only": BuiltinSignature { params: [BuiltinParam { name: "decl_name", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "languages_consumer_census_has_external_consumer": BuiltinSignature { params: [BuiltinParam { name: "decl_name", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "is_xid_start": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type },
+  "is_xid_continue": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type },
+  "is_emoji_ident": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type }
+}
+
+fn builtin_signature(name: String) -> BuiltinSignature? {
+  map_get(builtin_function_registry, name)
 }
 
 fn infer_builtin_call_type(name: String) -> Node? {
-  map_get(builtin_function_registry, name)
+  match builtin_signature(name: name) {
+    Present { value: sig } => Present { value: sig.returns }
+    Absent => Absent
+  }
 }
 
 fn resolve_builtin_call_type(name: String) -> Node {
