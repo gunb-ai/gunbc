@@ -1,0 +1,78 @@
+module test.claim.contract_identity.required_ci_epoch_observation_test
+
+import std.types { Bool, String }
+import std.contract_identity { ContractEpoch }
+import gunbc.required_ci_epoch_observation {
+  RequiredCiEpochObservation,
+  RequiredCiEpochObserved,
+  RequiredCiEpochUnobservable,
+  RequiredCiEpochAbsent,
+  RequiredCiEpochDuplicated,
+  RequiredCiEpochMalformed,
+  RequiredCiEpochDocumentUnparsable,
+  required_ci_epoch_from_workflow_source,
+}
+
+// FIXTURES ARE WORKFLOW-SHAPED, not minimal mappings, because the fold's job is to find one member
+// of the top-level env block in a document that also carries name/on/jobs. A fixture that contained
+// only the env block would pass while a real workflow failed.
+data src_observed: String = "name: witnesses\nenv:\n  CARGO_TERM_COLOR: always\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1\njobs:\n  build:\n    runs-on: linux\n"
+
+data src_absent: String = "name: witnesses\nenv:\n  CARGO_TERM_COLOR: always\njobs:\n  build:\n    runs-on: linux\n"
+
+// A SEQUENCE DOCUMENT PARSES AND IS STILL NOT A WORKFLOW. It is the discriminating input for the
+// distinction the producer draws: a document that is not a mapping refuses as unparsable rather
+// than reporting that the workflow declares no epoch, which is a different remedy.
+data src_not_a_mapping: String = "- name: witnesses\n- env: nothing\n"
+
+data src_duplicated: String = "name: witnesses\nenv:\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.2\njobs:\n  build:\n    runs-on: linux\n"
+
+data src_empty_value: String = "name: witnesses\nenv:\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: \"\"\njobs:\n  build:\n    runs-on: linux\n"
+
+data src_non_string: String = "name: witnesses\nenv:\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH:\n    - a\n    - b\njobs:\n  build:\n    runs-on: linux\n"
+
+// THE ONLY ADMITTING CASE. Its epoch value is asserted rather than merely its variant: a fold that
+// returned the right arm carrying the wrong member would otherwise pass.
+test fn witness_epoch_observed_carries_the_exact_value() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_observed) {
+    RequiredCiEpochObserved { epoch: e } => (e as String) == "2026-09-01.1"
+    _ => false
+  }
+}
+
+// THE FOUR REFUSALS, each discriminated on its own arm. They are separate tests rather than one
+// disjunction so a regression names which axis broke.
+test fn witness_epoch_absent_refuses_on_its_own_axis() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_absent) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent } => true
+    _ => false
+  }
+}
+
+test fn witness_epoch_duplicated_refuses_and_counts() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_duplicated) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } } => n == 2
+    _ => false
+  }
+}
+
+test fn witness_empty_epoch_is_malformed_not_observed() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_empty_value) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_non_string_epoch_is_malformed_not_observed() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_non_string) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_a_document_that_is_not_a_mapping_is_unparsable_not_absent() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_not_a_mapping) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: _ } } => true
+    _ => false
+  }
+}
