@@ -1,4 +1,4 @@
-module test.claim.contract_identity.required_ci_epoch_git_backed_witness
+module test.claim.contract_identity.required_ci_epoch_real_execution_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, FilePath, GitRef }
 import extdeps.git
@@ -175,7 +175,7 @@ func run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
 
 // THE DISCRIMINATING RED. Exactly one refusal, naming the contract-epoch axis and carrying both
 // epochs, through the live fleet-desired composition.
-test func a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs() -> Bool {
+test func a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution() -> Bool {
   let e = run_epoch_experiment(mismatching: true)
   e.setup_ok
     && match e.observation {
@@ -195,7 +195,7 @@ test func a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs() ->
 
 // THE PAIRED CONTROL. The same experiment at the required epoch admits through the same fold, so
 // the refusal above is the epoch and not the fixture.
-test func a_run_of_the_contract_at_the_required_epoch_admits() -> Bool {
+test func a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -> Bool {
   let e = run_epoch_experiment(mismatching: false)
   e.setup_ok
     && match e.observation {

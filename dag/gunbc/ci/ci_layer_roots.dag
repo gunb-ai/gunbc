@@ -796,6 +796,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
+    pattern: "required_ci_epoch_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolution: excl_install_media_dissolve},
+  WitnessExclusionRow {
     pattern: "generated_artifact_merge_driver_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
@@ -1234,6 +1239,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "one_sided_generated_artifact_change_merges_clean_by_real_execution"),
