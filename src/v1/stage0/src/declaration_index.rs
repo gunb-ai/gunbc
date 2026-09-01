@@ -938,6 +938,58 @@ pub fn index_get<'a>(
     index.modules.get(module_path)
 }
 
+/// Identity-grain complement of a required lane's semantic-resolution population.
+///
+/// The declaration side comes from the parse sweep's index and the resolution side comes from
+/// the lane that actually ran. Import edges are deliberately absent: global unique-name lookup
+/// means authored imports do not determine which modules a lane resolved.
+pub fn modules_unresolved_by_lane(
+    index: &DeclarationIndex,
+    resolved_module_identities: &[String],
+) -> Vec<String> {
+    module_identity_difference(
+        index.modules.keys().cloned().collect(),
+        resolved_module_identities,
+    )
+}
+
+fn module_identity_difference(
+    declared_module_identities: Vec<String>,
+    resolved_module_identities: &[String],
+) -> Vec<String> {
+    let resolved: BTreeSet<&str> = resolved_module_identities
+        .iter()
+        .map(String::as_str)
+        .collect();
+    declared_module_identities
+        .into_iter()
+        .filter(|identity| !resolved.contains(identity.as_str()))
+        .collect()
+}
+
+#[cfg(test)]
+mod lane_resolution_join_tests {
+    use super::module_identity_difference;
+
+    #[test]
+    fn identical_populations_have_empty_difference() {
+        let declared = vec!["probe.alpha".to_string(), "probe.beta".to_string()];
+        assert_eq!(
+            module_identity_difference(declared.clone(), &declared),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn difference_enumerates_the_missing_identity() {
+        let declared = vec!["probe.alpha".to_string(), "probe.beta".to_string()];
+        assert_eq!(
+            module_identity_difference(declared, &["probe.alpha".to_string()]),
+            vec!["probe.beta".to_string()]
+        );
+    }
+}
+
 pub fn index_records(index: &DeclarationIndex) -> Vec<&ModuleDeclarationRecord> {
     index.modules.values().collect()
 }
