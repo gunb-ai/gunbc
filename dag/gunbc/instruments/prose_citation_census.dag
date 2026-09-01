@@ -155,7 +155,40 @@ data prose_citation_census_roots: List<String> = ["dag", "src/v1", "src/v2"]
 // as retired and every citation of it would be reported as dangling.
 data prose_citation_live_facts: List<DataDeclTypeFact> = data_decl_type_facts(pool_roots: prose_citation_census_roots)
 
-fn prose_citation_live_prose_row_names() -> Map<String, Bool> {
+// LIVENESS IS KEYED BY QUALIFIED DECLARATION IDENTITY, NOT BY BARE NAME, and the first cut was keyed
+// by name. Review 58234 named it and the correction is a COHERENCE repair rather than only a join
+// repair: under a bare-name key, a row retired from its own module while the same spelling survives in
+// another module reads as "still live" and leaves the census entirely. That is not a marginal miss --
+// it is the MORE severe class, because such a citation still RESOLVES, to a declaration that is not
+// the one the prose meant. A census whose own argument is that a citation which resolves and lies is
+// worse than one that dangles loudly cannot be built so that exactly those sites are the ones it
+// cannot see.
+//
+// MEASURED at the pre-sweep baseline: 4002 retired rows carry 4002 distinct names and 0 sites fall in
+// that class TODAY, while 38 prose-row names in the same baseline are declared across more than one
+// file over 119 rows. The spelling already collides in this corpus; only the retired subset happens
+// not to. Zero-today is a fact about this tree and not about the construction.
+fn prose_citation_qualified(module_path: String, decl_name: String) -> String {
+  concat(module_path, concat(".", decl_name))
+}
+
+// Both sides of this join are the AUTHORED, UNSTRIPPED module name -- v2.std.decl_index records that
+// `module_path` retains its `v2.` prefix, and the baseline read below takes the module line as
+// written. Checked rather than assumed, because a silent prefix mismatch would make every src/v2 row
+// read as retired.
+fn prose_citation_live_qualified_names() -> Map<String, Bool> {
+  fold(
+    prose_citation_live_facts,
+    init: empty_map(),
+    f: (acc, f) => if f.type_name == "String" { map_insert(acc, prose_citation_qualified(module_path: f.module_path, decl_name: f.decl_name), true) } else { acc }
+  )
+}
+
+// The bare-name index answers a DIFFERENT question and both are needed. A prose citation names a bare
+// symbol, so whether the cited spelling resolves to anything at all is decided by name; whether the
+// row the prose MEANT still exists is decided by qualified identity. Collapsing the two is what the
+// first cut did.
+fn prose_citation_live_bare_names() -> Map<String, Bool> {
   fold(
     prose_citation_live_facts,
     init: empty_map(),
@@ -170,6 +203,12 @@ fn prose_citation_live_prose_row_names() -> Map<String, Bool> {
 data prose_citation_baseline_pattern: String = "^data [A-Za-z0-9_]+: String = \""
 
 data prose_citation_baseline_pathspec: String = "*.dag"
+
+// The module line of each baseline source, read at the same revision, so a baseline row can carry the
+// qualified identity the join above needs. A file with no module line contributes no rows: its
+// declarations have no qualified identity to compare, and inventing one from the path would be the
+// positional naming DESIGN section 3 refuses.
+data prose_citation_module_pattern: String = "^module [A-Za-z0-9_.]+"
 
 // Each match arrives as `<ref>:<path>:data NAME: String = "`. Splitting on the FIRST TWO colons is
 // wrong in general -- a ref can contain a colon -- but not here, because the ref this operation was
@@ -206,6 +245,34 @@ fn prose_citation_baseline_row(line: String, ref_len: Int) -> ProseRowRef? {
   }
 }
 
+fn prose_citation_module_of_line(line: String, ref_len: Int) -> ProseRowRef? {
+  let rest = prose_citation_strip_ref(line: line, ref_len: ref_len)
+  let n = string_length(s: rest)
+  let colon = prose_citation_colon_index(s: rest, i: 0, len: n)
+  if colon >= n {
+    none
+  } else {
+    let decl = substring(s: rest, start: colon + 1, end: n)
+    if !starts_with(s: decl, prefix: "module ") {
+      none
+    } else {
+      Present { value: ProseRowRef { path: substring(s: rest, start: 0, end: colon), decl_name: substring(s: decl, start: 7, end: string_length(s: decl)) } }
+    }
+  }
+}
+
+fn prose_citation_module_index(matches: String, ref_len: Int) -> Map<String, String> {
+  fold(
+    split(s: matches, delimiter: "\n"),
+    init: empty_map(),
+    f: (acc, line) =>
+      match prose_citation_module_of_line(line: line, ref_len: ref_len) {
+        Absent => acc
+        Present { value: row } => map_insert(acc, row.path, row.decl_name)
+      }
+  )
+}
+
 fn prose_citation_baseline_rows(matches: String, ref_len: Int) -> List<ProseRowRef> {
   fold(
     split(s: matches, delimiter: "\n"),
@@ -218,16 +285,53 @@ fn prose_citation_baseline_rows(matches: String, ref_len: Int) -> List<ProseRowR
   )
 }
 
-// A baseline row is RETIRED only if no live declaration answers to its name today. A row moved between
-// files or renamed into place is still declared and is not retired at all; counting it would report a
-// citation that resolves perfectly well.
-fn prose_citation_retired_rows(baseline_rows: List<ProseRowRef>, live: Map<String, Bool>) -> List<ProseRowRef> {
-  baseline_rows |> filter(row => !map_contains_key(live, row.decl_name))
+// A baseline row is RETIRED when its QUALIFIED identity is no longer declared. A row whose module is
+// unknown at the baseline is not judged either way and contributes nothing, because "retired" would
+// then be decided against an identity that was never established.
+fn prose_citation_retired_rows(baseline_rows: List<ProseRowRef>, modules: Map<String, String>, live_qualified: Map<String, Bool>) -> List<ProseRowRef> {
+  baseline_rows |> filter(row =>
+    match lookup(modules, row.path) {
+      Absent => false
+      Present { value: m } => !map_contains_key(live_qualified, prose_citation_qualified(module_path: m, decl_name: row.decl_name))
+    })
 }
 
-// name -> the path the row was retired from, which is what makes cross_file derivable.
-fn prose_citation_retired_index(rows: List<ProseRowRef>) -> Map<String, String> {
-  fold(rows, init: empty_map(), f: (acc, row) => map_insert(acc, row.decl_name, row.path))
+// THE ORIGIN OF A RETIRED NAME IS NOT ALWAYS ONE PATH, and this carrier exists because the first cut
+// assumed it was. That cut was a Map<String, String> built by map_insert, so two baseline rows sharing
+// a name kept whichever the fold saw last and the loser vanished with no diagnostic -- a silent
+// last-write-wins deciding an attribute a disposition turns on.
+//
+// MEASURED, so the fix is not priced on a hypothetical: at the pre-sweep baseline 4002 retired rows
+// carry 4002 distinct names, so the collision population is ZERO TODAY. It is fixed anyway, because 38
+// prose-row names in that same baseline ARE declared in more than one file across 119 rows -- the
+// spelling collides in the corpus already and only the retired SUBSET happens not to. A realized n of
+// zero is not a time-stable fact, and a census whose origin attribute silently depends on fold order
+// is wrong in a way no future reader could see.
+//
+// AMBIGUITY IS CARRIED, NOT RESOLVED. Where a name was retired from several paths, this refuses to
+// pick one: a prose citation names a bare symbol, so nothing in the site says which origin it meant,
+// and choosing would fabricate the answer rather than report the state.
+type ProseRowOrigin
+  = RetiredFromOnePath { path: String }
+  | RetiredFromSeveralPaths
+
+fn prose_citation_merge_origin(existing: ProseRowOrigin, path: String) -> ProseRowOrigin {
+  match existing {
+    RetiredFromSeveralPaths => RetiredFromSeveralPaths {}
+    RetiredFromOnePath { path: seen } => if seen == path { RetiredFromOnePath { path: seen } } else { RetiredFromSeveralPaths {} }
+  }
+}
+
+fn prose_citation_retired_index(rows: List<ProseRowRef>) -> Map<String, ProseRowOrigin> {
+  fold(
+    rows,
+    init: empty_map(),
+    f: (acc, row) =>
+      match lookup(acc, row.decl_name) {
+        Absent => map_insert(acc, row.decl_name, RetiredFromOnePath { path: row.path })
+        Present { value: seen } => map_insert(acc, row.decl_name, prose_citation_merge_origin(existing: seen, path: row.path))
+      }
+  )
 }
 
 // WHY THE SCAN SPLITS ON THE SUFFIX RATHER THAN TOKENISING EVERY WORD. Every name in the subject
@@ -336,16 +440,38 @@ fn prose_citation_line_carrier(line: String) -> ProseCitationCarrier? {
 // the identity: DESIGN section 3 rules that a position decays under any edit above it, and this census
 // re-derives on demand precisely so a consumer never has to trust a stored one.
 //
-// cross_file is the one derived attribute and it is the attribute a disposition turns on. A citation
-// in the file the row was retired from can be read against the annotation that replaced it; a citation
-// in another file cannot, because nothing in that file records what happened.
+// LOCALITY IS THE ONE DERIVED ATTRIBUTE AND IT IS THE ATTRIBUTE A DISPOSITION TURNS ON. A citation in
+// the file the row was retired from can be read against the annotation that replaced it; a citation in
+// another file cannot, because nothing in that file records what happened.
+//
+// IT IS THREE STATES AND NOT A Bool. A Bool has no spelling for "the name was retired from several
+// paths, so which file this citation is local TO is not decidable from the site" -- and a Bool would
+// have to answer that case true or false, which is ignorance rendered as an answer. The third arm is
+// the refusal, carried into the census where it can be counted rather than absorbed into either of the
+// other two.
+type ProseCitationLocality
+  = InRetiringFile
+  | InAnotherFile
+  | RetiringFileAmbiguous
+
+// RESOLUTION IS THE SECOND DERIVED ATTRIBUTE AND IT IS THE ONE THIS MODULE'S OWN ARGUMENT TURNS ON.
+// A citation whose spelling is declared nowhere cannot resolve, and a reader hits a dead name and
+// knows it. A citation whose spelling survives in ANOTHER module resolves -- to a declaration that is
+// not the one the prose meant. The second is the worse state for exactly the reason the no-sweep
+// paragraph above gives: a resolving citation is never re-examined. Collapsing them, or dropping the
+// second by keying liveness on the bare name, would make the census blind to its own thesis.
+type ProseCitationResolution
+  = CitedNameAbsentEverywhere
+  | CitedNameSurvivesElsewhere
+
 type ProseCitationSite {
   rel_path: String
   line: Int
   cited_name: String
-  retired_from: String
+  origin: ProseRowOrigin
   carrier: ProseCitationCarrier
-  cross_file: Bool
+  locality: ProseCitationLocality
+  resolution: ProseCitationResolution
 }
 
 type ProseCitationLineScan {
@@ -353,24 +479,32 @@ type ProseCitationLineScan {
   sites: List<ProseCitationSite>
 }
 
-fn prose_citation_site_of(rel_path: String, line: Int, name: String, home: String, carrier: ProseCitationCarrier) -> ProseCitationSite {
+fn prose_citation_locality_of(origin: ProseRowOrigin, rel_path: String) -> ProseCitationLocality {
+  match origin {
+    RetiredFromSeveralPaths => RetiringFileAmbiguous {}
+    RetiredFromOnePath { path: home } => if home == rel_path { InRetiringFile {} } else { InAnotherFile {} }
+  }
+}
+
+fn prose_citation_site_of(rel_path: String, line: Int, name: String, origin: ProseRowOrigin, carrier: ProseCitationCarrier, survives: Bool) -> ProseCitationSite {
   ProseCitationSite {
     rel_path: rel_path,
     line: line,
     cited_name: name,
-    retired_from: home,
+    origin: origin,
     carrier: carrier,
-    cross_file: home != rel_path
+    locality: prose_citation_locality_of(origin: origin, rel_path: rel_path),
+    resolution: if survives { CitedNameSurvivesElsewhere {} } else { CitedNameAbsentEverywhere {} }
   }
 }
 
 // THE MEMBERSHIP TEST AND THE READ ARE ONE STEP, and that is not a tidiness point. Written as a
 // filter on map_contains_key followed by a lookup, the read has an arm for a key the filter just
 // proved present -- an unreachable state that still needs a value, and the tempting value is "".
-// That empty string would then flow into cross_file as a path that equals nothing, reporting every
-// site as cross-file. Matching the Optional once removes the arm rather than filling it: a name that
+// That empty string would then flow into locality as a path that equals nothing, reporting every
+// site as being in another file. Matching the Optional once removes the arm rather than filling it: a name that
 // is not in the retired index produces no site, and every site that exists carries a real path.
-fn prose_citation_sites_in_line(rel_path: String, line_no: Int, line: String, retired: Map<String, String>) -> List<ProseCitationSite> {
+fn prose_citation_sites_in_line(rel_path: String, line_no: Int, line: String, retired: Map<String, ProseRowOrigin>, live_bare: Map<String, Bool>) -> List<ProseCitationSite> {
   match prose_citation_line_carrier(line: line) {
     Absent => []
     Present { value: carrier } =>
@@ -380,21 +514,21 @@ fn prose_citation_sites_in_line(rel_path: String, line_no: Int, line: String, re
         f: (acc, name) =>
           match lookup(retired, name) {
             Absent => acc
-            Present { value: home } =>
-              concat(acc, [prose_citation_site_of(rel_path: rel_path, line: line_no, name: name, home: home, carrier: carrier)])
+            Present { value: origin } =>
+              concat(acc, [prose_citation_site_of(rel_path: rel_path, line: line_no, name: name, origin: origin, carrier: carrier, survives: map_contains_key(live_bare, name))])
           }
       )
   }
 }
 
-fn prose_citation_sites_in_source(rel_path: String, text: String, retired: Map<String, String>) -> List<ProseCitationSite> {
+fn prose_citation_sites_in_source(rel_path: String, text: String, retired: Map<String, ProseRowOrigin>, live_bare: Map<String, Bool>) -> List<ProseCitationSite> {
   let scan = fold(
     split(s: text, delimiter: "\n"),
     init: ProseCitationLineScan { line_no: 0, sites: [] },
     f: (acc, line) =>
       ProseCitationLineScan {
         line_no: acc.line_no + 1,
-        sites: concat(acc.sites, prose_citation_sites_in_line(rel_path: rel_path, line_no: acc.line_no + 1, line: line, retired: retired))
+        sites: concat(acc.sites, prose_citation_sites_in_line(rel_path: rel_path, line_no: acc.line_no + 1, line: line, retired: retired, live_bare: live_bare))
       }
   )
   scan.sites
@@ -407,7 +541,10 @@ type ProseCitationCensus {
   site_count: Int
   annotation_site_count: Int
   prose_row_site_count: Int
-  cross_file_site_count: Int
+  another_file_site_count: Int
+  ambiguous_origin_site_count: Int
+  absent_everywhere_site_count: Int
+  survives_elsewhere_site_count: Int
   sites: List<ProseCitationSite>
 }
 
@@ -419,30 +556,33 @@ type ProseCitationCensusOutcome
   = ProseCitationCensusObserved { census: ProseCitationCensus }
   | ProseCitationCensusUnreadable { reason: String }
 
-fn prose_citation_site_is_annotation(s: ProseCitationSite) -> Bool {
-  match s.carrier {
-    InAnnotationBlock => true
-    InProseRowLiteral => false
-  }
-}
-
 fn prose_citation_census_of(baseline: String, sites: List<ProseCitationSite>, retired_row_count: Int) -> ProseCitationCensus {
   ProseCitationCensus {
     baseline: baseline,
     retired_row_count: retired_row_count,
     cited_name_count: prose_citation_distinct(names: sites |> map(s => s.cited_name)) |> count,
     site_count: sites |> count,
-    annotation_site_count: sites |> filter(s => prose_citation_site_is_annotation(s: s)) |> count,
-    prose_row_site_count: sites |> filter(s => !prose_citation_site_is_annotation(s: s)) |> count,
-    cross_file_site_count: sites |> filter(s => s.cross_file) |> count,
+    annotation_site_count: sites |> filter(s => match s.carrier { InAnnotationBlock => true, InProseRowLiteral => false }) |> count,
+    prose_row_site_count: sites |> filter(s => match s.carrier { InAnnotationBlock => false, InProseRowLiteral => true }) |> count,
+    another_file_site_count: sites |> filter(s => match s.locality { InAnotherFile => true, InRetiringFile => false, RetiringFileAmbiguous => false }) |> count,
+    ambiguous_origin_site_count: sites |> filter(s => match s.locality { RetiringFileAmbiguous => true, InRetiringFile => false, InAnotherFile => false }) |> count,
+    absent_everywhere_site_count: sites |> filter(s => match s.resolution { CitedNameAbsentEverywhere => true, CitedNameSurvivesElsewhere => false }) |> count,
+    survives_elsewhere_site_count: sites |> filter(s => match s.resolution { CitedNameSurvivesElsewhere => true, CitedNameAbsentEverywhere => false }) |> count,
     sites: sites
   }
 }
 
 // The identity key a consumer joins on, and the only rendering of a site this module offers. Path and
 // name are the identity; the line is carried for a human to find it and is deliberately last.
+fn prose_citation_origin_text(origin: ProseRowOrigin) -> String {
+  match origin {
+    RetiredFromSeveralPaths => "SEVERAL-PATHS"
+    RetiredFromOnePath { path: p } => p
+  }
+}
+
 fn prose_citation_site_key(s: ProseCitationSite) -> String {
-  concat(s.rel_path, concat(" ", concat(s.cited_name, concat(" retired-from ", concat(s.retired_from, concat(" :", to_string(s.line)))))))
+  concat(s.rel_path, concat(" ", concat(s.cited_name, concat(" retired-from ", concat(prose_citation_origin_text(origin: s.origin), concat(" :", to_string(s.line)))))))
 }
 
 fn prose_citation_render(census: ProseCitationCensus) -> String {
@@ -453,7 +593,10 @@ fn prose_citation_render(census: ProseCitationCensus) -> String {
     concat(concat(" names=", to_string(census.cited_name_count)),
     concat(concat(" annotation=", to_string(census.annotation_site_count)),
     concat(concat(" prose-row=", to_string(census.prose_row_site_count)),
-           concat(" cross-file=", to_string(census.cross_file_site_count)))))))
+    concat(concat(" another-file=", to_string(census.another_file_site_count)),
+    concat(concat(" ambiguous-origin=", to_string(census.ambiguous_origin_site_count)),
+    concat(concat(" absent-everywhere=", to_string(census.absent_everywhere_site_count)),
+           concat(" survives-elsewhere=", to_string(census.survives_elsewhere_site_count))))))))))
   )
 }
 
@@ -495,11 +638,11 @@ fn prose_citation_path_under_roots(path: String) -> Bool {
   fold(prose_citation_census_roots, init: false, f: (found, root) => found || starts_with(s: path, prefix: concat(root, "/")))
 }
 
-fn prose_citation_scan_sources(paths: List<String>, retired: Map<String, String>) -> List<ProseCitationSite> {
+fn prose_citation_scan_sources(paths: List<String>, retired: Map<String, ProseRowOrigin>, live_bare: Map<String, Bool>) -> List<ProseCitationSite> {
   fold(
     paths,
     init: [],
-    f: (acc, path) => concat(acc, prose_citation_sites_in_source(rel_path: path, text: filesystem_read(path: path).content, retired: retired))
+    f: (acc, path) => concat(acc, prose_citation_sites_in_source(rel_path: path, text: filesystem_read(path: path).content, retired: retired, live_bare: live_bare))
   )
 }
 
@@ -525,11 +668,15 @@ fn prose_citation_census_live(baseline: String) -> ProseCitationCensusOutcome {
       if !listed.success || (paths |> count) == 0 {
         ProseCitationCensusUnreadable { reason: "the tree listing returned no .dag sources under the declared roots, so no citation site could be observed" }
       } else {
-        let retired = prose_citation_retired_rows(baseline_rows: baseline_rows, live: prose_citation_live_prose_row_names())
+        let modules = prose_citation_module_index(
+          matches: git.Inspect.GrepMatchesAtRevision(pattern: prose_citation_module_pattern, ref: baseline as GitRef, pathspec: prose_citation_baseline_pathspec).matches,
+          ref_len: string_length(s: baseline)
+        )
+        let retired = prose_citation_retired_rows(baseline_rows: baseline_rows, modules: modules, live_qualified: prose_citation_live_qualified_names())
         ProseCitationCensusObserved {
           census: prose_citation_census_of(
             baseline: baseline,
-            sites: prose_citation_scan_sources(paths: paths, retired: prose_citation_retired_index(rows: retired)),
+            sites: prose_citation_scan_sources(paths: paths, retired: prose_citation_retired_index(rows: retired), live_bare: prose_citation_live_bare_names()),
             retired_row_count: retired |> count
           )
         }
