@@ -70,6 +70,9 @@ import gunbc.run_disposition {
   verdict_loss_unestablished_name,
   disposition_in_verdict_bearing_denominator,
   supersession_available_for_event,
+  supersession_available_under,
+  supersession_availability_rule_text_under,
+  classify_run_under,
   classifier_rule_rows
 }
 
