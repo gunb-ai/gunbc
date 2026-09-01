@@ -173,11 +173,11 @@ data mt_collins_socket1_channel_pairs: List<MtCollinsChannelConnectorPair> = [
 data mt_collins_channel_connector_pairs: List<MtCollinsChannelConnectorPair> = concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs)
 
 // POPULATION ROLE IS A SECOND FACT, DERIVED FROM THE POPULATION ROWS - NOT AN ORDERING INSIDE
-// THE PAIR. Tables 12-13 mark, per configuration, which connectors are populated; the
-// one-per-channel row populates one member of each pair and the full row adds the other. That
-// establishes a configuration relation and nothing more, so the fields are named for exactly
-// what was observed. "First" is avoided deliberately: it reads as either temporal installation
-// order or a vendor-defined primary slot, and this guide states neither.
+// THE PAIR. Table 11's 16-DIMM row is the one-DIMM-per-channel population: it names one member
+// of each pair, and the full row adds the other. That establishes a configuration relation and
+// nothing more, so the fields are named for exactly what was observed. "First" is avoided
+// deliberately: it reads as either temporal installation order or a vendor-defined primary slot,
+// and this guide states neither.
 //
 // Keeping this apart from the pair is what stops a mistaken read of the pair geometry from
 // silently manufacturing an installation-priority claim - the failure this file already made
@@ -189,29 +189,33 @@ type MtCollinsChannelPopulationRole {
   additional_connector_at_two_dpc: Nat
 }
 
-data mt_collins_socket0_population_roles: List<MtCollinsChannelPopulationRole> = [
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 0, connector_used_at_one_dpc: 1, additional_connector_at_two_dpc: 2 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 1, connector_used_at_one_dpc: 3, additional_connector_at_two_dpc: 4 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 2, connector_used_at_one_dpc: 5, additional_connector_at_two_dpc: 6 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 3, connector_used_at_one_dpc: 7, additional_connector_at_two_dpc: 8 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 7, connector_used_at_one_dpc: 15, additional_connector_at_two_dpc: 16 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 6, connector_used_at_one_dpc: 13, additional_connector_at_two_dpc: 14 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 5, connector_used_at_one_dpc: 11, additional_connector_at_two_dpc: 12 },
-  MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 4, connector_used_at_one_dpc: 9, additional_connector_at_two_dpc: 10 },
-]
+// The role rows are a JOIN, not a second transcription. Exactly one member of every pair above
+// appears in the 16-DIMM row, so the assignment is total and the else-arm is the complementary
+// case rather than a default. Writing the 16 rows out literally would have been a parallel
+// authority over the same mapping, free to drift from both the pairs and the population rows.
+fn mt_collins_connector_at_one_dpc(connector: Nat) -> Bool {
+  fold(mt_collins_population_16_dimms.connectors, init: false, f: (acc, c) => acc || (c == connector))
+}
 
-data mt_collins_socket1_population_roles: List<MtCollinsChannelPopulationRole> = [
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 0, connector_used_at_one_dpc: 17, additional_connector_at_two_dpc: 18 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 1, connector_used_at_one_dpc: 19, additional_connector_at_two_dpc: 20 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 2, connector_used_at_one_dpc: 21, additional_connector_at_two_dpc: 22 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 3, connector_used_at_one_dpc: 23, additional_connector_at_two_dpc: 24 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 7, connector_used_at_one_dpc: 31, additional_connector_at_two_dpc: 32 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 6, connector_used_at_one_dpc: 29, additional_connector_at_two_dpc: 30 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 5, connector_used_at_one_dpc: 27, additional_connector_at_two_dpc: 28 },
-  MtCollinsChannelPopulationRole { processor_socket: 1, memory_controller: 4, connector_used_at_one_dpc: 25, additional_connector_at_two_dpc: 26 },
-]
+fn mt_collins_population_role_of_pair(pair: MtCollinsChannelConnectorPair) -> MtCollinsChannelPopulationRole {
+  if mt_collins_connector_at_one_dpc(connector: pair.table_left_connector) {
+    MtCollinsChannelPopulationRole {
+      processor_socket: pair.processor_socket,
+      memory_controller: pair.memory_controller,
+      connector_used_at_one_dpc: pair.table_left_connector,
+      additional_connector_at_two_dpc: pair.table_right_connector,
+    }
+  } else {
+    MtCollinsChannelPopulationRole {
+      processor_socket: pair.processor_socket,
+      memory_controller: pair.memory_controller,
+      connector_used_at_one_dpc: pair.table_right_connector,
+      additional_connector_at_two_dpc: pair.table_left_connector,
+    }
+  }
+}
 
-data mt_collins_channel_population_roles: List<MtCollinsChannelPopulationRole> = concat(mt_collins_socket0_population_roles, mt_collins_socket1_population_roles)
+data mt_collins_channel_population_roles: List<MtCollinsChannelPopulationRole> = fold(mt_collins_channel_connector_pairs, init: [], f: (acc, pair) => concat(acc, [mt_collins_population_role_of_pair(pair: pair)]))
 
 // HOW THE MAPPING WAS ESTABLISHED, AND THE CHECK THAT DISCRIMINATES IT. An earlier revision of
 // this file recorded a channel-count agreement as corroboration. That check is worthless here
