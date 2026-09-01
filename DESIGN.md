@@ -118,6 +118,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 
 - **Required-floor per-claim cost ceiling judged under contention** — declared 2026-09-01
 - **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
+- **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
 - **Regen candidate-tree producer** — declared 2026-08-20
