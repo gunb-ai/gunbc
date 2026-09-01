@@ -1,0 +1,197 @@
+module gunbc.model.choice
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+
+// CHOOSING WHAT TO SERVE, as a function rather than as an argument.
+//
+// WHY THIS IS A MODULE AND NOT A MEMO. The inputs to this decision move constantly: a new release
+// appears, a quantization is published, a node is added, a context floor changes. Every time one
+// moves, a prose recommendation is silently stale while still reading as authoritative -- and the
+// people who must notice are the ones least able to, because the reasoning that produced it is gone.
+// So the decision is computed from declared facts, and re-deriving it after a change costs a run
+// rather than an argument.
+//
+// WHAT IT OPTIMIZES: the highest-quality artifact that FITS, subject to the operator's floors. Not
+// the largest, not the fastest -- quality is the scarce thing when the goal is replacing a frontier
+// model for programming, and every other axis is a constraint rather than an objective.
+//
+// WHAT IT REFUSES TO DO: pick silently when nothing fits. A refusal names the BINDING AXIS per
+// candidate, which is what makes "would more hardware help" a derivable question instead of a
+// debate. If every candidate is bound by memory, more nodes help; if they are bound by a context
+// floor no published artifact reaches, more nodes buy nothing and the floor is the thing to move.
+
+// ============================ CAPACITY, at the three grains that actually differ ============================
+
+// A vendor's nominal figure, the kernel's visible total, and a live availability reading are THREE
+// DIFFERENT QUANTITIES, and confusing them has already produced a wrong fit decision. Nominal
+// overstates by the firmware carveout; observed-available understates by whatever is resident at the
+// moment of the reading. Only kernel_visible_bytes is a capacity, so only it is consumed here --
+// the others are retained so a reader can see the gap rather than rediscover it.
+type NodeCapacity {
+  node_name: NonEmptyStr
+  nominal_bytes: Int
+  kernel_visible_bytes: Int
+  runtime_overhead_bytes: Int
+}
+
+fn firmware_carveout_bytes(capacity: NodeCapacity) -> Int {
+  capacity.nominal_bytes - capacity.kernel_visible_bytes
+}
+
+// The bytes a model may actually occupy: what the kernel can hand out, less what the serving runtime
+// and OS need to stay alive. Deliberately NOT derived from a live availability sample.
+fn allocatable_bytes(capacity: NodeCapacity) -> Int {
+  capacity.kernel_visible_bytes - capacity.runtime_overhead_bytes
+}
+
+// ============================ CANDIDATES ============================
+
+// Quality rank is an ORDINAL over quantizations of one release, not a score. Higher is better; the
+// numbers carry no unit and must never be compared across releases, because a Q3 of a 284B model and
+// a Q8 of a 30B model are not on one scale. Cross-release quality is the operator's subjective call,
+// which is why it enters as a floor rather than as an objective.
+type QuantizedCandidate {
+  model_name: NonEmptyStr
+  quant_label: NonEmptyStr
+  weight_bytes: Int
+  quality_rank: Int
+  declared_context: Int
+  kv_bytes_per_token: Int
+  measured_prefill_tokens_per_second: Int
+}
+
+// KV scales with context and with how many sessions are simultaneously RESIDENT. Sessions parked to
+// disk between turns do not count -- their KV is not in memory -- which is why hot_sessions is the
+// parameter rather than a total session count.
+fn kv_bytes(candidate: QuantizedCandidate, context_tokens: Int, hot_sessions: Int) -> Int {
+  candidate.kv_bytes_per_token * context_tokens * hot_sessions
+}
+
+fn resident_bytes(candidate: QuantizedCandidate, context_tokens: Int, hot_sessions: Int) -> Int {
+  candidate.weight_bytes + kv_bytes(candidate: candidate, context_tokens: context_tokens, hot_sessions: hot_sessions)
+}
+
+// ============================ CONSTRAINTS ============================
+
+// The operator's floors. Each is a REFUSAL THRESHOLD, never a preference to be traded away silently:
+// a candidate below a floor is not a worse choice, it is not a choice.
+type ServingConstraints {
+  context_floor_tokens: Int
+  hot_sessions: Int
+  prefill_floor_tokens_per_second: Int
+}
+
+// ============================ THE DECISION ============================
+
+// Why a candidate was rejected, at the grain that tells you what to change. One axis per arm, so a
+// census over rejections partitions cleanly into "buy hardware", "lower a floor", "wait for a
+// better artifact".
+type RejectionAxis
+  = DoesNotFitMemory { required_bytes: Int, allocatable_bytes: Int }
+  | ContextBelowFloor { declared: Int, floor: Int }
+  | PrefillBelowFloor { measured: Int, floor: Int }
+
+type CandidateVerdict
+  = Admissible { candidate: QuantizedCandidate, resident_bytes: Int, headroom_bytes: Int }
+  | Rejected { model_name: NonEmptyStr, quant_label: NonEmptyStr, axis: RejectionAxis }
+
+// Evaluated in a fixed order so the reported axis is deterministic: capability floors first, then
+// fit. A candidate that fails several axes reports the first, and the ordering puts the axis the
+// operator can act on soonest at the front.
+fn evaluate_candidate(
+  candidate: QuantizedCandidate,
+  capacity: NodeCapacity,
+  constraints: ServingConstraints,
+) -> CandidateVerdict {
+  let required = resident_bytes(
+    candidate: candidate,
+    context_tokens: constraints.context_floor_tokens,
+    hot_sessions: constraints.hot_sessions,
+  )
+  let allocatable = allocatable_bytes(capacity: capacity)
+  match candidate.declared_context < constraints.context_floor_tokens {
+    true => Rejected {
+      model_name: candidate.model_name,
+      quant_label: candidate.quant_label,
+      axis: ContextBelowFloor { declared: candidate.declared_context, floor: constraints.context_floor_tokens },
+    }
+    false => match candidate.measured_prefill_tokens_per_second < constraints.prefill_floor_tokens_per_second {
+      true => Rejected {
+        model_name: candidate.model_name,
+        quant_label: candidate.quant_label,
+        axis: PrefillBelowFloor {
+          measured: candidate.measured_prefill_tokens_per_second,
+          floor: constraints.prefill_floor_tokens_per_second,
+        },
+      }
+      false => match required > allocatable {
+        true => Rejected {
+          model_name: candidate.model_name,
+          quant_label: candidate.quant_label,
+          axis: DoesNotFitMemory { required_bytes: required, allocatable_bytes: allocatable },
+        }
+        false => Admissible {
+          candidate: candidate,
+          resident_bytes: required,
+          headroom_bytes: allocatable - required,
+        }
+      }
+    }
+  }
+}
+
+fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
+  match verdict {
+    Admissible { candidate: _, resident_bytes: _, headroom_bytes: _ } => true
+    Rejected { model_name: _, quant_label: _, axis: _ } => false
+  }
+}
+
+fn verdict_quality(verdict: CandidateVerdict) -> Int {
+  match verdict {
+    Admissible { candidate: c, resident_bytes: _, headroom_bytes: _ } => c.quality_rank
+    Rejected { model_name: _, quant_label: _, axis: _ } => 0 - 1
+  }
+}
+
+// THE ANSWER, or a refusal carrying every rejection so the binding constraint is READ rather than
+// argued. There is no arm that returns a best-effort pick when nothing fits: a degraded choice
+// presented as the answer is the failure mode this whole exercise exists to remove.
+type ServingChoice
+  = ChoseCandidate { verdict: CandidateVerdict }
+  | NoCandidateAdmissible { rejections: List<CandidateVerdict> }
+
+fn choose_serving_candidate(
+  candidates: List<QuantizedCandidate>,
+  capacity: NodeCapacity,
+  constraints: ServingConstraints,
+) -> ServingChoice {
+  let verdicts = map(candidates, c =>
+    evaluate_candidate(candidate: c, capacity: capacity, constraints: constraints))
+  let admissible = filter(verdicts, v => verdict_is_admissible(verdict: v))
+  match length(admissible) == 0 {
+    true => NoCandidateAdmissible { rejections: verdicts }
+    false => ChoseCandidate { verdict: highest_quality(verdicts: admissible) }
+  }
+}
+
+// Maximum by quality rank. Ties keep the earlier candidate, which makes the result stable under
+// re-ordering of the input roster rather than dependent on it.
+fn highest_quality(verdicts: List<CandidateVerdict>) -> CandidateVerdict {
+  fold(verdicts, head_of(verdicts), (best, v) =>
+    match verdict_quality(verdict: v) > verdict_quality(verdict: best) {
+      true => v
+      false => best
+    })
+}
+
+fn head_of(verdicts: List<CandidateVerdict>) -> CandidateVerdict {
+  match first(verdicts) {
+    Present { value: v } => v
+    Absent => Rejected {
+      model_name: "none" as NonEmptyStr,
+      quant_label: "none" as NonEmptyStr,
+      axis: DoesNotFitMemory { required_bytes: 0, allocatable_bytes: 0 },
+    }
+  }
+}

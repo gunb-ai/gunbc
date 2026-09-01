@@ -1,0 +1,166 @@
+module gunbc.model.population
+
+import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import gunbc.model.publication {
+  ModelRelease, ReleaseIdentity, DistributionChannel, DistributionObservation,
+  release_identity, release_is_open_weight, distribution_channel_wire,
+}
+
+// THE CANDIDATE POPULATION AND ITS NARROWING, built so that the invariant we care about is a
+// property of the constructors rather than a rule someone remembers.
+//
+// THE INVARIANT: failure to enter a later population must never remove membership from an earlier
+// one. Open weights exist regardless of whether a packager packaged them, a runtime loads them, a
+// host fits them, or they answer well. Those are downstream verdicts about a REALIZATION; none is a
+// fact about the release.
+//
+// HOW IT IS MADE STRUCTURAL RATHER THAN CHECKED. A narrowed population is not authored -- it is
+// CONSTRUCTED FROM A PARENT by filtering, and it retains the parent. Members of a stage are a subset
+// of its parent's members by the meaning of filter, so a stage cannot introduce a member the parent
+// lacks, and refusing a stage cannot reach back into the parent because the parent is a separate
+// immutable value that the narrowing consumed rather than modified. There is no writable state for a
+// regression to be written into. A lens checking this afterwards would be a second representation of
+// something the construction already guarantees.
+
+// The ordered stages. Each names what it is a verdict about, and every one below the first is a
+// verdict about a REALIZATION of the release rather than about the release.
+type PopulationStage
+  = OpenWeightStage
+  | LocallyPackagedStage
+  | RuntimeCompatibleStage
+  | SingleNodeFeasibleStage
+  | MultiNodeFeasibleStage
+  | ContextQualifiedStage
+  | CodingQualifiedStage
+
+fn population_stage_wire(stage: PopulationStage) -> String {
+  match stage {
+    OpenWeightStage => "open-weight"
+    LocallyPackagedStage => "locally-packaged"
+    RuntimeCompatibleStage => "runtime-compatible"
+    SingleNodeFeasibleStage => "single-node-feasible"
+    MultiNodeFeasibleStage => "multi-node-feasible"
+    ContextQualifiedStage => "context-qualified"
+    CodingQualifiedStage => "coding-qualified"
+  }
+}
+
+// WHERE THE UNIVERSE CAME FROM, carried as data because the defect this repairs was a DISCOVERY
+// error, not only a modeling one.
+//
+// Splitting release from distribution stops a probe's silence from meaning absence. It does NOT stop
+// a census from being narrow because only one distributor was ever asked. If the source of the
+// universe is implicit, the population is shaped by whichever prober happened to run, and it reports
+// that shape as completeness. So the source is a modeled fact with a declared coverage scope, and a
+// completeness question outside that scope REFUSES instead of answering from what it happens to hold.
+type CoverageScope
+  = PublisherReleaseCatalog { publisher: NonEmptyStr }
+  | SingleDistributorCatalog { channel: DistributionChannel }
+  | OperatorAssertedRoster
+
+type ReleaseDiscoverySource {
+  authority: NonEmptyStr
+  coverage: CoverageScope
+  observed_at: Timestamp
+}
+
+// A population, with its stage, its members, and the provenance that makes both auditable.
+//
+// narrowed_from is the parent stage where one exists. Its absence marks the root, and the root is the
+// only population anyone authors directly.
+type PopulationProvenance
+  = DiscoveredRoot { sources: List<ReleaseDiscoverySource> }
+  | NarrowedFrom { parent_stage: PopulationStage, rejected_count: Int }
+
+type ModelPopulation {
+  stage: PopulationStage
+  members: List<ModelRelease>
+  provenance: PopulationProvenance
+}
+
+// THE ROOT. Open-weight membership is read from the release's CONSTRUCTOR, so no distribution
+// observation participates in building it. A channel probe cannot shrink this set because a channel
+// probe is not an input to it.
+fn open_weight_population(
+  discovered: List<ModelRelease>,
+  sources: List<ReleaseDiscoverySource>,
+) -> ModelPopulation {
+  ModelPopulation {
+    stage: OpenWeightStage,
+    members: filter(discovered, r => release_is_open_weight(subject: r)),
+    provenance: DiscoveredRoot { sources: sources },
+  }
+}
+
+// THE ONLY WAY TO BUILD A LATER STAGE. Members are a filter of the parent's members, so the subset
+// property holds by construction rather than by assertion, and the count of what was rejected is
+// retained so a narrowing that eliminates everything is visible rather than silent.
+fn narrow_population(
+  parent: ModelPopulation,
+  stage: PopulationStage,
+  admits: List<ReleaseIdentity>,
+) -> ModelPopulation {
+  let kept = filter(parent.members, r => identity_in(roster: admits, candidate: release_identity(subject: r)))
+  ModelPopulation {
+    stage: stage,
+    members: kept,
+    provenance: NarrowedFrom {
+      parent_stage: parent.stage,
+      rejected_count: length(parent.members) - length(kept),
+    },
+  }
+}
+
+fn identity_in(roster: List<ReleaseIdentity>, candidate: ReleaseIdentity) -> Bool {
+  length(filter(roster, i =>
+    (i.publisher as String) == (candidate.publisher as String)
+    && (i.family as String) == (candidate.family as String)
+    && (i.revision as String) == (candidate.revision as String)
+  )) > 0
+}
+
+// ===========================================================================================
+// COMPLETENESS, and its refusal.
+// ===========================================================================================
+
+// A completeness question is answerable only when the sources behind the population actually cover
+// the axis being asked about. Answering from a single distributor's catalog about the open-weight
+// universe is the original defect in its general form: a real count over the wrong population.
+type CompletenessVerdict
+  = CompletenessAnswerable { member_count: Int }
+  | CompletenessRefused { reason: String }
+
+fn open_weight_completeness(population: ModelPopulation) -> CompletenessVerdict {
+  match population.provenance {
+    NarrowedFrom { parent_stage: p, rejected_count: _ } =>
+      CompletenessRefused {
+        reason: join([
+          "completeness about the open-weight universe was asked of the ",
+          population_stage_wire(stage: population.stage),
+          " stage, which is a narrowing of ", population_stage_wire(stage: p),
+          " -- a later stage is a verdict about realizations and under-reports the universe",
+        ], ""),
+      }
+    DiscoveredRoot { sources: sources } =>
+      match length(filter(sources, s => coverage_spans_open_weight_universe(coverage: s.coverage))) > 0 {
+        true => CompletenessAnswerable { member_count: length(population.members) }
+        false => CompletenessRefused {
+          reason: join([
+            "no discovery source claims publisher-catalog coverage; every source is a single ",
+            "distributor or an operator roster, so an absent release is indistinguishable from ",
+            "one that was never enumerated",
+          ], ""),
+        }
+      }
+  }
+}
+
+// A single distributor's catalog never spans the open-weight universe, and an operator roster is
+// whatever a human remembered -- which is the other half of how the original census went stale.
+fn coverage_spans_open_weight_universe(coverage: CoverageScope) -> Bool {
+  match coverage {
+    PublisherReleaseCatalog { publisher: _ } => true
+    SingleDistributorCatalog { channel: _ } => false
+    OperatorAssertedRoster => false
+  }
+}
