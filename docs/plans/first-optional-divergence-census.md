@@ -61,7 +61,24 @@ A re-derivation scoped to the 944-module import closure of `tools.generated_arti
 population that actually gates landing — finds **270 consumer sites**, classified by what consumes
 the result: 137 match-eliminated, 96 propagated, **14 compared to a bare value**, 11 declared-fn
 arguments, **5 field accesses on the result**, **3 builtin arguments**, **1 method call on the
-result**. Twenty-three of those are un-migrated and block the closure from loading.
+result**. Twenty-three of those are un-migrated and **known** to block the closure from loading.
+
+**Twenty-three is a LOWER BOUND, never a population, and it must not be cited as one.** The
+classification's largest non-`match` bucket is 31 sites where a one-line textual reader *cannot
+decide* whether `algorithm: parts.first(),` is a record-field assignment or a function argument,
+because the opening brace is on a previous line — so that bucket names its own undecidability rather
+than being guessed into whichever class looked likelier. Record-field assignment into a declared
+non-optional field is a real consumer class (`tested_head_sha: lines.skip(n: 4).first()` in
+`gunbc.merge_admission_produce`), it is somewhere inside those 31, and it cannot be counted from
+source text. Add 22 `let` bindings whose consumers are not followed here. What would settle it is not
+a better reader — it is the compiler, which knows every declared type.
+
+**The completion criterion is therefore not "23 sites fixed" — it is THE CLOSURE LOADS.** That is
+self-verifying and needs no population known in advance, and each fix lets the closure load further
+so the next refusal names the next site: exhaustive by construction, every step verified, and it
+terminates exactly when the property we want is true. A claim that the known set is repaired and a
+claim that the migration is complete are two different assertions, and anything reporting on this
+work must say which one it is making.
 
 **The class this document never named is the largest and the worst of them.** Fourteen sites compare
 a `first()` result to a bare value with `==` / `!=`. None of the dispositions below covers it, and
