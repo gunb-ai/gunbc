@@ -19,9 +19,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Phase A witnesses (keen-ferret-250): pin Optional/Witness construction carriers vs the overloaded
 // Value::Null sentinel. optional_null_straddle_rostered_until_phase_e delegates the
 // Optional×native_value_null straddle to the testgen roster (removed in Phase E).
-// raw_get_miss_differs_from_optional_absent stays GREEN while raw get miss is untyped and
-// optional_absent() is Optional::Absent; it flips RED in Phase B when get+Optional routes through
-// map_lookup_as_optional.
+// THE PHASE B FLIP THIS ANNOTATION PREDICTED HAS HAPPENED, and the row is inverted rather than
+// retired. It read: raw_get_miss_differs_from_optional_absent stays GREEN while raw get miss is
+// untyped and optional_absent() is Optional::Absent; it flips RED in Phase B when get+Optional
+// routes through map_lookup_as_optional. That flip is the first()/get Optional construction repair,
+// and this file is where it was observed -- the row went red on the required floor before any
+// consumer noticed, which is the probe doing its job. Per DESIGN section 4b(4) a probe that changes
+// colour when its wall lands becomes the permanent regression control for the wall, so the
+// assertion is INVERTED: a raw get miss IS optional absent now, and a future change that reopens
+// the split goes red here again.
 
 test fn optional_absent_matches_absent_pattern() -> Bool {
   match optional_absent() {
@@ -58,9 +64,9 @@ test fn optional_null_straddle_rostered_until_phase_e() -> Bool {
   witness_cross_representation_equality_covers_optional_null
 }
 
-test fn raw_get_miss_differs_from_optional_absent() -> Bool {
+test fn raw_get_miss_is_optional_absent() -> Bool {
   let m = empty_map()
-  (m |> get("missing")) != optional_absent()
+  (m |> get("missing")) == optional_absent()
 }
 
 test fn witness_holds_matches_holds_pattern() -> Bool {

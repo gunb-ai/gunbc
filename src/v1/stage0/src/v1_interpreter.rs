@@ -794,8 +794,8 @@ fn is_optional_value(v: &Value, ctx: &InterpContext) -> bool {
             variant_name,
             ..
         } => {
-            *type_name == ctx.sym("Optional")
-                && (*variant_name == ctx.sym("Present") || *variant_name == ctx.sym("Absent"))
+            *type_name == ctx.sym_optional
+                && (*variant_name == ctx.sym_present || *variant_name == ctx.sym_absent)
         }
         _ => false,
     }
@@ -3954,6 +3954,17 @@ pub struct InterpContext {
     >,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
+    /// `Optional`/`Present`/`Absent` interned ONCE at context construction. `is_optional_value`
+    /// runs on the `Eq`/`Ne` chokepoint -- every `==` in every interpreted program -- and reached
+    /// these three through `ctx.sym()`, which is `symbols.borrow_mut().intern(s)`: a RefCell
+    /// mutable borrow plus a hash lookup, up to six per comparison once both operands are asked.
+    /// Measured consequence, not a hypothetical: fourteen required-floor witnesses went
+    /// BUDGET-REFUSED at their 500ms CPU budget on the branch that added the check, and passed on
+    /// the same tree without it. DESIGN section 6's bare-minimum-cost rule makes a proven
+    /// cost-shape defect always-fix regardless of realized n; here n was realized as a red floor.
+    sym_optional: Symbol,
+    sym_present: Symbol,
+    sym_absent: Symbol,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -4232,6 +4243,18 @@ impl InterpContext {
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
+        let optional_syms = {
+            let mut interner = SymbolInterner::default();
+            for s in FREE_MONOID_WELL_KNOWN_SYMS {
+                interner.intern(s);
+            }
+            let three = [
+                interner.intern("Optional"),
+                interner.intern("Present"),
+                interner.intern("Absent"),
+            ];
+            (three, (), interner)
+        };
         InterpContext {
             modules: indexes.modules.clone(),
             item_registry: indexes.item_registry.clone(),
@@ -4260,13 +4283,10 @@ impl InterpContext {
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             cross_claim_hit_cache: std::cell::RefCell::new(HashMap::new()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
-            symbols: RefCell::new({
-                let mut interner = SymbolInterner::default();
-                for s in FREE_MONOID_WELL_KNOWN_SYMS {
-                    interner.intern(s);
-                }
-                interner
-            }),
+            symbols: RefCell::new(optional_syms.2),
+            sym_optional: optional_syms.0[0],
+            sym_present: optional_syms.0[1],
+            sym_absent: optional_syms.0[2],
             published_mock_keys: RefCell::new(None),
             whole_tree_published_keys,
             governed_services: RefCell::new(None),
@@ -5747,15 +5767,39 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
 /// It stays NARROW by construction rather than by exception. A declared `T?` field whose absent
 /// state IS `Value::Null` still compares `Null == Null` and never reaches here; only a CONSTRUCTED
 /// `Optional` meeting the Null carrier fires, which is exactly the un-migrated population.
+fn is_absent_variant(v: &Value, ctx: &InterpContext) -> bool {
+    match v {
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } => *type_name == ctx.sym_optional && *variant_name == ctx.sym_absent,
+        _ => false,
+    }
+}
+
 fn optional_against_bare_straddle(a: &Value, b: &Value, ctx: &InterpContext) -> Option<String> {
     let (a_opt, b_opt) = (is_optional_value(a, ctx), is_optional_value(b, ctx));
     if a_opt == b_opt {
         return None;
     }
-    if matches!(a, Value::Null) || matches!(b, Value::Null) {
+    let (opt, other) = if a_opt { (a, b) } else { (b, a) };
+    if matches!(other, Value::Null) {
+        // A PRESENT OPTIONAL AGAINST `none` IS ORDINARY FALSE, NOT A STRADDLE. Only `Absent`
+        // and the host Null carrier are two representations of ONE state (absence); a
+        // `Present { value: x }` and `none` are two representations of DIFFERENT states, and
+        // `false` is the right answer rather than a fabricated one. The first version of this
+        // arm refused both, which called every constructed Optional a representation of
+        // absence -- false for `Present` -- and made a legitimate comparison unwritable. That
+        // scope was decided by reasoning instead of by running the case, which is the failure
+        // gunbc.recurring_failure_mode preserved_apparent_behaviour_across_a_representation_change
+        // names for the SPARED case; the rule is symmetric and covers the refused case too.
+        if !is_absent_variant(opt, ctx) {
+            return None;
+        }
         return Some(format!(
-            "{} vs {} — a constructed `Absent`/`Present` and the host Null carrier are two \
-             representations of ABSENCE, so `==` would silently fabricate `false` (DESIGN §5): \
+            "{} vs {} \u{2014} a constructed `Absent` and the host Null carrier are two \
+             representations of ABSENCE, so `==` would silently fabricate `false` (DESIGN \u{a7}5): \
              measured, `[].first() == none` answered false. Eliminate the `Optional` with `match` \
              (`Present {{ value: v }}` / `Absent`) instead of testing it against `none`.",
             describe_repr(a),
