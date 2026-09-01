@@ -325,16 +325,22 @@ type CalibrationResult
   = Calibrated { interval: CycleTimeInterval }
   | CalibrationRefusedNoSample { cell: SizingCell }
 
-fn int_at(sorted: List<Int>, index: Int) -> Int {
+fn int_at(sorted: List<Int>, index: Int) -> Optional<Int> {
   first(sorted |> skip(n: index))
 }
 
-fn median_int(sorted: List<Int>) -> Int {
+fn median_int(sorted: List<Int>) -> Optional<Int> {
   let n = count(sorted)
   if (n % 2) == 1 {
     int_at(sorted: sorted, index: n / 2)
   } else {
-    (int_at(sorted: sorted, index: (n / 2) - 1) + int_at(sorted: sorted, index: n / 2)) / 2
+    match int_at(sorted: sorted, index: (n / 2) - 1) {
+      Absent => Absent
+      Present { value: lower } => match int_at(sorted: sorted, index: n / 2) {
+        Absent => Absent
+        Present { value: upper } => Present { value: (lower + upper) / 2 }
+      }
+    }
   }
 }
 
@@ -344,15 +350,20 @@ fn calibrate_cell(cell: SizingCell, observations: List<CycleTimeObservation>) ->
     |> filter(o => sizing_cell_eq(a: o.sizing_cell, b: cell))
     |> map(o => millisecond_count(m: o.cycle_time))
     |> sort_by(n => n)
-  if count(samples) == 0 {
-    CalibrationRefusedNoSample { cell: cell }
-  } else {
-    Calibrated {
-      interval: CycleTimeInterval {
-        minimum: millisecond(count: first(samples)),
-        median: millisecond(count: median_int(sorted: samples)),
-        maximum: millisecond(count: first(reverse(samples))),
-        sample_count: count(samples),
+  match first(samples) {
+    Absent => CalibrationRefusedNoSample { cell: cell }
+    Present { value: minimum } => match first(reverse(samples)) {
+      Absent => CalibrationRefusedNoSample { cell: cell }
+      Present { value: maximum } => match median_int(sorted: samples) {
+        Absent => CalibrationRefusedNoSample { cell: cell }
+        Present { value: median } => Calibrated {
+          interval: CycleTimeInterval {
+            minimum: millisecond(count: minimum),
+            median: millisecond(count: median),
+            maximum: millisecond(count: maximum),
+            sample_count: count(samples),
+          }
+        }
       }
     }
   }
