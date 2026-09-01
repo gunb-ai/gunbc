@@ -78,7 +78,8 @@ component probe, not this terminal.
   `OLLAMA_NUM_PARALLEL` is absent, and unset means Ollama serializes. eager-pike-541 measured the
   consequence: a 350-token probe queued behind a ~61k-token prefill running at a healthy
   ~290–330 tok/s. N concurrent harness sessions against one host is a queue, not N sessions. An
-  unmodeled axis has no desired value, so it cannot even be reported as drifted.
+  unmodeled axis has no desired value, so it cannot even be reported as drifted. The corpus also
+  carries a **false cost model** for the axis it is missing — see DCH-0.
 - **Desired and observed disagree on both hosts.** The deployed user unit still describes
   `gpt-oss:20b`, predating the #9859 amendment to 120b, and carried no context-length line at all.
   Two independently declared desired values, un-rendered on both hosts.
@@ -107,21 +108,71 @@ predicted failure**, not as facts on loan.
 Only one gate mutates at a time. A later gate may author inert types and fixtures but may not
 activate production rows before its predecessor's receipt is accepted.
 
-### DCH-0 — Enrol the Sparks and make residency representable
+### DCH-0 — Enrol the Sparks and model the parallel axis
 
 **Question owned:** what does the fleet know about these two machines, and who says so?
 
 - Enrol srv5/srv6 in `fleet_intent_network.endpoints` and `fleet_intent`'s `ComputeHost` list — the
   act the address correction deliberately did not perform.
-- Model the distinction between the converged member and the resident set, so seven models are
-  representable and the sixth-through-seventh are owned rather than ambient.
 - Add `OLLAMA_NUM_PARALLEL` to the rendered unit, or declare in a row why serialization is desired.
-- **Receipt:** an observed-vs-desired comparison of the rendered unit on both hosts, not a return
-  code. The rendered unit is the only member of the must-move-together set that produces **no
-  failure signal** when it is stale — ref, manifest, digest and closure each raise a checksum
-  event; a stale unit is silent, which is how both hosts drifted on two axes unreported.
+- **Correct the cost model while adding it.** `serving_desired` states that context length and slot
+  count "trade against each other inside one memory budget, because the slot count divides the
+  context window." Measured by eager-pike-541 on idle spark-3bd5, same model, only the slot count
+  changed: 1 slot gives `context_length` 1048576 at `size_vram` 88,865,253,620; 2 slots gives the
+  same 1048576 at 90,543,761,652. **The window is not divided.** Each slot gets its own full window
+  and the second cost +1,678,508,032 bytes — slot count multiplies KV, it does not divide context.
+  On this hardware concurrency is close to free and serialization was the expensive thing. The
+  sentence is deleted, not softened; the measured per-slot cost goes behind the desired value.
+- **The per-slot number does not generalize.** 1.68 GB/slot is a DeepSeek MLA figure; a non-MLA
+  model pays more. A fleet-wide slot count measured on one realization is the same overreach as a
+  fleet-wide context ceiling measured on one realization. Either the desired value is
+  per-realization, or a row says why one number covers the roster.
 
-**Owner: eager-pike-541** (sparks lane), confirmed with them before it starts.
+**Receipt:** an observed-vs-desired comparison of the rendered unit on both hosts, not a return
+code. The rendered unit is the only member of the must-move-together set that produces **no failure
+signal** when stale — ref, manifest, digest and closure each raise a checksum event, while a stale
+unit is silent, which is how both hosts drifted on two axes unreported. Two hand-edits are
+outstanding against that receipt: the context length raised today, and `OLLAMA_NUM_PARALLEL=4` set
+on both hosts, each under operator instruction.
+
+**Enrolment is inert today, and that is the risk rather than the reassurance.**
+eager-pike-541 looked for the executor rather than arguing from principle: no
+`ctrl-fleet-converge` timer or service exists on either Spark in either scope, and
+`gunbc.fleet_converge_timer` says of itself that it "remains the naming and cadence authority; it is
+no longer a renderer" — its installer chain died with `ci.yml` in #8283. So enrolment cannot cause
+an apply, because nothing on those hosts is scheduled to run one. The failure mode to guard is
+therefore not prematurity but **a row that reads as an outcome**.
+
+**The consumer census, which was the open item on that reasoning, is done and it sharpens the gate.**
+Of 57 non-test modules importing `fleet_intent_network`, the number that read the `endpoints` list
+or `fleet_intent_network_topology()` is **zero** — production modules consume individual endpoint
+rows *by name* (`bmc_virtual_media`, `host_identity_access` take `srv1_host_lan_endpoint` and
+friends). The topology function has exactly one consumer in the tree:
+`test.claim.fleet.fleet_intent_network_witness_test`, asserting
+`list_length(items: fleet_intent_network.endpoints) == 11`.
+
+Two consequences. First, **list membership is not the load-bearing act** — authoring the srv5/srv6
+endpoint rows that named consumers can reach is. Second, enrolment will turn that witness red at
+11 → 13, and the right response is not to bump the literal: a count copied from the current tree is
+the change-detector DESIGN §5 names, and completeness here is an identity join, not a count
+equality. Enrolment is the occasion to fix the oracle, and that repair belongs in this gate.
+
+**Owner: eager-pike-541**, agreed 2026-09-01.
+
+### DCH-0b — Make residency representable
+
+**Question owned:** what is a resident-model fact, and who owns the six nobody converged?
+
+Split from DCH-0 at eager-pike-541's request, and the reason is the right one: enrolment and the
+parallel axis both write a value into a carrier that already exists and has a shape, whereas the
+resident set has **no carrier at all**. Someone must first decide whether a resident-model fact is
+desired state or observation, whether it is per host or per fleet, what its identity is when the
+same weights appear under two refs, and what a drift between the converged member and the resident
+set *means* when nothing put six of those models there through gunbc. That is design, and folding
+it into a gate of row-writes would make the row-writes wait on it.
+
+The structural tell that no carrier exists: the materializer carries a single manifest, digest and
+blob closure, so nothing in it could hold seven.
 
 ### DCH-1 — Hoist the wire shape off the vendor
 
@@ -164,4 +215,6 @@ surface goes with them — it exists to solve a problem that a self-hosted endpo
 - Import, vendor, or cite `ctrl`.
 - Start before RLM's terminal receipt is accepted.
 - Enrol the Sparks as a side effect of harness work — DCH-0 is a separate gate with a separate owner.
+- Bump `fleet_intent_network_witness_test`'s endpoint-count literal to absorb enrolment. Repair the
+  oracle or leave it red; a count copied from the tree it measures is not one.
 - Treat "it completed one turn" as evidence for anything but that.
