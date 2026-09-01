@@ -110,6 +110,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
+    decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_batch_command"),
     decl_ref(module_path: "gunbc.repo_local_git_config", decl_name: "reconcile_install_command"),
   ]
   = ArgvCommand { program: program, arguments: arguments }

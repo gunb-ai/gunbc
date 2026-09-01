@@ -55,7 +55,9 @@ mod required_floor_runner;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
-    run_claim_measured, run_required_floor,
+    run_claim_measured, run_required_floor, wet_executor_contract_digest, wet_route_lane_rows,
+    wet_subject_digest, write_wet_receipt_envelope, WetLaneExecutedReceipt, WetReceiptEnvelope,
+    WetRouteLaneRow,
 };
 mod entry_resolve;
 pub(crate) use active_workset::*;
@@ -15787,6 +15789,47 @@ pub fn whole_corpus_semantic_oracle_snapshot(
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
     let sources = load_sources_for_entry_with_pool(index, entry)?;
     Ok(subject_digest_for_closure(&sources))
+}
+
+/// THE TREE-ONLY CLOSURE SUBJECT OF ONE ENTRY, and it is deliberately NOT
+/// `closure_subject_for_entry` above.
+///
+/// `subject_digest_for_closure` folds TWO axes: the closure's `.dag` content and
+/// `transform_content_digest()`, which hashes the bytes of the RUNNING EXECUTABLE
+/// (`/proc/self/exe`). In a resolve CACHE key that second axis is correct and load-bearing — an
+/// artifact produced by one compiler must not be served to another — which is why the shared
+/// function keeps it and this one does not replace it.
+///
+/// It is wrong in a SEMANTIC SUBJECT, and measurably so. The wet-lane receipt's
+/// candidate-exactness test is `envelope.subject_digest == computed_subject_digest`, where the
+/// envelope is written by `claim_batch` and the equality is checked by `claim_executor`. Two
+/// different executables hash to two different transform digests, so that equality was
+/// UNSATISFIABLE BY CONSTRUCTION on every tree, in every event, for as long as the subject
+/// carried the transform axis — the floor refused seven consecutive landing cycles for a
+/// staleness that never existed. The receipt that pinned it: a one-line edit to a `.rs` file
+/// touching zero `.dag` moved the "semantic" subject digest from 5cc866cd221e7b56 to
+/// 846ead7b689b7ead on one commit and one pristine checkout, while
+/// `wet_executor_contract_digest` moved too — correctly, that one is ABOUT the seed bytes.
+///
+/// The executor axis is not lost by removing it here: `wet_executor_contract_digest` carries it
+/// as its own declared axis over its own declared input roster, checked by its own standing arm
+/// (`ReceiptExecutorSnapshotDifferent`). Folding the running image into the semantic subject
+/// double-counted that axis and destroyed the semantic one; this restores the §3 split the wet
+/// route's own carrier already describes. The enrolled RED is
+/// `v2.test.floor_wet_route.wet_subject_is_independent_of_the_running_binary`.
+pub fn wet_closure_subject_for_entry(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<String, String> {
+    let sources = load_sources_for_entry_with_pool(index, entry)?;
+    Ok(wet_closure_subject(&sources))
+}
+
+/// The tree-only subject itself, split out from the entry loader so the wall that keeps it
+/// tree-only is assertable on synthetic sources without resolving the corpus. Enrolled RED:
+/// `wet_subject_is_independent_of_the_running_binary`.
+pub fn wet_closure_subject(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> String {
+    crate::resolved_graph_cache::closure_content_digest(sources)
 }
 
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
@@ -37294,6 +37337,15 @@ pub enum RequiredFloorDisposition {
     /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
     /// this is the identity grain the population join is keyed on.
     DeclinedDiscoveryExcluded { matched_substring: String },
+    /// Declined because the qualified identity is enrolled in `v2.workflow.floor_wet_route`:
+    /// its subject is a real host-effect chain no honest mock can answer (a real gunbc emit,
+    /// a real cargo build, real scratch I/O), so its executing consumer is the wet receipts
+    /// lane at that lane's cadence, never the hermetic fold. Carries no payload — the roster
+    /// is the authority for the population, and the lane's committed receipt is the authority
+    /// for each identity's last verdict. NEVER a quiet skip: the floor joins every routed
+    /// identity against the lane's receipt and REFUSES the run when the receipt is absent or
+    /// stale beyond the declared budget, so a dead lane un-routes its population loudly.
+    DeclinedRoutedToWetLane,
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -37445,6 +37497,10 @@ pub struct RequiredFloorOutcome {
     pub declined_outside_gate_closure: usize,
     /// Declared identities excluded from discovery by an `exclude_substrings` match.
     pub declined_discovery_excluded: usize,
+    /// Declared identities declined from hermetic execution because `v2.workflow.floor_wet_route`
+    /// routes them to the wet receipts lane. Counted, never green-by-decline: the three
+    /// blocking collections below are what keep the decline honest.
+    pub declined_routed_to_wet_lane: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -37520,6 +37576,16 @@ pub struct RequiredFloorOutcome {
     /// leaves a line behind that withholds nothing, and the roster's length then overstates the
     /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
     pub stale_cost_debt: Vec<String>,
+    /// BLOCKING. The wet-lane receipt standing for the routed population, when it is any arm
+    /// but `FreshExactSubject` (authority `v2.workflow.floor_wet_route.WetLaneReceiptStanding`):
+    /// missing, expired, subject-mismatch (an ancestor receipt — blocked by ruling),
+    /// contract-mismatch, roster-inexact, or a FAILED latest attempt. At most one entry; it
+    /// carries the standing's own description and remedy.
+    pub wet_route_standing_blocking: Vec<String>,
+    /// BLOCKING. A `floor_wet_route` roster row naming an identity this run did not offer and
+    /// route — renamed, deleted, or declined by an earlier home policy. Same rot guard as
+    /// `stale_cost_debt`.
+    pub stale_wet_route: Vec<String>,
     /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
     /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
     /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
@@ -38018,6 +38084,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_outside_gate = 0usize;
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
+    let mut declined_routed_to_wet_lane = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -38030,13 +38097,14 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
                 declined_discovery_excluded += 1
             }
+            RequiredFloorDisposition::DeclinedRoutedToWetLane => declined_routed_to_wet_lane += 1,
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
-         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\tdeclined_routed_to_wet_lane={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -38045,7 +38113,8 @@ fn write_required_floor_disposition_tsv(
         declined_outside_gate,
         declined_gate_closure,
         declined_discovery_excluded,
-        declined_cost_debt
+        declined_cost_debt,
+        declined_routed_to_wet_lane
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")

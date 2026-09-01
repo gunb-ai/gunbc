@@ -46,6 +46,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import gunbc.floor_non_verdict_enrollment { floor_non_verdict_seed_growth_justification }
 import gunbc.floor_route_gap_seed_growth { floor_route_gap_seed_growth_justification }
+import gunbc.floor_wet_route_seed_growth { floor_wet_route_seed_growth_justification }
 import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_growth_justification }
 import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
@@ -188,6 +189,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     anonymous_record_resolution_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
+    floor_wet_route_seed_growth_justification,
     floor_cost_debt_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     frame_independent_symbol_seed_growth_justification,

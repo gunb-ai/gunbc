@@ -1,6 +1,8 @@
 name: witnesses
 on:
   workflow_dispatch:
+  schedule:
+    - cron: 17 9 * * *
   merge_group:
   push:
     branches: [main]
@@ -22,6 +24,7 @@ jobs:
   required-witnesses-build:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -72,6 +75,7 @@ jobs:
   required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -153,6 +157,7 @@ jobs:
   rust-unit-tests:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -189,6 +194,7 @@ jobs:
   fabric-evidence:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 70
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -259,11 +265,83 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
           target/release/claim_batch --wet --source-root dag --source-root src/v2 --entry dag/gunbc/emit_copy_qualification_wet_battery.dag --functions ecq_wet_shard_copy_scalar_qualifies_holds,ecq_wet_shard_owned_string_qualifies_holds,ecq_wet_shard_shared_record_qualifies_holds,ecq_wet_shard_persistent_sequence_qualifies_holds,ecq_wet_shard_persistent_map_qualifies_holds,ecq_wet_shard_nested_record_qualifies_holds,ecq_calibration_redundant_share_clone_reds_static_only_holds,ecq_calibration_hidden_deep_copy_reds_runtime_only_holds,ecq_calibration_redundant_deep_clone_reds_holds,ecq_calibration_disconnected_counter_refuses_observation_holds,ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds,ecq_emitted_prelude_grounds_structural_sequence_holds
+  wet-receipts:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 360
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Isolate toolchain homes
+        run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Build the witness fold
+        id: build_witness_fold
+        run: |
+          cargo build --release -p v1-compiler --bin claim_batch --bin gunbc --bin cssl_assemble
+      - name: Wet receipts lane (rows named by the run, not by this label)
+        id: wet_receipts_run
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          cd "$ROOT"
+          'target/release/claim_batch' '--wet-route' '--source-root' 'dag' '--source-root' 'src/v2' '--receipt-out' 'dag/gunbc/witness/wet_lane/latest-attempt.json' '--receipt-tsv-out' 'dag/gunbc/witness/wet_lane/latest-attempt.tsv'
+      - name: Upload the receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wet-lane-receipt
+          path: dag/gunbc/witness/wet_lane
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped'"
+      - name: Commit the receipt and open its pull request
+        run: |
+          # dissolve-on: wet_receipts_pr_script -- hand-shell `run:` carrier committing the lane's generated receipt pair to its refresh branch and opening the carrying pull request. The git/gh body is a foreign-executor shell string. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled Pipeline step for this sequence AND a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on -- at which point this data row, wet_receipts_pr_body and the concat below delete together. The receipt pair itself is the modeled artifact (v2.workflow.floor_wet_route: JSON envelope authority, TSV canonical projection, floor-refused on drift).
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          cd "$ROOT"
+          git config user.name gunbc-ci-auto-heal
+          git config user.email gunbc-ci-auto-heal@users.noreply.github.com
+          git checkout -B 'wet-receipts/refresh'
+          git add dag/gunbc/witness/wet_lane
+          git commit -m "wet-receipts: refresh lane receipt envelope (run ${GITHUB_RUN_ID})"
+          git push -f origin 'wet-receipts/refresh'
+          if ! gh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt envelope' --body "Generated artifact pair: the wet-lane latest-attempt receipt envelope and its canonical TSV projection (v2.workflow.floor_wet_route), produced by workflow run ${GITHUB_RUN_ID} on ${GITHUB_SHA}. The required floor re-projects the TSV from the JSON and refuses on drift; regenerate via the wet-receipts job, never by hand."; then
+            state=$(gh pr view 'wet-receipts/refresh' --json state --jq .state 2>/dev/null || echo NONE)
+            if [ "$state" != 'OPEN' ]; then
+              echo "::error::gh pr create failed and no open pull request carries wet-receipts/refresh (observed state: $state) - the receipt pair was pushed but is not carried by any PR; this is a publication failure, not the already-open case" >&2
+              exit 1
+            fi
+            echo 'PR already open; the push refreshed it'
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+        if: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped' && github.ref == 'refs/heads/main'"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor]
     timeout-minutes: 5
-    if: always()
+    if: always() && github.event_name != 'schedule'
     steps:
       - name: Both required lanes must have succeeded
         run: |

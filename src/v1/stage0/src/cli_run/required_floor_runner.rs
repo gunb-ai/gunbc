@@ -220,6 +220,1284 @@ pub(crate) fn floor_route_gap_expectation_mismatch(
     }
 }
 
+/// The committed wet receipt envelope — the host realization of
+/// `v2.workflow.floor_wet_route.WetReceiptEnvelope`, committed at
+/// `floor_wet_route_receipt_json_rel_path` with its canonical TSV projection beside it.
+/// Field names mirror the .dag declaration exactly; `deny_unknown_fields` keeps a widened
+/// producer from being silently narrowed on read.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WetReceiptEnvelope {
+    pub schema_version: u64,
+    pub subject_digest: String,
+    pub executor_contract_digest: String,
+    pub attempt_seq: u64,
+    pub executed_at_unix_secs: u64,
+    pub published_at_unix_secs: u64,
+    pub run_id: String,
+    pub head_sha: String,
+    pub rows: Vec<WetReceiptIdentityRow>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WetReceiptIdentityRow {
+    pub identity: String,
+    /// The wire spelling of `WetLaneOutcome` — one of the 12 closed arms in
+    /// `WET_OUTCOME_WIRES` (never a collapsed pass/fail Bool; parent outcome-grain wall);
+    /// validated on read, unknown wires refuse as ContractMismatch.
+    pub outcome: String,
+    pub wall_ms: u64,
+}
+
+/// Read the committed envelope pair. Fail-closed on shape: a malformed envelope, an invalid
+/// outcome, a duplicate identity, an orphaned or drifted TSV projection are each a refusal
+/// naming the file — a receipt that cannot be read coherently must not be distinguishable
+/// from one that was never produced only by accident. Both files absent is the one
+/// non-error absence: the Missing standing, decided by the caller.
+///
+/// THE HAND-EDIT RED lives here (parent amendment 2026-08-30): the TSV is re-projected from
+/// the JSON and compared byte-for-byte, so an edit to either file alone refuses
+/// deterministically on the required path. This proves the committed pair is
+/// self-consistent, NOT that the lane produced it — the declared trust boundary for
+/// authenticity is ordinary pull-request approval of the refresh PR.
+pub(crate) fn read_wet_receipt_envelope(
+    json_rel: &str,
+    tsv_rel: &str,
+) -> Result<Option<WetReceiptEnvelope>, String> {
+    let json_text = match std::fs::read_to_string(json_rel) {
+        Ok(c) => Some(c),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("wet-lane receipt {json_rel}: {e}")),
+    };
+    let tsv_text = match std::fs::read_to_string(tsv_rel) {
+        Ok(c) => Some(c),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("wet-lane receipt projection {tsv_rel}: {e}")),
+    };
+    let json_text = match (json_text, &tsv_text) {
+        (None, None) => return Ok(None),
+        (None, Some(_)) => {
+            return Err(format!(
+                "wet-lane receipt: {tsv_rel} exists but its authority {json_rel} does not — \
+                 the projection is orphaned, which only a hand edit produces. Regenerate both \
+                 from a lane run"
+            ));
+        }
+        (Some(j), _) => j,
+    };
+    let envelope: WetReceiptEnvelope = serde_json::from_str(&json_text)
+        .map_err(|e| format!("wet-lane receipt {json_rel}: {e}"))?;
+    let mut seen = HashSet::new();
+    for row in &envelope.rows {
+        if !WET_OUTCOME_WIRES.contains(&row.outcome.as_str()) {
+            return Err(format!(
+                "wet-lane receipt {json_rel}: identity {} outcome `{}` is outside the closed \
+                 wire vocabulary",
+                row.identity, row.outcome
+            ));
+        }
+        if !seen.insert(row.identity.as_str()) {
+            return Err(format!(
+                "wet-lane receipt {json_rel}: duplicate identity {}",
+                row.identity
+            ));
+        }
+    }
+    let Some(tsv_text) = tsv_text else {
+        return Err(format!(
+            "wet-lane receipt: {json_rel} exists but its projection {tsv_rel} does not — the \
+             committed pair is incomplete. Regenerate both from a lane run"
+        ));
+    };
+    let expected = wet_receipt_tsv_projection(&envelope);
+    if tsv_text != expected {
+        return Err(format!(
+            "wet-lane receipt: {tsv_rel} is not the canonical projection of {json_rel} — one \
+             of the pair was edited by hand. Regenerate both from a lane run instead of \
+             editing either"
+        ));
+    }
+    Ok(Some(envelope))
+}
+
+/// The one canonical TSV rendering of an envelope, shared by the lane's writer and the
+/// floor's drift check so the two cannot disagree about the format. Rows in envelope order
+/// (the writer sorts by identity before publishing).
+pub fn wet_receipt_tsv_projection(envelope: &WetReceiptEnvelope) -> String {
+    let mut out = String::new();
+    out.push_str(
+        "# generated projection of the wet-lane receipt envelope (latest-attempt.json). Edit \
+         neither file by hand: the required floor re-projects and refuses on any drift.\n",
+    );
+    out.push_str(&format!(
+        "# schema_version={} subject_digest={} executor_contract_digest={} attempt_seq={} \
+         executed_at_unix_secs={} published_at_unix_secs={} run_id={} head_sha={}\n",
+        envelope.schema_version,
+        envelope.subject_digest,
+        envelope.executor_contract_digest,
+        envelope.attempt_seq,
+        envelope.executed_at_unix_secs,
+        envelope.published_at_unix_secs,
+        envelope.run_id,
+        envelope.head_sha
+    ));
+    out.push_str("# identity\toutcome\twall_ms\n");
+    for row in &envelope.rows {
+        out.push_str(&format!(
+            "{}\t{}\t{}\n",
+            row.identity, row.outcome, row.wall_ms
+        ));
+    }
+    out
+}
+
+/// THE PER-ENTRY WET SUBJECT — the named instrument behind `wet_subject_digest` (DESIGN §6:
+/// name the producer, never transcribe its output).
+///
+/// The aggregate sha can say only THAT a producer and a consumer disagree; it cannot say WHERE,
+/// and a disagreement whose locus is unreadable is the one that survives. This one did, for
+/// seven landing cycles: the floor printed `envelope carries X but this tree computes Y` every
+/// run, and there was no way to ask which entry moved. Every caller of the digest folds THIS,
+/// so the producer's list and the consumer's list diff directly, entry by entry.
+///
+/// Returned sorted and deduplicated by entry, so two runs' lists are comparable positionally.
+pub fn wet_subject_entry_subjects(
+    source_roots: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let rows = wet_route_lane_rows(source_roots)?;
+    let index = process_shared_index(source_roots);
+    let mut entries: Vec<&str> = vec!["src/v2/workflow/floor_wet_route.dag"];
+    for row in &rows {
+        entries.push(row.entry_rel.as_str());
+    }
+    entries.sort_unstable();
+    entries.dedup();
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for entry in entries {
+        let subject = wet_closure_subject_for_entry(&index, entry)
+            .map_err(|e| format!("wet_subject_digest: closure subject for {entry}: {e}"))?;
+        pairs.push((entry.to_string(), subject));
+    }
+    Ok(pairs)
+}
+
+/// THE WET SUBJECT DIGEST — the receipt's validity key (parent amendment 2026-08-30):
+/// sha256 over the sorted per-entry closure subjects of every roster row plus the closure
+/// subject of the route authority module itself, so a change to any routed witness, its
+/// import closure, the harness .dag implementation, the roster, or the receipt contract
+/// moves the digest, while a change outside those closures does not. The DECLARED
+/// subject-universe exclusion is `v2.workflow.floor_wet_route.wet_subject_digest_exclusions`:
+/// the seed-Rust harness binaries are outside it.
+///
+/// IT IS A FUNCTION OF THE TREE AND OF NOTHING ELSE, which is what makes candidate-exactness a
+/// decidable equality — and which this function did NOT establish until 2026-08-31. It folded
+/// `closure_subject_for_entry`, whose digest mixes in the bytes of the running executable, so
+/// the producer (`claim_batch`) and the consumer (`claim_executor`) — different binaries —
+/// could never agree, on any tree. An earlier revision of this note asserted the two computed
+/// it "identically from the same resolver": true about the resolver, false about the
+/// conclusion, and the false half is what every session planned against. It now folds
+/// `wet_closure_subject_for_entry`, which carries the `.dag` closure content alone; the seed
+/// executor keeps its own axis in `wet_executor_contract_digest`. The wall that keeps this
+/// honest is the enrolled RED
+/// `v2.test.floor_wet_route.wet_subject_is_independent_of_the_running_binary`.
+pub fn wet_subject_digest(source_roots: &[String]) -> Result<String, String> {
+    let pairs = wet_subject_entry_subjects(source_roots)?;
+    for (entry, subject) in &pairs {
+        eprintln!("[wet-subject] entry={entry} closure_subject={subject}");
+    }
+    let mut subjects: Vec<String> = pairs.into_iter().map(|(_, subject)| subject).collect();
+    subjects.sort_unstable();
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    for (i, subject) in subjects.iter().enumerate() {
+        if i > 0 {
+            hasher.update(b"\n");
+        }
+        hasher.update(subject.as_bytes());
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// THE EXECUTOR CONTRACT DIGEST (residual-A repair, parent ruling 2026-08-30): sha256 over
+/// the bytes of every file under the declared input roster
+/// (`v2.workflow.floor_wet_route.wet_executor_contract_input_prefixes` — the seed crate,
+/// workspace manifests and lockfile, toolchain pin, cargo config, and the wet
+/// workflow/command model files), each contributing its repo-relative path and content.
+/// This is a deliberately conservative SUPERSET: an extra wet rerun for a seed edit that
+/// changed no wet behavior is accepted; a seed executor change that leaves an old receipt
+/// reading candidate-exact is not. A declared prefix matching nothing on disk REFUSES —
+/// a rotted roster row is a silently narrowing digest.
+pub fn wet_executor_contract_digest(source_roots: &[String]) -> Result<String, String> {
+    let index = process_shared_index(source_roots);
+    let entry = "src/v2/workflow/floor_wet_route.dag";
+    let (graph, source_indices) = resolve_entry_with_index(&index, entry)
+        .map_err(|e| format!("wet_executor_contract_digest: resolve {entry}: {e}"))?;
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        "v2.workflow.floor_wet_route.wet_executor_contract_input_prefixes",
+        false,
+    )
+    .map_err(|e| format!("wet_executor_contract_input_prefixes: {e}"))?;
+    let items = floor_decode_list(&ctx, Some(&value))
+        .map_err(|e| format!("wet_executor_contract_input_prefixes: {e}"))?;
+    let mut prefixes: Vec<String> = Vec::new();
+    for item in items {
+        match item {
+            v1_interpreter::Value::Str(p) => prefixes.push(p.to_string()),
+            other => {
+                return Err(format!(
+                    "wet_executor_contract_input_prefixes: expected a String path, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        }
+    }
+    let mut files: BTreeSet<String> = BTreeSet::new();
+    for prefix in &prefixes {
+        if prefix.ends_with('/') {
+            let dir = prefix.trim_end_matches('/');
+            let mut stack = vec![std::path::PathBuf::from(dir)];
+            let mut found_any = false;
+            while let Some(d) = stack.pop() {
+                let entries = std::fs::read_dir(&d).map_err(|e| {
+                    format!(
+                        "wet_executor_contract_digest: read_dir {}: {e}",
+                        d.display()
+                    )
+                })?;
+                for entry in entries {
+                    let entry = entry.map_err(|e| {
+                        format!(
+                            "wet_executor_contract_digest: read_dir {}: {e}",
+                            d.display()
+                        )
+                    })?;
+                    let path = entry.path();
+                    if path.is_dir() {
+                        stack.push(path);
+                    } else {
+                        found_any = true;
+                        files.insert(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+            if !found_any {
+                return Err(format!(
+                    "wet_executor_contract_digest: declared input prefix {prefix} matched no \
+                     files — the roster row has rotted, and a silently narrowing digest is the \
+                     under-invalidation this repair forbids"
+                ));
+            }
+        } else {
+            if !std::path::Path::new(prefix).is_file() {
+                return Err(format!(
+                    "wet_executor_contract_digest: declared input file {prefix} does not exist \
+                     — the roster row has rotted, and a silently narrowing digest is the \
+                     under-invalidation this repair forbids"
+                ));
+            }
+            files.insert(prefix.clone());
+        }
+    }
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    for file in &files {
+        let content = std::fs::read(file)
+            .map_err(|e| format!("wet_executor_contract_digest: read {file}: {e}"))?;
+        hasher.update(file.as_bytes());
+        hasher.update([0u8]);
+        hasher.update(&content);
+        hasher.update([0u8]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Host realization of `v2.workflow.floor_wet_route.WetLaneReceiptStanding`, one value per
+/// evaluated tree. Exactly `FreshExactSubject` is clean; the polarity is the .dag fold's
+/// `wet_route_standing_blocks_floor`, realized in `WetLaneReceiptStanding::blocks`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WetLaneReceiptStanding {
+    FreshExactSubject {
+        age_secs: u64,
+    },
+    Missing,
+    Expired {
+        age_secs: u64,
+    },
+    SubjectMismatch {
+        axis: &'static str,
+        receipt_digest: String,
+        computed_digest: String,
+    },
+    ExecutorSnapshotDifferent {
+        receipt_digest: String,
+        computed_digest: String,
+    },
+    ContractMismatch {
+        detail: String,
+    },
+    RosterInexact {
+        detail: String,
+    },
+}
+
+impl WetLaneReceiptStanding {
+    pub(crate) fn blocks(&self) -> bool {
+        !matches!(self, WetLaneReceiptStanding::FreshExactSubject { .. })
+    }
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            WetLaneReceiptStanding::FreshExactSubject { age_secs } => {
+                format!("fresh-exact-subject age_secs={age_secs}")
+            }
+            WetLaneReceiptStanding::Missing => "missing — no envelope committed; run the wet \
+                 receipts lane (workflow_dispatch on the witnesses workflow, or claim_batch \
+                 --wet-route) and land its envelope"
+                .to_string(),
+            WetLaneReceiptStanding::Expired { age_secs } => format!(
+                "expired — executed {age_secs}s before the evaluated commit, past the declared \
+                 cadence + grace; restore the lane's cadence and land a fresh envelope"
+            ),
+            WetLaneReceiptStanding::SubjectMismatch {
+                axis,
+                receipt_digest,
+                computed_digest,
+            } => format!(
+                "subject-mismatch axis={axis} — envelope carries {receipt_digest} but this \
+                 tree computes {computed_digest}; the lane has not executed this candidate's \
+                 wet subject on that axis (an ancestor receipt blocks by ruling; an \
+                 executor-contract miss means the seed executor changed without a wet rerun). \
+                 workflow_dispatch the lane on this head and land its envelope"
+            ),
+            WetLaneReceiptStanding::ExecutorSnapshotDifferent {
+                receipt_digest,
+                computed_digest,
+            } => format!(
+                "executor-snapshot-different — envelope was executed under seed executor \
+                 {receipt_digest} but this tree computes {computed_digest}; the same semantic \
+                 subject ran under a superseded seed build. Re-run the lane on this head, or \
+                 (bootstrap only) a declared one-shot lease naming exactly this envelope may \
+                 admit it inside its fixed window"
+            ),
+            WetLaneReceiptStanding::ContractMismatch { detail } => {
+                format!("contract-mismatch — {detail}")
+            }
+            WetLaneReceiptStanding::RosterInexact { detail } => {
+                format!("roster-inexact — {detail}")
+            }
+        }
+    }
+}
+
+/// Host realization of `v2.workflow.floor_wet_route.BootstrapExecutorSnapshotReceipt` — the
+/// declared one-shot lease row — and its admission evaluation
+/// (`wet_seed_bootstrap_admission`). The lease admits exactly one named envelope past
+/// `ExecutorSnapshotDifferent` — never past any other standing — inside a FIXED window of
+/// executed_at + window with no slide or renewal; `not_after` is derived and checked, not
+/// trusted. Digest derivations realized here (the .dag fn takes them as parameters):
+/// envelope digest is sha256 over the committed latest-attempt.json bytes; roster digest is
+/// sha256 over the newline-joined sorted roster identities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WetBootstrapLease {
+    pub lease_identity: String,
+    pub exact_envelope_digest: String,
+    pub exact_attempt_seq: u64,
+    pub exact_semantic_subject_digest: String,
+    pub exact_roster_digest: String,
+    pub observed_executor_contract_digest: String,
+    pub executed_at_unix_secs: u64,
+    pub not_after_unix_secs: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WetSeedBootstrapAdmission {
+    Admitted { not_after_unix_secs: u64 },
+    Expired { detail: String },
+    NotApplicable,
+}
+
+pub(crate) fn wet_seed_bootstrap_admission(
+    lease: Option<&WetBootstrapLease>,
+    window_secs: u64,
+    envelope_digest: &str,
+    attempt_seq: u64,
+    semantic_subject_digest: &str,
+    roster_digest: &str,
+    evaluated_tree_commit_secs: u64,
+) -> WetSeedBootstrapAdmission {
+    let Some(r) = lease else {
+        return WetSeedBootstrapAdmission::NotApplicable;
+    };
+    if r.exact_envelope_digest != envelope_digest
+        || r.exact_attempt_seq != attempt_seq
+        || r.exact_semantic_subject_digest != semantic_subject_digest
+        || r.exact_roster_digest != roster_digest
+    {
+        return WetSeedBootstrapAdmission::NotApplicable;
+    }
+    if r.not_after_unix_secs != r.executed_at_unix_secs + window_secs {
+        return WetSeedBootstrapAdmission::NotApplicable;
+    }
+    if evaluated_tree_commit_secs > r.not_after_unix_secs {
+        return WetSeedBootstrapAdmission::Expired {
+            detail: format!(
+                "the evaluated tree's commit time {} exceeds the lease's fixed not_after {}",
+                evaluated_tree_commit_secs, r.not_after_unix_secs
+            ),
+        };
+    }
+    WetSeedBootstrapAdmission::Admitted {
+        not_after_unix_secs: r.not_after_unix_secs,
+    }
+}
+
+/// Read the declared lease row (`gunbc.wet_seed_bootstrap_lease.wet_seed_bootstrap_lease_declared`
+/// — homed OUTSIDE the wet semantic closure so a flip moves no digest) and the fixed window
+/// from the route authority. Absent is the standing state; fail-closed on shape.
+pub(crate) fn wet_seed_bootstrap_lease_declared(
+    source_roots: &[String],
+) -> Result<(Option<WetBootstrapLease>, u64), String> {
+    let index = process_shared_index(source_roots);
+    let entry = "dag/gunbc/floor/wet_seed_bootstrap_lease.dag";
+    let (graph, source_indices) = resolve_entry_with_index(&index, entry)
+        .map_err(|e| format!("wet_seed_bootstrap_lease_declared: resolve {entry}: {e}"))?;
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let window = match v1_interpreter::run_in_context(
+        &ctx,
+        "v2.workflow.floor_wet_route.wet_seed_bootstrap_lease_window_secs",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 => n as u64,
+        Ok(other) => {
+            return Err(format!(
+                "wet_seed_bootstrap_lease_window_secs: expected a positive Int, got {}",
+                floor_value_shape(Some(&other))
+            ))
+        }
+        Err(e) => return Err(format!("wet_seed_bootstrap_lease_window_secs: {e}")),
+    };
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        "gunbc.wet_seed_bootstrap_lease.wet_seed_bootstrap_lease_declared",
+        false,
+    )
+    .map_err(|e| format!("wet_seed_bootstrap_lease_declared: {e}"))?;
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &value
+    else {
+        return Err(format!(
+            "wet_seed_bootstrap_lease_declared: expected Optional, got {}",
+            floor_value_shape(Some(&value))
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "Absent") {
+        return Ok((None, window));
+    }
+    if !ctx.sym_eq(*variant_name, "Present") {
+        return Err(format!(
+            "wet_seed_bootstrap_lease_declared: expected Absent/Present, got {}",
+            ctx.resolve(*variant_name)
+        ));
+    }
+    let Some(v1_interpreter::Value::Record { fields: rf, .. }) = ctx.field(fields, "value") else {
+        return Err("wet_seed_bootstrap_lease_declared: Present must carry a \
+             BootstrapExecutorSnapshotReceipt record"
+            .to_string());
+    };
+    let field_str = |name: &str| -> Result<String, String> {
+        match ctx.field(rf, name) {
+            Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+            other => Err(format!(
+                "wet_seed_bootstrap_lease_declared: {name} must be String, got {}",
+                floor_value_shape(other)
+            )),
+        }
+    };
+    let field_u64 = |name: &str| -> Result<u64, String> {
+        match ctx.field(rf, name) {
+            Some(v1_interpreter::Value::Int(n)) if *n >= 0 => Ok(*n as u64),
+            other => Err(format!(
+                "wet_seed_bootstrap_lease_declared: {name} must be a non-negative Int, got {}",
+                floor_value_shape(other)
+            )),
+        }
+    };
+    Ok((
+        Some(WetBootstrapLease {
+            lease_identity: field_str("lease_identity")?,
+            exact_envelope_digest: field_str("exact_envelope_digest")?,
+            exact_attempt_seq: field_u64("exact_attempt_seq")?,
+            exact_semantic_subject_digest: field_str("exact_semantic_subject_digest")?,
+            exact_roster_digest: field_str("exact_roster_digest")?,
+            observed_executor_contract_digest: field_str("observed_executor_contract_digest")?,
+            executed_at_unix_secs: field_u64("executed_at_unix_secs")?,
+            not_after_unix_secs: field_u64("not_after_unix_secs")?,
+        }),
+        window,
+    ))
+}
+
+/// The standing fold, mirroring the .dag decision order exactly: unreadable-contract facts
+/// before subject facts, subject before roster, roster before time, time before verdict.
+///
+/// `evaluated_tree_commit_secs` IS REQUIRED, exactly as the authority declares it
+/// (`v2.workflow.floor_wet_route.wet_lane_receipt_standing` takes
+/// `evaluated_tree_commit_unix_secs: EpochSecs`, not an `Optional`). It was an `Option<u64>`
+/// here until review 57856, and the `None` arm skipped BOTH time comparisons and then fell
+/// through to `FreshExactSubject { age_secs: 0 }` — reporting a receipt whose age could not be
+/// computed as a receipt that is fresh. That is ⊤-as-ignorance rendered as ⊤-as-answer, the
+/// absorbing fallback DESIGN §5 names, and it was a §3 defect besides: the Rust widened a
+/// parameter the .dag declares total, so the two authorities disagreed about whether the fact
+/// is optional at all. The repair is not a new standing arm — inventing one here would fork the
+/// coproduct away from its authority — it is that the CALLER refuses when the commit time is
+/// unobservable, so this fold is only ever reached with the fact it requires.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn wet_lane_receipt_standing(
+    envelope: Option<&WetReceiptEnvelope>,
+    computed_subject_digest: &str,
+    computed_executor_contract_digest: &str,
+    roster: &BTreeSet<String>,
+    evaluated_tree_commit_secs: u64,
+    schema_version: u64,
+    staleness_budget_secs: u64,
+    publication_skew_secs: u64,
+) -> WetLaneReceiptStanding {
+    let Some(e) = envelope else {
+        return WetLaneReceiptStanding::Missing;
+    };
+    if e.schema_version != schema_version {
+        return WetLaneReceiptStanding::ContractMismatch {
+            detail: format!(
+                "schema_version {} is not the version {} this floor reads",
+                e.schema_version, schema_version
+            ),
+        };
+    }
+    if e.executed_at_unix_secs > e.published_at_unix_secs {
+        return WetLaneReceiptStanding::ContractMismatch {
+            detail: "executed_at exceeds published_at".to_string(),
+        };
+    }
+    if e.published_at_unix_secs > evaluated_tree_commit_secs + publication_skew_secs {
+        return WetLaneReceiptStanding::ContractMismatch {
+            detail: format!(
+                "published_at {} exceeds the evaluated tree's commit time {} beyond the \
+                 declared {}s skew",
+                e.published_at_unix_secs, evaluated_tree_commit_secs, publication_skew_secs
+            ),
+        };
+    }
+    if e.subject_digest != computed_subject_digest {
+        return WetLaneReceiptStanding::SubjectMismatch {
+            axis: "semantic-subject",
+            receipt_digest: e.subject_digest.clone(),
+            computed_digest: computed_subject_digest.to_string(),
+        };
+    }
+    if e.executor_contract_digest != computed_executor_contract_digest {
+        return WetLaneReceiptStanding::ExecutorSnapshotDifferent {
+            receipt_digest: e.executor_contract_digest.clone(),
+            computed_digest: computed_executor_contract_digest.to_string(),
+        };
+    }
+    let row_ids: BTreeSet<&str> = e.rows.iter().map(|r| r.identity.as_str()).collect();
+    let missing: Vec<&str> = roster
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|id| !row_ids.contains(*id))
+        .collect();
+    let extra: Vec<&str> = row_ids
+        .iter()
+        .copied()
+        .filter(|id| !roster.contains(*id))
+        .collect();
+    if !missing.is_empty() || !extra.is_empty() {
+        return WetLaneReceiptStanding::RosterInexact {
+            detail: format!(
+                "envelope rows are not exactly the routed roster (missing: [{}]; off-roster: \
+                 [{}])",
+                missing.join(", "),
+                extra.join(", ")
+            ),
+        };
+    }
+    for row in &e.rows {
+        if !WET_OUTCOME_WIRES.contains(&row.outcome.as_str()) {
+            return WetLaneReceiptStanding::ContractMismatch {
+                detail: format!(
+                    "row {} carries outcome `{}`, outside the closed wire vocabulary — the \
+                     producer and this reader no longer share an outcome grammar",
+                    row.identity, row.outcome
+                ),
+            };
+        }
+    }
+    let age_secs = evaluated_tree_commit_secs.saturating_sub(e.executed_at_unix_secs);
+    if age_secs > staleness_budget_secs {
+        return WetLaneReceiptStanding::Expired { age_secs };
+    }
+    WetLaneReceiptStanding::FreshExactSubject { age_secs }
+}
+
+/// THE PER-IDENTITY VERDICT PROJECTIONS (host realization of
+/// `v2.workflow.floor_wet_route.wet_receipt_unexpected_red_identities` and siblings, parent
+/// ruling 2026-08-30): the receipt's rows join the expected-red roster exactly as dry claims
+/// do. Fail + not enrolled blocks (the fail-closed arm); fail + enrolled is held (counted,
+/// non-blocking); pass + enrolled is now-passing (blocks until the roster row is removed).
+pub(crate) fn wet_receipt_identity_verdicts(
+    envelope: &WetReceiptEnvelope,
+    expected_red: &BTreeSet<String>,
+) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+    let mut unexpected_red = Vec::new();
+    let mut held = Vec::new();
+    let mut now_passing = Vec::new();
+    let mut no_verdict = Vec::new();
+    for row in &envelope.rows {
+        let enrolled = expected_red.contains(&row.identity);
+        match (row.outcome.as_str(), enrolled) {
+            ("pass", false) => {}
+            ("pass", true) => now_passing.push(row.identity.clone()),
+            ("assertion-false", true) => held.push(row.identity.clone()),
+            ("assertion-false", false) => unexpected_red.push(row.identity.clone()),
+            // Every other wire is a way of producing NO subject verdict, and it blocks
+            // regardless of enrollment: an enrollment asserts the witness reaches its
+            // subject and answers, so it cannot hold an infrastructure failure. Only an
+            // explicitly enrolled typed pre-verdict expectation could — no wet identity
+            // carries one today, and this arm grows when one does.
+            _ => no_verdict.push(format!("{} ({})", row.identity, row.outcome)),
+        }
+    }
+    (unexpected_red, held, now_passing, no_verdict)
+}
+
+/// THE PUBLICATION TRANSACTION, observed for THIS run (host realization of
+/// `v2.workflow.floor_wet_route.WetReceiptPublicationTransaction`): the run's own diff is
+/// confined to the two committed receipt paths (nothing else changed, nothing departed) and
+/// the committed envelope's attempt sequence advances over the base tree's envelope (absent
+/// at base counts as 0, so the first publication admits). Any unobservable input is an Err —
+/// the caller keeps blocking on it, never admits.
+pub(crate) fn wet_receipt_publication_transaction_valid_for_this_run(
+    json_rel: &str,
+    tsv_rel: &str,
+    envelope: Option<&WetReceiptEnvelope>,
+) -> Result<bool, String> {
+    let Some(envelope) = envelope else {
+        return Ok(false);
+    };
+    let (changed, departed) = floor_git_diff_name_status_range()?;
+    if !departed.is_empty() {
+        return Ok(false);
+    }
+    if changed.is_empty() {
+        return Ok(false);
+    }
+    if !changed.iter().all(|p| p == json_rel || p == tsv_rel) {
+        return Ok(false);
+    }
+    let (base_ref, _event) = floor_diff_baseline_readout()?;
+    let base_attempt_seq = {
+        let output = std::process::Command::new("git")
+            .args(["show", &format!("{base_ref}:{json_rel}")])
+            .output()
+            .map_err(|e| format!("git show {base_ref}:{json_rel}: {e}"))?;
+        if output.status.success() {
+            let text = String::from_utf8(output.stdout)
+                .map_err(|e| format!("base envelope {base_ref}:{json_rel}: {e}"))?;
+            let base: WetReceiptEnvelope = serde_json::from_str(&text)
+                .map_err(|e| format!("base envelope {base_ref}:{json_rel}: {e}"))?;
+            base.attempt_seq
+        } else {
+            0
+        }
+    };
+    Ok(envelope.attempt_seq > base_attempt_seq)
+}
+
+/// One routed row of `v2.workflow.floor_wet_route.floor_wet_route_roster`, decoded for the
+/// wet receipts lane: the entry file to resolve, the function to run, and the qualified
+/// identity the receipt is keyed by. The roster is the single population authority — the lane
+/// derives its work from it at run time, so a roster edit needs no second surface updated.
+#[derive(Debug, Clone)]
+pub struct WetRouteLaneRow {
+    pub identity: String,
+    pub entry_rel: String,
+    pub function: String,
+}
+
+/// Decode the wet-route roster from its .dag authority. Fail-closed on shape and on
+/// duplicates, exactly as the floor's own read is.
+pub fn wet_route_lane_rows(source_roots: &[String]) -> Result<Vec<WetRouteLaneRow>, String> {
+    let index = process_shared_index(source_roots);
+    let entry = "src/v2/workflow/floor_wet_route.dag";
+    let (graph, source_indices) = resolve_entry_with_index(&index, entry)
+        .map_err(|e| format!("wet_route_lane_rows: resolve {entry}: {e}"))?;
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        "v2.workflow.floor_wet_route.floor_wet_route_roster",
+        false,
+    )
+    .map_err(|e| format!("floor_wet_route_roster: {e}"))?;
+    let items = floor_decode_list(&ctx, Some(&value))
+        .map_err(|e| format!("floor_wet_route_roster: {e}"))?;
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "floor_wet_route_roster: expected WetRouteRow, got {}",
+                floor_value_shape(Some(item))
+            ));
+        };
+        if !ctx.sym_eq(*type_name, "WetRouteRow") {
+            return Err(format!(
+                "floor_wet_route_roster: expected WetRouteRow, got record {}",
+                ctx.resolve(*type_name)
+            ));
+        }
+        let field_str = |name: &str| -> Result<String, String> {
+            match ctx.field(fields, name) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "floor_wet_route_roster: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let row = WetRouteLaneRow {
+            identity: field_str("identity")?,
+            entry_rel: field_str("entry_rel")?,
+            function: field_str("function")?,
+        };
+        if !seen.insert(row.identity.clone()) {
+            return Err(format!(
+                "floor_wet_route_roster: duplicate routed identity: {}",
+                row.identity
+            ));
+        }
+        out.push(row);
+    }
+    Ok(out)
+}
+
+/// One executed receipt row for the wet lane's committed envelope — the producer side of
+/// `read_wet_receipt_envelope`.
+pub struct WetLaneExecutedReceipt {
+    pub identity: String,
+    /// The raw typed outcome's wire name — one of `WET_OUTCOME_WIRES` — never a collapsed
+    /// Bool: an assertion that ran and returned false and an infrastructure failure that
+    /// produced no verdict are different facts with different standings (parent ruling
+    /// 2026-08-30, wall 1).
+    pub outcome_wire: &'static str,
+    pub wall_ms: u128,
+}
+
+/// The closed wire vocabulary for a wet row's outcome. A committed envelope carrying any
+/// other string is a contract mismatch — the producer and reader no longer share an outcome
+/// grammar, and guessing would absorb the distinction the grain exists to carry.
+pub const WET_OUTCOME_WIRES: [&str; 12] = [
+    "pass",
+    "assertion-false",
+    "not-bool",
+    "runtime-error",
+    "budget-interrupted",
+    "completed-over-budget",
+    "host-tool-unresolved",
+    "host-effect-refused",
+    "panicked",
+    "not-attempted",
+    "resolve-failed",
+    "closure-subject-failed",
+];
+
+/// Write the wet lane's committed pair: the envelope JSON (authority) and its canonical TSV
+/// projection. LATEST-ATTEMPT SEMANTICS: `attempt_seq` advances over whatever envelope is
+/// committed at `json_path` (1 on first publication); a committed envelope that exists but
+/// cannot be parsed REFUSES rather than silently restarting the sequence. `run_id` and
+/// `head_sha` come from the producing run's environment (GITHUB_RUN_ID / GITHUB_SHA on the
+/// lane; "local" only when GITHUB_ACTIONS is unset, where it is a truthful provenance
+/// statement). On CI a missing citation var REFUSES rather than mislabeling the publication
+/// as local, and a pre-epoch clock refuses rather than publishing timestamp 0 (review 57955).
+pub fn write_wet_receipt_envelope(
+    json_path: &str,
+    tsv_path: &str,
+    rows: &[WetLaneExecutedReceipt],
+    subject_digest: &str,
+    executor_contract_digest: &str,
+    executed_at_unix_secs: u64,
+) -> Result<(), String> {
+    let prior_attempt_seq = match std::fs::read_to_string(json_path) {
+        Ok(text) => {
+            let prior: WetReceiptEnvelope = serde_json::from_str(&text).map_err(|e| {
+                format!(
+                    "write_wet_receipt_envelope: committed envelope {json_path} exists but \
+                     cannot be parsed ({e}) — investigate before overwriting; a silent \
+                     attempt_seq restart would erase the attempt ordering"
+                )
+            })?;
+            prior.attempt_seq
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => return Err(format!("write_wet_receipt_envelope: read {json_path}: {e}")),
+    };
+    let on_ci = std::env::var("GITHUB_ACTIONS").is_ok();
+    let run_id =
+        match std::env::var("GITHUB_RUN_ID") {
+            Ok(v) => v,
+            Err(_) if !on_ci => "local".to_string(),
+            Err(_) => return Err(
+                "write_wet_receipt_envelope: GITHUB_ACTIONS is set but GITHUB_RUN_ID is absent \
+                 — refusing to publish a CI envelope with a fabricated run citation"
+                    .to_string(),
+            ),
+        };
+    let head_sha = match std::env::var("GITHUB_SHA") {
+        Ok(v) => v,
+        Err(_) if !on_ci => "local".to_string(),
+        Err(_) => {
+            return Err(
+                "write_wet_receipt_envelope: GITHUB_ACTIONS is set but GITHUB_SHA is absent — \
+                 refusing to publish a CI envelope with a fabricated head citation"
+                    .to_string(),
+            )
+        }
+    };
+    let published_at_unix_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .map_err(|e| {
+            format!(
+                "write_wet_receipt_envelope: system clock is before the unix epoch ({e}) — \
+                 refusing to publish a fabricated publication timestamp"
+            )
+        })?;
+    let mut sorted: Vec<&WetLaneExecutedReceipt> = rows.iter().collect();
+    sorted.sort_by(|a, b| a.identity.cmp(&b.identity));
+    let envelope = WetReceiptEnvelope {
+        schema_version: 1,
+        subject_digest: subject_digest.to_string(),
+        executor_contract_digest: executor_contract_digest.to_string(),
+        attempt_seq: prior_attempt_seq + 1,
+        executed_at_unix_secs,
+        published_at_unix_secs,
+        run_id,
+        head_sha,
+        rows: sorted
+            .iter()
+            .map(|row| WetReceiptIdentityRow {
+                identity: row.identity.clone(),
+                outcome: row.outcome_wire.to_string(),
+                wall_ms: row.wall_ms as u64,
+            })
+            .collect(),
+    };
+    if let Some(parent) = std::path::Path::new(json_path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "write_wet_receipt_envelope: mkdir {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let json_text = serde_json::to_string_pretty(&envelope)
+        .map_err(|e| format!("write_wet_receipt_envelope: serialize: {e}"))?;
+    std::fs::write(json_path, format!("{json_text}\n"))
+        .map_err(|e| format!("write_wet_receipt_envelope: write {json_path}: {e}"))?;
+    std::fs::write(tsv_path, wet_receipt_tsv_projection(&envelope))
+        .map_err(|e| format!("write_wet_receipt_envelope: write {tsv_path}: {e}"))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod wet_subject_transform_independence_tests {
+    use super::*;
+    use crate::resolved_graph_cache::{
+        derive_subject_digest, subject_digest_for_closure, KeyInputMaterials,
+    };
+
+    // A NON-DEGENERATE CLOSURE. An empty source list makes both digests fold to their seed
+    // constant, and two constants comparing unequal would prove nothing about real content —
+    // the assertions below would hold by construction and keep holding after the wall was gone.
+    fn two_module_closure() -> Vec<std::rc::Rc<v1_compiler_compile::SourceFile>> {
+        vec![
+            std::rc::Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/test/claim/a_test.dag".to_string(),
+                content: "module test.claim.a\nfn holds() -> Bool { true }\n".to_string(),
+            }),
+            std::rc::Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/test/claim/b_test.dag".to_string(),
+                content: "module test.claim.b\nfn holds() -> Bool { false }\n".to_string(),
+            }),
+        ]
+    }
+
+    // THE DISCRIMINATING RED FOR THE SEVEN-CYCLE DEFECT, enrolled permanently rather than
+    // retired now that it greens (DESIGN 4b, dissolution-on-climb: the production machinery
+    // dissolves, the evidence stays).
+    //
+    // WHAT WENT WRONG. The wet-lane receipt's candidate-exactness test is
+    // `envelope.subject_digest == computed_subject_digest`. The envelope is written by
+    // `claim_batch`; the equality is checked by `claim_executor`. The subject folded
+    // `subject_digest_for_closure`, which mixes `transform_content_digest()` — the bytes of the
+    // RUNNING EXECUTABLE — into the digest. Two binaries, two digests, so that equality was
+    // unsatisfiable BY CONSTRUCTION on every tree in every event, and the floor refused seven
+    // consecutive landing cycles for a staleness that did not exist.
+    //
+    // WHY THIS SHAPE. Spawning two real executables inside a lib test would measure the build
+    // rather than the property, so the transform axis is varied directly and the wet subject is
+    // required not to move with it. Each assertion is paired with the positive control that
+    // makes it discriminating: without them a wall that had been removed would still read green.
+    #[test]
+    fn wet_subject_is_independent_of_the_running_binary() {
+        let sources = two_module_closure();
+        let closure = wet_closure_subject(&sources);
+        let transform_a = crate::v1_rt::atom_identity_hash("binary-claim-batch".to_string());
+        let transform_b = crate::v1_rt::atom_identity_hash("binary-claim-executor".to_string());
+
+        // POSITIVE CONTROL: varying the transform digest genuinely moves a digest that folds
+        // it. Correct for the resolve cache — an artifact built by one compiler must not be
+        // served to another — and it proves the variation below is real rather than inert.
+        assert_ne!(
+            derive_subject_digest(&KeyInputMaterials::new(closure.clone(), transform_a)),
+            derive_subject_digest(&KeyInputMaterials::new(closure.clone(), transform_b)),
+            "positive control failed: varying the transform digest did not move a subject that              folds it, so this test cannot discriminate and the wall below proves nothing"
+        );
+
+        // THE WALL. The wet semantic subject is the .dag closure content and nothing else, so
+        // it is NOT the cache subject. Re-pointing `wet_closure_subject` at
+        // `subject_digest_for_closure` — which is exactly the defect — reds this line.
+        assert_ne!(
+            wet_closure_subject(&sources),
+            subject_digest_for_closure(&sources),
+            "the wet semantic subject folded the running executable's bytes: producer and              consumer are different binaries, so candidate-exactness is now unsatisfiable on              every tree"
+        );
+    }
+
+    // THE SUBJECT MOVES ON WHAT IT CLAIMS TO MEASURE. A tree-only digest that ignored content
+    // would satisfy the test above trivially, so the same wall needs its other half: .dag
+    // content changes the subject, and nothing else does.
+    #[test]
+    fn the_wet_subject_moves_on_dag_content() {
+        let sources = two_module_closure();
+        let mut edited = two_module_closure();
+        std::rc::Rc::get_mut(&mut edited[1]).unwrap().content =
+            "module test.claim.b\nfn holds() -> Bool { true }\n".to_string();
+        assert_ne!(
+            wet_closure_subject(&sources),
+            wet_closure_subject(&edited),
+            "the wet subject did not move when a routed module's .dag content changed, so it              cannot detect the staleness it exists to detect"
+        );
+        // And it is stable across repeated computation on identical content — the property the
+        // producer and the consumer rely on when they compare across two processes.
+        assert_eq!(
+            wet_closure_subject(&sources),
+            wet_closure_subject(&two_module_closure()),
+            "the wet subject is not a function of content alone"
+        );
+    }
+}
+
+#[cfg(test)]
+mod wet_lane_receipt_tests {
+    use super::*;
+
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc_wet_receipt_{}_{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn one_row() -> Vec<WetLaneExecutedReceipt> {
+        vec![WetLaneExecutedReceipt {
+            identity: "test.claim.x.holds".to_string(),
+            outcome_wire: "pass",
+            wall_ms: 42,
+        }]
+    }
+
+    fn write_fixture(name: &str) -> (String, String) {
+        let dir = scratch_dir(name);
+        let json = dir
+            .join("latest-attempt.json")
+            .to_string_lossy()
+            .to_string();
+        let tsv = dir.join("latest-attempt.tsv").to_string_lossy().to_string();
+        std::fs::remove_file(&json).ok();
+        std::fs::remove_file(&tsv).ok();
+        write_wet_receipt_envelope(&json, &tsv, &one_row(), "subject-d", "exec-d", 1000)
+            .expect("write");
+        (json, tsv)
+    }
+
+    #[test]
+    fn writer_output_reads_back_and_attempt_seq_advances() {
+        let (json, tsv) = write_fixture("roundtrip");
+        let envelope = read_wet_receipt_envelope(&json, &tsv)
+            .expect("read back")
+            .expect("present");
+        assert_eq!(envelope.attempt_seq, 1);
+        assert_eq!(envelope.rows.len(), 1);
+        assert_eq!(envelope.rows[0].outcome, "pass");
+        assert_eq!(envelope.subject_digest, "subject-d");
+        write_wet_receipt_envelope(&json, &tsv, &one_row(), "subject-d", "exec-d", 2000)
+            .expect("rewrite");
+        let second = read_wet_receipt_envelope(&json, &tsv)
+            .expect("read back")
+            .expect("present");
+        assert_eq!(second.attempt_seq, 2, "latest-attempt seq must advance");
+    }
+
+    /// THE HAND-EDIT RED: flip one projection byte and the drift check refuses. Remove the
+    /// re-projection comparison and this test greens a forged receipt.
+    #[test]
+    fn hand_edited_projection_refuses_on_drift() {
+        let (json, tsv) = write_fixture("tamper_tsv");
+        let content = std::fs::read_to_string(&tsv).unwrap();
+        let forged = content.replace("\tpass\t", "\tfail\t");
+        assert_ne!(content, forged, "fixture must contain the edited cell");
+        std::fs::write(&tsv, forged).unwrap();
+        let err = read_wet_receipt_envelope(&json, &tsv).unwrap_err();
+        assert!(err.contains("not the canonical projection"), "got: {err}");
+    }
+
+    /// The same wall from the other side: edit the JSON authority and the committed TSV no
+    /// longer projects from it.
+    #[test]
+    fn hand_edited_envelope_refuses_on_drift() {
+        let (json, tsv) = write_fixture("tamper_json");
+        let content = std::fs::read_to_string(&json).unwrap();
+        let forged = content.replace("\"pass\"", "\"assertion-false\"");
+        assert_ne!(content, forged);
+        std::fs::write(&json, forged).unwrap();
+        let err = read_wet_receipt_envelope(&json, &tsv).unwrap_err();
+        assert!(err.contains("not the canonical projection"), "got: {err}");
+    }
+
+    #[test]
+    fn orphaned_projection_refuses() {
+        let (json, tsv) = write_fixture("orphan");
+        std::fs::remove_file(&json).unwrap();
+        let err = read_wet_receipt_envelope(&json, &tsv).unwrap_err();
+        assert!(err.contains("orphaned"), "got: {err}");
+    }
+
+    #[test]
+    fn absent_pair_is_missing_not_error() {
+        let envelope = read_wet_receipt_envelope("/nonexistent/la.json", "/nonexistent/la.tsv")
+            .expect("absent pair is the missing state");
+        assert!(envelope.is_none());
+    }
+
+    fn fixture_envelope() -> WetReceiptEnvelope {
+        WetReceiptEnvelope {
+            schema_version: 1,
+            subject_digest: "subject-d".to_string(),
+            executor_contract_digest: "exec-d".to_string(),
+            attempt_seq: 1,
+            executed_at_unix_secs: 1000,
+            published_at_unix_secs: 1001,
+            run_id: "r".to_string(),
+            head_sha: "s".to_string(),
+            rows: vec![WetReceiptIdentityRow {
+                identity: "test.claim.x.holds".to_string(),
+                outcome: "pass".to_string(),
+                wall_ms: 42,
+            }],
+        }
+    }
+
+    fn roster() -> BTreeSet<String> {
+        ["test.claim.x.holds".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn standing_fresh_exact_subject_is_the_one_clean_arm() {
+        let e = fixture_envelope();
+        let standing =
+            wet_lane_receipt_standing(Some(&e), "subject-d", "exec-d", &roster(), 1001, 1, 100, 10);
+        assert_eq!(
+            standing,
+            WetLaneReceiptStanding::FreshExactSubject { age_secs: 1 }
+        );
+        assert!(!standing.blocks());
+    }
+
+    #[test]
+    fn standing_missing_and_subject_mismatch_and_failed_block() {
+        assert!(wet_lane_receipt_standing(None, "d", "e", &roster(), 1, 1, 100, 10).blocks());
+        let e = fixture_envelope();
+        let mismatch =
+            wet_lane_receipt_standing(Some(&e), "other-d", "exec-d", &roster(), 1001, 1, 100, 10);
+        assert!(matches!(
+            mismatch,
+            WetLaneReceiptStanding::SubjectMismatch {
+                axis: "semantic-subject",
+                ..
+            }
+        ));
+        let executor_mismatch = wet_lane_receipt_standing(
+            Some(&e),
+            "subject-d",
+            "other-exec",
+            &roster(),
+            1001,
+            1,
+            100,
+            10,
+        );
+        assert!(matches!(
+            executor_mismatch,
+            WetLaneReceiptStanding::ExecutorSnapshotDifferent { .. }
+        ));
+        assert!(executor_mismatch.blocks());
+        // THE ONE-SHOT BOOTSTRAP LEASE admits exactly its named envelope inside the fixed
+        // window, refuses a slid window, an expired window, and any mismatched exact fact.
+        let lease = WetBootstrapLease {
+            lease_identity: "wet-envelope-test".to_string(),
+            exact_envelope_digest: "env-digest".to_string(),
+            exact_attempt_seq: 1,
+            exact_semantic_subject_digest: "subject-d".to_string(),
+            exact_roster_digest: "roster-d".to_string(),
+            observed_executor_contract_digest: "executor-d".to_string(),
+            executed_at_unix_secs: 1000,
+            not_after_unix_secs: 1000 + 28_800,
+        };
+        assert!(matches!(
+            wet_seed_bootstrap_admission(
+                Some(&lease),
+                28_800,
+                "env-digest",
+                1,
+                "subject-d",
+                "roster-d",
+                1000 + 28_800,
+            ),
+            WetSeedBootstrapAdmission::Admitted { .. }
+        ));
+        assert!(matches!(
+            wet_seed_bootstrap_admission(
+                Some(&lease),
+                28_800,
+                "env-digest",
+                1,
+                "subject-d",
+                "roster-d",
+                1001 + 28_800,
+            ),
+            WetSeedBootstrapAdmission::Expired { .. }
+        ));
+        assert!(matches!(
+            wet_seed_bootstrap_admission(
+                Some(&lease),
+                28_800,
+                "other-envelope",
+                1,
+                "subject-d",
+                "roster-d",
+                1001,
+            ),
+            WetSeedBootstrapAdmission::NotApplicable
+        ));
+        let slid = WetBootstrapLease {
+            not_after_unix_secs: 1001 + 28_800,
+            ..lease.clone()
+        };
+        assert!(matches!(
+            wet_seed_bootstrap_admission(
+                Some(&slid),
+                28_800,
+                "env-digest",
+                1,
+                "subject-d",
+                "roster-d",
+                1001,
+            ),
+            WetSeedBootstrapAdmission::NotApplicable
+        ));
+        assert!(matches!(
+            wet_seed_bootstrap_admission(
+                None,
+                28_800,
+                "env-digest",
+                1,
+                "subject-d",
+                "roster-d",
+                1001,
+            ),
+            WetSeedBootstrapAdmission::NotApplicable
+        ));
+        // Per-identity verdicts are not an envelope standing (parent ruling 2026-08-30): a
+        // failing row leaves the standing fresh, and the join classifies it by enrollment.
+        let mut failed = fixture_envelope();
+        failed.rows[0].outcome = "assertion-false".to_string();
+        let failed_standing = wet_lane_receipt_standing(
+            Some(&failed),
+            "subject-d",
+            "exec-d",
+            &roster(),
+            1001,
+            1,
+            100,
+            10,
+        );
+        assert!(matches!(
+            failed_standing,
+            WetLaneReceiptStanding::FreshExactSubject { .. }
+        ));
+        let empty: BTreeSet<String> = BTreeSet::new();
+        let (unexpected, held, now_passing, no_verdict) =
+            wet_receipt_identity_verdicts(&failed, &empty);
+        assert_eq!(unexpected, vec!["test.claim.x.holds".to_string()]);
+        assert!(held.is_empty());
+        assert!(now_passing.is_empty());
+        assert!(no_verdict.is_empty());
+        let enrolled: BTreeSet<String> = ["test.claim.x.holds".to_string()].into();
+        let (unexpected, held, now_passing, no_verdict) =
+            wet_receipt_identity_verdicts(&failed, &enrolled);
+        assert!(unexpected.is_empty());
+        assert_eq!(held, vec!["test.claim.x.holds".to_string()]);
+        assert!(now_passing.is_empty());
+        assert!(no_verdict.is_empty());
+        let passing = fixture_envelope();
+        let (unexpected, held, now_passing, no_verdict) =
+            wet_receipt_identity_verdicts(&passing, &enrolled);
+        assert!(unexpected.is_empty());
+        assert!(held.is_empty());
+        assert_eq!(now_passing, vec!["test.claim.x.holds".to_string()]);
+        assert!(no_verdict.is_empty());
+        // An infrastructure outcome is never held by an assertion-false enrollment.
+        let mut hollow = fixture_envelope();
+        hollow.rows[0].outcome = "runtime-error".to_string();
+        let (unexpected, held, now_passing, no_verdict) =
+            wet_receipt_identity_verdicts(&hollow, &enrolled);
+        assert!(unexpected.is_empty());
+        assert!(held.is_empty());
+        assert!(now_passing.is_empty());
+        assert_eq!(
+            no_verdict,
+            vec!["test.claim.x.holds (runtime-error)".to_string()]
+        );
+    }
+}
+
 /// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
 /// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
 /// external or blocking interaction picks wall instead — but the choice is made here, by
@@ -849,7 +2127,8 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
 pub(crate) struct ChangedWitnessProjectionRow {
     pub identity: String,
     /// Wire name of the `ChangedWitnessExecutionStanding` arm: `planned-and-passed`,
-    /// `planned-and-known-red-held`, `planned-without-terminal-verdict`, `declined`,
+    /// `planned-and-known-red-held`, `planned-without-terminal-verdict`,
+    /// `routed-with-candidate-exact-receipt`, `declined`,
     /// `missing-disposition`.
     pub standing: &'static str,
     /// The disposition receipt's label for the identity (`required_floor_disposition_label`),
@@ -938,6 +2217,7 @@ pub(crate) fn changed_witness_projection_rows(
     changed: &[String],
     disposition_rows: &[RequiredFloorDispositionRow],
     terminal: &[ClaimTerminalRow],
+    wet_receipt_candidate_exact: bool,
     verdict_only: &HashSet<String>,
     observations: &HashMap<String, ChangedWitnessCostObservation>,
 ) -> Vec<ChangedWitnessProjectionRow> {
@@ -1020,6 +2300,23 @@ pub(crate) fn changed_witness_projection_rows(
                     blocks: !green,
                 }
             }
+            // THE CANDIDATE-EXACT ADMISSION (#9717 composition, parent amendment
+            // 2026-08-30): a changed wet-routed identity is admitted exactly when the
+            // committed envelope's subject digest matches this candidate's computed wet
+            // subject — the lane executed exactly this tree's wet subject, edit included.
+            // Under every other receipt standing the routed decline blocks like any other.
+            Some(RequiredFloorDisposition::DeclinedRoutedToWetLane)
+                if wet_receipt_candidate_exact =>
+            {
+                ChangedWitnessProjectionRow {
+                    identity: identity.clone(),
+                    cost: None,
+                    standing: "routed-with-candidate-exact-receipt",
+                    disposition: "declined_routed_to_wet_lane".to_string(),
+                    outcome: "not_executed".to_string(),
+                    blocks: false,
+                }
+            }
             Some(declined) => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
                 cost: None,
@@ -1074,8 +2371,8 @@ pub(crate) fn emit_changed_witness_projection(
                 "One row per ADDED/MODIFIED witness identity in this change, at the disposition \
                  receipt's own grain (qualified `module.function`). Standing vocabulary: \
                  `v2.workflow.floor_changed_witness.ChangedWitnessExecutionStanding`; every \
-                 standing except planned-and-passed and planned-and-known-red-held reds the \
-                 required floor.\n\n",
+                 standing except planned-and-passed, planned-and-known-red-held and \
+                 routed-with-candidate-exact-receipt reds the required floor.\n\n",
             );
             text.push_str("| identity | disposition | outcome | standing |\n|---|---|---|---|\n");
             for row in rows {
@@ -3554,6 +4851,153 @@ pub fn run_required_floor(
         cost_debt_roster.len()
     );
 
+    // THE WET EXECUTION ROUTE (`v2.workflow.floor_wet_route`): identities whose subject is a
+    // real host-effect chain no honest mock can answer, declined from hermetic execution and
+    // executed by the wet receipts lane at that lane's cadence. The floor's obligation here is
+    // the JOIN, not the verdict: every routed identity must show a receipt from that lane that
+    // is younger than the declared staleness budget, and an absent or stale receipt REFUSES the
+    // run — a row may not sit in "routed to wet" with no evidence the lane still runs it.
+    let wet_route_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_wet_route.floor_wet_route_identities",
+            false,
+        )
+        .map_err(|e| format!("floor_wet_route_identities: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_wet_route_identities: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_wet_route_identities: duplicate routed identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_wet_route_identities: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    // EXACTLY ONE MECHANISM HOLDS A ROW (gunbc.quarantine_probe_disposition): a wet-routed
+    // identity asserts it never executes hermetically, so a cost-debt withhold over the same
+    // row would be a second holder claiming one fact. Refused here, at the point both rosters
+    // are live, rather than surfacing later as an unexplainable stale row.
+    {
+        let mut both: Vec<&String> = wet_route_roster.intersection(&cost_debt_roster).collect();
+        both.sort_unstable();
+        if !both.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=WetRouteCostDebtDoubleEnrollment — {} identity(ies) \
+                 enrolled in both v2.workflow.floor_wet_route (which routes them off the hermetic \
+                 floor) and v2.workflow.floor_cost_debt (which withholds a claim the floor would \
+                 otherwise run). One mechanism holds a row: [{}]",
+                both.len(),
+                both.iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    let wet_route_staleness_budget_secs: u64 = {
+        let qualified = "v2.workflow.floor_wet_route.floor_wet_route_receipt_staleness_budget_secs";
+        match v1_interpreter::run_in_context(&hermetic, qualified, false) {
+            Ok(v1_interpreter::Value::Int(n)) if n > 0 => n as u64,
+            Ok(other) => {
+                return Err(format!(
+                    "{qualified}: expected a positive Int, got {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+            Err(e) => return Err(format!("{qualified}: {e}")),
+        }
+    };
+    let wet_route_str_row = |qualified: &str| -> Result<String, String> {
+        match v1_interpreter::run_in_context(&hermetic, qualified, false) {
+            Ok(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+            Ok(other) => Err(format!(
+                "{qualified}: expected a String, got {}",
+                floor_value_shape(Some(&other))
+            )),
+            Err(e) => Err(format!("{qualified}: {e}")),
+        }
+    };
+    let wet_route_int_row = |qualified: &str| -> Result<u64, String> {
+        match v1_interpreter::run_in_context(&hermetic, qualified, false) {
+            Ok(v1_interpreter::Value::Int(n)) if n > 0 => Ok(n as u64),
+            Ok(other) => Err(format!(
+                "{qualified}: expected a positive Int, got {}",
+                floor_value_shape(Some(&other))
+            )),
+            Err(e) => Err(format!("{qualified}: {e}")),
+        }
+    };
+    let wet_route_receipt_json_rel_path =
+        wet_route_str_row("v2.workflow.floor_wet_route.floor_wet_route_receipt_json_rel_path")?;
+    let wet_route_receipt_tsv_rel_path =
+        wet_route_str_row("v2.workflow.floor_wet_route.floor_wet_route_receipt_tsv_rel_path")?;
+    let wet_route_schema_version =
+        wet_route_int_row("v2.workflow.floor_wet_route.floor_wet_route_receipt_schema_version")?;
+    let wet_route_publication_skew_secs =
+        wet_route_int_row("v2.workflow.floor_wet_route.floor_wet_route_publication_skew_secs")?;
+    // The expected-verdict authority is gunbc.explicit_witness_admission at function grain
+    // (parent ruling 2026-08-30, wall 3) — no roster is authored beside it; this reads its
+    // identity-grain projection for the wet route, before the hermetic context is dropped.
+    let wet_expected_red: BTreeSet<String> = {
+        let qualified = "v2.workflow.floor_wet_route.wet_route_expected_assertion_false_identities";
+        let value = v1_interpreter::run_in_context(&hermetic, qualified, false)
+            .map_err(|e| format!("{qualified}: {e}"))?;
+        let items =
+            floor_decode_list(&hermetic, Some(&value)).map_err(|e| format!("{qualified}: {e}"))?;
+        let mut out = BTreeSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(id) => {
+                    if !out.insert(id.to_string()) {
+                        return Err(format!("{qualified}: duplicate enrolled identity: {id}"));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "{qualified}: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    let wet_route_envelope: Option<WetReceiptEnvelope> = if wet_route_roster.is_empty() {
+        None
+    } else {
+        read_wet_receipt_envelope(
+            &wet_route_receipt_json_rel_path,
+            &wet_route_receipt_tsv_rel_path,
+        )?
+    };
+    eprintln!(
+        "[floor-wet-route] roster routes {} identity(ies) to the wet receipts lane; committed \
+         envelope: {}",
+        wet_route_roster.len(),
+        wet_route_envelope
+            .as_ref()
+            .map(|e| format!(
+                "attempt_seq={} rows={} subject_digest={}",
+                e.attempt_seq,
+                e.rows.len(),
+                e.subject_digest
+            ))
+            .unwrap_or_else(|| "absent".to_string())
+    );
+
     // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
     // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
     // is never WHICH roster names a row, it is whether exactly one MECHANISM holds it, and a row
@@ -3638,6 +5082,7 @@ pub fn run_required_floor(
     // to decide admission, and never written back onto the authored roster.
     let mut cost_debt_observations: HashMap<String, ChangedWitnessCostObservation> = HashMap::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
+    let mut wet_route_seen: HashSet<String> = HashSet::new();
     // THE POPULATION, AT IDENTITY GRAIN. The discovery authority above answered over the FULL
     // module index, so this loop sees every DECLARED witness identity in the tree and classifies
     // each one — the prepared closure and the exclusion map decide which are offered and which
@@ -3711,7 +5156,13 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 agreement: storage_agreement,
             });
-            if selected_as_changed_witness {
+            // A CHANGED WET-ROUTED IDENTITY IS NOT PLANNED INTO THE HERMETIC SUBLANE: its
+            // subject is a real host-effect chain the hermetic route refuses by construction
+            // (v2.workflow.floor_wet_route), so planning it here would manufacture a
+            // route-gap red. It keeps its routed decline and is judged at the changed-set
+            // grain by the candidate-exact receipt admission instead — the .dag selector
+            // (required_floor_disposition_with_changed_selection) preserves the same arm.
+            if selected_as_changed_witness && !wet_route_roster.contains(&identity) {
                 planned_identities.insert(identity.clone());
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity: identity.clone(),
@@ -3781,6 +5232,20 @@ pub fn run_required_floor(
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedCostDebt,
+                });
+                continue;
+            }
+            // THE WET ROUTE, after cost debt (the double-enrollment refusal above makes the
+            // order unobservable in practice) and before the gate test, because routing is an
+            // execution-route fact about the identity, not a gate-membership fact. Declined at
+            // build, never skipped at execution — same partition arithmetic as cost debt — and
+            // the receipt join AFTER this loop is what keeps the decline honest: an absent or
+            // stale wet-lane receipt for any identity seen here refuses the run.
+            if wet_route_roster.contains(&identity) {
+                wet_route_seen.insert(identity.clone());
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedRoutedToWetLane,
                 });
                 continue;
             }
@@ -4353,6 +5818,35 @@ pub fn run_required_floor(
             ));
         }
     }
+    // THE SAME CONTRADICTION AGAINST THE WET ROUTE, in both directions. A wet-routed identity
+    // never executes hermetically, so a `floor_route_gap` row over it (its hermetic execution
+    // gaps) and a `floor_expected_red` row over it (it reaches its subject and answers false)
+    // each assert a hermetic execution that no longer happens. Supplying the route and deleting
+    // the debt row are therefore ONE change, which is exactly what this wall enforces.
+    {
+        let mut both: Vec<&String> = wet_route_roster
+            .iter()
+            .filter(|q| {
+                route_gap_roster.contains(q.as_str()) || expected_red_roster.contains(q.as_str())
+            })
+            .collect();
+        both.sort();
+        if !both.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=WetRouteRosterClaimsContradict count={} — these \
+                 identities are enrolled in v2.workflow.floor_wet_route (which routes them off \
+                 hermetic execution entirely) AND in floor_route_gap or floor_expected_red \
+                 (each of which asserts a fact about their hermetic execution). Both cannot be \
+                 true: routing an identity to the wet lane and deleting its hermetic debt row \
+                 are one change: {}",
+                both.len(),
+                both.iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
 
     // THE NON-VERDICT ROSTER. See `v2.workflow.floor_non_verdict` for the contract; the short
     // form is that an enrolled expected-red identity which produces NO VERDICT — it throws, or
@@ -4579,6 +6073,9 @@ pub fn run_required_floor(
         completed_over_cost_requirement: Vec::new(),
         withheld_cost_debt: outcome_withheld_cost_debt,
         stale_cost_debt: Vec::new(),
+        declined_routed_to_wet_lane: wet_route_seen.len(),
+        wet_route_standing_blocking: Vec::new(),
+        stale_wet_route: Vec::new(),
         known_red_runtime_errored: Vec::new(),
         non_verdict_unenrolled: Vec::new(),
         stale_non_verdict: Vec::new(),
@@ -5767,6 +7264,251 @@ pub fn run_required_floor(
             ));
         }
     }
+    let mut wet_route_candidate_exact = false;
+    // THE WET ROUTE'S JOINS, all blocking. The reverse join asks whether every roster row
+    // still names an identity this run offered and routed — the same rot guard every sibling
+    // roster carries. The forward join is ONE standing for the whole routed population
+    // (authority `v2.workflow.floor_wet_route.WetLaneReceiptStanding`): the committed
+    // envelope against this tree's computed wet subject digest, the roster, and the tree's
+    // own commit time. Exactly `FreshExactSubject` is clean; Missing, Expired,
+    // SubjectMismatch (an ancestor receipt — blocked by ruling, no cadence-lag arm),
+    // ContractMismatch, RosterInexact and Failed each refuse with their own remedy.
+    {
+        for identity in wet_route_roster
+            .iter()
+            .filter(|q| reverse_joins_answerable && !wet_route_seen.contains(*q))
+        {
+            outcome.stale_wet_route.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_wet_route but was not offered and \
+                 routed by this run — it was renamed, deleted, or declined by an earlier home \
+                 policy. Delete or correct the row: a wet route over an identity the floor does \
+                 not hold routes nothing and can never ask to be removed."
+            ));
+        }
+        // FRESHNESS AGAINST THE EVALUATED TREE'S OWN COMMIT TIME, never this host's wall
+        // clock, so the join is a deterministic property of the commit (parent ruling
+        // 2026-08-30). On CI a failed observation REFUSES; a local run without one reports
+        // NOT EVALUATED loudly and skips only the two time comparisons — every tree-derived
+        // half of the standing still executes. Same composition #9717 uses for the diff
+        // observation.
+        let evaluated_tree_commit_secs: Option<u64> = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%ct", "HEAD"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|t| t.trim().parse::<u64>().ok());
+        // THE REFUSAL IS UNCONDITIONAL, NOT CI-CONDITIONAL (review 57856). It was gated on
+        // `GITHUB_ACTIONS` until then: CI refused, and a local run printed a NOT EVALUATED line
+        // and carried on with `None`, which the standing fold below turned into
+        // `FreshExactSubject { age_secs: 0 }`. So the value a local operator read said FRESH
+        // about a receipt whose age had not been computed — a typed lie mitigated by a println
+        // beside it, which is exactly the diagnostic-names-it/mechanism-stays-silent shape.
+        //
+        // An environment-conditional wall is not a wall: `GITHUB_ACTIONS` is an env var, so the
+        // arm that fabricated freshness was reachable by unsetting it. The freshness join needs
+        // this fact, the authority declares it total, and a routed population whose freshness
+        // cannot be evaluated must refuse WHEREVER it runs. A local run losing the ability to
+        // proceed here is the correct loss: it never had a verdict to proceed on.
+        let evaluated_tree_commit_secs = match evaluated_tree_commit_secs {
+            Some(t) => t,
+            None => {
+                if !wet_route_seen.is_empty() {
+                    return Err(
+                        "REQUIRED-FLOOR REFUSAL cause=WetRouteCommitTimeUnobservable — the \
+                         wet-route freshness join needs the evaluated tree's commit time (git \
+                         log -1 --format=%ct) and could not observe it. A routed population \
+                         with an unevaluable freshness join must refuse, not skip, and must \
+                         not render as fresh."
+                            .to_string(),
+                    );
+                }
+                // No routed population: the freshness join has no subject, so there is nothing
+                // to refuse about. The standing fold is not reached on this path.
+                0
+            }
+        };
+        if !wet_route_seen.is_empty() {
+            let computed_digest = wet_subject_digest(source_roots)?;
+            let computed_executor_digest = wet_executor_contract_digest(source_roots)?;
+            let roster_sorted: BTreeSet<String> = wet_route_roster.iter().cloned().collect();
+            let standing = wet_lane_receipt_standing(
+                wet_route_envelope.as_ref(),
+                &computed_digest,
+                &computed_executor_digest,
+                &roster_sorted,
+                evaluated_tree_commit_secs,
+                wet_route_schema_version,
+                wet_route_staleness_budget_secs,
+                wet_route_publication_skew_secs,
+            );
+            // THE GATE DISPOSITION (`v2.workflow.floor_wet_route.wet_route_gate_disposition`):
+            // exactly FreshExactSubject admits ordinarily, and ExecutorSnapshotDifferent may
+            // be admitted by the declared one-shot bootstrap lease — visibly, never by
+            // widening any other standing. The lease's admission requires every exact fact
+            // to join (envelope digest, attempt_seq, semantic subject, roster) inside its
+            // fixed window; anything else refuses exactly as before.
+            let lease_admission = if matches!(
+                standing,
+                WetLaneReceiptStanding::ExecutorSnapshotDifferent { .. }
+            ) {
+                let (lease, window_secs) = wet_seed_bootstrap_lease_declared(source_roots)?;
+                let envelope = wet_route_envelope
+                    .as_ref()
+                    .expect("executor-snapshot standing entails an envelope");
+                let envelope_digest = {
+                    use sha2::Digest as _;
+                    let bytes = std::fs::read(&wet_route_receipt_json_rel_path).map_err(|e| {
+                        format!(
+                            "bootstrap lease: read {}: {e}",
+                            wet_route_receipt_json_rel_path
+                        )
+                    })?;
+                    format!("{:x}", sha2::Sha256::digest(&bytes))
+                };
+                let roster_digest = {
+                    use sha2::Digest as _;
+                    let joined = roster_sorted.iter().cloned().collect::<Vec<_>>().join("\n");
+                    format!("{:x}", sha2::Sha256::digest(joined.as_bytes()))
+                };
+                wet_seed_bootstrap_admission(
+                    lease.as_ref(),
+                    window_secs,
+                    &envelope_digest,
+                    envelope.attempt_seq,
+                    &computed_digest,
+                    &roster_digest,
+                    evaluated_tree_commit_secs,
+                )
+            } else {
+                WetSeedBootstrapAdmission::NotApplicable
+            };
+            let admitted_under_lease = matches!(
+                (&standing, &lease_admission),
+                (
+                    WetLaneReceiptStanding::ExecutorSnapshotDifferent { .. },
+                    WetSeedBootstrapAdmission::Admitted { .. }
+                )
+            );
+            if admitted_under_lease {
+                if let WetSeedBootstrapAdmission::Admitted {
+                    not_after_unix_secs,
+                } = &lease_admission
+                {
+                    eprintln!(
+                        "[floor-wet-route] ADMITTED UNDER BOOTSTRAP LEASE — \
+                         executor-snapshot-different envelope admitted by the declared \
+                         one-shot lease (not_after={not_after_unix_secs}); the standing \
+                         stays different, the admission is the lease's, and the lease \
+                         deletes with the first exact-main receipt"
+                    );
+                }
+            }
+            wet_route_candidate_exact = !standing.blocks() || admitted_under_lease;
+            if standing.blocks() && !admitted_under_lease {
+                outcome.wet_route_standing_blocking.push(format!(
+                    "wet-lane receipt standing for {} routed identity(ies): {}",
+                    wet_route_seen.len(),
+                    standing.describe()
+                ));
+            }
+            // THE PER-IDENTITY JOIN (`v2.workflow.floor_wet_route`
+            // `wet_receipt_unexpected_red_identities` and siblings, parent ruling
+            // 2026-08-30): once the envelope-level standing is fresh, the receipt's rows
+            // join the expected-red roster exactly as dry claims do. Fail + not enrolled
+            // BLOCKS (the fail-closed arm that stays live); fail + enrolled is HELD —
+            // counted, visible, retiring only by an observed pass; pass + enrolled is
+            // NOW-PASSING — blocks until the roster row is removed, the wet mirror of the
+            // dry stale-quarantine.
+            //
+            // THE PUBLICATION WALL (residual B) waives exactly the two per-identity red
+            // classes, and only when THIS run's own diff is a valid publication
+            // transaction: every changed path inside the receipt namespace (nothing
+            // departed elsewhere) and the attempt sequence advancing over the base tree's
+            // envelope. Both classes carry remedies outside the receipt namespace, so a
+            // receipt-confined refresh PR could not resolve them by construction.
+            // Envelope-level standings are never waived. An unobservable diff or base
+            // leaves the transaction invalid — the wall fails closed toward blocking.
+            if !standing.blocks() || admitted_under_lease {
+                let envelope = wet_route_envelope
+                    .as_ref()
+                    .expect("admitted standing entails an envelope");
+                let (unexpected_red, held, now_passing, no_verdict) =
+                    wet_receipt_identity_verdicts(envelope, &wet_expected_red);
+                eprintln!(
+                    "[floor-wet-route] verdicts: unexpected_red={} held={} now_passing={} \
+                     no_verdict={} (held identities are enrolled expected-reds observed by \
+                     the lane; they retire only by an observed pass)",
+                    unexpected_red.len(),
+                    held.len(),
+                    now_passing.len(),
+                    no_verdict.len()
+                );
+                for id in &held {
+                    eprintln!("[floor-wet-route] known-red-held identity={id}");
+                }
+                if !unexpected_red.is_empty() || !now_passing.is_empty() || !no_verdict.is_empty() {
+                    let transaction_valid = wet_receipt_publication_transaction_valid_for_this_run(
+                        &wet_route_receipt_json_rel_path,
+                        &wet_route_receipt_tsv_rel_path,
+                        wet_route_envelope.as_ref(),
+                    );
+                    let waived = match transaction_valid {
+                        Ok(true) => {
+                            eprintln!(
+                                "[floor-wet-route] per-identity reds ADMITTED as a \
+                                 publication transaction: the diff is confined to the \
+                                 receipt namespace and attempt_seq advances — main will \
+                                 carry the honest verdicts, and every other run reds on \
+                                 them until repaired or enrolled"
+                            );
+                            true
+                        }
+                        Ok(false) => false,
+                        Err(e) => {
+                            eprintln!(
+                                "[floor-wet-route] publication transaction NOT EVALUATED \
+                                 ({e}) — the per-identity reds keep blocking"
+                            );
+                            false
+                        }
+                    };
+                    if !waived {
+                        if !unexpected_red.is_empty() {
+                            outcome.wet_route_standing_blocking.push(format!(
+                                "unexpected wet red for [{}] — the lane observed a failure \
+                                 the expected-red roster does not hold; repair it or enroll \
+                                 it with its reason",
+                                unexpected_red.join(", ")
+                            ));
+                        }
+                        if !now_passing.is_empty() {
+                            outcome.wet_route_standing_blocking.push(format!(
+                                "wet known-red now passing for [{}] — the lane observed the \
+                                 enrolled red passing; delete its \
+                                 explicit_witness_admission row in the same change",
+                                now_passing.join(", ")
+                            ));
+                        }
+                        if !no_verdict.is_empty() {
+                            outcome.wet_route_standing_blocking.push(format!(
+                                "wet no-subject-verdict for [{}] — the lane produced no \
+                                 verdict for these rows, which no assertion-false \
+                                 enrollment can hold; repair the lane or the witness route",
+                                no_verdict.join(", ")
+                            ));
+                        }
+                    }
+                }
+            }
+            eprintln!(
+                "[floor-wet-route] routed={} standing={} stale_roster_rows={}",
+                wet_route_seen.len(),
+                standing.describe(),
+                outcome.stale_wet_route.len()
+            );
+        }
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
@@ -6075,6 +7817,7 @@ pub fn run_required_floor(
             &changed_witnesses,
             &outcome.required_floor_disposition,
             &terminal_rows,
+            wet_route_candidate_exact,
             &cost_debt_verdict_only,
             &cost_debt_observations,
         );
@@ -6116,6 +7859,7 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
         RequiredFloorDisposition::DeclinedOutsideGateClosure => "declined_outside_gate_closure",
         RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => "declined_discovery_excluded",
+        RequiredFloorDisposition::DeclinedRoutedToWetLane => "declined_routed_to_wet_lane",
     }
 }
 
@@ -6137,7 +7881,8 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedOutsideGateClosure
-        | RequiredFloorDisposition::DeclinedCostDebt => "",
+        | RequiredFloorDisposition::DeclinedCostDebt
+        | RequiredFloorDisposition::DeclinedRoutedToWetLane => "",
     }
 }
 
@@ -6433,6 +8178,7 @@ mod changed_witness_projection_tests {
             changed,
             dispositions,
             terminal,
+            false,
             &HashSet::new(),
             &HashMap::new(),
         )
@@ -6556,6 +8302,45 @@ mod changed_witness_projection_tests {
             !rows[0].blocks,
             "an enrolled expected-red held must not block"
         );
+    }
+
+    /// THE CANDIDATE-EXACT ADMISSION: a changed wet-routed identity under a
+    /// candidate-exact fresh receipt is green — the lane executed exactly this candidate's
+    /// wet subject.
+    #[test]
+    fn routed_changed_identity_with_candidate_exact_receipt_is_green() {
+        let rows = changed_witness_projection_rows(
+            &["m.wet".to_string()],
+            &[disposition(
+                "m.wet",
+                RequiredFloorDisposition::DeclinedRoutedToWetLane,
+            )],
+            &[],
+            true,
+            &HashSet::new(),
+            &HashMap::new(),
+        );
+        assert_eq!(rows[0].standing, "routed-with-candidate-exact-receipt");
+        assert!(!rows[0].blocks);
+    }
+
+    /// AND ITS REFUSAL: under any non-exact receipt standing (ancestor digest included, by
+    /// ruling) the routed decline blocks like every other decline.
+    #[test]
+    fn routed_changed_identity_without_candidate_exact_receipt_blocks() {
+        let rows = changed_witness_projection_rows(
+            &["m.wet".to_string()],
+            &[disposition(
+                "m.wet",
+                RequiredFloorDisposition::DeclinedRoutedToWetLane,
+            )],
+            &[],
+            false,
+            &HashSet::new(),
+            &HashMap::new(),
+        );
+        assert_eq!(rows[0].standing, "declined");
+        assert!(rows[0].blocks);
     }
 
     /// Positive control: a diff with no changed witness identities projects ZERO rows — zero
@@ -6683,6 +8468,7 @@ mod changed_witness_projection_tests {
                     kind: BudgetKind::Cpu,
                 },
             )],
+            false,
             &verdict_only_set(),
             &observation(505),
         );
@@ -6732,6 +8518,7 @@ mod changed_witness_projection_tests {
                 RequiredFloorDisposition::PlannedAsChangedWitness,
             )],
             &[terminal("m.a", ClaimOutcome::Pass)],
+            false,
             &verdict_only_set(),
             &HashMap::new(),
         );
@@ -6752,6 +8539,7 @@ mod changed_witness_projection_tests {
                 RequiredFloorDisposition::PlannedAsChangedWitness,
             )],
             &[terminal("m.a", ClaimOutcome::Fail)],
+            false,
             &verdict_only_set(),
             &observation(505),
         );

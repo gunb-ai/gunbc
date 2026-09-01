@@ -306,6 +306,15 @@ test fn w_RED_fabric_evidence_executes_without_gating() -> Bool {
 // forms share: a pattern loose enough to survive any producer is a pattern that stops
 // discriminating, which is exactly how the job-level guard defect above went green.)
 //
+// THE `&& github.event_name != 'schedule'` CONJUNCT (2026-08-30, wet receipts lane) IS NOT
+// THE CANCELLED-EXCLUSION RETURNING, and the pattern pins the whole spelling so the two cannot
+// be confused. The schedule event exists for the wet-receipts job alone and never carries a
+// merge candidate: required checks bind to pull-request and merge-group heads, so a skipped
+// aggregate on a schedule tick guards nothing and a red one would be daily noise about lanes
+// that were deliberately not run. The negative clause below still refuses any lane-result
+// exclusion — `!= 'cancelled'` stays unauthorable — which is the half gunbc#9339's dissolution
+// made this witness the regression control for.
+//
 // THIS IS EMITTED-SHAPE EVIDENCE, NOT A BEHAVIOURAL GITHUB RECEIPT, and the caveat survives the
 // re-pointing unchanged. It proves the job condition and the live-attempt refusal are present at
 // their distinct YAML grains. It does not prove what GitHub does with a required context on a
@@ -315,7 +324,7 @@ test fn w_RED_fabric_evidence_executes_without_gating() -> Bool {
 test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: "\n    if: always()\n")
+      string_contains(s: yml, pattern: "\n    if: always() && github.event_name != 'schedule'\n")
         && !string_contains(s: yml, pattern: "!= 'cancelled'")
         && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
