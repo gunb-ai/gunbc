@@ -26,7 +26,7 @@ data memory_population_source_document: NonEmptyStr = "Ampere Altra Platform Ser
 // a re-citation of identical content and not a silent substitution of one revision's table
 // for another's. The channel rows further down were read only from Issue 1.05, which is why
 // the whole module now cites one issue rather than answering for two.
-data memory_population_revision_basis: NonEmptyStr = "Issue 1.00 was the first cited revision. Every Table 11 sequence was re-read against Issue 1.05 and matches byte-for-byte at the connector-list grain, J32 omission included; Tables 10 and 12-13 are read from Issue 1.05 only. A single issue is cited so no row answers from a revision the module does not name."
+data memory_population_revision_basis: NonEmptyStr = "Issue 1.00 was the first cited revision. Every Table 11 sequence was re-read against Issue 1.05 and matches exactly at connector-list grain, J32 omission included (the established fact is equality of the normalized connector sequences, not a comparison of the two source artifacts' bytes); Tables 10 and 12-13 are read from Issue 1.05 only. A single issue is cited so no row answers from a revision the module does not name."
 
 data memory_population_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
 
@@ -82,7 +82,8 @@ data mt_collins_population_16_dimms: MtCollinsDimmPopulationRow = MtCollinsDimmP
   connectors: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31],
 }
 
-// The 32-DIMM row AS PRINTED in Issue 1.00: 31 connectors for a 32-DIMM configuration -
+// The 32-DIMM row AS PRINTED in Issue 1.05, unchanged from Issue 1.00: 31 connectors for a
+// 32-DIMM configuration -
 // J32 is absent from the printed sequence. Transcribed verbatim; the upstream authority
 // answers with what upstream states, defect included.
 data mt_collins_population_32_dimms_as_printed: MtCollinsDimmPopulationRow = MtCollinsDimmPopulationRow {
@@ -115,8 +116,11 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
 }
 
 // Table 10 constraint carried with the rows: supported channel counts per socket are 1, 2, 4, 6,
-// and 8 - the population sequences above are the only supported shapes, not a fill-in-any-order
-// suggestion. DIMMs on all populated channels of one socket must be identically sized; socket 0 and
+// and 8. The rows above are the population sequences ENUMERATED BY TABLE 11, which is not the same
+// set: Table 10 carries two distinct one-channel configurations (MCU0 alone and MCU4 alone) and a
+// six-channel configuration, and Table 11 gives a connector sequence for neither. So these rows are
+// not a fill-in-any-order suggestion, and equally they are not an exhaustive statement of what
+// Table 10 supports - a width absent here is unenumerated by Table 11, not unsupported. DIMMs on all populated channels of one socket must be identically sized; socket 0 and
 // socket 1 may differ from each other. Max data rate at these populations is the platform row's
 // DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
 // downclock is unstated by this source rather than absent.
@@ -219,9 +223,11 @@ data mt_collins_channel_population_roles: List<MtCollinsChannelPopulationRole> =
 // The discriminating check is an exact SET reproduced from a different table: Table 10's
 // four-channel configuration names MCU0, MCU1, MCU4 and MCU5, and Table 11's matching population
 // J1/J3/J9/J11 maps onto exactly that set under the adjacent-pair geometry. The refuted reading
-// yields MCU0/MCU2/MCU4/MCU6 and contradicts Table 10. The same join holds at every other
-// supported width: {MCU0}, {MCU0,MCU4} and all eight controllers reproduce from Tables 12-13's
-// own population marks under this mapping.
+// yields MCU0/MCU2/MCU4/MCU6 and contradicts Table 10. The same join holds at every width the
+// Tables 12-13 population marks enumerate: the MCU0 one-channel row, the two-channel row, the
+// four-channel row and the eight-channel row all reproduce under this mapping. It is not claimed
+// for Table 10's MCU4-alone one-channel row or its six-channel row, which those population marks
+// do not enumerate.
 type MtCollinsChannelMappingBasis {
   geometry_basis: NonEmptyStr
   discriminating_check: NonEmptyStr
@@ -230,7 +236,7 @@ type MtCollinsChannelMappingBasis {
 
 data mt_collins_channel_mapping_basis: MtCollinsChannelMappingBasis = MtCollinsChannelMappingBasis {
   geometry_basis: "rendered column geometry of Tables 12-13: MCU headers at 57.6pt pitch over connector columns at 28.8pt pitch, each header spanning two adjacent columns at a constant 6.6pt offset for all eight headers in both sockets. The extracted text stream alone is NOT a sufficient basis for a merged-header table and produced the wrong pairing when used as one.",
-  discriminating_check: "Table 10's four-channel configuration MCU0/MCU1/MCU4/MCU5 is reproduced exactly by Table 11's J1/J3/J9/J11 under this mapping, and the one-, two- and eight-channel widths reproduce likewise from the Tables 12-13 population marks. The refuted vertical pairing gives MCU0/MCU2/MCU4/MCU6 and contradicts Table 10.",
+  discriminating_check: "Table 10's four-channel configuration MCU0/MCU1/MCU4/MCU5 is reproduced exactly by Table 11's J1/J3/J9/J11 under this mapping, and the MCU0 one-channel, two-channel and eight-channel rows reproduce likewise from the Tables 12-13 population marks. Table 10's MCU4-alone one-channel row and its six-channel row are not enumerated there and are not claimed. The refuted vertical pairing gives MCU0/MCU2/MCU4/MCU6 and contradicts Table 10.",
   retracted_check: "RETRACTED: an earlier claim that the 1/2/4/8 distinct-channel counts corroborate this pairing. They do not - pairing J1 with J2, J3 with J4 and so on yields identical counts while disagreeing with every pair here, so the check is non-discriminating and establishes nothing.",
 }
 
