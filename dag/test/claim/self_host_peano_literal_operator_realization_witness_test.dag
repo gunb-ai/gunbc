@@ -98,15 +98,20 @@ test fn w_host_arithmetic_on_peano_operands_refuses_in_the_bytes() -> Bool {
   )
 }
 
-// THE BOOL ROW ON THE EMITTED PATH: a kernel true at a v2.std.logic.Bool boundary emits the
-// structural constructor. (The interpreter realizes Bool natively and never executes this image;
-// the emitted bytes are the only place the image exists, so this row is its whole evidence.)
-test fn w_kernel_bool_at_structural_bool_boundary_emits_its_constructor() -> Bool {
+// THE BOOL ROW ON THE EMITTED PATH, re-pinned under the uniform kernel precedence
+// (direct_import_export_precedence_note, kernel installation independent of import cardinality):
+// a bare direct import of the kernel spelling `Bool` cannot displace kernel identity, so a kernel
+// true at this boundary emits the host keyword. The pre-precedence expectation (structural
+// constructor) held only by ancestry occupancy -- a single-import module skipped the kernel
+// overlay, so v2.std.logic.Bool won by leak, not by rule. The structural Bool image becomes
+// reachable again when namespace Rule-1 dissolves the union leak; until then this row is the
+// discriminating red that fires if leak-dependent resolution is reintroduced.
+test fn w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.structural_bool_probe\nimport v2.std.logic { Bool }\nfn probe() -> Bool { true }\nfn probe_false(b: Bool) -> Bool { false }\n",
     "src/test_claim_structural_bool_probe.rs",
-    ["Bool::True", "Bool::False"],
-    ["{\n    true\n}", "{\n    false\n}"]
+    ["{\n    true\n}", "{\n    false\n}"],
+    ["Bool::True", "Bool::False"]
   )
 }
 
