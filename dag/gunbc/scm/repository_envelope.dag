@@ -167,8 +167,15 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v2"
 // subject -- the meaning fork DESIGN section 3 names, in the one place whose whole job is to say
 // which rule was used. It now names the OBJECT identity rule, and the value names the rule rather
 // than one branch's hash function, because the rule is a total law over the object coproduct whose
-// semantic-node branch delegates to v2.std.node content_hash. A manifest branch joins this same tag
-// when it lands; it does not mint a third one.
+// semantic-node branch delegates to v2.std.node content_hash.
+//
+// ON A FUTURE MANIFEST ARM, corrected: this note said such a branch "joins this same tag when it
+// lands; it does not mint a third one". The first half is right and the second does not follow. A
+// manifest arm joins this identity AUTHORITY rather than standing up a peer authority beside it --
+// that is the section 3 point. But adding an arm and its derivation changes the authority's TOTAL
+// LAW over the object coproduct, and this tag names the law, so the version advances with it. The
+// tag is not pre-bumped for a branch that does not exist; what is corrected here is the transition
+// rule, so the next author does not read this as permission to grow the law under a fixed name.
 data repository_object_identity_rule_tag: String = "scm-object-identity-v1"
 
 // ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
@@ -245,6 +252,7 @@ type RepositoryEnvelope {
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryEncodeTargetIsAuthoredSource { target: ObjectId }
+  | RepositoryEncodeCommitRootIsAuthoredSource { root: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
@@ -573,9 +581,11 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
       RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
     Absent =>
       match unresolved_commit_root(acc: acc, commits: repo.commits) {
-        Present { value: root } =>
+        CommitRootAbsent { root: root } =>
           RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
-        Absent =>
+        CommitRootIsAuthoredSource { root: root } =>
+          RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsAuthoredSource { root: root } }
+        CommitRootResolved =>
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: reference } =>
               RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: reference } }
@@ -606,8 +616,12 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
 // These answer with the ObjectId the CALLER supplied, not with a wire string derived from it. The
 // caller holds that identity and can act on it; a hex key it would have to parse back is the same
 // fact rendered into a shape that has lost its type.
-fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> ObjectId? {
-  fold(commits, init: none, f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) })
+fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> CommitRootStanding {
+  fold(
+    commits,
+    init: CommitRootResolved,
+    f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) }
+  )
 }
 
 // ASK THE TABLE, NOT THE ENCODING. This read the ENCODED root and compared it to "" -- the old
@@ -618,14 +632,41 @@ fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Ob
 //
 // The repair is to stop routing a containment question through a representation at all. The question
 // is "does the table hold this object", and position_of answers it directly.
-fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: RepositoryCommit) -> ObjectId? {
-  match found {
-    Present { value: _ } => found
+// A COMMIT ROOT MISSES THE NODE INDEX FOR TWO DIFFERENT REASONS, AND THEY ARE NOT THE SAME FACT.
+//
+// Asking node_position_of is the right FIRST question -- a root must resolve to a program, and the
+// generic object index answered yes for a file. But treating every node-index miss as
+// RepositoryCommitRootNotInStore reports ABSENCE for an object that is present and wrong-kind, which
+// is the same conflation this branch closed at the closure grain, arriving one layer later.
+//
+// The state is inside the declared model rather than hypothetical: a SemanticNodeObjectRef proves node
+// kind in SOME store, not in every future one, and a repository may retain a commit while its store is
+// replaced. The table's source-occupied scan does not cover it either, because a commit root need not
+// be referenced by any ordinary edge.
+type CommitRootStanding
+  = CommitRootResolved
+  | CommitRootAbsent { root: ObjectId }
+  | CommitRootIsAuthoredSource { root: ObjectId }
+
+fn commit_root_standing(acc: EncodeAcc, root: ObjectId) -> CommitRootStanding {
+  match node_position_of(positions: acc.positions, identity: root) {
+    Present { value: _ } => CommitRootResolved
     Absent =>
-      match node_position_of(positions: acc.positions, identity: commit.root.locator) {
-        Present { value: _ } => none
-        Absent => Present { value: commit.root.locator }
+      match position_of(positions: acc.positions, identity: root) {
+        Present { value: _ } => CommitRootIsAuthoredSource { root: root }
+        Absent => CommitRootAbsent { root: root }
       }
+  }
+}
+
+fn unresolved_commit_root_step(
+  acc: EncodeAcc,
+  found: CommitRootStanding,
+  commit: RepositoryCommit
+) -> CommitRootStanding {
+  match found {
+    CommitRootResolved => commit_root_standing(acc: acc, root: commit.root.locator)
+    _ => found
   }
 }
 

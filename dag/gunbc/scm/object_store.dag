@@ -66,8 +66,26 @@ type ObjectId = Hash
 // So a REFERENCE is branded by the kind of object it was minted against, and only this module can
 // mint one: `sole_constructor` refuses cross-module construction and cast, so no caller can brand a
 // locator it merely holds. The producers below hand back the brand they derived -- store_node a
-// node reference, store_authored_source a source reference -- and every node-requiring position
-// takes the node brand. A file in a child edge is then not refused, it is UNWRITABLE.
+// node reference, store_authored_source a source reference.
+//
+// THIS PARAGRAPH ONCE ENDED "and every node-requiring position takes the node brand; a file in a
+// child edge is then not refused, it is UNWRITABLE." THAT WAS TRUE OF A DESIGN THIS MODULE NO LONGER
+// HAS, and leaving it would have been the worst kind of stale comment -- one asserting a SAFETY
+// property, which a reader plans against. An external review restated it back as the module's
+// guarantee, which is how a false comment becomes a false shared premise.
+//
+// What is actually true: StoredEdge.target carries SemanticNodeTarget, a PUBLICLY CONSTRUCTIBLE
+// proposition, because a partial closure must reference an object it does not carry and branding that
+// would need a mint recording a CLAIM rather than evidence -- the exported forge factory that reopens
+// a sole_constructor wall. So a child edge naming a file's locator IS writable. What no consumer will
+// do is act on it: resolve_node_target answers three ways, and partial admission, completeness, both
+// closure writers, encode_repository_checked and loaded_closure_standing each refuse the wrong-kind
+// arm by name. That is section 4b rung 3, structurally guaranteed -- not rung 4, and reporting it as
+// rung 4 would be the inflation section 4b(1) forbids. Three real defects were found in this exact
+// seam AFTER the brands landed; had the state been unwritable, none of them could have existed.
+//
+// The one thing that IS unwritable is a CONTAINED WIRE REFERENCE to a file: the encoder's target index
+// carries semantic nodes only, so there is no entry to find.
 //
 // WHAT THE BRAND DOES NOT CLAIM, stated because a wrapper that overclaims is the hollow alias this
 // repository rosters. It says: this locator was minted against an object of this kind IN SOME

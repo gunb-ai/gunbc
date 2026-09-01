@@ -1578,3 +1578,110 @@ test fn scm_image_the_two_authored_arms_stay_distinct_across_the_wire() -> Bool 
         }
     }
 }
+
+// ------------------------------------------------------------------------------------------------
+// THE WRONG-KIND STANDING, EXECUTED AGAINST A REAL DOCUMENT.
+//
+// LoadRequiresNodeAtAuthoredSource had an implementation, exhaustive plumbing at every consumer, and
+// NO executed evidence that an external document actually reaches it rather than LoadPartial. That is
+// the shape DESIGN section 5 names: a typed carrier and a tag are not a consumer.
+//
+// The document is authored by hand because the encoders now REFUSE to produce it -- which is the
+// point of the seal, and also why the RED has to be authored as source rather than encoded. Section
+// 4b's test applies exactly here: the state is unrepresentable in the accepted corpus and perfectly
+// representable as bytes handed to the decoder, which is what a codec's regression probes are for.
+//
+//   object 0 = an authored source
+//   object 1 = a semantic node whose only child target is UNCONTAINED and names object 0's locator
+//   root     = object 1
+//
+// The child is spelled uncontained rather than contained because a contained edge naming a source is
+// refused at decode -- a different, already-witnessed arm. This document loads CLEANLY; what it
+// asserts is unsatisfiable, and the standing is the only place that can say so.
+fn scm_image_source_entry(text: String) -> JsonValue {
+  json_object(members: [json_kv(key: "source", value: json_string(s: text))])
+}
+
+fn scm_image_node_over_uncontained(digest: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+          ]
+        )
+      ),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "label", value: json_string(s: "positional")),
+                json_kv(
+                  key: "target",
+                  value: json_object(
+                    members: [json_kv(key: "uncontained", value: json_string(s: digest))]
+                  )
+                ),
+              ]
+            )
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+fn scm_image_two_object_document(first: JsonValue, second: JsonValue) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(key: "objects", value: json_array(elements: [first, second])),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])
+      ),
+    ]
+  )
+}
+
+fn scm_image_source_digest(text: String) -> String {
+  match store_authored_source(store: empty_store(), text: text) {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } => i.digest as String
+    SourceStored { store: _, source: s } => s.locator.digest as String
+  }
+}
+
+fn scm_image_standing_of(v: JsonValue) -> LoadStanding {
+  closure_document_standing(outcome: decode_closure_document(v: v))
+}
+
+// THE DISCRIMINATING CLAIM. A node requiring a program at a locator this document fills with a FILE
+// is not partial, and must not be told to fetch.
+test fn scm_image_a_requirement_over_a_carried_file_is_not_partial() -> Bool {
+  let digest = scm_image_source_digest(text: "a carried file\n")
+  let doc = scm_image_two_object_document(
+    first: scm_image_source_entry(text: "a carried file\n"),
+    second: scm_image_node_over_uncontained(digest: digest),
+  )
+  match scm_image_standing_of(v: doc) {
+    LoadRequiresNodeAtAuthoredSource => !standing_loaded(standing: LoadRequiresNodeAtAuthoredSource)
+    _ => false
+  }
+}
+
+// CONTROL ONE, one fact apart: nothing at that locator. A genuine absence IS partial, and IS loaded.
+test fn scm_image_a_requirement_over_nothing_is_partial_and_loaded() -> Bool {
+  let doc = scm_image_two_object_document(
+    first: scm_image_empty_node_entry(),
+    second: scm_image_node_over_uncontained(digest: "0000000000000000"),
+  )
+  match scm_image_standing_of(v: doc) {
+    LoadPartial => standing_loaded(standing: LoadPartial)
+    _ => false
+  }
+}

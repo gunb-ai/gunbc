@@ -503,9 +503,15 @@ fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue 
 
 // THE TWO ENTRY SHAPES ARE DISJOINT MEMBER SETS, AND THAT IS THE DISCRIMINATOR.
 //
-// A node entry keeps `{kind, children}` unchanged, byte for byte, so every document the predecessor
-// accepted this codec still accepts and decodes identically -- this is a strict extension, not a
-// format version. An authored source entry is `{source}`. Nothing matches both, and an entry
+// A node entry keeps `{kind, children}` unchanged, byte for byte. An authored source entry is
+// `{source}`.
+//
+// AN EARLIER REVISION CALLED THAT "a strict extension, not a format version". IT IS NOT, and the
+// module's own policy is what refutes it: a schema that grows a member grows a NEW FORMAT TAG. This
+// codec emits gunbc-scm-commit-closure-v3 and REFUSES the frozen predecessor tag outright rather than
+// accepting it, so the claim that every document the predecessor accepted still decodes here is false
+// at the first member the decoder reads. The unchanged node-entry shape is a fact about one entry
+// kind, not about compatibility of the format. Nothing matches both, and an entry
 // matching NEITHER refuses by member set rather than being read as the closest fit: shape-sniffing
 // is admissible only when the shapes partition, and the refusal is what keeps it a partition rather
 // than a guess.

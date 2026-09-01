@@ -43,6 +43,7 @@ import gunbc.scm.repository_envelope {
   repository_envelope_format_tag, repository_object_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget, RepositoryEncodeTargetIsAuthoredSource,
+  RepositoryEncodeCommitRootIsAuthoredSource,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
@@ -515,6 +516,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
       match cause {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => "target_is_authored_source"
+        RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => "commit_root_is_authored_source"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
@@ -665,6 +667,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
             acc || object_id_eq(left: id, right: t)
           })
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => false
+        RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => false
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
