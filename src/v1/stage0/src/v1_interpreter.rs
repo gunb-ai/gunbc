@@ -7095,7 +7095,22 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 
         v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);
 
-        if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
+        // A BUILTIN'S REFUSAL MUST SAY WHERE IT IS. `eval_builtin` receives a name and values and
+        // has no span, so an argument-shape refusal read `parse_int expects a string argument, got
+        // Variant` with no file and no line — typed but UNLOCATED, which DESIGN §5 does not admit:
+        // every path fails with a typed, LOCATED diagnostic. It became load-bearing when
+        // constructing the `Optional` for `first`/`last`/`get` started routing Optionals into
+        // builtins, whose registry declares a return type and no parameter list, so no coercion can
+        // be derived for them and the refusal is the only signal a reader gets. The call node is in
+        // scope here and carries the span, so the location is attached at the one seam that knows
+        // it. NARROW BY CONSTRUCTION: this locates refusals raised by builtin dispatch only, and
+        // the general interpreter-wide locator is a separate class with its own trigger.
+        if let Some(result) = eval_builtin(&func_name, &args, ctx).map_err(|e| match e {
+            InterpError::TypeError { msg } => InterpError::TypeError {
+                msg: format!("{}:{}: {}", node.span.file, node.span.start, msg),
+            },
+            other => other,
+        })? {
             return Ok(result);
         }
     }
