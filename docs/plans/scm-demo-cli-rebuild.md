@@ -81,6 +81,46 @@ Receipts, by execution against `dag/test/fixture/scm_repository_load/empty_repos
 The third is the load-bearing one: bytes printed AND a nonzero exit, the case an absorbing
 implementation turns into silence or a spurious 0.
 
+### `init` — the write verb, and the four observations it distinguishes
+
+`scm_init` takes a DIRECTORY and a NAME rather than a path, because presence is a fact about a
+directory listing and recovering the directory by splitting a string would be a second, positional
+naming scheme for something the caller already knows. It routes through
+`extdeps.filesystem.filesystem_io` `filesystem_file_observation`, so absence is established from a
+listing that succeeded and did not name the entry — never from a failed read, whose success channel
+cannot separate absent from unreadable. Only the established-absence arm reaches `save_repository`.
+
+Two earlier revisions were fail-open and both were caught by external review before merge: the first
+called `save_repository` unconditionally and NAMED the overwrite in a comment; the second proceeded
+on `RepositoryFileUnreadable`, which is a guess about the host's permission model — a file can be
+unreadable and perfectly truncatable — and again named the residual instead of refusing it
+(review 58060 on gunbc#9864).
+
+Receipts, one per arm, `gunbc run --entry dag/gunbc/scm/cli.dag --function scm_init --arg
+directory=<d> --arg name=repo.json`:
+
+    fresh directory       [file] list … / [file] read … / [file] write …/repo.json (166 bytes)
+                          initialized repository at /tmp/scminit/fresh/repo.json
+
+    repository present    refusing to initialize /tmp/scminit/existing/repo.json
+                            a repository is already there, and init would replace its whole history
+
+    foreign file present  refusing to initialize /tmp/scminit/foreign/repo.json
+                            a file is already there that is not a repository, and init would destroy it
+                          and the file read back afterwards still holds its original bytes
+
+    directory unlistable  refusing to initialize /tmp/scminit/nodir/repo.json
+                            the path could not be observed, so nothing about it is established --
+                            the directory /tmp/scminit/nodir could not be listed, so the absence of
+                            repo.json is not established -- Permission denied (os error 13)
+
+The fourth is the load-bearing one: an observation that could not be made refuses rather than
+widening to "nothing is there", which is the absorbing fallback DESIGN §5 names.
+
+Hermetically enrolled beside them, in `test.claim.scm.scm_cli_witness`: no init refusal renders as a
+success exit, the three refusals render differently, and the unobserved arm carries the host's cause
+through. The absent arm itself takes a listing and a read, so it stays on the manual receipt above.
+
 ### Evidence boundary, stated rather than implied
 
 Enrolled and executing in CI (`rust-unit-tests`, `cargo test -p v1-compiler --lib`): the five

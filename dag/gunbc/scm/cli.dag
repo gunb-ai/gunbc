@@ -85,6 +85,6 @@ fn scm_init_response(outcome: ScmInitOutcome) -> CliWireResponse {
   )
 }
 
-fn scm_init(path: String) -> CliWireResponse {
-  scm_init_response(outcome: initialize_repository(path: path))
+fn scm_init(directory: String, name: String) -> CliWireResponse {
+  scm_init_response(outcome: initialize_repository(directory: directory, name: name))
 }

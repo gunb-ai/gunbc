@@ -22,7 +22,12 @@ import gunbc.scm.repository_envelope { empty_repository }
 import gunbc.scm.log { repository_log }
 import gunbc.scm.status { repository_status }
 import gunbc.scm.authoring { empty_proposal }
-import gunbc.scm.cli { scm_log_response, scm_status_response, plain_terminal_capability }
+import gunbc.scm.cli { scm_log_response, scm_status_response, scm_init_response, plain_terminal_capability }
+import gunbc.scm.init {
+  ScmInitRefusedRepositoryPresent,
+  ScmInitRefusedForeignFilePresent,
+  ScmInitRefusedPathUnobserved
+}
 
 // THE BYTES PIN THE CAPABILITY. This is the same expected string the render-level witness pins for
 // PlainTerminal + ASCII no-colour, so an equal answer here is evidence that gunbc.scm.cli passes
@@ -98,4 +103,60 @@ test fn the_declared_terminal_capability_is_ascii_without_colour_or_cursor_addre
          Ascii => true
          _ => false
        }
+}
+
+// PROJECTIONS OVER THE WIRE RESPONSE, SHARED BY THE INIT CLAIMS BELOW so that neither of them
+// carries its own copy of the same two-arm match.
+fn wire_refuses(r: CliWireResponse) -> Bool {
+  match r {
+    CliWireUnprintable { cause: _ } => true
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: _ } => true
+      }
+  }
+}
+
+fn wire_bytes(r: CliWireResponse) -> String {
+  match r {
+    CliWireUnprintable { cause: _ } => ""
+    CliWirePrintable { bytes: b, exit: _ } => b
+  }
+}
+
+// EVERY NON-ABSENT OBSERVATION REFUSES, AND THE THREE REFUSALS ARE DISTINGUISHABLE.
+//
+// `initialize_repository` itself takes a directory listing and a read, so it is not hermetic and is
+// witnessed by the execution matrix in docs/plans/scm-demo-cli-rebuild.md. What IS decidable here is
+// the half that turns an outcome into an operator's answer: that no refusal arm can render as a
+// success, and that the three say different things. A change that made the unobserved arm print the
+// foreign-file line -- telling an operator their bytes are being protected when in fact nothing was
+// observed -- would turn these red.
+test fn an_init_refusal_never_exits_success() -> Bool {
+  wire_refuses(r: scm_init_response(outcome: ScmInitRefusedRepositoryPresent { path: "repo.json" }))
+    && wire_refuses(r: scm_init_response(outcome: ScmInitRefusedForeignFilePresent { path: "repo.json" }))
+    && wire_refuses(r: scm_init_response(
+      outcome: ScmInitRefusedPathUnobserved { path: "repo.json", cause: "the directory could not be listed" }
+    ))
+}
+
+test fn the_three_init_refusals_render_differently() -> Bool {
+  let present = wire_bytes(r: scm_init_response(outcome: ScmInitRefusedRepositoryPresent { path: "repo.json" }))
+  let foreign = wire_bytes(r: scm_init_response(outcome: ScmInitRefusedForeignFilePresent { path: "repo.json" }))
+  let unobserved = wire_bytes(r: scm_init_response(
+    outcome: ScmInitRefusedPathUnobserved { path: "repo.json", cause: "the directory could not be listed" }
+  ))
+  present != foreign && foreign != unobserved && present != unobserved && present != ""
+}
+
+// THE UNOBSERVED ARM CARRIES THE HOST'S CAUSE THROUGH. A refusal that dropped it would tell the
+// operator to investigate without saying what could not be observed.
+test fn the_unobserved_refusal_names_what_could_not_be_observed() -> Bool {
+  match scm_init_response(
+    outcome: ScmInitRefusedPathUnobserved { path: "repo.json", cause: "Permission denied" }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: _ } => b.contains("Permission denied") && b.contains("repo.json")
+  }
 }

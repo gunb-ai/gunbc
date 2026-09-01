@@ -42,6 +42,7 @@ import gunbc.capability_origin {
   origin_refusals
 }
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
+import gunbc.cli_wire_host_admission { cli_wire_host_seed_growth_justification }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import gunbc.floor_non_verdict_enrollment { floor_non_verdict_seed_growth_justification }
@@ -211,7 +212,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     target_invocation_seed_growth_justification,
     generated_artifact_boundary_seed_growth_justification,
     regen_convergence_seed_growth_justification,
-    decl_facts_shared_memo_seed_growth_justification
+    decl_facts_shared_memo_seed_growth_justification,
+    cli_wire_host_seed_growth_justification
   ]
 }
 

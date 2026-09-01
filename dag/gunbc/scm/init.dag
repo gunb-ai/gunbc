@@ -10,52 +10,96 @@ module gunbc.scm.init
 // non-fail-closed failure arm is a hard reject regardless of what else it delivers, and an
 // annotation is not a refusal. External review was right to block it.
 //
-// THE DECISION IS THE LOAD. A path that already carries a repository refuses; a path carrying a
-// file that is NOT a valid repository also refuses, because an unparseable or rejected document is
-// still someone's bytes and overwriting them is the same loss; only a path the host could not read
-// at all proceeds to write.
+// AND THE SECOND REVISION WAS STILL FAIL-OPEN, WHICH IS WHY THIS ONE DOES NOT READ FIRST. It
+// proceeded on `RepositoryFileUnreadable`, reasoning that a file it could not read was one the
+// write could not replace either. That reasoning is a guess about the host's permission model, not
+// an observation: a file can be unreadable and perfectly truncatable, so the proceed arm could
+// destroy exactly the bytes it was meant to protect. The residual was NAMED in this module's
+// header and named residuals do not refuse. Review 58060 on gunbc#9864 blocked it.
 //
-// THE RESIDUAL, STATED RATHER THAN IMPLIED. `RepositoryFileUnreadable` fuses "absent" with
-// "present but unreadable" -- it carries the host's `error` string and this module refuses to
-// branch on that text, because deciding a destructive question by matching an errno spelling is
-// exactly the stringly reasoning the substrate exists to remove. So the proceed arm is
-// "unreadable", not "absent", and it is narrower than it looks: a file present but unreadable to
-// the load is one the subsequent write generally cannot replace either. Closing the residual needs
-// a modeled path-existence observation distinct from a read failure, which does not exist yet and
-// is this module's next-rung trigger.
+// THE FIX IS NOT A BETTER READ, IT IS A DIFFERENT OBSERVATION. `Filesystem.Read`'s success channel
+// cannot separate absent from unreadable -- that is the conflation `extdeps.filesystem.filesystem_io`
+// exists to remove -- so absence is established from a LISTING that succeeded and did not name the
+// entry, and the read is consulted only as the second half of `filesystem_file_observation`'s fold.
+// The four arms are the four actions: nothing is there, so write; bytes are there, so refuse and say
+// which kind; the observation could not be made, so refuse; the two observations disagree, so refuse.
+// Only the first arm reaches `save_repository`.
+//
+// THIS IS WHY THE ENTRY TAKES A DIRECTORY AND A NAME RATHER THAN A PATH. Presence is a fact about a
+// directory listing, so the listing's subject has to be an argument and not something recovered by
+// splitting a string. A path parser here would be a second, positional naming scheme for what the
+// caller already knows, and its failure mode is silent: a caller that passed a bare filename would
+// get a listing of the wrong directory and an absence established about it.
 import std.types { String }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
-import gunbc.scm.repository_load {
-  RepositoryLoaded,
-  RepositoryLoadRefused,
-  RepositoryFileUnreadable,
-  RepositoryDocumentUnparseable,
-  RepositoryDocumentRefused,
-  load_repository
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  filesystem_listing_observation,
+  filesystem_read_outcome,
+  filesystem_file_observation
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable
+}
+import gunbc.scm.repository_envelope {
+  empty_repository,
+  decode_repository,
+  RepositoryDecoded,
+  RepositoryDecodeRefused
 }
 import gunbc.scm.repository_save { RepositorySave, save_repository }
 
 // THE ARMS ARE THE ANSWER. There is no `initialized: Bool` beside a save outcome: a value whose
-// flag disagreed with its shape would have a spelling, and the two refusals are distinguished
-// because an operator's next action differs -- one path already IS a repository, the other holds
-// something else that would be destroyed.
+// flag disagreed with its shape would have a spelling, and the refusals are distinguished because
+// an operator's next action differs -- one path already IS a repository, one holds something else
+// that would be destroyed, and one could not be observed at all, which is a fault to investigate
+// rather than a state of the path.
 type ScmInitOutcome
   = ScmInitialized { save: RepositorySave }
   | ScmInitRefusedRepositoryPresent { path: String }
   | ScmInitRefusedForeignFilePresent { path: String }
+  | ScmInitRefusedPathUnobserved { path: String, cause: String }
 
-fn initialize_repository(path: String) -> ScmInitOutcome {
-  match load_repository(path: path) {
-    RepositoryLoaded { path: p, envelope: _ } =>
-      ScmInitRefusedRepositoryPresent { path: p }
-    RepositoryLoadRefused { cause: cause } =>
-      match cause {
-        RepositoryFileUnreadable { path: _, error: _ } =>
-          ScmInitialized { save: save_repository(path: path, repo: empty_repository()) }
-        RepositoryDocumentUnparseable { path: p, gap: _ } =>
-          ScmInitRefusedForeignFilePresent { path: p }
-        RepositoryDocumentRefused { path: p, cause: _ } =>
-          ScmInitRefusedForeignFilePresent { path: p }
+// PRESENT BYTES ARE CLASSIFIED, NEVER TRUSTED. Both present arms refuse, so this classification
+// changes only what the operator is told -- which is the whole difference between "your repository
+// is already here" and "something else is here and I will not touch it".
+fn init_present_refusal(path: String, content: String) -> ScmInitOutcome {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: _ } => ScmInitRefusedForeignFilePresent { path: path }
+    JsonDocumentParsed { value: v } =>
+      match decode_repository(v: v) {
+        RepositoryDecoded { envelope: _ } => ScmInitRefusedRepositoryPresent { path: path }
+        RepositoryDecodeRefused { cause: _ } => ScmInitRefusedForeignFilePresent { path: path }
       }
+  }
+}
+
+fn initialize_repository(directory: String, name: String) -> ScmInitOutcome {
+  let path = join([directory, "/", name], "")
+  let listed = Filesystem.List(path: directory)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: directory,
+      success: listed.success,
+      entries: listed.entries,
+      error: listed.error
+    ),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+  ) {
+    FilesystemFileAbsent(_) =>
+      ScmInitialized { save: save_repository(path: path, repo: empty_repository()) }
+    FilesystemFileRead { path: p, content: c } => init_present_refusal(path: p, content: c)
+    FilesystemFileIndeterminate { cause: c } =>
+      ScmInitRefusedPathUnobserved { path: path, cause: c }
+    FilesystemFileObservationsDisagree { path: p, cause: c } =>
+      ScmInitRefusedPathUnobserved { path: p, cause: c }
   }
 }
