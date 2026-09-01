@@ -1,0 +1,84 @@
+module test.claim.node_workload_placement_witness
+
+import std.types { Bool, List }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.node_workload_placement {
+  NodeWorkload,
+  ServingWorkload,
+  TrainingWorkload,
+  NodeWorkloadPlacement,
+  node_workload_placements,
+  node_workload_eq,
+  nodes_running_in,
+  workloads_on_in,
+  serving_nodes,
+  training_nodes,
+  workloads_on,
+  node_runs,
+}
+
+// THE SHIPPED PLACEMENT, asserted so a change to it is a decision rather than a drift.
+test fn the_shipped_roster_places_serving_on_srv5_and_training_on_srv6() -> Bool {
+  length(serving_nodes()) == 1
+    && length(training_nodes()) == 1
+    && node_runs(host: operator_host_srv5, workload: ServingWorkload)
+    && node_runs(host: operator_host_srv6, workload: TrainingWorkload)
+}
+
+// THE CLAIM THIS MODULE EXISTS FOR, AND THE ONE THE REPLACED MODEL COULD NOT SUPPORT.
+//
+// A node may hold more than one workload. Under the role sum this was not a failing test, it was an
+// unwritable state -- SparkCellRole had no dual constructor, and the lookup's Ambiguous arm treated
+// two rows naming one host as a defect to be caught rather than as the ordinary way to say a node
+// does both.
+//
+// The fixture is required rather than incidental. The shipped roster deliberately does NOT exercise
+// dual placement, so without a roster parameter the only available evidence would be that nothing
+// refuses -- the absence of a failure, which is not the presence of the capability.
+data dual_placement_fixture: List<NodeWorkloadPlacement> = [
+  NodeWorkloadPlacement { host: operator_host_srv5, workload: ServingWorkload },
+  NodeWorkloadPlacement { host: operator_host_srv6, workload: ServingWorkload },
+  NodeWorkloadPlacement { host: operator_host_srv6, workload: TrainingWorkload },
+]
+
+test fn a_node_may_hold_more_than_one_workload() -> Bool {
+  length(workloads_on_in(roster: dual_placement_fixture, host: operator_host_srv6)) == 2
+}
+
+test fn both_nodes_may_serve_at_once() -> Bool {
+  length(nodes_running_in(roster: dual_placement_fixture, workload: ServingWorkload)) == 2
+}
+
+// THE DISCRIMINATING CONTROL. The claim above would also pass if the fixture were simply being
+// counted without regard to workload, so this asserts the OTHER axis of the same fixture: srv5
+// serves and does not train, while srv6 does both. A fold that ignored the workload field would
+// report two for srv5 as well and red here.
+test fn dual_placement_does_not_smear_across_hosts() -> Bool {
+  length(workloads_on_in(roster: dual_placement_fixture, host: operator_host_srv5)) == 1
+    && length(nodes_running_in(roster: dual_placement_fixture, workload: TrainingWorkload)) == 1
+}
+
+// AN UNPLACED HOST ANSWERS WITH THE EMPTY LIST, WHICH IS AN ANSWER AND NOT A REFUSAL.
+//
+// The replaced lookup returned Absent here. Nothing about the question is undecidable -- a node with
+// no placement is a node nothing has been placed on -- so the roster answers it directly rather than
+// routing it through a refusal arm that would have to be matched by every consumer.
+test fn a_host_with_no_placement_answers_empty() -> Bool {
+  length(workloads_on_in(roster: [], host: operator_host_srv5)) == 0
+    && !node_runs(host: operator_host_srv5, workload: TrainingWorkload)
+}
+
+// The wire projection is the single enumeration of the variants, so equality reads it. A second
+// enumeration would let a new workload compile against half the module.
+test fn workload_equality_discriminates_the_two_variants() -> Bool {
+  node_workload_eq(a: ServingWorkload, b: ServingWorkload)
+    && node_workload_eq(a: TrainingWorkload, b: TrainingWorkload)
+    && !node_workload_eq(a: ServingWorkload, b: TrainingWorkload)
+}
+
+// The shipped roster is the one the projections read, so a fixture that happened to equal it would
+// make every claim above vacuous about the parameterization.
+test fn the_fixture_is_not_the_shipped_roster() -> Bool {
+  length(dual_placement_fixture) != length(node_workload_placements)
+}

@@ -1,0 +1,126 @@
+module gunbc.node_workload_placement
+
+import std.types { String, Bool, List, NonEmptyStr }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+
+// WHAT A NODE IS DOING, WHICH IS NOT WHAT A NODE IS.
+//
+// The model this replaces asked "what ROLE does this host have" and answered with an exclusive sum
+// -- a host was a serving cell or a training cell and could not be both. That shape came from a
+// program whose only transition was retiring serving from one specific machine, and it encoded that
+// program's scope as a property of the hardware.
+//
+// It was wrong in a way that only shows up when the requirement changes, which it now has. The two
+// units are physically identical; nothing about either machine makes it a serving machine. What
+// differs is a placement decision an operator makes and remakes. Welding those together meant a host
+// could not take on a second workload without a new role variant, and meant "srv5 serves" was
+// structure rather than a value.
+//
+// So workload is what is PLACED, and a node is what it is placed ON. Adding a workload is a row.
+// Moving one is an edit to a row. Running both on one node needs no new vocabulary at all, which is
+// the property the old exclusive sum could not express and the reason this module exists.
+type NodeWorkload
+  = ServingWorkload
+  | TrainingWorkload
+
+// The wire projection is the ONE place the variants are enumerated, and equality reads it rather
+// than re-matching. A second enumeration beside this one would let a new workload compile against
+// half the module.
+fn node_workload_wire(workload: NodeWorkload) -> String {
+  match workload {
+    ServingWorkload => "serving"
+    TrainingWorkload => "training"
+  }
+}
+
+fn node_workload_eq(a: NodeWorkload, b: NodeWorkload) -> Bool {
+  node_workload_wire(workload: a) == node_workload_wire(workload: b)
+}
+
+type NodeWorkloadPlacement {
+  host: HostIdentity
+  workload: NodeWorkload
+}
+
+// PLACEMENT IS AN OPERATOR DECISION AND IS RECORDED AS ONE.
+//
+// The units are interchangeable, so nothing measured decides which node takes which workload. An
+// arbitrary choice written down as attributable is honest; the same choice presented as derived
+// reads as a fact somebody established.
+//
+// TODAY'S PLACEMENT IS ONE-EACH, AND THAT IS A VALUE RATHER THAN A CONSTRAINT. The operator's
+// standing direction is that nothing may anchor a node to a workload, so a second serving row on
+// srv6 is an ordinary edit here and needs no change anywhere else. That is the whole difference
+// between this module and the role sum it replaces.
+data node_workload_placement_basis: NonEmptyStr = "OPERATOR DECISION (2026-09-01): srv5 serves, srv6 trains, as a short-term placement rather than an anchoring. The units are identical, so the assignment is a tie-break and not a measurement. Superseding basis: the earlier role model made this exclusive and made it a property of the host; the operator's requirement is that a node may take any workload, so placement rows carry it and any node may hold more than one." as NonEmptyStr
+
+data srv5_serving_placement: NodeWorkloadPlacement = NodeWorkloadPlacement {
+  host: operator_host_srv5,
+  workload: ServingWorkload,
+}
+
+data srv6_training_placement: NodeWorkloadPlacement = NodeWorkloadPlacement {
+  host: operator_host_srv6,
+  workload: TrainingWorkload,
+}
+
+data node_workload_placements: List<NodeWorkloadPlacement> = [
+  srv5_serving_placement,
+  srv6_training_placement,
+]
+
+// THE ROSTER IS A PARAMETER ON THE FOLD AND BOUND ONCE AT THE EDGE.
+//
+// The projections below read the shipped roster, but the fold itself takes one -- so a claim can
+// hand it a roster the fleet does not currently have. That is not a convenience: the property this
+// module exists to provide is that a node MAY hold more than one workload, and the shipped roster
+// deliberately does not exercise it. Without a parameter here, the only evidence for that property
+// would be that nothing refuses, which is the absence of a failure rather than the presence of the
+// capability.
+fn nodes_running_in(roster: List<NodeWorkloadPlacement>, workload: NodeWorkload) -> List<HostIdentity> {
+  map(
+    filter(roster, p => node_workload_eq(a: p.workload, b: workload)),
+    p => p.host,
+  )
+}
+
+fn nodes_running(workload: NodeWorkload) -> List<HostIdentity> {
+  nodes_running_in(roster: node_workload_placements, workload: workload)
+}
+
+fn serving_nodes() -> List<HostIdentity> {
+  nodes_running(workload: ServingWorkload)
+}
+
+fn training_nodes() -> List<HostIdentity> {
+  nodes_running(workload: TrainingWorkload)
+}
+
+// A HOST'S WORKLOADS ARE A LIST, AND THE EMPTY LIST IS AN ANSWER RATHER THAN A REFUSAL.
+//
+// This is where the replaced model's shape is most visibly gone. Its lookup returned Absent, Unique,
+// or AMBIGUOUS -- and ambiguous existed because two rows naming one host was a defect to be caught.
+// Under a placement model two rows naming one host is the ordinary way to say a node does both, so
+// the arm that refused it would refuse the requirement itself.
+//
+// The empty list still means what Absent meant: this host holds no workload. It is not a refusal
+// because there is nothing undecidable about it -- a node with no placement is a node nothing has
+// been placed on, which the roster answers directly.
+fn workloads_on_in(roster: List<NodeWorkloadPlacement>, host: HostIdentity) -> List<NodeWorkload> {
+  map(
+    filter(roster, p => host_identity_eq(a: p.host, b: host)),
+    p => p.workload,
+  )
+}
+
+fn workloads_on(host: HostIdentity) -> List<NodeWorkload> {
+  workloads_on_in(roster: node_workload_placements, host: host)
+}
+
+fn node_runs(host: HostIdentity, workload: NodeWorkload) -> Bool {
+  any(
+    xs: workloads_on(host: host),
+    predicate: fn(w) { node_workload_eq(a: w, b: workload) },
+  )
+}
