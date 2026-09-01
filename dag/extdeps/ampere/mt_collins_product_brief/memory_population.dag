@@ -23,11 +23,8 @@ data memory_population_source_document: NonEmptyStr = "Ampere Altra Platform Ser
 data memory_population_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
 
 // DIMM connectors are named J1..J32 on the board: J1..J16 serve socket 0 and J17..J32
-// serve socket 1. The eight odd connectors of a socket touch its eight channels one apiece
-// under the pairing in the Tables 12-13 rows below, which is why the guide's 1DPC sequences
-// are exactly the odd connectors. Which of a channel's two connectors upstream calls the
-// FIRST-DIMM position is a separate question this file does not settle - see the
-// mt_collins_channel_naming_basis unresolved field.
+// serve socket 1. Within a socket the odd-numbered connector of each channel pair is the
+// first-DIMM-per-channel position, so 1DPC is exactly the odd connectors.
 type MtCollinsDimmSocketSpan {
   processor_socket: Nat
   first_connector: Nat
@@ -111,73 +108,6 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
 // socket 1 may differ from each other. Max data rate at these populations is the platform row's
 // DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
 // downclock is unstated by this source rather than absent.
-
-// TABLES 12-13: WHICH MEMORY CONTROLLER EACH CONNECTOR BELONGS TO. The population sequences above
-// say WHICH connectors a configuration fills; they do not say which channel any connector is on,
-// so a census cannot derive an active-channel count or a DIMMs-per-channel figure from them alone.
-// That mapping is the per-socket table, and it is transcribed here rather than inferred, because
-// the column order is NOT monotonic: the guide prints the MCUs as
-//
-//   MCU0 MCU1 MCU2 MCU3 MCU7 MCU6 MCU5 MCU4
-//
-// over connectors #1..#8 (socket 0) and #17..#24 (socket 1), with the second DIMM of each channel
-// running backwards from #16 and #32. Reading the row left-to-right as MCU0..MCU7 gives the right
-// PAIRS and the wrong NAMES for four of the eight channels.
-type MtCollinsChannelConnectorRow {
-  processor_socket: Nat
-  memory_controller: Nat
-  first_dimm_connector: Nat
-  second_dimm_connector: Nat
-}
-
-data mt_collins_socket0_channels: List<MtCollinsChannelConnectorRow> = [
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 0, first_dimm_connector: 1, second_dimm_connector: 16 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 1, first_dimm_connector: 2, second_dimm_connector: 15 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 2, first_dimm_connector: 3, second_dimm_connector: 14 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 3, first_dimm_connector: 4, second_dimm_connector: 13 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 7, first_dimm_connector: 5, second_dimm_connector: 12 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 6, first_dimm_connector: 6, second_dimm_connector: 11 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 5, first_dimm_connector: 7, second_dimm_connector: 10 },
-  MtCollinsChannelConnectorRow { processor_socket: 0, memory_controller: 4, first_dimm_connector: 8, second_dimm_connector: 9 },
-]
-
-data mt_collins_socket1_channels: List<MtCollinsChannelConnectorRow> = [
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 0, first_dimm_connector: 17, second_dimm_connector: 32 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 1, first_dimm_connector: 18, second_dimm_connector: 31 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 2, first_dimm_connector: 19, second_dimm_connector: 30 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 3, first_dimm_connector: 20, second_dimm_connector: 29 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 7, first_dimm_connector: 21, second_dimm_connector: 28 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 6, first_dimm_connector: 22, second_dimm_connector: 27 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 5, first_dimm_connector: 23, second_dimm_connector: 26 },
-  MtCollinsChannelConnectorRow { processor_socket: 1, memory_controller: 4, first_dimm_connector: 24, second_dimm_connector: 25 },
-]
-
-data mt_collins_channel_connector_rows: List<MtCollinsChannelConnectorRow> = concat(mt_collins_socket0_channels, mt_collins_socket1_channels)
-
-// HOW THESE ROWS WERE READ, AND WHAT IS STILL INFERENCE. The two facts in a row are not equally
-// attested and it would be a fabrication to present them as if they were:
-//
-//   the PAIRING - which two connectors share one channel - is stated twice in the document, by
-//   Table 10 and again by Tables 12-13, and the two agree; while
-//
-//   the CONTROLLER NUMBER attached to each pair rests on aligning the Tables 12-13 header
-//   (MCU0 MCU1 MCU2 MCU3 MCU7 MCU6 MCU5 MCU4) against the connector row beneath it, read from the
-//   document's extracted text stream rather than from a rendered table. Table 10's row, read
-//   left-to-right as MCU0..MCU7, would name four of the eight channels differently.
-//
-// Consumers that only need to know which connectors share a channel are on the doubly-attested
-// fact. A consumer that means the vendor's controller NUMBER is on the alignment below.
-type MtCollinsChannelNamingBasis {
-  pairing_basis: NonEmptyStr
-  controller_number_basis: NonEmptyStr
-  unresolved: NonEmptyStr
-}
-
-data mt_collins_channel_naming_basis: MtCollinsChannelNamingBasis = MtCollinsChannelNamingBasis {
-  pairing_basis: "stated twice and consistently: Table 10 pairs each socket-0 connector with its socket-1 counterpart and lists the second-DIMM connectors in reverse, and Tables 12-13 place the same two connectors in one column. A third, independent check agrees: under this pairing the Table 11 sequences touch 1, 2, 4 and 8 distinct channels per socket at 2, 4, 8 and 16 DIMMs, which are Table 10's supported channel counts - a different pairing would put two of a row's connectors on one channel and miss the count.",
-  controller_number_basis: "the Tables 12-13 column header order MCU0 MCU1 MCU2 MCU3 MCU7 MCU6 MCU5 MCU4 aligned against the connector rows #1..#8 and #16..#9, read from the PDF text stream.",
-  unresolved: "Table 11's one-DIMM-per-channel sequences use the ODD connectors (J1/J3/J5/...), while the Tables 12-13 single-DIMM-per-channel row is #1..#8. Both sets touch eight distinct channels under the pairing above, so this is a difference in which of a channel's two connectors the guide prescribes, and this repository does not resolve it.",
-}
 
 data mt_collins_memory_population_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
