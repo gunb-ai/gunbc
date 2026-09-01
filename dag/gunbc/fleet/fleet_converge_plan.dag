@@ -309,17 +309,22 @@ type TimerRetirementMemberAt = NonEmptyStr
 // constructor". The compiler admits one: see the excess-field measurement in the annotation above
 // the scope type. What holds instead, separated by WHETHER THE GATE EXECUTES IT:
 //
-//   NOT ESTABLISHED AT THE GATE, and this bullet previously sat under a heading that said
-//   "executed", which was rung inflation (codex review 58047). The arm declares only host and
-//   observed_timers, and test.claim.fleet_converge_launch_scope_constructor_site_census joins every
-//   production construction site against a declared roster at identity grain -- but that witness is
-//   BUDGET-REFUSED BEFORE VERDICT by the required floor and reaches no verdict there, so it
-//   establishes nothing at the gate grain. It passes when run directly, which is not the same claim.
-//   Two blockers filed outside this module keep it that way: the floor tests changed-witness
-//   membership before the long-home decline, so the move to a lane with its own ceiling cannot be
-//   performed; and FalsifierCadenceJob, the lane that would declare one, has no executing
-//   realization. Until one of those clears, WHERE construction happens is covered by review of the
-//   two named declarations and by nothing executing;
+//   NOT COVERED AT ALL, AND THAT IS A LOSS THIS PR TOOK RATHER THAN A GAP IT INHERITED. The arm
+//   declares only host and observed_timers, and WHERE launch requests are constructed is covered by
+//   NOTHING EXECUTING and by nothing enrolled. A site census over the production corpus stood here
+//   and is REMOVED by this PR, not deferred and not re-homed: on every floor run of every head that
+//   carried it, its three rows stood planned-without-terminal-verdict and were budget-refused before
+//   verdict, so they informed the gate on no run -- an enrolled witness that can never answer is
+//   counted as coverage while carrying none. Both of the floor's own remedy arms are closed to a
+//   change made here: the cost is subject-shaped, because that census was the only
+//   whole-production-corpus decl_facts walk under dag/test/claim and the import-closure reduction
+//   that brought this PR's other probes inside the budget does not reach a walk whose n IS the
+//   corpus; and the cost-debt roster is an operator shrink-only contract that admits no identity the
+//   floor did not already discover. Re-filed at node://adhoc-cfdf3366-bc3, which cannot start until
+//   BOTH capabilities hold: a floor selector able to route a CHANGED, cost-bound witness to a lane
+//   declaring its own ceiling, and the substrate-readable per-field record-literal label sufficient
+//   to assert a construction site's exact field-name set. Until then the only thing standing over
+//   WHERE construction happens is review of the two named declarations;
 //
 //   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
 //   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or
@@ -330,9 +335,10 @@ type TimerRetirementMemberAt = NonEmptyStr
 //   excess-field initializers are semantically analysed and are not runtime-evaluated.
 //
 // That is mechanically excluded from the authoritative launch-environment projection on this exact
-// tree. It is NOT structural impossibility, and the site census cannot see a field added inside one
-// of the two rostered constructors -- the field-NAME set of a record literal is not readable from
-// the substrate today. NEXT-RUNG TRIGGER, named as the capability: either the variant-local
+// tree. It is NOT structural impossibility, and with the site census removed nothing sees a new
+// construction site either -- and even with it, a field added INSIDE one of the two reviewed
+// constructors was invisible to it, because the field-NAME set of a record literal is not readable
+// from the substrate today. NEXT-RUNG TRIGGER, named as the capability: either the variant-local
 // excess-field compiler wall lands, or reflection exposes substrate-readable per-field record-literal
 // labels SUFFICIENT FOR a witness to assert the exact field-name set of a named construction site.
 type FleetConvergeScope
