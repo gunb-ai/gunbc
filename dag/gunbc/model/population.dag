@@ -16,17 +16,16 @@ import gunbc.model.publication {
 // about the release; whether a particular artifact loads, fits or answers well is a verdict about a
 // REALIZATION, and no such verdict is representable at this grain -- see PopulationStage.
 //
-// HOW IT IS CONSTRUCTED RATHER THAN CHECKED, AND WHERE THAT STOPS. A narrowed population is not
-// authored -- it is CONSTRUCTED FROM A PARENT by filtering, and it retains the parent's roster.
-// Members of a stage are a subset of its parent's members by the meaning of filter, so the
-// sanctioned constructor cannot introduce a member the parent lacks, and refusing a stage cannot
-// reach back into the parent because the parent is a separate immutable value that the narrowing
-// consumed rather than modified.
+// HOW IT IS MADE STRUCTURAL RATHER THAN CHECKED. A narrowed population is not authored -- it is
+// CONSTRUCTED FROM A PARENT by filtering, and it retains the parent's roster. Members of a stage are
+// a subset of its parent's members by the meaning of filter, so a stage cannot introduce a member
+// the parent lacks, and refusing a stage cannot reach back into the parent because the parent is a
+// separate immutable value that the narrowing consumed rather than modified.
 //
-// That is a property of the CONSTRUCTOR, not of the type. See PopulationProvenance for the honest
-// rung and its next-rung trigger: until the substrate can make a record constructor private to its
-// owning module, a caller may still hand-build a ModelPopulation that violates the invariant, and
-// this module makes that violation decidable rather than impossible.
+// AND THE TYPE ENFORCES IT, not merely the constructor. ModelPopulation is sole_constructor, so the
+// two mints below are the only producers of a population anywhere -- there is no hand-built value to
+// violate the invariant. See PopulationProvenance for the scope of that guarantee and for the rung
+// error this replaced.
 
 // The ordered stages. Each names what it is a verdict about, and BOTH are verdicts about the
 // RELEASE -- which is the grain this population's members are keyed at.
@@ -91,23 +90,46 @@ type ReleaseDiscoverySource {
 // was never derived from and nothing downstream could tell. The subset property the module claims
 // was therefore unauditable at exactly the point it mattered.
 //
-// AN HONEST RUNG STATEMENT, because the comment above this type used to overclaim one. `narrow_population`
-// does construct a subset, and no code path in this module writes a member the parent lacks. But
-// `ModelPopulation` is an ordinary record: nothing in the substrate stops a caller CONSTRUCTING one
-// directly with any members and any provenance it likes, including a NarrowedFrom naming a parent
-// that never existed. So the class "a later stage contains a release its parent does not" sits at
-// MECHANICALLY PREVENTABLE -- the sanctioned constructor cannot produce it and the retained parent
-// roster makes a hand-built violation decidable -- and NOT at structurally impossible, which is what
-// the original "there is no writable state for a regression to be written into" asserted.
+// THE RUNG STATEMENT THIS COMMENT USED TO CARRY WAS ITSELF A RUNG ERROR, and it is worth recording
+// because it is the exact class this document keeps filing. It read: the class sits at MECHANICALLY
+// PREVENTABLE, and its next-rung trigger is "constructor privacy in the substrate", a capability
+// declared unavailable.
 //
-// NEXT-RUNG TRIGGER: constructor privacy in the substrate -- a declared type whose values are
-// producible only through named smart constructors in its owning module. With that capability
-// ModelPopulation's record constructor becomes unreachable from outside, `narrow_population` and
-// `open_weight_population` become the only producers, and the class reaches structural impossibility.
-// Nothing short of that capability retires this row: a lens over authored constructions would be
-// validation standing where construction was available, and would still miss a construction built in
-// a module the lens does not read.
-type PopulationProvenance
+// THE CAPABILITY WAS ALREADY IN THE TREE. `sole_constructor` refuses a record literal outside the
+// declaring module, and extdeps.pin, extdeps.exec.command, extdeps.shell.exec and
+// extdeps.filesystem.filesystem_io were already using it for precisely this shape. So the trigger
+// named a capability that existed, which means the row would have sat below its ceiling forever
+// while reading as an honest stall -- an untracked stall wearing rung honesty's clothes.
+//
+// It is now used. `ModelPopulation` is sole_constructor, `open_weight_population` and
+// `narrow_population` are its only mints, and no module outside this one can write a population at
+// all. A later stage containing a release its parent lacks therefore has NO CONSTRUCTOR: the class
+// is STRUCTURALLY IMPOSSIBLE within this authority, not merely unproduced by the sanctioned path.
+//
+// THE SCOPE OF THAT CLAIM, DECLARED RATHER THAN INHERITED. sole_constructor binds the .dag surface.
+// The emitted Rust mirror of a sole_constructor type is a public struct with public fields, so a
+// consumer writing Rust against the seed is outside this guarantee -- that boundary belongs to the
+// emission surface and is named here rather than left for a reader to assume covered.
+//
+// NO HERMETIC WITNESS CAN HOLD THIS CLAIM, because its subject is what the COMPILER REFUSES about
+// SOURCE TEXT, not a value any accepted program can produce. A witness asserting it would be a
+// permanently-green arm over a state it cannot express -- the decoration section 4b calls worse than
+// absent. MEASURED BY EXECUTION instead: a fixture module importing ModelPopulation and writing the
+// record literal `ModelPopulation { stage: OpenWeightStage, members: [], provenance: DiscoveredRoot
+// { sources: [] } }` in a function body, resolved by `claim_batch --source-root dag --source-root
+// src/v2 --source-root <fixture root> --entry <fixture> --function forge`, is REFUSED at the
+// literal's own position with `sole_constructor type 'ModelPopulation' cannot be constructed outside
+// its defining module`.
+//
+// THE POSITIVE CONTROL IS ENROLLED AND IS NOT A SECOND FIXTURE:
+// test.claim.model.model_population_narrowing_witness_test obtains populations FROM THE MINTS,
+// cross-module, and reads their members and provenance throughout -- so the refusal above is the
+// construction being confined and not the type being unusable.
+//
+// WHAT THIS DOES NOT ESTABLISH: the mechanism's general coverage, which is
+// gunbc.guarantee_probe_corpus sole_constructor_cross_module_class and its probes. This is the
+// fixture-boundary red section 4b asks for, taken once, not a standing gate.
+type PopulationProvenance sole_constructor
   = DiscoveredRoot { sources: List<ReleaseDiscoverySource> }
   | NarrowedFrom {
       parent_stage: PopulationStage,
@@ -115,7 +137,7 @@ type PopulationProvenance
       rejected_count: Nat,
     }
 
-type ModelPopulation {
+type ModelPopulation sole_constructor {
   stage: PopulationStage
   members: List<ModelRelease>
   provenance: PopulationProvenance

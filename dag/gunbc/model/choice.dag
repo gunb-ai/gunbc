@@ -3,6 +3,10 @@ module gunbc.model.choice
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
+import std.content_hash {
+  ContentHash, ContentHashComparison, ContentHashEqual, ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable, compare_content_hash,
+}
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   TokenCount, token_count, token_count_value,
@@ -74,20 +78,90 @@ import std.measure {
 // retrieval evidence from B, prefill evidence from C, admitted as one candidate that never existed.
 // So every evidence axis joins THIS identity, and an observation that does not carry it cannot
 // answer for this candidate at all.
-type ServingRealizationIdentity {
+// THE THREE AXES BELOW WERE FREELY AUTHORED STRINGS, and a string is a claim about an identity
+// rather than the identity. Two of them can be content-addressed from facts the fleet already
+// emits, and the third is sealed so the module that owns the concept is the only mint.
+//
+// ARTIFACT: content-addressed. Ollama reports a digest for every loaded model on /api/ps, so the
+// artifact axis carries that digest and not a tag. A tag is a MOVING reference -- 'latest' resolves
+// to different bytes on different days -- so evidence keyed by tag silently spans two artifacts,
+// which is precisely the failure the join was introduced to close, one level down.
+//
+// RUNTIME CONFIGURATION: content-addressed over the RESOLVED ARGV, not the desired environment. The
+// distinction is measured, not theoretical: this fleet ran for hours with a desired context value
+// that had never been rendered onto either host, and the runtime also resolves flags of its own
+// (--flash, --load-mode) that no environment variable names. The argv is what the runner actually
+// received, so hashing it is the only key under which two readings are of the same configuration.
+//
+// RUNTIME: sealed rather than hashed, because a runtime build has no digest this repository
+// observes today. It is a sole_constructor carrier with one mint, so a bare string cannot travel as
+// a runtime identity. NEXT-RUNG TRIGGER for this axis alone: an observed runtime build identity --
+// the binary's own digest or a version endpoint reading -- at which point it joins the two above.
+type ServingRuntimeIdentity sole_constructor {
+  name: NonEmptyStr
+  version: NonEmptyStr
+}
+
+fn serving_runtime_identity(name: NonEmptyStr, version: NonEmptyStr) -> ServingRuntimeIdentity {
+  ServingRuntimeIdentity { name: name, version: version }
+}
+
+fn serving_runtime_equal(a: ServingRuntimeIdentity, b: ServingRuntimeIdentity) -> Bool {
+  (a.name as String) == (b.name as String) && (a.version as String) == (b.version as String)
+}
+
+type ResolvedRuntimeConfiguration sole_constructor {
+  argv_digest: ContentHash
+}
+
+fn resolved_runtime_configuration(argv_digest: ContentHash) -> ResolvedRuntimeConfiguration {
+  ResolvedRuntimeConfiguration { argv_digest: argv_digest }
+}
+
+type ServingRealizationIdentity sole_constructor {
   release_id: ReleaseIdentity
   quant_label: NonEmptyStr
-  artifact_ref: NonEmptyStr
-  runtime: NonEmptyStr
-  runtime_config: NonEmptyStr
+  artifact_digest: ContentHash
+  runtime: ServingRuntimeIdentity
+  runtime_config: ResolvedRuntimeConfiguration
+}
+
+// The only mint. sole_constructor already refuses a record literal outside this module; this is the
+// surface every identity routes through, so the digest-bearing arguments hold at one place.
+fn serving_realization_identity(
+  release_id: ReleaseIdentity,
+  quant_label: NonEmptyStr,
+  artifact_digest: ContentHash,
+  runtime: ServingRuntimeIdentity,
+  runtime_config: ResolvedRuntimeConfiguration,
+) -> ServingRealizationIdentity {
+  ServingRealizationIdentity {
+    release_id: release_id,
+    quant_label: quant_label,
+    artifact_digest: artifact_digest,
+    runtime: runtime,
+    runtime_config: runtime_config,
+  }
+}
+
+// A CROSS-FAMILY DIGEST PAIR IS NOT EQUAL AND NOT UNEQUAL -- it is incomparable, and the shared
+// authority says so with a third arm rather than a false. Collapsing it to false here would make an
+// sha256 reading and an fnv1a reading of the SAME artifact look like different artifacts, so the
+// evidence would silently stop qualifying with nothing to say why.
+fn digest_equal(a: ContentHash, b: ContentHash) -> Bool {
+  match compare_content_hash(left: a, right: b) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
 }
 
 fn serving_realization_equal(a: ServingRealizationIdentity, b: ServingRealizationIdentity) -> Bool {
   release_identity_equal(a: a.release_id, b: b.release_id)
     && (a.quant_label as String) == (b.quant_label as String)
-    && (a.artifact_ref as String) == (b.artifact_ref as String)
-    && (a.runtime as String) == (b.runtime as String)
-    && (a.runtime_config as String) == (b.runtime_config as String)
+    && digest_equal(a: a.artifact_digest, b: b.artifact_digest)
+    && serving_runtime_equal(a: a.runtime, b: b.runtime)
+    && digest_equal(a: a.runtime_config.argv_digest, b: b.runtime_config.argv_digest)
 }
 
 type QuantizedCandidate {
@@ -149,8 +223,15 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 //
 // NEXT-RUNG TRIGGER: a PrefixReuseReceipt carrier produced by the observation layer, at which point
 // a WarmPrefillObservation may be constructed FROM one and not otherwise.
+// A RATE IS ALSO ABOUT A HOST AND A CONCURRENCY CONDITION, and carrying neither was the same defect
+// the memory axis already had. Prefill throughput measured on an idle host is not the throughput a
+// caller meets when three other sessions are prefilling: this fleet's own 300x latency scare was
+// exactly that -- a queue on a serialized host, read as a property of the model. And a rate measured
+// on one node does not describe another. Both now join.
 type FreshPrefillObservation {
   realization: ServingRealizationIdentity
+  node: NonEmptyStr
+  concurrent_sessions: Nat
   depth: TokenCount
   rate: TokensPerSecond
 }
@@ -168,6 +249,8 @@ type FreshPrefillObservation {
 fn prefill_rate_at_floor(
   observations: List<FreshPrefillObservation>,
   realization: ServingRealizationIdentity,
+  node: NonEmptyStr,
+  hot_sessions: Nat,
   floor: TokenCount,
   regime: ServingRegime,
 ) -> TokensPerSecond? {
@@ -175,17 +258,27 @@ fn prefill_rate_at_floor(
     WarmContinuation => none
     RestoredSession => none
     FreshSessionPrefill =>
-      slowest_fresh_rate_at_floor(observations: observations, realization: realization, floor: floor)
+      slowest_fresh_rate_at_floor(
+        observations: observations, realization: realization,
+        node: node, hot_sessions: hot_sessions, floor: floor)
   }
 }
 
+// DEPTH AND CONCURRENCY QUALIFY IN THE SAME DIRECTION, and it is the conservative one: a rate
+// measured DEEPER and under MORE concurrent load bounds the rate at a shallower, quieter demand,
+// because both axes cost throughput. A shallower or quieter reading flatters the candidate, so it
+// does not qualify. The node must match exactly -- it is not an axis with a direction.
 fn slowest_fresh_rate_at_floor(
   observations: List<FreshPrefillObservation>,
   realization: ServingRealizationIdentity,
+  node: NonEmptyStr,
+  hot_sessions: Nat,
   floor: TokenCount,
 ) -> TokensPerSecond? {
   let deep = filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
+      && (o.node as String) == (node as String)
+      && o.concurrent_sessions >= hot_sessions
       && token_count_value(t: o.depth) >= token_count_value(t: floor))
   fold(deep, none, (worst, o) =>
     match worst {
@@ -279,7 +372,22 @@ type MemoryFitEvidence
   | MemoryFitAttemptFailedOtherwise { by: OllamaRunnerMemoryObservation }
   | MemoryFitUnobserved
 
-fn qualifying_memory_observations(
+// SUCCESS AND REFUSAL DO NOT GENERALIZE IN THE SAME DIRECTION, and treating them as one qualifying
+// set was a fail-open in the flattering direction's mirror -- it refused candidates that had never
+// been refused at the demanded point.
+//
+// A SUCCESS AT A HARDER POINT ESTABLISHES AN EASIER ONE. If this realization loaded and served at
+// 1,048,576 tokens with four concurrent sessions, a demand for 400,000 at one session asks strictly
+// less of the same machine, and the deeper reading bounds it conservatively.
+//
+// A REFUSAL AT A HARDER POINT ESTABLISHES NOTHING ABOUT AN EASIER ONE. An out-of-memory refusal at
+// 1,048,576 says only that 1,048,576 did not fit. Reading it as a refusal of 400,000 would reject a
+// configuration that may serve perfectly well, and -- worse -- would do so from evidence that
+// literally never tested it. So a memory refusal qualifies at its EXACT point and nowhere else.
+//
+// The asymmetry is not a policy choice; it is what the observations mean. Monotonicity carries
+// downward from a success and does not carry downward from a failure.
+fn served_qualifying_observations(
   observations: List<OllamaRunnerMemoryObservation>,
   realization: ServingRealizationIdentity,
   floor: TokenCount,
@@ -288,9 +396,42 @@ fn qualifying_memory_observations(
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
+      && (o.node as String) == (node as String)
       && token_count_value(t: o.context_depth) >= token_count_value(t: floor)
       && o.concurrent_sessions >= hot_sessions
-      && (o.node as String) == (node as String))
+      && outcome_is_served(o: o))
+}
+
+fn refused_at_exact_point(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+  floor: TokenCount,
+  hot_sessions: Nat,
+  node: NonEmptyStr,
+) -> List<OllamaRunnerMemoryObservation> {
+  filter(observations, o =>
+    serving_realization_equal(a: o.realization, b: realization)
+      && (o.node as String) == (node as String)
+      && token_count_value(t: o.context_depth) == token_count_value(t: floor)
+      && o.concurrent_sessions == hot_sessions
+      && outcome_is_memory_refusal(o: o))
+}
+
+// A non-memory failure decides nothing in either direction, so it is read only at the exact point --
+// the same rule as a refusal, for the same reason.
+fn failed_otherwise_at_exact_point(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+  floor: TokenCount,
+  hot_sessions: Nat,
+  node: NonEmptyStr,
+) -> List<OllamaRunnerMemoryObservation> {
+  filter(observations, o =>
+    serving_realization_equal(a: o.realization, b: realization)
+      && (o.node as String) == (node as String)
+      && token_count_value(t: o.context_depth) == token_count_value(t: floor)
+      && o.concurrent_sessions == hot_sessions
+      && outcome_is_other_failure(o: o))
 }
 
 fn outcome_is_served(o: OllamaRunnerMemoryObservation) -> Bool {
@@ -348,12 +489,15 @@ fn memory_fit_evidence(
   hot_sessions: Nat,
   node: NonEmptyStr,
 ) -> MemoryFitEvidence {
-  let qualifying = qualifying_memory_observations(
+  let served = served_qualifying_observations(
     observations: observations, realization: realization,
     floor: floor, hot_sessions: hot_sessions, node: node)
-  let served = filter(qualifying, o => outcome_is_served(o: o))
-  let refused = filter(qualifying, o => outcome_is_memory_refusal(o: o))
-  let broken = filter(qualifying, o => outcome_is_other_failure(o: o))
+  let refused = refused_at_exact_point(
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node)
+  let broken = failed_otherwise_at_exact_point(
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node)
   match shallowest_of(observations: served) {
     Present { value: s } =>
       match shallowest_of(observations: refused) {
@@ -544,6 +688,8 @@ fn evaluate_candidate(
             false => match prefill_rate_at_floor(
               observations: candidate.fresh_prefill_observations,
               realization: candidate.realization,
+              node: node,
+              hot_sessions: constraints.hot_sessions,
               floor: constraints.context_floor,
               regime: constraints.prefill_regime,
             ) {
