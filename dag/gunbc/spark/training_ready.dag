@@ -4,16 +4,10 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.measure { ByteSize, byte_size_count, kibibyte, kibibyte_to_byte_size }
 import std.algebra { trim }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.cell_role {
-  SparkCellRole,
-  SparkServingCell,
-  SparkTrainingCell,
-  spark_cell_role_of,
-  spark_cell_role_eq,
-  SparkCellRoleLookup,
-  SparkCellRoleAbsent,
-  SparkCellRoleUnique,
-  SparkCellRoleAmbiguous,
+import gunbc.node_workload_placement {
+  TrainingWorkload,
+  workloads_on,
+  node_runs,
 }
 import extdeps.iproute2.ss { ss_enumeration_is_empty }
 import extdeps.procps.pgrep { pgrep_exit_no_match }
@@ -442,19 +436,14 @@ fn spark_training_readiness(
   pool: SparkUnifiedPoolObservation,
 ) -> SparkTrainingReadiness {
   let retirement = pool.after
-  match spark_cell_role_of(host: retirement.host) {
-    SparkCellRoleAbsent =>
-      SparkTrainingNotReady {
-        cause: "spark_training_ready: the host holds no Spark cell role, so nothing assigned it to training" as NonEmptyStr,
-      }
-    SparkCellRoleAmbiguous { assignments: _ } =>
-      SparkTrainingNotReady {
-        cause: "spark_training_ready: more than one assignment row names this host, so the roster does not decide what the cell is for — an ambiguous role never authorizes training" as NonEmptyStr,
-      }
-    SparkCellRoleUnique { role: role } =>
-      if !spark_cell_role_eq(a: role, b: SparkTrainingCell) {
+  if length(workloads_on(host: retirement.host)) == 0 {
+    SparkTrainingNotReady {
+      cause: "spark_training_ready: nothing is placed on this host, so nothing assigned it to training" as NonEmptyStr,
+    }
+  } else {
+      if !node_runs(host: retirement.host, workload: TrainingWorkload) {
         SparkTrainingNotReady {
-          cause: "spark_training_ready: the host's role is serving — a serving cell is statically reserved and never becomes training capacity by observation" as NonEmptyStr,
+          cause: "spark_training_ready: training is not placed on this host — a workload becomes capacity by being placed, never by being observed" as NonEmptyStr,
         }
       } else if byte_size_count(b: pool.free_pool) <= 0 {
         SparkTrainingNotReady {

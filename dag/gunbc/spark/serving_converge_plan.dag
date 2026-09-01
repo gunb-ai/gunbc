@@ -73,9 +73,8 @@ import gunbc.spark.serving_member_realization {
   SparkServingMemberRetires,
   spark_serving_install_effects_include,
 }
-import gunbc.spark.cell_role {
-  SparkCellRole, SparkServingCell, SparkTrainingCell, spark_cell_role_of,
-  SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
+import gunbc.node_workload_placement {
+  ServingWorkload, workloads_on, node_runs,
 }
 import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
@@ -662,37 +661,28 @@ fn spark_serving_role_scoped_desired_members(
   occurrence: SparkServingOccurrence,
   serving_release: SparkServingRelease,
 ) -> SparkServingRoleScopedDesired {
-  match spark_cell_role_of(host: occurrence.host) {
-    SparkCellRoleAbsent =>
-      SparkServingRoleScopedDesiredRefused {
-        cause: "spark serving plan refused: the host holds no Spark cell role, and a machine nobody assigned must not receive serving desired state by default",
+  if length(workloads_on(host: occurrence.host)) == 0 {
+    SparkServingRoleScopedDesiredRefused {
+      cause: "serving plan refused: nothing is placed on this host, and a machine nobody assigned must not receive serving desired state by default",
+    }
+  } else {
+    if node_runs(host: occurrence.host, workload: ServingWorkload) {
+      SparkServingRoleScopedDesiredReady {
+        members: spark_serving_desired_members(
+          occurrence: occurrence,
+          serving_release: serving_release,
+        ),
       }
-    SparkCellRoleAmbiguous { assignments: rows } =>
-      SparkServingRoleScopedDesiredRefused {
-        cause: join([
-          "spark serving plan refused: ", to_string(length(rows)),
-          " Spark cell role assignments name this host, so the roster does not decide whether it serves or trains",
-        ], ""),
+    } else {
+      SparkServingRoleScopedDesiredReady {
+        members: spark_serving_baseline_members(
+          members: spark_serving_desired_members(
+            occurrence: occurrence,
+            serving_release: serving_release,
+          ),
+        ),
       }
-    SparkCellRoleUnique { role: role } =>
-      match role {
-        SparkServingCell =>
-          SparkServingRoleScopedDesiredReady {
-            members: spark_serving_desired_members(
-              occurrence: occurrence,
-              serving_release: serving_release,
-            ),
-          }
-        SparkTrainingCell =>
-          SparkServingRoleScopedDesiredReady {
-            members: spark_serving_baseline_members(
-              members: spark_serving_desired_members(
-                occurrence: occurrence,
-                serving_release: serving_release,
-              ),
-            ),
-          }
-      }
+    }
   }
 }
 

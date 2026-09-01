@@ -25,7 +25,7 @@ data spark_serving_observation_scope_note: NonEmptyStr = "SPARK-PAIR-0 P0-C. WHI
 //
 // The obvious repair -- union the two ROLE rosters -- is rejected here, and rejecting it is the reason
 // this module exists rather than a one-line edit. Both role projections answer through
-// SparkCellRoleUnique and deliberately drop SparkCellRoleAmbiguous and SparkCellRoleAbsent, so their
+// a unique role and deliberately dropped the ambiguous and absent arms, so their
 // concatenation silently omits a host whose role assignment is broken. But an absent or contradictory
 // ROLE says nothing about whether a serving PROCESS is running on the metal; a broken assignment is
 // precisely when stale serving state most needs to stay visible. That repair would have fixed today's

@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.serving_desired { spark_serving_desired_hosts }
-import gunbc.spark.cell_role { spark_serving_cell_hosts, spark_training_cell_hosts }
+import gunbc.node_workload_placement { serving_nodes, training_nodes }
 import gunbc.spark.serving_observation_scope {
   spark_serving_observation_scope,
   spark_observation_coverage,
@@ -39,14 +39,14 @@ test fn w_the_observation_scope_carries_both_spark_units() -> Bool {
 
 // THE SCOPE IS WIDER THAN EITHER ROLE ROSTER, WHICH IS THE PARTITION THE RETIREMENT NEEDS.
 test fn w_the_scope_is_not_the_serving_roster() -> Bool {
-  length(spark_serving_cell_hosts()) == 1
+  length(serving_nodes()) == 1
     && length(spark_serving_observation_scope()) == 2
 }
 
 test fn w_the_scope_covers_the_training_cell_the_serving_roster_omits() -> Bool {
-  let training = spark_training_cell_hosts()
+  let training = training_nodes()
   length(training) == 1
-    && w_covered(expected: spark_serving_observation_scope(), observed: concat(spark_serving_cell_hosts(), training))
+    && w_covered(expected: spark_serving_observation_scope(), observed: concat(serving_nodes(), training))
 }
 
 // COVERAGE CONTROLS: each defect is a distinct arm, so each gets its own red.

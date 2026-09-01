@@ -75,7 +75,8 @@ type SparkServingResourceAddress
 // being true of whatever it is now for.
 //
 // This is a scope, not a role: it says which addresses belong to the serving role's population, and
-// gunbc.spark.cell_role says which hosts have that role. A training cell keeps its baseline members
+// gunbc.node_workload_placement says which nodes hold that workload. A node without serving placed on
+// it keeps its baseline members
 // desired and holds no serving-role members at all, so its retirement is the removal of exactly the
 // four the service owned.
 type SparkServingAddressScope

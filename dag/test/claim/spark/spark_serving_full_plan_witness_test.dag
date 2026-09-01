@@ -135,7 +135,8 @@ import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
 //
 // This file's subject was srv6 throughout, from before any host was assigned a role. Every claim
 // below asks the production planner to install the full seven-member serving population on it. Once
-// gunbc.spark.cell_role made srv6 a training cell, the planner correctly answers three baseline
+// gunbc.node_workload_placement places training and not serving on srv6, the planner correctly
+// answers three baseline
 // members for that host -- so these claims were not merely mis-aimed, they were asserting the
 // pre-role behaviour and would have gone red on the population the production path now produces.
 // That is the cross-PR integration surface a green new witness file does not cover: the defect was

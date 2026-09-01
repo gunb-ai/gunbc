@@ -3,7 +3,7 @@ module gunbc.spark.serving_desired
 import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { TokenCount, token_count }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.cell_role { spark_serving_cell_hosts }
+import gunbc.node_workload_placement { serving_nodes }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_resolution }
 import gunbc.ollama_model_resolution { gpt_oss_20b_resolution }
@@ -58,11 +58,12 @@ import gunbc.spark.serving_realization {
 // literal in this file while the intent lived nowhere. Deleting the name would have been a change
 // with no reviewable subject.
 //
-// gunbc.spark.cell_role owns the fact. Serving desired state asks it which cells serve, so srv6
-// leaves this roster because its ROLE changed -- one edit, in the authority, that the training-side
+// gunbc.node_workload_placement owns the fact. Serving desired state asks it which nodes serve, so a
+// node joins or leaves this roster by a placement edit in the authority, which the training-side
 // roster reads from too. The two rosters cannot disagree about a host because they are one fold of
-// one list read in two directions.
-data spark_serving_desired_hosts: List<HostIdentity> = spark_serving_cell_hosts()
+// one list read in two directions -- and a node placed with BOTH workloads appears in both, which is
+// an answer rather than the conflict the replaced role sum had to refuse.
+data spark_serving_desired_hosts: List<HostIdentity> = serving_nodes()
 
 // OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model,
 // executor-owned serving process under gunbc-automation. Runtime closure identity derives from

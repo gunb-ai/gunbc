@@ -3,18 +3,15 @@ module test.claim.spark.spark_cell_role_retirement_witness_test
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
-import gunbc.spark.cell_role {
-  SparkCellRole,
-  SparkServingCell,
-  SparkTrainingCell,
-  spark_cell_role_of,
-  SparkCellRoleLookup,
-  SparkCellRoleAbsent,
-  SparkCellRoleUnique,
-  SparkCellRoleAmbiguous,
-  spark_cell_role_eq,
-  spark_serving_cell_hosts,
-  spark_training_cell_hosts,
+import gunbc.node_workload_placement {
+  NodeWorkload,
+  ServingWorkload,
+  TrainingWorkload,
+  node_workload_eq,
+  workloads_on,
+  node_runs,
+  serving_nodes,
+  training_nodes,
 }
 import gunbc.spark.serving_desired {
   SparkServingDesiredAdmitted,
@@ -159,57 +156,64 @@ fn w_retirement_effects(address: SparkServingResourceAddress) -> List<SparkServi
   }
 }
 
-// THE ROLES ARE DISJOINT AND TOTAL OVER THE TWO SPARKS.
+// THE SHIPPED PLACEMENT IS ONE WORKLOAD EACH, AND THAT IS A VALUE RATHER THAN A LAW.
 //
-// A cell holding both roles has no constructor, so this claim cannot be about that -- it is about
-// the ASSIGNMENT, where the same host appearing in both rosters is still writable. It is the
-// assignment, not the type, that this checks.
-test fn w_spark_roles_are_disjoint_over_the_assignment() -> Bool {
-  length(spark_serving_cell_hosts()) == 1
-    && length(spark_training_cell_hosts()) == 1
-    && any(spark_serving_cell_hosts(), h => h as String == operator_host_srv5 as String)
-    && any(spark_training_cell_hosts(), h => h as String == operator_host_srv6 as String)
-    && !any(spark_serving_cell_hosts(), h => h as String == operator_host_srv6 as String)
-    && !any(spark_training_cell_hosts(), h => h as String == operator_host_srv5 as String)
+// This claim used to assert that the two rosters were DISJOINT, and it read as a property of the
+// model because the role sum made a dual-role cell unconstructible. That property is deliberately
+// gone: a node may now hold both workloads, and the placement authority's whole purpose is to make
+// that an ordinary edit.
+//
+// So what remains here is a statement about today's roster, not about what is writable. It reds if
+// someone changes the placement, which is correct -- a placement change should be a decision -- but
+// it must not be read as evidence that overlap is forbidden. The claim that overlap is EXPRESSIBLE
+// lives in test.claim.node_workload_placement_witness, where a fixture exercises it directly.
+test fn w_the_shipped_placement_is_one_workload_each() -> Bool {
+  length(serving_nodes()) == 1
+    && length(training_nodes()) == 1
+    && any(serving_nodes(), h => h as String == operator_host_srv5 as String)
+    && any(training_nodes(), h => h as String == operator_host_srv6 as String)
 }
 
-// A HOST NOBODY ASSIGNED HAS NO ROLE, WHICH IS NOT A ROLE.
+// A HOST NOBODY PLACED ANYTHING ON HOLDS NO WORKLOAD, WHICH IS NOT A WORKLOAD.
 //
-// The falsifier for a defaulting lookup: if the fold answered SparkServingCell for an unknown host,
-// every machine in the fleet would be a serving cell and this goes red.
-test fn w_unassigned_host_has_no_spark_role() -> Bool {
-  match spark_cell_role_of(host: "srv1" as HostIdentity) {
-    SparkCellRoleAbsent => true
-    SparkCellRoleUnique { role: _ } => false
-    SparkCellRoleAmbiguous { assignments: _ } => false
-  }
+// The falsifier for a defaulting lookup, and it survives the model change unchanged in spirit: if
+// the fold answered ServingWorkload for an unknown host, every machine in the fleet would be a
+// serving node and this goes red. srv1 is a real fleet host with no placement, so it is the honest
+// probe rather than a synthetic name.
+test fn w_unplaced_host_holds_no_workload() -> Bool {
+  length(workloads_on(host: "srv1" as HostIdentity)) == 0
+    && !node_runs(host: "srv1" as HostIdentity, workload: ServingWorkload)
+    && !node_runs(host: "srv1" as HostIdentity, workload: TrainingWorkload)
 }
 
 // SERVING DESIRED STATE IS SRV5 ALONE, AND IT GOT THERE BY PROJECTION.
 //
-// This is the claim that goes red the moment srv6's role is reverted to SparkServingCell -- which is
-// the point. Nothing here names srv6 as excluded; the roster simply is what the role authority says,
-// so a role change moves it without this file being touched.
-test fn w_serving_desired_hosts_are_the_serving_cells() -> Bool {
+// This is the claim that goes red the moment serving is also placed on srv6 -- which is the point.
+// Nothing here names srv6 as excluded; the roster simply is what the placement authority says, so a
+// placement change moves it without this file being touched.
+test fn w_serving_desired_hosts_are_the_serving_nodes() -> Bool {
   length(spark_serving_desired_hosts) == 1
     && any(spark_serving_desired_hosts, h => h as String == operator_host_srv5 as String)
     && !any(spark_serving_desired_hosts, h => h as String == operator_host_srv6 as String)
 }
 
-// THE OFFER ROSTER EXCLUDES THE SERVING CELL, ASSERTED OVER THE ROSTER ITSELF.
+// THE TRAINING ROSTER IS WHAT TRAINING IS PLACED ON, AND NOTHING ELSE.
 //
-// This asked a `spark_host_offerable_for_training` predicate, which existed only to be asked by this
-// claim -- a claim whose whole subject is a function nothing else calls measures its own fixture. The
-// subject that matters is the roster P3's supply module will consume, so the claim reads that: srv5
-// is absent from it because it serves, srv6 is present because it trains, and an unassigned host is
-// in neither roster because it is not a Spark cell.
-test fn w_serving_cell_is_not_offerable_to_the_training_fabric() -> Bool {
-  let trainable = spark_training_cell_hosts()
+// The reasoning this replaces was subtly wrong and the model change exposes it. It said srv5 is
+// absent from the trainable roster BECAUSE IT SERVES -- as though serving excluded training. It does
+// not, and never did structurally; srv5 is absent because training is not placed on it. Under the
+// old role sum those two readings could not be told apart, because a serving cell was by
+// construction not a training cell. They come apart now, and only the second one is true.
+//
+// The unplaced host stays in the claim because it is the arm that catches a defaulting fold: srv1 is
+// in neither roster, not because of any exclusion rule, but because nothing was placed on it.
+test fn w_the_training_roster_is_exactly_what_training_is_placed_on() -> Bool {
+  let trainable = training_nodes()
   length(trainable) == 1
     && any(trainable, h => h as String == operator_host_srv6 as String)
     && !any(trainable, h => h as String == operator_host_srv5 as String)
     && !any(trainable, h => h as String == "srv1")
-    && !any(spark_serving_cell_hosts(), h => h as String == "srv1")
+    && !any(serving_nodes(), h => h as String == "srv1")
 }
 
 // THE FOUR SERVICE ADDRESSES RETIRE; THE THREE BASELINE ADDRESSES REFUSE.
