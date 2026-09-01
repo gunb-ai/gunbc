@@ -2244,7 +2244,8 @@ const REQUIRED_V2_EMISSION_ENTRIES_DATA_NAME: &str = "required_v2_emission_entri
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 9] = [
+    "LocalRepoWetLane",
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
