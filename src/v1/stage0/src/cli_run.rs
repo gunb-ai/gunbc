@@ -65,6 +65,13 @@ pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
 }
 
+pub fn required_lane_cross_process_content_judged_module_identities_for_ci() -> Vec<String> {
+    // The weaker column still has content provenance: `subject_digest_for_closure` keys the
+    // artifact by closure-content digest plus compiler-transform digest, and disk lookup verifies
+    // both the request key and stored semantic digest. It does not prove judgment by this run.
+    entry_resolve::required_lane_cross_process_content_judged_module_identities()
+}
+
 /// Module identities admitted by the same source-root ingestion used by compilation.
 ///
 /// This is a measurement receipt for required CI. It intentionally reuses the ingest producer
@@ -9930,6 +9937,10 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    /// Subjects whose current `resolved_graph_memo` value was installed from the on-disk
+    /// cross-process store rather than computed by this process. Kept alongside the memo so a
+    /// reference hit cannot erase the provenance distinction.
+    resolved_graph_memo_cross_process_subjects: RefCell<std::collections::HashSet<String>>,
     /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
     /// retention keystone). Armed at the start of a private-index (`cross_worker_store
     /// == None`) discovery run from the schedule's per-entry closures, driven per
@@ -10011,6 +10022,10 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
+    index
+        .resolved_graph_memo_cross_process_subjects
+        .borrow_mut()
+        .clear();
 }
 
 /// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
@@ -10183,7 +10198,13 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
-        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
+        "resolved_graph_memo" => {
+            index.resolved_graph_memo.borrow_mut().clear();
+            index
+                .resolved_graph_memo_cross_process_subjects
+                .borrow_mut()
+                .clear();
+        }
         "intern_table" => {
             *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
         }
@@ -11028,11 +11049,17 @@ fn index_schedule_entry_completed(
     // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
     // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) if evict_enabled => index
-            .resolved_graph_memo
-            .borrow_mut()
-            .remove(subj)
-            .is_some(),
+        Some(subj) if evict_enabled => {
+            index
+                .resolved_graph_memo_cross_process_subjects
+                .borrow_mut()
+                .remove(subj);
+            index
+                .resolved_graph_memo
+                .borrow_mut()
+                .remove(subj)
+                .is_some()
+        }
         _ => false,
     };
     let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
@@ -13224,6 +13251,10 @@ fn install_cross_process_materialization_hit(
     Rc<im::Vector<Rc<ErrorNode>>>,
 ) {
     if memo_share == ResolvedGraphMemoShare::Memoize {
+        index
+            .resolved_graph_memo_cross_process_subjects
+            .borrow_mut()
+            .insert(subject.to_string());
         index.resolved_graph_memo.borrow_mut().insert(
             subject.to_string(),
             (
