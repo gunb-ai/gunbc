@@ -16,16 +16,17 @@ pub use crate::v1_compiler_coercion::{
 pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
-pub use crate::v1_compiler_emit_rust::is_host_text_carrier_type;
+pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
 pub use crate::v1_compiler_infer_env::lookup_type_for;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{authored_name_at, param_node_type_expr};
-pub use crate::v1_std_core::{InferredNode, NewlineIndex, Node};
+pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -240,6 +241,63 @@ pub fn no_typed_rows() -> Rc<Vec<Rc<TypedCarrierRow>>> {
     Rc::new(vec![])
 }
 
+pub fn typed_occurrence_rows(
+    module_file: String,
+    enclosing: String,
+    position_kind: String,
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TypedCarrierRow>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let node_is_arrow = match n.connective.clone() {
+            Connective::Arrow => true,
+            _ => false,
+        };
+        if node_is_arrow.clone() {
+            {
+                let param_rows = n.params.clone().iter().cloned().fold(
+                    no_typed_rows(),
+                    |acc: _, p: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            typed_occurrence_rows(
+                                module_file.clone(),
+                                enclosing.clone(),
+                                v1_rt::concat(position_kind.clone(), "/fn_type_param".to_string()),
+                                crate::v1_std_core::param_node_type_expr(p.clone()),
+                                env.clone(),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                );
+                let return_rows = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => typed_occurrence_rows(
+                        module_file.clone(),
+                        enclosing.clone(),
+                        v1_rt::concat(position_kind.clone(), "/fn_type_return".to_string()),
+                        rt.clone(),
+                        env.clone(),
+                        si.clone(),
+                    ),
+                    _ => no_typed_rows(),
+                };
+                v1_rt::concat(param_rows.clone(), return_rows.clone())
+            }
+        } else {
+            Rc::new(vec![typed_decision_row(
+                module_file.clone(),
+                enclosing.clone(),
+                position_kind.clone(),
+                n.clone(),
+                env.clone(),
+                si.clone(),
+            )])
+        }
+    })
+}
+
 pub fn typed_field_rows(
     module_file: String,
     enclosing: String,
@@ -253,14 +311,14 @@ pub fn typed_field_rows(
         .fold(no_typed_rows(), |acc: _, fld: Rc<Node>| {
             v1_rt::concat(
                 acc,
-                Rc::new(vec![typed_decision_row(
+                typed_occurrence_rows(
                     module_file.clone(),
                     enclosing.clone(),
                     "declaration_field".to_string(),
                     crate::v1_compiler_infer_types::child_type_node(fld.clone()),
                     env.clone(),
                     si.clone(),
-                )]),
+                ),
             )
         })
 }
@@ -305,21 +363,20 @@ pub fn typed_item_rows(
         let param_rows_t = if (item.body.clone() == std::option::Option::None) {
             no_typed_rows()
         } else {
-            item.params
-                .clone()
+            crate::v1_compiler_emit_rust::function_value_params(item.params.clone())
                 .iter()
                 .cloned()
                 .fold(no_typed_rows(), |acc: _, prm: Rc<Node>| {
                     v1_rt::concat(
                         acc,
-                        Rc::new(vec![typed_decision_row(
+                        typed_occurrence_rows(
                             module_file.clone(),
                             enclosing.clone(),
                             "fn_signature_param".to_string(),
                             crate::v1_std_core::param_node_type_expr(prm.clone()),
                             env.clone(),
                             si.clone(),
-                        )]),
+                        ),
                     )
                 })
         };
