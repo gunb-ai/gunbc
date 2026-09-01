@@ -13,6 +13,7 @@ import gunbc.ci_layer_roots {
   witness_exclusion_row_is_discovery_selection,
   witness_exclusion_row_is_no_consumer,
   witness_exclusion_row_is_bin_witness_wet,
+  witness_exclusion_row_is_local_repo_wet_lane,
   witness_exclusion_row_is_known_red,
   witness_exclusion_row_is_falsifier_wet,
   witness_exclusion_row_is_rehomed_bin_wet,
@@ -43,7 +44,6 @@ import std.realization_schedule {
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { String }
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_witness_entries,
@@ -79,6 +79,7 @@ import std.witness_admission {
   witness_cadence_has_scheduled_route
 }
 import std.dissolution { dissolution_description }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 
 fn schedule_row_matches(
   w: ScheduleWitnessEntry,
@@ -109,8 +110,22 @@ fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
 
 data consumer_for_explicit_rosters_cadence_fork_removed_note: String = "THE FORK THIS FUNCTION CARRIED WAS A FAIL-OPEN, NOT A STALE VALUE (2026-08-26, dashboard node adhoc-a660c665-d46). The first arm read `if falsifier_self_host_wet_cadence_is_active() { FalsifierSelfHostWet } else { OfflineLocalRecipe }`. Both arms are answers to the question this function asks -- WHICH POLICY CLAIMS THIS ROW -- but the flag they switched on answered a different question entirely: does that policy currently execute. Mixing them made the classification move when the schedule moved, and it moved in the wrong direction: FalsifierSelfHostWet has no scheduled route, so it derives DeclaredCadenceUnrealized and reads as uncovered, while OfflineLocalRecipe has a route by definition and reads as COVERED. A dark lane therefore promoted its own rows to covered. That is DESIGN section 5's absorbing fallback -- a failure arm that widens instead of refusing -- and it is why the flag was deleted at its root rather than set to its honest value (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_cadence_flag_deleted_note). Membership on the roster now decides the cadence, full stop; whether that cadence runs is decided once, in std.witness_admission witness_cadence_has_scheduled_route, and read here only by witness_execution_standing_for_row."
 
+// THE NARROWER CLAIM WINS, AND IT IS FIRST. Every local-repo wet member is also a `bin_wet` row,
+// so if this branch sat below the BinWitnessWet one the new cadence would classify nothing and its
+// `witness_cadence_has_scheduled_route` = true would be a claim about an empty population --
+// DESIGN section 4b rung inflation. The membership authority is the schedule the required floor's
+// executor decodes, so the classification and the execution cannot disagree about who is claimed.
+fn local_repo_wet_lane_claims(entry: String, function: String) -> Bool {
+  any(
+    xs: local_repo_wet_schedule(),
+    predicate: fn(r) { (r.entry == entry) && (r.function == function) }
+  )
+}
+
 fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessConsumerCadence {
-  if schedule_contains_entry(
+  if local_repo_wet_lane_claims(entry: entry, function: function) {
+    LocalRepoWetLane
+  } else if schedule_contains_entry(
     xs: falsifier_self_host_wet_entries(),
     entry: entry,
     function: function
@@ -481,6 +496,19 @@ fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: Strin
   )
 }
 
+// CONTAINMENT IS ALL THIS FUNCTION CAN ASK, AND FOR THE LOCAL-REPO LANE IT IS NOT THE WALL.
+// The reconciliation above proves only that some schedule entry's path contains the row's pattern.
+// For LocalRepoWetLane the real coverage check is the required floor's identity-grain join
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_join), which refuses a missing, duplicated,
+// foreign-candidate or unscheduled terminal. This arm exists so the new classification is not
+// silently unreconciled here while its members sit on a roster this function never reads.
+fn local_repo_wet_schedule_covers_pattern(pattern: String) -> Bool {
+  any(
+    xs: local_repo_wet_schedule(),
+    predicate: fn(r) { string_contains(s: r.entry, pattern: pattern) }
+  )
+}
+
 fn witness_exclusion_explicit_roster_rows_consistent(
   rows: List<WitnessExclusionRow>,
   bin_entries: List<ScheduleWitnessEntry>,
@@ -496,6 +524,8 @@ fn witness_exclusion_explicit_roster_rows_consistent(
             && !schedule_entries_cover_pattern(xs: rehomed_entries, pattern: row.pattern))
         || (witness_exclusion_row_is_substrate_long_lane(row: row)
             && !schedule_entries_cover_pattern(xs: substrate_long_entries, pattern: row.pattern))
+        || (witness_exclusion_row_is_local_repo_wet_lane(row: row)
+            && !local_repo_wet_schedule_covers_pattern(pattern: row.pattern))
     }
   )
 }
