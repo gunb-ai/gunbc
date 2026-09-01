@@ -16,7 +16,10 @@ import gunbc.scm.object_store {
   ObjectRecord,
   ObjectStore,
   StoredEdge,
-  find_object,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
+  find_node_record,
 }
 
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
@@ -28,8 +31,16 @@ type Commit {
   root: ObjectId
 }
 
+// AN AUTHORED SOURCE AT A PROGRAM POSITION IS ITS OWN REFUSAL, NOT A MISSING OBJECT.
+//
+// Once the store holds two kinds of object, a checkout can reach an identity that IS present and is
+// a file rather than a program. Reporting that as MissingObject would send an operator looking for
+// bytes that are right there, which is the not-applicable-rendered-as-malformed failure -- the two
+// have opposite remedies. It is also not silently skippable: reconstructing the node without that
+// child would hand back a program the commit does not name.
 type CheckoutRefusal
   = MissingObject { identity: ObjectId }
+  | ObjectIsAuthoredSource { identity: ObjectId }
 
 type CheckoutOutcome
   = CheckedOut { program: Node }
@@ -87,9 +98,11 @@ fn checkout_record(store: ObjectStore, record: ObjectRecord) -> CheckoutOutcome 
 }
 
 fn checkout_object(store: ObjectStore, identity: ObjectId) -> CheckoutOutcome {
-  match find_object(store: store, identity: identity) {
-    Absent => CheckoutRefused { cause: MissingObject { identity: identity } }
-    Present { value: record } => checkout_record(store: store, record: record)
+  match find_node_record(store: store, identity: identity) {
+    NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
+    NodeRecordIsAuthoredSource { identity: i } =>
+      CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordFound(record) => checkout_record(store: store, record: record)
   }
 }
 

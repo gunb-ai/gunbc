@@ -42,6 +42,7 @@ import gunbc.scm.merge {
   DesiredBindingAbsent,
   MergeRefused,
   MergeRefusal,
+  TargetRootIsAuthoredSource,
   RequiredDependencyRemoved,
   DependencyKindUnsupportedForMerge,
   ResolvedRole,
@@ -158,6 +159,7 @@ fn refusal_locates(
             && ((dep.usage_site as String) == (usage_site as String))
             && ((removed as String) == (required as String))
         TargetRootMissing { identity: _ } => false
+        TargetRootIsAuthoredSource { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
@@ -281,6 +283,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
           (kind as String) == (^barrier_before as String)
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
+        TargetRootIsAuthoredSource { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
@@ -478,6 +481,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
           (kind as String) == (^placement_depends_on as String)
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
+        TargetRootIsAuthoredSource { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }

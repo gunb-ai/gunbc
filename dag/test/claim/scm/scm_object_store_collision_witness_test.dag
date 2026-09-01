@@ -19,6 +19,11 @@ import gunbc.scm.object_store {
   a_child_collision_propagates_and_the_parent_is_not_stored,
   the_same_parent_stores_cleanly_without_the_impostor,
   a_copy_into_a_colliding_destination_refuses,
+  authored_source_identity_follows_its_bytes,
+  the_same_authored_source_stores_once,
+  the_empty_file_is_its_own_object,
+  a_file_under_a_nodes_locator_refuses,
+  the_same_file_stores_cleanly_under_its_own_identity,
 }
 
 // One locator, two different canonical records -- refused, and the refusal names both records so a
@@ -50,4 +55,32 @@ test fn the_parent_fixture_stores_cleanly_on_its_own() -> Bool {
 // The existing present-source and absent-source copy claims are its controls.
 test fn copying_into_a_colliding_destination_refuses() -> Bool {
   a_copy_into_a_colliding_destination_refuses()
+}
+
+// ------------------------------------------------------------------------------------------------
+// AUTHORED SOURCE. The store now holds two kinds of object, and these are the arms that distinction
+// adds. The bodies are in gunbc.scm.object_store, where the seal lets the impostor fixture exist.
+// ------------------------------------------------------------------------------------------------
+
+test fn an_authored_sources_identity_follows_its_bytes() -> Bool {
+  authored_source_identity_follows_its_bytes()
+}
+
+test fn storing_one_file_twice_stores_it_once() -> Bool {
+  the_same_authored_source_stores_once()
+}
+
+test fn an_empty_file_is_an_object_rather_than_an_absence() -> Bool {
+  the_empty_file_is_its_own_object()
+}
+
+// The cross-kind collision arm: a file landing on a node's locator refuses instead of shadowing it.
+test fn a_file_under_a_nodes_locator_is_refused() -> Bool {
+  a_file_under_a_nodes_locator_refuses()
+}
+
+// CONTROL, so the refusal above is attributable to the locator clash rather than to authored source
+// being unstorable at all.
+test fn the_file_fixture_stores_cleanly_on_its_own() -> Bool {
+  the_same_file_stores_cleanly_under_its_own_identity()
 }

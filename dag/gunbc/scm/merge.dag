@@ -26,6 +26,10 @@ import gunbc.scm.object_store {
   Stored,
   LocatorCollision,
   ObjectRecord,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
+  find_node_record,
   StoredEdge,
   object_id_eq,
   store_node,
@@ -201,6 +205,7 @@ type ResolvedRole {
 // placement violation at the shared resource, neither of which is an endpoint.
 type MergeRefusal
   = TargetRootMissing { identity: ObjectId }
+  | TargetRootIsAuthoredSource { identity: ObjectId }
   | TargetChildMissing { role: Symbol, identity: ObjectId }
   | BindingLocatorCollision { role: Symbol, identity: ObjectId }
   | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
@@ -296,9 +301,11 @@ fn edge_label_role(label: EdgeLabel) -> Symbol? {
 // preservation law mean object reuse: nothing is recomputed for a role no proposal implicates, so
 // "unchanged" is the same object and not a fresh derivation that hashes equal.
 fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
-  match find_object(store: store, identity: target.root) {
-    Absent => TargetUnreadable { cause: TargetRootMissing { identity: target.root } }
-    Present { value: record } =>
+  match find_node_record(store: store, identity: target.root) {
+    NodeRecordAbsent { identity: i } => TargetUnreadable { cause: TargetRootMissing { identity: i } }
+    NodeRecordIsAuthoredSource { identity: i } =>
+      TargetUnreadable { cause: TargetRootIsAuthoredSource { identity: i } }
+    NodeRecordFound(record) =>
       TargetRead {
         roles: reverse(fold(record.children, init: [], f: fn(acc, stored) {
           match edge_label_role(label: stored.label) {

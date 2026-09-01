@@ -107,13 +107,21 @@ import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
   ObjectStore,
+  ScmObject,
+  SemanticNodeObject,
+  AuthoredSourceObject,
+  AuthoredSourceContent,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
   StoredEdge,
   StoreOutcome,
   Stored,
   LocatorCollision,
   empty_store,
   insert_from_structure,
+  store_authored_source,
   object_id_eq,
+  scm_object_identity,
   store_records_in_dependency_order,
 }
 
@@ -200,6 +208,7 @@ type ClosureDocEncodeRefusal
 type ClosureDocMemberContext
   = ClosureDocEnvelopeMembers
   | ClosureDocObjectRecordMembers
+  | ClosureDocAuthoredSourceMembers
   | ClosureDocTypeKindMembers
   | ClosureDocAtomKindMembers
   | ClosureDocComputationKindMembers
@@ -402,6 +411,37 @@ fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue 
   )
 }
 
+// THE TWO ENTRY SHAPES ARE DISJOINT MEMBER SETS, AND THAT IS THE DISCRIMINATOR.
+//
+// A node entry keeps `{kind, children}` unchanged, byte for byte, so every document the predecessor
+// accepted this codec still accepts and decodes identically -- this is a strict extension, not a
+// format version. An authored source entry is `{source}`. Nothing matches both, and an entry
+// matching NEITHER refuses by member set rather than being read as the closest fit: shape-sniffing
+// is admissible only when the shapes partition, and the refusal is what keeps it a partition rather
+// than a guess.
+//
+// THE CONTENT IS ONE JSON STRING AND THE EMPTY FILE IS THE EMPTY ONE. AuthoredSourceContent's arms
+// partition exactly on emptiness, so the encoding is total and the decode reconstructs the same arm
+// through authored_source_content -- no tag beside the payload that could disagree with it.
+fn encode_authored_source_content(content: AuthoredSourceContent) -> JsonValue {
+  match content {
+    AuthoredSourceEmpty => json_string(s: "")
+    AuthoredSourceText(text) => json_string(s: text as String)
+  }
+}
+
+fn encode_object(positions: EncodePositions, object: ScmObject) -> JsonValue {
+  match object {
+    SemanticNodeObject(record) => encode_record(positions: positions, record: record)
+    AuthoredSourceObject(record) =>
+      json_object(
+        members: [
+          json_kv(key: "source", value: encode_authored_source_content(content: record.content)),
+        ]
+      )
+  }
+}
+
 type EncodeAcc {
   positions: EncodePositions
   objects: List<JsonValue>
@@ -411,17 +451,17 @@ type EncodeAcc {
 // std.selected_witness_bundle all reverse a prepending fold). concat-at-end copies the whole
 // accumulator on every step; prepending does not, so the emitted order is restored by one linear
 // reverse instead of being bought with a quadratic.
-fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
+fn encode_step(acc: EncodeAcc, object: ScmObject) -> EncodeAcc {
   EncodeAcc {
     positions: EncodePositions {
       by_identity: map_insert(
         m: acc.positions.by_identity,
-        key: object_id_key(identity: record.identity),
+        key: object_id_key(identity: scm_object_identity(object: object)),
         value: position_reference(n: acc.positions.next),
       ),
       next: acc.positions.next + 1,
     },
-    objects: concat([encode_record(positions: acc.positions, record: record)], acc.objects),
+    objects: concat([encode_object(positions: acc.positions, object: object)], acc.objects),
   }
 }
 
@@ -437,7 +477,7 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
   match fold(
     store_records_in_dependency_order(store: store),
     init: EncodeAcc { positions: EncodePositions { by_identity: empty_map(), next: 0 }, objects: [] },
-    f: fn(acc, record) { encode_step(acc: acc, record: record) }
+    f: fn(acc, object) { encode_step(acc: acc, object: object) }
   ) {
     EncodeAcc { positions: positions, objects: reversed } =>
       EncodeAcc { positions: positions, objects: reverse(reversed) }
@@ -806,17 +846,70 @@ fn decode_acc_refused(acc: DecodeAcc, cause: ClosureDocRefusal) -> DecodeAcc {
   }
 }
 
+// CLASSIFY BEFORE READING, AND REFUSE WHEN NEITHER SHAPE FITS.
+//
+// The two entry shapes have disjoint member sets, so which one an entry is is decided by whether it
+// carries `source`. That question is asked FIRST, because asking it after attempting the node read
+// would report a node-shaped complaint about a file-shaped entry -- the not-applicable-rendered-as-
+// malformed failure. An entry carrying neither is refused by the node member set, which is the
+// pre-existing behaviour for an unrecognized entry and stays the default: a new shape has to be
+// added here deliberately, it cannot arrive by resembling something.
 fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match member_set_refusal(
-        v: object_value,
-        allowed: ["kind", "children"],
-        context: ClosureDocObjectRecordMembers
-      ) {
-        Present { value: c } => decode_acc_refused(acc: acc, cause: c)
-        Absent => decode_object_members(acc: acc, object_value: object_value)
+      match read_member(v: object_value, key: "source") {
+        MemberString { value: text } =>
+          match member_set_refusal(
+            v: object_value,
+            allowed: ["source"],
+            context: ClosureDocAuthoredSourceMembers
+          ) {
+            Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+            Absent => decode_authored_source(acc: acc, text: text)
+          }
+        MemberArray { elements: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
+          )
+        MemberObject { value: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
+          )
+        MemberFailed { cause: _ } =>
+          match member_set_refusal(
+            v: object_value,
+            allowed: ["kind", "children"],
+            context: ClosureDocObjectRecordMembers
+          ) {
+            Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+            Absent => decode_object_members(acc: acc, object_value: object_value)
+          }
+      }
+  }
+}
+
+// THE DECODER IS NOT A THIRD PRODUCER OF AUTHORED IDENTITIES. It hands the bytes to
+// store_authored_source, which derives the identity by the one rule -- so an image cannot assert an
+// identity for a file any more than it can for a node, and the position map records what the store
+// derived rather than what the document said.
+fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
+  match store_authored_source(store: acc.store, text: text) {
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      DecodeAcc {
+        store: acc.store,
+        positions: acc.positions,
+        next: acc.next,
+        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableObjectCollision { identity: i } } },
+      }
+    Stored { store: next_store, identity: identity } =>
+      DecodeAcc {
+        store: next_store,
+        positions: map_insert(m: acc.positions, key: position_reference(n: acc.next), value: identity),
+        next: acc.next + 1,
+        refusal: acc.refusal,
       }
   }
 }

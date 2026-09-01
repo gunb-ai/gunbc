@@ -56,6 +56,7 @@ import gunbc.scm.checkout {
   Commit,
   CheckoutRefusal,
   MissingObject,
+  ObjectIsAuthoredSource,
   RepositoryCheckout,
   RepositoryCheckedOut,
   CheckoutReferenceUnresolved,
@@ -193,6 +194,7 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
       r == scm_ck_ref(ordinal: 0)
         && match cause {
              MissingObject { identity: _ } => true
+             ObjectIsAuthoredSource { identity: _ } => false
            }
     CheckoutReferenceUnresolved { reference: _ } => false
     RepositoryCheckedOut { repository: _, program: _ } => false

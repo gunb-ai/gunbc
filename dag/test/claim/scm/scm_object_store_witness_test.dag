@@ -47,7 +47,10 @@ import gunbc.scm.object_store {
   ObjectRecord,
   StoredEdge,
   ObjectStore,
-  find_object,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
+  find_node_record,
   store_contains,
   store_object_count,
   copy_object,
@@ -63,6 +66,7 @@ import gunbc.scm.checkout {
   Commit,
   CheckoutRefusal,
   MissingObject,
+  ObjectIsAuthoredSource,
   commit_of_root,
   checkout,
   CheckedOut,
@@ -182,6 +186,7 @@ fn refusal_names(store: ObjectStore, commit: Commit, expected: ObjectId) -> Bool
     CheckoutRefused { cause: cause } =>
       match cause {
         MissingObject { identity: identity } => object_id_eq(left: identity, right: expected)
+        ObjectIsAuthoredSource { identity: _ } => false
       }
   }
 }
@@ -335,12 +340,14 @@ test fn reordered_named_children_share_one_identity() -> Bool {
 // of one was already true under the defect, because dedup was keyed on identity and the identity
 // was never in question.
 fn same_record(left: ObjectStore, right: ObjectStore, identity: ObjectId) -> Bool {
-  match find_object(store: left, identity: identity) {
-    Absent => false
-    Present { value: l } =>
-      match find_object(store: right, identity: identity) {
-        Absent => false
-        Present { value: r } => (l.kind == r.kind) && (l.children == r.children)
+  match find_node_record(store: left, identity: identity) {
+    NodeRecordAbsent { identity: _ } => false
+    NodeRecordIsAuthoredSource { identity: _ } => false
+    NodeRecordFound(l) =>
+      match find_node_record(store: right, identity: identity) {
+        NodeRecordAbsent { identity: _ } => false
+        NodeRecordIsAuthoredSource { identity: _ } => false
+        NodeRecordFound(r) => (l.kind == r.kind) && (l.children == r.children)
       }
   }
 }
