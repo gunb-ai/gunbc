@@ -580,8 +580,10 @@ test fn schemas_are_distinct_and_pinned_to_their_declared_versions() -> Bool {
 
 // THE GUARD ARMS THIS SUITE NEVER EXERCISED, and the receipt that proves it did not.
 //
-// parse_receipt_wire_v2 and parse_tested_subject_wire each reject a receipt whose SCHEMA line is
-// wrong or whose required fields are BLANK. Those arms had no case here: the suite reaches
+// parse_receipt_wire_v2 rejects a receipt whose SCHEMA line is wrong or whose required fields are
+// BLANK, and parse_tested_subject_wire has the same four guards over its own five-line wire; the
+// rows for the SUBJECT parser are further down, added after review of #9912 found that this comment
+// claimed both parsers while only the receipt one had rows. Those arms had no case here: the suite reaches
 // parse_gate_roster_hash_wire and compose_walk_attempt_id directly and feeds the wire parsers only
 // well-formed text, a trailing line and a malformed PR line. Measured, not assumed -- mutating the
 // blank-field comparison in gunbc.merge_admission_produce to a string no field can equal left all
@@ -663,14 +665,93 @@ test fn wire_v2_refuses_a_blank_base_commit_line() -> Bool {
 }
 
 // The object-id wire's algorithm prefix is the other comparison pair, and its else-arm answers none
-// for an unrecognised algorithm, so a wrong prefix must refuse while both declared ones parse.
-test fn object_id_wire_accepts_both_declared_algorithms_and_refuses_a_third() -> Bool {
+// for an unrecognised algorithm. BOTH declared prefixes need a VALID wire of their own: a row that
+// accepts sha1 and rejects md5 leaves the sha256 comparison free to become always-false, which is
+// the exact failure class this change exists to prevent. Caught in review of #9912, which is the
+// same defect one parser over from the one the mutation control caught.
+test fn object_id_wire_accepts_a_valid_sha1_wire() -> Bool {
   match parse_git_object_id_wire(raw: "sha1:abc1234def5678901234567890abcd1234567890") {
-    Present { value: _ } =>
-      match parse_git_object_id_wire(raw: "md5:abc1234def5678901234567890abcd1234567890") {
-        Present { value: _ } => false
-        Absent => true
-      }
+    Present { value: _ } => true
     Absent => false
   }
+}
+
+test fn object_id_wire_accepts_a_valid_sha256_wire() -> Bool {
+  match parse_git_object_id_wire(raw: "sha256:abc1234def5678901234567890abcd12abc1234def5678901234567890abcd12") {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn object_id_wire_refuses_an_undeclared_algorithm() -> Bool {
+  match parse_git_object_id_wire(raw: "md5:abc1234def5678901234567890abcd1234567890") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE SUBJECT PARSER'S FOUR GUARDS, WHICH THE FIRST CUT OF THESE ROWS LEFT UNCOVERED. Review of
+// #9912 found that the rows above exercised only `parse_receipt_wire_v2`, while the comment claimed
+// both parsers -- five of the ten rewritten comparisons had no discriminating evidence at all.
+// `parse_tested_subject_wire` takes exactly five lines: schema, attempt id, base_ref, head_sha,
+// base_commit_sha, and rejects a wrong schema line or any of the last three blank.
+
+fn subject_wire_with_lines(schema: String, attempt: String, base_ref: String, head: String, base_commit: String) -> String {
+  join([schema, attempt, base_ref, head, base_commit], "\n")
+}
+
+fn subject_refuses(text: String) -> Bool {
+  match parse_tested_subject_wire(text: text) { Present { value: _ } => false  Absent => true }
+}
+
+// Positive control for the builder, without which every refusal row below could be satisfied by a
+// wire malformed for some other reason.
+test fn subject_wire_built_from_explicit_lines_parses() -> Bool {
+  match parse_tested_subject_wire(text: subject_wire_with_lines(
+    schema: merge_admission_tested_subject_schema,
+    attempt: attempt_a_raw,
+    base_ref: "origin/main",
+    head: head_sha_fx,
+    base_commit: base_commit_fx,
+  )) { Present { value: _ } => true  Absent => false }
+}
+
+test fn subject_wire_refuses_a_wrong_schema_line() -> Bool {
+  subject_refuses(text: subject_wire_with_lines(
+    schema: "gunbc.merge_admission_tested_subject.v1",
+    attempt: attempt_a_raw,
+    base_ref: "origin/main",
+    head: head_sha_fx,
+    base_commit: base_commit_fx,
+  ))
+}
+
+test fn subject_wire_refuses_a_blank_base_ref_line() -> Bool {
+  subject_refuses(text: subject_wire_with_lines(
+    schema: merge_admission_tested_subject_schema,
+    attempt: attempt_a_raw,
+    base_ref: "",
+    head: head_sha_fx,
+    base_commit: base_commit_fx,
+  ))
+}
+
+test fn subject_wire_refuses_a_blank_head_sha_line() -> Bool {
+  subject_refuses(text: subject_wire_with_lines(
+    schema: merge_admission_tested_subject_schema,
+    attempt: attempt_a_raw,
+    base_ref: "origin/main",
+    head: "",
+    base_commit: base_commit_fx,
+  ))
+}
+
+test fn subject_wire_refuses_a_blank_base_commit_line() -> Bool {
+  subject_refuses(text: subject_wire_with_lines(
+    schema: merge_admission_tested_subject_schema,
+    attempt: attempt_a_raw,
+    base_ref: "origin/main",
+    head: head_sha_fx,
+    base_commit: "",
+  ))
 }
