@@ -37,44 +37,21 @@ import std.measure {
 
 // ============================ CAPACITY, at the three grains that actually differ ============================
 
-// A vendor's nominal figure, the kernel's visible total, and a live availability reading are THREE
-// DIFFERENT QUANTITIES, and confusing them has already produced a wrong fit decision. Nominal
-// overstates by the firmware carveout; observed-available understates by whatever is resident at the
-// moment of the reading. Only kernel_visible is a capacity, so only it is consumed here --
-// the others are retained so a reader can see the gap rather than rediscover it.
-type NodeCapacity {
-  node_name: NonEmptyStr
-  nominal: ByteSize
-  kernel_visible: ByteSize
-  runtime_overhead: ByteSize
-}
-
-// SUBTRACTION OVER Nat TRAPS, so both of these answer with an option rather than assuming their
-// operands are ordered. A vendor sheet smaller than the kernel's own reading, or an overhead
-// allowance exceeding the machine, is a MALFORMED CAPACITY -- a fact about the inputs, not a verdict
-// about any candidate -- and the selector reports it as unanswerable rather than trapping or
-// silently clamping to zero. Clamping would be the absorbing-fallback shape: an impossible machine
-// would quietly become a machine with no room, and every candidate would be rejected on memory for
-// a reason that was never true.
-fn firmware_carveout(capacity: NodeCapacity) -> ByteSize? {
-  match byte_size_count(b: capacity.kernel_visible) > byte_size_count(b: capacity.nominal) {
-    true => none
-    false => Present {
-      value: byte_size(count: byte_size_count(b: capacity.nominal) - byte_size_count(b: capacity.kernel_visible)),
-    }
-  }
-}
-
-// The bytes a model may actually occupy: what the kernel can hand out, less what the serving runtime
-// and OS need to stay alive. Deliberately NOT derived from a live availability sample.
-fn allocatable(capacity: NodeCapacity) -> ByteSize? {
-  match byte_size_count(b: capacity.runtime_overhead) > byte_size_count(b: capacity.kernel_visible) {
-    true => none
-    false => Present {
-      value: byte_size(count: byte_size_count(b: capacity.kernel_visible) - byte_size_count(b: capacity.runtime_overhead)),
-    }
-  }
-}
+// THE NODE CAPACITY CARRIER USED TO STAND HERE, with a three-grain distinction between a vendor's
+// nominal figure, the kernel's visible total and a live availability reading, and an `allocatable`
+// derivation that subtracted a declared runtime overhead from the kernel total.
+//
+// IT IS DELETED BECAUSE NOTHING IN THIS MODULE CAN CONSUME IT ANY MORE. The only decision it fed was
+// a comparison against an observed footprint, and that comparison turned out to span two accounting
+// domains: the observed quantity is an Ollama runner BUFFER figure parsed from llama-server logs,
+// and this was a /proc/meminfo total. Their difference is not a fact, so the headroom it produced was
+// manufactured. Once the memory arm stopped subtracting, capacity had no consumer, and a value the
+// decision cannot use is decoration that a later reader will mistake for a constraint.
+//
+// The three-grain distinction is real and worth keeping -- it has already caused one wrong fit
+// decision by treating a vendor nominal as spendable -- but it belongs to a capacity authority that
+// owns node facts, not to a selector that can no longer compare against them. It is removed here
+// rather than reproduced there speculatively, because this module is not that authority.
 
 // ============================ CANDIDATES ============================
 
@@ -89,7 +66,7 @@ type QuantizedCandidate {
   declared_context: TokenCount
   semantic_context_verified_to: TokenCount?
   fresh_prefill_observations: List<FreshPrefillObservation>
-  resident_footprint_observations: List<ResidentFootprintObservation>
+  runtime_memory_observations: List<OllamaRunnerMemoryObservation>
 }
 
 // PREFILL RATE IS NOT A SCALAR, and this repository's own measurements falsified the scalar that
@@ -197,18 +174,37 @@ fn slowest_fresh_rate_at_floor(
 // concurrency, by a stated instrument -- and each of those is part of the FACT rather than context
 // around it, because a reading that does not carry them cannot be checked against the demand it is
 // being used to answer.
-type ResidentFootprintObservation {
+// THE CARRIER NAMES WHAT THE INSTRUMENT REPORTS AND NOTHING MORE. An earlier version of this type
+// was called ResidentFootprintObservation with a field named `resident`, and that name asserted a
+// bridge no measurement had crossed: /api/ps reports `size` and `size_vram`, which Ollama documents
+// as total and GPU BUFFER USAGE parsed from its runner's logs -- not an operating-system resident
+// set. Comparing that figure against a /proc/meminfo total minus a declared overhead spans two
+// accounting domains, and the headroom such a subtraction produces is manufactured. Naming the
+// field `resident` asserted the bridge in the NAME, which is the same move as calling a derived
+// constant "exact"; it was caught in review before it decided anything.
+//
+// So both reported quantities are captured, neither is renamed into an OS quantity, and the fit
+// claim rests on something the instrument CAN establish: whether the configuration loaded and
+// produced a token on that node. On the measured unified-memory nodes the two figures were
+// byte-identical in every reading, but that equality is carried here as data to be observed rather
+// than assumed, because a full-offload receipt is what would license treating them as one.
+type OllamaRunnerMemoryObservation {
   realization: NonEmptyStr
   runtime: NonEmptyStr
+  runtime_config: NonEmptyStr
   node: NonEmptyStr
   instrument: NonEmptyStr
   context_depth: TokenCount
   concurrent_sessions: Nat
-  resident: ByteSize
+  reported_total_buffer: ByteSize
+  reported_gpu_buffer: ByteSize
+  generation_succeeded: Bool
 }
 
-// The observation that answers a demand for `floor` context at `hot_sessions` resident sessions, or
-// Absent when none does.
+// The observation that answers a demand for `floor` context at `hot_sessions` resident sessions ON
+// THIS NODE, or Absent when none does. Node equality is a qualification and not a label: a fit
+// established on one machine says nothing about another, and importing it would be the same
+// substitution as importing a shallower depth.
 //
 // DEEPER QUALIFIES SHALLOWER; SHALLOWER NEVER QUALIFIES DEEPER. That direction is the single
 // assumption this function makes, and it is stated rather than buried: footprint is monotone in
@@ -222,18 +218,24 @@ type ResidentFootprintObservation {
 // observed concurrency is UNANSWERABLE, exactly as a deeper floor is, and never a one-session number
 // scaled up.
 //
-// THE WHOLE OBSERVATION IS RETURNED, not its byte count. Detaching `resident` would strip the depth,
+// THE WHOLE OBSERVATION IS RETURNED, not a byte count. Detaching a number would strip the depth,
 // node, runtime and instrument that make the answer checkable, and a fit established from a reading
 // nobody can locate again is not established.
-fn resident_footprint_at_floor(
-  observations: List<ResidentFootprintObservation>,
+//
+// SELECTION AMONG QUALIFYING OBSERVATIONS IS BY REPORTED BUFFER AND NOT BY ROSTER ORDER. The
+// comparison is between two readings from ONE instrument, so it stays inside a single accounting
+// domain -- which is exactly the property the discarded capacity comparison did not have.
+fn runtime_memory_observation_at_floor(
+  observations: List<OllamaRunnerMemoryObservation>,
   floor: TokenCount,
   hot_sessions: Nat,
-) -> ResidentFootprintObservation? {
+  node: NonEmptyStr,
+) -> OllamaRunnerMemoryObservation? {
   let qualifying = filter(observations, o =>
     token_count_value(t: o.context_depth) >= token_count_value(t: floor)
-      && o.concurrent_sessions >= hot_sessions)
-  let tightest: ResidentFootprintObservation? = none
+      && o.concurrent_sessions >= hot_sessions
+      && (o.node as String) == (node as String))
+  let tightest: OllamaRunnerMemoryObservation? = none
   fold(qualifying, tightest, (best, o) =>
     match best {
       Absent => Present { value: o }
@@ -250,10 +252,10 @@ fn resident_footprint_at_floor(
 // type is established here by the parameter list. This is a real gap in accumulator type propagation,
 // not a stylistic preference, and it will keep shaping folds until it is fixed at the language layer.
 fn tighter_bound(
-  a: ResidentFootprintObservation,
-  b: ResidentFootprintObservation,
-) -> ResidentFootprintObservation {
-  match byte_size_count(b: a.resident) < byte_size_count(b: b.resident) {
+  a: OllamaRunnerMemoryObservation,
+  b: OllamaRunnerMemoryObservation,
+) -> OllamaRunnerMemoryObservation {
+  match byte_size_count(b: a.reported_total_buffer) < byte_size_count(b: b.reported_total_buffer) {
     true => a
     false => b
   }
@@ -276,22 +278,17 @@ type ServingConstraints {
 // A candidate whose KV cost was never measured has not failed the memory test -- it has not TAKEN
 // it. Reporting that as a rejection would let a fully-measured but worse candidate win by default,
 // and the answer would look identical to one where the better candidate genuinely lost.
-// CapacityMalformed carries NO payload. There is exactly one way a NodeCapacity is malformed --
-// declared runtime overhead exceeding the kernel-visible total -- so the `detail: String` it used to
-// carry restated what the constructor already says, and a second malformation would need its own arm
-// rather than a different sentence. Prose whose content the type fixes is dead data (DESIGN 4c).
 type MissingFact
-  = ResidentFootprintUnmeasuredAtFloor { floor: TokenCount, sessions: Nat }
+  = MemoryFitUnobservedAtConfiguration { floor: TokenCount, sessions: Nat }
   | PrefillRateUnmeasuredAtFloor { floor: TokenCount, regime: ServingRegime }
   | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
-  | CapacityMalformed
 
 fn missing_fact_wire(missing: MissingFact) -> String {
   match missing {
-    ResidentFootprintUnmeasuredAtFloor { floor: f, sessions: n } =>
+    MemoryFitUnobservedAtConfiguration { floor: f, sessions: n } =>
       join([
-        "no resident-footprint reading at or beyond ", to_string(token_count_value(t: f)),
-        " tokens with at least ", to_string(n), " resident session(s)",
+        "no runner-memory observation on this node at or beyond ", to_string(token_count_value(t: f)),
+        " tokens with at least ", to_string(n), " concurrent session(s)",
       ], "")
     PrefillRateUnmeasuredAtFloor { floor: f, regime: g } =>
       join([
@@ -304,7 +301,6 @@ fn missing_fact_wire(missing: MissingFact) -> String {
         "; the publisher declares ", to_string(token_count_value(t: d)),
         " but a declaration is a claim, not evidence",
       ], "")
-    CapacityMalformed => "capacity-malformed: declared runtime overhead exceeds the kernel-visible total"
   }
 }
 
@@ -312,12 +308,12 @@ fn missing_fact_wire(missing: MissingFact) -> String {
 // census over rejections says which INPUT would have to move -- usable memory, a declared floor, a
 // published artifact -- without claiming which purchase moves it.
 type RejectionAxis
-  = DoesNotFitMemory { required: ByteSize, allocatable: ByteSize }
+  = DoesNotFitMemory { observed: OllamaRunnerMemoryObservation }
   | ContextBelowFloor { declared: TokenCount, floor: TokenCount }
   | PrefillBelowFloor { measured: TokensPerSecond, floor: TokensPerSecond }
 
 type CandidateVerdict
-  = ServingCandidateAdmissible { candidate: QuantizedCandidate, resident: ByteSize, headroom: ByteSize }
+  = ServingCandidateAdmissible { candidate: QuantizedCandidate, fit: OllamaRunnerMemoryObservation }
   | ServingCandidateRejected { identity: ReleaseIdentity, quant_label: NonEmptyStr, axis: RejectionAxis }
   | ServingCandidateUnanswerable { identity: ReleaseIdentity, quant_label: NonEmptyStr, missing: MissingFact }
 
@@ -327,15 +323,29 @@ type CandidateVerdict
 // EVALUATION ORDER IS LOAD-BEARING, not stylistic: memory fit is settled FIRST, because a candidate
 // that cannot be resident does not need a retrieval receipt or a prefill observation to be refused.
 //
-// THE JUSTIFICATION FOR THAT ORDER CHANGED, and saying so is the point. It used to read that memory
-// fit was DECIDABLE from weights, KV cost and capacity alone, so ordering it first turned no
-// decidable answer into an unanswerable one. That is no longer true and was never true: fit is now
-// established from an observation, so the memory arm can itself return Unanswerable, and the order
-// buys refusal economy rather than decidability. A candidate with no qualifying footprint reading is
-// unresolved on the FIRST axis, not admitted past it -- which is why the roster answer for a
-// partially measured candidate is a refusal to select and not a default win for whoever was
-// measured. Only once a candidate is evidenced to be resident do we ask whether it is evidenced to
-// RETRIEVE and to SERVE at this floor.
+// THE JUSTIFICATION FOR THAT ORDER CHANGED TWICE, and both changes are recorded because each one
+// removed a claim that had been doing work. It first read that memory fit was DECIDABLE from
+// weights, KV cost and capacity alone. Then it read that fit was established by comparing an
+// observed footprint against allocatable memory. NEITHER SURVIVED: the first died when the KV
+// constant was falsified, the second when the observed quantity turned out to be a runner BUFFER
+// figure that cannot be subtracted from an OS memory total.
+//
+// SO FIT IS NOT COMPUTED AND IT IS NOT COMPARED -- IT IS EXECUTED. The question the instrument can
+// actually answer is whether this realization, at this context, at this concurrency, ON THIS NODE,
+// loaded and produced a token. A successful generation is a positive fit under exactly the
+// conditions that held; a failed one is an observed non-fit at that configuration; no observation
+// at all is Unanswerable. Nothing in this arm subtracts a reported buffer from a declared capacity,
+// because those are different accounting domains and the difference between them is not a fact.
+//
+// The node capacity carrier and its allocatable derivation LEFT THIS MODULE with that comparison.
+// They were not kept "for reference": a value the decision cannot consume is decoration, and the
+// three-grain distinction they encoded belongs to a capacity authority rather than to a selector
+// that can no longer compare against it.
+//
+// A candidate with no qualifying observation is unresolved on the FIRST axis, not admitted past it
+// -- which is why the roster answer for a partially measured candidate is a refusal to select and
+// not a default win for whoever was measured. Only once a candidate is evidenced to LOAD do we ask
+// whether it is evidenced to RETRIEVE and to SERVE at this floor.
 //
 // The context test consumes semantic_context_verified_to -- an observed retrieval depth -- and NEVER
 // declared_context. A publisher declaring 1,048,576 positions has made a claim about what the
@@ -344,35 +354,29 @@ type CandidateVerdict
 // error the publication layer exists to prevent, one module downstream of where it was removed.
 fn evaluate_candidate(
   candidate: QuantizedCandidate,
-  capacity: NodeCapacity,
+  node: NonEmptyStr,
   constraints: ServingConstraints,
 ) -> CandidateVerdict {
-  match allocatable(capacity: capacity) {
-    Absent => ServingCandidateUnanswerable {
-      identity: candidate.identity,
-      quant_label: candidate.quant_label,
-      missing: CapacityMalformed,
-    }
-    Present { value: room } => match resident_footprint_at_floor(
-      observations: candidate.resident_footprint_observations,
+  match runtime_memory_observation_at_floor(
+      observations: candidate.runtime_memory_observations,
       floor: constraints.context_floor,
       hot_sessions: constraints.hot_sessions,
-    ) {
-      Absent => ServingCandidateUnanswerable {
+    node: node,
+  ) {
+    Absent => ServingCandidateUnanswerable {
         identity: candidate.identity,
         quant_label: candidate.quant_label,
-        missing: ResidentFootprintUnmeasuredAtFloor {
+        missing: MemoryFitUnobservedAtConfiguration {
           floor: constraints.context_floor,
           sessions: constraints.hot_sessions,
         },
       }
       Present { value: observed } => {
-        let required = observed.resident
-        match byte_size_count(b: required) > byte_size_count(b: room) {
+        match !observed.generation_succeeded {
           true => ServingCandidateRejected {
             identity: candidate.identity,
             quant_label: candidate.quant_label,
-            axis: DoesNotFitMemory { required: required, allocatable: room },
+            axis: DoesNotFitMemory { observed: observed },
           }
           false => match candidate.semantic_context_verified_to {
             Absent => ServingCandidateUnanswerable {
@@ -412,8 +416,7 @@ fn evaluate_candidate(
                       }
                       false => ServingCandidateAdmissible {
                         candidate: candidate,
-                        resident: required,
-                        headroom: byte_size(count: byte_size_count(b: room) - byte_size_count(b: required)),
+                        fit: observed,
                       }
                     }
                 }
@@ -421,13 +424,12 @@ fn evaluate_candidate(
           }
         }
       }
-    }
   }
 }
 
 fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
   match verdict {
-    ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => true
+    ServingCandidateAdmissible { candidate: _, fit: _ } => true
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
   }
@@ -458,7 +460,7 @@ fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> I
 // it. A fact that was never established is carried as absent, not as a sentinel.
 fn verdict_quality(verdict: CandidateVerdict) -> WithinReleaseQuality? {
   match verdict {
-    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } =>
+    ServingCandidateAdmissible { candidate: c, fit: _ } =>
       Present { value: WithinReleaseQuality { identity: c.identity, rank: c.quality_rank } }
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => none
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => none
@@ -503,11 +505,11 @@ fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
 
 fn choose_serving_candidate(
   candidates: List<QuantizedCandidate>,
-  capacity: NodeCapacity,
+  node: NonEmptyStr,
   constraints: ServingConstraints,
 ) -> ServingChoice {
   let verdicts = map(candidates, c =>
-    evaluate_candidate(candidate: c, capacity: capacity, constraints: constraints))
+    evaluate_candidate(candidate: c, node: node, constraints: constraints))
   let unresolved = filter(verdicts, v => verdict_is_unanswerable(verdict: v))
   let admissible = filter(verdicts, v => verdict_is_admissible(verdict: v))
   match length(unresolved) > 0 {
@@ -543,7 +545,7 @@ fn choose_serving_candidate(
 fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
   match verdict {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => true
-    ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
   }
 }
@@ -571,7 +573,7 @@ fn distinct_release_count(verdicts: List<CandidateVerdict>) -> Nat {
 
 fn verdict_release(verdict: CandidateVerdict) -> ReleaseIdentity {
   match verdict {
-    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.identity
+    ServingCandidateAdmissible { candidate: c, fit: _ } => c.identity
     ServingCandidateRejected { identity: r, quant_label: _, axis: _ } => r
     ServingCandidateUnanswerable { identity: r, quant_label: _, missing: _ } => r
   }
