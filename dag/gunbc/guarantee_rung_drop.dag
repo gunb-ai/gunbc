@@ -367,6 +367,19 @@ data parse_ingest_grammar_relation_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "the same-grammar parse-to-ingest round trip holds"
 }
 
+// The candidate-tree producer drop is retired separately in gunbc.rung_drop: executed clean and
+// drift arms both produced and named the candidate before adjudication. That restoration does not
+// make the hand-maintained host mirror structural. Keeping this as its own stall prevents a new
+// climb obligation from extending the lifetime of the retired producer drop.
+data required_regen_host_derivation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "required-regen host ordering is hand-maintained beside its modeled carrier",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1_compiler.required_regen_host.run_required_regen", tail: Empty {} } },
+  next_rung_trigger: "v1_compiler.required_regen_host run_required_regen is derived from v2.workflow.required_regen required_regen_run, with that derivation SUFFICIENT FOR preserving the carrier's exhaustive verdict mapping: every host verdict after successful emission carries the CandidateTree adjudicated for that verdict, and only an emission that produced no tree reaches a tree-less host arm. A generator that merely emits the host, or agreement on one verdict arm, does not satisfy this trigger; the whole host mapping must be constructed from the carrier so candidate production before adjudication has one authority rather than a modeled carrier and a hand-maintained host mirror"
+}
+
 data self_host_candidate_generation_add_slice_stall: GuaranteeStall = GuaranteeStall {
   subject: "self-host candidate generation, translation, and emission disagree on the add slice",
   current: OutsideTheLadder,
@@ -530,6 +543,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   enforcement_live_closure_gate_stall,
   mandatory_tag_live_corpus_stall,
   parse_ingest_grammar_relation_stall,
+  required_regen_host_derivation_stall,
   self_host_candidate_generation_add_slice_stall,
   non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
@@ -570,4 +584,3 @@ fn stall_roster_size(ss: List<GuaranteeStall>) -> Int {
     cons: fn(acc, s) { acc + 1 },
   )
 }
-
