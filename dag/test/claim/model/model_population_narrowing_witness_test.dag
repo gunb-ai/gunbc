@@ -14,11 +14,32 @@ import gunbc.model.publication {
 }
 import gunbc.model.population {
   ModelPopulation,
-  LocallyPackagedStage,
+  OpenWeightStage, LocallyPackagedStage,
   ReleaseDiscoverySource,
   PublisherReleaseCatalog, SingleDistributorCatalog,
   open_weight_population, narrow_population,
-  open_weight_completeness, CompletenessAnswerable, CompletenessRefused,
+  NarrowingOutcome, NarrowingProduced, NarrowingRefused,
+  population_members_are_subset_of_parent,
+  completeness, CompletenessQuestion, CompleteForPublisher, CompleteForOpenWeightUniverse,
+  CompletenessVerdict, CompletenessAnswerable, CompletenessRefused,
+}
+
+// A narrowing that must succeed for the claim under test to mean anything. A refusal here is not a
+// green: the claims below are about what a PRODUCED narrowing contains, so a refused outcome would
+// satisfy them vacuously. This helper makes that distinction explicit at every call site.
+fn produced_or_empty(outcome: NarrowingOutcome) -> ModelPopulation {
+  match outcome {
+    NarrowingProduced { population: p } => p
+    NarrowingRefused { reason: _ } =>
+      open_weight_population(discovered: [], sources: [])
+  }
+}
+
+fn was_produced(outcome: NarrowingOutcome) -> Bool {
+  match outcome {
+    NarrowingProduced { population: _ } => true
+    NarrowingRefused { reason: _ } => false
+  }
 }
 
 // THE FIXTURE IS THE RELEASE THAT ACTUALLY BROKE. DeepSeek V4 Flash 0731 is openly published under
@@ -130,8 +151,9 @@ test fn w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable() -
 // invariant it was witnessing is the one asserted here, and it is the stronger statement: NO
 // narrowing, empty or otherwise, reaches back into its parent.
 test fn w_an_empty_narrowing_does_not_remove_from_the_open_weight_population() -> Bool {
-  let admitted_nothing = narrow_population(parent: root(), stage: LocallyPackagedStage, admits: [])
-  length(admitted_nothing.members) == 0
+  let outcome = narrow_population(parent: root(), stage: LocallyPackagedStage, admits: [])
+  was_produced(outcome: outcome)
+    && length(produced_or_empty(outcome: outcome).members) == 0
     && population_holds(population: root(), id: deepseek_v4_flash_id)
 }
 
@@ -142,13 +164,16 @@ test fn w_narrowing_cannot_introduce_a_member_the_parent_lacked() -> Bool {
     family: "Never-Discovered" as NonEmptyStr,
     revision: "1" as NonEmptyStr,
   }
-  let narrowed = narrow_population(
+  let outcome = narrow_population(
     parent: root(),
     stage: LocallyPackagedStage,
     admits: [stranger, deepseek_v4_flash_id],
   )
-  length(narrowed.members) == 1
+  let narrowed = produced_or_empty(outcome: outcome)
+  was_produced(outcome: outcome)
+    && length(narrowed.members) == 1
     && population_holds(population: narrowed, id: deepseek_v4_flash_id)
+    && population_members_are_subset_of_parent(population: narrowed)
 }
 
 // The positive control that the root filter discriminates at all -- without it every test above
@@ -161,30 +186,74 @@ test fn w_a_closed_weight_release_is_excluded_from_the_open_weight_population() 
 // one distributor's catalog must refuse to say how complete it is.
 test fn w_completeness_refuses_when_every_source_is_a_single_distributor() -> Bool {
   let ollama_shaped = open_weight_population(discovered: discovered(), sources: [ollama_only_source])
-  match open_weight_completeness(population: ollama_shaped) {
+  is_refusal(verdict: completeness(
+    population: ollama_shaped,
+    question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }))
+}
+
+fn is_refusal(verdict: CompletenessVerdict) -> Bool {
+  match verdict {
     CompletenessRefused { reason: _ } => true
-    CompletenessAnswerable { member_count: _ } => false
+    CompletenessAnswerable { publisher: _, member_count: _ } => false
   }
 }
 
-// Positive control for RED 5: publisher-catalog coverage DOES answer.
-test fn w_completeness_answers_when_a_publisher_catalog_source_is_present() -> Bool {
-  match open_weight_completeness(population: root()) {
-    CompletenessAnswerable { member_count: n } => n == 1
+// Positive control for RED 5: the publisher whose catalogue IS held does answer.
+test fn w_completeness_answers_for_the_publisher_whose_catalog_is_held() -> Bool {
+  match completeness(
+    population: root(),
+    question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }) {
+    CompletenessAnswerable { publisher: p, member_count: n } =>
+      (p as String) == "deepseek-ai" && n == 1
     CompletenessRefused { reason: _ } => false
   }
+}
+
+// RED 6 -- THE DEFECT THIS FUNCTION WAS WRITTEN TO PREVENT, RE-COMMITTED BY IT. A complete catalogue
+// for deepseek-ai is complete about deepseek-ai and about nobody else. The predecessor answered
+// `CompletenessAnswerable` for ANY publisher-catalogue source, so it would have reported the
+// open-weight universe as fully enumerated from one publisher's index -- a real count over the wrong
+// population, which is the original error verbatim.
+test fn w_one_publishers_catalog_does_not_answer_for_another_publisher() -> Bool {
+  is_refusal(verdict: completeness(
+    population: root(),
+    question: CompleteForPublisher { publisher: "qwen" as NonEmptyStr }))
+}
+
+// RED 7 -- and it never answers for the UNIVERSE, whatever sources are held. There is no arm that
+// can return Answerable here, which is the honest terminal rather than a stall: no source shape this
+// module can hold spans every publisher.
+test fn w_universe_completeness_is_never_answerable() -> Bool {
+  is_refusal(verdict: completeness(
+    population: root(), question: CompleteForOpenWeightUniverse))
+    && is_refusal(verdict: completeness(
+      population: open_weight_population(discovered: discovered(), sources: [ollama_only_source]),
+      question: CompleteForOpenWeightUniverse))
+}
+
+// RED 8 -- a BACKWARD transition is not a narrowing. Re-keying a locally-packaged population as
+// open-weight would assert that failing a later test restored membership in an earlier stage, which
+// is the module's invariant inverted. Same-stage is refused for the same reason.
+test fn w_a_backward_or_same_stage_transition_refuses() -> Bool {
+  let packaged = produced_or_empty(outcome: narrow_population(
+    parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
+  !was_produced(outcome: narrow_population(
+    parent: packaged, stage: OpenWeightStage, admits: [deepseek_v4_flash_id]))
+    && !was_produced(outcome: narrow_population(
+      parent: packaged, stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
+    && was_produced(outcome: narrow_population(
+      parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
 }
 
 // A later stage refuses completeness about the universe: it is a verdict about realizations and
 // under-reports by construction.
 test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe() -> Bool {
-  let narrowed = narrow_population(
+  let narrowed = produced_or_empty(outcome: narrow_population(
     parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id],
-  )
-  match open_weight_completeness(population: narrowed) {
-    CompletenessRefused { reason: _ } => true
-    CompletenessAnswerable { member_count: _ } => false
-  }
+  ))
+  is_refusal(verdict: completeness(
+    population: narrowed,
+    question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }))
 }
 
 // AGGREGATE, so the whole carrier is established in ONE corpus resolve rather than eight. It is a
@@ -198,7 +267,10 @@ test fn w_all_population_claims_hold() -> Bool {
     && w_narrowing_cannot_introduce_a_member_the_parent_lacked()
     && w_a_closed_weight_release_is_excluded_from_the_open_weight_population()
     && w_completeness_refuses_when_every_source_is_a_single_distributor()
-    && w_completeness_answers_when_a_publisher_catalog_source_is_present()
+    && w_completeness_answers_for_the_publisher_whose_catalog_is_held()
+    && w_one_publishers_catalog_does_not_answer_for_another_publisher()
+    && w_universe_completeness_is_never_answerable()
+    && w_a_backward_or_same_stage_transition_refuses()
     && w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
 }
 

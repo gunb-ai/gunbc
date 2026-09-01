@@ -11,7 +11,13 @@ import gunbc.model.publication { ReleaseIdentity }
 import gunbc.model.choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
   FreshPrefillObservation, prefill_rate_at_floor,
-  OllamaRunnerMemoryObservation, runtime_memory_observation_at_floor,
+  ServingRealizationIdentity, serving_realization_equal,
+  SemanticContextEvidence,
+  OllamaRunnerMemoryObservation, memory_fit_evidence,
+  RunnerAttemptOutcome, RunnerServed, RunnerRefusedForMemory, RunnerFailedForOtherCause,
+  MemoryFitEvidence, MemoryFitEstablished, MemoryFitRefusedForMemory, MemoryFitContradicted,
+  MemoryFitAttemptFailedOtherwise, MemoryFitUnobserved,
+  MemoryFitContradictedAtConfiguration, MemoryAttemptFailedForNonMemoryCause,
   FreshSessionPrefill, WarmContinuation, serving_regime_wire,
   QuantizedCandidate, ServingConstraints,
   CandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
@@ -19,7 +25,7 @@ import gunbc.model.choice {
   ServingChoice, ChoseCandidate, NoCandidateAdmissible, SelectionUnanswerable,
   UnanswerableCause, UnresolvedCandidateCouldWin, CrossReleaseQualityOrderAbsent, QualityRankTie,
   ServingCandidateUnanswerable, MissingFact, MemoryFitUnobservedAtConfiguration,
-  evaluate_candidate, choose_serving_candidate,
+  evaluate_candidate, choose_serving_candidate, verdict_is_admissible,
 }
 
 // THE FIXTURE IS MEASURED, not invented. Every number here was read off the running nodes or
@@ -54,19 +60,52 @@ data fixture_node: NonEmptyStr = "fixture-node" as NonEmptyStr
 
 // THE READINGS, spark-a3ee, Ollama 0.32.9, one resident session, /api/ps size_vram. `size` and
 // `size_vram` agreed exactly on this unified-memory node, so nothing turns on which field is read.
-fn iq2_xxs_footprint(depth: Nat, resident: Nat) -> OllamaRunnerMemoryObservation {
-  OllamaRunnerMemoryObservation {
-    realization: "hf.co/antirez/deepseek-v4-gguf:latest" as NonEmptyStr,
-    runtime: "ollama 0.32.9" as NonEmptyStr,
-    runtime_config: "OLLAMA_NUM_PARALLEL unset; explicit num_ctx per request" as NonEmptyStr,
-    node: "spark-a3ee" as NonEmptyStr,
-    instrument: "/api/ps size and size_vram after load at explicit num_ctx" as NonEmptyStr,
-    context_depth: token_count(count: depth),
-    concurrent_sessions: 1,
-    reported_total_buffer: byte_size(count: resident),
-    reported_gpu_buffer: byte_size(count: resident),
-    generation_succeeded: true,
+data ps_instrument: NonEmptyStr = "/api/ps size and size_vram after load at explicit num_ctx" as NonEmptyStr
+
+data serial_config: NonEmptyStr = "OLLAMA_NUM_PARALLEL unset; explicit num_ctx per request" as NonEmptyStr
+
+data ollama_runtime: NonEmptyStr = "ollama 0.32.9" as NonEmptyStr
+
+fn realization(
+  release_id: ReleaseIdentity,
+  quant: NonEmptyStr,
+  artifact: NonEmptyStr,
+  runtime: NonEmptyStr,
+  config: NonEmptyStr,
+) -> ServingRealizationIdentity {
+  ServingRealizationIdentity {
+    release_id: release_id,
+    quant_label: quant,
+    artifact_ref: artifact,
+    runtime: runtime,
+    runtime_config: config,
   }
+}
+
+fn served(
+  r: ServingRealizationIdentity,
+  node: NonEmptyStr,
+  instrument: NonEmptyStr,
+  depth: Nat,
+  sessions: Nat,
+  resident: Nat,
+) -> OllamaRunnerMemoryObservation {
+  OllamaRunnerMemoryObservation {
+    realization: r,
+    node: node,
+    instrument: instrument,
+    context_depth: token_count(count: depth),
+    concurrent_sessions: sessions,
+    outcome: RunnerServed {
+      reported_total_buffer: byte_size(count: resident),
+      reported_gpu_buffer: byte_size(count: resident),
+    },
+  }
+}
+
+fn iq2_xxs_footprint(depth: Nat, resident: Nat) -> OllamaRunnerMemoryObservation {
+  served(r: r_iq2_xxs, node: serving_node, instrument: ps_instrument,
+    depth: depth, sessions: 1, resident: resident)
 }
 
 // RELEASE IDENTITIES, exact rather than display names. Publisher, family and revision together are
@@ -91,19 +130,72 @@ data qwen_release: ReleaseIdentity = ReleaseIdentity {
   revision: "35B" as NonEmptyStr,
 }
 
+data r_iq2_xxs: ServingRealizationIdentity = realization(
+  release_id: deepseek_v4_flash_release,
+  quant: "IQ2_XXS" as NonEmptyStr,
+  artifact: "hf.co/antirez/deepseek-v4-gguf:latest" as NonEmptyStr,
+  runtime: ollama_runtime,
+  config: serial_config,
+)
+
+data r_iq3_s: ServingRealizationIdentity = realization(
+  release_id: deepseek_v4_flash_release,
+  quant: "UD-IQ3_S" as NonEmptyStr,
+  artifact: "deepseek-v4-flash:iq3s" as NonEmptyStr,
+  runtime: ollama_runtime,
+  config: serial_config,
+)
+
+data r_unmeasured: ServingRealizationIdentity = realization(
+  release_id: deepseek_v4_flash_release,
+  quant: "UD-IQ4_XS" as NonEmptyStr,
+  artifact: "deepseek-v4-flash:iq4xs" as NonEmptyStr,
+  runtime: ollama_runtime,
+  config: serial_config,
+)
+
+data r_qwen: ServingRealizationIdentity = realization(
+  release_id: qwen_release,
+  quant: "Q8_0" as NonEmptyStr,
+  artifact: "qwen3.6:35b" as NonEmptyStr,
+  runtime: ollama_runtime,
+  config: serial_config,
+)
+
+fn fixture_realization(quant: NonEmptyStr) -> ServingRealizationIdentity {
+  realization(
+    release_id: fixture_release,
+    quant: quant,
+    artifact: "declared fixture, not an artifact" as NonEmptyStr,
+    runtime: "fixture-runtime" as NonEmptyStr,
+    config: "declared fixture, not a configuration" as NonEmptyStr,
+  )
+}
+
+data r_fixture_low: ServingRealizationIdentity = fixture_realization(quant: "LOW" as NonEmptyStr)
+data r_fixture_high: ServingRealizationIdentity = fixture_realization(quant: "HIGH" as NonEmptyStr)
+data r_tied_a: ServingRealizationIdentity = fixture_realization(quant: "TIED-A" as NonEmptyStr)
+data r_tied_b: ServingRealizationIdentity = fixture_realization(quant: "TIED-B" as NonEmptyStr)
+
+fn verified_at(r: ServingRealizationIdentity, depth: Nat) -> SemanticContextEvidence? {
+  Present { value: SemanticContextEvidence {
+    realization: r,
+    verified_to: token_count(count: depth),
+  } }
+}
+
 // The two builds actually installed. Quality rank is ordinal WITHIN this identity: 3-bit outranks
 // 2-bit. It says nothing about any other model, which is why cross-release quality never enters
 // this function as a comparable number.
 data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
-  identity: deepseek_v4_flash_release,
-  quant_label: "IQ2_XXS" as NonEmptyStr,
+  realization: r_iq2_xxs,
   quality_rank: 2,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_iq2_xxs, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 160060), rate: tokens_per_second(count: 253) },
-    FreshPrefillObservation { depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+    FreshPrefillObservation { realization: r_iq2_xxs, depth: token_count(count: 160060), rate: tokens_per_second(count: 253) },
+    FreshPrefillObservation { realization: r_iq2_xxs, depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
+    FreshPrefillObservation { realization: r_iq2_xxs, depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
   ],
   runtime_memory_observations: [
     iq2_xxs_footprint(depth: 131072, resident: 86532465622),
@@ -114,25 +206,14 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
 }
 
 data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
-  identity: deepseek_v4_flash_release,
-  quant_label: "UD-IQ3_S" as NonEmptyStr,
+  realization: r_iq3_s,
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: none,
+  semantic_context: none,
   fresh_prefill_observations: [],
   runtime_memory_observations: [
-    OllamaRunnerMemoryObservation {
-      realization: "deepseek-v4-flash:iq3s" as NonEmptyStr,
-      runtime: "ollama 0.32.9" as NonEmptyStr,
-      runtime_config: "OLLAMA_NUM_PARALLEL unset; explicit num_ctx per request" as NonEmptyStr,
-      node: "spark-a3ee" as NonEmptyStr,
-      instrument: "/api/ps size and size_vram after load at explicit num_ctx" as NonEmptyStr,
-      context_depth: token_count(count: 400000),
-      concurrent_sessions: 1,
-      reported_total_buffer: byte_size(count: 116970000000),
-      reported_gpu_buffer: byte_size(count: 116970000000),
-      generation_succeeded: true,
-    },
+    served(r: r_iq3_s, node: serving_node, instrument: ps_instrument,
+      depth: 400000, sessions: 1, resident: 116970000000),
   ],
 }
 
@@ -162,7 +243,7 @@ fn chosen_label(choice: ServingChoice) -> String {
     NoCandidateAdmissible { rejections: _ } => "none"
     ChoseCandidate { verdict: v } =>
       match v {
-        ServingCandidateAdmissible { candidate: c, fit: _ } => c.quant_label as String
+        ServingCandidateAdmissible { candidate: c, fit: _ } => c.realization.quant_label as String
         ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => "none"
         ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => "none"
       }
@@ -200,6 +281,8 @@ test fn w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolve
         SemanticContextUnverifiedAtFloor { floor: f, declared: d } =>
           token_count_value(t: f) == 400000 && token_count_value(t: d) == 1048576
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
       }
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
@@ -213,9 +296,25 @@ test fn w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolve
 test fn w_the_real_roster_refuses_while_the_higher_rank_is_unresolved() -> Bool {
   match choose_serving_candidate(
     candidates: installed(), node: serving_node, constraints: floor_400k) {
-    SelectionUnanswerable { cause: _, evaluations: e } => length(e) == 2
+    SelectionUnanswerable { cause: c, evaluations: e } =>
+      length(e) == 2
+        && match c {
+          UnresolvedCandidateCouldWin { unresolved_count: n } => n == 1
+          CrossReleaseQualityOrderAbsent { distinct_release_count: _ } => false
+          QualityRankTie { tied_count: _, rank: _ } => false
+        }
+        && length(filter(e, v => verdict_is_admissible(verdict: v))) == 1
+        && length(filter(e, v => verdict_is_unanswerable(verdict: v))) == 1
     ChoseCandidate { verdict: _ } => false
     NoCandidateAdmissible { rejections: _ } => false
+  }
+}
+
+fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
+  match verdict {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => true
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
   }
 }
 
@@ -223,18 +322,25 @@ test fn w_the_real_roster_refuses_while_the_higher_rank_is_unresolved() -> Bool 
 // so the refusal above is not a footprint carrier that answers nothing. Its qualifying reading is
 // the 400,000 one rather than the 1,048,576 one -- the tightest sound bound at or beyond the floor.
 test fn w_the_two_bit_build_is_resident_established_at_the_floor() -> Bool {
-  match runtime_memory_observation_at_floor(
+  match memory_fit_evidence(
     observations: build_iq2_xxs.runtime_memory_observations,
+    realization: r_iq2_xxs,
     floor: token_count(count: 400000),
     hot_sessions: 1,
     node: serving_node,
   ) {
-    Present { value: o } =>
-      byte_size_count(b: o.reported_total_buffer) == 87692389907
-        && byte_size_count(b: o.reported_gpu_buffer) == 87692389907
-        && token_count_value(t: o.context_depth) == 400000
-        && o.generation_succeeded
-    Absent => false
+    MemoryFitEstablished { by: o } =>
+      token_count_value(t: o.context_depth) == 400000
+        && match o.outcome {
+          RunnerServed { reported_total_buffer: t, reported_gpu_buffer: g } =>
+            byte_size_count(b: t) == 87692389907 && byte_size_count(b: g) == 87692389907
+          RunnerRefusedForMemory { detail: _ } => false
+          RunnerFailedForOtherCause { cause: _ } => false
+        }
+    MemoryFitRefusedForMemory { by: _ } => false
+    MemoryFitContradicted { served: _, refused: _ } => false
+    MemoryFitAttemptFailedOtherwise { by: _ } => false
+    MemoryFitUnobserved => false
   }
 }
 
@@ -243,15 +349,103 @@ test fn w_the_two_bit_build_is_resident_established_at_the_floor() -> Bool {
 // that positively answers one hot session at 400k above.
 test fn w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint() -> Bool {
   let obs = build_iq2_xxs.runtime_memory_observations
-  match runtime_memory_observation_at_floor(
-    observations: obs, floor: token_count(count: 2000000), hot_sessions: 1, node: serving_node) {
+  is_unobserved(evidence: memory_fit_evidence(
+      observations: obs, realization: r_iq2_xxs,
+      floor: token_count(count: 2000000), hot_sessions: 1, node: serving_node))
+    && is_unobserved(evidence: memory_fit_evidence(
+      observations: obs, realization: r_iq2_xxs,
+      floor: token_count(count: 400000), hot_sessions: 2, node: serving_node))
+}
+
+fn is_unobserved(evidence: MemoryFitEvidence) -> Bool {
+  match evidence {
+    MemoryFitUnobserved => true
+    MemoryFitEstablished { by: _ } => false
+    MemoryFitRefusedForMemory { by: _ } => false
+    MemoryFitContradicted { served: _, refused: _ } => false
+    MemoryFitAttemptFailedOtherwise { by: _ } => false
+  }
+}
+
+// ================= THE NEGATIVE CONTROLS FOR THE IDENTITY JOIN =================
+//
+// Provenance fields that are carried but never matched are decoration. Each control below takes the
+// SAME observation list that positively answers above, asks it on behalf of a realization differing
+// in exactly ONE component, and requires MemoryFitUnobserved. Together with the positive control
+// they establish that every component of the join key is load-bearing: flip any one and the evidence
+// stops answering.
+fn iq2_xxs_answers_for(r: ServingRealizationIdentity, node: NonEmptyStr) -> Bool {
+  match memory_fit_evidence(
+    observations: build_iq2_xxs.runtime_memory_observations,
+    realization: r,
+    floor: token_count(count: 400000),
+    hot_sessions: 1,
+    node: node,
+  ) {
+    MemoryFitEstablished { by: _ } => true
+    MemoryFitRefusedForMemory { by: _ } => false
+    MemoryFitContradicted { served: _, refused: _ } => false
+    MemoryFitAttemptFailedOtherwise { by: _ } => false
+    MemoryFitUnobserved => false
+  }
+}
+
+test fn w_evidence_from_another_realization_or_node_cannot_qualify() -> Bool {
+  let wrong_release = realization(
+    release_id: qwen_release, quant: r_iq2_xxs.quant_label, artifact: r_iq2_xxs.artifact_ref,
+    runtime: r_iq2_xxs.runtime, config: r_iq2_xxs.runtime_config)
+  let wrong_quant = realization(
+    release_id: r_iq2_xxs.release_id, quant: "IQ3_S" as NonEmptyStr, artifact: r_iq2_xxs.artifact_ref,
+    runtime: r_iq2_xxs.runtime, config: r_iq2_xxs.runtime_config)
+  let wrong_artifact = realization(
+    release_id: r_iq2_xxs.release_id, quant: r_iq2_xxs.quant_label,
+    artifact: "hf.co/someone-else/deepseek-v4-gguf:latest" as NonEmptyStr,
+    runtime: r_iq2_xxs.runtime, config: r_iq2_xxs.runtime_config)
+  let wrong_runtime = realization(
+    release_id: r_iq2_xxs.release_id, quant: r_iq2_xxs.quant_label, artifact: r_iq2_xxs.artifact_ref,
+    runtime: "ollama 0.33.0" as NonEmptyStr, config: r_iq2_xxs.runtime_config)
+  let wrong_config = realization(
+    release_id: r_iq2_xxs.release_id, quant: r_iq2_xxs.quant_label, artifact: r_iq2_xxs.artifact_ref,
+    runtime: r_iq2_xxs.runtime, config: "OLLAMA_NUM_PARALLEL=4" as NonEmptyStr)
+  iq2_xxs_answers_for(r: r_iq2_xxs, node: serving_node)
+    && !iq2_xxs_answers_for(r: wrong_release, node: serving_node)
+    && !iq2_xxs_answers_for(r: wrong_quant, node: serving_node)
+    && !iq2_xxs_answers_for(r: wrong_artifact, node: serving_node)
+    && !iq2_xxs_answers_for(r: wrong_runtime, node: serving_node)
+    && !iq2_xxs_answers_for(r: wrong_config, node: serving_node)
+    && !iq2_xxs_answers_for(r: r_iq2_xxs, node: fixture_node)
+}
+
+// A RETRIEVAL RECEIPT DOES NOT TRANSFER between realizations. The candidate below is the installed
+// IQ3_S -- which has no receipt of its own -- handed IQ2_XXS's receipt. Before the join it would
+// have been admitted on borrowed evidence, because the receipt was a bare depth with no subject.
+test fn w_a_retrieval_receipt_from_another_realization_does_not_qualify() -> Bool {
+  let borrowed = QuantizedCandidate {
+    realization: r_iq3_s,
+    quality_rank: build_iq3_s.quality_rank,
+    declared_context: build_iq3_s.declared_context,
+    semantic_context: verified_at(r: r_iq2_xxs, depth: 400060),
+    fresh_prefill_observations: build_iq3_s.fresh_prefill_observations,
+    runtime_memory_observations: build_iq3_s.runtime_memory_observations,
+  }
+  match evaluate_candidate(candidate: borrowed, node: serving_node, constraints: floor_400k) {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      is_semantic_gap(missing: m)
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+  }
+}
+
+// A PREFILL RECEIPT DOES NOT TRANSFER EITHER, on the same reasoning and the same axis.
+test fn w_a_prefill_receipt_from_another_realization_does_not_qualify() -> Bool {
+  match prefill_rate_at_floor(
+    observations: build_iq2_xxs.fresh_prefill_observations,
+    realization: r_qwen,
+    floor: token_count(count: 400000),
+    regime: FreshSessionPrefill,
+  ) {
     Present { value: _ } => false
-    Absent =>
-      match runtime_memory_observation_at_floor(
-        observations: obs, floor: token_count(count: 400000), hot_sessions: 2, node: serving_node) {
-        Present { value: _ } => false
-        Absent => true
-      }
+    Absent => true
   }
 }
 
@@ -266,22 +460,24 @@ test fn w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint() -> B
 // SYNTHETIC footprints for the declared ordering fixtures below. These are not fleet readings and
 // say so in every field: the node is named "fixture", so a real constraint can never be answered by
 // one, and the ordering claims they support are about the SELECTOR and not about any hardware.
-fn fixture_footprint(resident: Nat) -> OllamaRunnerMemoryObservation {
-  fixture_load(resident: resident, succeeded: true)
+data fixture_instrument: NonEmptyStr = "declared fixture, not a reading" as NonEmptyStr
+
+fn fixture_footprint(r: ServingRealizationIdentity, resident: Nat) -> OllamaRunnerMemoryObservation {
+  served(r: r, node: fixture_node, instrument: fixture_instrument,
+    depth: 1048576, sessions: 1, resident: resident)
 }
 
-fn fixture_load(resident: Nat, succeeded: Bool) -> OllamaRunnerMemoryObservation {
+fn fixture_attempt(
+  r: ServingRealizationIdentity,
+  outcome: RunnerAttemptOutcome,
+) -> OllamaRunnerMemoryObservation {
   OllamaRunnerMemoryObservation {
-    realization: "fixture" as NonEmptyStr,
-    runtime: "fixture" as NonEmptyStr,
-    runtime_config: "fixture" as NonEmptyStr,
-    node: "fixture-node" as NonEmptyStr,
-    instrument: "declared fixture, not a reading" as NonEmptyStr,
+    realization: r,
+    node: fixture_node,
+    instrument: fixture_instrument,
     context_depth: token_count(count: 1048576),
     concurrent_sessions: 1,
-    reported_total_buffer: byte_size(count: resident),
-    reported_gpu_buffer: byte_size(count: resident),
-    generation_succeeded: succeeded,
+    outcome: outcome,
   }
 }
 
@@ -289,27 +485,25 @@ fn fixture_load(resident: Nat, succeeded: Bool) -> OllamaRunnerMemoryObservation
 // release, so a maximum over them exists, and they differ only in quality_rank and weights. Without
 // this control every other claim here is satisfied by a function that returns its first argument.
 data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
-  identity: fixture_release,
-  quant_label: "LOW" as NonEmptyStr,
+  realization: r_fixture_low,
   quality_rank: 1,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_fixture_low, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+    FreshPrefillObservation { realization: r_fixture_low, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
-  runtime_memory_observations: [fixture_footprint(resident: 28000000000)],
+  runtime_memory_observations: [fixture_footprint(r: r_fixture_low, resident: 28000000000)],
 }
 
 data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
-  identity: fixture_release,
-  quant_label: "HIGH" as NonEmptyStr,
+  realization: r_fixture_high,
   quality_rank: 9,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_fixture_high, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
+    FreshPrefillObservation { realization: r_fixture_high, depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
   ],
-  runtime_memory_observations: [fixture_footprint(resident: 38000000000)],
+  runtime_memory_observations: [fixture_footprint(r: r_fixture_high, resident: 38000000000)],
 }
 
 test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
@@ -332,6 +526,8 @@ test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bo
         SemanticContextUnverifiedAtFloor { floor: _, declared: d } =>
           token_count_value(t: d) == 1048576
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
       }
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
@@ -344,9 +540,11 @@ test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bo
 test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool {
   match prefill_rate_at_floor(
     observations: [FreshPrefillObservation {
+      realization: r_iq2_xxs,
       depth: token_count(count: 160060),
       rate: tokens_per_second(count: 253),
     }],
+    realization: r_iq2_xxs,
     floor: token_count(count: 400000),
     regime: FreshSessionPrefill,
   ) {
@@ -369,26 +567,8 @@ test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool
 // that was attempted on the node and DID NOT PRODUCE A TOKEN. That is an observation, not a
 // calculation, and it is the arm a real out-of-memory load would populate.
 test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
-  let did_not_load_low = QuantizedCandidate {
-    identity: fixture_low_rank.identity,
-    quant_label: fixture_low_rank.quant_label,
-    quality_rank: fixture_low_rank.quality_rank,
-    declared_context: fixture_low_rank.declared_context,
-    semantic_context_verified_to: fixture_low_rank.semantic_context_verified_to,
-    fresh_prefill_observations: fixture_low_rank.fresh_prefill_observations,
-    runtime_memory_observations: [fixture_load(resident: 28000000000, succeeded: false)],
-  }
-  let did_not_load_high = QuantizedCandidate {
-    identity: fixture_high_rank.identity,
-    quant_label: fixture_high_rank.quant_label,
-    quality_rank: fixture_high_rank.quality_rank,
-    declared_context: fixture_high_rank.declared_context,
-    semantic_context_verified_to: fixture_high_rank.semantic_context_verified_to,
-    fresh_prefill_observations: fixture_high_rank.fresh_prefill_observations,
-    runtime_memory_observations: [fixture_load(resident: 38000000000, succeeded: false)],
-  }
   match choose_serving_candidate(
-    candidates: [did_not_load_low, did_not_load_high],
+    candidates: [oom_low(), oom_high()],
     node: fixture_node,
     constraints: floor_400k,
   ) {
@@ -414,16 +594,19 @@ test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
 // non-fresh arms of prefill_rate_at_floor have nothing to read.
 test fn w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor() -> Bool {
   let deep_fresh = [FreshPrefillObservation {
+    realization: r_iq2_xxs,
     depth: token_count(count: 400060),
     rate: tokens_per_second(count: 135),
   }]
   match prefill_rate_at_floor(
-    observations: deep_fresh, floor: token_count(count: 400000), regime: WarmContinuation,
+    observations: deep_fresh, realization: r_iq2_xxs,
+    floor: token_count(count: 400000), regime: WarmContinuation,
   ) {
     Present { value: _ } => false
     Absent =>
       match prefill_rate_at_floor(
-        observations: deep_fresh, floor: token_count(count: 400000), regime: FreshSessionPrefill,
+        observations: deep_fresh, realization: r_iq2_xxs,
+        floor: token_count(count: 400000), regime: FreshSessionPrefill,
       ) {
         Absent => false
         Present { value: r } => tokens_per_second_count(r: r) == 135
@@ -446,10 +629,138 @@ test fn w_a_warm_floor_over_fresh_only_receipts_is_unanswerable() -> Bool {
         PrefillRateUnmeasuredAtFloor { floor: _, regime: g } =>
           serving_regime_wire(regime: g) == "warm-continuation"
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
       }
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+  }
+}
+
+fn is_semantic_gap(missing: MissingFact) -> Bool {
+  match missing {
+    SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => true
+    MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+    MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+    MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+    PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
+  }
+}
+
+fn with_memory_observations(
+  base: QuantizedCandidate,
+  observations: List<OllamaRunnerMemoryObservation>,
+) -> QuantizedCandidate {
+  QuantizedCandidate {
+    realization: base.realization,
+    quality_rank: base.quality_rank,
+    declared_context: base.declared_context,
+    semantic_context: base.semantic_context,
+    fresh_prefill_observations: base.fresh_prefill_observations,
+    runtime_memory_observations: observations,
+  }
+}
+
+data out_of_memory: RunnerAttemptOutcome = RunnerRefusedForMemory {
+  detail: "llama_model_load: unable to allocate KV cache buffer" as NonEmptyStr,
+}
+
+fn oom_low() -> QuantizedCandidate {
+  with_memory_observations(base: fixture_low_rank,
+    observations: [fixture_attempt(r: r_fixture_low, outcome: out_of_memory)])
+}
+
+fn oom_high() -> QuantizedCandidate {
+  with_memory_observations(base: fixture_high_rank,
+    observations: [fixture_attempt(r: r_fixture_high, outcome: out_of_memory)])
+}
+
+// ================= WHAT AN UNSUCCESSFUL ATTEMPT MEANS =================
+//
+// A Bool `generation_succeeded` mapped every failure to a memory verdict. It does not follow: a
+// template error, a cancelled request or a transport fault produces no token and says nothing about
+// whether the weights and cache fit. Only the typed insufficient-memory refusal may reject; the
+// other failure is UNANSWERABLE and names its cause.
+test fn w_only_a_typed_memory_refusal_rejects_on_memory() -> Bool {
+  let broken = with_memory_observations(base: fixture_low_rank, observations: [
+    fixture_attempt(r: r_fixture_low, outcome: RunnerFailedForOtherCause {
+      cause: "chat template rendering failed" as NonEmptyStr,
+    }),
+  ])
+  let rejects_on_memory = match evaluate_candidate(
+    candidate: oom_low(), node: fixture_node, constraints: floor_8k) {
+    ServingCandidateRejected { identity: _, quant_label: _, axis: a } =>
+      match a {
+        DoesNotFitMemory { observed: _ } => true
+        ContextBelowFloor { declared: _, floor: _ } => false
+        PrefillBelowFloor { measured: _, floor: _ } => false
+      }
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
+  }
+  let other_is_unanswerable = match evaluate_candidate(
+    candidate: broken, node: fixture_node, constraints: floor_8k) {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      match m {
+        MemoryAttemptFailedForNonMemoryCause { cause: c } =>
+          (c as String) == "chat template rendering failed"
+        MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+        SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
+      }
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+  }
+  rejects_on_memory && other_is_unanswerable
+}
+
+// ================= MAGNITUDE DOES NOT DECIDE BETWEEN CONTRADICTIONS =================
+//
+// The fold this replaced picked the SMALLEST reported buffer and only then read the success flag, so
+// a small failed receipt beat a large successful one and flipped admission into rejection -- and the
+// reverse pairing admitted a candidate whose attempt had failed. Both orders are exercised here, and
+// both must refuse: two qualifying attempts that disagree are a question, not a measurement.
+fn is_contradiction_refusal(verdict: CandidateVerdict) -> Bool {
+  match verdict {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      match m {
+        MemoryFitContradictedAtConfiguration { floor: f, sessions: n } =>
+          token_count_value(t: f) == 8192 && n == 1
+        MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
+      }
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+  }
+}
+
+test fn w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes() -> Bool {
+  let big_success = fixture_footprint(r: r_fixture_low, resident: 99000000000)
+  let small_failure = fixture_attempt(r: r_fixture_low, outcome: out_of_memory)
+  is_contradiction_refusal(verdict: evaluate_candidate(
+    candidate: with_memory_observations(base: fixture_low_rank,
+      observations: [big_success, small_failure]),
+    node: fixture_node, constraints: floor_8k))
+    && is_contradiction_refusal(verdict: evaluate_candidate(
+      candidate: with_memory_observations(base: fixture_low_rank,
+        observations: [small_failure, big_success]),
+      node: fixture_node, constraints: floor_8k))
+}
+
+// And the POSITIVE CONTROL for the same pair: with the memory refusal removed, the identical
+// large-buffer success admits. So the refusal above is the disagreement and not the magnitude.
+test fn w_the_large_buffer_success_alone_still_admits() -> Bool {
+  match evaluate_candidate(
+    candidate: with_memory_observations(base: fixture_low_rank,
+      observations: [fixture_footprint(r: r_fixture_low, resident: 99000000000)]),
+    node: fixture_node, constraints: floor_8k) {
+    ServingCandidateAdmissible { candidate: _, fit: _ } => true
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
   }
 }
 
@@ -465,6 +776,12 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
     && w_nothing_admissible_refuses_and_reports_every_rejection()
     && w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor()
     && w_a_warm_floor_over_fresh_only_receipts_is_unanswerable()
+    && w_evidence_from_another_realization_or_node_cannot_qualify()
+    && w_a_retrieval_receipt_from_another_realization_does_not_qualify()
+    && w_a_prefill_receipt_from_another_realization_does_not_qualify()
+    && w_only_a_typed_memory_refusal_rejects_on_memory()
+    && w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes()
+    && w_the_large_buffer_success_alone_still_admits()
 }
 
 // ======================= THE ANSWERABILITY CLAIMS =======================
@@ -474,13 +791,12 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
 // A candidate whose KV cost was never measured has not FAILED the memory test -- it has not taken
 // it. The selector must refuse rather than hand the win to the measured candidate by default.
 data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
-  identity: deepseek_v4_flash_release,
-  quant_label: "UD-IQ4_XS" as NonEmptyStr,
+  realization: r_unmeasured,
   quality_rank: 4,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_unmeasured, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+    FreshPrefillObservation { realization: r_unmeasured, depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
   ],
   runtime_memory_observations: [],
 }
@@ -491,6 +807,8 @@ test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
       match m {
         MemoryFitUnobservedAtConfiguration { floor: f, sessions: n } =>
           token_count_value(t: f) == 400000 && n == 1
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
       }
@@ -518,27 +836,16 @@ test fn w_selection_refuses_while_an_unresolved_candidate_could_win() -> Bool {
 // Preference is ordinal WITHIN a release, so two admissible releases have no join and a maximum over
 // them does not exist. Returning one would manufacture an ordering the inputs never contained.
 data other_release: QuantizedCandidate = QuantizedCandidate {
-  identity: qwen_release,
-  quant_label: "Q8_0" as NonEmptyStr,
+  realization: r_qwen,
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_qwen, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
+    FreshPrefillObservation { realization: r_qwen, depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
   ],
   runtime_memory_observations: [
-    OllamaRunnerMemoryObservation {
-      realization: "qwen3.6:35b" as NonEmptyStr,
-      runtime: "ollama 0.32.9" as NonEmptyStr,
-      runtime_config: "declared fixture, not a reading" as NonEmptyStr,
-      node: "spark-a3ee" as NonEmptyStr,
-      instrument: "declared fixture, not a reading" as NonEmptyStr,
-      context_depth: token_count(count: 1048576),
-      concurrent_sessions: 1,
-      reported_total_buffer: byte_size(count: 30600000000),
-      reported_gpu_buffer: byte_size(count: 30600000000),
-      generation_succeeded: true,
-    },
+    served(r: r_qwen, node: serving_node, instrument: fixture_instrument,
+      depth: 1048576, sessions: 1, resident: 30600000000),
   ],
 }
 
@@ -580,27 +887,25 @@ test fn w_all_answerability_claims_hold() -> Bool {
 // would return a different winner for the same inputs, which is why "stable under re-ordering" and
 // "keep the earlier one" cannot both be true.
 data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
-  identity: fixture_release,
-  quant_label: "TIED-A" as NonEmptyStr,
+  realization: r_tied_a,
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_tied_a, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+    FreshPrefillObservation { realization: r_tied_a, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
-  runtime_memory_observations: [fixture_footprint(resident: 28000000000)],
+  runtime_memory_observations: [fixture_footprint(r: r_tied_a, resident: 28000000000)],
 }
 
 data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
-  identity: fixture_release,
-  quant_label: "TIED-B" as NonEmptyStr,
+  realization: r_tied_b,
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
-  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  semantic_context: verified_at(r: r_tied_b, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+    FreshPrefillObservation { realization: r_tied_b, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
-  runtime_memory_observations: [fixture_footprint(resident: 29000000000)],
+  runtime_memory_observations: [fixture_footprint(r: r_tied_b, resident: 29000000000)],
 }
 
 fn is_tie_refusal(choice: ServingChoice) -> Bool {

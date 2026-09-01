@@ -59,14 +59,52 @@ import std.measure {
 // numbers carry no unit and must never be compared across releases, because a Q3 of a 284B model and
 // a Q8 of a 30B model are not on one scale. Cross-release quality is the operator's subjective call,
 // which is why it enters as a floor rather than as an objective.
-type QuantizedCandidate {
-  identity: ReleaseIdentity
+// THE EXACT THING EVIDENCE IS ABOUT. A release is not what serves; a release quantized into an
+// artifact, loaded by a particular runtime under a particular configuration, is.
+//
+// WHY THIS EXISTS AND WHY IT IS A JOIN KEY RATHER THAN A LABEL. The observations below used to
+// CARRY realization, runtime and configuration as fields and never MATCH on them: qualification
+// filtered on depth, concurrency and node alone. An observation for another artifact, another
+// runtime, or another configuration could be placed in a candidate's list and qualify unchanged, and
+// every provenance string could be rewritten without a single claim going red. Fields that describe
+// a qualification without performing it are the same failure as a constant labelled "exact" -- they
+// read as evidence and do no work.
+//
+// Worse than any single mismatch is the COMBINATION it permitted: memory fit from configuration A,
+// retrieval evidence from B, prefill evidence from C, admitted as one candidate that never existed.
+// So every evidence axis joins THIS identity, and an observation that does not carry it cannot
+// answer for this candidate at all.
+type ServingRealizationIdentity {
+  release_id: ReleaseIdentity
   quant_label: NonEmptyStr
+  artifact_ref: NonEmptyStr
+  runtime: NonEmptyStr
+  runtime_config: NonEmptyStr
+}
+
+fn serving_realization_equal(a: ServingRealizationIdentity, b: ServingRealizationIdentity) -> Bool {
+  release_identity_equal(a: a.release_id, b: b.release_id)
+    && (a.quant_label as String) == (b.quant_label as String)
+    && (a.artifact_ref as String) == (b.artifact_ref as String)
+    && (a.runtime as String) == (b.runtime as String)
+    && (a.runtime_config as String) == (b.runtime_config as String)
+}
+
+type QuantizedCandidate {
+  realization: ServingRealizationIdentity
   quality_rank: Int
   declared_context: TokenCount
-  semantic_context_verified_to: TokenCount?
+  semantic_context: SemanticContextEvidence?
   fresh_prefill_observations: List<FreshPrefillObservation>
   runtime_memory_observations: List<OllamaRunnerMemoryObservation>
+}
+
+// Retrieval evidence is an OBSERVATION about a realization, not a bare depth hanging off the
+// candidate. It was a `TokenCount?` -- a number with no subject, which could not be checked against
+// the thing it was being used to qualify.
+type SemanticContextEvidence {
+  realization: ServingRealizationIdentity
+  verified_to: TokenCount
 }
 
 // PREFILL RATE IS NOT A SCALAR, and this repository's own measurements falsified the scalar that
@@ -112,6 +150,7 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 // NEXT-RUNG TRIGGER: a PrefixReuseReceipt carrier produced by the observation layer, at which point
 // a WarmPrefillObservation may be constructed FROM one and not otherwise.
 type FreshPrefillObservation {
+  realization: ServingRealizationIdentity
   depth: TokenCount
   rate: TokensPerSecond
 }
@@ -128,21 +167,26 @@ type FreshPrefillObservation {
 // read at all, so the widening arm does not exist to be taken.
 fn prefill_rate_at_floor(
   observations: List<FreshPrefillObservation>,
+  realization: ServingRealizationIdentity,
   floor: TokenCount,
   regime: ServingRegime,
 ) -> TokensPerSecond? {
   match regime {
     WarmContinuation => none
     RestoredSession => none
-    FreshSessionPrefill => slowest_fresh_rate_at_floor(observations: observations, floor: floor)
+    FreshSessionPrefill =>
+      slowest_fresh_rate_at_floor(observations: observations, realization: realization, floor: floor)
   }
 }
 
 fn slowest_fresh_rate_at_floor(
   observations: List<FreshPrefillObservation>,
+  realization: ServingRealizationIdentity,
   floor: TokenCount,
 ) -> TokensPerSecond? {
-  let deep = filter(observations, o => token_count_value(t: o.depth) >= token_count_value(t: floor))
+  let deep = filter(observations, o =>
+    serving_realization_equal(a: o.realization, b: realization)
+      && token_count_value(t: o.depth) >= token_count_value(t: floor))
   fold(deep, none, (worst, o) =>
     match worst {
       Absent => Present { value: o.rate }
@@ -188,76 +232,143 @@ fn slowest_fresh_rate_at_floor(
 // produced a token on that node. On the measured unified-memory nodes the two figures were
 // byte-identical in every reading, but that equality is carried here as data to be observed rather
 // than assumed, because a full-offload receipt is what would license treating them as one.
+// WHAT AN ATTEMPT PRODUCED, as a typed outcome rather than a Bool beside two byte fields.
+//
+// A Bool `generation_succeeded` said too much and too little at once. Too much, because it mapped
+// EVERY unsuccessful attempt to a memory verdict, when a token can fail to appear from request
+// validation, tokenization, a template error, an unsupported capability, cancellation, a timeout, a
+// transport fault, or a crash that has nothing to do with memory. Too little, because the record
+// still carried two buffer figures -- and an attempt that fails BEFORE a runner exists has no
+// /api/ps row to read, so those numbers could only be invented. The fixture proved the point by
+// inventing them.
+//
+// Buffer quantities now live only on the arm where a runner existed to report them, so a failed
+// pre-runner attempt carrying byte figures is unwritable rather than merely discouraged. Only a
+// typed insufficient-memory refusal may become a memory rejection; every other failure is a
+// different subject and is reported as one.
+type RunnerAttemptOutcome
+  = RunnerServed { reported_total_buffer: ByteSize, reported_gpu_buffer: ByteSize }
+  | RunnerRefusedForMemory { detail: NonEmptyStr }
+  | RunnerFailedForOtherCause { cause: NonEmptyStr }
+
 type OllamaRunnerMemoryObservation {
-  realization: NonEmptyStr
-  runtime: NonEmptyStr
-  runtime_config: NonEmptyStr
+  realization: ServingRealizationIdentity
   node: NonEmptyStr
   instrument: NonEmptyStr
   context_depth: TokenCount
   concurrent_sessions: Nat
-  reported_total_buffer: ByteSize
-  reported_gpu_buffer: ByteSize
-  generation_succeeded: Bool
+  outcome: RunnerAttemptOutcome
 }
 
-// The observation that answers a demand for `floor` context at `hot_sessions` resident sessions ON
-// THIS NODE, or Absent when none does. Node equality is a qualification and not a label: a fit
-// established on one machine says nothing about another, and importing it would be the same
-// substitution as importing a shallower depth.
+// WHAT THE QUALIFYING ATTEMPTS SAY, reconciled by TYPE rather than by byte magnitude.
 //
-// DEEPER QUALIFIES SHALLOWER; SHALLOWER NEVER QUALIFIES DEEPER. That direction is the single
-// assumption this function makes, and it is stated rather than buried: footprint is monotone in
-// depth, so a reading at or beyond the floor upper-bounds the floor cost, while a shallower reading
-// bounds nothing and flatters the candidate. Among qualifying readings the SMALLEST is the tightest
-// sound bound, so that is the one returned.
+// The previous version folded every qualifying observation to the smallest reported buffer and only
+// then looked at whether the attempt succeeded. That let magnitude decide truth: a small failed
+// receipt beat a large successful one and flipped admission into rejection, and the reverse pairing
+// admitted a candidate whose deeper attempt had failed. Once bytes are no longer compared against a
+// capacity, "smallest buffer" is not evidence of fit and was never this selector's objective.
 //
-// CONCURRENCY IS NOT RECOVERED BY MULTIPLICATION. A one-session reading says nothing executable
-// about two simultaneously resident sessions -- shared weights, allocator behaviour and per-session
-// caches do not decompose into a per-session term this instrument can see. A demand above the
-// observed concurrency is UNANSWERABLE, exactly as a deeper floor is, and never a one-session number
-// scaled up.
-//
-// THE WHOLE OBSERVATION IS RETURNED, not a byte count. Detaching a number would strip the depth,
-// node, runtime and instrument that make the answer checkable, and a fit established from a reading
-// nobody can locate again is not established.
-//
-// SELECTION AMONG QUALIFYING OBSERVATIONS IS BY REPORTED BUFFER AND NOT BY ROSTER ORDER. The
-// comparison is between two readings from ONE instrument, so it stays inside a single accounting
-// domain -- which is exactly the property the discarded capacity comparison did not have.
-fn runtime_memory_observation_at_floor(
+// Qualification is an identity join FIRST -- realization, node, depth, concurrency -- and only
+// attempts that pass it are reconciled. Contradiction between them REFUSES rather than being settled
+// by a number: two attempts at the same qualifying configuration that disagree about whether a
+// runner could be built are not a measurement, they are a question.
+type MemoryFitEvidence
+  = MemoryFitEstablished { by: OllamaRunnerMemoryObservation }
+  | MemoryFitRefusedForMemory { by: OllamaRunnerMemoryObservation }
+  | MemoryFitContradicted { served: OllamaRunnerMemoryObservation, refused: OllamaRunnerMemoryObservation }
+  | MemoryFitAttemptFailedOtherwise { by: OllamaRunnerMemoryObservation }
+  | MemoryFitUnobserved
+
+fn qualifying_memory_observations(
   observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: NonEmptyStr,
-) -> OllamaRunnerMemoryObservation? {
-  let qualifying = filter(observations, o =>
-    token_count_value(t: o.context_depth) >= token_count_value(t: floor)
+) -> List<OllamaRunnerMemoryObservation> {
+  filter(observations, o =>
+    serving_realization_equal(a: o.realization, b: realization)
+      && token_count_value(t: o.context_depth) >= token_count_value(t: floor)
       && o.concurrent_sessions >= hot_sessions
       && (o.node as String) == (node as String))
-  let tightest: OllamaRunnerMemoryObservation? = none
-  fold(qualifying, tightest, (best, o) =>
-    match best {
-      Absent => Present { value: o }
-      Present { value: incumbent } => Present { value: tighter_bound(a: o, b: incumbent) }
-    })
 }
 
-// The comparison is a NAMED BINARY OPERATION rather than an inline match inside the fold, and the
-// reason is a compiler limitation worth recording rather than routing silently around: a value bound
-// by a `Present { value: x }` pattern over a fold accumulator does not carry its type to a FIELD
-// ACCESS -- `x.resident` resolves as `no field 'resident' on type 'Unit'` -- while the same binding
-// passed as a typed function ARGUMENT unifies correctly, which is why the prefill fold above never
-// hit it. Seeding the fold with an annotated `none` does not repair the inference. So the accumulator
-// type is established here by the parameter list. This is a real gap in accumulator type propagation,
-// not a stylistic preference, and it will keep shaping folds until it is fixed at the language layer.
-fn tighter_bound(
+fn outcome_is_served(o: OllamaRunnerMemoryObservation) -> Bool {
+  match o.outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => true
+    RunnerRefusedForMemory { detail: _ } => false
+    RunnerFailedForOtherCause { cause: _ } => false
+  }
+}
+
+fn outcome_is_memory_refusal(o: OllamaRunnerMemoryObservation) -> Bool {
+  match o.outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => false
+    RunnerRefusedForMemory { detail: _ } => true
+    RunnerFailedForOtherCause { cause: _ } => false
+  }
+}
+
+fn outcome_is_other_failure(o: OllamaRunnerMemoryObservation) -> Bool {
+  match o.outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => false
+    RunnerRefusedForMemory { detail: _ } => false
+    RunnerFailedForOtherCause { cause: _ } => true
+  }
+}
+
+// The SHALLOWEST qualifying attempt, because it is the one closest to the configuration actually
+// requested. Depth is the axis the demand is expressed in, so ordering on it is ordering on the
+// question rather than on an incidental byte count.
+fn shallowest(
   a: OllamaRunnerMemoryObservation,
   b: OllamaRunnerMemoryObservation,
 ) -> OllamaRunnerMemoryObservation {
-  match byte_size_count(b: a.reported_total_buffer) < byte_size_count(b: b.reported_total_buffer) {
+  match token_count_value(t: a.context_depth) < token_count_value(t: b.context_depth) {
     true => a
     false => b
+  }
+}
+
+fn shallowest_of(
+  observations: List<OllamaRunnerMemoryObservation>,
+) -> OllamaRunnerMemoryObservation? {
+  let seed: OllamaRunnerMemoryObservation? = none
+  fold(observations, seed, (best, o) =>
+    match best {
+      Absent => Present { value: o }
+      Present { value: incumbent } => Present { value: shallowest(a: o, b: incumbent) }
+    })
+}
+
+fn memory_fit_evidence(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+  floor: TokenCount,
+  hot_sessions: Nat,
+  node: NonEmptyStr,
+) -> MemoryFitEvidence {
+  let qualifying = qualifying_memory_observations(
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node)
+  let served = filter(qualifying, o => outcome_is_served(o: o))
+  let refused = filter(qualifying, o => outcome_is_memory_refusal(o: o))
+  let broken = filter(qualifying, o => outcome_is_other_failure(o: o))
+  match shallowest_of(observations: served) {
+    Present { value: s } =>
+      match shallowest_of(observations: refused) {
+        Present { value: r } => MemoryFitContradicted { served: s, refused: r }
+        Absent => MemoryFitEstablished { by: s }
+      }
+    Absent =>
+      match shallowest_of(observations: refused) {
+        Present { value: r } => MemoryFitRefusedForMemory { by: r }
+        Absent =>
+          match shallowest_of(observations: broken) {
+            Present { value: b } => MemoryFitAttemptFailedOtherwise { by: b }
+            Absent => MemoryFitUnobserved
+          }
+      }
   }
 }
 
@@ -280,6 +391,8 @@ type ServingConstraints {
 // and the answer would look identical to one where the better candidate genuinely lost.
 type MissingFact
   = MemoryFitUnobservedAtConfiguration { floor: TokenCount, sessions: Nat }
+  | MemoryFitContradictedAtConfiguration { floor: TokenCount, sessions: Nat }
+  | MemoryAttemptFailedForNonMemoryCause { cause: NonEmptyStr }
   | PrefillRateUnmeasuredAtFloor { floor: TokenCount, regime: ServingRegime }
   | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
 
@@ -289,6 +402,18 @@ fn missing_fact_wire(missing: MissingFact) -> String {
       join([
         "no runner-memory observation on this node at or beyond ", to_string(token_count_value(t: f)),
         " tokens with at least ", to_string(n), " concurrent session(s)",
+      ], "")
+    MemoryFitContradictedAtConfiguration { floor: f, sessions: n } =>
+      join([
+        "qualifying runner attempts on this node at or beyond ", to_string(token_count_value(t: f)),
+        " tokens with at least ", to_string(n),
+        " concurrent session(s) DISAGREE: one served and one refused for memory at the same joined ",
+        "configuration, so no memory verdict is available without reconciling them",
+      ], "")
+    MemoryAttemptFailedForNonMemoryCause { cause: c } =>
+      join([
+        "the only qualifying runner attempt failed for a cause that is not memory (",
+        (c as String), "), which decides nothing about whether this realization fits",
       ], "")
     PrefillRateUnmeasuredAtFloor { floor: f, regime: g } =>
       join([
@@ -332,10 +457,16 @@ type CandidateVerdict
 //
 // SO FIT IS NOT COMPUTED AND IT IS NOT COMPARED -- IT IS EXECUTED. The question the instrument can
 // actually answer is whether this realization, at this context, at this concurrency, ON THIS NODE,
-// loaded and produced a token. A successful generation is a positive fit under exactly the
-// conditions that held; a failed one is an observed non-fit at that configuration; no observation
-// at all is Unanswerable. Nothing in this arm subtracts a reported buffer from a declared capacity,
-// because those are different accounting domains and the difference between them is not a fact.
+// loaded and produced a token. Nothing in this arm subtracts a reported buffer from a declared
+// capacity, because those are different accounting domains and the difference between them is not
+// a fact.
+//
+// AN UNSUCCESSFUL ATTEMPT IS NOT A MEMORY VERDICT, and reading it as one was the third error on this
+// axis. Only a typed insufficient-memory refusal rejects; any other failure leaves the memory
+// question unanswered and says so, because a template error or a cancelled request is evidence about
+// the request, not about whether the weights and cache fit. No observation at all is Unanswerable,
+// and two qualifying observations that disagree are Unanswerable too -- a disagreement is a question,
+// and settling it by preferring whichever number is smaller would let magnitude decide truth.
 //
 // The node capacity carrier and its allocatable derivation LEFT THIS MODULE with that comparison.
 // They were not kept "for reference": a value the decision cannot consume is decoration, and the
@@ -352,77 +483,109 @@ type CandidateVerdict
 // architecture admits, not a measurement of what the model retrieves, and the gap between them is
 // exactly where silent degradation lives. Admitting on the declaration would reintroduce the rung
 // error the publication layer exists to prevent, one module downstream of where it was removed.
+fn unanswerable(candidate: QuantizedCandidate, missing: MissingFact) -> CandidateVerdict {
+  ServingCandidateUnanswerable {
+    identity: candidate.realization.release_id,
+    quant_label: candidate.realization.quant_label,
+    missing: missing,
+  }
+}
+
+fn rejected(candidate: QuantizedCandidate, axis: RejectionAxis) -> CandidateVerdict {
+  ServingCandidateRejected {
+    identity: candidate.realization.release_id,
+    quant_label: candidate.realization.quant_label,
+    axis: axis,
+  }
+}
+
 fn evaluate_candidate(
   candidate: QuantizedCandidate,
   node: NonEmptyStr,
   constraints: ServingConstraints,
 ) -> CandidateVerdict {
-  match runtime_memory_observation_at_floor(
-      observations: candidate.runtime_memory_observations,
-      floor: constraints.context_floor,
-      hot_sessions: constraints.hot_sessions,
+  match memory_fit_evidence(
+    observations: candidate.runtime_memory_observations,
+    realization: candidate.realization,
+    floor: constraints.context_floor,
+    hot_sessions: constraints.hot_sessions,
     node: node,
   ) {
-    Absent => ServingCandidateUnanswerable {
-        identity: candidate.identity,
-        quant_label: candidate.quant_label,
-        missing: MemoryFitUnobservedAtConfiguration {
+    MemoryFitUnobserved => unanswerable(candidate: candidate, missing: MemoryFitUnobservedAtConfiguration {
+      floor: constraints.context_floor,
+      sessions: constraints.hot_sessions,
+    })
+    MemoryFitContradicted { served: _, refused: _ } =>
+      unanswerable(candidate: candidate, missing: MemoryFitContradictedAtConfiguration {
+        floor: constraints.context_floor,
+        sessions: constraints.hot_sessions,
+      })
+    MemoryFitAttemptFailedOtherwise { by: b } =>
+      unanswerable(candidate: candidate, missing: MemoryAttemptFailedForNonMemoryCause {
+        cause: attempt_failure_cause(observation: b),
+      })
+    MemoryFitRefusedForMemory { by: r } =>
+      rejected(candidate: candidate, axis: DoesNotFitMemory { observed: r })
+    MemoryFitEstablished { by: observed } =>
+      match semantic_context_verified_to(
+        evidence: candidate.semantic_context,
+        realization: candidate.realization,
+      ) {
+        Absent => unanswerable(candidate: candidate, missing: SemanticContextUnverifiedAtFloor {
           floor: constraints.context_floor,
-          sessions: constraints.hot_sessions,
-        },
-      }
-      Present { value: observed } => {
-        match !observed.generation_succeeded {
-          true => ServingCandidateRejected {
-            identity: candidate.identity,
-            quant_label: candidate.quant_label,
-            axis: DoesNotFitMemory { observed: observed },
-          }
-          false => match candidate.semantic_context_verified_to {
-            Absent => ServingCandidateUnanswerable {
-              identity: candidate.identity,
-              quant_label: candidate.quant_label,
-              missing: SemanticContextUnverifiedAtFloor {
+          declared: candidate.declared_context,
+        })
+        Present { value: verified } =>
+          match token_count_value(t: verified) < token_count_value(t: constraints.context_floor) {
+            true => rejected(candidate: candidate, axis: ContextBelowFloor {
+              declared: verified,
+              floor: constraints.context_floor,
+            })
+            false => match prefill_rate_at_floor(
+              observations: candidate.fresh_prefill_observations,
+              realization: candidate.realization,
+              floor: constraints.context_floor,
+              regime: constraints.prefill_regime,
+            ) {
+              Absent => unanswerable(candidate: candidate, missing: PrefillRateUnmeasuredAtFloor {
                 floor: constraints.context_floor,
-                declared: candidate.declared_context,
-              },
+                regime: constraints.prefill_regime,
+              })
+              Present { value: prefill } =>
+                match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
+                  true => rejected(candidate: candidate, axis: PrefillBelowFloor {
+                    measured: prefill,
+                    floor: constraints.prefill_floor,
+                  })
+                  false => ServingCandidateAdmissible { candidate: candidate, fit: observed }
+                }
             }
-            Present { value: verified } =>
-              match token_count_value(t: verified) < token_count_value(t: constraints.context_floor) {
-                true => ServingCandidateRejected {
-                  identity: candidate.identity,
-                  quant_label: candidate.quant_label,
-                  axis: ContextBelowFloor { declared: verified, floor: constraints.context_floor },
-                }
-                false => match prefill_rate_at_floor(
-                  observations: candidate.fresh_prefill_observations,
-                  floor: constraints.context_floor,
-                  regime: constraints.prefill_regime,
-                ) {
-                  Absent => ServingCandidateUnanswerable {
-                    identity: candidate.identity,
-                    quant_label: candidate.quant_label,
-                    missing: PrefillRateUnmeasuredAtFloor {
-                      floor: constraints.context_floor,
-                      regime: constraints.prefill_regime,
-                    },
-                  }
-                  Present { value: prefill } =>
-                    match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
-                      true => ServingCandidateRejected {
-                        identity: candidate.identity,
-                        quant_label: candidate.quant_label,
-                        axis: PrefillBelowFloor { measured: prefill, floor: constraints.prefill_floor },
-                      }
-                      false => ServingCandidateAdmissible {
-                        candidate: candidate,
-                        fit: observed,
-                      }
-                    }
-                }
-              }
           }
-        }
+      }
+  }
+}
+
+fn attempt_failure_cause(observation: OllamaRunnerMemoryObservation) -> NonEmptyStr {
+  match observation.outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => "served" as NonEmptyStr
+    RunnerRefusedForMemory { detail: d } => d
+    RunnerFailedForOtherCause { cause: c } => c
+  }
+}
+
+// The retrieval receipt counts only when it was taken against THIS realization. A depth verified on
+// a different quantization or a different artifact is a fact about that realization, and reading it
+// here would let a candidate borrow evidence it never earned.
+fn semantic_context_verified_to(
+  evidence: SemanticContextEvidence?,
+  realization: ServingRealizationIdentity,
+) -> TokenCount? {
+  match evidence {
+    Absent => none
+    Present { value: e } =>
+      match serving_realization_equal(a: e.realization, b: realization) {
+        true => Present { value: e.verified_to }
+        false => none
       }
   }
 }
@@ -461,7 +624,7 @@ fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> I
 fn verdict_quality(verdict: CandidateVerdict) -> WithinReleaseQuality? {
   match verdict {
     ServingCandidateAdmissible { candidate: c, fit: _ } =>
-      Present { value: WithinReleaseQuality { identity: c.identity, rank: c.quality_rank } }
+      Present { value: WithinReleaseQuality { identity: c.realization.release_id, rank: c.quality_rank } }
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => none
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => none
   }
@@ -573,7 +736,7 @@ fn distinct_release_count(verdicts: List<CandidateVerdict>) -> Nat {
 
 fn verdict_release(verdict: CandidateVerdict) -> ReleaseIdentity {
   match verdict {
-    ServingCandidateAdmissible { candidate: c, fit: _ } => c.identity
+    ServingCandidateAdmissible { candidate: c, fit: _ } => c.realization.release_id
     ServingCandidateRejected { identity: r, quant_label: _, axis: _ } => r
     ServingCandidateUnanswerable { identity: r, quant_label: _, missing: _ } => r
   }
