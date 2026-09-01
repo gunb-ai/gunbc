@@ -189,14 +189,20 @@ data self_host_wet_roster_coverage: CoverageNotEstablished = CoverageNotEstablis
   restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierSelfHostWet) returns true, which is the separate operator agreement std.witness_admission witness_cadence_has_scheduled_route_note reserves" as NonEmptyStr,
 }
 
+data substrate_long_lane_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierSubstrateLongLane,
+  restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierSubstrateLongLane) returns true" as NonEmptyStr,
+}
+
 data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished {
   lost_with: FalsifierRehomedBinWet,
   restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierRehomedBinWet) returns true" as NonEmptyStr,
 }
 
-// The DROP row for the class, filed once rather than per site. Twelve authority rows lost
-// one shared thing -- the executor -- so twelve copies of the same five fields would be
-// twelve places to update when the route returns.
+// The DROP row for the class, filed once rather than per site. Seventeen rows lost one shared
+// thing -- the executor -- so seventeen copies of the same five fields would be seventeen places
+// to update when the route returns. That is also why the five sites added 2026-09-01 enrol here
+// instead of carrying drops of their own.
 data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
   subject: "authority rows whose stated enforcement, audit or backstop was the affected-set falsifier cadence",
   previous: Mitigatable,
@@ -211,14 +217,20 @@ data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
     "gunbc.ci_layer_roots bin_witness_wet_note",
     "tools.namespace_import_closure_behavioral_transport nic_doc",
     "v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings falsifier_self_host_wet_module_bindings_revocation_note",
+    "test.claim.instrument_sandbox_witness fixture_line_remaining",
+    "test.claim.self_host_use_site_verdict_behavioral_witness self_host_use_site_verdict_behavioral_receipt_holds",
+    "test.claim.self_host_body_producer_behavioral_witness self_host_body_producer_behavioral_receipt_holds",
+    "test.claim.self_host_logic_behavioral_witness self_host_logic_behavioral_receipt_holds",
+    "test.claim.long.dag_compile_clean_perturb_corpus perturb_cross_tree_import_corpus_green_holds",
     "v2.std.live_tree live_tree_disposition_stamp_provenance",
     "v1_compiler.cli_run parse_entry_live_tree_disposition",
   ],
   restoration_trigger: "a workflow or scheduled entry point exists that runs a predict-only cold comparison over the corpus, at which point each row above is reclassified from PremiseInvalidated to ReboundToExecutingConsumer with that consumer's receipt",
 }
 
-// THE TWELVE SITES. Two more than the ten the drop population names, because two of them
-// are HistoricalReceipt rows and a historical receipt is not a population a re-add restores.
+// THE SEVENTEEN SITES (twelve at landing, five witness-test sites added 2026-09-01). Two more
+// than the fifteen the drop population names, because two of them are HistoricalReceipt rows and
+// a historical receipt is not a population a re-add restores.
 //
 // TWO SITES ARE CARRIED HERE AND EDITED NOWHERE, deliberately: `v2.std.live_tree`
 // `live_tree_disposition_stamp_provenance` and its near-verbatim host mirror
@@ -323,6 +335,55 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
       standing: PremiseInvalidated {
         affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
         current_coverage: self_host_wet_roster_coverage,
+      },
+    },
+    // FIVE WITNESS-TEST SITES (added 2026-09-01, XL-0-RECEIPT follow-on). The twelve rows above are
+    // authority rows that RELIED on the cadence for a coverage claim; these five are witness tests
+    // whose own annotations asserted the cadence EXECUTES them, which is the same subject reached
+    // from the other side -- the row's coverage rests on a dark cadence either way. The precedent is
+    // `tools.namespace_import_closure_behavioral_transport` `nic_doc`, already censused here and
+    // already carrying the exact correction these five now match, so this is enrollment in an
+    // existing subject rather than a widening of it. The site is the declaration the annotation is
+    // attached to, because §4c annotations have no symbol of their own for a `DeclarationRef` to name.
+    //
+    // NONE OF THE FIVE IS `ReboundToExecutingConsumer`, INCLUDING THE TWO THAT CARRY A LOCAL RECIPE.
+    // `std.witness_admission` answers OfflineLocalRecipe true, which is a statement about routes;
+    // this census asks the stricter question and its own note answers it -- a command with no
+    // workflow is a local recipe, not a scheduled entry point. Two authorities, two questions, and
+    // reading the looser answer into the stricter one would have manufactured coverage.
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "test.claim.instrument_sandbox_witness", decl_name: "fixture_line_remaining"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows"),
+        current_coverage: substrate_long_lane_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "test.claim.self_host_use_site_verdict_behavioral_witness", decl_name: "self_host_use_site_verdict_behavioral_receipt_holds"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
+        current_coverage: self_host_wet_roster_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "test.claim.self_host_body_producer_behavioral_witness", decl_name: "self_host_body_producer_behavioral_receipt_holds"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
+        current_coverage: self_host_wet_roster_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "test.claim.self_host_logic_behavioral_witness", decl_name: "self_host_logic_behavioral_receipt_holds"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
+        current_coverage: self_host_wet_roster_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "test.claim.long.dag_compile_clean_perturb_corpus", decl_name: "perturb_cross_tree_import_corpus_green_holds"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
+        current_coverage: bin_wet_template_coverage,
       },
     },
   ]
