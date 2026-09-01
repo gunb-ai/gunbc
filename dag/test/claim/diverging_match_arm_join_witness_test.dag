@@ -89,11 +89,18 @@ test fn a_match_without_a_diverging_arm_still_joins_every_arm() -> Bool {
 }
 
 // REVIEW 58314 (codex/gpt-5.6-sol, REQUEST_CHANGES on #9964): the first version of
-// `arm_body_diverges` hand-walked ExprReturn and ExprBlock and MISSED ExprLet, so a
-// return hidden behind a terminal `let` was still admitted into the join. It also
-// forked a traversal `v1.compiler.ownership` `fold_terminal_expr` already owns. The
-// predicate now routes through that fold, and this is its discriminating case: the
-// arm's terminal is an ExprLet whose body is the `return`.
+// `arm_body_diverges` hand-walked ExprReturn and ExprBlock and forked a traversal
+// `v1.compiler.ownership` `fold_terminal_expr` already owns. The predicate now routes
+// through that fold, which handles ExprLet by recursing into `let_body`.
+//
+// THESE TWO WITNESSES DO NOT DISCRIMINATE THAT, and saying so is the point of this
+// note. Measured, not assumed: the pre-fix predicate was rebuilt and both PASS
+// against it. `{ let why = 2  return X }` puts the `return` as the block's LAST
+// CHILD with the `let` as a preceding sibling, so `children |> last` already reached
+// it. No surface shape found so far produces an arm whose terminal is an ExprLet
+// node. They are kept as BEHAVIOUR-PRESERVATION controls -- the fold must not change
+// what the block and bare forms answer -- never as evidence that an ExprLet hole was
+// live.
 fn probe_cell_let_terminal(xs: List<ProbeCell>) -> ProbeResult {
   let cell = match probe_cell_of(xs: xs) {
     Absent => {
