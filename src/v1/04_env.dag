@@ -1515,9 +1515,9 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
   let module_prefix = qualified_all_but_last(name: qualified)
   if decl_name == "" || module_prefix == "" { return none }
   match map_get(env.symbol_index.global_bare, decl_name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+    Present { value: GlobalBareUniqueBinding { module_path: mp, entry } } =>
       if mp == module_prefix {
-        match b.resolved.ident_span {
+        match entry.binding.resolved.ident_span {
           Present { value: ds } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: mp, decl_name: decl_name), decl_file: ds.file } }
           Absent => none
         }
@@ -1525,7 +1525,7 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match cands |> filter(c => c.module_path == module_prefix) |> first {
         Present { value: c } =>
-          match c.binding.resolved.ident_span {
+          match c.entry.binding.resolved.ident_span {
             Present { value: ds } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: c.module_path, decl_name: decl_name), decl_file: ds.file } }
             Absent => none
           }
@@ -1550,10 +1550,10 @@ fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineInd
     Absent => none
     Present { value: sp } =>
       match map_get(env.symbol_index.global_bare, decl_name) {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareUniqueBinding { module_path: mp, entry } } =>
+          if binding_declares_span(binding: entry.binding, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+          match cands |> filter(c => binding_declares_span(binding: c.entry.binding, sp: sp)) |> first {
             Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
             Absent => none
           }
@@ -1584,9 +1584,9 @@ fn declaration_file_of(d: DeclarationRef, env: TypeEnv) -> String {
   let want_name = d.decl_name as String
   let want_module = d.module_path as String
   match map_get(env.symbol_index.global_bare, want_name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+    Present { value: GlobalBareUniqueBinding { module_path: mp, entry } } =>
       if mp == want_module {
-        match b.resolved.ident_span {
+        match entry.binding.resolved.ident_span {
           Present { value: s } =>
             let f = s.file as String
             f
@@ -1596,7 +1596,7 @@ fn declaration_file_of(d: DeclarationRef, env: TypeEnv) -> String {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match cands |> filter(c => c.module_path == want_module) |> first {
         Present { value: c } =>
-          match c.binding.resolved.ident_span {
+          match c.entry.binding.resolved.ident_span {
             Present { value: s } =>
               let f = s.file as String
               f
