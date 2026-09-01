@@ -293,7 +293,6 @@ fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInPr
   }
 }
 
-data witness_floor_cancel_in_progress: CancelInProgressSpec = cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy)
 
 // THE QUEUE AXIS EMITS FROM THE SAME ROW THE CLASSIFIER READS, or the policy is not the authority.
 // Raised in review 58012: the running axis was already derived through cancel_in_progress_of_policy

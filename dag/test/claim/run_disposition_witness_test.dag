@@ -76,7 +76,7 @@ import gunbc.run_disposition {
 // THE CLASSIFIER'S ARMS ARE EXERCISED UNDER AN EXPLICIT POLICY, NOT UNDER THE LIVE ONE.
 //
 // The live policy is now an unconditional false -- gunbc.witness_floor_workflow
-// witness_floor_cancel_in_progress -- because superseding a run SIGKILLs cargo and permanently
+// witness_floor_concurrency_policy, whose running axis is NeverSupersedeRunning -- because superseding a run SIGKILLs cargo and permanently
 // leaks its host jobserver permits. Under that policy NO production input can reach
 // DispositionSuperseded, so every arm below asking about supersession would be permanently green
 // by construction if it consulted the live value: a decoration that would be cited as coverage
@@ -488,6 +488,17 @@ fn retaining_policy() -> WitnessFloorConcurrencyPolicy {
   }
 }
 
+// A RETAINING POLICY THAT ALSO SUPERSEDES. The fixture above varies only the pending axis, so it
+// carries the live NeverSupersedeRunning into the queue-max vocabulary -- where the false arm is
+// what a fold that DROPPED policy.running would render too. This one varies the running axis
+// across the same crossing, so the pair below is what makes the loss authorable.
+fn retaining_superseding_policy() -> WitnessFloorConcurrencyPolicy {
+  WitnessFloorConcurrencyPolicy {
+    pending: RetainPendingQueue,
+    running: SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
 test fn w_the_live_policy_emits_the_replacing_queue_regime() -> Bool {
   queue_regime_name(spec: concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")) == "queue-not-max"
 }
@@ -498,7 +509,11 @@ test fn w_a_retaining_policy_emits_the_queue_max_regime() -> Bool {
 
 // AND THE RUNNING AXIS SURVIVES THE CROSSING. GitHub gives queue:max its own cancel-in-progress
 // vocabulary, so a fold that dropped the running policy there would be silently lossy while both
-// regime witnesses above stayed green.
+// regime witnesses above stayed green. The two queue-max arms are the discrimination: the live
+// NeverSupersedeRunning must render the false constructor and a SupersedeRunningForEvent must
+// render the expression one, so replacing queue_max_cancel_of_policy with a constant goes red
+// whichever constant is chosen. Asking only the live policy there would have been green by
+// construction -- the decoration DESIGN 4b names.
 test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
   let live = concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")
   let retaining = concurrency_of_policy(policy: retaining_policy(), group: "g")
@@ -528,5 +543,20 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
     ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => false
     ConcurrencyScalar { group: _ } => false
   }
-  live_holds && retaining_holds
+  let superseding = concurrency_of_policy(policy: retaining_superseding_policy(), group: "g")
+  let superseding_holds = match superseding {
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: c } =>
+      match c {
+        Present { value: v } =>
+          match v {
+            QueueMaxCancelInProgressFalse => false
+            QueueMaxCancelInProgressExpression { expression: e } =>
+              e == "${{ github.event_name == 'pull_request' }}"
+          }
+        none => false
+      }
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => false
+    ConcurrencyScalar { group: _ } => false
+  }
+  live_holds && retaining_holds && superseding_holds
 }
