@@ -132,7 +132,8 @@ import v1.compiler.trait_bound_witness {
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
+import v1.compiler.infer_env {
+  resolved_node_is_kernel_identity_for_name, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -5802,7 +5803,9 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
 // the provider's structural type -- the shadow measured as 139 of the 146 E0308 rows in frontier
 // receipt 1 (host std::string::String vs Rc<im::Vector<i64>>). The question is asked of the
 // resolver's own lookup over the module's typed environment and decided by the BINDING'S IDENTITY
-// -- the kernel span file marker -- never by a name roster or arm order: a name that is both a
+// -- v1.compiler.infer_env resolved_node_is_kernel_identity_for_name, the ONE authority for the
+// kernel-identity fact, shared with the infer-side rewire guard -- never by a name roster or arm
+// order: a name that is both a
 // graph type and a kernel spelling answers by what its binding IS. Absent binding or absent env
 // keeps the line: ignorance must not widen a drop (DESIGN section 5). Structural consumers whose
 // binding declares in the provider (Witness) keep their lines by the same comparison. The drop is
@@ -5812,19 +5815,16 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
 // declared structure (Bool's True|False Disj, Optional) realizes THROUGH the cited declaration,
 // so its use-line is the path to that realization and stays -- measured in the seed mirror, whose
 // bodies consume the structural Bool enum by bare spelling.
-fn import_name_resolves_to_kernel(name: String, module_env: TypeEnv?) -> Bool {
+fn import_name_resolves_to_host_realized_kernel_scalar(name: String, module_env: TypeEnv?) -> Bool {
   match module_env {
     Absent => false
     Present { value: env } =>
       match lookup_type_by_name(env: env, name: name) {
         Absent => false
-        Present { value: n } => match n.ident_span {
-          Present { value: sp } =>
-            string_contains(s: sp.file, pattern: "<kernel:")
-              && n.connective == NoConnective
-              && (n.children |> count) == 0
-          Absent => false
-        }
+        Present { value: n } =>
+          resolved_node_is_kernel_identity_for_name(node: n, name: name)
+            && n.connective == NoConnective
+            && (n.children |> count) == 0
       }
   }
 }
@@ -5833,7 +5833,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   let type_summaries = emit_info.type_summaries
   let deduped_names = unique_strings(items: filtered_names
     |> filter(n => local_names |> all(ln => ln != n))
-    |> filter(n => !import_name_resolves_to_kernel(name: n, module_env: module_env)))
+    |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env)))
   if deduped_names |> count == 0 {
     ""
   } else {
