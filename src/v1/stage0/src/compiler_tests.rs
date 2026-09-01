@@ -3125,4 +3125,87 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
+
+    // KNOWN-HOLE PROBE (not a desired-behavior control), DESIGN section 4b(4).
+    //
+    // The shell service-emission path FABRICATES rather than refuses: every declared
+    // output field is bound to `stdout`, whatever source the declaration named, and the
+    // error arm returns a bare String against a declared Box<dyn std::error::Error>.
+    // Both produce Rust that does not compile, with ZERO diagnostics -- section 5's
+    // fabricated-plausible-output arm, in the emitter.
+    //
+    // The three-output fixture is load-bearing. The two-field case this was first seen
+    // on (an operation declaring `success: Bool from "exit_success"` beside
+    // `stdout: String from "stdout"`) cannot distinguish "wrong tuple index" from "the
+    // declared source never arrived": with two fields, "always the first output" and
+    // "always stdout" produce the same bytes. Three fields separate them, and the
+    // ABSENCE of the `let stderr = ...` prelude line is the positive evidence -- that
+    // line is emitted only when some field claims the stderr channel, so its absence
+    // proves the `from "stderr"` field was invisible to the renderer rather than
+    // mis-ordered. child_from_key returns Absent for all three.
+    //
+    // WHEN THE WALL LANDS THIS PROBE MUST FLIP and become a permanent regression
+    // control: the emitted body must bind each field to its named source, box the error
+    // arm, and REFUSE -- typed and located, naming the field and the unresolvable
+    // source -- for any source it cannot realize.
+    #[test]
+    fn shell_service_output_projection_fabricates_stdout_known_hole_probe() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      success: Bool from \"exit_success\"\n      out: String from \"stdout\"\n      err: String from \"stderr\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let errors: Vec<_> = r
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "KNOWN HOLE today: the emitter does not refuse; it fabricates silently. \
+                     When the wall lands this becomes the refusal assertion. Got: {:?}",
+                    errors
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("service module must emit src/probe.rs");
+
+                // The signature reads the declaration correctly...
+                assert!(
+                    emitted.contains(
+                        "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
+                    ),
+                    "signature must project the three declared output types, got:\n{}",
+                    emitted
+                );
+                // ...and the body then ignores every declared source.
+                assert!(
+                    emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
+                    "KNOWN HOLE: every output field is bound to stdout regardless of its \
+                     declared source. If this assertion fails the wall may have landed -- \
+                     flip this probe to assert the correct per-channel binding. Got:\n{}",
+                    emitted
+                );
+                // The stderr prelude is the absence that proves the source was never read.
+                assert!(
+                    !emitted.contains("String::from_utf8_lossy(&output.stderr)"),
+                    "KNOWN HOLE: the `from \"stderr\"` field is invisible to the renderer, \
+                     so no stderr prelude line is emitted. Got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result
+            .expect("shell_service_output_projection_fabricates_stdout_known_hole_probe panicked");
+    }
 }
