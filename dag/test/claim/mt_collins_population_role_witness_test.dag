@@ -89,8 +89,12 @@ test fn w_the_source_pairs_all_resolve() -> Bool {
           Present { value: h0 } => h0.additional_connector_at_two_dpc == 2
           Absent => false
         }
-        && rs.last().connector_used_at_one_dpc == 25
-        && rs.last().additional_connector_at_two_dpc == 26
+        && match rs.last() {
+          Present { value: tail } =>
+            tail.connector_used_at_one_dpc == 25
+              && tail.additional_connector_at_two_dpc == 26
+          Absent => false
+        }
         && fold(rs, init: true, f: fn(acc, r) {
           acc && (r.connector_used_at_one_dpc < r.additional_connector_at_two_dpc)
         })

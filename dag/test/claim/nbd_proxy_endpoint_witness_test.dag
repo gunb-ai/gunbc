@@ -9,5 +9,8 @@ test fn altrad8ud_nbd_proxy_primary_endpoint_is_vm_slot_index() -> Bool {
 
 test fn altrad8ud_nbd_proxy_nbd_slot_absent_on_2_07_00() -> Bool {
   list_length(items: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints) == 1
-    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints.first() == NbdSlotEndpoint
+    && match asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints.first() {
+    Present { value: head } => head == NbdSlotEndpoint
+    Absent => false
+  }
 }

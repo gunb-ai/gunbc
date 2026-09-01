@@ -10,7 +10,12 @@ test fn witness_selected_target_projects_fleet() -> Bool {
 
 test fn witness_ubicloud_target_projects_catalog_label() -> Bool {
   match ci_runner_target_spec(target: UbicloudRunner { row: ubicloud_standard_16_arm_catalog }) {
-    SelfHosted { labels: ls } => ls.length() == 1 && ls.first() == "ubicloud-standard-16-arm"
+    SelfHosted { labels: ls } =>
+      ls.length() == 1
+        && match ls.first() {
+          Present { value: only } => only == "ubicloud-standard-16-arm"
+          Absent => false
+        }
     _ => false
   }
 }

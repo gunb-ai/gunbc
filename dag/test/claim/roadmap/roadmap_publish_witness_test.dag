@@ -718,7 +718,10 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
       match receipt.outcome {
         ReceiptBindingAmbiguous { pr_numbers } =>
           count(pr_numbers) == 2
-            && pr_numbers.first() == 11
+            && match pr_numbers.first() {
+      Present { value: head } => head == 11
+      Absent => false
+    }
         ReceiptBound { pr_number: _, url: _, draft: _ } => false
         ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
         ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false

@@ -153,7 +153,11 @@ test fn w_red_a_multilayer_board_without_a_reference_plane_is_refused() -> Bool 
   match admit_stackup(s: all_signal, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false
     StackupRefused { causes: c } =>
-      count(c) == 1 && c.first() == RoutedBoardHasNoReferencePlane
+      count(c) == 1
+      && match c.first() {
+        Present { value: only } => only == RoutedBoardHasNoReferencePlane
+        Absent => false
+      }
   }
 }
 
@@ -192,7 +196,11 @@ test fn w_red_a_zero_thickness_dielectric_alone_is_refused() -> Bool {
   }
   match admit_stackup(s: shorted, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false
-    StackupRefused { causes: c } => count(c) == 1 && c.first() == DielectricLayerHasNoThickness
+    StackupRefused { causes: c } => count(c) == 1
+      && match c.first() {
+        Present { value: only } => only == DielectricLayerHasNoThickness
+        Absent => false
+      }
   }
 }
 

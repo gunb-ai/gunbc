@@ -199,7 +199,10 @@ fn observation_for_link(
   if count(matching_nodes) != 1 {
     return CycleTimeHistoryRefused { refusal: HistoryNodeDuplicate { node: link.node } }
   }
-  let node = first(matching_nodes)
+  let node = match first(matching_nodes) {
+    Present { value: n } => n
+    Absent => return CycleTimeHistoryRefused { refusal: HistoryNodeMissing { node: link.node } }
+  }
   let matching_receipts = receipts |> filter(r => r.node == link.node)
   if count(matching_receipts) == 0 {
     return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
@@ -225,7 +228,12 @@ fn observation_for_link(
       refusal: HistoryPullDuplicate { node: link.node, pull_number: link.pull_number }
     }
   }
-  let pull = first(matching_pulls)
+  let pull = match first(matching_pulls) {
+    Present { value: p } => p
+    Absent => return CycleTimeHistoryRefused {
+      refusal: HistoryPullMissing { node: link.node, pull_number: link.pull_number }
+    }
+  }
   if pull.merged_at <= pull.opened_at {
     return CycleTimeHistoryRefused {
       refusal: HistoryPullNotMergedAfterOpen { node: link.node, pull_number: link.pull_number }
@@ -237,7 +245,10 @@ fn observation_for_link(
       nodes: bundled_links |> map(candidate => candidate.node),
     } }
   }
-  let receipt = first(matching_receipts)
+  let receipt = match first(matching_receipts) {
+    Present { value: r } => r
+    Absent => return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
+  }
   CycleTimeObserved {
     observation: CycleTimeObservation {
       node: link.node,

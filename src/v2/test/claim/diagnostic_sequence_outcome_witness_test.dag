@@ -52,7 +52,15 @@ test fn witness_sequence_outcome_collects_values() -> Bool {
     policy: short_circuit_policy
   ) {
     Accepted { value: vs, diagnostics: None } =>
-      (vs.length() == 2) && (vs.first() == 1) && (vs.skip(n: 1).first() == 2)
+      (vs.length() == 2)
+        && match vs.first() {
+          Present { value: v0 } => v0 == 1
+          Absent => false
+        }
+        && match vs.skip(n: 1).first() {
+          Present { value: v1 } => v1 == 2
+          Absent => false
+        }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -77,7 +85,15 @@ test fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool {
     policy: accumulate_policy
   ) {
     Accepted { value: vs, diagnostics: None } =>
-      (vs.length() == 2) && (vs.first() == 1) && (vs.skip(n: 1).first() == 2)
+      (vs.length() == 2)
+        && match vs.first() {
+          Present { value: v0 } => v0 == 1
+          Absent => false
+        }
+        && match vs.skip(n: 1).first() {
+          Present { value: v1 } => v1 == 2
+          Absent => false
+        }
     Rejected { diagnostics: _ } => false
   }
 }

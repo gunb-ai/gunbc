@@ -107,13 +107,13 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
   let lines = receipt_wire_lines(text: text)
   if !((length(lines) == 6) || (length(lines) == 7)) {
     none
-  } else if !(lines.first() == merge_admission_receipt_schema_v2) {
+  } else if match lines.first() { Present { value: schema_line } => !(schema_line == merge_admission_receipt_schema_v2)  Absent => true } {
     none
-  } else if lines.skip(n: 2).first() == "" {
+  } else if match lines.skip(n: 2).first() { Present { value: field } => field == ""  Absent => true } {
     none
-  } else if lines.skip(n: 4).first() == "" {
+  } else if match lines.skip(n: 4).first() { Present { value: field } => field == ""  Absent => true } {
     none
-  } else if lines.skip(n: 5).first() == "" {
+  } else if match lines.skip(n: 5).first() { Present { value: field } => field == ""  Absent => true } {
     none
   } else {
     match walk_attempt_id(raw: lines.skip(n: 1).first()) {

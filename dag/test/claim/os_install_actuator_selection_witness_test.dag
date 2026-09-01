@@ -4,8 +4,14 @@ module test.claim.os_install_actuator_selection
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
-  os_install_actuator_requirement_kinds.first() == BmcNetworkReach
-    && os_install_actuator_requirement_kinds.skip(n: 1).first() == ActuatorToolchainGrant
+  match os_install_actuator_requirement_kinds.first() {
+    Present { value: head } => head == BmcNetworkReach
+    Absent => false
+  }
+    && match os_install_actuator_requirement_kinds.skip(n: 1).first() {
+      Present { value: head } => head == ActuatorToolchainGrant
+      Absent => false
+    }
     && os_install_actuator_requirement_satisfied(
       kind: BmcNetworkReach,
       candidate: srv1_host,
@@ -31,8 +37,14 @@ test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
     && srv3_os_install_actuator_host == srv1_host
     && match srv3_os_install_actuator_tie_break_policy {
       OperatorHostPreference { order: order } =>
-        order.first() == operator_host_srv1
-          && order.skip(n: 1).first() == operator_host_srv2
+        match order.first() {
+    Present { value: head } => head == operator_host_srv1
+    Absent => false
+  }
+          && match order.skip(n: 1).first() {
+      Present { value: head } => head == operator_host_srv2
+      Absent => false
+    }
       _ => false
     }
 }

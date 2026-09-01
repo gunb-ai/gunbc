@@ -121,7 +121,14 @@ fn a_semantic_change_moves_the_digest() -> Bool {
 // and in one actuator's endpoints, so a digest reporting them equal would be reporting that the
 // fleet is uniform when it is not.
 fn the_two_hosts_carry_distinct_semantic_identities() -> Bool {
-  srv3_digest().first() != srv4_digest().first()
+  match srv3_digest().first() {
+    Present { value: a } =>
+      match srv4_digest().first() {
+        Present { value: b } => a != b
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // A NUMERIC COEFFICIENT MUST MOVE THE DIGEST, AND THE FIRST VERSION OF THIS WITNESS COULD NOT SEE

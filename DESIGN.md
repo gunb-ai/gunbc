@@ -121,7 +121,6 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
-- **Regen candidate-tree producer** — declared 2026-08-20
 - **Blocking emit-stage diagnostics on main** — declared 2026-08-25
 - **Corpus-wide lens enforcement censuses** — declared 2026-08-11
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
@@ -225,6 +224,8 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `coarser_parallel_authority`
 - `mutation_applied_to_the_wrong_artifact_of_a_generated_pair`
+- `entry_scoped_green_over_a_corpus_wide_edit`
+- `accepted_source_emits_uncompilable_target`
 
 ## Building & checks
 

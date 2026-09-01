@@ -73,10 +73,14 @@ fn yaml_strip_indent(line: String, indent: Int) -> String {
 fn yaml_lines_from_source(src: String) -> List<String> {
   let raw = split(s: src, delimiter: "\n")
   let n = raw.length()
-  if (n > 0) && (raw.skip(n: n - 1).first() == "") {
-    raw.take(n: n - 1)
-  } else {
-    raw
+  match raw.skip(n: n - 1).first() {
+    Present { value: last_line } =>
+      if last_line == "" {
+        raw.take(n: n - 1)
+      } else {
+        raw
+      }
+    Absent => raw
   }
 }
 

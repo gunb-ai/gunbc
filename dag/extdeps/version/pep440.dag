@@ -96,16 +96,24 @@ fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNeg
   if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
   else if a_rest.length() == 0 {
 
-    if b_rest.first() == 0 {
-      pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
-    } else {
-      Less
+    match b_rest.first() {
+      Present { value: b0 } =>
+        if b0 == 0 {
+          pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
+        } else {
+          Less
+        }
+      Absent => Equal
     }
   } else if b_rest.length() == 0 {
-    if a_rest.first() == 0 {
-      pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
-    } else {
-      Greater
+    match a_rest.first() {
+      Present { value: a0 } =>
+        if a0 == 0 {
+          pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
+        } else {
+          Greater
+        }
+      Absent => Equal
     }
   } else {
     match pep440_compare_non_negative_int(a: a_rest.first(), b: b_rest.first()) {

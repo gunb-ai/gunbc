@@ -84,6 +84,9 @@ test fn gate_roster_hash_unchanged_on_surface_only_move() -> Bool {
 test fn gunbc_repo_standard_is_squash_only() -> Bool {
   gunbc_repo_standard.default_branch == "main"
     && length(gunbc_repo_standard.allowed_strategies) == 1
-    && gunbc_repo_standard.allowed_strategies.first() == SquashMerge
+    && match gunbc_repo_standard.allowed_strategies.first() {
+      Present { value: head } => head == SquashMerge
+      Absent => false
+    }
     && gunbc_repo_standard.require_up_to_date == false
 }

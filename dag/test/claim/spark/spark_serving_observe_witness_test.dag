@@ -283,7 +283,10 @@ test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
 test fn the_materialization_receipt_probe_reads_the_runtime_root_not_the_executor_receipt() -> Bool {
   let words = spark_serving_runtime_materialization_receipt_probe_argv()
   words.length() == 2
-    && words.first() == "cat"
+    && match words.first() {
+      Present { value: head } => head == "cat"
+      Absent => false
+    }
     && !string_contains(s: words.skip(n: 1).first(), pattern: "ollama-runtime-receipt.json")
     && string_contains(s: words.skip(n: 1).first(), pattern: "/runtimes/")
 }
@@ -319,7 +322,10 @@ test fn a_materialization_receipt_presents_its_bare_digest() -> Bool {
 test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
   let words = spark_serving_runtime_receipt_probe_words()
   words.length() == 2
-    && words.first() == "cat"
+    && match words.first() {
+      Present { value: head } => head == "cat"
+      Absent => false
+    }
     && string_contains(
       s: words.skip(n: 1).first(),
       pattern: "/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json",

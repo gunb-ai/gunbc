@@ -41,8 +41,14 @@ data shell_exec_run_witness_workspace: String = "/tmp/gunbc_emit_on_demand_shell
 
 fn shell_exec_run_eval_expected_octet() -> Int {
   if length(xs: shell_exec_run_witness_argv()) == 2
-    && shell_exec_run_witness_argv().skip(n: 0).first() == "bash"
-    && shell_exec_run_witness_argv().skip(n: 1).first() == "-s" { 1 } else { 0 }
+    && match shell_exec_run_witness_argv().skip(n: 0).first() {
+      Present { value: head } => head == "bash"
+      Absent => false
+    }
+    && match shell_exec_run_witness_argv().skip(n: 1).first() {
+      Present { value: head } => head == "-s"
+      Absent => false
+    } { 1 } else { 0 }
 }
 
 fn shell_exec_run_native_source() -> Medium<String> {
