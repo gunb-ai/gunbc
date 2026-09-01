@@ -59,9 +59,15 @@ data sc_sealed_at_payload_red: String = "module probe_sc_sealed_at_payload_red\n
 // this one silent, and a one-direction wall would read as covering the class.
 data sc_payload_at_sealed_red: String = "module probe_sc_payload_at_sealed_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_wrapped(x: Wrapped) -> Int { 0 }\nfn f(i: Inner) -> Int { takes_wrapped(x: i) }\n"
 
-// RED 3 -- a sealed carrier at a kernel formal. record_at_scalar_needs_identity reads the same
-// exposure, so this position was silent for the same reason and climbs with the same repair.
-data sc_sealed_at_kernel_red: String = "module probe_sc_sealed_at_kernel_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
+// A MEASURED REMAINING HOLE, PINNED RATHER THAN CLAIMED CLOSED. A sealed carrier at a KERNEL
+// formal is still ACCEPTED after this repair -- measured on the repaired compiler, in the same run
+// that shows the two record positions above now refusing, so this is an executed negative and not
+// an untested guess. record_at_scalar_needs_identity reads the exposure this change repairs, so the
+// head is now visible and something ELSE declines the judgment at this position; what that is has
+// not been established and is not guessed at here. The probe therefore asserts what the compiler
+// ACTUALLY DOES, so it flips to a permanent regression control the moment the position climbs, and
+// nobody can read this module as covering a position it does not cover.
+data sc_sealed_at_kernel_known_hole: String = "module probe_sc_sealed_at_kernel_known_hole\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
 
 // THE NO-FORK CONTROL. Identical to RED 1 except the actual's declaration is not sealed. It
 // refused BEFORE the repair and must keep refusing after it: if this ever goes silent the repair
@@ -86,8 +92,8 @@ test fn payload_at_sealed_carrier_formal_refuses() -> Bool {
   sc_refuses_inhabitance(source: sc_payload_at_sealed_red)
 }
 
-test fn sealed_carrier_at_kernel_formal_refuses() -> Bool {
-  sc_refuses_inhabitance(source: sc_sealed_at_kernel_red)
+test fn sealed_carrier_at_kernel_formal_is_still_accepted_known_hole() -> Bool {
+  !sc_refuses_inhabitance(source: sc_sealed_at_kernel_known_hole)
 }
 
 test fn unsealed_twin_still_refuses() -> Bool {

@@ -121,8 +121,11 @@ fn reason_matches_infra_signature(reason: String, sig: InfraSignature) -> Bool {
 // DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node
 // v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION,
 // and it is the fork closure rather than a generic seed deletion: falsifier_failure_mode consumes
-// this module — resolving it and calling classify_failure_reason the way claim_executor already
-// resolves gunbc.floor_component_receipt — at which point the hand-typed list is deleted,
+// this module — the seed resolving it and calling classify_failure_reason, the way claim_executor
+// USED TO resolve gunbc.floor_component_receipt through write_floor_component_receipt_at (true
+// from #7467 on 2026-07-30 until #9228 deleted that function on 2026-08-25; the receipt pair
+// itself was deleted 2026-09-01, so the comparison is kept in the past tense as the worked
+// precedent it still is, not as a live route) — at which point the hand-typed list is deleted,
 // classify_failure_reason gains its first production consumer, and the site axis (build-log versus
 // job-signal text) becomes decidable at the call site instead of being flattened away.
 
