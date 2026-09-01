@@ -1,0 +1,131 @@
+module gunbc.ambiguity_ban_admission
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Terminal }
+import std.types { String }
+import v2.std.collection { List }
+
+data ambiguity_ban_receipt_disposition: Disposition = Terminal {
+  reason: "Single authority for the SEED-GROWTH RECEIPT owed by the ambiguity-ranking ban in the bare-reference closure resolver. It declares WHICH hand-authored Rust declarations that change adds to the seed, why they exist, and what retires them. It does NOT admit them: the realization disposition is an operator judgment and fails closed in its absence, because a receipt that also granted its own admission would be the self-authorized dissolution failure DESIGN names. Terminal because the RECEIPT is permanent -- it outlives the code it describes, recording what was owed and on what trigger it was discharged."
+}
+
+// WHY A NEW DISPOSITION IS REQUIRED RATHER THAN COVERAGE BY THE EXISTING ONE.
+//
+// gunbc.bare_reference_scanner_admission carries an operator disposition (ScaffoldAdmitted,
+// 2026-08-24, gunbc#9102) whose boundary block is explicit about what it does NOT cover:
+//
+//   "NOT ADMITTED, each requiring a NEW disposition: additional source-text recognizers; new
+//    callers of the scanner; public-surface growth; the whole-pool fallback; nearest-ancestor
+//    ambiguity selection; a general hand-written namespace parser."
+//
+// This change lands two of those categories head-on, so reading it as covered would be reading
+// an admission past the boundary its own author wrote:
+//
+//   - ADDITIONAL SOURCE-TEXT RECOGNIZER: explicit_import_member_names reads import blocks out of
+//     raw source, including the multi-line form and the `A as B` alias binder.
+//   - PUBLIC-SURFACE GROWTH: ClosureBareDisposition and closure_bare_disposition are `pub`.
+//
+// It also DELETES one of the categories rather than adding it -- nearest-ancestor ambiguity
+// selection is exactly what this change removes from the closure resolver -- and that deletion is
+// the reason the rest was written. That does not net against the additions: gunbc.seed_growth_admission
+// states in its own note that netting deletions against additions is NOT IN SCOPE, and enforces it.
+
+data ambiguity_ban_presumption_note: String = "THE PRESUMPTION AGAINST explicit_import_member_names STANDS AND IS NOT ARGUED AWAY. It re-derives from raw text a fact the parser already owns -- which local names an import binds -- and it sits in cli_run.rs beside a second line-scanning import reader, extract_import_paths. Two independent line parsers over the same grammar is the parallel-representation shape, and it did not stay theoretical: the first revision recognized only the single-line `import p { A }` form, so the resolver refused RankingDimension in dag/std/computation.dag, a file that DOES import it across a line break. The floor caught it. That is the drift argument landing as a real refusal, and it is evidence FOR the presumption, not against it.\n\nWHY IT EXISTS ANYWAY, stated as the cost of not having it: an import edge is the AUTHORITY for a name it names, and without subtracting those names the resolver consults the global census for a name the author already disambiguated -- so adding the disambiguating import would NOT silence the refusal the diagnostic itself prescribes as the remedy. A wall whose prescribed remedy does not work is worse than no wall.\n\nTHE TERMINAL CONSTRUCTION IS NOT THIS. It is occurrence provenance: the closure resolver consuming the canonical parsed import occurrence -- local_name, provider_module, exported_identity, occurrence_span -- rather than a BTreeSet<String> of spellings. A lexeme set cannot distinguish a resolved import from an unresolved path, a missing exported member, an alias from its provider, or two same-spelled occurrences in different scopes. Named by external review (review 58002) and accepted; not built here."
+
+// WHAT IS NOT GROWTH AND IS DELIBERATELY NOT LISTED. Two existing items are MODIFIED, not added:
+// bare_identifier_candidates (a caret-literal guard in its existing skip condition, and a bare
+// assignment binder arm in its existing scan loop) and bare_reference_pull_paths_for_source (two
+// new skip conditions and the ambiguity arm now projecting a named decision instead of ranking
+// inline). Their disposition is ExistingSeedItemModified. Listing them here would inflate the
+// addition census by two.
+
+data ambiguity_ban_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "explicit_import_member_names",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "ClosureBareDisposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "closure_bare_disposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "closure_bare_disposition_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "candidate",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "two_on_chain_candidates_refuse_and_name_the_whole_on_chain_population",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "zero_on_chain_pulls_nothing_rather_than_refusing_or_choosing",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "a_segment_boundary_is_respected_so_a_bc_is_not_on_a_b_c_s_chain",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "the_referencing_module_is_on_its_own_chain",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "one_module_bound_twice_is_not_an_ambiguity",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "a_caret_symbol_literal_is_not_an_identifier_reference",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "a_bare_assignment_target_is_bound_not_referenced",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "a_comparison_and_a_lambda_arrow_are_not_the_binding_form",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "explicit_import_members_are_read_including_the_alias_binder",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
+      decl_name: "a_multi_line_import_block_names_its_members",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED HERE: the closure resolver decides WHICH FILES ENTER A CLOSURE before any parse result exists to consult, so it cannot read the parse-owned import and binder surface that the closure it is constructing has not yet produced. That is the same bootstrap ordering constraint gunbc.bare_reference_scanner_admission records, not seed-shrink debt -- and it is also the exact reason the terminal construction named below is a PARSE-PHASE surface rather than a better scanner.\n\nWHAT THE CHANGE ACTUALLY DID, because it decides whether this growth bought anything: the closure resolver ranked ambiguous bare references by namespace PROXIMITY (global_bare_nearest_ancestor_candidate, the longest-common-prefix heuristic that survives in 04_env only as the legacy ImportScoped branch). So the resolver deciding WHICH FILES GET PARSED silently picked, while the resolver deciding WHAT THE PROGRAM MEANS did not. Removing that ranking exposed defects rather than forcing an import tax: 293 sites were kernel-type and container-carrier SPELLINGS sent to a module resolver, 54 were a declared primitive re-declared byte-identically in three test modules, 8 were caret SYMBOL LITERALS sent to a declaration resolver, 7 were a structured service projection flattened to its head, and one was a PCB dielectric fixture owning the global name 'core' -- through which the heuristic pulled PCB witness modules into the closure of all 8 GitHub service configs. Net: zero imports added except one naming a genuine cross-tree fork.\n\nHAND-ITEM DELTA: +16 FROM origin/main, ENUMERATED ABOVE -- THREE production items (explicit_import_member_names, ClosureBareDisposition, closure_bare_disposition) and THIRTEEN test items (two test modules' worth of fns plus one test helper). Reproducible from the MERGE BASE, never the moving tip: git diff origin/main...HEAD -- src/v1/stage0/src/cli_run.rs reports 535 insertions and 47 deletions in one file, and no other .rs file on this branch differs.\n\nWHY THE PRODUCTION THREE ARE NOT ONE ITEM: closure_bare_disposition and ClosureBareDisposition exist because external review (review 58002) established that every test enrolled on the first revision exercised the SCANNER and none reached the ambiguity arm the change rewrote -- a decision buried in a closure inside a 200-line function cannot be witnessed. Naming the decision is what made the six-case matrix authorable, and the two mutants it discriminates are measured rather than asserted: removing the chain filter fails 3 cases, restoring nearest ranking fails 1, disjoint kill sets. That is growth bought FOR evidence, and it is the honest reason it is not smaller.\n\nWHAT THIS RECEIPT DOES NOT DO: it does not admit the growth. gunbc.bare_reference_scanner_admission's operator disposition explicitly excludes additional source-text recognizers and public-surface growth, both of which this change lands, so it requires a NEW disposition and fails closed without one -- see ambiguity_ban_receipt_disposition.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete explicit_import_member_names and its two tests when the parse phase publishes resolved import occurrences -- local_name, provider_module, exported_identity, occurrence_span -- so the closure resolver consumes a parse-owned binding instead of re-scanning source text, and a failed import retains its own refusal rather than falling through to a global same-spelled declaration. Delete ClosureBareDisposition, closure_bare_disposition and their seven test items when v1.compiler.infer_env publishes ONE total GlobalBareDisposition consumed by both the type environment and the closure resolver, so neither side independently interprets zero, one and many. That second trigger is a .dag change to src/v1/04_env.dag plus regeneration of its mirror, NOT an edit to the generated v1_compiler_infer_env.rs, which carries 'Generated by v1 compiler -- do not edit'.",
+  current_boundary: "gunbc.ambiguity_ban_admission -> v1_compiler.cli_run closure_bare_disposition -> v1_compiler.cli_run bare_reference_pull_paths_for_source -> the bare-reference closure edge index"
+}
