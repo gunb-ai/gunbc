@@ -24777,6 +24777,25 @@ pub fn rewire_str_binding_overlay(
     )
 }
 
+pub fn ancestry_binding_is_kernel_identity(
+    bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    name: String,
+) -> bool {
+    match v1_rt::map_get(&bindings, name.clone()) {
+        std::option::Option::None => false,
+        Some(binding) => match binding.resolved.clone().ident_span.clone() {
+            Some(sp) => {
+                (sp.file.clone()
+                    == v1_rt::concat(
+                        "<kernel:".to_string(),
+                        v1_rt::concat(name.clone(), ">".to_string()),
+                    ))
+            }
+            std::option::Option::None => false,
+        },
+    }
+}
+
 pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -24806,9 +24825,23 @@ pub fn rewire_type_env_import_str_binding_identity(
                     );
                     let exporter_counts =
                         direct_import_exporter_counts(import_export_names.clone());
-                    let ancestry_keys = Rc::new(v1_rt::map_keys(
-                        &m.type_env.clone().ancestry_str_bindings.clone(),
-                    ));
+                    let ancestry_keys = Rc::new({
+                        let mut __result = Vec::new();
+                        for name in Rc::new(v1_rt::map_keys(
+                            &m.type_env.clone().ancestry_str_bindings.clone(),
+                        ))
+                        .iter()
+                        .cloned()
+                        {
+                            if !ancestry_binding_is_kernel_identity(
+                                m.type_env.clone().ancestry_str_bindings.clone(),
+                                name.clone(),
+                            ) {
+                                __result.push(name);
+                            }
+                        }
+                        __result
+                    });
                     let str_keys =
                         Rc::new(v1_rt::map_keys(&m.type_env.clone().str_bindings.clone()));
                     let inherited_keys = v1_rt::concat(ancestry_keys.clone(), str_keys.clone());
