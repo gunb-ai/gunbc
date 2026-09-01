@@ -6,7 +6,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_resolution }
-import gunbc.ollama_model_resolution { gpt_oss_120b_resolution }
+import gunbc.ollama_model_resolution { OllamaResolvedManifest, gpt_oss_120b_manifest, ollama_resolved_manifest_reference }
 import extdeps.ollama.api {
   OllamaModelRef,
 
@@ -26,7 +26,6 @@ import extdeps.ollama.capability {
   OllamaPlatformSupportUnobserved,
   OllamaPlatformSupportUncatalogued,
   ollama_runtime_model_compatibility_verdict,
-  ollama_gpt_oss_120b_model_ref,
 }
 import gunbc.spark.serving_release {
   SparkServingRelease,
@@ -111,7 +110,20 @@ fn spark_serving_local_api_version_url() -> String {
 
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
 
-data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_120b_model_ref
+// THE ONE ROW THAT SELECTS. Everything downstream -- the reference, the artifact identity, the
+// manifest digest a materializer checks bytes against, and the blob closure it installs -- is
+// DERIVED from this manifest rather than named again beside it.
+//
+// It was not always so, and the failure that forced this shape is worth keeping. When the reference
+// alone moved to 120b, the materializer went on naming the 20b digest and the 20b closure as
+// free-standing constants: the plan then fetched the 120b manifest by reference, declared the 20b
+// digest as its expected checksum, and installed the 20b blobs. The checksum step would have caught
+// it -- loudly, which is the system working -- but only at apply time on a real host, because
+// nothing in the corpus tied the three facts together. Three independent spellings of "which model"
+// is DESIGN §3's fork sitting in the input to an install plan.
+data spark_serving_desired_manifest: OllamaResolvedManifest = gpt_oss_120b_manifest
+
+data spark_serving_desired_model_ref: OllamaModelRef = ollama_resolved_manifest_reference(m: spark_serving_desired_manifest)
 
 // DESIRED MODEL IDENTITY IS A RESOLUTION, NOT A LITERAL.
 //
@@ -163,7 +175,7 @@ type SparkServingDesiredAdmission
 fn spark_serving_desired_model_artifact() -> ModelArtifact {
   model_artifact_from_resolution(
     publisher: "ollama" as NonEmptyStr,
-    resolution: gpt_oss_120b_resolution(),
+    resolution: spark_serving_desired_manifest.resolution,
   )
 }
 

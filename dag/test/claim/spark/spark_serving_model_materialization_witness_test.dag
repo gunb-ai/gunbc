@@ -15,10 +15,11 @@ import gunbc.spark.serving_install_paths {
   spark_serving_published_blob_path,
 }
 import gunbc.ollama_model_resolution {
-  gpt_oss_20b_blob_closure,
-  gpt_oss_20b_blob_closure_count,
+  OllamaBlobDigest,
+  ollama_resolved_manifest_closure,
   gpt_oss_20b_manifest_digest_2026_08_19,
 }
+import gunbc.spark.serving_desired { spark_serving_desired_manifest }
 import gunbc.remote_operation { remote_operations_argv_only }
 
 fn step_identities() -> List<String> {
@@ -77,20 +78,30 @@ test fn the_manifest_checksum_names_the_frozen_resolved_digest() -> Bool {
          any(a, w => w == "sha256sum") && any(a, w => w == "--check") && any(a, w => w == "--status"))
 }
 
+// THE CLOSURE THESE CLAIMS RANGE OVER IS THE SELECTED ONE, read from desired state rather than
+// named here. Naming a model's closure directly is what let the realizer and these witnesses agree
+// with each other while both disagreed with desired state: the plan installed 20b blobs, and every
+// claim below confirmed it had, because they were asking about the same constant the plan used.
+// Reading the selection means a change of model moves the plan and its evidence together, and a
+// plan that installed the wrong closure would red here instead of being corroborated.
+fn desired_closure() -> List<OllamaBlobDigest> {
+  ollama_resolved_manifest_closure(m: spark_serving_desired_manifest)
+}
+
 // EVERY BLOB IS FETCHED BY DIGEST. The blob half of the store IS content-addressed upstream, so
 // nothing here needs a locator: the URL carries the digest and the bytes either hash to it or the
 // step fails.
 test fn every_blob_url_carries_its_own_digest() -> Bool {
-  length(filter(gpt_oss_20b_blob_closure, b =>
+  length(filter(desired_closure(), b =>
     any(step_argvs(), a => any(a, w => w == spark_serving_registry_blob_url(hex: b.hex)))
-  )) == gpt_oss_20b_blob_closure_count()
+  )) == length(desired_closure())
 }
 
 // STAGED, VERIFIED, THEN PUBLISHED -- never fetched straight to the store name. The observe side
 // answers blob presence by FILENAME, so a download landing directly at the digest name would read as
 // installed the instant curl created it, whatever it contained.
 test fn no_blob_is_fetched_directly_into_the_store() -> Bool {
-  length(filter(gpt_oss_20b_blob_closure, b =>
+  length(filter(desired_closure(), b =>
     any(step_argvs(), a =>
       any(a, w => w == "curl") && any(a, w => w == (spark_serving_published_blob_path(hex: b.hex) as String)))
   )) == 0
@@ -99,9 +110,9 @@ test fn no_blob_is_fetched_directly_into_the_store() -> Bool {
 // Each blob owes exactly three steps -- fetch, verify, publish -- so a closure entry cannot be
 // half-handled by a partial edit.
 test fn each_blob_owes_a_fetch_a_checksum_a_verify_and_a_publish() -> Bool {
-  length(filter(gpt_oss_20b_blob_closure, b =>
+  length(filter(desired_closure(), b =>
     length(filter(step_identities(), id => string_contains(id, b.hex as String))) == 4
-  )) == gpt_oss_20b_blob_closure_count()
+  )) == length(desired_closure())
 }
 
 // THE MANIFEST IS PUBLISHED LAST, after every blob it names is in place. Publishing it first would
@@ -110,10 +121,10 @@ test fn each_blob_owes_a_fetch_a_checksum_a_verify_and_a_publish() -> Bool {
 test fn the_manifest_is_published_after_every_blob() -> Bool {
   let publish_manifest = first_index_containing("publish-manifest")
   publish_manifest >= 0
-    && length(filter(gpt_oss_20b_blob_closure, b =>
+    && length(filter(desired_closure(), b =>
          first_index_containing(concat("publish-blob-", b.hex as String)) < publish_manifest
          && first_index_containing(concat("publish-blob-", b.hex as String)) >= 0
-       )) == gpt_oss_20b_blob_closure_count()
+       )) == length(desired_closure())
 }
 
 // The verification refuses rather than warns: `sha256sum -c` exits non-zero on a mismatch and a
