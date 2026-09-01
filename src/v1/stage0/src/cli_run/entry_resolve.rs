@@ -1390,6 +1390,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     ),
     String,
 > {
+    record_required_lane_resolved_sources(&sources);
     let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
@@ -1710,6 +1711,7 @@ pub(crate) fn resolved_graph_from_sources(
     ),
     String,
 > {
+    record_required_lane_resolved_sources(&sources);
     let result = match typecheck_gate {
         ResolveTypecheckGate::Strict => {
             v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
@@ -1758,6 +1760,31 @@ pub(crate) fn resolved_graph_from_sources(
         .clone()
         .ok_or_else(|| "compilation produced no graph".to_string())?;
     Ok((graph, result.source_indices.clone()))
+}
+
+fn required_lane_resolved_module_identities_store() -> &'static Mutex<BTreeSet<String>> {
+    static STORE: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn record_required_lane_resolved_sources(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let mut identities = required_lane_resolved_module_identities_store()
+        .lock()
+        .expect("required-lane resolved-module identity store poisoned");
+    for source in sources {
+        if let Some(module_path) = extract_module_path(&source.content) {
+            identities.insert(module_path);
+        }
+    }
+}
+
+pub fn required_lane_resolved_module_identities() -> Vec<String> {
+    required_lane_resolved_module_identities_store()
+        .lock()
+        .expect("required-lane resolved-module identity store poisoned")
+        .iter()
+        .cloned()
+        .collect()
 }
 
 pub fn whole_tree_strict_sources(

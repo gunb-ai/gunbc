@@ -60,6 +60,10 @@ pub use required_floor_runner::{
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
+
+pub fn required_lane_resolved_module_identities_for_ci() -> Vec<String> {
+    entry_resolve::required_lane_resolved_module_identities()
+}
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
     resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,

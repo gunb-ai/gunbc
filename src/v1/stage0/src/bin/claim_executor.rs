@@ -757,6 +757,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.len(),
             phase_failures.len()
         );
+        eprintln!(
+            "required-ci: resolved-module-identities {:?}",
+            v1_compiler::cli_run::required_lane_resolved_module_identities_for_ci()
+        );
         for failure in &phase_failures {
             eprintln!("required-ci: FAILED PHASE {failure}");
         }
