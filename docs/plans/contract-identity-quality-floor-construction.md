@@ -453,7 +453,19 @@ cuts. Cut A lands and its tree is verified before Cut B mutates anything.
 contribution boundary is frozen, since main advances continuously.
 
 
-Cut A touches the identity authority, the fleet acceptance module, the epoch's emission into the workflow artifact and its exact-commit observation at `event.head_sha`, and the A witnesses. The observation is part of the boundary, not an implementation detail: without it the epoch is stamped rather than observed. Cut B touches
+**Cut A's blast radius, measured rather than estimated.** The identity type and its constructor occur
+in exactly three files — `gunbc.fleet_revision_acceptance` (production) and two fleet witness modules.
+The values carrying it (`RequiredCiSucceeded`, `AcceptedFleetRevision`) reach four production `.dag`
+modules — `fleet_revision_acceptance`, `fleet_desired_admission`, `fleet_desired_admission_workflow`,
+`fleet_main_revision` — and three witness modules. **It reaches no Rust or seed surface at all**, so
+the atomic root transition has no seed mirror to synchronize: Cut A needs no generated bridge, and
+that machinery belongs entirely to Cut B. This is the population the old two-field representation must
+disappear from in one landing.
+
+Cut A therefore touches the identity authority, those four production modules and their witnesses, and
+`gunbc.witness_floor_workflow` for the epoch's structural emission plus its exact-commit reader and
+parser at `event.head_sha`. The observation is part of the boundary, not an implementation detail:
+without it the epoch is stamped rather than observed. Cut B touches
 `std.evaluation_budget`, its emitted projection, the seed consumer call site, and the B witnesses.
 Neither cut edits DESIGN.md or `gunbc.design_document`: this plan derives from §3 and §4b as they
 already stand, and adds no paragraph to either.
