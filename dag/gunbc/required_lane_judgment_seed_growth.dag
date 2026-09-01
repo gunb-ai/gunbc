@@ -1,0 +1,31 @@
+module gunbc.required_lane_judgment_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Seed-growth admission for the identity-grain required-lane judgment instrument. The strict
+// typecheck boundary is inside the bootstrap compiler's own resolution path; the substrate cannot
+// observe that boundary today, so a .dag producer cannot distinguish a submitted module from one
+// that actually received a positive or negative typecheck verdict.
+data required_lane_judgment_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "required_lane_judged_module_identities_for_ci", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "required_lane_cross_process_content_judged_module_identities_for_ci", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "source_root_ingest_module_identities_for_ci", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "required_lane_judged_module_identities_store", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "required_lane_cross_process_content_judged_module_identities_store", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "record_required_lane_judged_sources", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "record_required_lane_cross_process_content_judged_sources", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "required_lane_judged_module_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "required_lane_cross_process_content_judged_module_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "modules_unresolved_by_lane", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "module_identity_difference", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index.lane_resolution_join_tests", decl_name: "identical_populations_have_empty_difference", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index.lane_resolution_join_tests", decl_name: "difference_enumerates_the_missing_identity", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the receipt fires inside the seed's own strict resolution/typecheck path, a boundary the substrate does not yet reach. The existing near-miss receipts cannot substitute for it: modules_resolved is a cardinality rather than an identity set; submitted/indexed source lists do not prove realization and judgment; and resolved-graph cache receipts are keyed by subject/content rather than by each module's judgment.\n\nHAND-ITEM DELTA: +13, all citable above and measured at item grain against origin/main. Six entry_resolve items are two symmetric store/record/getter trios, one for in-run strict judgments and one for content-addressed cross-process judgments. Three cli_run items expose the two judgment columns and the exact source-root-ingest denominator to required CI. Two declaration_index items compute the identity difference. Two nested test functions discriminate an identical-input empty difference from enumeration of a missing identity. Existing claim_executor routing, memo provenance fields and mutation sites, and the integration-test roster are modifications to existing items rather than growth.\n\nTHREE OF THE THIRTEEN serve the cross-process provenance arm, which required CI cannot populate today because GUNBC_RESOLVED_GRAPH_CACHE_DIR is unarmed there. They are still part of the minimal truthful producer: the empty column is a live control that detects unexpected arming, and separating it prevents a disk-served prior judgment from silently over-counting judgment by the cited run the moment the tier is armed. The arm has a real consumer and a discriminating nonempty construction wherever the disk tier is enabled; its required-CI limitation is absence of a positive instance, not absence of a refusal/control function.\n\nTHIS IS DURABLE INSTRUMENT GROWTH, NOT A DISPOSABLE SCAFFOLD. The standing registry named by gunbc.recurring_failure_mode admitted_module_without_judged_standing consumes exactly these judged-identity receipts at its next rung. No language behavior, compatibility obligation, escape hatch, or compiler feature is added; this measures whether required consumers adjudicated admitted source identities.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "A modeled .dag strict-resolution judgment hook receives every typed positive or negative per-module verdict, preserves in-run versus content-addressed cross-process provenance, and emits source-root-admitted minus required-lane-judged identities to the standing registry without a Rust side recorder; the hook is sufficient only when all thirteen declarations in this row can be deleted, not merely when their projection is reimplemented.",
+  current_boundary: "src/v1/stage0/src/cli_run/entry_resolve.rs strict typecheck verdict -> src/v1/stage0/src/cli_run.rs CI projection -> src/v1/stage0/src/bin/claim_executor.rs required-lane receipt; src/v1/stage0/src/declaration_index.rs identity difference"
+}
