@@ -803,9 +803,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "required_ci_epoch_real_execution_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_install_media_reason,
-    dissolution: excl_install_media_dissolve},
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "generated_artifact_merge_driver_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,

@@ -713,8 +713,21 @@ fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
 // mock_response. The subject cannot be reached any other way: the discriminating experiment is
 // TWO COMMITS whose trees differ only in the contract-epoch member, so a fixture that constructed
 // the observation instead would assert the fold's arithmetic while proving nothing about the
-// reader that produces it. The remedy is the route, not a weaker assertion -- the four run green
-// today in the wet bin lane, where they are enrolled by entry and function name.
+// reader that produces it. The remedy is the route, not a weaker assertion.
+//
+// THE SENTENCE THAT STOOD HERE SAID THESE FOUR "RUN GREEN TODAY IN THE WET BIN LANE", AND IT WAS
+// FALSE WHEN IT WAS WRITTEN. BinWitnessWet's scheduler, falsifier.yml, was deleted at 611fd02770
+// on 2026-08-15; enrolment by entry and function name is not execution, and these four executed
+// nowhere. The required floor said so on this branch: standing=planned-without-terminal-verdict,
+// outcome=route-gap-before-verdict, with failed=0 and unexpected_failures=0. That is the same
+// enrolled-reads-as-covered class this module exists to type, reproduced by a note about it.
+//
+// These rows STAY, and they are not the thing that changed. They are the truthful HERMETIC
+// observation: the identity executed, reached shell.Mktemp.Dir, which declares no mock_response,
+// and was counted and held. What discharges the hold is a candidate-bound wet terminal from
+// v2.workflow.local_repo_wet_terminal, whose schedule now carries these four -- each measured wet
+// before being scheduled. Held plus a same-identity, same-candidate wet pass is the joined
+// standing; the hold is never read as a pass on its own.
 fn floor_route_gap_expectation_chunk_05() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.contract_identity.required_ci_epoch_real_execution_witness.a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
