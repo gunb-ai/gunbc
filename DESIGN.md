@@ -212,9 +212,11 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `instrument_output_read_as_subject_content`
 - `executed_conjunct_discriminates_nothing`
 - `unbacked_execution_claim`
+- `admitted_module_without_judged_standing`
 - `mitigation_injected_where_judgment_declined`
 - `merge_region_excludes_shared_tail`
 - `sealing_property_erases_structure`
+- `restoration_promise_names_a_route_that_does_not_exist`
 
 ## Building & checks
 
