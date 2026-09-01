@@ -488,26 +488,34 @@ fn field_has_duplicate_identity(field: List<ParetoEntry>) -> Bool {
 // field rather than by whichever comparison happened to trip over it. Deriving it pairwise made the
 // diagnostic name the innocent side as often as the guilty one, and made a subject that honestly
 // declares a missing input generate refusals ABOUT ITSELF the moment anything was compared to it.
-// An entry claiming complete inputs is checked against every funded axis; an entry that declares
-// what it lacks is exempt, because it has already told the truth.
+// THE EXEMPTION IS PER DEFECT CLASS, NOT PER ENTRY, and getting that wrong was a fail-open. An
+// entry declaring missing inputs has explained why a reading is ABSENT -- that is the truth it told,
+// and holding an absence against it would punish the honest declaration. It has explained nothing
+// about a DUPLICATE. Two readings on one axis identity is malformed evidence whatever else the entry
+// declares: the spine would have to pick one, which is the first-one-wins accident the duplicate
+// rule exists to refuse. Exempting the whole entry let a duplicate ride in behind an unrelated
+// declared gap and surface as NotComputable -- a projector defect wearing the report of an honest
+// one, which is exactly the conflation this split was made to end.
 fn entry_contradicts_its_declaration(e: ParetoEntry, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
-  if count(e.missing_inputs) > 0 {
-    no_names
-  } else {
-    fold(axes, init: no_names, f: fn(acc, ax) {
-      match reading_for(e: e, wanted: ax.identity) {
-        ReadingFound { interval_micro } => acc
-        ReadingAbsent { absent_axis } => concat(acc, one_name(name: join([
-          declaration_ref_display_key(ref: e.identity),
-          " declares complete inputs but has no reading on funded axis ",
-          declaration_ref_display_key(ref: absent_axis)], "")))
-        ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
-          declaration_ref_display_key(ref: e.identity),
-          " has duplicate readings on funded axis ",
-          declaration_ref_display_key(ref: duplicated_axis)], "")))
-      }
-    })
-  }
+  let declares_its_gaps = count(e.missing_inputs) > 0
+  fold(axes, init: no_names, f: fn(acc, ax) {
+    match reading_for(e: e, wanted: ax.identity) {
+      ReadingFound { interval_micro } => acc
+      ReadingAbsent { absent_axis } =>
+        if declares_its_gaps {
+          acc
+        } else {
+          concat(acc, one_name(name: join([
+            declaration_ref_display_key(ref: e.identity),
+            " declares complete inputs but has no reading on funded axis ",
+            declaration_ref_display_key(ref: absent_axis)], "")))
+        }
+      ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
+        declaration_ref_display_key(ref: e.identity),
+        " has duplicate readings on funded axis ",
+        declaration_ref_display_key(ref: duplicated_axis)], "")))
+    }
+  })
 }
 
 fn field_contradictions(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> List<NonEmptyStr> {

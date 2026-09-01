@@ -593,3 +593,33 @@ test fn a_contradiction_is_named_once_not_once_per_spelling() -> Bool {
     DominatedBy { dominators } => false
   }
 }
+
+
+// entry_gap_and_duplicate declares a missing input AND carries two readings on one axis. The
+// declaration explains the gap; it explains nothing about the duplicate.
+data entry_gap_and_duplicate: ParetoEntry = ParetoEntry {
+  identity: DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_and_duplicate", field: WholeDeclaration },
+  display_label: "declares a gap and hides a duplicate",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 10) },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 999) },
+  ],
+  missing_inputs: ["the power quote has not come back"],
+}
+
+// A DECLARED GAP DOES NOT EXCUSE MALFORMED EVIDENCE, and the exemption used to be per ENTRY rather
+// than per DEFECT CLASS, so it did. An entry declaring any missing input skipped the whole
+// structural scan, and a duplicate reading rode in behind the unrelated declared gap to surface as
+// NotComputable -- a projector defect wearing the report of an honest one, which is the conflation
+// the three-way split exists to end. The spine would still have had to pick between 10 and 999.
+//
+// The control is directional: the SAME entry with its duplicate removed must land NotComputable, or
+// this would pass by refusing everything that declares a gap.
+test fn a_declared_gap_does_not_excuse_a_duplicate_reading() -> Bool {
+  let with_duplicate = entry_standing(subject: entry_gap_and_duplicate, field: [entry_gap_and_duplicate, entry_cheap_strong], axes: both_axes, sensitivities: spine_sensitivities)
+  let honest_gap = entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
+  standing_is_refused(s: with_duplicate)
+    && !standing_is_incomparable(s: with_duplicate)
+    && standing_is_incomparable(s: honest_gap)
+    && !standing_is_refused(s: honest_gap)
+}

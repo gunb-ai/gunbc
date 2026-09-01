@@ -4,6 +4,7 @@
 use self::AxisComparison::*;
 use self::AxisGoal::*;
 use self::DominanceVerdict::*;
+use self::FrontStanding::*;
 use self::PairStanding::*;
 use self::ParetoStanding::*;
 use self::ReadingLookup::*;
@@ -11,6 +12,8 @@ pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_decl_ref::{declaration_ref_display_key, declaration_ref_eq};
+pub use crate::std_interval::OrderedClosedInterval;
+pub use crate::std_interval::{interval_high, interval_low};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -28,6 +31,7 @@ pub enum DominanceVerdict {
     Dominated,
     Equivalent,
     Incomparable,
+    DominanceUndecided,
 }
 
 #[derive(
@@ -47,6 +51,7 @@ pub enum AxisComparison {
     Better,
     Same,
     Worse,
+    UndecidedOnEvidence,
 }
 
 pub fn compare_int(a: i64, b: i64) -> Ordering {
@@ -61,18 +66,22 @@ pub fn compare_int(a: i64, b: i64) -> Ordering {
     }
 }
 
-pub fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
+pub fn oriented_ordering(goal: AxisGoal, value_order: Ordering) -> Ordering {
     match goal.clone() {
-        AxisGoal::HigherIsBetter => match value_order.clone() {
-            Ordering::Greater => AxisComparison::Better,
-            Ordering::Equal => AxisComparison::Same,
-            Ordering::Less => AxisComparison::Worse,
+        AxisGoal::HigherIsBetter => value_order,
+        AxisGoal::LowerIsBetter => match value_order {
+            Ordering::Greater => Ordering::Less,
+            Ordering::Equal => Ordering::Equal,
+            Ordering::Less => Ordering::Greater,
         },
-        AxisGoal::LowerIsBetter => match value_order.clone() {
-            Ordering::Greater => AxisComparison::Worse,
-            Ordering::Equal => AxisComparison::Same,
-            Ordering::Less => AxisComparison::Better,
-        },
+    }
+}
+
+pub fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
+    match oriented_ordering(goal.clone(), value_order.clone()) {
+        Ordering::Greater => AxisComparison::Better,
+        Ordering::Equal => AxisComparison::Same,
+        Ordering::Less => AxisComparison::Worse,
     }
 }
 
@@ -80,10 +89,47 @@ pub fn axis_comparison_int(goal: AxisGoal, a: i64, b: i64) -> AxisComparison {
     axis_comparison(goal.clone(), compare_int(a.clone(), b.clone()))
 }
 
+pub fn intervals_are_equal_points(
+    a: Rc<OrderedClosedInterval<i64>>,
+    b: Rc<OrderedClosedInterval<i64>>,
+) -> bool {
+    (((crate::std_interval::interval_low(a.clone())
+        == crate::std_interval::interval_high(a.clone()))
+        && (crate::std_interval::interval_low(b.clone())
+            == crate::std_interval::interval_high(b.clone())))
+        && (crate::std_interval::interval_low(a.clone())
+            == crate::std_interval::interval_low(b.clone())))
+}
+
+pub fn axis_comparison_interval(
+    goal: AxisGoal,
+    a: Rc<OrderedClosedInterval<i64>>,
+    b: Rc<OrderedClosedInterval<i64>>,
+) -> AxisComparison {
+    if intervals_are_equal_points(a.clone(), b.clone()) {
+        AxisComparison::Same
+    } else {
+        if (crate::std_interval::interval_high(a.clone())
+            < crate::std_interval::interval_low(b.clone()))
+        {
+            axis_comparison(goal.clone(), Ordering::Less)
+        } else {
+            if (crate::std_interval::interval_high(b.clone())
+                < crate::std_interval::interval_low(a.clone()))
+            {
+                axis_comparison(goal.clone(), Ordering::Greater)
+            } else {
+                AxisComparison::UndecidedOnEvidence
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DominanceTally {
     pub saw_better: bool,
     pub saw_worse: bool,
+    pub saw_undecided: bool,
 }
 
 pub fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
@@ -91,27 +137,38 @@ pub fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
         AxisComparison::Better => DominanceTally {
             saw_better: true,
             saw_worse: acc.saw_worse.clone(),
+            saw_undecided: acc.saw_undecided.clone(),
         },
         AxisComparison::Worse => DominanceTally {
             saw_better: acc.saw_better.clone(),
             saw_worse: true,
+            saw_undecided: acc.saw_undecided.clone(),
         },
         AxisComparison::Same => acc.clone(),
+        AxisComparison::UndecidedOnEvidence => DominanceTally {
+            saw_better: acc.saw_better.clone(),
+            saw_worse: acc.saw_worse.clone(),
+            saw_undecided: true,
+        },
     }
 }
 
 pub fn tally_verdict(t: DominanceTally) -> DominanceVerdict {
-    if t.saw_better.clone() {
-        if t.saw_worse.clone() {
-            DominanceVerdict::Incomparable
-        } else {
-            DominanceVerdict::Dominates
-        }
+    if (t.saw_better.clone() && t.saw_worse.clone()) {
+        DominanceVerdict::Incomparable
     } else {
-        if t.saw_worse.clone() {
-            DominanceVerdict::Dominated
+        if t.saw_undecided.clone() {
+            DominanceVerdict::DominanceUndecided
         } else {
-            DominanceVerdict::Equivalent
+            if t.saw_better.clone() {
+                DominanceVerdict::Dominates
+            } else {
+                if t.saw_worse.clone() {
+                    DominanceVerdict::Dominated
+                } else {
+                    DominanceVerdict::Equivalent
+                }
+            }
         }
     }
 }
@@ -121,6 +178,7 @@ pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> Dominan
         DominanceTally {
             saw_better: false,
             saw_worse: false,
+            saw_undecided: false,
         },
         |acc: DominanceTally, c: AxisComparison| tally_step(acc, c.clone()),
     ))
@@ -128,6 +186,7 @@ pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> Dominan
 
 pub fn verdict_dominates(v: DominanceVerdict) -> bool {
     match v.clone() {
+        DominanceVerdict::DominanceUndecided => false,
         DominanceVerdict::Dominates => true,
         DominanceVerdict::Dominated => false,
         DominanceVerdict::Equivalent => false,
@@ -137,6 +196,7 @@ pub fn verdict_dominates(v: DominanceVerdict) -> bool {
 
 pub fn verdict_is_dominated(v: DominanceVerdict) -> bool {
     match v.clone() {
+        DominanceVerdict::DominanceUndecided => false,
         DominanceVerdict::Dominated => true,
         DominanceVerdict::Dominates => false,
         DominanceVerdict::Equivalent => false,
@@ -146,6 +206,7 @@ pub fn verdict_is_dominated(v: DominanceVerdict) -> bool {
 
 pub fn verdict_is_equivalent(v: DominanceVerdict) -> bool {
     match v.clone() {
+        DominanceVerdict::DominanceUndecided => false,
         DominanceVerdict::Equivalent => true,
         DominanceVerdict::Dominates => false,
         DominanceVerdict::Dominated => false,
@@ -155,6 +216,7 @@ pub fn verdict_is_equivalent(v: DominanceVerdict) -> bool {
 
 pub fn verdict_is_incomparable(v: DominanceVerdict) -> bool {
     match v.clone() {
+        DominanceVerdict::DominanceUndecided => false,
         DominanceVerdict::Incomparable => true,
         DominanceVerdict::Dominates => false,
         DominanceVerdict::Dominated => false,
@@ -171,8 +233,45 @@ pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
         })
 }
 
-pub fn on_pareto_front(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
-    !any_dominates(verdicts.clone())
+pub fn verdict_is_undecided(v: DominanceVerdict) -> bool {
+    match v.clone() {
+        DominanceVerdict::DominanceUndecided => true,
+        DominanceVerdict::Dominates => false,
+        DominanceVerdict::Dominated => false,
+        DominanceVerdict::Equivalent => false,
+        DominanceVerdict::Incomparable => false,
+    }
+}
+
+pub fn any_undecided(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
+    verdicts
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, v: DominanceVerdict| {
+            (acc || verdict_is_undecided(v.clone()))
+        })
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum FrontStanding {
+    OnFront,
+    OffFront,
+    FrontPendingEvidence,
+}
+
+pub fn front_standing(verdicts: Rc<Vec<DominanceVerdict>>) -> FrontStanding {
+    if any_dominates(verdicts.clone()) {
+        FrontStanding::OffFront
+    } else {
+        if any_undecided(verdicts.clone()) {
+            FrontStanding::FrontPendingEvidence
+        } else {
+            FrontStanding::OnFront
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -181,13 +280,13 @@ pub struct SelectionAxis {
     pub goal: AxisGoal,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct AxisReading {
     pub axis: Rc<DeclarationRef>,
-    pub value_micro: i64,
+    pub interval_micro: Rc<OrderedClosedInterval<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ParetoEntry {
     pub identity: Rc<DeclarationRef>,
     pub display_label: NonEmptyStr,
@@ -206,16 +305,23 @@ pub struct Domination {
 pub enum ParetoStanding {
     ProvisionallyNonDominated { sensitivities: Rc<Vec<NonEmptyStr>> },
     DominatedBy { dominators: Rc<Vec<Rc<Domination>>> },
-    IncomparablePendingEvidence { missing: NonEmptyStr },
+    NotComputable { missing: NonEmptyStr },
+    PendingEvidence { undecided: NonEmptyStr },
     SelectionRefused { cause: NonEmptyStr },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "_variant")]
 pub enum ReadingLookup {
-    ReadingFound { value_micro: i64 },
-    ReadingAbsent { absent_axis: Rc<DeclarationRef> },
-    ReadingDuplicated { duplicated_axis: Rc<DeclarationRef> },
+    ReadingFound {
+        interval_micro: Rc<OrderedClosedInterval<i64>>,
+    },
+    ReadingAbsent {
+        absent_axis: Rc<DeclarationRef>,
+    },
+    ReadingDuplicated {
+        duplicated_axis: Rc<DeclarationRef>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -225,6 +331,9 @@ pub enum PairStanding {
         winning_axes: Rc<Vec<Rc<DeclarationRef>>>,
     },
     PairNoDominance,
+    PairPendingEvidence {
+        undecided_axes: Rc<Vec<Rc<DeclarationRef>>>,
+    },
     PairRefused {
         cause: NonEmptyStr,
     },
@@ -258,7 +367,7 @@ pub fn reading_for(e: Rc<ParetoEntry>, wanted: Rc<DeclarationRef>) -> Rc<Reading
                 }),
                 |acc: Rc<ReadingLookup>, r: Rc<AxisReading>| match (*acc.clone()).clone() {
                     ReadingLookup::ReadingFound {
-                        value_micro: value_micro,
+                        interval_micro: interval_micro,
                         ..
                     } => acc.clone(),
                     ReadingLookup::ReadingDuplicated {
@@ -274,7 +383,7 @@ pub fn reading_for(e: Rc<ParetoEntry>, wanted: Rc<DeclarationRef>) -> Rc<Reading
                             absent_axis.clone(),
                         ) {
                             Rc::new(ReadingLookup::ReadingFound {
-                                value_micro: r.value_micro.clone(),
+                                interval_micro: r.interval_micro.clone(),
                             })
                         } else {
                             acc.clone()
@@ -291,6 +400,7 @@ pub struct PairAccum {
     pub refusal_causes: Rc<Vec<NonEmptyStr>>,
     pub a_worse_somewhere: bool,
     pub winning_axes: Rc<Vec<Rc<DeclarationRef>>>,
+    pub undecided_axes: Rc<Vec<Rc<DeclarationRef>>>,
 }
 
 pub fn no_names() -> Rc<Vec<String>> {
@@ -347,16 +457,17 @@ pub fn accum_refusal(acc: Rc<PairAccum>, axis: Rc<SelectionAxis>, defect: String
         ),
         a_worse_somewhere: acc.a_worse_somewhere.clone(),
         winning_axes: acc.winning_axes.clone(),
+        undecided_axes: acc.undecided_axes.clone(),
     })
 }
 
 pub fn accum_both_read(
     acc: Rc<PairAccum>,
     axis: Rc<SelectionAxis>,
-    a_value: i64,
-    b_value: i64,
+    a_interval: Rc<OrderedClosedInterval<i64>>,
+    b_interval: Rc<OrderedClosedInterval<i64>>,
 ) -> Rc<PairAccum> {
-    match axis_comparison_int(axis.goal.clone(), a_value.clone(), b_value.clone()) {
+    match axis_comparison_interval(axis.goal.clone(), a_interval.clone(), b_interval.clone()) {
         AxisComparison::Better => Rc::new(PairAccum {
             refusal_causes: acc.refusal_causes.clone(),
             a_worse_somewhere: acc.a_worse_somewhere.clone(),
@@ -364,20 +475,31 @@ pub fn accum_both_read(
                 acc.winning_axes.clone(),
                 one_axis_id(axis.identity.clone()),
             ),
+            undecided_axes: acc.undecided_axes.clone(),
         }),
         AxisComparison::Worse => Rc::new(PairAccum {
             refusal_causes: acc.refusal_causes.clone(),
             a_worse_somewhere: true,
             winning_axes: acc.winning_axes.clone(),
+            undecided_axes: acc.undecided_axes.clone(),
         }),
         AxisComparison::Same => acc.clone(),
+        AxisComparison::UndecidedOnEvidence => Rc::new(PairAccum {
+            refusal_causes: acc.refusal_causes.clone(),
+            a_worse_somewhere: acc.a_worse_somewhere.clone(),
+            winning_axes: acc.winning_axes.clone(),
+            undecided_axes: v1_rt::concat(
+                acc.undecided_axes.clone(),
+                one_axis_id(axis.identity.clone()),
+            ),
+        }),
     }
 }
 
 pub fn accum_with_a(
     acc: Rc<PairAccum>,
     axis: Rc<SelectionAxis>,
-    a_value: i64,
+    a_interval: Rc<OrderedClosedInterval<i64>>,
     b_read: Rc<ReadingLookup>,
 ) -> Rc<PairAccum> {
     match (*b_read.clone()).clone() {
@@ -398,13 +520,13 @@ pub fn accum_with_a(
             "has duplicate readings on one side".to_string(),
         ),
         ReadingLookup::ReadingFound {
-            value_micro: value_micro,
+            interval_micro: interval_micro,
             ..
         } => accum_both_read(
             acc.clone(),
             axis.clone(),
-            a_value.clone(),
-            value_micro.clone(),
+            a_interval.clone(),
+            interval_micro.clone(),
         ),
     }
 }
@@ -435,12 +557,12 @@ pub fn axis_pair_step(
                 "has duplicate readings on one side".to_string(),
             ),
             ReadingLookup::ReadingFound {
-                value_micro: value_micro,
+                interval_micro: interval_micro,
                 ..
             } => accum_with_a(
                 acc.clone(),
                 axis.clone(),
-                value_micro.clone(),
+                interval_micro.clone(),
                 reading_for(b.clone(), axis.identity.clone()),
             ),
         }
@@ -456,12 +578,18 @@ pub fn pair_from_accum(folded: Rc<PairAccum>) -> Rc<PairStanding> {
         if folded.a_worse_somewhere.clone() {
             Rc::new(PairStanding::PairNoDominance)
         } else {
-            if ((folded.winning_axes.clone().len() as i64) > 0) {
-                Rc::new(PairStanding::PairDominates {
-                    winning_axes: folded.winning_axes.clone(),
+            if ((folded.undecided_axes.clone().len() as i64) > 0) {
+                Rc::new(PairStanding::PairPendingEvidence {
+                    undecided_axes: folded.undecided_axes.clone(),
                 })
             } else {
-                Rc::new(PairStanding::PairNoDominance)
+                if ((folded.winning_axes.clone().len() as i64) > 0) {
+                    Rc::new(PairStanding::PairDominates {
+                        winning_axes: folded.winning_axes.clone(),
+                    })
+                } else {
+                    Rc::new(PairStanding::PairNoDominance)
+                }
             }
         }
     }
@@ -477,6 +605,7 @@ pub fn compare_pair(
             refusal_causes: no_names(),
             a_worse_somewhere: false,
             winning_axes: no_axis_ids(),
+            undecided_axes: no_axis_ids(),
         }),
         |acc: Rc<PairAccum>, axis: Rc<SelectionAxis>| {
             axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
@@ -528,6 +657,39 @@ pub fn field_has_duplicate_identity(field: Rc<Vec<Rc<ParetoEntry>>>) -> bool {
         })
 }
 
+pub fn entry_contradicts_its_declaration(
+    e: Rc<ParetoEntry>,
+    axes: Rc<Vec<Rc<SelectionAxis>>>,
+) -> Rc<Vec<String>> {
+    {
+        let declares_its_gaps = ((e.missing_inputs.clone().len() as i64) > 0);
+        axes.iter().cloned().fold(no_names(), |acc: Rc<Vec<String>>, ax: Rc<SelectionAxis>| match (*reading_for(e.clone(), ax.identity.clone())).clone() {
+    ReadingLookup::ReadingFound { interval_micro: interval_micro, .. } => acc.clone(),
+    ReadingLookup::ReadingAbsent { absent_axis: absent_axis, .. } => if declares_its_gaps.clone() {
+            acc.clone()
+        } else {
+            v1_rt::concat(acc.clone(), one_name(Rc::new(vec![crate::std_decl_ref::declaration_ref_display_key(e.identity.clone()), " declares complete inputs but has no reading on funded axis ".to_string(), crate::std_decl_ref::declaration_ref_display_key(absent_axis.clone())]).join(&"".to_string())))
+        },
+    ReadingLookup::ReadingDuplicated { duplicated_axis: duplicated_axis, .. } => v1_rt::concat(acc.clone(), one_name(Rc::new(vec![crate::std_decl_ref::declaration_ref_display_key(e.identity.clone()), " has duplicate readings on funded axis ".to_string(), crate::std_decl_ref::declaration_ref_display_key(duplicated_axis.clone())]).join(&"".to_string()))),
+})
+    }
+}
+
+pub fn field_contradictions(
+    field: Rc<Vec<Rc<ParetoEntry>>>,
+    axes: Rc<Vec<Rc<SelectionAxis>>>,
+) -> Rc<Vec<String>> {
+    field
+        .iter()
+        .cloned()
+        .fold(no_names(), |acc: Rc<Vec<String>>, e: Rc<ParetoEntry>| {
+            v1_rt::concat(
+                acc,
+                entry_contradicts_its_declaration(e.clone(), axes.clone()),
+            )
+        })
+}
+
 pub fn challenger_applies(subject: Rc<ParetoEntry>, other: Rc<ParetoEntry>) -> bool {
     (!crate::std_decl_ref::declaration_ref_eq(other.identity.clone(), subject.identity.clone())
         && ((other.missing_inputs.clone().len() as i64) == 0))
@@ -537,6 +699,7 @@ pub fn challenger_applies(subject: Rc<ParetoEntry>, other: Rc<ParetoEntry>) -> b
 pub struct FieldAccum {
     pub refusal_causes: Rc<Vec<NonEmptyStr>>,
     pub dominators: Rc<Vec<Rc<Domination>>>,
+    pub pending_causes: Rc<Vec<NonEmptyStr>>,
 }
 
 pub fn one_domination(d: Rc<Domination>) -> Rc<Vec<Rc<Domination>>> {
@@ -557,11 +720,18 @@ pub fn field_step(
     candidate: other.identity.clone(),
     winning_axes: winning_axes.clone(),
 }))),
+    pending_causes: acc.pending_causes.clone(),
 }),
     PairStanding::PairNoDominance => acc.clone(),
+    PairStanding::PairPendingEvidence { undecided_axes: undecided_axes, .. } => Rc::new(FieldAccum {
+    refusal_causes: acc.refusal_causes.clone(),
+    dominators: acc.dominators.clone(),
+    pending_causes: v1_rt::concat(acc.pending_causes.clone(), one_name(Rc::new(vec!["challenger ".to_string(), crate::std_decl_ref::declaration_ref_display_key(other.identity.clone()), " is not shown either way on ".to_string(), undecided_axes.iter().cloned().fold(no_names(), |a2: Rc<Vec<String>>, ax: Rc<DeclarationRef>| v1_rt::concat(a2, one_name(crate::std_decl_ref::declaration_ref_display_key(ax.clone())))).join(&", ".to_string()), " - the readings overlap, so whether it dominates is undecided on this evidence".to_string()]).join(&"".to_string()))),
+}),
     PairStanding::PairRefused { cause: cause, .. } => Rc::new(FieldAccum {
     refusal_causes: v1_rt::concat(acc.refusal_causes.clone(), one_name(Rc::new(vec!["comparison against ".to_string(), crate::std_decl_ref::declaration_ref_display_key(other.identity.clone()), " refused - ".to_string(), cause.clone(), " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed".to_string()]).join(&"".to_string()))),
     dominators: acc.dominators.clone(),
+    pending_causes: acc.pending_causes.clone(),
 }),
 }
     } else {
@@ -574,8 +744,8 @@ pub fn standing_from_accum(
     sensitivities: Rc<Vec<String>>,
 ) -> Rc<ParetoStanding> {
     if ((folded.refusal_causes.clone().len() as i64) > 0) {
-        Rc::new(ParetoStanding::IncomparablePendingEvidence {
-            missing: folded.refusal_causes.clone().join(&" ; ".to_string()),
+        Rc::new(ParetoStanding::SelectionRefused {
+            cause: folded.refusal_causes.clone().join(&" ; ".to_string()),
         })
     } else {
         if ((folded.dominators.clone().len() as i64) > 0) {
@@ -583,10 +753,27 @@ pub fn standing_from_accum(
                 dominators: folded.dominators.clone(),
             })
         } else {
-            Rc::new(ParetoStanding::ProvisionallyNonDominated {
-                sensitivities: sensitivities.clone(),
-            })
+            if ((folded.pending_causes.clone().len() as i64) > 0) {
+                Rc::new(ParetoStanding::PendingEvidence {
+                    undecided: folded.pending_causes.clone().join(&" ; ".to_string()),
+                })
+            } else {
+                Rc::new(ParetoStanding::ProvisionallyNonDominated {
+                    sensitivities: sensitivities.clone(),
+                })
+            }
         }
+    }
+}
+
+pub fn scanned_population(
+    subject: Rc<ParetoEntry>,
+    field: Rc<Vec<Rc<ParetoEntry>>>,
+) -> Rc<Vec<Rc<ParetoEntry>>> {
+    if (count_entry_identity(field.clone(), subject.identity.clone()) > 0) {
+        field.clone()
+    } else {
+        v1_rt::concat(field.clone(), Rc::new(vec![subject.clone()]))
     }
 }
 
@@ -606,23 +793,36 @@ pub fn entry_standing(
     cause: "two field entries share one candidate identity - a duplicate would be skipped as self-comparison, so the selection refuses".to_string(),
 })
         } else {
-            if ((subject.missing_inputs.clone().len() as i64) > 0) {
-                Rc::new(ParetoStanding::IncomparablePendingEvidence {
-                    missing: subject.missing_inputs.clone().join(&" ; ".to_string()),
-                })
-            } else {
-                standing_from_accum(
-                    field.iter().cloned().fold(
-                        Rc::new(FieldAccum {
-                            refusal_causes: no_names(),
-                            dominators: no_dominators(),
-                        }),
-                        |acc: Rc<FieldAccum>, other: Rc<ParetoEntry>| {
-                            field_step(subject.clone(), other.clone(), axes.clone(), acc)
-                        },
-                    ),
-                    sensitivities.clone(),
-                )
+            {
+                let contradictions = field_contradictions(
+                    scanned_population(subject.clone(), field.clone()),
+                    axes.clone(),
+                );
+                if ((contradictions.clone().len() as i64) > 0) {
+                    Rc::new(ParetoStanding::SelectionRefused {
+                        cause: contradictions.clone().join(&" ; ".to_string()),
+                    })
+                } else {
+                    if ((subject.missing_inputs.clone().len() as i64) > 0) {
+                        Rc::new(ParetoStanding::NotComputable {
+                            missing: subject.missing_inputs.clone().join(&" ; ".to_string()),
+                        })
+                    } else {
+                        standing_from_accum(
+                            field.iter().cloned().fold(
+                                Rc::new(FieldAccum {
+                                    refusal_causes: no_names(),
+                                    dominators: no_dominators(),
+                                    pending_causes: no_names(),
+                                }),
+                                |acc: Rc<FieldAccum>, other: Rc<ParetoEntry>| {
+                                    field_step(subject.clone(), other.clone(), axes.clone(), acc)
+                                },
+                            ),
+                            sensitivities.clone(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -656,9 +856,13 @@ pub fn pareto_label(s: Rc<ParetoStanding>) -> String {
             dominator_names(dominators.clone()).join(&", ".to_string()),
         ])
         .join(&"".to_string()),
-        ParetoStanding::IncomparablePendingEvidence {
+        ParetoStanding::NotComputable {
             missing: missing, ..
         } => "not computable".to_string(),
+        ParetoStanding::PendingEvidence {
+            undecided: undecided,
+            ..
+        } => "pending evidence".to_string(),
         ParetoStanding::SelectionRefused { cause: cause, .. } => "selection refused".to_string(),
     }
 }
@@ -672,6 +876,8 @@ pub struct Equivalent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Incomparable;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DominanceUndecided;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HigherIsBetter;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LowerIsBetter;
@@ -681,3 +887,11 @@ pub struct Better;
 pub struct Same;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Worse;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidedOnEvidence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnFront;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OffFront;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FrontPendingEvidence;
