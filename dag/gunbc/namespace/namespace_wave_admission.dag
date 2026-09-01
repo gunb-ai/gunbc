@@ -10,6 +10,8 @@ import gunbc.guarantee_rung_drop {
   MechanicallyPreventable,
   AwaitsOneGrounding,
   BoundedPopulation,
+  ClimbableButUnbuilt,
+  UncountedNotEnumerable,
 }
 
 // WHY THIS CARRIER EXISTS BESIDE THE WALL RATHER THAN INSIDE THE PLAN IT ENFORCES. The
@@ -438,15 +440,238 @@ data namespace_wave_admission_bindings: List<DeclarationRef> = [
   },
 ]
 
-// TWO OF THE SEVENTEEN ROWS ADMITTED BY gunbc#9907 ARE UNVERIFIED AND ARE NOT VERIFIABLE BY THE
-// INSTRUMENT THAT VERIFIED THE OTHER FIFTEEN. Carried here, beside the rows, because an
-// undetermined that lives only in a reviewer's inbox is indistinguishable from a settled one six
-// weeks from now, and because the distinction it preserves -- UNVERIFIABLE is not VERIFIED and is
-// not REFUTED -- is exactly the one a silent instrument erases.
+// WHY A VERIFICATION OUTCOME IS A CARRIER AND NOT A SENTENCE. The seventeen rows this joins to were
+// reported as sound, and fifteen of them are. UNVERIFIABLE is a THIRD VALUE -- not a soft yes and
+// not a refutation -- and a value that only exists in prose cannot be enumerated, counted, or
+// refused by anything. The partition below is the one a reader most needs and the one an
+// instrument's silence most easily erases.
+//
+// THE JOIN KEY IS module_path PLUS in_declaration, which is the AdmissionSubject::Binding shape the
+// admitted rows carry, so this roster names its subjects at the grain they exist at rather than by
+// position or by count. The rows themselves are held in the seed and are not editable from here;
+// this is the verdict ABOUT them, which is a receipt in the observing layer rather than a field the
+// observed roster owns.
 
-data namespace_wave_admission_structural_text_row_verification: String = "THE SUBJECT: the seventeen TransitionAdmission rows labelled 'XL-0T structural text qualification 2026-09-01 (gunbc#9907)', admitting TargetChanged on the spelling String requalified to v2.std.text across the structural-text cut.\n\nWHAT WAS VERIFIED, AND BY WHAT. Fifteen rows name declarations in v2.compiler.tokenize. Each was confirmed by v1.tests.claim.carrier_realization_census, which reports for that module rows at declaration_field carrying the moved target, against a positive control in the same module that did not move. Those fifteen are verified BY EXECUTION.\n\nWHAT WAS NOT. Two rows name LexPattern and LexPatternFold in v2.std.compilers.lexing. THE CENSUS RETURNS NO ROWS FOR THAT MODULE AT ALL. It is not that the rows disagree; it is that the module is absent from the instrument's output while the instrument reports success. Over 1320 .dag files the census prints subjects=1320 and produces rows for 845 modules; v2.std.compilers.lexing is one of the 475 it omits, while four of its siblings are present. The selection rule was not determined and is deliberately not guessed here.\n\nSO THE HONEST STATE OF THOSE TWO ROWS IS UNVERIFIABLE, WHICH IS A THIRD VALUE. Reading the census's silence as agreement is the empty-observation narrow: an absence of contradicting rows from an instrument that produced no rows at all carries no information, and lexing's zero is an ABSENCE, not a zero. The rows were admitted on the same reading of the source that produced the other fifteen -- the requalification is visible in the authored text -- but authored text read by a human is the validation rung, not the execution rung, and the two must not be reported under one number.\n\nNEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: the census must either census every module it counts as a subject, or report the modules it declined and why, so that ABSENT is distinguishable from CLEAN at the instrument's own boundary. A patch that merely adds v2.std.compilers.lexing to the census's reach satisfies these two rows and leaves the other 473 omissions silent, so it does not retire this note. When that capability lands, re-run the census over v2.std.compilers.lexing and either promote these two rows to verified or refuse them; delete this paragraph rather than amending it.\n\nTHE COLLISION CAVEAT THAT APPLIES TO THE FIFTEEN AS WELL. The census resolves a qualified alias at fn_signature_param onto the alias declaration's own name, which for v2.std.text is the spelling String, and attributes the result to the kernel String. It does not fail to answer; it answers confidently and wrongly. The fifteen rows were verified at declaration_field, where the instrument is sound. ANY RE-DERIVATION OF THESE ROWS THAT READS fn_signature_param WILL SEE BARE String AT THE KERNEL AND CONCLUDE THE QUALIFICATION DID NOT TAKE, which is false. The mechanism is rostered as gunbc.recurring_failure_mode alias_resolution_collides_with_kernel_spelling."
+type AdmissionVerificationOutcome
+  = VerifiedByExecution { instrument: String, position_kind: String }
+  | Unverifiable { instrument: String, why: String }
+  | Refuted { instrument: String, what_disagreed: String }
 
-// THE BOARD-GRAIN REPORT THIS CUT OWED IS UNDELIVERED, recorded rather than dropped, so that its
-// absence is a countable obligation instead of a question nobody remembers asking.
+type AdmissionVerification {
+  module_path: String
+  in_declaration: String
+  spelling: String
+  target: String
+  outcome: AdmissionVerificationOutcome
+}
 
-data namespace_wave_admission_structural_text_board_report_undelivered: String = "WHAT WAS ASKED FOR: a three-category report at BOARD grain over the structural-text cut -- for every module on the emission board, whether the cut left it unchanged, changed it and it still emits, or changed it and it no longer emits. That is the only report that answers whether requalifying String across the corpus cost emission anywhere, as opposed to whether the seventeen admitted rows are individually sound.\n\nWHY IT IS UNDELIVERED. It requires gunbc.instruments.emission_entry_instrument to run over the board on both sides of the cut. That instrument is not available to this lane: emitting a single entry costs a fixed floor of several GiB regardless of subject, the corpus run refuses at the host-budget arm rather than admitting against a machine-wide reading, and a per-module board sweep is a CI job rather than a session job. Nothing was measured, so nothing is reported. This is an ABSENCE OF EVIDENCE and is stated as one; it is not a finding that the cut is clean at board grain.\n\nWHAT RESTORING THE BOARD WOULD BE SUFFICIENT FOR: a base-versus-head emission verdict per board module, run as one dispatch so that build and execution share a tree, with the two sides distinguished by a marker carried in the output rather than by run order. That is the whole obligation. An instrument that emits one module on demand does NOT discharge it -- the question is a population question and a per-call entry point answers it only if something sweeps the population and joins the two sides at module identity.\n\nUNTIL THEN the strongest claim available about this cut is the row-grain one above: fifteen verified, two unverifiable, zero refuted. No board-grain claim is authorized by that, in either direction."
+// THE CAVEAT BELOW APPLIES TO THE VERIFIED FIFTEEN AS MUCH AS TO THE UNVERIFIABLE TWO, which is why
+// it is carried beside the whole roster rather than on the two rows that failed. The verified ones
+// are exactly as re-derivable at the wrong position kind as the unverifiable ones, so without this
+// the roster's own strongest claim is the one most likely to be overturned by a careless re-check.
+//
+// THE INSTRUMENT resolves a qualified alias at fn_signature_param onto the alias declaration's own
+// name -- which for v2.std.text is the spelling String, because that module declares
+// `type String = FreeMonoid<Char>` -- and attributes the result to the kernel String. IT DOES NOT
+// FAIL TO ANSWER; IT ANSWERS CONFIDENTLY AND WRONGLY, naming the exact carrier the requalification
+// was written to move away from. Measured on covered ground: two functions on adjacent lines with
+// identical position kind, differing only in alias-versus-concrete, where the concrete one reports
+// IdentityUnavailable and the alias-qualified one reports Agrees at <kernel:String>.
+//
+// SO ANY RE-DERIVATION OF THESE SEVENTEEN ROWS THAT READS fn_signature_param WILL CONCLUDE THE
+// QUALIFICATION DID NOT TAKE, which is false. Every outcome below names the position kind it was
+// measured at for that reason. The mechanism is rostered as gunbc.recurring_failure_mode
+// alias_resolution_collides_with_kernel_spelling.
+
+data structural_text_admission_verifications: List<AdmissionVerification> = [
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "DelimitedState",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexMatchResult",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexMatchThunk",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexRuleApply",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexWalkAcc",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "RepeatState",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_match_char_pred",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_match_prefix",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_strip_prefix",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_try_compiled",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_try_rule",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_try_rules",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_walk",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_walk_artifact",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_walk_init",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.std.compilers.lexing",
+    in_declaration: "LexPattern",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: Unverifiable {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      why: "THE INSTRUMENT RETURNS NO ROWS FOR THIS MODULE AT ALL while reporting success. Over 1320 .dag files the census prints subjects=1320 -- files INGESTED, not modules CENSUSED -- and produces rows for 845 modules; v2.std.compilers.lexing is one of the 475 it omits, while four of its siblings are present. So this is not a disagreement to adjudicate: nothing was measured. Reading the silence as agreement is the empty-observation narrow, and this module's zero is an ABSENCE, not a zero. The row was admitted on the same reading of the authored source that produced the fifteen verified ones -- the requalification is visible in the text -- but source read by a human is the VALIDATION rung, not the EXECUTION rung, and reporting the two under one number is the inflation section 4b(1) names. The census's selection rule was not determined and is deliberately not guessed here.",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.std.compilers.lexing",
+    in_declaration: "LexPatternFold",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: Unverifiable {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      why: "THE INSTRUMENT RETURNS NO ROWS FOR THIS MODULE AT ALL while reporting success. Over 1320 .dag files the census prints subjects=1320 -- files INGESTED, not modules CENSUSED -- and produces rows for 845 modules; v2.std.compilers.lexing is one of the 475 it omits, while four of its siblings are present. So this is not a disagreement to adjudicate: nothing was measured. Reading the silence as agreement is the empty-observation narrow, and this module's zero is an ABSENCE, not a zero. The row was admitted on the same reading of the authored source that produced the fifteen verified ones -- the requalification is visible in the text -- but source read by a human is the VALIDATION rung, not the EXECUTION rung, and reporting the two under one number is the inflation section 4b(1) names. The census's selection rule was not determined and is deliberately not guessed here.",
+    },
+  },
+]
+
+// WHY THIS STALL AND NOT A SENTENCE SAYING THE REPORT IS MISSING. GuaranteeStall is the carrier this
+// module already uses for a question it cannot answer yet, and minting a second shape for the same
+// concept is the re-invention section 2 prices as a failed decomposition. What is missing here is
+// not a document -- it is a RUNG, and a rung that nothing names does not rank for climbing.
+//
+// STATED SO IT IS NOT MISREAD IN THE OTHER DIRECTION: this is an ABSENCE OF EVIDENCE about the
+// board, not a finding that the cut is clean at board grain. Nothing was measured, so nothing is
+// claimed either way.
+
+data namespace_wave_admission_board_grain_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.namespace_wave_admission -- WHETHER THE STRUCTURAL-TEXT CUT COST EMISSION ANYWHERE, at board grain: for every module on the emission board, whether the cut left it unchanged, changed it and it still emits, or changed it and it no longer emits. The row-grain verdict in structural_text_admission_verifications does not answer this and must not be read as answering it: seventeen sound rows are compatible with a board module that stopped emitting.",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable {
+    reason: "THE POPULATION IS THE EMISSION BOARD, WHICH IS ITSELF UNAVAILABLE TO THIS LANE, so its members cannot be listed here without inventing them. Rendering it as an empty list would read as nothing is affected -- bottom-as-answer conflated with bottom-as-ignorance, the narrow this type's third arm exists to refuse. The obstacle is measured, not assumed: emitting a single entry costs a fixed multi-GiB floor regardless of subject, and the corpus run refuses at the host-budget arm rather than admitting against a machine-wide reading, so a per-module sweep is a CI job and not a session job.",
+  },
+  next_rung_trigger: "A BASE-VERSUS-HEAD EMISSION VERDICT PER BOARD MODULE, produced in ONE dispatch so that build and execution share a tree, with the two sides distinguished by a MARKER CARRIED IN THE OUTPUT rather than by run order, and joined at MODULE IDENTITY rather than by rank or count. What does NOT close this is an entry point that emits one module on demand: the question is a population question, and a per-call instrument answers it only if something sweeps the population and joins the two sides. Until such a verdict exists, the strongest claim available about this cut is the row-grain one -- fifteen verified, two unverifiable, zero refuted -- and NO board-grain claim in either direction is authorized by it."
+}
