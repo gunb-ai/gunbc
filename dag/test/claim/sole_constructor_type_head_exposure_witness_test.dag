@@ -75,7 +75,7 @@ data sc_sealed_at_kernel_known_hole: String = "module probe_sc_sealed_at_kernel_
 data sc_plain_at_payload_red: String = "module probe_sc_plain_at_payload_red\ntype Inner { v: Int }\ntype PlainW { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: PlainW) -> Int { takes_inner(x: w) }\n"
 
 // THE POSITIVE CONTROL. A conforming binding through the sealed carrier's own payload. Without it
-// a compiler that refused EVERY argument would satisfy all three reds.
+// a compiler that refused EVERY argument would satisfy both reds and the pinned hole alike.
 data sc_conforming_green: String = "module probe_sc_conforming_green\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: Wrapped) -> Int { takes_inner(x: w.root) }\n"
 
 // THE SEALING-STILL-WORKS CONTROL. sole_constructor's own guarantee -- that no site outside the
