@@ -215,6 +215,30 @@ test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool {
   non_exhaustive_blocking_count(source: optional_nested_complete_source) == 0
 }
 
+// -- WHY A MECHANICAL `=> false` IS A TEST-ONLY REPAIR, AND SPENDS FAIL-CLOSURE IN PRODUCTION --
+//
+// Recorded here because this checker's census will keep producing the same shape, and the tempting
+// batch repair is right in one place and wrong in the other by the same reasoning that makes the
+// checker worth having (tidy-lynx-804, ruling on the 2026-09-02 census).
+//
+// In a `test fn ... -> Bool`, `=> false` is a claim ABOUT THE FIXTURE and nothing consumes it but
+// the assertion, so naming each missing shape BUYS fail-closure: add a variant later and the site
+// goes red again. In a production `fn`, the identical arm is a SEMANTIC ANSWER RETURNED TO A REAL
+// CALLER, asserting that false is correct for that variant when nobody established it -- so it
+// SPENDS the same property, converting a site that fails loudly on an unhandled variant into one
+// that silently answers false. Same shape, opposite effect, and the diagnostic cannot tell them
+// apart because it reports the missing witness and not what the enclosing declaration returns.
+//
+// The production repair is therefore per-site: return the typed answer that variant genuinely has,
+// or refuse. And in EITHER setting the arm must name each shape -- `_ => false` swallows variants
+// added later, which is the fail-open this whole class exists to remove.
+//
+// THE POLARITY READ IS BLOCKING, NOT ADVISORY, and it is the one thing neither instrument here can
+// catch: a site whose match INVERTS its assertion needs `true`, and writing `false` flips what the
+// test means while leaving it green. The suite is green by construction either way and the site
+// leaves the refusal census either way, so nothing downstream contradicts a wrong polarity. It has
+// to be read at the site before the arm is written.
+
 // -- A VARIANT NAMED IN A TYPE POSITION IS JUDGED AGAINST ITS PARENT'S ROSTER --
 //
 // This pair PINS A BEHAVIOUR THAT IS UNDER AN OPEN QUESTION, and says so rather than asserting the

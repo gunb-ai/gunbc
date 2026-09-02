@@ -449,11 +449,22 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
 // the checker STOP REPORTING a class rather than report it -- the silent widen section 5 forbids.
 // Under uncertainty the arm that refuses is the correct one, so the roster follows resolution.
 //
-// WHAT IS ACTUALLY UNDECIDED, named so it does not stall untracked (section 4b(2)): whether a
-// variant should be a FIRST-CLASS TYPE, making `HostCliDependencyAbsent?` genuinely a singleton
-// Optional. Rust cannot express that -- hence the emitter's variant_to_enum -- so it is a substrate
-// question about the type system, not a tweak to this checker, and it is not settled here. Until it
-// is, such a match is refused with the parent's roster, which is what resolution says today.
+// AND THE REFUSAL IS CORRECT, WITH THE DEFECT UPSTREAM IN THE SOURCE -- ruled by tidy-lynx-804
+// after reading the producer, and it inverts the repair rather than softening it. Adding a
+// `HostCliDependencyPresent` arm would answer for a state that cannot occur by inhabitance: a
+// fabricated plausible output at a site whose whole purpose is refusal, silencing the checker
+// without making anything exhaustive. The site is NOT a missing arm and must not be batched as one.
+//
+// The real repair is ordinary section 2 modeling, and it is cheaper than the substrate question
+// below: the concept `an absence carrying tool and hint` ALREADY EXISTS but is fused into a variant,
+// so it cannot be named in a type position. Give it its own type and let the observation be
+// `Present | Absent(that type)`; the signature then returns a real Optional of a real type and both
+// matches are exhaustive with one arm -- legitimately, not by silencing.
+//
+// WHAT REMAINS UNDECIDED, named so it does not stall untracked (section 4b(2)): whether a variant
+// should be a FIRST-CLASS TYPE, making `HostCliDependencyAbsent?` a singleton Optional without
+// re-modeling. Rust cannot express that -- hence the emitter's variant_to_enum -- so it is a
+// substrate question, it is NOT what these two sites are waiting on, and it is not settled here.
 fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
   let is_coproduct = resolved.connective == Disj
