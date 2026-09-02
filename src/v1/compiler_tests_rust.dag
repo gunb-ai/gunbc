@@ -3340,10 +3340,35 @@ fn ct_shell_service_output_projection_test() -> String {
 // into ITS runtime instead of stopping. The compiler does the stronger, correct
 // thing: it refuses AT EMIT with a structural diagnostic and writes no file, so
 // the `.expect("service module must emit src/probe.rs")` fired on the RIGHT
-// behaviour. The assertion is now over the diagnostic VARIANT rather than over
-// emitted text, and the stdout fall-through it used to check by substring is
-// subsumed by the no-file assertion: if the emitter ever falls through, a file
-// appears and the second assertion reds.
+// behaviour.
+//
+// WHY THERE ARE TWO PROBE MODULES AND NOT ONE. Asserting the class, the key and
+// the span against a single module cannot distinguish a span that belongs to the
+// offending FIELD from one that merely lands somewhere inside the service and is
+// therefore constant. Both satisfy every single-module assertion, and only one is
+// a located refusal. The pair differs in nothing but WHICH output field carries
+// the unmodeled key, so a constant span fails by construction rather than by a
+// reviewer noticing. That is the assertion this control exists for; the other
+// three are its preconditions.
+//
+// The span is checked by slicing it back out of the source it points into rather
+// than by comparing offsets to literals. A literal offset would be a transcribed
+// measurement -- it would have to be re-typed whenever anything above the field
+// moved, and it would read as an oracle while being a copy of one run's output.
+//
+// WHAT THE SPAN ACTUALLY COVERS, measured rather than assumed: the offending
+// FIELD'S NAME token, not the key literal. The first draft of this control
+// asserted the slice contained the key text and went red on that. The refusal
+// therefore locates the field carrying the unmodeled key, which is the right
+// locus; the assertion states the field name exactly rather than settling for a
+// substring, because a span that had swallowed the whole output block would
+// satisfy a containment check and is precisely the failure being excluded.
+//
+// ONE ASSERTION WAS REMOVED AS WRONG rather than weakened. It required the
+// refusal message not to mention `stdout`, on the theory that naming the modeled
+// sibling meant the diagnostic was reporting the operation. It is not: the
+// message enumerates the channels that ARE modeled, which is what makes it
+// actionable. The control had asserted something the compiler never promised.
 fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
   concat(
     "    #[test]\n",
@@ -3351,30 +3376,107 @@ fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
     "        let result = std::thread::Builder::new()\n",
     "            .stack_size(32 * 1024 * 1024)\n",
     "            .spawn(|| {\n",
-    "                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
-    "                    path: \"probe.dag\".to_string(),\n",
-    "                    content: \"module probe\\nservice Probe {\\n  operation Version {\\n    input {}\\n    output {\\n      first: String from \\\"not_a_channel\\\"\\n      out: String from \\\"stdout\\\"\\n    }\\n    transport shell { argv: [\\\"git\\\", \\\"--version\\\"] }\\n  }\\n}\\n\".to_string(),\n",
-    "                });\n",
-    "                let r = crate::v1_compiler_compile::compile_sources(\n",
-    "                    std::rc::Rc::new(im::vector![source]),\n",
-    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                // The SAME module, differing only in WHICH output field carries the\n",
+    "                // unmodeled key. Any span that does not belong to the offending field\n",
+    "                // is identical across the pair, so assertion four cannot be satisfied\n",
+    "                // by a location that merely lands somewhere inside the service.\n",
+    "                let first_field_offends = \"module probe\\nservice Probe {\\n  operation Version {\\n    input {}\\n    output {\\n      first: String from \\\"not_a_channel\\\"\\n      out: String from \\\"stdout\\\"\\n    }\\n    transport shell { argv: [\\\"git\\\", \\\"--version\\\"] }\\n  }\\n}\\n\";\n",
+    "                let second_field_offends = \"module probe\\nservice Probe {\\n  operation Version {\\n    input {}\\n    output {\\n      first: String from \\\"stdout\\\"\\n      out: String from \\\"not_a_channel\\\"\\n    }\\n    transport shell { argv: [\\\"git\\\", \\\"--version\\\"] }\\n  }\\n}\\n\";\n",
+    "                let probe = |content: &str| {\n",
+    "                    let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                        path: \"probe.dag\".to_string(),\n",
+    "                        content: content.to_string(),\n",
+    "                    });\n",
+    "                    let r = crate::v1_compiler_compile::compile_sources(\n",
+    "                        std::rc::Rc::new(im::vector![source]),\n",
+    "                        crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                    );\n",
+    "                    let located = r\n",
+    "                        .diagnostics\n",
+    "                        .iter()\n",
+    "                        .filter_map(|d| match &*d.diagnostic {\n",
+    "                            crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {\n",
+    "                                missing_realization_fact,\n",
+    "                                span,\n",
+    "                                ..\n",
+    "                            } if missing_realization_fact.contains(\"not_a_channel\") => {\n",
+    "                                Some((span.start, span.end, missing_realization_fact.clone()))\n",
+    "                            }\n",
+    "                            _ => None,\n",
+    "                        })\n",
+    "                        .collect::<Vec<_>>();\n",
+    "                    let emitted = r\n",
+    "                        .files\n",
+    "                        .iter()\n",
+    "                        .map(|f| f.path.clone())\n",
+    "                        .collect::<Vec<_>>();\n",
+    "                    (located, emitted, format!(\"{:?}\", r.diagnostics))\n",
+    "                };\n",
+    "                let (a_hits, a_files, a_all) = probe(first_field_offends);\n",
+    "                let (b_hits, b_files, _) = probe(second_field_offends);\n",
+    "\n",
+    "                // ONE: the refusal class, and exactly one row of it.\n",
+    "                assert_eq!(\n",
+    "                    a_hits.len(),\n",
+    "                    1,\n",
+    "                    \"an unmodeled output key must refuse with exactly one TransportEmissionNotModeled naming the key, got: {}\",\n",
+    "                    a_all\n",
     "                );\n",
-    "                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {\n",
-    "                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {\n",
-    "                        missing_realization_fact,\n",
-    "                        ..\n",
-    "                    } => missing_realization_fact.contains(\"not_a_channel\"),\n",
-    "                    _ => false,\n",
-    "                });\n",
+    "                assert_eq!(b_hits.len(), 1, \"the mutated module must refuse the same way\");\n",
+    "                let (a_start, a_end, a_fact) = a_hits[0].clone();\n",
+    "                let (b_start, b_end, _) = b_hits[0].clone();\n",
+    "\n",
+    "                // TWO: the EXACT refused output key, not merely that something was unmodeled.\n",
     "                assert!(\n",
-    "                    named,\n",
-    "                    \"an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}\",\n",
-    "                    r.diagnostics\n",
+    "                    a_fact.contains(\"not_a_channel\"),\n",
+    "                    \"the refusal must name the offending key. Got: {}\",\n",
+    "                    a_fact\n",
     "                );\n",
+    "\n",
+    "                // THREE: the span belongs to THAT key -- checked by slicing the span\n",
+    "                // back out of the source it points into, not by trusting the offsets.\n",
+    "                // The span covers the offending FIELD'S NAME rather than the key\n",
+    "                // literal, so the slice is the field name and the assertion says so\n",
+    "                // exactly; asserting it merely \"contains\" something would pass on a\n",
+    "                // span that had swallowed the whole output block.\n",
+    "                let a_text = &first_field_offends[a_start as usize..a_end as usize];\n",
+    "                let b_text = &second_field_offends[b_start as usize..b_end as usize];\n",
+    "                assert_eq!(\n",
+    "                    a_text, \"first\",\n",
+    "                    \"the span must cover the field carrying the unmodeled key. It covers: {:?}\",\n",
+    "                    a_text\n",
+    "                );\n",
+    "\n",
+    "                // FOUR, the discriminator: moving the unmodeled key to a DIFFERENT field\n",
+    "                // must MOVE the location. Without this a span pointing anywhere fixed\n",
+    "                // inside the service satisfies one through three and proves nothing.\n",
+    "                // Asserted on the RESOLVED TEXT and not only on the offsets, because\n",
+    "                // equal-length fields could move the numbers without the location ever\n",
+    "                // having been derived from the offending field at all.\n",
+    "                assert_eq!(\n",
+    "                    b_text, \"out\",\n",
+    "                    \"when the unmodeled key moves to the other field, the span must follow it. It covers: {:?}\",\n",
+    "                    b_text\n",
+    "                );\n",
+    "                assert_ne!(\n",
+    "                    (a_start, a_end),\n",
+    "                    (b_start, b_end),\n",
+    "                    \"the refusal is not located: the span did not move when the offending key moved to another field. Both refusals point at {}..{}\",\n",
+    "                    a_start,\n",
+    "                    a_end\n",
+    "                );\n",
+    "\n",
+    "                // The line stops: a refused operation emits no module carrying the\n",
+    "                // refusal into its own runtime.\n",
     "                assert!(\n",
-    "                    !r.files.iter().any(|f| f.path == \"src/probe.rs\"),\n",
+    "                    !a_files.iter().any(|p| p == \"src/probe.rs\"),\n",
     "                    \"a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}\",\n",
-    "                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()\n",
+    "                    a_files\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !b_files.iter().any(|p| p == \"src/probe.rs\"),\n",
+    "                    \"likewise when the offending field moves. Emitted: {:?}\",\n",
+    "                    b_files\n",
     "                );\n",
     "            })\n",
     "            .expect(\"failed to spawn thread\")\n",
