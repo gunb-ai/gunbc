@@ -12,7 +12,6 @@ import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.grant_privileged_operation {
   spark_sudo_prompt_sentinel,
-  OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,
   lease_secret_resource,
   lease_secret_version_resource,
@@ -46,7 +45,7 @@ fn enrolled() -> SparkCredentialStanding {
   }
 }
 
-fn lease_with(standing: SparkCredentialStanding) -> OperatorBootstrapCredentialLease {
+fn lease_with(standing: SparkCredentialStanding) -> AuthorizationRequest<SparkBootstrapSubject> {
   spark_bootstrap_credential_lease(
     host: "srv6",
     administrator: standing,
@@ -111,11 +110,11 @@ test fn the_lease_names_the_exact_grant_it_authorizes() -> Bool {
       spark_bootstrap_credential_lease(
         host: "srv6", administrator: enrolled(), grant: g,
         attempt_identity: "fixture" as NonEmptyStr,
-      ).authorized_purpose as String,
+      ).purpose as String,
       spark_managed_grant_sudoers_command(grant: g) as String,
     )
   })
-    && string_contains(lease_with(standing: enrolled()).authorized_purpose as String, "not retained")
+    && string_contains(lease_with(standing: enrolled()).purpose as String, "not retained")
 }
 
 // THE FOUR FAILURE LAYERS STAY DISTINGUISHABLE because their remedies differ: nothing enrolled is an

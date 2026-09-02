@@ -144,12 +144,17 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // the mandatory emitted-crate cargo check refuses it' -- a claim about a fixture the entry roster
 // cannot reach. This arm is where that claim EXECUTES instead of being asserted.
 //
-// ATTRIBUTION IS PART OF THE RED. The red fixture's closure is hundreds of modules and a bare
-// non-zero status could come from any of them, so the pair passes only when a diagnostic line
-// NAMES the fixture's own emitted module; otherwise the report reads 'unattributed' and the pair
-// FAILS rather than crediting a red the fixture did not cause. run_cargo's attribution symbol is
-// therefore a parameter of the caller rather than the injected mutation's constant: the required
-// phase attributes its own fault, the fixture route attributes the fixture.
+// ATTRIBUTION IS PART OF THE RED, AND IT IS TWO FACTS RATHER THAN ONE. The red fixture's closure
+// is hundreds of modules and a bare non-zero status could come from any of them, so the pair
+// requires a diagnostic line NAMING the fixture's own emitted module; otherwise the report reads
+// 'unattributed' and the pair FAILS rather than crediting a red the fixture did not cause.
+// run_cargo's attribution symbol is therefore a parameter of the caller rather than the injected
+// mutation's constant: the required phase attributes its own fault, the fixture route attributes
+// the fixture. THAT LOCATION SAYS WHERE AND NOT WHAT, so it is joined by the rustc ERROR CODE the
+// class renders as (E0308, mismatched types) read from the diagnostic header GOVERNING that
+// location -- without which the pair passed on any refusal reported in the right file, including
+// refusals that are not this class at all. The correction is recorded in full beside the roster
+// below.
 //
 // WHERE IT EXECUTES, STATED HONESTLY BECAUSE IT IS NOT THE MERGE PATH. The pair's ONE consumer is
 // `v1.compiler.compiler_tests_rust` `fixture_closure_rustc_discrimination`, emitted into
@@ -226,6 +231,112 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // fail-closed repair review 58120 required). Re-derive it rather than trusting it; the paragraph above
 // records what happens when nobody does.
 
+// THE FUNCTION-VALUE ADAPTER POSED THROUGH THAT ROUTE (2026-09-02), AND WHAT IT IS NOT.
+//
+// The route above is a CAPABILITY -- a fixture reaching rustc. This lane spends it on a second
+// subject: v1.compiler.emit_rust rust_call_arg_function_value_adapt, the call-position transform
+// that lets an arrow value carried as Rc<dyn Fn(..) -> ..> (callable_type_template) satisfy a
+// parameter rendered as `impl Fn(..) -> .. + Clone` (emit_rust_param_type). WHY THIS SUBJECT
+// CANNOT BE POSED TO A TEXT ORACLE: the adapter's claim is a TRAIT OBLIGATION, and a trait
+// obligation is not a spelling. compile_dag_rust_emit_check can assert that `__adapt_f` appears in
+// the emitted bytes; it cannot assert that the wrapper those bytes spell satisfies the bound,
+// which is the only thing the transform exists to do.
+//
+// THE PAIR IS MINIMAL-DIFFERENCE BY CONSTRUCTION, which is what makes it discriminate the ADAPTER
+// rather than the tree. Both arms declare the same producer, consumer and call, with ONE authored
+// difference: the control passes the producer result AS A CALL EXPRESSION, the shape the adapter
+// keys on; the red binds that identical result to a local first and passes the binding, which the
+// adapter deliberately does not touch.
+//
+// THE RED ARM IS A KNOWN HOLE AND NOT A WALL WORKING, and it is labelled as one so its red is not
+// read as the emitter refusing something. gunbc ACCEPTS the red fixture with zero blocking
+// diagnostics and emits a crate rustc refuses -- gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target, at the function-value seam rather than at that row's
+// coproduct-variant construction, and committed here as a runnable file, which that row records
+// its own specimen never was. When the hole closes -- the emitter adapting a let-bound arrow
+// value, or the front end refusing the construction -- the arm FLIPS and is KEPT as a permanent
+// regression control (DESIGN 4b(4)); what changes is this pair's expectation, not the fixture.
+//
+// WHERE IT EXECUTES, ON THE SAME HONEST TERMS AS THE PAIR BESIDE IT AND WITH NOTHING ADDED. The
+// consumer is v1.compiler.compiler_tests_rust
+// ct_function_value_adapter_fixture_closure_discrimination_test, emitted into compiler_tests.rs,
+// and it is #[ignore]d: ENROLLED AND AVAILABLE via `cargo test --release -p v1-compiler --lib
+// function_value_adapter_fixture_closure_discrimination -- --ignored`, DOES NOT EXECUTE BY DEFAULT
+// on push or pull request, and `rust-unit-tests` is not a `needs` of the required aggregate, so
+// even un-ignored a red would be visible and would not block through the required context.
+// CANDIDATE EVIDENCE, NO WALL. An #[ignore] is a cost decision and NOT a rung, so this establishes
+// NO rung for the adapter and discharges NO next-rung trigger naming it: the evidence exists and
+// does not execute on the acceptance path. The reversal condition is the one that row already
+// carries and is not re-minted here -- `rust-unit-tests` promoted into the required aggregate.
+//
+// HOW THIS SITS BESIDE THE BYTE-LEVEL CONTROL THAT LANDED ON main WHILE THIS LANE RAN (#9938,
+// v1.compiler.compiler_tests_rust ct_function_value_adapter_bound_alignment_control_test). That
+// control asserts, by substring over the emitted text, that the adapter fires exactly where the
+// `impl Fn` bound is emitted and nowhere else -- the two emitter decisions staying aligned -- and
+// it says in as many words what it does NOT establish: "whether these bytes compile is a RUSTC
+// verdict", and "no enrolled fail-closed rustc consumer covers this synthetic fixture". THIS PAIR
+// IS THAT VERDICT AND IS NOT A SECOND COPY OF THAT CONTROL: different oracle (rustc, not
+// substrings), different subject grain (does the emitted crate type-check), different fixtures.
+// AND IT DOES NOT FALSIFY THAT SENTENCE: this consumer is #[ignore]d, so after it lands there is
+// still no fail-closed rustc consumer covering the adapter on the merge path. The two are the
+// alignment half and the compilation half of one subject, and both remain honest about their own
+// grain.
+//
+// THE LEDGER ROW IS NOT UPDATED IN THIS DIFF, AND THE REASON IS AN INSTRUMENT THAT WOULD NOT RUN,
+// stated rather than left as a silent omission. gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target is PROJECTED into docs/design-ledgers.md, so appending
+// this instance to it requires re-running the projection actuator -- `gunbc run --source-root dag
+// --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function
+// main_wet` -- or the drift gate reads the carrier and its projection as disagreeing. Measured on
+// the runner available to this lane: with no cgroup limit it refuses HostBudgetUnreadable (the
+// executor exposes no cgroup memory limit at all), and under a cgroup of 12 GiB and again of
+// 30 GiB it refuses MemoryStallRefusedPageThrash during the whole-corpus resolve -- correctly,
+// because `free` on that runner reports 7 GiB TOTAL, so both caps were larger than the machine and
+// the refusal is the budget arm doing its job rather than a limit worth raising.
+//
+// THAT PARAGRAPH IS ABOUT A RUNNER, NOT ABOUT THIS LANE, AND THE DISTINCTION IS CORRECTED HERE
+// RATHER THAN LEFT TO BE READ THE WRONG WAY -- review 58670 quoted this receipt back as "the
+// projection actuator refuses on this runner", which is what it said and is no longer the operative
+// fact. MEASURED SINCE: the actuator RUNS in the session container -- 125 GiB host under a 31 GiB
+// cap -- and this lane executed it, re-deriving DESIGN.md and docs/design-ledgers.md from their
+// authority as part of integrating main. So capacity is NOT what defers the ledger append any more.
+// What defers it is OWNERSHIP: gunbc#10020 holds the third instance, authored from this lane's
+// executed receipts by the session that ran them, and projection-touching branches land ONE AT A
+// TIME because whichever merges second is stale. A receipt that keeps citing a limit the lane has
+// since cleared is the same class this file exists to catch, so the limit stays recorded against
+// the runner it was measured on and stops standing in for a reason it no longer supplies. Landing the carrier edit without its projection would have been the drift
+// the gate exists to catch, so the instance is recorded HERE and in the two fixture files, and the
+// ledger append is OWNED ELSEWHERE RATHER THAN MERELY DEFERRED, which is the difference between a
+// named obligation and an orphan: the class row already exists on main (gunbc#9909 filed
+// accepted_source_emits_uncompilable_target with two instances and an explicit scope sentence
+// limiting them to a unit arm at field and parameter position, Rust target). What this lane
+// discovered is a THIRD INSTANCE widening that sentence, not an unfiled class -- and vivid-lark-739
+// is filing it from this lane's executed receipts in gunbc#10020, on a rig that can run the
+// projection actuator. That PR is OPEN at this writing and is named here in the same disposition it
+// uses toward this one: it cites the PR carrying the fixtures rather than asserting paths that do
+// not yet resolve on main. If #10020 does not land, this sentence is the thing that says so.
+//
+// EXECUTED, BOTH DIRECTIONS, ON ONE BuildBuddy RUNNER (2026-09-02). Cited by naming the producer
+// that re-derives it -- `cargo test --release -p v1-compiler --lib
+// function_value_adapter_fixture_closure_discrimination -- --ignored --nocapture` -- with the two
+// arms' verdicts, which are the discrimination itself and not a number about it: the control
+// Measured files=6 cargo=Completed status=0; the red Measured files=6 cargo=Completed status=101,
+// `error[E0277]: expected a Fn(i64) closure, found Rc<dyn Fn(i64) -> i64>` at
+// `src/fixture_closure_rustc_function_value_let_probe.rs:22:11` on `let_apply(staged.clone(), 41)`,
+// against `required by this bound in let_apply` -- attributed to the fixture's own emitted module,
+// pair PASSED, `test result: ok` in 173.84s. The red is the ONE-SPELLING difference reaching rustc:
+// same producer, same consumer, no adapter, no blanket impl.
+//
+// HAND-ITEM DELTA FOR THIS LANE: three declarations, enumerated rather than counted --
+// FIXTURE_ADAPTER_GREEN_PATH, FIXTURE_ADAPTER_RED_PATH, run_function_value_adapter_discrimination.
+// Everything else the pair needs already exists and is REUSED rather than re-authored:
+// fixture_arm_verdict runs each arm, fixture_discrimination_passed adjudicates it, and
+// fixture_discrimination_report prints it -- a second discrimination, not a second harness, for
+// the same reason the route shares the required phase's crate writer and run_cargo. The cli_run
+// re-export list is ExistingSeedItemModified. THE ROSTER IS EXACT AGAINST THE FILE AS OF THIS
+// LANE: 78 declarations, 78 rows, zero stale, zero unaccounted. Re-derive it rather than trusting
+// it.
+
 // HAND-RUST RECEIPT FOR THE REQUIRED-PATH ROOT CORRECTION. Additions: PROBE_ROOT_DIR_NAME,
 // required_ci_probe_root_from_runner_temp, required_ci_emit_compile_probe_root,
 // local_emit_compile_probe_root, and the_probe_root_does_not_exist_without_runner_temp -- five
@@ -241,6 +352,50 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // and cargo-actuation boundary; owning_dissolution_lane remains v1-hand-queue-drain, and the whole
 // selection surface deletes when those two effects are modeled and actuated.
 
+// HAND-RUST RECEIPT FOR THE RED ARM'S ERROR-CLASS CORRECTION (2026-09-02). Additions: EIGHT exact
+// declarations, enumerated rather than counted -- attributed_diagnostic,
+// cargo_verdict_probe_diagnostic, fixture_closure_attributed_diagnostic,
+// FIXTURE_RED_EXPECTED_RUSTC_CODE, and the four unit tests
+// the_attributed_diagnostic_is_the_header_governing_the_attributed_line and
+// an_unnamed_symbol_attributes_nothing_rather_than_the_first_diagnostic and
+// a_warning_naming_the_file_does_not_attribute_the_refusal and
+// a_red_of_the_wrong_error_class_does_not_pass_the_pair. Modified rather than
+// added: CargoVerdict (Completed gains probe_diagnostic), run_cargo (the scan moves into the pure
+// function), fixture_discrimination_passed, fixture_discrimination_report, and the unit test
+// a_green_baseline_does_not_pass_without_the_discrimination (one constructed variant). The roster
+// below therefore stands at 83 rows. WHY RUST IS STILL NEEDED, owning lane, deletion trigger and
+// current boundary are unchanged: the subject is still the cargo actuation boundary.
+//
+// WHAT THE CORRECTION IS, RECORDED BECAUSE IT IS A CLAIM THIS FILE PREVIOUSLY OVERSTATED. The pair
+// passed on ANY rustc refusal reported in the red fixture's own emitted module -- attribution was
+// a location, and a location says WHERE and never WHAT. A fixture edited into a syntax error, an
+// emitter regression producing an unresolved path, or an arity fault would each have reddened the
+// arm in the right file and been reported PASSED, while the text-boundary class the arm names had
+// stopped being its subject. The arm now additionally requires the rustc error code the class
+// renders as (`E0308`, cited from the rustc error index), attributed to the diagnostic GOVERNING
+// that location rather than to any header in the run. Nothing here changes where the arm executes
+// or what it may be cited as: it is still `#[ignore]`d candidate evidence, and the paragraphs
+// above about rungs stand unaltered. The one thing that now executes on every push is the PARSE
+// the red arm rests on, through the two unit tests above -- which is why the scan was factored out
+// of run_cargo rather than left inside a function that can only run by spawning a toolchain.
+//
+// THE CODE WAS MEASURED BEFORE IT WAS REQUIRED, not inferred from the class description. The
+// instrument is the arm's own enrolled invocation -- `cargo test --release -p v1-compiler --lib
+// fixture_closure_rustc_discrimination -- --ignored --nocapture` -- run on the pre-change tree,
+// where the red arm's diagnostic in the fixture's own emitted module is `E0308`. Re-derive it
+// there rather than trusting this sentence; a constant naming a code the fixture does not produce
+// would turn the arm permanently red, which is the failure mode this measurement rules out. THE
+// CODE AND NOT THE WORDING, and that is measured too rather than preferred: across the two runs
+// taken here the same E0308 arrived once as `mismatched types` and once as `arguments to this
+// function are incorrect`. A constant matching rustc's prose would have been red on the second
+// run without anything about the emitter changing; the error index code is the part of the
+// diagnostic rustc governs as an identity.
+// A SECOND NARROWING RIDES WITH THE FIRST, and it is about which diagnostics may attribute at
+// all: only an `error` does. An emitted module routinely collects warnings, they are printed
+// above the error that stopped the build, and a red attributed to one would name a line that
+// refused nothing -- so a file named only by warnings is unattributed rather than attributed to
+// an error elsewhere in the run that does not govern it.
+
 data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME", field: WholeDeclaration },
@@ -253,6 +408,7 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_compiled", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_summary", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_probe_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_probe_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_stderr_tail", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "entry_own_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "MutationSubject", field: WholeDeclaration },
@@ -274,11 +430,13 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_crate_dir", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "write_probe_crate", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "run_cargo", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "attributed_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "write_probe_crate_files", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FixtureClosureOutcome", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_compiled", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_reached_rustc", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_attributed_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_attributed_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_summary", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_rust_module", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_rustc_verdict", field: WholeDeclaration },
@@ -286,10 +444,14 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FixtureDiscrimination", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_GREEN_PATH", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_RED_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_RED_EXPECTED_RUSTC_CODE", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_arm_verdict", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "run_fixture_closure_discrimination", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_discrimination_passed", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_discrimination_report", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_ADAPTER_GREEN_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_ADAPTER_RED_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "run_function_value_adapter_discrimination", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "closure_modules", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "mutation_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "establish_discriminating_red", field: WholeDeclaration },
@@ -318,9 +480,13 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "the_probe_root_does_not_exist_without_runner_temp", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "a_failed_restore_is_not_masked_by_a_non_terminal_fault_verdict", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "a_green_baseline_does_not_pass_without_the_discrimination", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "the_attributed_diagnostic_is_the_header_governing_the_attributed_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "an_unnamed_symbol_attributes_nothing_rather_than_the_first_diagnostic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "a_warning_naming_the_file_does_not_attribute_the_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "a_red_of_the_wrong_error_class_does_not_pass_the_pair", field: WholeDeclaration },
   ],
   reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap. The subject is a required CI phase: it must run inside claim_executor, which is the only witness-executing consumer in the tree, and its stages are host effects -- writing an emitted tree to disk and spawning cargo over it. The required floor's hermetic envelope REFUSES host effects during preparation, so a .dag witness whose subject is a subprocess exit status is counted executed while its assertion never runs; DESIGN's Building-&-checks section records that boundary in as many words, and records that mocking the refusal would pass the witness against a fabricated exit status. So the phase has to live where the effects do, exactly as required_regen_host and partition_crate_boundary_host do.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE, ON PRECEDENT RATHER THAN ANALOGY. gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE -- does it serve the v2 self-host program -- and the purpose test reaches the INSTRUMENT that measures that program, not only the program. This is that instrument in the most direct available sense: the self-host claim IS that the emitted tree compiles and behaves, and until now nothing on the merge path compiled an emitted tree at all. gunbc.floor_non_verdict_enrollment and gunbc.declaration_index_seed_growth are both admitted on that same footing. Classified against the five refused classes: NewLanguageBehavior -- no, the compile pipeline is byte-untouched, no diagnostic is added, moved or removed. NewCompatibilityObligation -- no, nothing is kept working for an old caller. NewEscapeHatchOrAdmissionRow -- no, and the direction is opposite: this adds a wall and adds no flag, env var or mode that skips it. SeedFeatureCompletion -- no, the seed compiler gains no capability; it compiles exactly what it compiled before. PublicSurfaceGrowth -- the nearest, and the test is a diff over THE EMITTED SEED'S EXPORTED DECLARATIONS: the file is wired by #[path] mod inside cli_run.rs exactly as declaration_index.rs, phase_profile.rs and partition_crate_boundary_host.rs are, so it contributes no pub mod line to the emitted lib.rs and its SeedRetainedIntrinsicRegistration carries has_pub_mod: false.\n\nWHAT IS NOT CLAIMED. This phase is not a compile of the corpus and must not be read as one: gunbc.whole_corpus_compile_admission refuses a whole-bundle compile on the default runner and records two EXIT=137 kills behind that refusal, so the subject is a bounded roster of entries in gunbc.ci_layer_roots required_emit_compile_entries. It carries no diagnostic count, no baseline and no ratchet -- a merge-blocking comparison against a population measured on the current tree is the tree-copied oracle DESIGN 5 rejects.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete this host when the phase's two host effects are modeled and a modeled actuator can perform them: writing an emitted file set to a directory, and invoking cargo over a manifest with a typed outcome. extdeps.cargo already models the manifest, the dependency rows and the target kinds, and extdeps.filesystem.filesystem_io models the write, so what is missing is the ACTUATION -- a modeled operation the required run can execute without the hermetic envelope refusing it. When that exists, run_emit_compile_entry becomes a .dag fold over those two operations and every item here is deleted, not re-homed. A PARTIAL migration is admissible and is the expected shape: the moment the cargo invocation is a modeled transport, run_cargo and the CargoVerdict vocabulary go first and the emission-to-disk half stays behind. What does NOT dissolve these items is the phase merely changing its roster, and what does NOT dissolve them is a hermetic witness asserting a fabricated exit status -- that would retire the evidence while retiring nothing it guards.",
-  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs; src/v1/stage0/src/cli_run.rs (the #[path] mod line and the re-export); src/v1/stage0/src/bin/claim_executor.rs (RequiredCiPhase::EmitCompile and its phase body); src/v1/compiler_tests_rust.dag ct_fixture_closure_rustc_discrimination_test and its emitted form in src/v1/stage0/src/compiler_tests.rs, the route's only consumer; fixtures/fixture_closure_rustc/ (the pair's two arms, which are files rather than string constants so that the arm this pair adjudicates is the arm any caller runs); dag/gunbc/ci/ci_layer_roots.dag required_emit_compile_entries; src/v2/compiler/self_host/stage0_crate_layout.dag; dag/gunbc/emitted_closure_compile_seed_growth.dag"
+  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs; src/v1/stage0/src/cli_run.rs (the #[path] mod line and the re-export); src/v1/stage0/src/bin/claim_executor.rs (RequiredCiPhase::EmitCompile and its phase body); src/v1/compiler_tests_rust.dag ct_fixture_closure_rustc_discrimination_test and ct_function_value_adapter_fixture_closure_discrimination_test and their emitted forms in src/v1/stage0/src/compiler_tests.rs, the route's only consumers; fixtures/fixture_closure_rustc/ (the pair's two arms, which are files rather than string constants so that the arm this pair adjudicates is the arm any caller runs); dag/gunbc/ci/ci_layer_roots.dag required_emit_compile_entries; src/v2/compiler/self_host/stage0_crate_layout.dag; dag/gunbc/emitted_closure_compile_seed_growth.dag"
 }

@@ -1,5 +1,7 @@
 module std.operator_realization
 
+import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce }
@@ -37,9 +39,14 @@ import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And,
 // only answer the module-visible homonym (measured: `a < b` with a: v2.std.nat.Nat emitted the host
 // `<` because the emitter read std.nat.Nat, which realizes natively). decl_file is the declaration's
 // own file -- the key v1.compiler.coercion's native-realization decision is made on.
+// THE DECLARATION AND ITS PROVENANCE, not the declaration and a second spelling of it. This carried
+// a `decl_file: String` beside the DeclarationRef -- one identity in two representations, the second
+// of which a consumer then handed to a roster that substring-matched it. The provenance is what the
+// realization gate actually needs, and it can say `there is no declaration` in a way a path never
+// could.
 type OperandDeclaration {
   declaration: DeclarationRef
-  decl_file: String
+  provenance: TypeDeclarationProvenance
 }
 
 type OperandRealization
@@ -84,12 +91,28 @@ type HostRealizationReason
 // a miss returns the shape, not a token rustc refuses later under E0369 (DESIGN section 5: a failure
 // arm refuses, never widens; the seed's host-token fallback here was the absorbing arm that hid this
 // lane's own defect behind an ordinary-looking `<`).
+// THE REFUSAL PAYLOAD. This record is emitted when identity could NOT be recovered, so what it
+// reports is the most specific thing there is to say about an unresolved reference -- which is
+// exactly the case DESIGN section 3 allows a position for, since no symbol exists to name. It
+// carries the provenance rather than a bare path so that `no declaration exists` and `a kernel mint`
+// read as themselves in the diagnostic instead of as an empty string and a pseudo-path.
+// The provenance rendered for a human reading the refusal. Three states, three renderings: an
+// absent identity says so instead of printing an empty backtick pair, and a kernel mint names the
+// minted type instead of printing a pseudo-path that looks like a file.
+fn provenance_label(p: TypeDeclarationProvenance) -> String {
+  match p {
+    CorpusDeclared { decl_file: f } => concat("declared in `", f, "`")
+    KernelMinted { minted_name: nm } => concat("kernel-minted `", nm, "`")
+    DeclarationIdentityAbsent => "no declaration identity"
+  }
+}
+
 type OperandShapeFacts {
   authored_name: String
   connective: String
   child_count: Int
   resolved: Bool
-  decl_file: String
+  provenance: TypeDeclarationProvenance
 }
 
 // A structural declaration's declared ordering: the comparison to call and the Ordering declaration
@@ -241,7 +264,7 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
       concat(
         "operator realization: host operator `", binop_label(op: o), "` on an operand whose declaration could not be read",
         " (authored `", f.authored_name, "`, connective ", f.connective, ", children ", to_string(value: f.child_count),
-        ", resolved ", if f.resolved { "yes" } else { "no" }, ", decl_file `", f.decl_file, "`)"
+        ", resolved ", if f.resolved { "yes" } else { "no" }, ", provenance ", provenance_label(p: f.provenance), ")"
       )
   }
 }
