@@ -308,10 +308,29 @@ fn completeness(population: ModelPopulation, question: CompletenessQuestion) -> 
 // A publisher's catalogue spans exactly that publisher and no other. A single distributor's
 // catalogue spans a channel rather than a publisher, and an operator roster is whatever a human
 // remembered -- which is the other half of how the original census went stale.
-fn coverage_spans_publisher(coverage: CoverageScope, publisher: NonEmptyStr) -> Bool {
+// THE SINGLE ELIMINATOR FOR CoverageScope. The predicate below re-matched all three arms to answer
+// one question, which is the same second-representation defect channel_presence_fold closes in
+// gunbc.model.publication: a fourth scope would have to be remembered at the type AND at every
+// predicate, and a predicate that forgot it would answer false rather than refuse to compile. The
+// fold takes the publisher-scoped arm's payload as a function argument because that arm is the only
+// one carrying anything a caller can interrogate.
+fn coverage_scope_fold<T>(
+  coverage: CoverageScope,
+  publisher_catalog: fn(NonEmptyStr) -> T,
+  single_distributor: T,
+  operator_roster: T,
+) -> T {
   match coverage {
-    PublisherReleaseCatalog { publisher: p } => (p as String) == (publisher as String)
-    SingleDistributorCatalog { channel: _ } => false
-    OperatorAssertedRoster => false
+    PublisherReleaseCatalog { publisher: p } => publisher_catalog(p)
+    SingleDistributorCatalog { channel: _ } => single_distributor
+    OperatorAssertedRoster => operator_roster
   }
+}
+
+fn coverage_spans_publisher(coverage: CoverageScope, publisher: NonEmptyStr) -> Bool {
+  coverage_scope_fold(
+    coverage: coverage,
+    publisher_catalog: p => (p as String) == (publisher as String),
+    single_distributor: false,
+    operator_roster: false)
 }

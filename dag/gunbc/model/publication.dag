@@ -181,11 +181,26 @@ type DistributionObservation {
   observed_at: Timestamp
 }
 
-fn observation_reports_presence(observation: DistributionObservation) -> Bool {
-  match observation.presence {
-    PresentInChannel { reference: _, packaging: _ } => true
-    AbsentFromChannel { probed_reference: _ } => false
+// THE SINGLE ELIMINATOR FOR ChannelPresence, for the reason runner_attempt_fold exists one module
+// over: a predicate that re-matches a coproduct is a second representation of that coproduct's
+// shape, so a third arm would have to be remembered here as well as at the type, and the predicate
+// that forgot it would silently answer false rather than fail to compile. One catamorphism, every
+// predicate a projection through it. It is not a parallel Kind enum -- minting PresenceYes /
+// PresenceNo beside the constructors would be a second NAME for one variant set, which is the
+// nicknaming section 3 forbids; a fold introduces no vocabulary at all.
+fn channel_presence_fold<T>(
+  presence: ChannelPresence,
+  present: T,
+  absent: T,
+) -> T {
+  match presence {
+    PresentInChannel { reference: _, packaging: _ } => present
+    AbsentFromChannel { probed_reference: _ } => absent
   }
+}
+
+fn observation_reports_presence(observation: DistributionObservation) -> Bool {
+  channel_presence_fold(presence: observation.presence, present: true, absent: false)
 }
 
 // The diagnostic a channel-absent observation is allowed to render. It states the channel, because a

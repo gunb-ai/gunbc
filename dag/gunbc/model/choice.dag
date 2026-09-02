@@ -996,14 +996,13 @@ fn observation_order_key_before(
       let ai = a.instrument as String
       let bi = b.instrument as String
       if ai != bi { ai < bi } else {
-        let at = reported_total_bytes(o: a)
-        let bt = reported_total_bytes(o: b)
-        if at != bt { at < bt } else {
-          let ag = reported_gpu_bytes(o: a)
-          let bg = reported_gpu_bytes(o: b)
-          if ag != bg { ag < bg } else {
-            outcome_detail_key(o: a) < outcome_detail_key(o: b)
-          }
+        match buffer_axis_order(a: reported_total_buffer(o: a), b: reported_total_buffer(o: b)) {
+          Present { value: decided } => decided
+          Absent =>
+            match buffer_axis_order(a: reported_gpu_buffer(o: a), b: reported_gpu_buffer(o: b)) {
+              Present { value: decided } => decided
+              Absent => outcome_detail_key(o: a) < outcome_detail_key(o: b)
+            }
         }
       }
     }
@@ -1027,25 +1026,54 @@ fn observation_order_key_before(
 // only ever breaks ties WITHIN an arm. Two observations equal on this key are equal on every field
 // the verdict can show, so which one is returned genuinely carries no information -- which is the
 // property the previous key claimed and did not have.
-// The two byte axes compare NUMERICALLY and the prose axis lexicographically, rather than folding
-// everything into one string: string order over decimal digits puts "9" after "10", which would be a
-// deterministic but wrong magnitude ordering, and the whole point of ordering on footprint is that
-// the smaller reading is the closer one. Non-served arms report no buffer and contribute zero, which
-// is not a fabricated measurement -- memory_fit_evidence partitions by outcome before any comparison
-// happens, so a served and a refused reading are never compared against each other.
-fn reported_total_bytes(o: OllamaRunnerMemoryObservation) -> Int {
+// THE BYTE AXES STAY ByteSize, AND AN UNREPORTED BUFFER IS ABSENT RATHER THAN ZERO.
+//
+// The first version of this projected both axes to bare `Int` and gave the non-served arms a literal
+// 0. Two defects in one move. The measure carrier was erased at exactly the comparison that cares
+// about magnitude, which is where std.measure's authority is load-bearing rather than decorative --
+// and `byte_size_count` yields a Nat, so the Int was a SECOND erasure past the one the authority
+// offers. And a refusal reports no buffer at all, so 0 was a fabricated reading: it says the runner
+// measured zero bytes, which is a different claim from "the runner did not report a footprint".
+//
+// So the accessor returns `ByteSize?`. The three arms are already partitioned by
+// memory_fit_evidence before anything is ordered, so the Absent case never actually decides a
+// comparison here -- but modeling it as absent means nothing has to be fabricated for it to be
+// total, and if the partition ever changed the ordering would still be honest.
+fn reported_total_buffer(o: OllamaRunnerMemoryObservation) -> ByteSize? {
   match o.outcome {
-    RunnerServed { reported_total_buffer: t, reported_gpu_buffer: _ } => byte_size_count(b: t)
-    RunnerRefusedForMemory { detail: _ } => 0
-    RunnerFailedForOtherCause { cause: _ } => 0
+    RunnerServed { reported_total_buffer: t, reported_gpu_buffer: _ } => Present { value: t }
+    RunnerRefusedForMemory { detail: _ } => none
+    RunnerFailedForOtherCause { cause: _ } => none
   }
 }
 
-fn reported_gpu_bytes(o: OllamaRunnerMemoryObservation) -> Int {
+fn reported_gpu_buffer(o: OllamaRunnerMemoryObservation) -> ByteSize? {
   match o.outcome {
-    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: g } => byte_size_count(b: g)
-    RunnerRefusedForMemory { detail: _ } => 0
-    RunnerFailedForOtherCause { cause: _ } => 0
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: g } => Present { value: g }
+    RunnerRefusedForMemory { detail: _ } => none
+    RunnerFailedForOtherCause { cause: _ } => none
+  }
+}
+
+// Absent orders before Present, and two absents decide nothing so the next key runs. The magnitude
+// comparison is on the Nat the carrier itself yields, never on a scalar minted here.
+fn buffer_axis_order(a: ByteSize?, b: ByteSize?) -> Bool? {
+  match a {
+    Absent =>
+      match b {
+        Absent => none
+        Present { value: _ } => Present { value: true }
+      }
+    Present { value: av } =>
+      match b {
+        Absent => Present { value: false }
+        Present { value: bv } =>
+          if byte_size_count(b: av) != byte_size_count(b: bv) {
+            Present { value: byte_size_count(b: av) < byte_size_count(b: bv) }
+          } else {
+            none
+          }
+      }
   }
 }
 
