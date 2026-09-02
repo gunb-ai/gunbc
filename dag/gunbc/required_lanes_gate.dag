@@ -217,6 +217,24 @@ fn required_lanes_head_standing_stmts(
 // fail-open in its purest form. `FreeSemigroup` has no empty representation, so that state is
 // UNWRITABLE rather than validated: the structurally-impossible rung of section 4b rather than
 // the mechanically-preventable one, and no refusal arm is owed because there is no arm to write.
+//
+// THE BOUNDARY THAT GUARANTEE HOLDS AT, stated because section 4b says unwritable in the ACCEPTED
+// CORPUS and unwritable as SOURCE HANDED TO THE COMPILER are different claims and only the second
+// decides whether a RED is authorable. MEASURED, not reasoned: a fixture module authoring
+// `FreeSemigroup { tail: [] }` was handed to the compiler on 2026-09-02 and refused with
+// `error: missing required field 'head' in literal of type 'FreeSemigroup'`, located at the
+// literal -- one blocking error. So the empty roster is authorable as fixture source and is
+// refused there, which is the stronger of the two boundaries.
+//
+// WHAT THAT DOES NOT ESTABLISH, AND THE TRIGGER IS OWNED ELSEWHERE. The refusal is the compiler's
+// GENERAL record-completeness wall, not anything this roster authored, and the roadmap node
+// `floor-record-construction-wall` (rn_ILWLG34LVL5SAS6QPN5GZDPMFY) records that wall's own
+// evidence as NOT YET ENROLLED -- in its words, a construction wall "currently rests on
+// record-completeness enforcement that is itself unmeasured". So this roster's rung is section
+// 4b(4) CONDITIONAL ON that wall, and its next-rung trigger is that node's probe-pairing rather
+// than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
+// NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
+// duplication declining a sixth NonEmpty carrier avoids.
 // It is deliberately not a fresh NonEmptyRequiredLanes carrier -- `free_semigroup_grounding_note`
 // already names five monomorphised copies of that shape as convergence debt, and a sixth would be
 // the re-invention that section 2's own test forbids.
