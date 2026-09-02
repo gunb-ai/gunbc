@@ -554,39 +554,67 @@ test fn a_cause_population_is_sized_by_distinct_defects() -> Bool {
     && count(axis_roster_contradiction(axes: both_axes)) == 0
 }
 
-// A SUBJECT DOES NOT DOMINATE ITSELF, AND THE ANSWER MUST BE CONSTRUCTED RATHER THAN FALL OUT OF
-// THE FOLD. Three cases, and each kills a different wrong implementation:
-//   1. a WIDE reading compared with itself -> PairNoDominance. A fall-through answers
-//      PairPendingEvidence, because identical wide intervals are UndecidedOnEvidence between two
-//      INDEPENDENT subjects -- true there, false here, since this is one subject.
-//   2. two complete payloads sharing one identity but carrying different readings ->
-//      PairNoDominance. A fall-through answers PairDominates: the exported API reporting that a
-//      structural candidate dominates ITSELF.
-//   3. those same two rows placed together in one field -> SelectionRefused, because a duplicated
-//      identity in a FIELD POPULATION is still a defect. Case 3 is what stops case 2 from being
-//      read as "duplicates are fine now"; the pair API answers a self-comparison, the field path
-//      still refuses a duplicated population, and both are true at once.
+// A SUBJECT DOES NOT DOMINATE ITSELF, AND THIS CONTROL OWNS THE WHOLE PRECEDENCE IT DESCRIBES.
+// The source states an order:
 //
-// KILLING MUTATIONS, and BOTH prior implementations must red this:
-//   - the intermediate version that returned PairRefused on identity equality (cases 1 and 2 red)
-//   - the fall-through version with no identity arm at all (cases 1 and 2 red)
+//   malformed axis roster > malformed projector > self relation > honest gap > evidence fold
+//
+// Three cases established the self-relation ANSWER. They did not pin its POSITION, and a control
+// that runs the headline behaviour while leaving every boundary un-executed is the same defect this
+// PR keeps producing in prose: the comment "a gap cannot make a subject fail to tie with itself" was
+// true of the code and asserted by nothing. Reported on review 5095502958, whose rule is the sharper
+// form of my own tally -- every CLAUSE in a precedence claim needs a mutation that can cross that
+// boundary, because running the headline is not running the order.
+//
+// Six observations, and each of the last three exists to make one reordering visible:
+//   1. wide reading vs itself            -> PairNoDominance   (kills the fall-through: identical
+//                                                              wide intervals are UndecidedOnEvidence
+//                                                              between INDEPENDENT subjects)
+//   2. same identity, differing readings -> PairNoDominance   (kills the fall-through harder: it
+//                                                              answered PairDominates -- a candidate
+//                                                              dominating itself)
+//   3. both rows together in one field   -> SelectionRefused  (keeps 1 and 2 from reading as
+//                                                              "duplicates are fine now")
+//   4. self under a DUPLICATED AXIS ROSTER -> PairRefused     (moving self above axis admission
+//                                                              makes this PairNoDominance; 1-3 stay green)
+//   5. PROJECTOR-MALFORMED self            -> PairRefused     (moving self above projector admission
+//                                                              makes this PairNoDominance; 1-3 stay green)
+//   6. HONESTLY GAPPED self                -> PairNoDominance (moving self BELOW declared_gap_cause
+//                                                              makes this PairEvidenceIncomplete;
+//                                                              1-3 stay green. This is the sentence
+//                                                              the comment asserted and nothing ran.)
+//
+// Killing mutations, all executed: the intermediate refusal implementation; the fall-through with no
+// identity arm; and each of the three reorderings above.
+fn pair_is_no_dominance(p: PairStanding) -> Bool {
+  match p {
+    PairNoDominance => true
+    PairDominates { winning_axes } => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
+  }
+}
+
+fn pair_is_refused(p: PairStanding) -> Bool {
+  match p {
+    PairRefused { cause } => count(cause) > 0
+    PairNoDominance => false
+    PairDominates { winning_axes } => false
+    PairPendingEvidence { undecided_axes } => false
+    PairEvidenceIncomplete { missing } => false
+  }
+}
+
 test fn a_subject_does_not_dominate_itself() -> Bool {
-  let wide_vs_self = match compare_pair(a: entry_wide_twin, b: entry_wide_twin, axes: both_axes) {
-    PairNoDominance => true
-    PairPendingEvidence { undecided_axes } => false
-    PairDominates { winning_axes } => false
-    PairRefused { cause } => false
-    PairEvidenceIncomplete { missing } => false
-  }
-  let same_id_differing_readings = match compare_pair(a: entry_same_id_other_readings, b: entry_cheap_strong, axes: both_axes) {
-    PairNoDominance => true
-    PairDominates { winning_axes } => false
-    PairPendingEvidence { undecided_axes } => false
-    PairRefused { cause } => false
-    PairEvidenceIncomplete { missing } => false
-  }
+  let wide_vs_self = pair_is_no_dominance(p: compare_pair(a: entry_wide_twin, b: entry_wide_twin, axes: both_axes))
+  let same_id_differing_readings = pair_is_no_dominance(p: compare_pair(a: entry_same_id_other_readings, b: entry_cheap_strong, axes: both_axes))
   let field_still_refuses = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: [entry_cheap_strong, entry_same_id_other_readings], axes: both_axes, sensitivities: spine_sensitivities))
+  let malformed_axes_outrank_self = pair_is_refused(p: compare_pair(a: entry_cheap_strong, b: entry_cheap_strong, axes: duplicated_axes))
+  let malformed_projector_outranks_self = pair_is_refused(p: compare_pair(a: entry_reading_hole, b: entry_reading_hole, axes: both_axes))
+  let self_outranks_an_honest_gap = pair_is_no_dominance(p: compare_pair(a: entry_gap_but_best, b: entry_gap_but_best, axes: both_axes))
   wide_vs_self && same_id_differing_readings && field_still_refuses
+    && malformed_axes_outrank_self && malformed_projector_outranks_self && self_outranks_an_honest_gap
 }
 
 fn pareto_witness_report() -> NonEmptyStr {
