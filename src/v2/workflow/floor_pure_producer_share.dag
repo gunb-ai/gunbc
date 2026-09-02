@@ -156,8 +156,29 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // ENROLLED AT THE ROOT, NOT AT compile_phase_frontier_standing, which the same census shows
 // costs 22 claims inclusive of this fold: sharing the ratchet leaves the standing with
 // reverse |> first, so one row discharges both, and the ratchet reaches one more claim.
-// Re-derive present-vs-absent with required_floor_claim_cost.tsv on this branch against run
-// 33668368846, and the reuse with required_floor_cross_claim_demand.tsv on the same pair.
+//
+// THE SERVE HALF IS MEASURED, NOT PROMISED, and the pair is CONTROLLED rather than cross-head
+// (review 58870 declined an earlier recipe that named a run at a different head, correctly:
+// that run grounds the recompute half and says nothing about the serve). Absent arm: main run
+// 33671815204 at 20caf4eb. Present arm: run 33673657876, this branch merged onto that same
+// head. Both executed=3498; they differ by this line. Re-derive with required_floor_claim_cost.tsv
+// and required_floor_cross_claim_demand.tsv from each, and read the WHOLE-RUN total, because the
+// serve lands on the 22 consuming claims and a per-row drop alone cannot see it:
+//
+//   claim_cpu_total_ms          110998 -> 93110       the serve did not eat the saving
+//   phase_board_series_ratchet   23 evals -> 1        demand census
+//   the three modules it spans   11833ms -> 4260ms    21 rows over the line -> 0
+//   over_cost_line_diagnostic       299 -> 269        floor summary counter
+//   failed / unexpected_failures    0/0 both arms     no verdict changed
+//
+// AND THE RESULT THAT MATTERS MORE THAN THE MILLISECONDS: the absent arm reports cpu_deadline=2,
+// and both preempted rows are this module's DISCRIMINATING REDS -- the planted-identity refusal
+// and the equal-cardinality swap refusal. They were being cut off by the 500ms deadline before
+// reaching a verdict, so the fold was not merely expensive, it was suppressing the two controls
+// the witness exists for. The present arm reports cpu_deadline=0 and both answer. Cost work that
+// restores a refusal is not a cost tradeoff against safety (DESIGN 4b(4)); the payer is now
+// charged 90ms marginal against a 585854-step netted fill, visible on its [floor-shared-fill]
+// line under triggered_by.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "gunbc.self_host_compile_phase_frontier.phase_board_series_ratchet",
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
