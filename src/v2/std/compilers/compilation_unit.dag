@@ -244,14 +244,6 @@ fn list_snoc_unique(items: List<CompilationUnitId>, item: CompilationUnitId) -> 
   }
 }
 
-fn list_snoc_unique_module(items: List<ModuleId>, item: ModuleId) -> List<ModuleId> {
-  if any(xs: items, predicate: fn(id) { id == item }) {
-    items
-  } else {
-    items |> list_push(item)
-  }
-}
-
 fn list_snoc_unique_symbol(items: List<Symbol>, item: Symbol) -> List<Symbol> {
   if any(xs: items, predicate: fn(sym) { sym == item }) {
     items
@@ -298,9 +290,19 @@ fn node_sort_key(n: Node) -> Fnv1a64Structural {
 }
 
 fn list_unique_sorted_nodes(items: List<Node>) -> List<Node> {
-  items
-    |> fold(init: [], f: fn(acc, item) { list_snoc_unique_node(items: acc, item: item) })
-    |> sort_by(node_sort_key)
+  // Same canonicalize-before-dedup rule as `list_unique_sorted_ids`: the old version rescanned
+  // the growing result before sorting it. Sorting by the exact content identity used for node
+  // membership makes one neighbour comparison sufficient and removes that quadratic sibling.
+  fold(
+    items |> sort_by(node_sort_key),
+    init: [],
+    f: (unique, item) => match unique |> last {
+      Present { value: prior } =>
+        if content_hash(n: prior) == content_hash(n: item) { unique }
+        else { unique |> list_push(item) }
+      Absent => [item]
+    }
+  )
 }
 
 fn module_export_declarations_outcome(
