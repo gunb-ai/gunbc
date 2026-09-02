@@ -54,14 +54,6 @@ fn borrower_death_capacity_disposition(
   }
 }
 
-fn disposition_preserves_capacity(disposition: BorrowerDeathCapacityDisposition) -> Bool {
-  match disposition {
-    CapacityLostUntilPoolRestart => false
-    CapacityPreservedByInvocationLifetime => true
-    CapacityPreservedByServerReclamation => true
-  }
-}
-
 // WHAT A HOST HAS BEEN OBSERVED TO BE RUNNING, which is not what a row desires it to run.
 //
 // This is the boundary the first draft of this module got wrong, and the error was a fail-open of
@@ -75,12 +67,8 @@ fn disposition_preserves_capacity(disposition: BorrowerDeathCapacityDisposition)
 // So the safe arm carries its READBACK rather than asserting itself: what the active unit says, not
 // what the model wishes it said.
 type HostCompileCancellationStanding
-  = HostCancellationSafe {
-      host: NonEmptyStr,
-      disposition: BorrowerDeathCapacityDisposition,
-      active_unit_readback: NonEmptyStr,
-    }
-  | HostCancellationUnsafe { host: NonEmptyStr, cause: NonEmptyStr }
+  = HostCancellationObserved { host: NonEmptyStr, realization: CompileParallelismRealization }
+  | HostCancellationUnreadable { host: NonEmptyStr, cause: NonEmptyStr }
   | HostCancellationUnobserved { host: NonEmptyStr, cause: NonEmptyStr }
 
 type FleetCompileCancellationStanding
@@ -107,9 +95,17 @@ type FleetCancellationFoldAcc {
 // has no unsafe and no unobserved host either, so testing only the blocking roster would report
 // SAFE for silence.
 //
-// And a HostCancellationSafe carrying a disposition that loses capacity is a contradiction in the
-// observation rather than a safe host, so it joins the unsafe side -- without that arm the safe
-// constructor would be self-certifying.
+// NO OBSERVATION ASSERTS ITS OWN SAFETY. An earlier draft had HostCancellationSafe carry both an
+// authored disposition and an active_unit_readback string, and the fold read only the disposition --
+// so the readback was decorative and arbitrary prose could label a host capacity-preserving, which
+// is the self-certifying carrier review 58469 named. The observation now carries only WHAT WAS READ
+// -- the realization -- and safety is DERIVED from it here, so there is no constructor for "safe"
+// at all.
+//
+// The Boolean predicate that used to sit between them is gone with it. It matched the disposition
+// coproduct's variants only to collapse them to true/false, which is the predicate-dissolution
+// trigger; the fold matches the three arms directly, and a fourth disposition would refuse to
+// compile here rather than silently falling to one side.
 fn fleet_cancellation_standing(
   observations: List<HostCompileCancellationStanding>,
 ) -> FleetCompileCancellationStanding {
@@ -117,20 +113,25 @@ fn fleet_cancellation_standing(
     observations,
     init: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
     f: (a, o) => match o {
-      HostCancellationSafe { host: h, disposition: d, active_unit_readback: _ } =>
-        match disposition_preserves_capacity(disposition: d) {
-          true => FleetCancellationFoldAcc {
-            unsafe_hosts: a.unsafe_hosts,
-            unobserved_hosts: a.unobserved_hosts,
-            safe_hosts: concat(a.safe_hosts, [h]),
-          }
-          false => FleetCancellationFoldAcc {
+      HostCancellationObserved { host: h, realization: r } =>
+        match borrower_death_capacity_disposition(realization: r) {
+          CapacityLostUntilPoolRestart => FleetCancellationFoldAcc {
             unsafe_hosts: concat(a.unsafe_hosts, [h]),
             unobserved_hosts: a.unobserved_hosts,
             safe_hosts: a.safe_hosts,
           }
+          CapacityPreservedByInvocationLifetime => FleetCancellationFoldAcc {
+            unsafe_hosts: a.unsafe_hosts,
+            unobserved_hosts: a.unobserved_hosts,
+            safe_hosts: concat(a.safe_hosts, [h]),
+          }
+          CapacityPreservedByServerReclamation => FleetCancellationFoldAcc {
+            unsafe_hosts: a.unsafe_hosts,
+            unobserved_hosts: a.unobserved_hosts,
+            safe_hosts: concat(a.safe_hosts, [h]),
+          }
         }
-      HostCancellationUnsafe { host: h, cause: _ } => FleetCancellationFoldAcc {
+      HostCancellationUnreadable { host: h, cause: _ } => FleetCancellationFoldAcc {
         unsafe_hosts: concat(a.unsafe_hosts, [h]),
         unobserved_hosts: a.unobserved_hosts,
         safe_hosts: a.safe_hosts,

@@ -1,6 +1,7 @@
 module test.claim.run_disposition_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
+import std.measure { hardware_thread_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -14,12 +15,11 @@ import gunbc.compile_permit_scope {
   FleetCancellationSafe,
   FleetCancellationNotSafe,
   HostCompileCancellationStanding,
-  HostCancellationSafe,
-  HostCancellationUnsafe,
+  HostCancellationObserved,
+  HostCancellationUnreadable,
   HostCancellationUnobserved,
-  CapacityPreservedByInvocationLifetime,
-  CapacityPreservedByServerReclamation,
-  CapacityLostUntilPoolRestart,
+  BorrowerHeldCooperativeHostFifo,
+  InvocationLocalCargo,
   fleet_cancellation_standing,
   fleet_compile_cancellation_standing
 }
@@ -583,10 +583,9 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
 // ── The drop retires by construction, and only on observed convergence ─────────────────────────
 
 fn safe_host(name: String) -> HostCompileCancellationStanding {
-  HostCancellationSafe {
+  HostCancellationObserved {
     host: name as NonEmptyStr,
-    disposition: CapacityPreservedByInvocationLifetime,
-    active_unit_readback: "Environment=CARGO_BUILD_JOBS=8" as NonEmptyStr,
+    realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   }
 }
 
@@ -623,13 +622,13 @@ test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
   }
 }
 
-test fn w_a_single_unsafe_host_holds_the_containment() -> Bool {
+test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
   match running_supersession_for_fleet_standing(
     standing: fleet_cancellation_standing(observations: [
       safe_host(name: "srv1"),
-      HostCancellationUnsafe {
+      HostCancellationUnreadable {
         host: "srv4" as NonEmptyStr,
-        cause: "active unit still names the host FIFO" as NonEmptyStr,
+        cause: "systemctl show returned no Environment property" as NonEmptyStr,
       },
     ]),
   ) {
@@ -640,13 +639,15 @@ test fn w_a_single_unsafe_host_holds_the_containment() -> Bool {
 
 // A READBACK THAT CLAIMS SAFE WHILE CARRYING A LOSING DISPOSITION IS A CONTRADICTION, and joins the
 // unsafe side rather than being believed. Without this arm the safe constructor is self-certifying.
-test fn w_a_safe_readback_carrying_a_losing_disposition_is_not_safe() -> Bool {
+test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool {
   match running_supersession_for_fleet_standing(
     standing: fleet_cancellation_standing(observations: [
-      HostCancellationSafe {
+      HostCancellationObserved {
         host: "srv1" as NonEmptyStr,
-        disposition: CapacityLostUntilPoolRestart,
-        active_unit_readback: "Environment=MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo" as NonEmptyStr,
+        realization: BorrowerHeldCooperativeHostFifo {
+          fifo_path: "/var/lib/ctrl/jobserver/host.fifo" as NonEmptyStr,
+          daemon_service: "ctrl-jobserver.service" as NonEmptyStr,
+        },
       },
     ]),
   ) {
@@ -663,23 +664,6 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
     standing: fleet_cancellation_standing(observations: [
       safe_host(name: "srv1"),
       safe_host(name: "srv2"),
-    ]),
-  ) {
-    SupersedeRunningForEvent { event: e } => e == "pull_request"
-    NeverSupersedeRunning => false
-  }
-}
-
-// SERVER RECLAMATION IS THE OTHER SUFFICIENT ARM the dissolve-on names, and the policy already knows
-// what it means -- so the day a server-owned pool exists it needs no new business branch here.
-test fn w_server_reclamation_is_a_sufficient_arm_for_the_policy() -> Bool {
-  match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(observations: [
-      HostCancellationSafe {
-        host: "srv1" as NonEmptyStr,
-        disposition: CapacityPreservedByServerReclamation,
-        active_unit_readback: "server-owned pool with death reclamation" as NonEmptyStr,
-      },
     ]),
   ) {
     SupersedeRunningForEvent { event: e } => e == "pull_request"
