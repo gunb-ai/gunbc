@@ -49,6 +49,7 @@ import v2.workflow.regen_convergence_transaction {
   CandidateStaleAfterProducerRebuild,
   InstalledDigestMismatch,
   StageSeedBuildRefused,
+  StageExecutionRefused,
   SurfaceInIncompatibleStageRoles,
   StageDependencyClosureIncomplete,
   RegenFixtureReachedFixedPoint,
@@ -61,8 +62,30 @@ import v2.workflow.regen_convergence_transaction {
   GenerationCycleDetected,
   GenerationBoundExceeded,
   regen_admit_stage_execution,
+  regen_stage_execution_admission_label,
+  regen_stage_execution_admission_detail,
+  StagePlannedExecutedMismatch,
   regen_plan_stage,
-  regen_admit_affected_bound
+  regen_admit_affected_bound,
+  RegenInstallBoundaryObservation,
+  RegenSurfaceLineage,
+  RegenSurfaceDisposition,
+  SurfaceApplied,
+  SurfaceDeferred,
+  SurfaceSuperseded,
+  SurfaceDispositionRefused,
+  RegenPopulationAdmitted,
+  RegenPopulationRefused,
+  StagePartitionPopulationDisagrees,
+  TransactionLineagePopulationDisagrees,
+  SurfaceLineageUnfinished,
+  AwaitingPromotedProducer,
+  regen_admit_install_boundary_population,
+  regen_admit_transaction_lineage,
+  regen_population_admission_label,
+  regen_disposition_terminality,
+  DispositionTerminal,
+  DispositionNonTerminal
 }
 
 test fn affected_bound_refusal_cannot_widen_into_stage_planning() -> Bool {
@@ -143,7 +166,7 @@ test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool
     subject_stage_build: RegenStageBuildPassed,
     g2_changed: []
   }) {
-    RegenFixtureRefused { refusal: StageSeedBuildRefused { ordinal: 1, reason: _ } } => true
+    RegenFixtureRefused { refusal: StageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: 1, reason: _ } } } => true
     _ => false
   }
 }
@@ -205,6 +228,60 @@ test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool {
   }
 }
 
+test fn a_planned_surface_with_no_observed_effect_refuses_before_the_digest_check() -> Bool {
+  let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity(), second_identity()],
+    executed: [one_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  })
+  match admission {
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      count(planned) == 2
+        && count(executed) == 1
+        && regen_stage_execution_admission_label(admission: admission) == "StagePlannedExecutedMismatch"
+    _ => false
+  }
+}
+
+test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Bool {
+  let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity()],
+    executed: [one_identity(), second_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  })
+  regen_stage_execution_admission_detail(admission: admission)
+    == "planned=[std_subject.rs] executed=[std_subject.rs std_dependent.rs]"
+}
+
+test fn an_admitted_stage_renders_no_refusal_detail() -> Bool {
+  let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity()],
+    executed: [one_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  })
+  regen_stage_execution_admission_detail(admission: admission) == ""
+}
+
+test fn an_observed_effect_outside_the_plan_refuses_in_the_other_direction() -> Bool {
+  match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity()],
+    executed: [one_identity(), second_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  }) {
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      count(planned) == 1 && count(executed) == 2
+    _ => false
+  }
+}
+
 test fn tampered_candidate_digest_refuses_before_admission() -> Bool {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity(), second_identity()],
@@ -244,6 +321,147 @@ test fn matching_stage_population_digest_generation_and_build_are_admitted() -> 
   }) {
     RegenStageExecutionAdmitted => true
     RegenStageExecutionRefused { refusal: _ } => false
+  }
+}
+
+
+test fn an_admitted_surface_in_neither_planned_nor_deferred_refuses_by_identity() -> Bool {
+  match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
+    admitted: [one_identity(), second_identity()],
+    planned: [one_identity()],
+    deferred: []
+  }) {
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees {
+      admitted_without_partition: dropped, partition_without_admitted: extra, planned_and_deferred: both
+    } } =>
+      count(dropped) == 1
+        && dropped |> any(row => row.projected_path == "std_dependent.rs")
+        && count(extra) == 0
+        && count(both) == 0
+    _ => false
+  }
+}
+
+// THE DIRECTION A COUNT CANNOT SEE. One admitted surface is missing from the partition and one
+// partition member was never admitted, so the two totals agree exactly. A cardinality check reports
+// this population as covered; the identity join names both residues instead.
+test fn equal_counts_with_different_identities_still_refuses_both_directions() -> Bool {
+  match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
+    admitted: [one_identity()],
+    planned: [second_identity()],
+    deferred: []
+  }) {
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees {
+      admitted_without_partition: dropped, partition_without_admitted: extra, planned_and_deferred: _
+    } } =>
+      count(dropped) == 1
+        && dropped |> any(row => row.projected_path == "std_subject.rs")
+        && count(extra) == 1
+        && extra |> any(row => row.projected_path == "std_dependent.rs")
+    _ => false
+  }
+}
+
+test fn one_surface_both_planned_and_deferred_refuses_where_a_union_would_absorb_it() -> Bool {
+  match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
+    admitted: [one_identity()],
+    planned: [one_identity()],
+    deferred: [one_identity()]
+  }) {
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees {
+      admitted_without_partition: _, partition_without_admitted: _, planned_and_deferred: both
+    } } => count(both) == 1 && both |> any(row => row.projected_path == "std_subject.rs")
+    _ => false
+  }
+}
+
+test fn a_partition_that_exactly_covers_the_admitted_population_is_admitted() -> Bool {
+  match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
+    admitted: [one_identity(), second_identity()],
+    planned: [one_identity()],
+    deferred: [second_identity()]
+  }) {
+    RegenPopulationAdmitted => true
+    _ => false
+  }
+}
+
+fn disposition_is_terminal(d: RegenSurfaceDisposition) -> Bool {
+  match regen_disposition_terminality(disposition: d) {
+    DispositionTerminal => true
+    DispositionNonTerminal => false
+  }
+}
+
+test fn deferred_is_the_only_nonterminal_disposition() -> Bool {
+  disposition_is_terminal(d: SurfaceApplied { installed_digest: "digest" })
+    && disposition_is_terminal(d: SurfaceSuperseded { by_generation_id: "g2" })
+    && disposition_is_terminal(d: SurfaceDispositionRefused { reason: "refused" })
+    && !disposition_is_terminal(d: SurfaceDeferred { reason: AwaitingPromotedProducer })
+}
+
+// A LINEAGE THAT NAMES EVERY ADMITTED SURFACE AND STILL ENDS IN A PROMISE. The population join is
+// satisfied in both directions here -- this is exactly the case a population equality alone reports
+// as complete, and it is why terminality is a separate conjunct rather than a property of the join.
+test fn a_lineage_terminating_in_deferred_is_unfinished_not_done() -> Bool {
+  let admission = regen_admit_transaction_lineage(
+    initial_admitted: [one_identity(), second_identity()],
+    lineage: [
+      RegenSurfaceLineage { identity: one_identity(), disposition: SurfaceApplied { installed_digest: "d1" } },
+      RegenSurfaceLineage { identity: second_identity(), disposition: SurfaceDeferred { reason: AwaitingPromotedProducer } }
+    ]
+  )
+  match admission {
+    RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: surfaces } } =>
+      count(surfaces) == 1
+        && surfaces |> any(row => row.projected_path == "std_dependent.rs")
+        && regen_population_admission_label(admission: admission) == "SurfaceLineageUnfinished"
+    _ => false
+  }
+}
+
+test fn an_admitted_surface_absent_from_the_terminal_lineage_refuses() -> Bool {
+  match regen_admit_transaction_lineage(
+    initial_admitted: [one_identity(), second_identity()],
+    lineage: [
+      RegenSurfaceLineage { identity: one_identity(), disposition: SurfaceApplied { installed_digest: "d1" } }
+    ]
+  ) {
+    RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees {
+      admitted_without_lineage: missing, lineage_without_admitted: extra
+    } } => count(missing) == 1 && count(extra) == 0
+    _ => false
+  }
+}
+
+test fn a_lineage_row_that_was_never_admitted_refuses_in_the_other_direction() -> Bool {
+  match regen_admit_transaction_lineage(
+    initial_admitted: [one_identity()],
+    lineage: [
+      RegenSurfaceLineage { identity: one_identity(), disposition: SurfaceApplied { installed_digest: "d1" } },
+      RegenSurfaceLineage { identity: second_identity(), disposition: SurfaceSuperseded { by_generation_id: "g2" } }
+    ]
+  ) {
+    RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees {
+      admitted_without_lineage: missing, lineage_without_admitted: extra
+    } } => count(missing) == 0 && count(extra) == 1
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL, and it carries Superseded deliberately: a surface that stopped drifting
+// because a later generation replaced its candidate ENDS its lineage without ever being installed,
+// and scoring that as unfinished would refuse a correct transaction.
+test fn applied_and_superseded_together_close_the_lineage() -> Bool {
+  match regen_admit_transaction_lineage(
+    initial_admitted: [one_identity(), second_identity()],
+    lineage: [
+      RegenSurfaceLineage { identity: one_identity(), disposition: SurfaceApplied { installed_digest: "d1" } },
+      RegenSurfaceLineage { identity: second_identity(), disposition: SurfaceSuperseded { by_generation_id: "g2" } }
+    ]
+  ) {
+    RegenPopulationAdmitted => true
+    _ => false
   }
 }
 
