@@ -294,3 +294,31 @@ test fn an_all_diverging_match_takes_the_expected_type_not_the_arm_payloads() ->
     ProbeOtherC => false
   }
 }
+
+// review 58406 (codex/gpt-5.6-sol): the contextual rule above only fires where an
+// expected type EXISTS. An ordinary non-tail `let` initializer passes `expected: none`
+// (`v1.compiler.infer` ExprLet, `val_expected`), so the residual fallback still handed
+// back the arms' return payloads and unreachable code was refused against a fabricated
+// type. Reproduced on the pre-repair binary 16a3739a7352:
+//   declared 'Coproduct(B4Res)', produced 'Coproduct(B4Other)'
+//
+// The divergence fact now survives INDEPENDENTLY of a contextual type: an all-diverging
+// match takes `divergent_type()`, a deliberately NAMELESS node. There is no type to
+// report for a value that is never produced, so consumers asking its name get "" and
+// DECLINE rather than refusing against something invented.
+fn probe_all_diverge_unconstrained_let(fl: ProbeFlag) -> ProbeOther {
+  let unreachable = match fl {
+    ProbeYes => return ProbeOtherA
+    ProbeNo => return ProbeOtherB
+  }
+  let ignored = probe_consume(r: unreachable)
+  ProbeOtherC
+}
+
+test fn an_all_diverging_match_in_an_unconstrained_let_fabricates_no_type() -> Bool {
+  match probe_all_diverge_unconstrained_let(fl: ProbeNo) {
+    ProbeOtherB => true
+    ProbeOtherA => false
+    ProbeOtherC => false
+  }
+}
