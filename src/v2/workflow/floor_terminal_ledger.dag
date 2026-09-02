@@ -6,11 +6,8 @@ import extdeps.git.object_store { GitObjectId }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
-import v2.workflow.required_floor {
-  ClaimSafetyOutcome,
-  CompletedPastSafetyLimit,
-  CompletedWithinSafetyLimits,
-  SafetyInterrupted
+import v2.workflow.floor_route_gap {
+  FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval
 }
 
 // THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
@@ -118,6 +115,80 @@ import v2.workflow.required_floor {
 // publish as the same artifact. `halted_by` carries the identity whose unwind stopped the line,
 // so the ledger names the cause beside every consequence rather than leaving a reader to infer it
 // from a gap.
+// WHY THE HERMETIC ROUTE HAD NO ARM, AS A CLOSED SET RATHER THAN AS PROSE.
+//
+// `RouteGap` carried one `route: String`, and that was a collapse this repo had ALREADY refused
+// elsewhere: `v2.workflow.floor_route_gap` models the same fact as a typed pair -- the operation
+// attempted, and the closed ground on which the hermetic route declined it -- because an
+// identity-only row "cannot object when the witness reaches a different operation or when the
+// ground changes to one with a different remedy". Its own words. The executor observes the pair
+// (`ClaimOutcome.HostEffectRefused { operation, ground }`), so a single string was the one place
+// between observation and artifact where the two facts were fused back together.
+//
+// THE VOCABULARY IS IMPORTED, NOT MINTED. `FloorRouteGapGround` stays where it is and this module
+// takes a dependency on it. Relocating it here was tried first and REFUSED BY ACYCLICITY, because at
+// that time this module imported `required_floor`, which imports `floor_route_gap`, so moving the
+// type would have closed a cycle -- and DESIGN section 4 makes acyclicity the import graph's only
+// structural law.
+//
+// THAT PREMISE NO LONGER HOLDS AND THE CONCLUSION STILL DOES. This module no longer imports
+// `required_floor` at all: the safety vocabulary moved HERE for the same acyclicity reason, which
+// removed the edge. So the cycle argument above is now HISTORY rather than a live constraint, and it
+// is kept because it records WHY the ground type was not relocated when that question was live. The
+// ground stays in `floor_route_gap` on the independent merit that a spelling beside that authority
+// and the seed's `v1_interpreter.HermeticEffectGround` mirror would be exactly the fork this
+// widening exists to close -- which was always the stronger half of the reason.
+//
+// WHAT THIS DOES NOT TOUCH: `floor_route_gap` keeps its expectation type and its whole population.
+// What an identity is EXPECTED to gap on is a different fact from what an attempt REACHED, and
+// neither derives from the other, so nothing there is redundant with this arm.
+// THE SAFETY VOCABULARY LIVES HERE, BESIDE THE TERMINAL THAT CARRIES IT.
+//
+// These two types were declared in `v2.workflow.required_floor` and imported back. That put a
+// VOCABULARY inside one of its CONSUMERS: outside required_floor the family is referenced 12 times
+// in this module, 12 in the wire, and 12 more across the two test modules, so the declaring module
+// was not where it was used. It survived while only the floor and the ledger were involved, and
+// became impossible the moment a third module needed both -- `local_repo_wet_terminal` consuming the
+// shared terminal vocabulary closed `ledger -> required_floor -> local_repo_wet_terminal -> ledger`.
+// DESIGN section 4 makes acyclicity the import graph's only structural law, so the relocation is the
+// FORCED answer rather than a tidier one.
+//
+// PURE RELOCATION. No arm is added, renamed, reordered or re-payloaded; `required_floor` imports
+// them back and remains a consumer, and the opaque-host-operation population stays there as policy
+// over this vocabulary.
+
+// WHICH REACHABILITY ONE CLAIM HAS, closed and named rather than left implicit per-occurrence.
+// A claim either stays inside `eval_expr`'s own poll loop for its whole duration
+// (`CooperativelyPollable` -- the case the two safety limits above genuinely protect), or it
+// crosses into a synchronous native `free_call.*` arm that never re-enters `eval_expr` while it
+// runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
+// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
+// comment already described in prose; this type is what the ruling asked that prose become.
+type ClaimPreemptionReachability =
+    CooperativelyPollable
+  | OpaqueHostCallUnbounded { operation: String }
+
+// THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
+// prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`
+// is reserved for a claim the poll genuinely stopped before a verdict -- it must never be the
+// label for a claim that ran to completion, however far over its limit, because "terminal" and
+// "interrupted" are different facts and conflating them is exactly the relabeling this ruling
+// forbids. `CompletedPastSafetyLimit` names the other terminal-but-over-limit case and carries
+// its `ClaimPreemptionReachability`, so a reader can tell WHY the poll never had a chance to fire
+// without re-deriving it from a comment.
+type ClaimSafetyOutcome =
+    CompletedWithinSafetyLimits
+  | SafetyInterrupted {
+      raised_by: String
+      elapsed_cpu_at_least: Int
+      elapsed_wall_at_least: Int
+    }
+  | CompletedPastSafetyLimit {
+      observed_cpu: Int
+      observed_wall: Int
+      preemption: ClaimPreemptionReachability
+    }
+
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
@@ -125,7 +196,7 @@ type ClaimAttemptTerminal
   | NotAttempted { halted_by: String }
   | BudgetRefused { safety: ClaimSafetyOutcome }
   | HostToolUnresolved { name: String, probed: List<String> }
-  | RouteGap { route: String }
+  | RouteGap { operation: String, ground: FloorRouteGapGround }
 
 // AN ATTEMPT THAT RETURNED STILL MAY NOT HAVE OBSERVED ANYTHING. A claim whose result is not a
 // verdict the floor can read -- the wrapper refusal a run reports when a function returns a bare
@@ -276,13 +347,30 @@ type TerminalLedger {
 // gap. The class sits at MITIGATABLE: the state is REPRESENTABLE and is caught by a check
 // (`ledger_green_admission` refuses a ledger carrying it), not made unwritable. Making it
 // unwritable by narrowing `BudgetRefused`'s carrier to the two coherent arms is REJECTED, and not
-// for cost: `ClaimSafetyOutcome` is owned by `v2.workflow.required_floor` and reused here
-// deliberately, so a narrowed two-arm twin declared beside it would be one concept forked by
-// rigor -- §3 nicknaming -- and a fork gets consolidated later at someone else's cost.
-// NEXT-RUNG TRIGGER: the safety axis declared as a family in its OWNING module, with the
-// budget-bearing sub-family derived there rather than re-spelled here. At that point this arm has
-// no constructor and this disposition, its refusal arm and their evidence dissolve together
-// (operator ruling, 2026-08-24).
+// for cost: `ClaimSafetyOutcome` is declared ABOVE IN THIS MODULE and a narrowed two-arm twin beside
+// it would be one concept forked by rigor -- §3 nicknaming -- and a fork gets consolidated later at
+// someone else's cost.
+//
+// THE OWNERSHIP SENTENCE HERE USED TO SAY `v2.workflow.required_floor` OWNS THIS TYPE. That was true
+// when written and became false when the declaration moved here to open an import cycle. It is
+// corrected rather than deleted because the sentence is load-bearing: it is the reason the narrowed
+// twin is refused, and a reader who found it naming the wrong authority would conclude the refusal
+// no longer applies.
+//
+// NEXT-RUNG TRIGGER, RE-ANCHORED AND NOT RETIRED. It read "the safety axis declared as a family in
+// its OWNING module, with the budget-bearing sub-family derived there rather than re-spelled here".
+// Every locating word in that sentence was DEICTIC -- its owning module, there, here -- so moving the
+// declaration silently re-pointed it at a different module while the prose stayed readable. It did
+// not become false, it became AMBIGUOUS, which is why nothing would ever have flagged it: this is the
+// positional-citation failure one level up, a relative reference decaying rather than a line number.
+//
+// So the trigger is restated with its location EXPLICIT: the safety axis declared as a family in
+// `v2.workflow.floor_terminal_ledger`, with the budget-bearing sub-family DERIVED from that family
+// rather than re-spelled as a sibling coproduct. RELOCATING THE DECLARATION DOES NOT SATISFY IT --
+// the sub-family derivation is the capability, and this change performed a move, not a derivation.
+// The drop stays open at MITIGATABLE. At the point the trigger is met, this arm has no constructor
+// and this disposition, its refusal arm and their evidence dissolve together (operator ruling,
+// 2026-08-24).
 type ClaimDisposition
   = Passed
   | Failed
@@ -323,7 +411,7 @@ fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
     Panicked { payload: _ } => PanickedBeforeVerdict
     NotAttempted { halted_by: _ } => NotAttemptedAfterAbort
     HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
-    RouteGap { route: _ } => RouteGapBeforeVerdict
+    RouteGap { operation: _, ground: _ } => RouteGapBeforeVerdict
     Returned { observation: o } =>
       match o {
         ObservationUnrepresentable { reason: _ } => ObservationUnreadableBeforeVerdict

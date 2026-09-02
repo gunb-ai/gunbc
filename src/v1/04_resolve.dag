@@ -12,6 +12,7 @@ import v1.std.core {
   make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
+  field_from_key_property_name,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
@@ -711,7 +712,7 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolve
         Present { value: result } => Present { value: result.expr }
         Absent => none
       },
-      from_key_properties: field.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key"),
+      from_key_properties: field.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == field_from_key_property_name),
       span: field.span, name_span: node_name_span(n: field)
     ),
     diagnostics: concat(type_diags, default_diags)
@@ -722,7 +723,7 @@ fn rendered_use_site_type(authored: Node, resolved: Node) -> Node {
   if authored.children |> count > 0 {
     Node { occurrence_identity: authored.occurrence_identity, name: authored.name, span: authored.span, ident_span: authored.ident_span, children: resolved.children, connective: authored.connective, params: authored.params, inferred: Present { value: Resolved { node: resolved } }, return_cardinality: authored.return_cardinality, uses: authored.uses, body: authored.body, transport: authored.transport, properties: resolved.properties, type_annotation: authored.type_annotation, is_self_recursive: authored.is_self_recursive, has_non_tail_self_call: authored.has_non_tail_self_call, match_pattern: authored.match_pattern, expr_data: authored.expr_data }
   } else {
-    resolved
+    Node { occurrence_identity: authored.occurrence_identity, name: resolved.name, span: resolved.span, ident_span: resolved.ident_span, children: resolved.children, connective: resolved.connective, params: resolved.params, inferred: resolved.inferred, return_cardinality: resolved.return_cardinality, uses: resolved.uses, body: resolved.body, transport: resolved.transport, properties: resolved.properties, type_annotation: resolved.type_annotation, is_self_recursive: resolved.is_self_recursive, has_non_tail_self_call: resolved.has_non_tail_self_call, match_pattern: resolved.match_pattern, expr_data: resolved.expr_data }
   }
 }
 

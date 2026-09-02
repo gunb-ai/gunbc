@@ -343,7 +343,7 @@ fn codex_supervised_turn_generation_admission(
       }
     GenerationStoreNegative { value: v } =>
       CodexTurnStartRefusedDuplicateExecution {
-        reason: concat("generation store negative: ", to_string(n: v)) as NonEmptyStr,
+        reason: concat("generation store negative: ", to_string(value: v)) as NonEmptyStr,
       }
   }
 }
@@ -354,7 +354,7 @@ fn persist_codex_supervised_turn_generation(
 ) -> Bool {
   Filesystem.Write(
     path: codex_supervised_turn_generation_store_path(evidence_root: evidence_root),
-    content: to_string(n: generation),
+    content: to_string(value: generation),
   ).success
 }
 
@@ -562,7 +562,7 @@ fn supervised_rpc_from_id_response(
       SupervisedRpcError {
         reason: concat(
           "json-rpc error on id ",
-          concat(to_string(n: id), concat(": ", serialize_supervised_rpc_error(err: err))),
+          concat(to_string(value: id), concat(": ", serialize_supervised_rpc_error(err: err))),
         ) as NonEmptyStr,
       }
     JsonMemberAbsent =>
@@ -575,7 +575,7 @@ fn supervised_rpc_from_id_response(
                 reason: concat(
                   "id ",
                   concat(
-                    to_string(n: id),
+                    to_string(value: id),
                     concat(": result missing ", concat(entity_key, " id")),
                   ),
                 ) as NonEmptyStr,
@@ -583,24 +583,24 @@ fn supervised_rpc_from_id_response(
           }
         JsonMemberAbsent =>
           SupervisedRpcError {
-            reason: concat("id ", concat(to_string(n: id), ": missing result")) as NonEmptyStr,
+            reason: concat("id ", concat(to_string(value: id), ": missing result")) as NonEmptyStr,
           }
         JsonMemberDuplicated { count: _ } =>
           SupervisedRpcError {
-            reason: concat("id ", concat(to_string(n: id), ": duplicate result")) as NonEmptyStr,
+            reason: concat("id ", concat(to_string(value: id), ": duplicate result")) as NonEmptyStr,
           }
         JsonMemberNotAnObject =>
           SupervisedRpcError {
-            reason: concat("id ", concat(to_string(n: id), ": result not object")) as NonEmptyStr,
+            reason: concat("id ", concat(to_string(value: id), ": result not object")) as NonEmptyStr,
           }
       }
     JsonMemberDuplicated { count: _ } =>
       SupervisedRpcError {
-        reason: concat("id ", concat(to_string(n: id), ": duplicate error")) as NonEmptyStr,
+        reason: concat("id ", concat(to_string(value: id), ": duplicate error")) as NonEmptyStr,
       }
     JsonMemberNotAnObject =>
       SupervisedRpcError {
-        reason: concat("id ", concat(to_string(n: id), ": error not object")) as NonEmptyStr,
+        reason: concat("id ", concat(to_string(value: id), ": error not object")) as NonEmptyStr,
       }
   }
 }
@@ -783,7 +783,7 @@ fn disposition_from_supervised_parse(
               cause: ProviderNativeCauseUnknown {
                 evidence: concat(
                   "app-server exited ",
-                  to_string(n: code),
+                  to_string(value: code),
                   "",
                 ) as NonEmptyStr,
               },

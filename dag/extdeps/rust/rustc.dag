@@ -1,6 +1,7 @@
 module extdeps.rustc
 
 import std.types { String, Bool, Int }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -69,4 +70,42 @@ service rustc.Check {
       nonzero => String "rustc did not accept the source"
     }
   }
+}
+
+// rustc reports its own identity in a KEYED, LINE-ORIENTED form under `--version --verbose`: the
+// first line is the human release line, and every later line is `<key>: <value>`. That format is
+// what this operation binds, and it is bound rather than the bare `--version` line because the bare
+// line omits the host triple and the commit hash — the two facts that decide whether one
+// measurement may be compared to another at all. Nothing here composes those fields into a
+// repository-specific identity string: which fields a consumer joins on is the consumer's fact.
+service rustc.Identity {
+  operation VersionVerbose {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+    }
+    transport shell { argv: ["rustc", "--version", "--verbose"] }
+    exit {
+      0 => Unit
+      nonzero => String "rustc did not report its version"
+    }
+  }
+}
+
+// The verbose output's keyed lines are read by KEY, never by position. rustc's own release notes
+// have added fields to this block, so an index would silently name a different field after a
+// toolchain bump, while a key that stops being emitted returns Absent and refuses.
+fn rustc_version_verbose_release_line(stdout: String) -> String {
+  match split(s: stdout, delimiter: "\n") |> first {
+    Present { value: line } => line
+    Absent => ""
+  }
+}
+
+fn rustc_version_verbose_field(stdout: String, key: String) -> String? {
+  split(s: stdout, delimiter: "\n")
+    |> filter(line => starts_with(line, prefix: concat(key, ": ")))
+    |> map(line => trim(s: split(s: line, delimiter: ": ").skip(n: 1) |> join(separator: ": ")))
+    |> first
 }

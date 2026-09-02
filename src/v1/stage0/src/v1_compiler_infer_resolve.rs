@@ -41,18 +41,18 @@ use crate::v1_std_core::MatchPattern::Wildcard;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
-    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, join_optional_cardinality, kernel_span,
-    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
-    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
-    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    expr_call_func_at, expr_method_name_at, field_from_key_property_name, field_init_node_name_at,
+    field_init_node_value, field_node_cardinality, field_node_default_value, field_node_from_key,
+    field_node_name_at, field_node_type_expr, foreach_variable_at, generic_param_name_at, intern,
+    is_compiler_error, is_container_type, is_kernel_type, is_local_transport,
+    join_optional_cardinality, kernel_span, let_binding_name_at, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_resolved_param_node, make_resource_use_node, make_text_part_node,
+    make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, resource_use_name_at, resource_use_resource, string_type,
+    transport_request_body, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -2063,7 +2063,7 @@ pub fn resolve_field(
                         if (crate::v1_std_core::field_init_node_name_at(
                             p.clone(),
                             env.source_indices.clone(),
-                        ) == "from_key".to_string())
+                        ) == field_from_key_property_name())
                         {
                             __result.push(p);
                         }
@@ -2104,7 +2104,27 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             ident: None,
         })
     } else {
-        resolved.clone()
+        Rc::new(Node {
+            occurrence_identity: authored.occurrence_identity.clone(),
+            name: resolved.name.clone(),
+            span: resolved.span.clone(),
+            ident_span: resolved.ident_span.clone(),
+            children: resolved.children.clone(),
+            connective: resolved.connective.clone(),
+            params: resolved.params.clone(),
+            inferred: resolved.inferred.clone(),
+            return_cardinality: resolved.return_cardinality.clone(),
+            uses: resolved.uses.clone(),
+            body: resolved.body.clone(),
+            transport: resolved.transport.clone(),
+            properties: resolved.properties.clone(),
+            type_annotation: resolved.type_annotation.clone(),
+            is_self_recursive: resolved.is_self_recursive.clone(),
+            has_non_tail_self_call: resolved.has_non_tail_self_call.clone(),
+            match_pattern: resolved.match_pattern.clone(),
+            expr_data: resolved.expr_data.clone(),
+            ident: None,
+        })
     }
 }
 

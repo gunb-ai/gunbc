@@ -126,6 +126,8 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
 - **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
 - **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
+- **Arity agreement between a declared builtin parameter name and its derived algebra template** — declared 2026-09-01
+- **n-ary concat call sites judged against concat's binary declared signature** — declared 2026-09-01
 
 **The floor first, the differentiator above it.** gunbc must first hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and a failure there is a below-baseline safety regression, never compensated by higher-order capability. The differentiating claim begins above that floor: because the substrate carries causal, cardinality, algebraic, effect, ownership, cost, and realization facts structurally, the same ladder applies to classes ordinary compilers leave to tests, review, profiling, or production postmortems — a possibly-empty collection flowing into a nonempty consumer, recursion without a descent proof, a non-idempotent effect under automatic retry, a computation exceeding its declared complexity bound, a realization that does not preserve modeled behavior.
 
@@ -217,6 +219,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `executed_conjunct_discriminates_nothing`
 - `unbacked_execution_claim`
 - `admitted_module_without_judged_standing`
+- `refusal_deferred_to_emitted_runtime`
 - `mitigation_injected_where_judgment_declined`
 - `transport_close_read_as_completion`
 - `merge_region_excludes_shared_tail`
@@ -224,6 +227,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `disagreement_census_blind_to_agreed_wrong`
 - `undecided_fraction_read_as_denominator`
 - `restoration_promise_names_a_route_that_does_not_exist`
+- `alias_resolution_collides_with_kernel_spelling`
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `yaml_inline_comment_ingested_as_scalar_content`
@@ -231,6 +235,11 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `incidental_denominator_as_wall`
 - `compensating_errors_cancel_in_the_aggregate`
 - `one_refusal_two_destinations`
+- `join_answers_with_one_arm_others_unjudged`
+- `liveness_probe_read_as_currency`
+- `ambient_process_state_read_by_a_concurrent_reader`
+- `predicate_vacuously_true_on_an_empty_domain`
+- `check_subject_narrower_than_its_declared_claim`
 
 ## Building & checks
 

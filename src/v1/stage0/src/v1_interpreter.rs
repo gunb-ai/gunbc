@@ -1108,6 +1108,17 @@ pub enum InterpError {
         elapsed_nanos: u128,
         limit_ms: u64,
     },
+    /// The CPU safety ceiling fired while an admitted cross-claim fill was in flight. The
+    /// computation has not published, so it is not a shared artifact; naming the producer keeps
+    /// the refusal on the prospective fill instead of silently presenting first-touch order as
+    /// intrinsic claim cost.
+    FillBudgetExceeded {
+        entry: String,
+        producer: String,
+        fill_cpu_nanos: u128,
+        marginal_cpu_nanos: u128,
+        limit_ms: u64,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
     /// wall-clock budget below are different quantities of one occurrence, and a shared
@@ -1226,6 +1237,18 @@ impl fmt::Display for InterpError {
                     limit_ms
                 )
             }
+            InterpError::FillBudgetExceeded {
+                entry,
+                producer,
+                fill_cpu_nanos,
+                marginal_cpu_nanos,
+                limit_ms,
+            } => write!(
+                f,
+                "in-flight shared fill exceeded CPU safety budget: entry={} producer={} \
+                 fill_cpu_ns={} marginal_cpu_ns={} limit_ms={}",
+                entry, producer, fill_cpu_nanos, marginal_cpu_nanos, limit_ms
+            ),
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -1838,7 +1861,14 @@ thread_local! {
     /// of STORED fills completed inside it. Enrolled producers compose (a full target model
     /// reads its staging core), and netting outer and inner inclusive CPU from the paying claim
     /// would net the inner twice — the shared-fill ledger's child stack, at this tier's grain.
-    static CROSS_CLAIM_FILL_CHILDREN: RefCell<Vec<(u128, u128)>> = const { RefCell::new(Vec::new()) };
+    static CROSS_CLAIM_FILL_FRAMES: RefCell<Vec<CrossClaimFillFrame>> = const { RefCell::new(Vec::new()) };
+}
+
+struct CrossClaimFillFrame {
+    producer: String,
+    cpu_started: u128,
+    stored_children_cpu: u128,
+    stored_children_wall: u128,
 }
 
 /// RAII scope for one admitted call that missed the cross-claim memo. Every path out of the
@@ -1853,7 +1883,15 @@ struct CrossClaimFillGuard {
 
 impl CrossClaimFillGuard {
     fn enter(func_name: &str) -> CrossClaimFillGuard {
-        CROSS_CLAIM_FILL_CHILDREN.with(|s| s.borrow_mut().push((0, 0)));
+        let cpu_started = thread_cpu_nanos();
+        CROSS_CLAIM_FILL_FRAMES.with(|s| {
+            s.borrow_mut().push(CrossClaimFillFrame {
+                producer: func_name.to_string(),
+                cpu_started,
+                stored_children_cpu: 0,
+                stored_children_wall: 0,
+            })
+        });
         CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
             if let Some(obs) = o.borrow().as_ref() {
                 (obs.on_fill_begin)();
@@ -1861,7 +1899,7 @@ impl CrossClaimFillGuard {
         });
         CrossClaimFillGuard {
             func_name: func_name.to_string(),
-            cpu_started: thread_cpu_nanos(),
+            cpu_started,
             wall_started: Instant::now(),
             stored: std::cell::Cell::new(false),
         }
@@ -1876,17 +1914,26 @@ impl Drop for CrossClaimFillGuard {
     fn drop(&mut self) {
         let inclusive_cpu = thread_cpu_nanos().saturating_sub(self.cpu_started);
         let inclusive_wall = self.wall_started.elapsed().as_nanos();
-        let (children_cpu, children_wall) = CROSS_CLAIM_FILL_CHILDREN
+        let frame = CROSS_CLAIM_FILL_FRAMES
             .with(|s| s.borrow_mut().pop())
-            .unwrap_or((0, 0));
+            .unwrap_or(CrossClaimFillFrame {
+                producer: self.func_name.clone(),
+                cpu_started: self.cpu_started,
+                stored_children_cpu: 0,
+                stored_children_wall: 0,
+            });
+        let children_cpu = frame.stored_children_cpu;
+        let children_wall = frame.stored_children_wall;
         if self.stored.get() {
             // Net SELF time only: stored descendants already netted their own inclusive time.
             record_shared_artifact_fill_cpu_nanos(inclusive_cpu.saturating_sub(children_cpu));
             let self_wall = inclusive_wall.saturating_sub(children_wall);
-            CROSS_CLAIM_FILL_CHILDREN.with(|s| {
+            CROSS_CLAIM_FILL_FRAMES.with(|s| {
                 if let Some(parent) = s.borrow_mut().last_mut() {
-                    parent.0 = parent.0.saturating_add(inclusive_cpu);
-                    parent.1 = parent.1.saturating_add(inclusive_wall);
+                    parent.stored_children_cpu =
+                        parent.stored_children_cpu.saturating_add(inclusive_cpu);
+                    parent.stored_children_wall =
+                        parent.stored_children_wall.saturating_add(inclusive_wall);
                 }
             });
             CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -1897,10 +1944,12 @@ impl Drop for CrossClaimFillGuard {
         } else {
             // Not stored: this frame's own cost stays the caller's, but its STORED
             // descendants were netted, so their total rolls up for the parent to subtract.
-            CROSS_CLAIM_FILL_CHILDREN.with(|s| {
+            CROSS_CLAIM_FILL_FRAMES.with(|s| {
                 if let Some(parent) = s.borrow_mut().last_mut() {
-                    parent.0 = parent.0.saturating_add(children_cpu);
-                    parent.1 = parent.1.saturating_add(children_wall);
+                    parent.stored_children_cpu =
+                        parent.stored_children_cpu.saturating_add(children_cpu);
+                    parent.stored_children_wall =
+                        parent.stored_children_wall.saturating_add(children_wall);
                 }
             });
             CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -3036,6 +3085,68 @@ mod cross_claim_memo_tests {
                 .expect("Cons/Empty chain must resolve under a held immutable interner borrow");
             assert_eq!(items, vec![Value::Int(7)]);
         });
+    }
+
+    /// The real-path discriminating pair for the in-flight boundary. Both arms evaluate the
+    /// same compiled producer through `eval_pure_named_call` and cross the same 5ms CPU
+    /// ceiling. Resolved-identity admission is the only changed fact: without it the ordinary
+    /// entry budget fires; with it the refusal names the prospective shared-fill producer.
+    #[test]
+    fn admitted_in_flight_fill_crossing_is_typed_and_unadmitted_control_is_ordinary() {
+        use super::InterpError;
+        use crate::v1_compiler_compile::SourceFile;
+
+        super::clear_cross_claim_pure_memos();
+        let items = std::iter::repeat("0")
+            .take(200_000)
+            .collect::<Vec<_>>()
+            .join(",");
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/fill_budget_fixture.dag".to_string(),
+                    content: format!(
+                        "module fixture.fill_budget\nfn producer() -> List<Int> {{ [{items}] }}\n\
+                     fn use_producer() -> List<Int> {{ producer() }}\n"
+                    ),
+                }
+            ),]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let fresh = || {
+            InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            )
+        };
+
+        let control = fresh();
+        control.arm_eval_deadline(5);
+        match super::run_in_context(&control, "fixture.fill_budget.use_producer", false) {
+            Err(InterpError::EvaluationBudgetExceeded { .. }) => {}
+            other => panic!("unadmitted control must keep the ordinary refusal: {other:?}"),
+        }
+
+        let admitted = fresh();
+        let producer = admitted
+            .lookup_fn_node("fixture.fill_budget.producer")
+            .expect("fixture producer");
+        super::install_cross_claim_pure_share_roster([producer]);
+        admitted.arm_eval_deadline(5);
+        match super::run_in_context(&admitted, "fixture.fill_budget.use_producer", false) {
+            Err(InterpError::FillBudgetExceeded {
+                producer,
+                fill_cpu_nanos,
+                limit_ms,
+                ..
+            }) => {
+                assert_eq!(producer, "producer");
+                assert!(fill_cpu_nanos >= 5_000_000, "fill CPU must cross 5ms");
+                assert_eq!(limit_ms, 5);
+            }
+            other => panic!("admitted specimen must name its in-flight fill: {other:?}"),
+        }
+        super::clear_cross_claim_pure_memos();
     }
 }
 
@@ -4940,6 +5051,19 @@ pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
 }
 
+fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
+    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
+        frames.borrow().first().map(|outermost| {
+            (
+                outermost.producer.clone(),
+                raw_cpu_nanos
+                    .saturating_sub(outermost.cpu_started)
+                    .saturating_sub(outermost.stored_children_cpu),
+            )
+        })
+    })
+}
+
 /// THE CLOCK EVERY CPU BUDGET IS MEASURED ON: thread CPU, less what this thread spent filling
 /// shared artifacts that every later claim naming the same source reads free.
 ///
@@ -5114,8 +5238,25 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
             if let Some((cpu_baseline_nanos, budget_ms)) = cpu_armed {
-                let elapsed_nanos = budgeted_cpu_nanos().saturating_sub(cpu_baseline_nanos);
+                let raw_cpu_nanos = thread_cpu_nanos();
+                let elapsed_nanos = raw_cpu_nanos
+                    .saturating_sub(shared_artifact_fill_cpu_nanos())
+                    .saturating_sub(cpu_baseline_nanos);
                 if (elapsed_nanos / 1_000_000) as u64 > budget_ms {
+                    if let Some((producer, fill_cpu_nanos)) =
+                        in_flight_cross_claim_fill(raw_cpu_nanos)
+                    {
+                        let marginal_cpu_nanos = elapsed_nanos.saturating_sub(fill_cpu_nanos);
+                        if (marginal_cpu_nanos / 1_000_000) as u64 <= budget_ms {
+                            return Err(InterpError::FillBudgetExceeded {
+                                entry: ctx.budget_entry_or_unnamed(),
+                                producer,
+                                fill_cpu_nanos,
+                                marginal_cpu_nanos,
+                                limit_ms: budget_ms,
+                            });
+                        }
+                    }
                     return Err(InterpError::EvaluationBudgetExceeded {
                         entry: ctx.budget_entry_or_unnamed(),
                         clock: EvaluationClock::ThreadCpu,
@@ -11870,10 +12011,16 @@ fn map_shell_outputs(
     })
 }
 
+// ONE SPELLING, read from the authority the parser mints against
+// (`v1_std_core::field_from_key_property_name`). This accepted BOTH "from_key"
+// and "from" while every emitter reader compared against "from_key" alone, which
+// is span-derived and therefore never matched: the two directions of one
+// procedure disagreed and nothing went red. Accepting both here is what kept the
+// nickname alive, so the lenient arm is gone rather than mirrored (DESIGN §3).
 fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
     for prop in field_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
-        if prop_name == "from_key" || prop_name == "from" {
+        if prop_name == crate::v1_std_core::field_from_key_property_name() {
             let val_node = field_init_node_value(prop.clone());
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
@@ -11908,6 +12055,67 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
             ErrorKind::Unsupported,
             "write_owner_only refused: owner-only mode-at-creation is unavailable on this platform",
         ))
+    }
+}
+
+/// Create-only write: the existence test and the creation are ONE syscall (O_CREAT|O_EXCL), so a
+/// path that appears between an observation and this call refuses instead of being truncated.
+///
+/// Deliberately NOT `write_file_owner_only` with a different name. That function sets mode 0600 at
+/// creation and uses `create_new` because a creation-time mode is meaningless on an existing path --
+/// its O_EXCL is incidental to owner-only mode, not a contract. Owner-only MODE and create-only
+/// EXISTENCE are independent facts; a caller that obtained create-only from it would silently also
+/// get 0600, and would break if owner-only ever stopped needing O_EXCL. This is portable and sets no
+/// mode, because setting one would be the same conflation in reverse.
+fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(content)?;
+    Ok(())
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PRIMITIVE'S OWN EVIDENCE. gunbc.scm.init's witnesses cover the DECISION -- which observation
+// arms may write -- and cannot reach this, because the decision is pure and the race lives in the
+// write. These two cells are the write's half: an existing path refuses AND KEEPS ITS BYTES, and an
+// absent one is created. Without the second, the first is satisfied by a function that never writes.
+// ------------------------------------------------------------------------------------------------
+#[cfg(test)]
+mod write_file_create_new_tests {
+    #[test]
+    fn create_new_refuses_a_path_that_already_exists_and_leaves_its_bytes() {
+        let dir = std::env::temp_dir().join(format!("gunbc-create-new-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        std::fs::write(&path, b"SOMEONE ELSE'S BYTES").expect("seed the path");
+
+        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+            .expect_err("a path that exists must refuse, not be truncated");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+
+        // THE ASSERTION THAT CARRIES THE FINDING. A refusal that had already truncated would still
+        // return an error; what makes this a fix rather than a report is that the bytes survive.
+        let after = std::fs::read(&path).expect("the file is still there");
+        assert_eq!(
+            after, b"SOMEONE ELSE'S BYTES",
+            "the existing bytes must be untouched by a refused create"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn create_new_writes_when_nothing_is_there() {
+        let dir = std::env::temp_dir().join(format!("gunbc-create-new-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+            .expect("an absent path is created");
+        assert_eq!(
+            std::fs::read(&path).expect("written"),
+            b"a fresh repository"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 
@@ -12044,10 +12252,48 @@ fn dispatch_file(
                     }),
                 };
             }
+            "write_create_new" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                );
+                return match write_file_create_new(&path, content.as_bytes()) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        content: String::new(),
+                    }),
+                    // The refusal carries the host's message verbatim and does NOT classify itself.
+                    // Deciding "already existed" from the error TEXT would be a heuristic standing in
+                    // for an observation; the caller learns the create did not happen and why the
+                    // host said so, which is what it needs to refuse.
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new)"
                     ),
                 })
             }
@@ -18252,9 +18498,14 @@ mod map_shell_outputs_optional_stream_tests {
             span.clone(),
         );
         // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
+        // MINTED UNDER THE AUTHORITY, not under a literal. The fixture used to
+        // spell "from_key" here and passed only because extract_from_key carried
+        // a lenient arm accepting that spelling alongside "from". With the arm
+        // gone the literal names a property nothing reads, so the fixture would
+        // be testing a field the mechanism never sees.
         let from_key_prop = make_field_init_node(
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "from_key".to_string(),
+            crate::v1_std_core::field_from_key_property_name(),
             make_text_part_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,

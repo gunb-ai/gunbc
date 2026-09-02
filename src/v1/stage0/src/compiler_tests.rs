@@ -499,6 +499,80 @@ mod compiler_tests {
         );
     }
 
+    /// THE FUNCTION-VALUE ADAPTER, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_call_arg_function_value_adapt`: the call-position
+    /// transform that lets an arrow value carried as `Rc<dyn Fn(..) -> ..>` satisfy a parameter
+    /// rendered as `impl Fn(..) -> .. + Clone`. That claim is a TRAIT OBLIGATION, and a trait
+    /// obligation is not a spelling: a substring oracle can see `__adapt_f` in the emitted bytes and
+    /// still say nothing about whether the wrapper satisfies the bound. rustc is the oracle that can.
+    ///
+    /// THE TWO ARMS DIFFER IN ONE AUTHORED SPELLING. Same producer, same consumer, same call: the
+    /// control passes the producer result AS A CALL EXPRESSION (the shape the adapter keys on), the
+    /// red binds it to a `let` first and passes the binding (which the adapter does not touch). So
+    /// the only variable across the pair is whether the adapter fired.
+    ///
+    /// THE RED IS A KNOWN HOLE AND NOT A WALL WORKING. gunbc accepts the red fixture with zero
+    /// blocking diagnostics and emits a crate rustc refuses --
+    /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at the
+    /// function-value seam. When that hole closes the arm FLIPS and is kept as a permanent
+    /// regression control (DESIGN 4b(4)); this pair's expectation is what changes, not the fixture.
+    ///
+    /// #[ignore] AND ITS LANE MEMBERSHIP, STATED RATHER THAN LEFT TO BE DISCOVERED, on the same
+    /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
+    /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
+    /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
+    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
+    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
+    /// executes on the merge path or as a rung for the adapter.
+    #[test]
+    #[ignore]
+    fn function_value_adapter_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_function_value_adapter_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("function-value-adapter {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        // THE PAIR'S OWN PREDICATE IS NOT ENOUGH FOR THIS SUBJECT, AND SAYING SO IS THE POINT.
+        // fixture_discrimination_passed asks four questions -- control compiled, red reached
+        // rustc, red did not compile, red named its own emitted module -- and NONE of them is
+        // about the Fn bound. A syntax error, a dropped import, any unrelated emission defect in
+        // the red fixture's own module answers all four, and this arm would go on passing while
+        // the adapter discrimination it claims to measure had silently stopped existing (codex
+        // review 58546). So the diagnostic is ADJUDICATED here rather than merely printed.
+        //
+        // THE THREE SUBSTRINGS ARE ABOUT THE SEAM, NOT ABOUT RUSTC'S PROSE. `error[E0277]` is a
+        // stable code and is the trait-obligation class specifically; `Rc<dyn Fn` is the
+        // function-VALUE rendering (callable_type_template); `let_apply` is the consumer whose
+        // parameter carries the `impl Fn(..) + Clone` bound. Together they say the two renderings
+        // met and did not compose -- the seam the adapter closes at the call position.
+        // Wording-sensitive phrases are deliberately avoided: a rustc release that rephrases its
+        // message must not silently turn this into a check of nothing.
+        let red_diagnostic =
+            crate::cli_run::fixture_arm_diagnostic_lines("red", &pair.red).join("\n");
+        assert!(
+            red_diagnostic.contains("error[E0277]")
+                && red_diagnostic.contains("Rc<dyn Fn")
+                && red_diagnostic.contains("let_apply"),
+            "the red arm must be refused for the Fn-BOUND SEAM this pair measures -- E0277 naming the Rc<dyn Fn> carrier at let_apply -- not for some other defect in the same emitted module; a red failing this is a pair that stopped discriminating: {}",
+            red_diagnostic
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the adapted call-position control must compile and the unadapted let-bound arm must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
@@ -941,30 +1015,25 @@ mod compiler_tests {
         );
     }
 
-    // KNOWN-HOLE PROBE (not a desired-behavior control), DESIGN section 4b(4).
+    // PERMANENT REGRESSION CONTROL, DESIGN section 4b(4). It landed as a KNOWN-HOLE
+    // PROBE asserting the wrong behavior, and it FLIPPED when the wall landed rather
+    // than retiring: a climb deletes the lower-rung production machinery it obsoletes,
+    // never the evidence that the higher rung is real.
     //
-    // The shell service-emission path FABRICATES rather than refuses: every declared
-    // output field is bound to `stdout`, whatever source the declaration named, and the
-    // error arm returns a bare String against a declared Box<dyn std::error::Error>.
-    // Both produce Rust that does not compile, with ZERO diagnostics -- section 5's
+    // WHAT IT PINNED. The shell service-emission path bound every declared output field
+    // to `stdout`, whatever source the declaration named, and returned a bare String
+    // from the error arm against a declared Box<dyn std::error::Error>. Both emitted
+    // Rust that does not compile, with ZERO diagnostics -- section 5's
     // fabricated-plausible-output arm, in the emitter.
     //
-    // The three-output fixture is load-bearing. The two-field case this was first seen
-    // on (an operation declaring `success: Bool from "exit_success"` beside
-    // `stdout: String from "stdout"`) cannot distinguish "wrong tuple index" from "the
-    // declared source never arrived": with two fields, "always the first output" and
-    // "always stdout" produce the same bytes. Three fields separate them, and the
-    // ABSENCE of the `let stderr = ...` prelude line is the positive evidence -- that
-    // line is emitted only when some field claims the stderr channel, so its absence
-    // proves the `from "stderr"` field was invisible to the renderer rather than
-    // mis-ordered. child_from_key returns Absent for all three.
-    //
-    // WHEN THE WALL LANDS THIS PROBE MUST FLIP and become a permanent regression
-    // control: the emitted body must bind each field to its named source, box the error
-    // arm, and REFUSE -- typed and located, naming the field and the unresolvable
-    // source -- for any source it cannot realize.
+    // THE THREE-OUTPUT FIXTURE IS STILL LOAD-BEARING, for the reason it was chosen: two
+    // fields cannot distinguish "wrong tuple index" from "the declared source never
+    // arrived", because "always the first output" and "always stdout" produce the same
+    // bytes. Three separate them, and the PRESENCE of the `let stderr = ...` prelude is
+    // the positive evidence that the `from "stderr"` field reached the renderer -- that
+    // line is emitted only when some field claims the stderr channel.
     #[test]
-    fn shell_service_output_projection_fabricates_stdout_known_hole_probe() {
+    fn shell_service_output_projection_binds_each_declared_channel() {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
@@ -983,8 +1052,8 @@ mod compiler_tests {
                     .collect();
                 assert!(
                     errors.is_empty(),
-                    "KNOWN HOLE today: the emitter does not refuse; it fabricates silently. \
-                     When the wall lands this becomes the refusal assertion. Got: {:?}",
+                    "every declared channel is modeled, so this operation must emit \
+                     without a diagnostic. Got: {:?}",
                     errors
                 );
                 let emitted = r
@@ -994,7 +1063,7 @@ mod compiler_tests {
                     .map(|f| f.content.clone())
                     .expect("service module must emit src/probe.rs");
 
-                // The signature reads the declaration correctly...
+                // The signature reads the declaration...
                 assert!(
                     emitted.contains(
                         "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
@@ -1002,26 +1071,102 @@ mod compiler_tests {
                     "signature must project the three declared output types, got:\n{}",
                     emitted
                 );
-                // ...and the body then ignores every declared source.
+                // ...and the body now answers each field from the source it named.
                 assert!(
-                    emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
-                    "KNOWN HOLE: every output field is bound to stdout regardless of its \
-                     declared source. If this assertion fails the wall may have landed -- \
-                     flip this probe to assert the correct per-channel binding. Got:\n{}",
+                    emitted.contains(
+                        "Ok((output.status.success(), stdout.clone(), stderr.clone()))"
+                    ),
+                    "each output field must bind the channel its `from` key names. Got:\n{}",
                     emitted
                 );
-                // The stderr prelude is the absence that proves the source was never read.
+                // The stderr prelude is the presence that proves the source was read.
                 assert!(
-                    !emitted.contains("String::from_utf8_lossy(&output.stderr)"),
-                    "KNOWN HOLE: the `from \"stderr\"` field is invisible to the renderer, \
-                     so no stderr prelude line is emitted. Got:\n{}",
+                    emitted.contains("String::from_utf8_lossy(&output.stderr)"),
+                    "a field claiming the stderr channel must emit the stderr prelude. \
+                     Got:\n{}",
+                    emitted
+                );
+                // The fabricated form must be gone, not merely joined by the correct one.
+                assert!(
+                    !emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
+                    "stdout must not answer for every declared field. Got:\n{}",
                     emitted
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result
-            .expect("shell_service_output_projection_fabricates_stdout_known_hole_probe panicked");
+        result.expect("shell_service_output_projection_binds_each_declared_channel panicked");
+    }
+
+    #[test]
+    fn shell_service_unmodeled_output_key_refuses() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
+                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                        missing_realization_fact,
+                        ..
+                    } => missing_realization_fact.contains("not_a_channel"),
+                    _ => false,
+                });
+                assert!(
+                    named,
+                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
+                    r.diagnostics
+                );
+                assert!(
+                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
+                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shell_service_unmodeled_output_key_refuses panicked");
+    }
+
+    #[test]
+    fn shell_service_exit_error_arm_is_boxed() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n    exit { 0 => Unit  nonzero => String }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("service module must emit src/probe.rs");
+                assert!(
+                    emitted.contains("Err(stderr.into())"),
+                    "the error arm must box into the declared error type. Got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("Err(stderr)"),
+                    "the unboxed String error arm must be gone. Got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shell_service_exit_error_arm_is_boxed panicked");
     }
 
     // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing
@@ -1144,6 +1289,164 @@ mod compiler_tests {
         result.expect(
             "function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted panicked",
         );
+    }
+
+    #[test]
+    fn rendered_leaf_use_site_preserves_authored_occurrence_identity() {
+        let mut authored_value = (*named_type_node("Time")).clone();
+        authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 101 },
+            },
+        );
+        let authored = std::rc::Rc::new(authored_value);
+        let mut resolved_value = (*named_type_node("Quantity")).clone();
+        resolved_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 202 },
+            },
+        );
+        let resolved = std::rc::Rc::new(resolved_value);
+        let rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            authored.clone(),
+            resolved.clone(),
+        );
+        let mut expected_value = (*resolved).clone();
+        expected_value.occurrence_identity = authored.occurrence_identity.clone();
+        assert_eq!(
+            rendered,
+            std::rc::Rc::new(expected_value),
+            "a rendered leaf must preserve the exact authored occurrence identity while every other field remains the selected declaration's field"
+        );
+        let mut wrong_present_value = (*rendered).clone();
+        wrong_present_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        );
+        assert_ne!(
+            rendered,
+            std::rc::Rc::new(wrong_present_value),
+            "a wrong-but-present occurrence identity must not satisfy exact fidelity"
+        );
+        let mut sibling_a_value = (*named_type_node("Time")).clone();
+        sibling_a_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 301 },
+            },
+        );
+        let sibling_a = std::rc::Rc::new(sibling_a_value);
+        let mut sibling_b_value = (*named_type_node("Time")).clone();
+        sibling_b_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 302 },
+            },
+        );
+        let sibling_b = std::rc::Rc::new(sibling_b_value);
+        let sibling_a_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_a.clone(),
+            resolved.clone(),
+        );
+        let sibling_b_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_b.clone(),
+            resolved.clone(),
+        );
+        assert_eq!(
+            sibling_a_rendered.name, sibling_b_rendered.name,
+            "equal-looking siblings must render the same textual carrier"
+        );
+        assert_eq!(
+            sibling_a_rendered.occurrence_identity,
+            sibling_a.occurrence_identity
+        );
+        assert_eq!(
+            sibling_b_rendered.occurrence_identity,
+            sibling_b.occurrence_identity
+        );
+        assert_ne!(
+            sibling_a_rendered.occurrence_identity, sibling_b_rendered.occurrence_identity,
+            "equal-looking siblings must not exchange occurrences"
+        );
+        let projected_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceProjected {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 401 },
+                caused_by: std::rc::Rc::new(crate::std_occurrence_identity::ScopedOccurrenceRef {
+                    scope: std::rc::Rc::new(crate::std_content_hash::Fnv1a64Structural {
+                        digest: "scope-identity".to_string(),
+                    }),
+                    occurrence: crate::std_occurrence_identity::OccurrenceId { value: 400 },
+                }),
+            },
+        );
+        let mut projected_authored_value = (*named_type_node("Time")).clone();
+        projected_authored_value.occurrence_identity = projected_identity.clone();
+        let projected_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            std::rc::Rc::new(projected_authored_value),
+            resolved.clone(),
+        );
+        assert_eq!(
+            projected_rendered.occurrence_identity, projected_identity,
+            "projected id and caused_by must survive exactly"
+        );
+        let mut nonleaf_authored_value =
+            (*shaped_type_node("Box", vec![named_type_node("Time")])).clone();
+        nonleaf_authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 501 },
+            },
+        );
+        let nonleaf_authored = std::rc::Rc::new(nonleaf_authored_value);
+        let nonleaf_resolved = shaped_type_node("Vec", vec![named_type_node("Int")]);
+        let nonleaf_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            nonleaf_authored.clone(),
+            nonleaf_resolved.clone(),
+        );
+        let mut nonleaf_expected_value = (*nonleaf_authored).clone();
+        nonleaf_expected_value.children = nonleaf_resolved.children.clone();
+        nonleaf_expected_value.inferred = Some(std::rc::Rc::new(
+            crate::v1_std_core::InferredNode::Resolved {
+                node: nonleaf_resolved.clone(),
+            },
+        ));
+        nonleaf_expected_value.properties = nonleaf_resolved.properties.clone();
+        assert_eq!(
+            nonleaf_rendered,
+            std::rc::Rc::new(nonleaf_expected_value),
+            "the children-present arm must remain byte-for-byte structurally stable"
+        );
+    }
+
+    #[test]
+    fn resolved_pipeline_preserves_leaf_type_reference_occurrence_identity() {
+        let result = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {
+            let producer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_producer.dag".to_string(),
+                content: "module identity.producer\ntype Foreign { value: Int }\n".to_string(),
+            });
+            let consumer_text = "module identity.consumer\nimport identity.producer { Foreign }\nfn leaf(x: Foreign) -> Int { x.value }\nfn applied(x: List<Foreign>) -> Int { 0 }\n".to_string();
+            let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_consumer.dag".to_string(),
+                content: consumer_text.clone(),
+            });
+            let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                std::rc::Rc::new(im::vector![producer, consumer]),
+            );
+            let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
+            assert!(blocking.is_empty(), "identity fixture must traverse the live acceptance path: {:?}", blocking);
+            let graph = resolved.graph.as_ref().expect("identity fixture must produce a typed graph");
+            let typed = graph.modules.iter().find(|m| m.module.name == "identity.consumer").expect("consumer typed module");
+            let transport = typed.occurrence_transport.as_ref().expect("consumer occurrence transport");
+            let occurrence_at = |needle: &str, ordinal: usize| {
+                let start = consumer_text.match_indices(needle).nth(ordinal).expect("fixture occurrence").0 as i64;
+                transport.index.entries.iter().find(|e| e.projection.diagnostic_span.start == start).expect("transport projection at fixture occurrence").projection.occurrence
+            };
+            let leaf = typed.items.iter().find(|item| item.name == "leaf").expect("leaf function");
+            let leaf_type = crate::v1_std_core::param_node_type_expr(leaf.params[0].clone());
+            let leaf_reference = occurrence_at("Foreign", 1);
+            assert_eq!(leaf_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: leaf_reference }), "typed leaf must carry the authored parameter reference, not the resolved declaration occurrence");
+            let applied = typed.items.iter().find(|item| item.name == "applied").expect("applied function");
+            let applied_type = crate::v1_std_core::param_node_type_expr(applied.params[0].clone());
+            let applied_reference = occurrence_at("List", 0);
+            assert_eq!(applied_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: applied_reference }), "neighbouring children-present type must retain its authored outer occurrence");
+        }).expect("spawn identity pipeline test").join().expect("identity pipeline test panicked");
     }
 
     #[test]
@@ -1897,8 +2200,8 @@ mod compiler_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn contracts_sidecar_wired_into_emit_scope() {
         // Discriminating witness: AnthropicChatMessage is declared in
-        // extdeps.llm.anthropic; its tag = "role" wire_contract lives in the
-        // anthropic_contracts.dag sidecar. This proves contracts_items_for_module
+        // extdeps.llm.anthropic_messages_api; its tag = "role" wire_contract lives in the
+        // anthropic_messages_api_contracts.dag sidecar. This proves contracts_items_for_module
         // and the wire_contract alias-resolution scope merge the sidecar into the
         // emitted module -- red if the sidecar wiring or alias scope regresses.
         let result = std::thread::Builder::new()
@@ -1911,8 +2214,8 @@ mod compiler_tests {
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let anthropic_file = result.files.iter()
-                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
-                    .expect("emitted file for extdeps.llm.anthropic not found in source closure");
+                    .find(|f| f.path.ends_with("extdeps_llm_anthropic_messages_api.rs"))
+                    .expect("emitted file for extdeps.llm.anthropic_messages_api not found in source closure");
                 assert!(
                     anthropic_file.content.contains("#[serde(tag = \"role\""),
                     "AnthropicChatMessage serde tag = role must be present in emitted Rust (contracts_items_for_module merged into emit scope); missing from: {}",
