@@ -666,7 +666,8 @@ fn unresolved_commit_root_step(
 ) -> CommitRootStanding {
   match found {
     CommitRootResolved => commit_root_standing(acc: acc, root: commit.root.locator)
-    _ => found
+    CommitRootAbsent { root: _ } => found
+    CommitRootIsAuthoredSource { root: _ } => found
   }
 }
 
