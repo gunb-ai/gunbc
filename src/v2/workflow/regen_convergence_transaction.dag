@@ -102,16 +102,6 @@ type RegenConvergenceRefusal
     }
   | PreInstallDigestMismatch { surface: RegenSurfaceIdentity, expected: String, observed: String }
   | StageExecutionRefused { refusal: RegenStageExecutionRefusal }
-  | StagePartitionPopulationDisagrees {
-      admitted_without_partition: List<RegenSurfaceIdentity>
-      partition_without_admitted: List<RegenSurfaceIdentity>
-      planned_and_deferred: List<RegenSurfaceIdentity>
-    }
-  | TransactionLineagePopulationDisagrees {
-      admitted_without_lineage: List<RegenSurfaceIdentity>
-      lineage_without_admitted: List<RegenSurfaceIdentity>
-    }
-  | SurfaceLineageUnfinished { surfaces: List<RegenSurfaceIdentity> }
   | UnplannedPathMutated { path: String }
   | NoBuildableProducerCut { reason: String }
   | StageOutputExecutableUnbound { ordinal: Int, reason: String }
@@ -807,9 +797,27 @@ type RegenInstallBoundaryObservation {
   deferred: List<RegenSurfaceIdentity>
 }
 
+// SAME NARROWING AS `RegenStageExecutionRefusal`, AND FOR THE SAME REASON -- these three are the
+// whole range of the two joins below, so carrying the transaction-wide vocabulary here would put a
+// `_` arm back in both renderers and rebuild the silent-degradation surface this change exists to
+// remove. A fourth population refusal fails to compile until an author writes its name and its
+// residues. The variants live HERE and nowhere else: no consumer outside these joins produces one,
+// so a copy in `RegenConvergenceRefusal` would be a second authority for one meaning.
+type RegenPopulationRefusal
+  = StagePartitionPopulationDisagrees {
+      admitted_without_partition: List<RegenSurfaceIdentity>
+      partition_without_admitted: List<RegenSurfaceIdentity>
+      planned_and_deferred: List<RegenSurfaceIdentity>
+    }
+  | TransactionLineagePopulationDisagrees {
+      admitted_without_lineage: List<RegenSurfaceIdentity>
+      lineage_without_admitted: List<RegenSurfaceIdentity>
+    }
+  | SurfaceLineageUnfinished { surfaces: List<RegenSurfaceIdentity> }
+
 type RegenPopulationAdmission
   = RegenPopulationAdmitted
-  | RegenPopulationRefused { refusal: RegenConvergenceRefusal }
+  | RegenPopulationRefused { refusal: RegenPopulationRefusal }
 
 // The one directed-difference primitive both joins use. Returning the RESIDUE rather than a Bool
 // is what lets each direction refuse with its own members named; a predicate here would collapse
@@ -916,7 +924,6 @@ fn regen_population_admission_label(admission: RegenPopulationAdmission) -> Stri
     RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees { admitted_without_lineage: _, lineage_without_admitted: _ } } =>
       "TransactionLineagePopulationDisagrees"
     RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: _ } } => "SurfaceLineageUnfinished"
-    RegenPopulationRefused { refusal: _ } => "Refused"
   }
 }
 
@@ -938,7 +945,6 @@ fn regen_population_admission_detail(admission: RegenPopulationAdmission) -> Str
       )
     RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: surfaces } } =>
       concat("unfinished=[", concat(regen_surface_identity_path_list(rows: surfaces), "]"))
-    RegenPopulationRefused { refusal: _ } => ""
   }
 }
 
