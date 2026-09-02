@@ -1,6 +1,6 @@
 module extdeps.systemd.systemd_run
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.systemd.systemd_run",
-      decl_name: "systemd_run_transient_unit_argv",
+      decl_name: "SystemdRun",
       field: WholeDeclaration
     }
   },
@@ -66,6 +66,19 @@ fn systemd_run_transient_unit_argv(unit: NonEmptyStr, properties: List<SystemdRu
   fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
 }
 
+// Waiting is a different operation from starting. It owns the complete wait/quiet/collect
+// vocabulary and returns the process status as data: a nonzero child status is an observation,
+// not an operation refusal. Default transient service semantics are deliberate. Type=oneshot is
+// excluded because it collapses normal nonzero statuses to 1 (systemd issue 22812, observed on
+// systemd 245 / 245.4-4ubuntu3.15); the same report establishes that signal death is not reliably
+// recoverable as an exact child status through this boundary.
+fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
+  let launcher = ["systemd-run", concat("--unit=", unit as String), "--wait", "--quiet", "--collect"]
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
+  let with_separator = list_push(with_properties, "--")
+  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+}
+
 
 service systemd.SystemdRun {
   operation RunTransient {
@@ -82,6 +95,21 @@ service systemd.SystemdRun {
     }
     mock_response {
       0 => { success: true, stdout: "Running as unit: demo.service", stderr: "" } "hermetic systemd.SystemdRun.RunTransient"
+    }
+  }
+
+
+  operation RunTransientAndWait {
+    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemd-run", "--unit={unit}", "--wait", "--quiet", "--collect", property_argv, "--", command_argv] }
+    exit {
+      0 => Unit
+      nonzero => Unit
     }
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.systemd_run_transient
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import extdeps.systemd.systemd_run
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import v2.std.operation_argv {
@@ -16,6 +16,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh,
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
 }
@@ -23,16 +24,34 @@ import gunbc.typed_argv_exec {
 data systemd_run_transient_path: String = "dag/extdeps/systemd/systemd_run.dag"
 data systemd_run_transient_service: String = "systemd.SystemdRun"
 data systemd_run_transient_operation: String = "RunTransient"
+data systemd_run_transient_wait_operation: String = "RunTransientAndWait"
 
 type SystemdRunTransientOutcome =
     SystemdRunTransientStarted { stdout: String }
   | SystemdRunTransientRefused { reason: String }
+
+type SystemdRunTransientWaitOutcome
+  = SystemdRunTransientWaitCompleted { exit_code: Int, stdout: String, stderr: String }
+  | SystemdRunTransientWaitTransportRefused { reason: String }
 
 fn systemd_run_transient_operation_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> ArgvMaterialization {
   shell_materialize_operation_argv(
     systemd_run_transient_path,
     systemd_run_transient_service,
     systemd_run_transient_operation,
+    [
+      operation_argv_bind_text(name: "unit", text: unit as String),
+      operation_argv_bind_text_list(name: "property_argv", items: systemd_run_property_argv(properties: properties)),
+      operation_argv_bind_text_list(name: "command_argv", items: command_argv),
+    ]
+  )
+}
+
+fn systemd_run_transient_wait_operation_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> ArgvMaterialization {
+  shell_materialize_operation_argv(
+    systemd_run_transient_path,
+    systemd_run_transient_service,
+    systemd_run_transient_wait_operation,
     [
       operation_argv_bind_text(name: "unit", text: unit as String),
       operation_argv_bind_text_list(name: "property_argv", items: systemd_run_property_argv(properties: properties)),
@@ -111,6 +130,111 @@ fn systemd_run_transient_read(
   }
 }
 
+fn systemd_run_transient_wait_local(
+  unit: NonEmptyStr,
+  properties: List<SystemdRunProperty>,
+  command_argv: List<String>,
+) -> SystemdRunTransientWaitOutcome {
+  let result = systemd.SystemdRun.RunTransientAndWait(
+    unit: unit,
+    property_argv: systemd_run_property_argv(properties: properties),
+    command_argv: command_argv,
+  )
+  systemd_run_transient_wait_outcome_from_result(
+    exit_code: result.exit_code,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn systemd_run_transient_wait_outcome_from_result(
+  exit_code: Int,
+  stdout: String,
+  stderr: String,
+) -> SystemdRunTransientWaitOutcome {
+  SystemdRunTransientWaitCompleted {
+    exit_code: exit_code,
+    stdout: stdout,
+    stderr: stderr,
+  }
+}
+
+fn systemd_run_transient_wait_outcome_from_exec(
+  outcome: TypedArgvExecOutcome,
+) -> SystemdRunTransientWaitOutcome {
+  match outcome {
+    TypedArgvExecConverged { result: result } =>
+      systemd_run_transient_wait_outcome_from_result(
+        exit_code: result.exit_code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      )
+    TypedArgvExecRefused { reason: why } =>
+      SystemdRunTransientWaitTransportRefused { reason: why }
+  }
+}
+
+fn systemd_run_transient_wait_ssh_argv(
+  host: NonEmptyStr,
+  argv: List<String>,
+) -> SystemdRunTransientWaitOutcome {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => SystemdRunTransientWaitTransportRefused { reason: why }
+    Absent => systemd_run_transient_wait_outcome_from_exec(
+      outcome: typed_argv_exec_over_ssh(host: host, argv: argv),
+    )
+  }
+}
+
+fn systemd_run_transient_wait_ssh(
+  host: NonEmptyStr,
+  unit: NonEmptyStr,
+  properties: List<SystemdRunProperty>,
+  command_argv: List<String>,
+) -> SystemdRunTransientWaitOutcome {
+  match systemd_run_transient_wait_operation_argv(
+    unit: unit,
+    properties: properties,
+    command_argv: command_argv,
+  ) {
+    ArgvMaterialized { argv: argv } => systemd_run_transient_wait_ssh_argv(host: host, argv: argv)
+    ArgvMaterializationRefused { at: _, cause: cause } =>
+      SystemdRunTransientWaitTransportRefused { reason: operation_argv_cause_label(cause: cause) }
+  }
+}
+
+// This boundary preserves normal exit codes such as FCI-1's 0 and 86. It does not claim that a
+// signal death is an exact ProcessSignaled observation: systemd-run --wait has reported success for
+// signal-killed default transient services (systemd/systemd issue 22812, systemd 245). A consumer
+// needing that distinction must join a richer manager/process observation; it may not fabricate an
+// integer from this result.
+fn systemd_run_transient_wait_read(
+  transport: HostEffectTransport,
+  unit: NonEmptyStr,
+  properties: List<SystemdRunProperty>,
+  command_argv: List<String>,
+) -> SystemdRunTransientWaitOutcome {
+  match transport {
+    LocalShell => systemd_run_transient_wait_local(
+      unit: unit,
+      properties: properties,
+      command_argv: command_argv,
+    )
+    SshShell { ssh_host: host } => systemd_run_transient_wait_ssh(
+      host: host,
+      unit: unit,
+      properties: properties,
+      command_argv: command_argv,
+    )
+    FleetSsh { target: _, context: _ } => SystemdRunTransientWaitTransportRefused {
+      reason: "systemd-run transient wait refused FleetSsh until exact remote status is distinguished from transport status",
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => SystemdRunTransientWaitTransportRefused {
+      reason: "systemd-run transient wait refused EmitArtifactThenThinRun transport",
+    }
+  }
+}
+
 // ARGV EQUALITY IS A QUESTION ABOUT TOKENS, AND join() ANSWERS A QUESTION ABOUT TEXT.
 // The prior spelling compared join(materialized, " ") == join(authority, " "), which cannot tell
 // ["--property=WorkingDirectory=/path with space"] from ["...=/path", "with", "space"]: one word
@@ -142,6 +266,14 @@ fn argv_exact_token_equal(left: List<String>, right: List<String>) -> Bool {
 fn systemd_run_transient_operation_argv_matches_authority(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
   let authority = systemd_run_transient_unit_argv(unit: unit, properties: properties, command_argv: command_argv)
   match systemd_run_transient_operation_argv(unit: unit, properties: properties, command_argv: command_argv) {
+    ArgvMaterialized { argv: materialized } => argv_exact_token_equal(left: materialized, right: authority)
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}
+
+fn systemd_run_transient_wait_operation_argv_matches_authority(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
+  let authority = systemd_run_transient_wait_unit_argv(unit: unit, properties: properties, command_argv: command_argv)
+  match systemd_run_transient_wait_operation_argv(unit: unit, properties: properties, command_argv: command_argv) {
     ArgvMaterialized { argv: materialized } => argv_exact_token_equal(left: materialized, right: authority)
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }
