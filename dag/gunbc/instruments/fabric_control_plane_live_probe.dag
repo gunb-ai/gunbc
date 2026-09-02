@@ -2,6 +2,7 @@ module tools.fabric_control_plane_live_probe
 
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
 import std.algebra { trim }
+import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_tail }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.currency.currency { Usd }
 import std.measure {
@@ -1786,14 +1787,17 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
 data fci1_release_identity: NonEmptyStr = "FCI-1 instrument release"
 
 fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
-  fold(
-    cp_probe_held_account(),
-    init: HoldEndAttemptRefused {
+  match list_head(xs: cp_probe_held_account()) {
+    HeadAbsent => HoldEndAttemptRefused {
       slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
       detail: "instrument could not derive the held money account",
-    },
-    f: fn(acc, account) {
-      release_reserved_cell_at(
+    }
+    HeadFound { value: account } => match list_head(xs: list_tail(xs: cp_probe_held_account())) {
+      HeadFound { value: _ } => HoldEndAttemptRefused {
+        slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+        detail: "instrument derived a non-singleton held money account",
+      }
+      HeadAbsent => release_reserved_cell_at(
         root: root,
         slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
         lease: LeaseIdentity {
@@ -1806,8 +1810,8 @@ fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
         released_at: "2026-08-29T00:00:00Z",
         account: account,
       )
-    },
-  )
+    }
+  }
 }
 
 func fci1_live_release(root: NonEmptyStr) -> ProcessExit {
