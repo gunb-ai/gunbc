@@ -1,6 +1,6 @@
 module gunbc.spark.oobe_screen_observation
 
-import std.types { NonEmptyStr, Bool, List }
+import std.types { NonEmptyStr, Bool, List, HttpStatus }
 import extdeps.uri { Uri, Http }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
@@ -73,12 +73,34 @@ type ControlLabel = NonEmptyStr where brand("ControlLabel")
 // assert the committed value rather than the typed one.
 // ------------------------------------------------------------------------------------------
 
+// THE ADDRESS IS NOT THE IDENTITY, and conflating them was a real defect in the first
+// revision of this module. Every forward control on every screen carries the SAME observed
+// data-testid, "nv-button": it is a component address issued by NVIDIA's design system, scoped
+// by route and label, and it is emphatically not the identity of "Get Started" versus
+// "Continue" versus "Accept". A model that treated the testid as the identity would name three
+// different actions with one word -- the §3 meaning fork, where one spelling carries materially
+// different obligations.
+//
+// So identity is declared here and the observed address is carried BESIDE it. An actuator
+// resolves an identity to a route-scoped address; it never resolves a bare testid, because a
+// bare testid does not distinguish the three.
+//
+// NOTHING HERE CLAIMS NVIDIA PUBLISHES A SELECTOR CONTRACT. These are addresses this repository
+// OBSERVED on one image. If a later image renames them the model goes red at the address, which
+// is the loud failure wanted, rather than a silent mis-click on whatever else answers.
+type OobeControlIdentity
+  = WelcomeGetStartedAction
+  | SettingsContinueAction
+  | EulaAcceptAction
+
 type OobeControl
   = AdvanceButton {
+      identity: OobeControlIdentity,
       address: TestId,
       label: ControlLabel,
     }
   | SubmitButton {
+      identity: OobeControlIdentity,
       address: TestId,
       label: ControlLabel,
     }
@@ -121,20 +143,48 @@ type OobeAdvanceGate
 // behalf is a legal act, it is the one step in this flow a machine should not take on its own
 // initiative, and an automation that cannot SEE that distinction cannot be built to respect
 // it.
+// EFFECT NAMES WHAT WAS OBSERVED, NOT WHAT WAS PERSISTED. The first revision used
+// PresentsOnlyNoCommit and PersistsDeviceSetting, and both outran the measurement: reaching the
+// next route establishes that a submission was ACCEPTED and the app advanced, and it says
+// nothing about whether the value survives a refresh, a reboot, or the end of the wizard --
+// nor, for the "no commit" arm, that nothing at all was written.
+//
+// The measurement that settles this is now in hand and it cuts against the durable reading:
+// after the agreement was accepted, navigating to the portal root STILL resolves to /welcome
+// (initial_navigation_observation below). The wizard does not resume where it stopped, so at
+// least that far, acceptance did not persist as resumable progress.
+//
+// AcceptsLegalAgreement survives as its own arm, and not because its durability is established
+// either. It is distinct because the LEGAL BOUNDARY is what the automation must be able to see
+// in order to refuse to cross it unauthorized -- a different question from what the device
+// stored.
 type OobeScreenEffect
-  = PresentsOnlyNoCommit
-  | PersistsDeviceSetting { fields: List<OobeSetupField> }
+  = PresentsNoConfigurableField
+  | SubmitsSelections { fields: List<OobeSetupField> }
   | AcceptsLegalAgreement
 
 type OobeScreenRoute = NonEmptyStr where brand("OobeScreenRoute")
 type OobeScreenHeading = NonEmptyStr where brand("OobeScreenHeading")
 
+// presented_subjects IS THE COVERAGE AUTHORITY, and it exists because the first revision of
+// this module got the derivation wrong in a way the PR text then advertised as correct. That
+// revision carried a hand-written match over every OobeSetupField beside the screen list, so
+// appending a screen retired NOTHING: an author had to remember to edit a second table, and the
+// claim that coverage was "derived, not asserted" was simply false. Two structures answering one
+// question is the parallel authority §3 forbids, and the failure mode is silent -- both tables
+// stay type-correct while they disagree.
+//
+// The subject a screen PRESENTS is deliberately not the same field as the effect of ADVANCING
+// past it. The EULA screen presents the terms-and-conditions subject whether or not anyone
+// accepts; the settings screen presents language and timezone and, separately, submits them.
+// Folding the prefix over presented_subjects is now the only account of what has been observed.
 type ObservedOobeScreen {
   route: OobeScreenRoute
   heading: OobeScreenHeading
   controls: List<OobeControl>
   advance_gate: OobeAdvanceGate
   effect: OobeScreenEffect
+  presented_subjects: List<OobeSetupField>
 }
 
 // ------------------------------------------------------------------------------------------
@@ -151,12 +201,14 @@ data oobe_screen_welcome: ObservedOobeScreen = ObservedOobeScreen {
   heading: "Welcome To DGX Spark" as OobeScreenHeading,
   controls: [
     AdvanceButton {
+      identity: WelcomeGetStartedAction,
       address: "nv-button" as TestId,
       label: "Get Started" as ControlLabel,
     },
   ],
   advance_gate: ForwardControlEnabledOnArrival,
-  effect: PresentsOnlyNoCommit,
+  effect: PresentsNoConfigurableField,
+  presented_subjects: [],
 }
 
 // ------------------------------------------------------------------------------------------
@@ -190,12 +242,14 @@ data oobe_screen_settings: ObservedOobeScreen = ObservedOobeScreen {
     },
     HiddenBackingField { field: "locale" as FormFieldName },
     SubmitButton {
+      identity: SettingsContinueAction,
       address: "nv-button" as TestId,
       label: "Continue" as ControlLabel,
     },
   ],
   advance_gate: ForwardControlEnabledOnArrival,
-  effect: PersistsDeviceSetting { fields: [OobeLanguage, OobeTimeZone] },
+  effect: SubmitsSelections { fields: [OobeLanguage, OobeTimeZone] },
+  presented_subjects: [OobeLanguage, OobeTimeZone],
 }
 
 // ------------------------------------------------------------------------------------------
@@ -223,6 +277,7 @@ data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
   heading: "Terms Of Use" as OobeScreenHeading,
   controls: [
     AdvanceButton {
+      identity: EulaAcceptAction,
       address: "nv-button" as TestId,
       label: "Accept" as ControlLabel,
     },
@@ -231,6 +286,7 @@ data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
     scroll_container: "nv-modal-main" as TestId,
   },
   effect: AcceptsLegalAgreement,
+  presented_subjects: [OobeTermsAndConditions],
 }
 
 // ------------------------------------------------------------------------------------------
@@ -254,6 +310,35 @@ data observed_oobe_screen_prefix: List<ObservedOobeScreen> = [
   gunbc.spark.oobe_screen_observation.oobe_screen_eula,
 ]
 
+// ------------------------------------------------------------------------------------------
+// THE INITIAL NAVIGATION, which the first revision asserted in prose and never modeled.
+//
+// The PR text claimed "the root redirects to /welcome", and a list whose first element is
+// /welcome does not establish that. Worse, the word was wrong in kind: the measurement says the
+// root answers HTTP 200 with NO HTTP REDIRECT, and /welcome is reached by a CLIENT-SIDE route
+// inside the SPA. An actuator that expected a 3xx, or that waited for a redirect chain, would
+// wait forever on a page that already arrived.
+//
+// This is carried structurally because an actuator depends on it: it decides what "navigate to
+// the portal" is allowed to assume about where it lands.
+type InitialRouteResolution
+  = ResolvedByHttpRedirect
+  | ResolvedByClientSideRoute
+
+type ObservedInitialNavigation {
+  requested_path: OobeScreenRoute
+  http_status: HttpStatus
+  resolution: InitialRouteResolution
+  resulting_route: OobeScreenRoute
+}
+
+data initial_navigation_observation: ObservedInitialNavigation = ObservedInitialNavigation {
+  requested_path: "/" as OobeScreenRoute,
+  http_status: 200,
+  resolution: ResolvedByClientSideRoute,
+  resulting_route: "/welcome" as OobeScreenRoute,
+}
+
 type OobeWalkTermination
   = WalkReachedFlowCompletion
   | WalkHaltedAwaitingOperatorAuthority { at_route: OobeScreenRoute }
@@ -272,6 +357,9 @@ fn observed_walk_is_complete(termination: OobeWalkTermination) -> Bool {
 // ------------------------------------------------------------------------------------------
 // DOCUMENTED VERSUS OBSERVED.
 //
+// The coverage half is now folded from the observed prefix (screen_presents_field), so the two
+// structures that used to answer "was this field observed" have become one.
+//
 // Both halves are now modeled -- the vendor's prompted-field list in the extdeps module, and
 // our prefix here -- so the divergence is DERIVABLE rather than asserted. This function is the
 // join: it answers, for one field, whether the screens we actually watched prompted for it.
@@ -282,17 +370,25 @@ fn observed_walk_is_complete(termination: OobeWalkTermination) -> Bool {
 // difference between them is only evidence of vendor error where our walk was complete, and
 // observed_walk_is_complete says it is not. Presenting the difference as a defect list would
 // be the undecided fraction read as a denominator.
+fn screen_presents_field(screen: ObservedOobeScreen, field: OobeSetupField) -> Bool {
+  fold(
+    screen.presented_subjects,
+    init: false,
+    f: (acc, presented) => acc || presented == field
+  )
+}
+
+// DERIVED, and this time the word is true. The fold ranges over the observed prefix itself, so
+// appending a screen with its presented_subjects retires that screen's pending fields with no
+// second edit anywhere. The predicate this replaced was a hand-maintained match over every
+// OobeSetupField; it is deleted rather than kept beside this one, because leaving both would
+// preserve the exact fork the repair exists to remove.
 fn observed_screen_covers_field(field: OobeSetupField) -> Bool {
-  match field {
-    OobeLanguage => true
-    OobeTimeZone => true
-    OobeTermsAndConditions => true
-    OobeKeyboardLayout => false
-    OobeUserAccount => false
-    OobeAnalytics => false
-    OobeWirelessNetwork => false
-    OobeHostnameAssignment => false
-  }
+  fold(
+    observed_oobe_screen_prefix,
+    init: false,
+    f: (acc, screen) => acc || screen_presents_field(screen: screen, field: field)
+  )
 }
 
 // A field the vendor page says is prompted and our prefix has not reached. This is the
@@ -314,12 +410,21 @@ fn field_is_pending_observation(field: OobeSetupField) -> Bool {
 // secret, which is precisely why extdeps.systems.nvidia_dgx_spark_setup models the carrier as
 // PrintedQuickStartGuideSticker and holds no password. No field here can carry one.
 //
-// THE RENDERING HOST IS NOT THE RADIO HOST, and that split is a measured constraint rather
-// than a deployment preference: the machine within radio range of the unit is a Raspberry Pi
-// 3B+ whose available memory is far below what Chromium needs, and the portal is a
-// client-rendered SPA that no plain HTTP fetch can drive. So the browser ran on a fleet member
-// and reached the unit's network through the Pi. Recording both halves keeps the next reader
-// from concluding a single host did it.
+// THE RENDERING HOST IS NOT THE RADIO HOST, and the honest reason is narrower than the one
+// this comment first gave. It said the Pi's memory was "far below what Chromium needs", which
+// asserts a CAUSE that was never measured: the attempt on the Pi timed out at rc=124 with no
+// stderr, on the portal AND on an example.com control, with roughly 550MB shown available at
+// one sampled moment. No RSS, swap-pressure, PSI or OOM observation was taken, so memory is a
+// hypothesis and not a finding, and nothing here establishes that a Pi 3B+ cannot run a
+// browser.
+//
+// What the evidence DOES establish is target-independent: that attempted realization, on that
+// host, failed regardless of what it was pointed at -- which is enough to select a different
+// rendering host and nothing more. The topology below therefore records a host that was tried
+// and a host that worked; it does not license a capability rule about the hardware.
+//
+// The half that IS established structurally is the portal: it is a client-rendered SPA, so a
+// plain HTTP fetch cannot drive it and a browser is required somewhere.
 // ------------------------------------------------------------------------------------------
 
 type ObservedUnitAccessPointSsid = NonEmptyStr where brand("ObservedUnitAccessPointSsid")
