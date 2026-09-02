@@ -2392,15 +2392,15 @@ mod cross_claim_demand_census_tests {
         clear_cross_claim_demand_census();
         let tiny = node_at("producer.dag", 300);
         one_claim("tm_tiny", &tiny, 1, 1_000, "m1.claim_a", "m1");
-        let (claims, omitted_keys, omitted_ns, overflow) = super::cross_claim_demand_disclosure();
-        assert_eq!(claims, 1);
-        assert_eq!(overflow, 0);
+        let d = super::cross_claim_demand_disclosure();
+        assert_eq!(d.claims_absorbed, 1);
+        assert_eq!(d.overflow_keys, 0);
         assert_eq!(
-            omitted_keys, 1,
+            d.omitted_keys, 1,
             "the sub-floor key is counted, not forgotten"
         );
         assert_eq!(
-            omitted_ns, 1_000,
+            d.omitted_ns, 1_000,
             "and its cost is carried in the disclosure"
         );
         assert!(
@@ -8130,6 +8130,30 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // CLAIM COUNT is the stable half, and it is a property of the corpus and the plan rather than
 // of the machine.
 //
+// WHAT THIS CENSUS CANNOT SEE, DECLARED HERE RATHER THAN DISCOVERED BY A LATER READER. Two
+// boundaries, and neither is a defect in the aggregation — they are properties of the ledger it
+// folds, and a reader who does not know them will read absence as evidence.
+//
+// (1) IT EXPLAINS THE LEVEL, NOT THE VARIANCE. A per-closure constant is BY CONSTRUCTION the
+// same on two runs of the same tree, so it cannot produce a run-to-run delta — and one is
+// measured: 32 rows with byte-identical `eval_steps` and cpu up 1.31-1.80x between two runs over
+// a byte-identical payload module (gentle-wolf-793, 2026-09-02). The two compose into the shape
+// the floor keeps showing: the constant puts a family AT the line, and something run-to-run
+// decides WHICH of its rows cross it, which is why the refusing set is nearly disjoint between
+// runs (calm-boar-314, two floor runs). Neither half alone predicts that — a constant alone gives
+// the same rows every run, and runner noise alone over a corpus with p50=2ms tips nobody. This
+// census addresses the charge; the tipping variable is separately open and is not this
+// instrument's subject.
+//
+// (2) A COST THAT LIVES INSIDE A NATIVE BUILTIN CALLED DIRECTLY IS NOT A ROW HERE. The ledger
+// keys PURE NAMED FN evaluations; a `free_call.*` arm dispatched straight to Rust from a claim
+// body is not one, so its cost is invisible to this census — while the same work reached THROUGH
+// a .dag producer is captured, because the producer's own timing spans it. `std.evaluation_budget`
+// `evaluation_budget_opaque_host_call_note` records the matching fact for the deadline: no poll
+// stride falls inside an opaque host call, so such a claim cannot be interrupted at all and
+// surfaces as completed-over-cost instead. So a producer missing from this ranking is not
+// evidence that nothing is re-derived under it.
+//
 // ADMISSION TO THIS CENSUS IS NOT ADMISSION TO THE SHARE ROSTER. A row here is a CANDIDATE.
 // `v2.workflow.floor_pure_producer_share` records the criterion that decides enrolment and the
 // measurement that refuted the obvious case: the two rust target models were enrolled and
@@ -8177,17 +8201,32 @@ impl CrossClaimDemandRow {
 struct CrossClaimDemandKey {
     producer: String,
     decl_site: String,
-    args_hash: u64,
+    /// THE CANONICAL ARGUMENT ROW, NOT A DIGEST OF IT. A 64-bit hash stood here and it could
+    /// merge two distinct argument rows into one row reporting cross-claim demand that never
+    /// happened — a fabricated identity, which DESIGN §5 forbids outright and which the header
+    /// above simultaneously promised not to do ("sound argument identity"). The ledger already
+    /// keys on this exact vector; carrying it costs the memory the retention floor and key cap
+    /// are here to bound, and it makes the collision unrepresentable rather than unlikely.
+    /// Found by review 58673.
+    args: Vec<EvalRecomputeArgKey>,
+    /// `keyed` and `unkeyed` are DIFFERENT SUBJECTS and must not share a key: a nullary keyed
+    /// call and the composite-argument bucket of the same declaration both carry an empty
+    /// argument vector, and merging them would sum one identity's cost with all of another's.
+    arg_shape: &'static str,
 }
 
 struct CrossClaimDemandCell {
-    arg_shape: &'static str,
     claims: u64,
     evals: u64,
     total_ns: u128,
     last_claim: String,
-    modules: std::collections::BTreeSet<String>,
-    modules_seen: u64,
+    /// THE COMPLETE consumer-module set, interned so one name costs one allocation for the whole
+    /// census. It is complete because the reported count must be exact: the earlier form kept a
+    /// bounded SAMPLE and counted against it, so once the sample filled, every later claim from
+    /// an unsampled module incremented the count again and the column reported CLAIM OCCURRENCES
+    /// while promising distinct modules. Bounding and counting cannot share one container.
+    /// Found by review 58673.
+    modules: std::collections::BTreeSet<Rc<str>>,
 }
 
 /// Rows below this are not retained at identity grain. The census's subject is a producer whose
@@ -8201,7 +8240,8 @@ const CROSS_CLAIM_DEMAND_RETENTION_FLOOR_NS: u128 = 1_000_000;
 /// Distinct census keys retained. Overflow is counted and disclosed, never silent.
 const CROSS_CLAIM_DEMAND_KEY_CAP: usize = 200_000;
 
-/// Consumer-module names kept per row. The COUNT is exact; the sample is bounded.
+/// Consumer-module names RENDERED per row. The count is exact and comes from the complete set;
+/// this bounds only how many names a row shows.
 const CROSS_CLAIM_DEMAND_MODULE_SAMPLE_CAP: usize = 8;
 
 #[derive(Default)]
@@ -8211,6 +8251,17 @@ struct CrossClaimDemandCensus {
     omitted_keys: u64,
     omitted_ns: u128,
     overflow_keys: u64,
+    /// One `Rc<str>` per distinct module name, shared by every row that names it.
+    module_names: std::collections::HashMap<String, Rc<str>>,
+    /// WHAT THE INSTRUMENT ITSELF COSTS, measured rather than argued. A discovery instrument that
+    /// materially raised every claim's cost would recreate the incident it explains, on a floor
+    /// that preempts on marginal cost. Two facts make that checkable rather than assumed: the
+    /// absorb runs AFTER `run_claim_measured` returns, so it is outside the measured window and
+    /// cannot enter any claim's charged clocks or trip the deadline — and its own total and worst
+    /// single claim are reported beside the census, so "outside the window" is not asked to stand
+    /// alone.
+    absorb_ns_total: u128,
+    absorb_ns_max: u128,
 }
 
 thread_local! {
@@ -8222,17 +8273,9 @@ thread_local! {
         RefCell::new(CrossClaimDemandCensus::default());
 }
 
-fn cross_claim_demand_args_hash(args: &[EvalRecomputeArgKey]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    args.hash(&mut h);
-    h.finish()
-}
-
 fn cross_claim_demand_absorb_one(
     census: &mut CrossClaimDemandCensus,
     key: CrossClaimDemandKey,
-    arg_shape: &'static str,
     evals: u64,
     total_ns: u128,
     claim: &str,
@@ -8247,17 +8290,25 @@ fn cross_claim_demand_absorb_one(
         census.overflow_keys += 1;
         return;
     }
+    let module = match census.module_names.get(module_path) {
+        Some(name) => name.clone(),
+        None => {
+            let name: Rc<str> = Rc::from(module_path);
+            census
+                .module_names
+                .insert(module_path.to_string(), name.clone());
+            name
+        }
+    };
     let cell = census
         .map
         .entry(key)
         .or_insert_with(|| CrossClaimDemandCell {
-            arg_shape,
             claims: 0,
             evals: 0,
             total_ns: 0,
             last_claim: String::new(),
             modules: std::collections::BTreeSet::new(),
-            modules_seen: 0,
         });
     // One claim contributes ONE to `claims` however many times it evaluated the identity —
     // within-frame repetition is the existing ledger's subject and double-counting it here would
@@ -8265,12 +8316,10 @@ fn cross_claim_demand_absorb_one(
     if cell.last_claim != claim {
         cell.claims += 1;
         cell.last_claim = claim.to_string();
-        if !cell.modules.contains(module_path) {
-            cell.modules_seen += 1;
-            if cell.modules.len() < CROSS_CLAIM_DEMAND_MODULE_SAMPLE_CAP {
-                cell.modules.insert(module_path.to_string());
-            }
-        }
+        // A set insert, so a module already present is not counted twice however many of its
+        // claims arrive — the count is `len()` of the complete set and never an incremented
+        // tally that can drift from it.
+        cell.modules.insert(module);
     }
     cell.evals += evals;
     cell.total_ns += total_ns;
@@ -8294,30 +8343,31 @@ pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_pa
     if !eval_recompute_trace_enabled() {
         return;
     }
+    let started = Instant::now();
     let t = ctx.eval_recompute_trace.borrow();
+    // One declaration-site lookup per fn pointer for this frame, rather than a linear scan of
+    // the keepalive vector per ledger key: the map holds one entry per (fn, argument row) and
+    // the vector one per fn, so the scan was quadratic in a frame's producer count -- the
+    // cost-shape defect DESIGN section 6 says is always fixed, inside an instrument whose whole
+    // subject is cost.
+    let mut decl_sites: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+    for node in t.keepalive_fns.iter() {
+        decl_sites
+            .entry(Rc::as_ptr(node) as usize)
+            .or_insert_with(|| eval_recompute_decl_site(node));
+    }
     CROSS_CLAIM_DEMAND.with(|c| {
         let mut census = c.borrow_mut();
         census.claims_absorbed += 1;
         for (key, entry) in t.map.iter() {
-            let decl_site = t
-                .fn_names
-                .get(&key.fn_ptr)
-                .map(|_| ())
-                .and_then(|_| {
-                    t.keepalive_fns
-                        .iter()
-                        .find(|n| Rc::as_ptr(n) as usize == key.fn_ptr)
-                })
-                .map(eval_recompute_decl_site)
-                .unwrap_or_default();
             cross_claim_demand_absorb_one(
                 &mut census,
                 CrossClaimDemandKey {
                     producer: entry.fn_name.to_string(),
-                    decl_site,
-                    args_hash: cross_claim_demand_args_hash(&key.args),
+                    decl_site: decl_sites.get(&key.fn_ptr).cloned().unwrap_or_default(),
+                    args: key.args.clone(),
+                    arg_shape: "keyed",
                 },
-                "keyed",
                 entry.count,
                 entry.total_ns,
                 claim,
@@ -8330,19 +8380,24 @@ pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_pa
                 CrossClaimDemandKey {
                     producer: name.clone(),
                     decl_site: site.clone(),
-                    args_hash: 0,
+                    args: Vec::new(),
+                    arg_shape: "unkeyed",
                 },
-                "unkeyed",
                 *calls,
                 *ns,
                 claim,
                 module_path,
             );
         }
+        let spent = started.elapsed().as_nanos();
+        census.absorb_ns_total += spent;
+        if spent > census.absorb_ns_max {
+            census.absorb_ns_max = spent;
+        }
     });
 }
 
-/// The census, ranked by cross-claim waste, most first. EVERY retained row is returned,
+/// The census in deterministic identity order. EVERY retained row is returned,
 /// single-claim rows included — they rank at zero and they are the control population that makes
 /// `claims > 1` mean something, so filtering them here would leave an artifact in which every
 /// row looks shared. Selecting the shared ones is the READER's move and it is a view rather than
@@ -8360,35 +8415,64 @@ pub fn cross_claim_demand_rows() -> Vec<CrossClaimDemandRow> {
             .map(|(key, cell)| CrossClaimDemandRow {
                 producer: key.producer.clone(),
                 decl_site: key.decl_site.clone(),
-                arg_shape: cell.arg_shape,
+                arg_shape: key.arg_shape,
                 claims: cell.claims,
                 evals: cell.evals,
                 total_ns: cell.total_ns,
-                modules: cell.modules_seen,
-                module_sample: cell.modules.iter().cloned().collect(),
+                // EXACT, read from the complete set. The bound below is on how many NAMES a
+                // reader is shown and it cannot reach the count.
+                modules: cell.modules.len() as u64,
+                module_sample: cell
+                    .modules
+                    .iter()
+                    .take(CROSS_CLAIM_DEMAND_MODULE_SAMPLE_CAP)
+                    .map(|m| m.to_string())
+                    .collect(),
             })
             .collect();
+        // IDENTITY ORDER, NOT COST ORDER, and that is a DESIGN section 3 distinction rather than
+        // a taste. An ordering by cost is a RANKING, and a ranking is a judgment about which
+        // demands matter -- meaning, which belongs to .dag folding this artifact, not to the seed
+        // whose warrant here is carrying facts across a frame boundary only the seed can reach.
+        // So rows leave in a deterministic identity order with every cost column beside them, and
+        // the runner's log preview sorts a COPY and says in band that it is a preview.
         rows.sort_by(|a, b| {
-            b.cross_claim_wasted_ns()
-                .cmp(&a.cross_claim_wasted_ns())
-                .then_with(|| a.producer.cmp(&b.producer))
+            a.producer
+                .cmp(&b.producer)
+                .then_with(|| a.decl_site.cmp(&b.decl_site))
+                .then_with(|| a.arg_shape.cmp(b.arg_shape))
+                .then_with(|| b.total_ns.cmp(&a.total_ns))
         });
         rows
     })
 }
 
-/// (claims absorbed, keys omitted under the retention floor, their summed nanos, keys refused by
-/// the cap). Every consumer of the rows above must print this beside them: it is the artifact's
-/// own statement of what it did not retain.
-pub fn cross_claim_demand_disclosure() -> (u64, u64, u128, u64) {
+/// What the census did not retain, and what it cost to run. Both halves travel with the rows,
+/// because either one read alone invites a wrong conclusion: the omissions bound what the ranking
+/// cannot contain, and the overhead answers whether a discovery instrument on a cost-preempting
+/// floor is paying for itself.
+pub struct CrossClaimDemandDisclosure {
+    pub claims_absorbed: u64,
+    pub omitted_keys: u64,
+    pub omitted_ns: u128,
+    pub overflow_keys: u64,
+    pub absorb_ns_total: u128,
+    pub absorb_ns_max: u128,
+}
+
+/// The census's own statement of what it did not retain and what it cost. Every consumer of the
+/// rows above must report this beside them.
+pub fn cross_claim_demand_disclosure() -> CrossClaimDemandDisclosure {
     CROSS_CLAIM_DEMAND.with(|c| {
         let census = c.borrow();
-        (
-            census.claims_absorbed,
-            census.omitted_keys,
-            census.omitted_ns,
-            census.overflow_keys,
-        )
+        CrossClaimDemandDisclosure {
+            claims_absorbed: census.claims_absorbed,
+            omitted_keys: census.omitted_keys,
+            omitted_ns: census.omitted_ns,
+            overflow_keys: census.overflow_keys,
+            absorb_ns_total: census.absorb_ns_total,
+            absorb_ns_max: census.absorb_ns_max,
+        }
     })
 }
 

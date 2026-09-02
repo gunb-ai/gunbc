@@ -6636,22 +6636,38 @@ pub fn run_required_floor(
     // serve lost to the recompute.
     {
         let rows = v1_interpreter::cross_claim_demand_rows();
-        let (claims_absorbed, omitted_keys, omitted_ns, overflow_keys) =
-            v1_interpreter::cross_claim_demand_disclosure();
-        let shared: Vec<&v1_interpreter::CrossClaimDemandRow> =
+        let disclosure = v1_interpreter::cross_claim_demand_disclosure();
+        // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
+        // orders by cross-claim recomputation and says so in band, so no consumer can read a
+        // log head as the census's own ranking or as a candidate roster.
+        let mut shared: Vec<&v1_interpreter::CrossClaimDemandRow> =
             rows.iter().filter(|row| row.claims > 1).collect();
+        shared.sort_by_key(|row| std::cmp::Reverse(row.cross_claim_wasted_ns()));
         eprintln!(
             "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
              omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
-             (observation only; nothing refuses on these figures)",
-            claims_absorbed,
+             absorb_ms={} absorb_max_ms={} (observation only; nothing refuses on these figures. \
+             The absorb runs AFTER each claim's measurement returns, so it is outside every \
+             claim's charged window and cannot trip the deadline; absorb_ms is what this \
+             instrument cost the run in total.)",
+            disclosure.claims_absorbed,
             rows.len(),
             shared.len(),
-            omitted_keys,
-            omitted_ns / 1_000_000,
-            overflow_keys
+            disclosure.omitted_keys,
+            disclosure.omitted_ns / 1_000_000,
+            disclosure.overflow_keys,
+            disclosure.absorb_ns_total / 1_000_000,
+            disclosure.absorb_ns_max / 1_000_000
         );
         const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
+        eprintln!(
+            "[cross-claim-demand] the {} lines below are a PREVIEW ordered by cross-claim \
+             recomputation, not a candidate roster and not the artifact's order: a row is a \
+             producer whose SERVE cost is unmeasured, and enrolment is decided only by \
+             v2.workflow.floor_pure_producer_share, which has removed a top-ranking pair before \
+             on a measured serve-versus-recompute experiment.",
+            CROSS_CLAIM_DEMAND_PRINT_LIMIT.min(shared.len())
+        );
         for row in shared.iter().take(CROSS_CLAIM_DEMAND_PRINT_LIMIT) {
             eprintln!(
                 "[cross-claim-demand] producer={} args={} claims={} evals={} total_ms={} \
@@ -6678,14 +6694,7 @@ pub fn run_required_floor(
             );
         }
         if let Some(path) = cross_claim_demand_path {
-            write_required_floor_cross_claim_demand_tsv(
-                &path,
-                &rows,
-                claims_absorbed,
-                omitted_keys,
-                omitted_ns,
-                overflow_keys,
-            )?;
+            write_required_floor_cross_claim_demand_tsv(&path, &rows, &disclosure)?;
         }
     }
     if let Some(path) = required_floor_disposition_path {

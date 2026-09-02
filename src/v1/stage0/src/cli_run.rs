@@ -38607,22 +38607,21 @@ fn write_required_floor_claim_cost_tsv(
 fn write_required_floor_cross_claim_demand_tsv(
     path: &str,
     rows: &[v1_interpreter::CrossClaimDemandRow],
-    claims_absorbed: u64,
-    omitted_keys: u64,
-    omitted_ns: u128,
-    overflow_keys: u64,
+    disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
 ) -> Result<(), String> {
     use std::io::Write;
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
     writeln!(
         file,
-        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}",
-        claims_absorbed,
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity",
+        disclosure.claims_absorbed,
         rows.len(),
-        omitted_keys,
-        omitted_ns / 1_000_000,
-        overflow_keys
+        disclosure.omitted_keys,
+        disclosure.omitted_ns / 1_000_000,
+        disclosure.overflow_keys,
+        disclosure.absorb_ns_total / 1_000_000,
+        disclosure.absorb_ns_max / 1_000_000
     )
     .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
     writeln!(
