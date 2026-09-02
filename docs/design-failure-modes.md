@@ -2,6 +2,58 @@
 
 Generated from `gunbc.recurring_failure_mode`. Do not hand-edit — the generated-artifact phase adjudicates this file against that authority. `DESIGN.md` carries the reasoning; this document carries the rows in full.
 
+The exact `RecurringFailureMode.identity` population, which no other projection renders: the row bodies below carry `authored` prose, and an identity appearing inside one is a coincidence of wording rather than a projection of the field. This index lives in the PREAMBLE, above the horizontal rule, so it reintroduces no path shared with the rung-drop document and leaves the authored body below byte-identical to its pre-split form.
+
+- `censored_estimator_drops_its_own_tail`
+- `selection_view_read_as_population`
+- `unlanded_citation_indistinguishable_at_the_citing_end`
+- `hollow_alias`
+- `state_space_conflation`
+- `absorbing_fallback`
+- `empty_observation_narrow`
+- `cache_impurity`
+- `reflection_evidence_structural_proof`
+- `coercion_proven_by_normalized_round_trip`
+- `parallel_representation_debt`
+- `internal_review_finds_missing_tests_external`
+- `unmarked_workaround`
+- `self_authorized_dissolution`
+- `positional_citation`
+- `bound_shaped_closure`
+- `authority_substitution`
+- `reachability_read_as_occupancy`
+- `total_at_the_level_examined_blind`
+- `execution_provenance_loss`
+- `remediation_mutated_view`
+- `diagnostic_name_mechanism_silent`
+- `identity_absent_graph_traversal`
+- `generated_binding_shadows_bare_render`
+- `resolved_reference_outside_execution_closure`
+- `surface_shorthand_preempts_resolved_identity`
+- `meaning_fork`
+- `externalized_degradation`
+- `mistyped_body_radiates_nonlocal_diagnostics`
+- `instrument_output_read_as_subject_content`
+- `executed_conjunct_discriminates_nothing`
+- `unbacked_execution_claim`
+- `admitted_module_without_judged_standing`
+- `refusal_deferred_to_emitted_runtime`
+- `mitigation_injected_where_judgment_declined`
+- `transport_close_read_as_completion`
+- `merge_region_excludes_shared_tail`
+- `sealing_property_erases_structure`
+- `disagreement_census_blind_to_agreed_wrong`
+- `undecided_fraction_read_as_denominator`
+- `restoration_promise_names_a_route_that_does_not_exist`
+- `alias_resolution_collides_with_kernel_spelling`
+- `restored_bytes_reviewed_as_authorship`
+- `review_summary_inverts_roles_and_affirms_the_join`
+- `yaml_inline_comment_ingested_as_scalar_content`
+- `accepted_source_emits_uncompilable_target`
+- `incidental_denominator_as_wall`
+- `compensating_errors_cancel_in_the_aggregate`
+- `one_refusal_two_destinations`
+
 ---
 
 ## Recurring failure modes (instances of §3–§5, kept for pattern-matching)
