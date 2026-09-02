@@ -81,6 +81,7 @@ import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
   SparkServingRetirementEffect,
   SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+  PlannedReactivationEffect,
 }
 import gunbc.runner_slot_provision { RunnerSlotMember }
 import gunbc.fabric_cell_observation_admission {
@@ -607,6 +608,7 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
     match e {
       PlannedInstallEffect { install: i } => i == EnableLingerForOwnAccount
       PlannedRetirementEffect { retirement: _ } => false
+      PlannedReactivationEffect { reactivation: _ } => false
     }) {
     Present { value: EnableLingerForOwnAccount }
   } else {

@@ -1,0 +1,126 @@
+module test.claim.spark_serving_reactivation_remedy_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+import gunbc.spark.serving_realization {
+  SparkServingReactivationVerdict,
+  ReactivationRequired,
+  ReactivationNotRequired,
+  ReactivationUndecidable,
+  SparkServingRunningDefinition,
+  RunningDefinitionObserved,
+  RunningDefinitionUnobserved,
+  ServingReactivationEffect,
+  RestartSystemUnitForChangedDefinition,
+  RestartUserUnitForChangedDefinition,
+  SparkServingRealization,
+  UserUnitRealization,
+  SystemUnitRealization,
+  RootlessContainerRealization,
+  spark_serving_reactivation_remedy,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OBSERVATION THESE FIXTURES CONSTRUCT IS NOT ONE ANY PROBE MINTS TODAY, and that is stated here
+// rather than left for a reader to discover. `RunningDefinitionObserved` is authorable as source
+// handed to the compiler by a fixture, which is what makes the discriminating RED below writable at
+// all; no Spark convergence can produce one until the readback that joins a running invocation to
+// the definition it was started from exists. So these claims establish that the SELECTOR is correct,
+// and they establish nothing about a live host.
+
+data desired_digest: NonEmptyStr = "sha256:desired-unit-definition" as NonEmptyStr
+
+data stale_digest: NonEmptyStr = "sha256:stale-unit-definition" as NonEmptyStr
+
+fn verdict_is_restart_of(
+  verdict: SparkServingReactivationVerdict,
+  want: ServingReactivationEffect,
+) -> Bool {
+  match verdict {
+    ReactivationRequired { effect: e } => e == want
+    ReactivationNotRequired => false
+    ReactivationUndecidable { cause: _ } => false
+  }
+}
+
+fn verdict_is_not_required(verdict: SparkServingReactivationVerdict) -> Bool {
+  match verdict {
+    ReactivationNotRequired => true
+    ReactivationRequired { effect: _ } => false
+    ReactivationUndecidable { cause: _ } => false
+  }
+}
+
+fn verdict_is_undecidable(verdict: SparkServingReactivationVerdict) -> Bool {
+  match verdict {
+    ReactivationUndecidable { cause: _ } => true
+    ReactivationNotRequired => false
+    ReactivationRequired { effect: _ } => false
+  }
+}
+
+// A RUNNING DEFINITION THAT DIFFERS FROM THE DESIRED ONE SELECTS A RESTART, and it selects the
+// restart of the unit the CHOSEN REALIZATION owns. Two realizations, two effects, so a fold that
+// returned one constant could not satisfy both.
+test fn w_a_changed_definition_selects_the_restart_for_its_realization() -> Bool {
+  verdict_is_restart_of(
+    verdict: spark_serving_reactivation_remedy(
+      realization: UserUnitRealization,
+      running: RunningDefinitionObserved { content_digest: stale_digest },
+      desired_content_digest: desired_digest,
+    ),
+    want: RestartUserUnitForChangedDefinition,
+  )
+    && verdict_is_restart_of(
+      verdict: spark_serving_reactivation_remedy(
+        realization: SystemUnitRealization,
+        running: RunningDefinitionObserved { content_digest: stale_digest },
+        desired_content_digest: desired_digest,
+      ),
+      want: RestartSystemUnitForChangedDefinition,
+    )
+}
+
+// THE DISCRIMINATING RED, and it is the whole point of the split. The fused effect restarted
+// unconditionally: every realization of it killed whatever the unit was serving, including on a host
+// that had drifted in no way at all. Same realization, same actor, a running definition that IS the
+// desired one -- and the answer must be that there is nothing to do.
+test fn w_an_unchanged_definition_selects_no_restart() -> Bool {
+  verdict_is_not_required(
+    verdict: spark_serving_reactivation_remedy(
+      realization: UserUnitRealization,
+      running: RunningDefinitionObserved { content_digest: desired_digest },
+      desired_content_digest: desired_digest,
+    ),
+  )
+}
+
+// AN UNOBSERVED RUNNING DEFINITION IS NOT A CONVERGED ONE AND NOT A STALE ONE. This is the arm every
+// Spark reaches today, because no probe answers the question: it must refuse, and refusing is
+// different from both other answers. Widening it either way is the failure this module refuses to
+// commit -- toward required it restarts every host on every converge, toward not-required it reports
+// a stale process as converged.
+test fn w_an_unobserved_running_definition_refuses_rather_than_deciding() -> Bool {
+  verdict_is_undecidable(
+    verdict: spark_serving_reactivation_remedy(
+      realization: UserUnitRealization,
+      running: RunningDefinitionUnobserved { cause: "no probe reports the running invocation's definition" as NonEmptyStr },
+      desired_content_digest: desired_digest,
+    ),
+  )
+}
+
+// A REALIZATION WITH NO MODELED REACTIVATION REFUSES TOO, rather than borrowing a unit restart for a
+// container. The drift is real -- the definitions differ -- and the remedy is still not known, which
+// is a third state and not a reason to pick one of the other two.
+test fn w_a_realization_without_a_reactivation_remedy_refuses() -> Bool {
+  verdict_is_undecidable(
+    verdict: spark_serving_reactivation_remedy(
+      realization: RootlessContainerRealization,
+      running: RunningDefinitionObserved { content_digest: stale_digest },
+      desired_content_digest: desired_digest,
+    ),
+  )
+}
