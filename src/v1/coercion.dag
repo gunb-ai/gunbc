@@ -6,7 +6,7 @@ import v1.std.core { qualified_last_segment, Node, Resolved, declaration_provena
 
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, TypeRealizationDecision,
-  Realized, Unrealized, Refused, RealizationRefusalCause, DeclarationIdentityUnavailable,
+  Realized, Unrealized, RealizationRefused, RealizationRefusalCause, DeclarationIdentityUnavailable,
   ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow,
   ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow,
   GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, TypeDeclarationProvenance,
@@ -233,7 +233,7 @@ fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> 
 // already discriminate every specimen the gap note names (Hash vs Int/Nat, same-spelling-
 // different-declaration). Adopting the full std.decl_ref.DeclarationRef triple is deferred to the
 // first consumer that needs the human-readable module_path rather than identity equality (DESIGN
-// section 6 pricing discipline), and this note is that deferral's record. Refused is a genuinely
+// section 6 pricing discipline), and this note is that deferral's record. RealizationRefused is a genuinely
 // NEW answer this decision introduces -- no existing lookup_checkpoint call site can regress into
 // it, because lookup_checkpoint below preserves its exact prior decl_file=="" fallback rather than
 // routing that case through this decision.
@@ -289,13 +289,13 @@ fn type_realization_decision(
     DeclarationIdentityAbsent =>
       match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
         Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByUnidentifiedBareRow }
-        Absent => Refused { cause: DeclarationIdentityUnavailable }
+        Absent => RealizationRefused { cause: DeclarationIdentityUnavailable }
       }
     _ =>
   if provenance_declares_structurally(dag_name: dag_name, p: provenance) {
     Unrealized
   } else if target == Rust && !rust_checkpoint_row_keeps_bare_row(dag_name: dag_name) {
-    Refused { cause: BareRowMigratedToExactBinding { dag_name: dag_name } }
+    RealizationRefused { cause: BareRowMigratedToExactBinding { dag_name: dag_name } }
   } else {
     match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
       Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByCheckpointRow }
@@ -326,7 +326,7 @@ fn type_realization_decision(
 // a bare String, not a full checkpoint row, so this decision is not inventing information the prior
 // mechanism lacked.
 
-// decl_file == "" is NOT routed through type_realization_decision's Refused arm here: dozens of
+// decl_file == "" is NOT routed through type_realization_decision's RealizationRefused arm here: dozens of
 // production call sites across v1.compiler.emit_rust and v1.compiler.emit already pass an empty
 // decl_file expecting the bare-name table answer (the behavior type_reference_identity_note
 // documents and depends on), and widening this function's refusal to cover them is an unmeasured,
@@ -385,7 +385,7 @@ fn realized_checkpoint(decision: TypeRealizationDecision) -> TypeCheckpoint? {
   match decision {
     Realized { checkpoint: cp, ground: _ } => Present { value: cp }
     Unrealized => none
-    Refused { cause: _ } => none
+    RealizationRefused { cause: _ } => none
   }
 }
 
@@ -427,11 +427,11 @@ fn rust_exact_realization_decision(source: DeclarationRef?) -> TypeRealizationDe
     ResolvedExactBinding { binding: b } =>
       match rust_exact_type_checkpoint(binding: b) {
         Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByCheckpointRow }
-        Absent => Refused { cause: BoundRepresentationHasNoRealizationRow { decl_name: b.source.decl_name as String } }
+        Absent => RealizationRefused { cause: BoundRepresentationHasNoRealizationRow { decl_name: b.source.decl_name as String } }
       }
     ExactBindingAbsent => Unrealized
-    ExactBindingAmbiguous { candidate_count: _ } => Refused { cause: ExactBindingAmbiguousForOneDeclaration }
-    ExactSourceIdentityUnavailable { cause: c } => Refused { cause: ExactSourceIdentityAbsent { detail: c } }
+    ExactBindingAmbiguous { candidate_count: _ } => RealizationRefused { cause: ExactBindingAmbiguousForOneDeclaration }
+    ExactSourceIdentityUnavailable { cause: c } => RealizationRefused { cause: ExactSourceIdentityAbsent { detail: c } }
   }
 }
 

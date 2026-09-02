@@ -17,6 +17,9 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
+pub use crate::std_coercion::TypeCheckpoint;
+pub use crate::std_coercion::TypeDeclarationProvenance;
+use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -32,7 +35,8 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
-    target_callable, target_optional_template, type_reference_decl_file,
+    target_callable, target_optional_template, type_realization_decision,
+    type_reference_realization,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
@@ -1341,9 +1345,11 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value.clone()).clone() {
         LiteralValue::LitStr { value: s, .. } => {
             let suffix = match crate::v1_compiler_coercion::literal_suffix(
-                target.clone(),
-                "String".to_string(),
-                "".to_string(),
+                crate::v1_compiler_coercion::type_realization_decision(
+                    target.clone(),
+                    "String".to_string(),
+                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+                ),
             ) {
                 Some(sfx) => sfx.clone(),
                 std::option::Option::None => emit_error_expr(
@@ -1367,15 +1373,19 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
         LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
         LiteralValue::LitSymbol { value: s, .. } => {
             let suffix = match crate::v1_compiler_coercion::literal_suffix(
-                target.clone(),
-                "Symbol".to_string(),
-                "".to_string(),
+                crate::v1_compiler_coercion::type_realization_decision(
+                    target.clone(),
+                    "Symbol".to_string(),
+                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+                ),
             ) {
                 Some(sfx) => sfx.clone(),
                 std::option::Option::None => match crate::v1_compiler_coercion::literal_suffix(
-                    target.clone(),
-                    "String".to_string(),
-                    "".to_string(),
+                    crate::v1_compiler_coercion::type_realization_decision(
+                        target.clone(),
+                        "String".to_string(),
+                        Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+                    ),
                 ) {
                     Some(sfx) => sfx.clone(),
                     std::option::Option::None => emit_error_expr(
@@ -1551,9 +1561,12 @@ pub fn render_named_type_base(
     {
         let tn = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         let base = crate::v1_compiler_coercion::coerce_primitive_type(
-            target.clone(),
+            crate::v1_compiler_coercion::type_reference_realization(
+                n.clone(),
+                tn.clone(),
+                target.clone(),
+            ),
             tn.clone(),
-            crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
         );
         let explicit_params = Rc::new({
             let mut __result = Vec::new();
@@ -1620,9 +1633,12 @@ pub fn render_node_type(
                 };
                 if (n_is_type_var.clone() && is_named_type_var.clone()) {
                     return crate::v1_compiler_coercion::coerce_primitive_type(
-                        target.clone(),
+                        crate::v1_compiler_coercion::type_reference_realization(
+                            n.clone(),
+                            tn.clone(),
+                            target.clone(),
+                        ),
                         tn.clone(),
-                        crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
                     );
                 }
                 let label = if n_is_error.clone() {
@@ -1761,9 +1777,14 @@ pub fn render_node_type(
                             ),
                             std::option::Option::None => {
                                 crate::v1_compiler_coercion::coerce_primitive_type(
-                                    target.clone(),
+                                    crate::v1_compiler_coercion::type_realization_decision(
+                                        target.clone(),
+                                        "Refined".to_string(),
+                                        Rc::new(
+                                            TypeDeclarationProvenance::DeclarationIdentityAbsent,
+                                        ),
+                                    ),
                                     "Refined".to_string(),
-                                    "".to_string(),
                                 )
                             }
                         };
@@ -1933,18 +1954,19 @@ pub fn render_node_type(
                                     let spec = crate::v1_compiler_emit_core_support::language_spec(
                                         target.clone(),
                                     );
-                                    v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_coercion::coerce_primitive_type(target.clone(), tn.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone())), spec.type_arg_open.clone()), param_strs.clone().join(&", ".to_string())), spec.type_arg_close.clone())
+                                    v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_coercion::coerce_primitive_type(crate::v1_compiler_coercion::type_reference_realization(n.clone(), tn.clone(), target.clone()), tn.clone()), spec.type_arg_open.clone()), param_strs.clone().join(&", ".to_string())), spec.type_arg_close.clone())
                                 }
                             } else {
                                 if (tn.clone() == tuple_type_name()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
                                     crate::v1_compiler_coercion::coerce_primitive_type(
-                                        target.clone(),
-                                        tn.clone(),
-                                        crate::v1_compiler_coercion::type_reference_decl_file(
+                                        crate::v1_compiler_coercion::type_reference_realization(
                                             n.clone(),
+                                            tn.clone(),
+                                            target.clone(),
                                         ),
+                                        tn.clone(),
                                     )
                                 }
                             }
@@ -1988,9 +2010,12 @@ pub fn render_node_type(
                     k.clone(),
                     v.clone(),
                     crate::v1_compiler_coercion::coerce_primitive_type(
-                        target.clone(),
+                        crate::v1_compiler_coercion::type_reference_realization(
+                            n.clone(),
+                            tn.clone(),
+                            target.clone(),
+                        ),
                         tn.clone(),
-                        crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
                     ),
                     target.clone(),
                 );
@@ -2022,9 +2047,12 @@ pub fn render_node_type(
                 } else {
                     {
                         let type_base = crate::v1_compiler_coercion::coerce_primitive_type(
-                            target.clone(),
+                            crate::v1_compiler_coercion::type_reference_realization(
+                                n.clone(),
+                                tn.clone(),
+                                target.clone(),
+                            ),
                             tn.clone(),
-                            crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
                         );
                         let spec =
                             crate::v1_compiler_emit_core_support::language_spec(target.clone());
@@ -2064,9 +2092,12 @@ pub fn render_node_type(
             }
         }
         let type_base = crate::v1_compiler_coercion::coerce_primitive_type(
-            target.clone(),
+            crate::v1_compiler_coercion::type_reference_realization(
+                n.clone(),
+                tn.clone(),
+                target.clone(),
+            ),
             tn.clone(),
-            crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
         );
         let args_joined = child_strs.clone().join(&", ".to_string());
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());

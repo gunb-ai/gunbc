@@ -27,6 +27,10 @@ use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
+pub use crate::std_coercion::TypeDeclarationProvenance;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -3961,6 +3965,51 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
         start: 0,
         end: v1_rt::string_length(&name),
     })
+}
+
+pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
+    match item.ident_span.clone() {
+        std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+        Some(sp) => {
+            if (sp.file.clone() == "".to_string()) {
+                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            } else {
+                if (sp.file.clone() == kernel_span(item.name.clone()).file.clone()) {
+                    Rc::new(TypeDeclarationProvenance::KernelMinted {
+                        minted_name: item.name.clone(),
+                    })
+                } else {
+                    Rc::new(TypeDeclarationProvenance::CorpusDeclared {
+                        decl_file: sp.file.clone(),
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn type_reference_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => declaration_provenance_of(rt.clone()),
+        _ => declaration_provenance_of(n.clone()),
+    }
+}
+
+pub fn provenance_reported_file(p: Rc<TypeDeclarationProvenance>) -> String {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => f.clone(),
+        TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm, ..
+        } => kernel_span(nm.clone()).file.clone(),
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => "".to_string(),
+    }
+}
+
+pub fn provenance_is_kernel_minted(p: Rc<TypeDeclarationProvenance>) -> bool {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
+        _ => false,
+    }
 }
 
 pub fn unit_type() -> Rc<Node> {

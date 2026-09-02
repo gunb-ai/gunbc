@@ -469,6 +469,23 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
 // The left column is NOT a second authority for these declarations and nothing resolves through
 // it; it exists so a reader who finds the old name in the prose above can reach the new one
 // without grepping a deleted symbol. It dissolves when the prose that names those spellings does.
+// WHAT THE SPLIT DID AND DID NOT REPAIR FOR THE BARE-NAME CONSUMERS, homed here because it is a
+// claim and the carrier it is about belongs to another lane. Five citations in
+// gunbc.bare_name_identity_consumer_census pointed at declarations this change deletes and were
+// re-aimed at their successors; that is a citation repair and it re-judged nothing. This is the
+// judgement, and it is deliberately the weaker of the two available readings.
+//
+// The split made the ABSENCE of declaration identity a CONSTRUCTIBLE state -- DeclarationIdentityAbsent
+// rather than an empty string -- so a bare-table answer now carries GroundedByUnidentifiedBareRow
+// and is distinguishable from a grounded one. It did NOT stop those sites keying on the bare name.
+// Every `site`, `keys_on`, `outcome` and `reach` in that roster is about a call site this change
+// does not touch, and every one of them still holds.
+//
+// SO THE STAMP IS A RUNG ON VISIBILITY AND NOT A REPAIR OF THE KEYING, AND NEITHER ROSTER CLAIMS
+// THE SECOND FROM THE FIRST. The distinction matters because the two are easy to fuse in a reader's
+// summary: a class that becomes VISIBLE ranks for climbing, and a class that has been REPAIRED
+// stops ranking. Reading this climb as the second would retire rows that are still live, which is
+// rung inflation reached by generosity rather than by claim.
 data type_reference_decl_file_census_discharge: List<DeclarationRef> = [
   decl_ref(module_path: "std.coercion", decl_name: "TypeDeclarationProvenance"),
   decl_ref(module_path: "std.coercion", decl_name: "RealizationGround"),

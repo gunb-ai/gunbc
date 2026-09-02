@@ -9,7 +9,7 @@ import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
 import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
-import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
+import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
 import std.types { List, String, Map, Bool }
 
 // THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
@@ -70,7 +70,7 @@ type CensusOutcome
   | IdentityUnavailable
 
 // IdentityUnavailable is NOT folded into structural rendering. Unrealized (a known structural
-// declaration) and Refused (identity not supplied) are different answers, and merging them
+// declaration) and RealizationRefused (identity not supplied) are different answers, and merging them
 // reproduces the bypass under a newer name.
 type TypedCarrierRow {
   module_file: String
@@ -128,8 +128,8 @@ fn identity_query_provenance(o: DeclarationIdentityObservation) -> TypeDeclarati
     IdentityFromInference { provenance: d } => d
     IdentityFromEnvironment { provenance: d } => d
     IdentitiesAgree { provenance: d } => d
-    IdentitiesDisagree { inferred: _, environment: _ } => ""
-    IdentityUnavailableBoth => ""
+    IdentitiesDisagree { inferred: _, environment: _ } => DeclarationIdentityAbsent
+    IdentityUnavailableBoth => DeclarationIdentityAbsent
   }
 }
 
@@ -141,7 +141,7 @@ fn authority_realizes(name: String, provenance: TypeDeclarationProvenance) -> Bo
   match type_realization_decision(target: Rust, dag_name: name, provenance: provenance) {
     Realized { checkpoint: _, ground: _ } => true
     Unrealized => false
-    Refused { cause: _ } => false
+    RealizationRefused { cause: _ } => false
   }
 }
 
@@ -153,7 +153,7 @@ fn authority_base_of(name: String, provenance: TypeDeclarationProvenance) -> Str
   match type_realization_decision(target: Rust, dag_name: name, provenance: provenance) {
     Realized { checkpoint: cp, ground: _ } => cp.target_type
     Unrealized => "<structural>"
-    Refused { cause: _ } => "<refused>"
+    RealizationRefused { cause: _ } => "<refused>"
   }
 }
 

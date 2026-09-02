@@ -109,14 +109,12 @@ type BareNameConsumer {
 //   rust_seed_host_numeric_alias    -> v1.compiler.coercion provenance_host_numeric_alias
 //   lookup_checkpoint               -> v1.compiler.coercion type_reference_realization
 //
-// WHAT THE SPLIT DID AND DID NOT REPAIR, stated because an `outcome` field left unchanged beside a
-// re-aimed pointer is the kind of thing a later reader will read as an oversight. The split made
-// the ABSENCE of declaration identity a constructible state rather than an empty string, so the
-// bare-table answer is now stamped GroundedByUnidentifiedBareRow instead of being indistinguishable
-// from a grounded one. It did NOT stop those sites from keying on the bare name: each row's
-// `site`, `keys_on`, `outcome` and `reach` are about a call site the split did not touch, and every
-// one of them still holds. The stamp is a rung on visibility, not a repair of the keying, and this
-// roster deliberately does not claim the second from the first.
+// NO ROW BELOW WAS RE-JUDGED, AND NOTHING HERE CLAIMS A RUNG FOR THIS ROSTER'S SUBJECT. Each row's
+// `site`, `keys_on`, `outcome` and `reach` describes a call site the split did not touch, so the
+// re-aimed pointers are a citation repair and nothing else. What the split did and did not change
+// about the rung of THESE sites is a claim about this roster's subject, which this roster's own
+// lane owns; it is recorded in gunbc.type_reference_decl_file_occurrence_census, under the change
+// that authored it, rather than asserted here by a lane that does not own this carrier.
 data bare_name_identity_consumers: List<BareNameConsumer> = [
   {
     site: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_realization"),

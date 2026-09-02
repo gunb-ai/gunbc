@@ -1,6 +1,6 @@
 module test.claim.reference_realization_witness
 
-import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused, RealizationRefusalCause, DeclarationIdentityUnavailable, ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow, ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow, GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, realization_refusal_label }
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, RealizationRefused, RealizationRefusalCause, DeclarationIdentityUnavailable, ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow, ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow, GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, realization_refusal_label }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.reference_realization {
   InlineTargetRepresentation,
@@ -178,7 +178,7 @@ test fn w_unrealized_decision_names_the_provider_without_claiming_a_policy() -> 
 test fn w_unknown_provider_identity_refuses_with_the_decisions_own_cause() -> Bool {
   rendering_tag(
     rendering: reference_position_rendering(
-      decision: Refused { cause: DeclarationIdentityUnavailable },
+      decision: RealizationRefused { cause: DeclarationIdentityUnavailable },
       standing: ReferenceRealizationUndeclared { provider_key: "" }
     )
   ) == "refused-identity:no declaration identity was supplied"
