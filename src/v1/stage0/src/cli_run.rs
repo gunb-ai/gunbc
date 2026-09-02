@@ -39380,9 +39380,10 @@ pub use emitted_closure_compile_host::{
 /// public surface merely because Rust needs a path to it.
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
-    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_fixture_closure_discrimination, FixtureClosureOutcome,
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
+    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    run_fixture_closure_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
