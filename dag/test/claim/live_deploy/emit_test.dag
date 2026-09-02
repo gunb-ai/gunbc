@@ -363,8 +363,8 @@ test fn git_metadata_file_transport_is_present_in_the_legacy_specimen_and_absent
 fn three_markers_in_order(text: String, first: String, second: String, third: String) -> Bool {
   let after_first = join(split(s: text, sep: first).skip(n: 1), first)
   let after_second = join(split(s: after_first, sep: second).skip(n: 1), second)
-  after_first != text
-    && after_second != after_first
+  string_contains(s: text, pattern: first)
+    && string_contains(s: after_first, pattern: second)
     && string_contains(s: after_second, pattern: third)
 }
 
@@ -379,6 +379,7 @@ test fn repository_convergence_is_ordered_after_binary_and_before_readback() -> 
   three_markers_in_order(text: apply, first: binary, second: converge, third: readback)
     && !three_markers_in_order(text: join([converge, binary, readback], "\n"), first: binary, second: converge, third: readback)
     && !three_markers_in_order(text: join([binary, readback, converge], "\n"), first: binary, second: converge, third: readback)
+    && !three_markers_in_order(text: join([binary, readback], "\n"), first: binary, second: converge, third: readback)
 }
 
 data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for #7011/receipt 29928424523: the tree-sync restart is synchronous and precedes the poll-based unit_diagnosis capture, so a bare restart failure carries no WHY. The apply script must fall through to the same unit-status-tail authority the roadmap-unit diagnosis already uses (never a second format), append it to stderr, and still fail the step — never proceed as if the restart had succeeded."
