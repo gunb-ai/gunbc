@@ -6,22 +6,40 @@ is dense, whether the rows now crossing share a root, and what an honest margin 
 
 ## The instrument
 
-Every required-floor run uploads `required-floor-claim-cost`, a per-claim TSV carrying
-`identity, module, outcome, verdict_reached, wall_ms, cpu_ms, eval_steps, cost_line_ms` for the
-complete executed population — 3,498 rows. The `[over-cost]` lines in the job log are a 25-row
-preview of the same data and say so ("the complete population is in the per-claim cost TSV uploaded
-by this run"). Two further artifacts are read below: `required-floor-cross-claim-demand` and the
-run's own `required-floor:` summary line.
+**Every figure below is produced by `tools.floor_cost_distribution_instrument`
+`floor_cost_distribution_report`, and the derivations it composes are
+`gunbc.floor_cost_distribution`.** Re-derive rather than trust this page:
 
-Nothing here needed a floor run. Every figure is a reading of artifacts already published by ten
-`main` runs of `gunbc.witness_floor_workflow`: `33668368846`, `33670164259`, `33673806092`,
-`33680659583`, `33681059548`, `33682522296`, `33683651328`, `33688140761`, `33690512169`,
-`33691893294`. The last is the merge commit of gunbc#10133 and is the only post-repair run in the
-sample; the other nine precede it.
+```
+# one download per run id in `floor_cost_sampled_runs`, into `floor_cost_artifact_root`:
+gh run download <run-id> -n required-floor-claim-cost -D /tmp/floor-cost/<run-id>
 
-**One artifact in an eleventh run (`33667468330`) downloaded empty.** It is excluded. It is recorded
-because it silently emptied a ten-way identity intersection before it was caught — an empty result
-is a claim about the instrument first.
+gunbc run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+  --function floor_cost_distribution_report
+```
+
+The first version of this memo named `gunbc.witness_floor_workflow` as its instrument. That
+workflow produces the raw rows and performs none of the analysis — the ten-run intersection, the
+band histogram, the counterfactual replay and the inflation percentiles existed only as prose plus
+numbers, so a reader could check the arithmetic of nothing. Review 58983 refused it on exactly that
+ground. The figures that remain below are illustrative of what the instrument returned on the runs
+it names; the instrument is the authority, and where the two disagree the instrument is right.
+
+**The input needs no floor run.** `required-floor-claim-cost` is uploaded by every required-floor
+run and carries the COMPLETE executed population — the `[over-cost]` lines in the job log are a
+25-row preview of the same data and say so. The runs are named as data in
+`floor_cost_sampled_runs`, because a measurement over "whatever happened to be downloaded" is not
+re-derivable: a second reader would get different numbers with no way to tell a real change from a
+different sample.
+
+**An incomplete sample refuses.** `floor_cost_distribution_check` exits non-zero naming every run
+that failed to load. One artifact in an eleventh run (`33667468330`) downloaded empty during the
+original analysis and silently emptied a ten-way identity intersection before it was caught — a run
+that reads as zero rows is indistinguishable from a run in which nothing crossed, which is the
+absorbing fallback DESIGN §5 forbids. Both refusal arms are witnessed in
+`test.claim.floor_cost_distribution_witness`, along with a discriminating red for each derivation
+below.
 
 ## 1. The band is dense, and the tail is a plateau
 
