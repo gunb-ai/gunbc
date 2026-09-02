@@ -8,36 +8,57 @@ import extdeps.publication {
 import extdeps.cpu.ampere {
   ampere_altra_max_rev_a1_datasheet_supersession_standing,
   ampere_altra_classic_rev_a1_datasheet_supersession_standing,
+  ampere_altra_device_documentation_authority,
 }
 
-// EXECUTING EVIDENCE that the two datasheet citations say which revision they actually hold, and
-// that the two standings DIFFER. A pair that agreed would be satisfied by a constant.
+// EXECUTING EVIDENCE that both datasheet citations declare which revision they hold and name a
+// retrieved successor. An earlier version of this file asserted the two standings DISAGREED, which
+// was a discrimination control built on a fact that turned out to be wrong: the non-Max citation
+// was recorded as current only because Issue 1.55 was absent from the family product brief, and
+// that brief is a stale index. Both are superseded, so the control below no longer leans on them
+// differing -- it constructs the current arm itself.
 
-test fn w_the_altra_max_citation_declares_itself_superseded() -> Bool {
-  !supersession_standing_is_current(s: ampere_altra_max_rev_a1_datasheet_supersession_standing)
+test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool {
+  match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: v, newer_locator: _, index_authority: _, held_version_label: h, detail: _ } =>
+      v == "1.55" && h == "v1.50"
+  }
 }
 
-test fn w_the_non_max_altra_citation_declares_itself_current() -> Bool {
-  supersession_standing_is_current(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
-}
-
-// THE DISCRIMINATION CONTROL. The two rows must not merely both exist; the predicate must separate
-// them. If supersession_standing_is_current ever answered one way for every arm, this reds while
-// the two rows above could both still pass under a constant.
-test fn w_RED_the_two_datasheet_standings_disagree() -> Bool {
-  supersession_standing_is_current(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
-    != supersession_standing_is_current(s: ampere_altra_max_rev_a1_datasheet_supersession_standing)
-}
-
-// THE MAX STANDING IS THE PUBLICLY-SERVED ARM, NOT THE UNRETRIEVED ONE. This distinction is the
-// whole reason the third arm was added: an unretrieved supersession is a standing we may hold
-// because there is nothing to read, while a publicly-served one is a live citation debt. Reading
-// the arm rather than the boolean is what stops the debt hiding behind the other arm's excuse.
-test fn w_the_max_supersession_is_a_live_citation_debt_not_an_unreadable_one() -> Bool {
+test fn w_the_altra_max_citation_is_superseded() -> Bool {
   match ampere_altra_max_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
     NewerRevisionPubliclyServed { newer_version_label: v, newer_locator: _, index_authority: _, held_version_label: h, detail: _ } =>
       v == "v1.25" && h == "v1.15"
+  }
+}
+
+// BOTH ARE THE PUBLICLY-SERVED ARM, which is the distinction that carries the obligation: a
+// revision we retrieved is a live citation debt, while one merely listed is not.
+test fn w_neither_citation_claims_to_be_current() -> Bool {
+  !supersession_standing_is_current(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
+    && !supersession_standing_is_current(s: ampere_altra_max_rev_a1_datasheet_supersession_standing)
+}
+
+// THE DISCRIMINATION CONTROL, CONSTRUCTED RATHER THAN BORROWED. The predicate must separate the
+// current arm from the superseded ones. Building the current arm here means this control survives
+// both rows being superseded at once -- which is exactly the situation that invalidated the
+// previous version of it.
+test fn w_RED_the_predicate_separates_current_from_superseded() -> Bool {
+  supersession_standing_is_current(s: HeldRevisionIsCurrentPublicCopy)
+    && !supersession_standing_is_current(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
+}
+
+// THE INDEX IS PART OF THE FACT. Both standings must name the surface that actually serves the
+// newer revision, not the stale product brief that produced the original wrong conclusion.
+test fn w_both_standings_cite_the_device_documentation_surface() -> Bool {
+  match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_locator: _, index_authority: a, held_version_label: _, detail: _ } =>
+      a == ampere_altra_device_documentation_authority
   }
 }

@@ -33,34 +33,58 @@ data ampere_altra_classic_rev_a1_datasheet_authority: ExternalAuthority = Extern
   }
 }
 
-// WHICH REVISION OF EACH DATASHEET WE ACTUALLY HOLD, MEASURED RATHER THAN ASSUMED. Both rows were
-// established on 2026-09-02 by fetching Ampere's own family product brief and reading the two
-// datasheet links it serves, then fetching each PDF to confirm it resolves. The brief is named as
-// the index because it is the page that was actually read; naming a document index we did not open
-// would be a citation whose subject nobody verified.
+// AMPERE SERVES ITS DATASHEETS FROM MORE THAN ONE SURFACE, AND THEY DISAGREE. This block was first
+// written on 2026-09-02 from the family product brief alone, which links Altra v1.50 and Altra Max
+// v1.25, and it concluded that v1.50 was current. That conclusion was WRONG, and the error is worth
+// naming because the measurement itself was sound: the brief was fetched, its links read, and each
+// PDF confirmed to resolve. What failed was reading ONE publication surface as the publisher's
+// current serving state. The brief is a stale index. Ampere's customer-connect device-documentation
+// surface serves newer revisions of both documents.
 //
-// THE ALTRA MAX CITATION IS SUPERSEDED. The brief links v1.25 dated 2024-01-30; the locator above
-// pins v1.15 dated 2023-08-09. Both fetch (HTTP 200, ~6.6 MB each), so this is the publicly-served
-// arm rather than the unretrieved one: there is a newer document we could read and have not. The
-// newer revision's facts are NOT guessed at, summarised, or assumed unchanged, and no row here is
-// restated from it. Retiring this standing means ingesting v1.25 and re-deriving the rows that
-// cite it, not editing the locator.
+// SO THE INDEX IS PART OF THE FACT, NOT A CONVENIENCE. A supersession standing is relative to what
+// the publisher serves NOW, so naming which surface was consulted is what makes the standing
+// falsifiable; collapsing two disagreeing pages into "the Ampere page" would conceal exactly the
+// stale-index condition this vocabulary exists to expose.
+data ampere_altra_device_documentation_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/customer-connect/products/altra#device-documentation"
+  }
+}
+
+// THE NON-MAX ALTRA CITATION IS SUPERSEDED BY ISSUE 1.55, VERIFIED BY RETRIEVAL. The locator below
+// was fetched on 2026-09-02: HTTP 200, 6630790 bytes, a valid PDF whose own content stream carries
+// the string "Issue 1.55". This row exists because an earlier revision of this block recorded the
+// OPPOSITE -- HeldRevisionIsCurrentPublicCopy -- on the strength of 1.55 being absent from the
+// product brief. Absence from one index is not absence from the publisher.
+//
+// The standard that produced the wrong answer is nevertheless the right standard, and it is kept:
+// a supersession is recorded only for a revision actually retrieved, never for one merely listed.
+// 1.55 now meets it. Retiring this standing means ingesting 1.55 and re-deriving the rows that
+// cite the datasheet -- section 2.10's active-channel facts are reported unchanged there, but
+// "reported unchanged" is not a reading, and no row here is restated from it.
+data ampere_altra_classic_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
+  newer_version_label: "1.55",
+  newer_locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=h51y6okvdig3i4u3lst6n120&file=Altra_Rev_A1_DS_v1_55_20250408_e814f50701.pdf&type=technical-document",
+  index_authority: ampere_altra_device_documentation_authority,
+  held_version_label: "v1.50",
+  detail: "retrieved 2026-09-02: HTTP 200, 6630790 bytes, PDF self-identifying as Issue 1.55 dated 2025-04-08, while the cited locator pins v1.50 dated 2024-01-30; the family product brief still links v1.50 and is a stale index",
+}
+
+// THE ALTRA MAX CITATION IS SUPERSEDED, AND THE RECORDED TARGET IS THE FURTHEST REVISION THIS
+// REPOSITORY HAS ACTUALLY RETRIEVED. v1.25 was fetched on 2026-09-02 (HTTP 200, ~6.6 MB) from the
+// product brief. A v1.30 dated 2025-04-08 is REPORTED on the device-documentation surface, and if
+// that report is right then ingesting v1.25 will not retire this debt. It is deliberately not
+// named as the newer revision here: that surface is script-rendered, no v1.30 locator has been
+// retrieved, and citing a document nobody has held is the precise error this block already made
+// once about Issue 1.55 in the other direction. The debt is therefore recorded as AT LEAST v1.25.
 data ampere_altra_max_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
   newer_version_label: "v1.25",
   newer_locator: "amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_25_20240130_73cfcc518a_4705c00046.pdf",
-  index_authority: ampere_altra_family_product_brief_authority,
+  index_authority: ampere_altra_device_documentation_authority,
   held_version_label: "v1.15",
-  detail: "measured 2026-09-02: the Ampere Altra family product brief links Altra Max Rev A1 DS v1.25 dated 2024-01-30, while the cited locator pins v1.15 dated 2023-08-09; both PDFs resolve HTTP 200",
+  detail: "retrieved 2026-09-02: Altra Max Rev A1 DS v1.25 dated 2024-01-30 resolves HTTP 200 while the cited locator pins v1.15 dated 2023-08-09; a v1.30 dated 2025-04-08 is reported on the device-documentation surface but no locator for it has been retrieved, so the recorded target is the furthest revision actually held and this debt may extend past v1.25",
 }
-
-// THE NON-MAX ALTRA CITATION IS CURRENT, and this row exists so that fact is measured rather than
-// inferred from silence. The same brief links exactly the v1.50 locator cited above, byte-for-byte
-// the one this repository already models, and no occurrence of a 1.55 revision appears on that
-// page. An external claim that Issue 1.55 dated 2025-04-08 is the current public datasheet could
-// not be reproduced against this index on 2026-09-02 and is deliberately NOT recorded as a
-// supersession: a standing naming a revision nobody can retrieve would be a citation whose newer
-// end does not exist.
-data ampere_altra_classic_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = HeldRevisionIsCurrentPublicCopy
 
 data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorThermalLimits {
   maximum_continuous_junction_temperature: celsius(100),
