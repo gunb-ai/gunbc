@@ -92,6 +92,8 @@ fn witness_substrate_kind_round_trips_v2_node() -> Bool {
     MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Atom { identity: _ } }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Atom { identity: _ } }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
   }
 }
 
