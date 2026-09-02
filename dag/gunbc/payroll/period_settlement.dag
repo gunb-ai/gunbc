@@ -4,7 +4,7 @@ import std.types { Bool, Int, NonEmptyStr, List }
 import std.nat { Nat, nat_min }
 import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
 import extdeps.payroll.contribution {
-  ContributionSpec, YearToDateWages, ContributionOutcome, ContributionRefusal,
+  ContributionSpec, AssessedPosition, ContributionOutcome, ContributionRefusal,
   ContributionOriginated, ContributionRefused,
   BearingParty, Employer, Worker,
   contribution_for_period,
@@ -85,9 +85,9 @@ fn accumulate_outcome(
 
 fn settle_period(
   specs: List<ContributionSpec>,
-  wages: YearToDateWages,
+  position: AssessedPosition,
 ) -> PeriodSettlementOutcome {
-  let outcomes = map(specs, s => contribution_for_period(spec: s, wages: wages))
+  let outcomes = map(specs, s => contribution_for_period(spec: s, position: position))
   let acc = fold(
     outcomes,
     init: SettlementAccumulator { worker_micros: 0, employer_micros: 0, refusals: [] },
@@ -96,7 +96,7 @@ fn settle_period(
   return if count(acc.refusals) > 0 {
     SettlementRefused { causes: acc.refusals }
   } else {
-    SettlementDerived { settlement: derive_settlement(acc: acc, wages: wages, lines: outcomes) }
+    SettlementDerived { settlement: derive_settlement(acc: acc, position: position, lines: outcomes) }
   }
 }
 
@@ -107,12 +107,12 @@ fn settle_period(
 // contribution rather than a property of which function computed it.
 fn derive_settlement(
   acc: SettlementAccumulator,
-  wages: YearToDateWages,
+  position: AssessedPosition,
   lines: List<ContributionOutcome>,
 ) -> PeriodSettlement {
-  let gross_micros = money_amount_micro_count(m: wages.this_period)
+  let gross_micros = money_amount_micro_count(m: position.this_period)
   return PeriodSettlement {
-    gross: wages.this_period,
+    gross: position.this_period,
     worker_withheld: money_amount_micro(count: acc.worker_micros),
     employer_contributions: money_amount_micro(count: acc.employer_micros),
     net_after_modeled_contributions: money_amount_micro(
