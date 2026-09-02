@@ -254,6 +254,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `recurrence_ledger_scoped_below_the_recurrence`
 - `hedged_benefit_leaves_the_harm_axis_unexamined`
 - `receipt_names_a_property_not_the_tree_it_holds_of`
+- `proxy_observation_mistaken_for_action_semantics`
 
 ## Building & checks
 
