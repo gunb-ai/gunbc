@@ -1914,7 +1914,7 @@ fn escape_emoji_codepoints_inner(s: String, pos: Int, n: Int, acc: String, prefi
   else {
     let ch_str = char_at(s: s, pos: pos)
     let cp = code_point(c: ch_str)
-    let next_acc = if is_emoji_ident(ch: cp) {
+    let next_acc = if is_emoji_ident(cp: cp) {
       concat(acc, prefix, int_to_upper_hex(n: cp), suffix)
     } else {
       concat(acc, ch_str)

@@ -228,7 +228,7 @@ fn edge_is_boundary(edge: String) -> Bool {
   if edge == "" {
     true
   } else {
-    !is_identifier_code_point(cp: code_point(ch: edge))
+    !is_identifier_code_point(cp: code_point(c: edge))
   }
 }
 
