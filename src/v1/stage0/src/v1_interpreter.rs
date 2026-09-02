@@ -8342,9 +8342,15 @@ pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_pa
     });
 }
 
-/// The census, ranked by cross-claim waste, most first. Rows demanded by a single claim are
-/// dropped here rather than at absorption: a producer is only known to be single-claim once the
-/// run is over.
+/// The census, ranked by cross-claim waste, most first. EVERY retained row is returned,
+/// single-claim rows included — they rank at zero and they are the control population that makes
+/// `claims > 1` mean something, so filtering them here would leave an artifact in which every
+/// row looks shared. Selecting the shared ones is the READER's move and it is a view rather than
+/// the population: the runner applies it at the print site and the TSV keeps both.
+///
+/// (An earlier revision of this sentence said single-claim rows were dropped here. They never
+/// were, the tests and the writer both assert they are not, and the sentence pointed a reader at
+/// the wrong side of the census's one load-bearing claim. Found by review 58659.)
 pub fn cross_claim_demand_rows() -> Vec<CrossClaimDemandRow> {
     CROSS_CLAIM_DEMAND.with(|c| {
         let census = c.borrow();
