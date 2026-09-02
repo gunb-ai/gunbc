@@ -378,6 +378,12 @@ fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
 // code spelling and `unplaced` on whether the code resolves in the error index, so an identity
 // carrying `uncoded` belongs to BOTH. Writing this as a match with one arm per identity would have
 // silently dropped one of the two memberships.
+type ClassifiedIdentity {
+  identity: String
+  phase: RustcErrorCodePhase
+  codeless: Bool
+}
+
 type CensusIdentityPartition {
   resolve: List<String>
   typeck: List<String>
@@ -386,33 +392,58 @@ type CensusIdentityPartition {
   codeless: List<String>
 }
 
-fn census_identity_partition(identities: List<String>) -> CensusIdentityPartition {
-  fold(
-    identities,
-    init: CensusIdentityPartition { resolve: [], typeck: [], borrowck: [], unplaced: [], codeless: [] },
-    f: (acc, identity) => {
-      let code = census_identity_code(identity: identity)
-      let phase = census_phase_of_code(code: code)
-      let codeless_hit = match code {
-        Present { value: c } => c == "uncoded"
-        Absent => false
-      }
-      let placed_order = match phase {
-        ErrorCodePlaced { phase: p, authority: _ } => rustc_phase_order(phase: p)
-        ErrorCodeUnplaced { code: _, index: _ } => 0 - 1
-      }
-      CensusIdentityPartition {
-        resolve: if placed_order == rustc_phase_order(phase: Resolve) { concat(acc.resolve, [identity]) } else { acc.resolve },
-        typeck: if placed_order == rustc_phase_order(phase: Typeck) { concat(acc.typeck, [identity]) } else { acc.typeck },
-        borrowck: if placed_order == rustc_phase_order(phase: Borrowck) { concat(acc.borrowck, [identity]) } else { acc.borrowck },
-        unplaced: match phase {
-          ErrorCodePlaced { phase: _, authority: _ } => acc.unplaced
-          ErrorCodeUnplaced { code: _, index: _ } => concat(acc.unplaced, [identity])
-        },
-        codeless: if codeless_hit { concat(acc.codeless, [identity]) } else { acc.codeless }
-      }
+fn classify_identity(identity: String) -> ClassifiedIdentity {
+  let code = census_identity_code(identity: identity)
+  ClassifiedIdentity {
+    identity: identity,
+    phase: census_phase_of_code(code: code),
+    codeless: match code {
+      Present { value: c } => c == "uncoded"
+      Absent => false
     }
-  )
+  }
+}
+
+fn classified_at_phase(classified: List<ClassifiedIdentity>, phase: RustcPhase) -> List<String> {
+  classified
+    |> filter(c => match c.phase {
+         ErrorCodePlaced { phase: p, authority: _ } => rustc_phase_order(phase: p) == rustc_phase_order(phase: phase)
+         ErrorCodeUnplaced { code: _, index: _ } => false
+       })
+    |> map(c => c.identity)
+}
+
+// THE CLASSIFICATION IS CARRIED, NOT RECOMPUTED, AND THE BUCKETS ARE BUILT BY `filter` RATHER THAN
+// BY APPENDING IN A FOLD. Each bucket below used to be its own `filter` over the whole identity
+// list, so a 233-identity receipt was traversed and re-classified six times to answer six questions
+// about the SAME classification -- DESIGN section 2's authored duplication rather than a caching
+// obligation, since the six demands share a visible ancestor. Classifying once and deriving the
+// buckets removes the recomputation.
+//
+// THE FIRST VERSION OF THIS FUNCTION FOLDED WITH `concat(acc.bucket, [identity])` PER ELEMENT, and
+// that is a copied accumulator across five buckets -- the same section 6 defect this change exists
+// to remove, reintroduced one line below the fix. Found in review on gunbc#10038. Building each
+// bucket with `filter` over the carried classification keeps one pass per bucket over an already
+// classified list and no quadratic append.
+//
+// THE BUCKETS ARE NOT DISJOINT AND THE DERIVATION MUST NOT ASSUME THEY ARE. `codeless` is decided on
+// the code spelling and `unplaced` on whether the code resolves in the error index, so an identity
+// carrying `uncoded` belongs to BOTH. A single match with one arm per identity would have silently
+// dropped one of the two memberships.
+fn census_identity_partition(identities: List<String>) -> CensusIdentityPartition {
+  let classified = identities |> map(identity => classify_identity(identity: identity))
+  CensusIdentityPartition {
+    resolve: classified_at_phase(classified: classified, phase: Resolve),
+    typeck: classified_at_phase(classified: classified, phase: Typeck),
+    borrowck: classified_at_phase(classified: classified, phase: Borrowck),
+    unplaced: classified
+      |> filter(c => match c.phase {
+           ErrorCodePlaced { phase: _, authority: _ } => false
+           ErrorCodeUnplaced { code: _, index: _ } => true
+         })
+      |> map(c => c.identity),
+    codeless: classified |> filter(c => c.codeless) |> map(c => c.identity)
+  }
 }
 
 fn census_identities_for_phase(identities: List<String>, phase: RustcPhase) -> List<String> {
