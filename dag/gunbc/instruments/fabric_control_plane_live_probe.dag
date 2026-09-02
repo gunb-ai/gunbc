@@ -956,18 +956,18 @@ fn fci1_cleanup_authority_for_observation(
   path: String,
   observed: Fci1AllocationSlotObservation,
 ) -> Fci1ReservationCleanupAuthorityDecode {
-  let authority_generation = match observed {
-    Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation
-    Fci1SlotFree { path: _, generation: generation, released_by: _, payload: _, content: _ } => generation - 1
-    Fci1SlotAbsent { path: _ } => 0
-    Fci1SlotUnreadable { path: _ } => 0
-    Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => 0
+  match observed {
+    Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => fci1_cleanup_authority_for_generation(path: path, generation: generation)
+    Fci1SlotFree { path: _, generation: generation, released_by: _, payload: _, content: _ } => fci1_cleanup_authority_for_generation(path: path, generation: generation - 1)
+    Fci1SlotAbsent { path: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
+    Fci1SlotUnreadable { path: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
+    Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => Fci1ReservationCleanupAuthorityObservationUnmodeled
   }
-  if authority_generation == 0 { Fci1ReservationCleanupAuthorityObservationUnmodeled }
-  else if authority_generation < 1 { Fci1ReservationCleanupAuthorityUndecodable }
-  else { fci1_cleanup_authority_from_path(
-    path: fci1_cleanup_authority_generation_path(path: path, generation: authority_generation),
-  ) }
+}
+
+fn fci1_cleanup_authority_for_generation(path: String, generation: Int) -> Fci1ReservationCleanupAuthorityDecode {
+  if generation < 1 { Fci1ReservationCleanupAuthorityUndecodable }
+  else { fci1_cleanup_authority_from_path(path: fci1_cleanup_authority_generation_path(path: path, generation: generation)) }
 }
 
 fn fci1_authority_matches_held(
