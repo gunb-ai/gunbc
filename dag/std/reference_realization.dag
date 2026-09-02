@@ -11,7 +11,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 // could only ever answer one of them. TypeRealizationDecision then joins a checkpoint to a
 // declaration identity, so the corpus can say WHICH declaration a spelling governs.
 //
-// Realized { checkpoint } still says WHAT the representation is and never says WHERE the reference
+// Realized { checkpoint, ground } still says WHAT the representation is and never says WHERE the reference
 // writes it. Reading it as "render checkpoint.target_type at every reference" is a THIRD policy
 // smuggled in as the absence of one, and it is unconditional: the consumer writes the provider's
 // implementation spelling in its own scope, where that spelling re-resolves to whatever the
