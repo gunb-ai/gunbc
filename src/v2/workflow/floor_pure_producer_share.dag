@@ -131,7 +131,30 @@ import v2.std.collection { List }
 // ARE ADMITTED ON A MEASURED PRESENT-VS-ABSENT FLOOR RECEIPT rather than on the implementation
 // change above -- which is the criterion this file made binding on itself, and inferring
 // admission from "the serve is cheaper now" would be exactly the specification-without-execution
-// DESIGN section 5 names. The two runs are cited in the enrolment note below the rows.
+// DESIGN section 5 names.
+//
+// THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: the zero-walk serve, these rows not
+// enrolled) AND 33661252708 (PRESENT: the same tree plus these rows), and the comparison is
+// `required_floor_claim_cost.tsv` from each, joined at IDENTITY grain. Re-derive it rather than
+// trusting a sentence: the absent run REFUSED, `verdict=FloorRefused` with `failed=0`, carried
+// entirely by one COMPLETED-OVER-COST-REQUIREMENT row in `v2.test.emit.rust_produced_decl_emit`;
+// the present run is `verdict=FloorClean` with `completed_over_cost_requirement=0`.
+//
+// AND THE ABSOLUTE DELTA IS NOT THE EVIDENCE, because the two runs did not get the same runner:
+// every row in the corpus got cheaper between them. The admissible reading is the NORMALISED
+// one -- each row set against the rows in NO consumer module of these keys, in the same run
+// pair -- and the consumer sets are read from the present run's own `[floor-shared-fill]`
+// `modules=` field, which names them rather than counting them. On that basis the target-model
+// consumers improve by about a sixth beyond the control and the frontier consumers by more than
+// half, which is what admits the rows. A raw comparison would have credited the runner with
+// most of it.
+//
+// WHAT THE SAME LEDGER SAYS ABOUT SHARING, the other half of the admission criterion: the
+// present run reports `rust_target_model` served to 75 consumer claims across 29 modules,
+// `rust_target_model_staging` 58 across 17, `rust_target_model_core_edges` 8 across 4, and
+// `compile_phase_frontier_standing` 22 across 3. The three warm rows land `paid_by=<outside-fold>`
+// -- billed to preparation, charged to no claim -- and the two later warms report `AlreadyPresent`
+// because `rust_target_model` reaches them, which is servable and not a refusal.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
