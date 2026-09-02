@@ -12837,10 +12837,14 @@ fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
     let temp = format!("{path}.gunbc-create-{}", std::process::id());
 
     // The temporary is exclusive too, so two concurrent creators cannot share one staging file.
-    let mut file = match OpenOptions::new().write(true).create_new(true).open(&temp) {
-        Ok(f) => f,
-        Err(e) => return Err(e),
-    };
+    // `?` rather than a match: this arm creates nothing, so there is no staging file to clean up --
+    // which is exactly why it is the one failure below that does NOT remove_file. The emitted
+    // realization already spells it `?`, so this also stops the two spellings differing over a
+    // difference that was never semantic.
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
     if let Err(e) = file.write_all(content) {
         let _ = std::fs::remove_file(&temp);
         return Err(e);
