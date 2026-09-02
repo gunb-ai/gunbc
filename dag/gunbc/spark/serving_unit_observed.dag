@@ -1,6 +1,6 @@
 module gunbc.spark.serving_unit_observed
 
-import std.types { String, Bool, List, Int, NonEmptyStr, Timestamp }
+import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure {
   TokenCount, token_count, token_count_value,
   PositiveSlotCount, positive_slot_count, positive_slot_count_value, positive_measure_count,
@@ -8,9 +8,7 @@ import std.measure {
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address_eq }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
-import gunbc.spark.fabric_link_desired {
-  FabricLink, FabricEndpoint, fabric_rail0, fabric_endpoint_on,
-}
+import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoint_on }
 
 // A SERVING DEPLOYMENT THAT SPANS TWO HOSTS, WHICH THIS CORPUS HAD NO WAY TO SAY.
 //
