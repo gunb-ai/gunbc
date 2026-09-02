@@ -166,7 +166,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
     specimens: [
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_operand_realization_of_type"),
     ],
-    why_the_positional_form_was_reached_for: "a kernel-minted type has NO declaration in the corpus -- v1.compiler.core kernel_span synthesizes the pseudo-file `<kernel:Name>` -- so there is genuinely no symbol for a citation to name. The path-shaped channel was already there, so the state was encoded as a value inside it.",
+    why_the_positional_form_was_reached_for: "a kernel-minted type has NO declaration in the corpus -- v1.std.core kernel_span synthesizes the pseudo-file `<kernel:Name>` -- so there is genuinely no symbol for a citation to name. The path-shaped channel was already there, so the state was encoded as a value inside it.",
     authority: NoSymbolAuthorityExists {
       what_would_have_to_exist: "a provenance coproduct carrying the three states this String conflates -- a corpus declaration (a DeclarationRef), a kernel mint (a name with no declaration), and identity unavailable -- so that kernel-minted is a CONSTRUCTOR rather than a spelling recognised by substring. TWO CONSTRAINTS ON BUILDING IT, both established rather than assumed. FIRST, the KernelMinted arm must be DERIVED from v1.compiler.infer_env resolved_node_is_kernel_identity_for_name, which already owns kernel identity by EXACT EQUALITY and whose own note records that a substring or prefix test is a second, weaker authority for it; a fifth prefix test would add an authority while claiming to remove four. SECOND, std.repair_input_origin was read for this purpose and does NOT already model this axis: it partitions the same String by PRODUCER (six emitter surfaces, CandidateSpelling bare vs qualified), and its own header states that the source branch is deliberately named Candidate rather than DeclarationCarrier because carrying a DeclarationRef is deferred to XL-0B/C. So the provenance coproduct is the DeclarationCarrier half that module explicitly defers, and belongs beside it as that deferral discharged -- not coined as a rival.",
     },
@@ -364,3 +364,50 @@ data type_reference_decl_file_prior_route: PriorRouteRelation = LegacyIsFallback
   owning_lane: "XL-0B. test.claim.self_host_symbol_identity_binding_witness_test records that the renderer threading DeclarationRef into the checkpoint-spelling callers is XL-0B's first commit by agreement with bold-carp-449, and that until it lands no emitted byte can discriminate the identity path from the legacy one. Part of it HAS landed: rust_exact_reference_spelling resolves through type_reference_declaration_ref into gunbc.rust_source_type_bindings and returns an exact spelling, and in each of the five declarations above it is consulted BEFORE the legacy answer.",
   what_this_changes: "NOT the class grouping and NOT the roster finding -- both stand, because a reference the exact-binding table has no row for still falls through to a contains() roster keyed on file paths. THE TWO FACTS ARE SEPARATELY OWNED, AND THAT IS THE WHOLE POINT: the exact-binding route answers WHICH DECLARATION and is XL-0B's; the rosters answer WHAT THAT DECLARATION REALIZES AS, positionally, and are this lane's. So an occurrence inside those five declarations is a fallback arm whose CONDITION belongs to one authority and whose ANSWER belongs to the other, and it is neither a hand-off nor a second route. WHAT FOLLOWS IS DELIBERATELY NOT A CONVERSION PLAN. Once the answer side is keyed on identity, the question `should this fallback arm exist at all` becomes answerable in a way it is not today, and a fallback behind a route that now answers correctly is DEAD CODE rather than a migration subject. Several of these may therefore disappear rather than convert, so the occurrence-conversion scope is DEFERRED pending that repair and will be RE-MEASURED rather than negotiated -- pricing an occupancy today would be pricing a population that may not survive.",
 }
+
+// TWO FINDINGS THIS CENSUS TURNED UP THAT ARE NOT ITS SUBJECT, FILED RATHER THAN FIXED. Both sit
+// directly under the repair the classes above prescribe, so a reader planning that repair meets
+// them; neither is a member of the 39 and neither is widened into this lane's scope.
+//
+// They are carried here rather than left in prose because DESIGN section 4c homes a finding in a
+// typed carrier, and because the first one changes what a repair may CLAIM about its own authority.
+type AdjacentFinding
+  = DuplicateDeclarationOfOneAuthority {
+      first: DeclarationRef,
+      second: DeclarationRef,
+      bodies_identical: Bool,
+      which_one_binds: String,
+      what_it_costs_the_repair: String,
+    }
+  | CitationNamesNoDeclaredModule {
+      cited_module_path: String,
+      actual_module_path: String,
+      occurrence_count: Int,
+      how_established: String,
+    }
+  | PositionalIdentityInAnotherRepresentation {
+      site: DeclarationRef,
+      representation: String,
+      why_it_is_the_same_defect: String,
+    }
+
+data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
+  DuplicateDeclarationOfOneAuthority {
+    first: decl_ref(module_path: "v1.std.core", decl_name: "kernel_span"),
+    second: decl_ref(module_path: "v1.compiler.infer", decl_name: "kernel_span"),
+    bodies_identical: true,
+    which_one_binds: "v1.compiler.infer declares its own and also imports v1.std.core, so its 24 in-file call sites bind the LOCAL twin by shadowing while every other consumer (v1.compiler.types, resolve, patterns, parse, emit_rust, coercion, infer_env) binds the v1.std.core one. Two populations, one spelling, no observable difference today.",
+    what_it_costs_the_repair: "THE COST IS TO WHAT THE REPAIR MAY CLAIM, NOT TO WHETHER IT WORKS. The kernel-provenance arm the class-three row prescribes must derive from the MINTER by exact equality rather than re-spell the prefix -- and there are TWO minters. A repair deriving from v1.std.core kernel_span is correct today BECAUSE the two bodies are byte-identical, which is a coincidence the tree does not enforce: nothing refuses if one is edited. So such a repair may state that it consumes the authority coercion imports, and may NOT state that it consolidated the authority, because it did not. The class is the one where identical duplicates make their own collision unobservable -- no experiment discriminates them until the first divergent edit, which is also the moment the derivation silently stops being exact.",
+  },
+  CitationNamesNoDeclaredModule {
+    cited_module_path: "v1.compiler.core",
+    actual_module_path: "v1.std.core",
+    occurrence_count: 11,
+    how_established: "no file in the tree declares `module v1.compiler.core`; the declarations these eleven citations reach for live in v1.std.core. One of the eleven is the annotation directly above v1.compiler.coercion is_kernel_minted_file -- the predicate the class-three repair deletes -- so a reader following that citation to check the repair's derivation is sent to a module that does not exist. Established by enumerating module headers, not by grep over the name. This census carried a twelfth occurrence in its own class-three row, inherited from a prior carrier's spelling, and corrected it rather than adding to the population -- which is how the count was noticed at all.",
+  },
+  PositionalIdentityInAnotherRepresentation {
+    site: decl_ref(module_path: "v1.compiler.type_head_exposure", decl_name: "type_declaration_identity_key"),
+    representation: "concat(decl_file, \"::\", declared_name) -- a file path and a declared name glued into one String and used as a key",
+    why_it_is_the_same_defect: "a SIXTH representation of declaration identity in this tree, and the one furthest from a symbol: it is not merely a position standing where a name would do, it is a position and a name FUSED into a value that neither the containment tree nor any roster can read back apart. It is outside the 39 -- no occurrence of the census subject reaches it -- and it is recorded because it dissolves for exactly the same reason the classes above do, so a reader who repairs the identity channel and leaves this one has moved the defect rather than removed it. Not priced and not in scope.",
+  },
+]
