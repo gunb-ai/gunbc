@@ -186,6 +186,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 
 - `censored_estimator_drops_its_own_tail`
 - `selection_view_read_as_population`
+- `unlanded_citation_indistinguishable_at_the_citing_end`
 - `hollow_alias`
 - `state_space_conflation`
 - `absorbing_fallback`
