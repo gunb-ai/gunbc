@@ -95,7 +95,13 @@ over 200ms, 24 over 300ms, no rows over 400ms, and a maximum of 397ms. The exact
 population therefore changed from ten to zero. However, the first run's ten over-400ms identities
 were exactly the second run's top ten identities, now measuring 382–397ms. The expensive cluster
 was stable across these two observations; its membership in a fixed “within 100ms” band was not.
-Two runs establish exposure and cost variability on these heads, not a permanent roster of ten.
+This is a cross-head comparison: run `33573600142` predates #9982, while run `33578414901` reads
+#9982's branch head. The 455ms-to-397ms change therefore mixes tree differences,
+machine-to-machine variance, and scheduling or fill-order variance; only repeated runs of one
+exact head could separate run variance from a tree change. The second run's zero rows over 400ms
+does not show that exposure closed: its same cost-dominant cluster still measured 382–397ms, with
+only 103ms of margin at its worst member. These runs establish exposure and cost variability on
+their respective heads, not a permanent roster of ten or a favorable trend.
 
 The TSV carries two independent lines that must not be interchanged. `cost_line_ms=100` is the
 completed-cost diagnostic line: 279 of 3444 rows in run `33573600142` exceeded it, with no
