@@ -1,0 +1,133 @@
+module test.claim.altra_routed_vs_populated_witness_test
+
+import std.types { Bool, List }
+import std.integer { Int }
+import product.altra_motherboard.minimal_design {
+  RevARoutedMemoryDesign, ActiveDdrTopology, DesignAdmission, DesignAdmitted, DesignRefused,
+  DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7,
+  FirstDimmOnChannel, SecondDimmOnChannel,
+  Production, EngineeringBringUp,
+  admit_routed_design, routed_population_causes,
+  DesignRefusal, PopulatedChannelIsNotRouted, PopulatedPositionIsNotRouted,
+  DebugOnlyChannelCountUnderProductionIntent, ChannelCountExceedsControllerPopulation,
+  ChannelPopulationIsNotAnAdmittedCount, ChannelPopulatedMoreThanOnce,
+  ChannelHasNoDimmPositions, DimmPositionRepeatedOnChannel, PcieLanesExceedPackage,
+}
+
+// EXECUTING EVIDENCE that routing and population are separate facts and that copper is the
+// ceiling. The motivating case is the one a single topology could not express at all: a board
+// that routes eight channels and ships four populated.
+
+fn routes_eight_populates_four() -> RevARoutedMemoryDesign {
+  RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+  }
+}
+
+fn is_admitted(a: DesignAdmission) -> Bool {
+  match a {
+    DesignAdmitted { design: _ } => true
+    DesignRefused { causes: _ } => false
+  }
+}
+
+// THE MOTIVATING CASE. Routing eight and populating four is a legitimate, common board decision,
+// and a single ActiveDdrTopology could not say it at all.
+test fn w_a_board_may_route_eight_and_populate_four() -> Bool {
+  is_admitted(a: admit_routed_design(d: routes_eight_populates_four(), intent: Production, pcie_lanes: 4))
+}
+
+// COPPER IS THE CEILING. Populating a channel that was never routed is the class this type exists
+// to make writable, and therefore refusable.
+test fn w_populating_an_unrouted_channel_refuses() -> Bool {
+  let d = RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel7],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+  }
+  !is_admitted(a: admit_routed_design(d: d, intent: Production, pcie_lanes: 4))
+}
+
+// THE SECOND POSITION IS ITS OWN IDENTITY. A board routing one DIMM per channel cannot ship two.
+test fn w_populating_an_unrouted_position_refuses() -> Bool {
+  let d = RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel, SecondDimmOnChannel],
+    },
+  }
+  !is_admitted(a: admit_routed_design(d: d, intent: Production, pcie_lanes: 4))
+}
+
+// THE ROUTED TOPOLOGY IS WHAT THE INTENT QUALIFIES, not the populated one. Routing two channels
+// under Production intent is refused even though two is a legal population of the routed set --
+// otherwise a board could route a debug-only population and hide behind a legal subset.
+test fn w_a_debug_only_ROUTED_population_refuses_under_production() -> Bool {
+  let d = RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+  }
+  !is_admitted(a: admit_routed_design(d: d, intent: Production, pcie_lanes: 4))
+    && is_admitted(a: admit_routed_design(d: d, intent: EngineeringBringUp, pcie_lanes: 4))
+}
+
+// THE REFUSAL NAMES THE OFFENDING IDENTITY, not merely that something was wrong. A subset check
+// returning one boolean would satisfy the rows above while telling a reader nothing.
+fn names_unrouted_channel(rs: List<DesignRefusal>, ordinal: Int) -> Bool {
+  fold(rs, init: false, f: fn(acc, r) {
+    acc || match r {
+      PopulatedChannelIsNotRouted { channel: n } => n == ordinal
+      PopulatedPositionIsNotRouted { position: _ } => false
+      DebugOnlyChannelCountUnderProductionIntent { selected: _ } => false
+      ChannelCountExceedsControllerPopulation { selected: _, available: _ } => false
+      ChannelPopulationIsNotAnAdmittedCount { populated: _ } => false
+      ChannelPopulatedMoreThanOnce { channel: _ } => false
+      ChannelHasNoDimmPositions => false
+      DimmPositionRepeatedOnChannel { position: _ } => false
+      PcieLanesExceedPackage { requested: _, available: _ } => false
+    }
+  })
+}
+
+test fn w_the_refusal_names_which_channel_was_unrouted() -> Bool {
+  let d = RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel7],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+  }
+  names_unrouted_channel(rs: routed_population_causes(d: d), ordinal: 7)
+    && !names_unrouted_channel(rs: routed_population_causes(d: d), ordinal: 3)
+}
+
+// NON-VACUITY. The clean design produces NO routed-population causes at all, so the refusals above
+// are discriminating rather than always-on.
+test fn w_RED_a_clean_routed_design_yields_no_subset_causes() -> Bool {
+  list_length(items: routed_population_causes(d: routes_eight_populates_four())) == 0
+}

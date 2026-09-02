@@ -47,6 +47,8 @@ type DesignRefusal
   | ChannelHasNoDimmPositions
   | DimmPositionRepeatedOnChannel { position: Int }
   | PcieLanesExceedPackage { requested: Int, available: Int }
+  | PopulatedChannelIsNotRouted { channel: Int }
+  | PopulatedPositionIsNotRouted { position: Int }
 
 // A CHANNEL HAS AN IDENTITY, AND IT IS NOT ITS ORDINAL POSITION IN A COUNT. An earlier revision
 // derived the populated set from the count by generating [0..n), which is cardinality standing
@@ -178,6 +180,8 @@ fn duplicate_position_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           ChannelPopulationIsNotAnAdmittedCount { populated: _ } => false
           ChannelHasNoDimmPositions => false
           PcieLanesExceedPackage { requested: _, available: _ } => false
+          PopulatedChannelIsNotRouted { channel: _ } => false
+          PopulatedPositionIsNotRouted { position: _ } => false
         }
       }) {
       concat(acc, [DimmPositionRepeatedOnChannel { position: dimm_slot_position_ordinal(p: p) }])
@@ -203,6 +207,8 @@ fn duplicate_channel_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           ChannelHasNoDimmPositions => false
           DimmPositionRepeatedOnChannel { position: _ } => false
           PcieLanesExceedPackage { requested: _, available: _ } => false
+          PopulatedChannelIsNotRouted { channel: _ } => false
+          PopulatedPositionIsNotRouted { position: _ } => false
         }
       }) {
       concat(acc, [ChannelPopulatedMoreThanOnce { channel: ddr_channel_ordinal(c: c) }])
@@ -298,6 +304,70 @@ fn admit_design(d: AltraMinimalMotherboard) -> DesignAdmission {
 // constrains the choice is an open question against a document nobody has read on that point,
 // carried on the source-document roster rather than settled by picking a set that looks
 // symmetric and calling it advice.
+// ROUTING IS NOT POPULATION, AND CONFLATING THEM MAKES ONE OF THEM UNRECOVERABLE. A PCB routes a
+// set of channels and positions in copper; which of those ship with a module in them is a build
+// decision taken later and changed often. ActiveDdrTopology alone answers only the second
+// question, so a design that says "four channels" cannot distinguish a board that ROUTED four --
+// permanently, in fabrication -- from a board that routed eight and populated four. Those are
+// different products with different escape problems, different layer counts and different upgrade
+// stories, and the difference is invisible at the moment it is decided and expensive afterwards.
+//
+// THE SUBSET LAW IS THE WHOLE POINT. Copper is the ceiling: a board can leave a routed slot empty,
+// and can never fill a slot it did not route. Stating the population as a topology in its own
+// right rather than as a flag on the routed one is what makes the violating case WRITABLE and
+// therefore refusable -- exactly the move the named-channel comment above describes, applied one
+// level up.
+type RevARoutedMemoryDesign {
+  routed: ActiveDdrTopology
+  initially_populated: ActiveDdrTopology
+}
+
+fn channel_is_in(cs: List<DdrChannelIdentity>, c: DdrChannelIdentity) -> Bool {
+  fold(cs, init: false, f: fn(acc, x) { acc || ddr_channel_ordinal(c: x) == ddr_channel_ordinal(c: c) })
+}
+
+fn position_is_in(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> Bool {
+  fold(ps, init: false, f: fn(acc, x) { acc || dimm_slot_position_ordinal(p: x) == dimm_slot_position_ordinal(p: p) })
+}
+
+// EVERY POPULATED IDENTITY MUST BE A ROUTED ONE, reported per offending identity rather than as a
+// single "not a subset" boolean, so the refusal names which channel or position is unroutable
+// instead of only that something is.
+fn routed_population_causes(d: RevARoutedMemoryDesign) -> List<DesignRefusal> {
+  let channel_causes = fold(d.initially_populated.populated_channels, init: [], f: fn(acc, c) {
+    if channel_is_in(cs: d.routed.populated_channels, c: c) {
+      acc
+    } else {
+      concat(acc, [PopulatedChannelIsNotRouted { channel: ddr_channel_ordinal(c: c) }])
+    }
+  })
+  let position_causes = fold(d.initially_populated.positions_per_channel, init: [], f: fn(acc, p) {
+    if position_is_in(ps: d.routed.positions_per_channel, p: p) {
+      acc
+    } else {
+      concat(acc, [PopulatedPositionIsNotRouted { position: dimm_slot_position_ordinal(p: p) }])
+    }
+  })
+  concat(channel_causes, position_causes)
+}
+
+// THE ROUTED TOPOLOGY IS THE ONE THE PACKAGE BOUNDS AND THE INTENT QUALIFIES. Admitting the
+// populated topology instead would let a board route a population the processor does not admit so
+// long as it shipped a legal subset of it, which is the fabrication decision this type exists to
+// make visible.
+fn admit_routed_design(d: RevARoutedMemoryDesign, intent: DesignIntent, pcie_lanes: Int) -> DesignAdmission {
+  let routed_design = AltraMinimalMotherboard {
+    intent: intent,
+    memory: MemoryConfiguration { topology: d.routed },
+    pcie_lanes_broken_out: pcie_lanes,
+  }
+  let causes = concat(design_causes(d: routed_design), routed_population_causes(d: d))
+  match fold(causes, init: none, f: fn(acc, c) { push_design_refusal(acc: acc, r: c) }) {
+    Absent => DesignAdmitted { design: routed_design }
+    Present { value: s } => DesignRefused { causes: s }
+  }
+}
+
 data altra_1p_minimum: AltraMinimalMotherboard = AltraMinimalMotherboard {
   intent: Production,
   memory: MemoryConfiguration {
