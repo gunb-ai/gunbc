@@ -356,16 +356,30 @@ test fn git_metadata_file_transport_is_present_in_the_legacy_specimen_and_absent
     && !transports_git_metadata_as_files(unit: live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1()))
 }
 
-// ONE FORWARD PASS OVER SUCCESSIVELY SHORTER SUFFIXES. The previous comparison computed four
-// offsets by splitting from the start each time, copying the full emitted apply script repeatedly;
-// the required floor measured that shape at 505ms against its 500ms CPU line. This decision keeps
-// the same two authorable reversals while asking the production artifact's order only once.
+fn later_segments_contain_third_after_second(segments: List<String>, second: String, third: String) -> Bool {
+  if segments.count() == 0 {
+    false
+  } else {
+    let segment = segments.first()
+    if string_contains(s: segment, pattern: second) {
+      any(split(s: segment, sep: second).skip(n: 1), part => string_contains(s: part, pattern: third))
+        || any(segments.skip(n: 1), part => string_contains(s: part, pattern: third))
+    } else {
+      later_segments_contain_third_after_second(segments: segments.skip(n: 1), second: second, third: third)
+    }
+  }
+}
+
+// ONE FORWARD PASS OVER SEGMENTS AFTER THE FIRST MARKER. The previous comparison computed four
+// offsets by splitting from the start each time, and its first replacement rebuilt two large
+// suffix strings; the required floor measured those shapes at 505ms and 511ms against a 500ms CPU
+// line. These fixed literal markers do not contain one another, so a match cannot straddle a split
+// boundary and the segments can be searched directly without either large join.
 fn three_markers_in_order(text: String, first: String, second: String, third: String) -> Bool {
-  let after_first = join(split(s: text, sep: first).skip(n: 1), first)
-  let after_second = join(split(s: after_first, sep: second).skip(n: 1), second)
+  let after_first = split(s: text, sep: first).skip(n: 1)
   string_contains(s: text, pattern: first)
-    && string_contains(s: after_first, pattern: second)
-    && string_contains(s: after_second, pattern: third)
+    && any(after_first, part => string_contains(s: part, pattern: second))
+    && later_segments_contain_third_after_second(segments: after_first, second: second, third: third)
 }
 
 // BOTH ORDERS ARE AUTHORABLE INPUTS TO THE DECISION. The production apply must install the binary
