@@ -621,3 +621,51 @@ One discrepancy recorded, not resolved: each run's terminal counters report
 the eight-plus-one this audit was scoped to. The remaining identities are not in
 these runs' counters; their provenance needs naming before they can be audited
 or cleared.
+
+## The ownership instrument now exists, and this document's whole method is superseded
+
+Everything above infers ownership from timings — variance screens, cluster
+tightness, isolation runs, order reversals — and concludes, correctly, that a
+census built from timings alone cannot see whose work a cost is. That limit is
+now lifted, and by an instrument the floor already emits on every required run.
+
+`claim_executor` turns `GUNBC_RECOMPUTE_TRACE` on unconditionally, and the
+required floor writes **`required_floor_cross_claim_demand.tsv`** beside
+`required_floor_claim_cost.tsv`. Its row is a producer identity with the count of
+claims that demanded it, the count of times it was actually evaluated, the
+modules it spans, and its declaration site. A producer with claims equal to evals
+was re-derived once per claim and shared with nobody — the question every screen
+in this document was a proxy for, answered directly and at identity grain rather
+than inferred from a distribution's shape.
+
+So the standing procedure for this class is: read the two artifacts, not the log
+and not a sandbox. Both are named in the log's own announcements, with their
+caveats in band — `[cross-claim-demand]` states that its cost column is
+inclusive of callees and must not be summed, and that its printed head is a
+preview ordered by recomputation rather than a candidate roster.
+
+**Both log renderings are capped at 25 rows and both say so in a trailer.** That
+trailer is load-bearing: on run 33668368846 the `[over-cost]` head carries 25
+rows while `required_floor_claim_cost.tsv` carries 295 over the 100ms line. A
+census taken from the log is the log's ranking read as the population —
+`instrument_output_read_as_subject_content`, observed twice on this lane.
+
+### Eval steps, not milliseconds, is the within-module discriminator
+
+`required_floor_claim_cost.tsv` carries `eval_steps` beside the two clocks. Steps
+are deterministic where a millisecond is not, so a set of rows landing at
+near-identical step counts is evidence of one derivation repeated, and cannot be
+explained by a quiet runner — which is exactly the confound that demoted the
+variance screen and the cluster-tightness prior above. Applied per module to run
+33668368846's over-line population, the majority of that CPU sits in modules
+whose rows agree on steps to within a few percent: shared derivation, where
+splitting re-attributes the fold and changes no real cost
+(`witness_row_cost` `witness_decomposition_does_not_reduce_entry_cost_note`).
+
+The remedy for that bucket is enrolment on
+`v2.workflow.floor_pure_producer_share`, whose admission criterion is measured
+serve cost below measured recompute cost — the demand census answers only the
+recompute half, and a present-versus-absent join of `required_floor_claim_cost.tsv`
+across two runs answers the other. A row that fails the serve half comes back out;
+the roster's header already records one such exclusion with the capability that
+would retire it.
