@@ -28,8 +28,7 @@ import gunbc.scm.repository_envelope { empty_repository }
 import gunbc.scm.log { CommitLog }
 import gunbc.scm.status { RepositoryStatus }
 import gunbc.scm.read_command { ScmReadResult, scm_read_log, scm_read_status }
-import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response, scm_init_cli_response }
-import gunbc.scm.init { ScmInitOutcome, initialize_repository }
+import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response }
 
 data plain_terminal_capability: RenderCapability = RenderCapability {
   color: false,
@@ -74,17 +73,3 @@ fn scm_status(path: String) -> CliWireResponse {
   scm_status_response(result: scm_read_status(path: path, pending: empty_proposal()))
 }
 
-// INIT REFUSES AN OCCUPIED PATH. The decision lives in gunbc.scm.init, not here: whether there is
-// anything to destroy is a fact about the repository, and a CLI module deciding it would put policy
-// in the realization layer. This module supplies the terminal capability and nothing else.
-fn scm_init_response(outcome: ScmInitOutcome) -> CliWireResponse {
-  scm_init_cli_response(
-    outcome: outcome,
-    target: plain_terminal_target,
-    capability: plain_terminal_capability
-  )
-}
-
-fn scm_init(directory: String, name: String) -> CliWireResponse {
-  scm_init_response(outcome: initialize_repository(directory: directory, name: name))
-}

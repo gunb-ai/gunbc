@@ -18192,8 +18192,28 @@ pub fn classify_cli_wire(
                         }
                     }
                 };
+                // PRESENT IS NOT THE SAME AS VALID, and accepting the field merely because it
+                // exists was the remaining hole. `classify_exit` answers `NotProcessExit` for a
+                // value that is not an exit at all, and routing that into `Printable` meant
+                // `cli_wire_outcome` set `stdout: Some(bytes)` and then exited 2 -- so the host
+                // PRINTED bytes carried by a value that does not inhabit the declared wire shape,
+                // and a consumer reading stdout got partial output from a refused response. That is
+                // the fabricated plausible output DESIGN section 5 forbids, reached by a value
+                // claiming a type it does not inhabit. Found by review 58518 on gunbc#9864.
+                //
+                // Only a real exit keeps the response printable; anything else is a malformed
+                // payload and refuses with nothing on stdout.
                 let exit = match ctx.field(fields, "exit") {
-                    Some(v) => classify_exit(v, ctx),
+                    Some(v) => match classify_exit(v, ctx) {
+                        ExitClass::NotProcessExit { type_name } => {
+                            return CliWireClass::MalformedCliWire {
+                                detail: format!(
+                                    "CliWirePrintable{{exit: `{type_name}` is not a ProcessExit}}"
+                                ),
+                            }
+                        }
+                        valid => valid,
+                    },
                     None => {
                         return CliWireClass::MalformedCliWire {
                             detail: "CliWirePrintable{exit: <absent>}".to_string(),
@@ -18441,6 +18461,37 @@ mod cli_wire_classify_tests {
             vec![("bytes", str_value("x"))],
         );
         assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    // A PRESENT-BUT-INVALID EXIT IS MALFORMED, NOT PRINTABLE. This is the case review 58518 found:
+    // the field exists, so the earlier version accepted it and let the host print `bytes` before
+    // exiting 2 on the shape error. The assertion that nothing reaches stdout is the one that
+    // matters -- a classification that stayed `Printable` would still refuse, but only AFTER
+    // emitting untrusted partial output.
+    #[test]
+    fn a_printable_response_whose_exit_is_not_a_process_exit_is_malformed_and_prints_nothing() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![
+                ("bytes", str_value("half an answer\n")),
+                ("exit", str_value("not an exit at all")),
+            ],
+        );
+        let class = classify_cli_wire(&v, &c);
+        assert!(
+            is_malformed(&class),
+            "a present but invalid exit must be malformed, not printable"
+        );
+        let out = super::cli_wire_outcome(class, "scm_log_cli_response")
+            .expect("a malformed wire response produces an outcome");
+        assert_eq!(out.status, 2);
+        assert!(
+            out.stdout.is_none(),
+            "bytes carried by a value that does not inhabit the wire shape must never be printed"
+        );
     }
 
     #[test]
