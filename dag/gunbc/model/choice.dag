@@ -151,110 +151,87 @@ fn serving_runtime_equal(a: ServingRuntimeIdentity, b: ServingRuntimeIdentity) -
   content_hash_eq_structural(left: a.materialization, right: b.materialization)
 }
 
-// TWO CONFIGURATION GRAINS, because one digest cannot answer for both and conflating them was a
-// measured inconsistency in this module's own fixture: a single argv digest was carried for readings
-// at 131,072, 262,144, 400,000 and 1,048,576 tokens, while the resolved argv encodes the context and
-// the slot count through `-c` and `-np`. One exact full-argv digest cannot identify four points.
+// THE CONFIGURATION IS AN ENVIRONMENT PROJECTION, NOT AN ARGV ONE, AND THIS MODULE HAD IT WRONG.
 //
-// FIXED MODE is the argv with the VARIED axes removed -- the flags held constant across a
-// measurement series (`--flash`, `--load-mode`, the model path). It is what two readings must share
-// before one can bound the other, and it is DERIVED from the observed argv rather than authored.
+// The predecessor hashed a runner's argv, split into a fixed mode and a varied remainder, and the
+// fixture that established the fleet's readings wrote that argv as
+// `ollama serve --num-ctx 400000 --parallel 1`. Measured on the actual fleet, that launch form does
+// not exist. Both serving hosts run bare `ollama serve` and take their entire configuration through
+// systemd `Environment=` directives. So every runner on the fleet hashed to the SAME argv, and two
+// units differing in context ceiling and slot count -- the two axes this selector exists to reason
+// about -- received one identity. The key discriminated nothing on the only fleet it has.
 //
-// EXACT CONFIGURATION is the whole argv of ONE measured point. It belongs on the observation, not on
-// the realization, because it changes per reading by construction.
+// It is replaced rather than widened, because argv was never the right subject: the authority for
+// what configures an Ollama server is `extdeps.ollama.server_env`, which already carries the
+// variables as typed axes and renders their canonical wire.
 //
-// Both are derived by the functions below from an argv the observer actually read. There is no mint
-// that accepts a bare hash: a digest with no argv behind it is the claim-shaped input this repair
-// exists to remove.
-type FixedRuntimeModeIdentity sole_constructor {
-  mode_digest: Fnv1a64Structural
+// TYPED VALUES FIRST, WIRE SECOND. The identity is not parsed out of an observed string -- there is
+// no string-to-integer admission in std, and minting one here would be a second numeric authority.
+// It runs the other way: the configuration is held as the typed values the authority declares, and
+// its identity is the hash of the CANONICAL WIRE those values render to through
+// `ollama_context_length_env_assignment` and `ollama_num_parallel_env_assignment`. An observed unit
+// is admitted by rendering a candidate and requiring exact equality with what the host reports, so
+// the comparison happens in the authority's own spelling and this module never parses anything.
+//
+// THE PARTITION IS OWNED HERE, NOT SUPPLIED BY THE CALLER. The predecessor took a `varied_flags`
+// list as an argument, which let any caller erase a causal axis from the fixed mode and thereby
+// authorize evidence transport across it. The closed projection below is the whole partition: the
+// context ceiling and the slot count are the varied, orderable axes; the runtime materialization
+// carries the fixed ones; the bind address is deployment identity and is deliberately absent,
+// because it cannot change fit; and the models root is artifact-resolution provenance, already
+// subsumed once the loaded artifact digest is joined.
+type OllamaEffectiveConfiguration sole_constructor {
+  context_ceiling: TokenCount
+  serving_slots: PositiveSlotCount
 }
 
-fn argv_digest_of(argv: List<NonEmptyStr>) -> Fnv1a64Structural {
-  fold(argv, content_hash_atom(value: "argv" as NonEmptyStr), (acc, word) =>
-    content_hash_combine_structural(left: acc, right: content_hash_atom(value: word)))
+fn ollama_effective_configuration(
+  context_ceiling: TokenCount,
+  serving_slots: PositiveSlotCount,
+) -> OllamaEffectiveConfiguration {
+  OllamaEffectiveConfiguration {
+    context_ceiling: context_ceiling,
+    serving_slots: serving_slots,
+  }
 }
 
-// THE SECOND HALF OF THE ARGV SPLIT. FixedRuntimeModeIdentity answers "is this the same runner
-// mode", which is what lets a reading taken at one point speak for another. It deliberately drops
-// the varied flags, so by construction it CANNOT say which point a reading was taken at.
-//
-// That leaves a gap the source described and the types did not close: an author could derive a fixed
-// mode from one argv and then write any context_depth and concurrent_sessions beside it. The tuple
-// (fixed mode, authored depth, authored sessions) does not establish that all three came from one
-// observed invocation. So the exact full-argv identity is carried BY THE OBSERVATION, and both it
-// and the realization's fixed mode are minted from ONE argv list in one call -- they cannot be
-// authored independently.
-//
-// WHAT THIS STILL DOES NOT DO, named rather than implied: the depth and session values are not
-// PARSED out of the argv and checked against the authored ones. std has no string-to-integer
-// admission, so there is nothing to parse them with, and inventing a parser inside this module would
-// be a second numeric authority. The class therefore sits at mechanically-preventable rather than
-// structurally-impossible, and its next-rung trigger is a std integer-admission capability
-// sufficient to read a flag value back as a Nat -- at which point the point fields are derived from
-// the argv and the mismatched state has no constructor.
 type ExactRuntimeConfigurationIdentity sole_constructor {
-  argv_digest: Fnv1a64Structural
+  wire_digest: Fnv1a64Structural
 }
 
-fn exact_runtime_configuration_from_argv(
-  argv: List<NonEmptyStr>,
+fn exact_runtime_configuration_identity(
+  configuration: OllamaEffectiveConfiguration,
 ) -> ExactRuntimeConfigurationIdentity {
-  ExactRuntimeConfigurationIdentity { argv_digest: argv_digest_of(argv: argv) }
+  ExactRuntimeConfigurationIdentity {
+    wire_digest: content_hash_combine_structural(
+      left: content_hash_atom(
+        value: ollama_context_length_env_assignment(
+          default_context: configuration.context_ceiling)),
+      right: content_hash_atom(
+        value: ollama_num_parallel_env_assignment(slots: configuration.serving_slots))),
+  }
 }
 
 fn exact_runtime_configuration_equal(
   a: ExactRuntimeConfigurationIdentity,
   b: ExactRuntimeConfigurationIdentity,
 ) -> Bool {
-  content_hash_eq_structural(left: a.argv_digest, right: b.argv_digest)
+  content_hash_eq_structural(left: a.wire_digest, right: b.wire_digest)
 }
 
-// The varied flags AND their values are DROPPED, not blanked, so the mode digest is invariant to
-// their values by construction rather than by the caller remembering to pass matching ones.
-//
-// A LEFT SCAN, NOT AN INDEX LOOKUP. The predecessor walked positions and read argv[i-1] through an
-// at_index helper whose out-of-range arm returned `"" as NonEmptyStr` -- a value that is not a
-// NonEmptyStr at all, fabricated to keep a total signature. The scan carries the one bit that
-// lookup was reconstructing: whether the PREVIOUS word was a varied flag, so its value is the word
-// to drop. Nothing can go out of range, so there is no arm to fabricate for.
-type ArgvScan {
-  kept: List<NonEmptyStr>
-  drop_next: Bool
-}
-
-fn argv_scan_step(acc: ArgvScan, word: NonEmptyStr, varied: List<NonEmptyStr>) -> ArgvScan {
-  if acc.drop_next {
-    ArgvScan { kept: acc.kept, drop_next: false }
-  } else {
-    if word_in(roster: varied, word: word) {
-      ArgvScan { kept: acc.kept, drop_next: true }
-    } else {
-      ArgvScan { kept: flat_map([acc.kept, [word]], g => g), drop_next: false }
-    }
-  }
-}
-
-fn drop_varied_flags(argv: List<NonEmptyStr>, varied: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  fold(argv, ArgvScan { kept: [], drop_next: false }, (acc, word) =>
-    argv_scan_step(acc: acc, word: word, varied: varied)).kept
-}
-
-fn word_in(roster: List<NonEmptyStr>, word: NonEmptyStr) -> Bool {
-  length(filter(roster, r => (r as String) == (word as String))) > 0
-}
-
-fn fixed_runtime_mode_from_argv(
-  argv: List<NonEmptyStr>,
-  varied_flags: List<NonEmptyStr>,
-) -> FixedRuntimeModeIdentity {
-  FixedRuntimeModeIdentity {
-    mode_digest: argv_digest_of(argv: drop_varied_flags(argv: argv, varied: varied_flags)),
-  }
-}
-
-fn fixed_runtime_mode_equal(a: FixedRuntimeModeIdentity, b: FixedRuntimeModeIdentity) -> Bool {
-  content_hash_eq_structural(left: a.mode_digest, right: b.mode_digest)
+// THE ADMISSION TEST FOR AN OBSERVED UNIT, and it is a rendering rather than a parse. A host reports
+// the two assignment lines it is running; a candidate typed configuration renders its own; equality
+// of the canonical wire admits it. A host whose lines do not match any candidate is not coerced into
+// one -- it has no configuration identity here, which is the fail-closed answer.
+fn observed_configuration_matches(
+  candidate: OllamaEffectiveConfiguration,
+  observed_context_assignment: NonEmptyStr,
+  observed_parallel_assignment: NonEmptyStr,
+) -> Bool {
+  (ollama_context_length_env_assignment(default_context: candidate.context_ceiling) as String)
+    == (observed_context_assignment as String)
+    && (ollama_num_parallel_env_assignment(slots: candidate.serving_slots) as String)
+      == (observed_parallel_assignment as String)
 }
 
 type ServingRealizationIdentity sole_constructor {
@@ -262,7 +239,6 @@ type ServingRealizationIdentity sole_constructor {
   quant_label: NonEmptyStr
   artifact_digest: ContentHash
   runtime: ServingRuntimeIdentity
-  fixed_mode: FixedRuntimeModeIdentity
 }
 
 // The only mint. sole_constructor already refuses a record literal outside this module; this is the
@@ -272,14 +248,12 @@ fn serving_realization_identity(
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
   runtime: ServingRuntimeIdentity,
-  fixed_mode: FixedRuntimeModeIdentity,
 ) -> ServingRealizationIdentity {
   ServingRealizationIdentity {
     release_id: release_id,
     quant_label: quant_label,
     artifact_digest: artifact_digest,
     runtime: runtime,
-    fixed_mode: fixed_mode,
   }
 }
 
@@ -349,10 +323,7 @@ fn compare_serving_realization(
         axis: "artifact digest" as NonEmptyStr,
         a: a.artifact_digest, b: b.artifact_digest),
     ),
-    later: realization_comparison_then(
-      earlier: compare_bool_axis(same: serving_runtime_equal(a: a.runtime, b: b.runtime)),
-      later: compare_bool_axis(same: fixed_runtime_mode_equal(a: a.fixed_mode, b: b.fixed_mode)),
-    ),
+    later: compare_bool_axis(same: serving_runtime_equal(a: a.runtime, b: b.runtime)),
   )
 }
 
@@ -369,6 +340,30 @@ fn realization_comparison_fold<T>(
     RealizationDifferent => different
     RealizationIncomparable { axis: _ } => incomparable
   }
+}
+
+// THE CONFIGURATION IDENTITY IS CONSUMED HERE, WHICH IS THE POINT OF MINTING IT. A carried key that
+// no filter reads changes no answer, and a provenance field that changes no answer is decoration --
+// the same defect, one level in, as carrying an argv digest that every runner on the fleet shared.
+// Two readings taken under different context ceilings or different slot counts are readings of
+// different deployments: the slot count multiplies KV cache, so a footprint measured at one slot
+// count is not a footprint at another, and the ceiling bounds what either could have been asked.
+fn observation_configuration_matches(
+  o: OllamaRunnerMemoryObservation,
+  configuration: OllamaEffectiveConfiguration,
+) -> Bool {
+  exact_runtime_configuration_equal(
+    a: exact_runtime_configuration_identity(configuration: o.configuration),
+    b: exact_runtime_configuration_identity(configuration: configuration))
+}
+
+fn prefill_configuration_matches(
+  o: FreshPrefillObservation,
+  configuration: OllamaEffectiveConfiguration,
+) -> Bool {
+  exact_runtime_configuration_equal(
+    a: exact_runtime_configuration_identity(configuration: o.configuration),
+    b: exact_runtime_configuration_identity(configuration: configuration))
 }
 
 fn serving_realization_equal(a: ServingRealizationIdentity, b: ServingRealizationIdentity) -> Bool {
@@ -453,7 +448,7 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 // on one node does not describe another. Both now join.
 type FreshPrefillObservation sole_constructor {
   realization: ServingRealizationIdentity
-  configuration: ExactRuntimeConfigurationIdentity
+  configuration: OllamaEffectiveConfiguration
   node: HostIdentity
   concurrent_sessions: Nat
   depth: TokenCount
@@ -465,23 +460,28 @@ fn observed_fresh_prefill(
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
   runtime: ServingRuntimeIdentity,
-  argv: List<NonEmptyStr>,
-  varied_flags: List<NonEmptyStr>,
+  configuration: OllamaEffectiveConfiguration,
   node: HostIdentity,
   concurrent_sessions: Nat,
   depth: TokenCount,
   rate: TokensPerSecond,
-) -> FreshPrefillObservation {
-  FreshPrefillObservation {
-    realization: serving_realization_identity(
-      release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
-      runtime: runtime,
-      fixed_mode: fixed_runtime_mode_from_argv(argv: argv, varied_flags: varied_flags)),
-    configuration: exact_runtime_configuration_from_argv(argv: argv),
-    node: node,
-    concurrent_sessions: concurrent_sessions,
-    depth: depth,
-    rate: rate,
+) -> FreshPrefillObservation? {
+  if point_within_configuration(
+    configuration: configuration,
+    context_depth: depth,
+    concurrent_sessions: concurrent_sessions) {
+    Present { value: FreshPrefillObservation {
+      realization: serving_realization_identity(
+        release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
+        runtime: runtime),
+      configuration: configuration,
+      node: node,
+      concurrent_sessions: concurrent_sessions,
+      depth: depth,
+      rate: rate,
+    } }
+  } else {
+    none
   }
 }
 
@@ -515,9 +515,11 @@ fn fresh_prefill_at_point(
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
+  configuration: OllamaEffectiveConfiguration,
 ) -> List<FreshPrefillObservation> {
   filter(observations, o =>
     host_identity_eq(a: o.node, b: node)
+      && prefill_configuration_matches(o: o, configuration: configuration)
       && o.concurrent_sessions == hot_sessions
       && token_count_value(t: o.depth) >= token_count_value(t: floor))
 }
@@ -534,24 +536,41 @@ fn first_prefill_incomparable_axis(
     })
 }
 
+// A NUMERIC FOLD IS NOT AN ARM, so "a comparable row exists" is the wrong materiality test here.
+//
+// The memory axis takes a conservative WITNESS: one qualifying success establishes fit and a second
+// cannot unestablish it, so an incomparable success beside a comparable one changes nothing. Prefill
+// takes a conservative AGGREGATE -- the SLOWEST qualifying rate -- and an additional row can lower
+// it. The falsifier is concrete: a comparable reading at 135 tok/s, an incomparable one at 50, and a
+// floor of 100. If the incomparable row is another encoding of this realization the conservative
+// rate is 50 and the candidate is REJECTED; if it belongs to another realization the rate is 135 and
+// the candidate is ADMITTED. Resolving the identity flips the top-level verdict, so the honest
+// answer is that it cannot be resolved.
+//
+// A sharper rule could admit when including the incomparable row could not move the minimum -- a
+// reading slower than every comparable one only matters if it is slow enough to cross the floor. The
+// simple rule is chosen deliberately: it is the conservative one, its cost is a refusal rather than
+// a wrong answer, and the sharper version needs the floor threaded into an identity check where it
+// does not belong. Any relevant incomparable prefill reading stalls.
 fn fresh_prefill_qualification(
   observations: List<FreshPrefillObservation>,
   realization: ServingRealizationIdentity,
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
+  configuration: OllamaEffectiveConfiguration,
 ) -> PrefillQualification {
-  match slowest_fresh_rate_at_floor(
-    observations: observations, realization: realization,
-    node: node, hot_sessions: hot_sessions, floor: floor) {
-    Present { value: r } => PrefillRateQualified { rate: r }
+  match first_prefill_incomparable_axis(
+    observations: fresh_prefill_at_point(
+      observations: observations, node: node,
+      hot_sessions: hot_sessions, floor: floor, configuration: configuration),
+    realization: realization) {
+    Present { value: a } => PrefillIncomparable { axis: a }
     Absent =>
-      match first_prefill_incomparable_axis(
-        observations: fresh_prefill_at_point(
-          observations: observations, node: node,
-          hot_sessions: hot_sessions, floor: floor),
-        realization: realization) {
-        Present { value: a } => PrefillIncomparable { axis: a }
+      match slowest_fresh_rate_at_floor(
+        observations: observations, realization: realization,
+        node: node, hot_sessions: hot_sessions, floor: floor, configuration: configuration) {
+        Present { value: r } => PrefillRateQualified { rate: r }
         Absent => PrefillUnmeasured
       }
   }
@@ -564,6 +583,7 @@ fn prefill_qualification_at_floor(
   hot_sessions: Nat,
   floor: TokenCount,
   regime: ServingRegime,
+  configuration: OllamaEffectiveConfiguration,
 ) -> PrefillQualification {
   match regime {
     WarmContinuation => PrefillUnmeasured
@@ -571,7 +591,7 @@ fn prefill_qualification_at_floor(
     FreshSessionPrefill =>
       fresh_prefill_qualification(
         observations: observations, realization: realization,
-        node: node, hot_sessions: hot_sessions, floor: floor)
+        node: node, hot_sessions: hot_sessions, floor: floor, configuration: configuration)
   }
 }
 
@@ -582,10 +602,11 @@ fn prefill_rate_at_floor(
   hot_sessions: Nat,
   floor: TokenCount,
   regime: ServingRegime,
+  configuration: OllamaEffectiveConfiguration,
 ) -> TokensPerSecond? {
   match prefill_qualification_at_floor(
     observations: observations, realization: realization, node: node,
-    hot_sessions: hot_sessions, floor: floor, regime: regime) {
+    hot_sessions: hot_sessions, floor: floor, regime: regime, configuration: configuration) {
     PrefillRateQualified { rate: r } => Present { value: r }
     PrefillIncomparable { axis: _ } => none
     PrefillUnmeasured => none
@@ -622,10 +643,12 @@ fn slowest_fresh_rate_at_floor(
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
+  configuration: OllamaEffectiveConfiguration,
 ) -> TokensPerSecond? {
   let deep = filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
       && host_identity_eq(a: o.node, b: node)
+      && prefill_configuration_matches(o: o, configuration: configuration)
       && o.concurrent_sessions == hot_sessions
       && token_count_value(t: o.depth) >= token_count_value(t: floor))
   fold(deep, none, (worst, o) =>
@@ -694,7 +717,7 @@ type RunnerAttemptOutcome
 
 type OllamaRunnerMemoryObservation sole_constructor {
   realization: ServingRealizationIdentity
-  configuration: ExactRuntimeConfigurationIdentity
+  configuration: OllamaEffectiveConfiguration
   node: HostIdentity
   instrument: NonEmptyStr
   context_depth: TokenCount
@@ -702,35 +725,62 @@ type OllamaRunnerMemoryObservation sole_constructor {
   outcome: RunnerAttemptOutcome
 }
 
-// ONE ARGV, BOTH GRAINS. The caller hands over the argv the runner was actually launched with and
-// the flags it varies; the fixed mode inside the realization and the exact configuration on the
-// observation are both derived here, from that one list. There is no surface on which they can
-// disagree, because there is no surface on which they are separately supplied.
+// A POINT MUST BE ONE ITS CONFIGURATION COULD HAVE PRODUCED, AND THE MINT REFUSES OTHERWISE.
+//
+// Carrying a configuration identity beside an authored point is provenance without a join: the
+// predecessor's constructor took an argv and a depth and a session count and bound them into one
+// record, which proved they arrived in one call and proved nothing about whether they described each
+// other. A configuration for an 8,192-token ceiling and one slot could carry a reading at 1,048,576
+// tokens and four sessions, and every downstream filter believed it.
+//
+// The relation that makes them one fact is a BOUND, and it needs no parser to check. A runner
+// configured with a context ceiling cannot have served a deeper attempt than that ceiling, and one
+// configured with N slots cannot have observed more than N concurrent sessions. Both comparisons are
+// on the typed values the authority already declares, so nothing is read back out of a string.
+//
+// The mint is therefore partial. An out-of-bound tuple has no observation, rather than an
+// observation nobody checked -- and because the carrier is sole_constructor, there is no second way
+// to build one.
 fn observed_memory_attempt(
   release_id: ReleaseIdentity,
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
   runtime: ServingRuntimeIdentity,
-  argv: List<NonEmptyStr>,
-  varied_flags: List<NonEmptyStr>,
+  configuration: OllamaEffectiveConfiguration,
   node: HostIdentity,
   instrument: NonEmptyStr,
   context_depth: TokenCount,
   concurrent_sessions: Nat,
   outcome: RunnerAttemptOutcome,
-) -> OllamaRunnerMemoryObservation {
-  OllamaRunnerMemoryObservation {
-    realization: serving_realization_identity(
-      release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
-      runtime: runtime,
-      fixed_mode: fixed_runtime_mode_from_argv(argv: argv, varied_flags: varied_flags)),
-    configuration: exact_runtime_configuration_from_argv(argv: argv),
-    node: node,
-    instrument: instrument,
+) -> OllamaRunnerMemoryObservation? {
+  if point_within_configuration(
+    configuration: configuration,
     context_depth: context_depth,
-    concurrent_sessions: concurrent_sessions,
-    outcome: outcome,
+    concurrent_sessions: concurrent_sessions) {
+    Present { value: OllamaRunnerMemoryObservation {
+      realization: serving_realization_identity(
+        release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
+        runtime: runtime),
+      configuration: configuration,
+      node: node,
+      instrument: instrument,
+      context_depth: context_depth,
+      concurrent_sessions: concurrent_sessions,
+      outcome: outcome,
+    } }
+  } else {
+    none
   }
+}
+
+fn point_within_configuration(
+  configuration: OllamaEffectiveConfiguration,
+  context_depth: TokenCount,
+  concurrent_sessions: Nat,
+) -> Bool {
+  token_count_value(t: context_depth)
+    <= token_count_value(t: configuration.context_ceiling)
+    && concurrent_sessions <= positive_slot_count_value(slots: configuration.serving_slots)
 }
 
 // WHAT THE QUALIFYING ATTEMPTS SAY, reconciled by TYPE rather than by byte magnitude.
@@ -778,10 +828,12 @@ fn served_qualifying_observations(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
+  configuration: OllamaEffectiveConfiguration,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
       && host_identity_eq(a: o.node, b: node)
+      && observation_configuration_matches(o: o, configuration: configuration)
       && token_count_value(t: o.context_depth) >= token_count_value(t: floor)
       && o.concurrent_sessions >= hot_sessions
       && outcome_is_served(o: o))
@@ -793,10 +845,12 @@ fn refused_at_exact_point(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
+  configuration: OllamaEffectiveConfiguration,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
       && host_identity_eq(a: o.node, b: node)
+      && observation_configuration_matches(o: o, configuration: configuration)
       && token_count_value(t: o.context_depth) == token_count_value(t: floor)
       && o.concurrent_sessions == hot_sessions
       && outcome_is_memory_refusal(o: o))
@@ -810,10 +864,12 @@ fn failed_otherwise_at_exact_point(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
+  configuration: OllamaEffectiveConfiguration,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
       && host_identity_eq(a: o.node, b: node)
+      && observation_configuration_matches(o: o, configuration: configuration)
       && token_count_value(t: o.context_depth) == token_count_value(t: floor)
       && o.concurrent_sessions == hot_sessions
       && outcome_is_other_failure(o: o))
@@ -926,38 +982,82 @@ fn first_axis_in(
     })
 }
 
+// ARM PRESENCE IS NOT THE WHOLE MATERIALITY TEST -- THE CARRIED RECEIPT COUNTS TOO.
+//
+// The first version of this rule asked only whether a comparable row already occupied the arm, on
+// the reasoning that a second success cannot unestablish fit. True for the ARM, false for the
+// RECEIPT the arm carries. Two exact-point non-memory failures, one comparable with cause "z" and
+// one incomparable with cause "a": the arm is occupied either way, so the old rule suppressed the
+// incomparable row and reported "z". But the canonical order is total over the payload, so if that
+// row is the same realization it SORTS FIRST and the answer is "a". Identity resolution changes
+// MemoryAttemptFailedForNonMemoryCause, which is verdict-visible data -- exactly the class the total
+// ordering was introduced to stabilize, discarded before the ordering could see it.
+//
+// So a relevant incomparable row is load-bearing when either could hold:
+//   it would INTRODUCE an arm that is otherwise empty, or
+//   it would WIN the canonical order against the comparable row currently carrying that arm.
+// Anything else genuinely cannot move the answer and does not stall.
+fn incomparable_rows_in(
+  rows: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+) -> List<OllamaRunnerMemoryObservation> {
+  filter(rows, o =>
+    match incomparable_axis_of(o: o, realization: realization) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+fn arm_deciding_axis(
+  arm_rows: List<OllamaRunnerMemoryObservation>,
+  comparable_rows: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+) -> NonEmptyStr? {
+  let incomparable = incomparable_rows_in(rows: arm_rows, realization: realization)
+  match shallowest_of(observations: comparable_rows) {
+    Absent => first_axis_in(observations: incomparable, realization: realization)
+    Present { value: carrier } =>
+      first_axis_in(
+        observations: filter(incomparable, o =>
+          observation_order_key_before(a: o, b: carrier)),
+        realization: realization)
+  }
+}
+
 fn deciding_incomparable_axis(
   observations: List<OllamaRunnerMemoryObservation>,
   realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
+  configuration: OllamaEffectiveConfiguration,
 ) -> NonEmptyStr? {
   let relevant = filter(observations, o =>
     host_identity_eq(a: o.node, b: node)
+      && observation_configuration_matches(o: o, configuration: configuration)
       && participates_at_point(o: o, floor: floor, hot_sessions: hot_sessions))
   let served_rows = filter(relevant, o => outcome_is_served(o: o))
   let refused_rows = filter(relevant, o => outcome_is_memory_refusal(o: o))
   let broken_rows = filter(relevant, o => outcome_is_other_failure(o: o))
   let comparable_served = served_qualifying_observations(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node)
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
   let comparable_refused = refused_at_exact_point(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node)
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
   let comparable_broken = failed_otherwise_at_exact_point(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node)
-  let from_served =
-    if length(comparable_served) > 0 { none }
-    else { first_axis_in(observations: served_rows, realization: realization) }
-  let from_refused =
-    if length(comparable_refused) > 0 { none }
-    else { first_axis_in(observations: refused_rows, realization: realization) }
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
+  let from_served = arm_deciding_axis(
+    arm_rows: served_rows, comparable_rows: comparable_served, realization: realization)
+  let from_refused = arm_deciding_axis(
+    arm_rows: refused_rows, comparable_rows: comparable_refused, realization: realization)
   let from_broken =
-    if length(comparable_served) > 0 || length(comparable_refused) > 0
-      || length(comparable_broken) > 0 { none }
-    else { first_axis_in(observations: broken_rows, realization: realization) }
+    if length(comparable_served) > 0 || length(comparable_refused) > 0 { none }
+    else {
+      arm_deciding_axis(
+        arm_rows: broken_rows, comparable_rows: comparable_broken, realization: realization)
+    }
   match from_served {
     Present { value: a } => Present { value: a }
     Absent =>
@@ -1111,14 +1211,15 @@ fn memory_fit_evidence(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
+  configuration: OllamaEffectiveConfiguration,
 ) -> MemoryFitEvidence {
   match deciding_incomparable_axis(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node) {
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration) {
     Present { value: axis } => MemoryFitIdentityIncomparable { axis: axis }
     Absent => decidable_memory_fit_evidence(
       observations: observations, realization: realization,
-      floor: floor, hot_sessions: hot_sessions, node: node)
+      floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
   }
 }
 
@@ -1128,16 +1229,17 @@ fn decidable_memory_fit_evidence(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
+  configuration: OllamaEffectiveConfiguration,
 ) -> MemoryFitEvidence {
   let served = served_qualifying_observations(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node)
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
   let refused = refused_at_exact_point(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node)
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
   let broken = failed_otherwise_at_exact_point(
     observations: observations, realization: realization,
-    floor: floor, hot_sessions: hot_sessions, node: node)
+    floor: floor, hot_sessions: hot_sessions, node: node, configuration: configuration)
   match shallowest_of(observations: served) {
     Present { value: s } =>
       match shallowest_of(observations: refused) {
@@ -1165,6 +1267,7 @@ type ServingConstraints {
   hot_sessions: Nat
   prefill_floor: TokensPerSecond
   prefill_regime: ServingRegime
+  configuration: OllamaEffectiveConfiguration
 }
 
 // ============================ THE DECISION ============================
@@ -1302,6 +1405,7 @@ fn evaluate_candidate(
     floor: constraints.context_floor,
     hot_sessions: constraints.hot_sessions,
     node: node,
+    configuration: constraints.configuration,
   ) {
     MemoryFitIdentityIncomparable { axis: a } =>
       unanswerable(candidate: candidate, missing: EvidenceIdentityIncomparable { axis: a })
@@ -1345,6 +1449,7 @@ fn evaluate_candidate(
               hot_sessions: constraints.hot_sessions,
               floor: constraints.context_floor,
               regime: constraints.prefill_regime,
+              configuration: constraints.configuration,
             ) {
               PrefillIncomparable { axis: a } =>
                 unanswerable(candidate: candidate, missing: EvidenceIdentityIncomparable { axis: a })
