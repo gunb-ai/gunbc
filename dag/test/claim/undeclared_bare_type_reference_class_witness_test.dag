@@ -10,7 +10,8 @@ import tools.multi_module_compile_fixture {
   FixtureCompileCompleted,
   FixtureSource,
   fixture_source,
-  compile_fixture
+  compile_fixture,
+  fixture_has_class
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -78,12 +79,12 @@ fn ubtr_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
 // that says the HARNESS broke rather than the subject -- cannot render as "zero diagnostics" on
 // either side. Both readers return false on it, so a ragged manifest fails BOTH claims rather than
 // silently satisfying the control.
-fn ubtr_diagnosed(o: MultiModuleCompileFixtureOutcome) -> Bool {
+fn ubtr_diagnosed_as(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
   match o {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      count(rows) > 0,
+      fixture_has_class(rows: rows, wanted: wanted),
     FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      count(rows) > 0,
+      fixture_has_class(rows: rows, wanted: wanted),
     FixtureInstrumentRefused { cause: c } => false
   }
 }
@@ -101,18 +102,12 @@ fn ubtr_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // nowhere. The definer is in the manifest, so the declaration EXISTS -- what is missing is only the
 // import edge, which is exactly the corpus shape.
 //
-// IT ASSERTS THAT THE COMPILER SAYS SOMETHING, NOT WHICH THING IT SAYS, and that is a deliberate
-// rung rather than a hedge. Two arms are live here and they are not the same fact: the definer is
-// supplied, so the manifest pool may resolve the name by the very global-uniqueness rule under test
-// and answer with the advisory UnlistedImportUse, or the narrower closure may refuse outright with
-// UnresolvedType. Naming one of them without having observed which fires is the failure where a
-// diagnostic name is asserted and the mechanism behind it is silent. The pair still discriminates:
-// zero diagnostics on the control against a non-empty population on the subject, over the SAME
-// bytes plus one import line. NEXT-RUNG TRIGGER: read the emitted diagnostic class off this claim's
-// own floor run and pin it here by name; until then this file measures that the reference is seen,
-// not how it is classified.
+// THE CLASS IS PINNED, not inferred from the refusal shape. Measured through this fixture's own
+// floor run, the supplied definer remains in the manifest pool, global uniqueness resolves the
+// bare name, and the missing edge is classified as UnlistedImportUse. UnresolvedType would mean
+// the declaration itself was unavailable, a different mechanism that must not satisfy this claim.
 test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
-  ubtr_diagnosed(ubtr_run(ubtr_user_without_import_source))
+  ubtr_diagnosed_as(ubtr_run(ubtr_user_without_import_source), "UnlistedImportUse")
 }
 
 // THE POSITIVE CONTROL, and it is the same bytes plus one import line. Without it the red above is
@@ -121,5 +116,5 @@ test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
 // red side.
 test fn the_same_source_with_the_import_line_compiles_clean() -> Bool {
   ubtr_completed_clean(ubtr_run(ubtr_user_with_import_source))
-    && !ubtr_diagnosed(ubtr_run(ubtr_user_with_import_source))
+    && !ubtr_diagnosed_as(ubtr_run(ubtr_user_with_import_source), "UnlistedImportUse")
 }

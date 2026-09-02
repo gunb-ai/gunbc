@@ -16,7 +16,8 @@ type GeneratedArtifact
   | GitattributesArtifact
   | RoadmapArtifact
   | DesignArtifact
-  | DesignLedgersArtifact
+  | DesignFailureModesArtifact
+  | DesignRungDropsArtifact
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
   | GeneratedArtifactMergeDriverArtifact
@@ -34,7 +35,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -99,7 +100,8 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
     DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
-    DesignLedgersArtifact => ArtifactLocation { directory: "docs", name: "design-ledgers.md" }
+    DesignFailureModesArtifact => ArtifactLocation { directory: "docs", name: "design-failure-modes.md" }
+    DesignRungDropsArtifact => ArtifactLocation { directory: "docs", name: "design-rung-drops.md" }
     GithooksPrePushArtifact => ArtifactLocation { directory: ".githooks", name: "pre-push" }
     GithooksPreCommitArtifact => ArtifactLocation { directory: ".githooks", name: "pre-commit" }
     GeneratedArtifactMergeDriverArtifact =>
@@ -156,7 +158,8 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
-    DesignLedgersArtifact => CommitRequired { consumer: ProjectDocumentation }
+    DesignFailureModesArtifact => CommitRequired { consumer: ProjectDocumentation }
+    DesignRungDropsArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan } =>
       match plan.projection {
         PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
@@ -206,7 +209,8 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
-    DesignLedgersArtifact => match b { DesignLedgersArtifact => true  _ => false }
+    DesignFailureModesArtifact => match b { DesignFailureModesArtifact => true  _ => false }
+    DesignRungDropsArtifact => match b { DesignRungDropsArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
     GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }

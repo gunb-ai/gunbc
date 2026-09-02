@@ -38,7 +38,7 @@ import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node
 
 import std.types { is_container_type }
 
-import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_decl_file }
+import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_realization, type_realization_decision, DeclarationIdentityAbsent }
 
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -570,7 +570,7 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
 
-      let suffix = match literal_suffix(target: target, dag_name: "String", decl_file: "") {
+      let suffix = match literal_suffix(decision: type_realization_decision(target: target, dag_name: "String", provenance: DeclarationIdentityAbsent)) {
         Present { value: sfx } => sfx
         Absent => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
       }
@@ -580,9 +580,9 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
     LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
     LitNull => emit_keyword(key: "null", target: target)
     LitSymbol { value: s } =>
-      let suffix = match literal_suffix(target: target, dag_name: "Symbol", decl_file: "") {
+      let suffix = match literal_suffix(decision: type_realization_decision(target: target, dag_name: "Symbol", provenance: DeclarationIdentityAbsent)) {
         Present { value: sfx } => sfx
-        Absent => match literal_suffix(target: target, dag_name: "String", decl_file: "") {
+        Absent => match literal_suffix(decision: type_realization_decision(target: target, dag_name: "String", provenance: DeclarationIdentityAbsent)) {
           Present { value: sfx } => sfx
           Absent => emit_error_expr(message: "missing TypeCheckpoint for Symbol literal suffix", target: target)
         }
@@ -678,7 +678,7 @@ fn named_type_vars_in_node(n: Node) -> List<String> {
 
 fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
-  let base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
+  let base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
   let explicit_params = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
   let inferred_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n) } else { [] }
   let param_names = concat(explicit_params, inferred_params)
@@ -701,7 +701,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       _ => false
     }
     if n_is_type_var && is_named_type_var {
-      return coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
+      return coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
     }
     let label = if n_is_error { "CompilerError" } else { "TypeVariable" }
     let spec = language_spec(target: target)
@@ -760,7 +760,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     if n.type_annotation != none {
       let refined_str = match n.children |> first {
         Present { value: base } => render_node_type(n: base, target: target, shared_types: shared_types, source_indices: source_indices)
-        Absent => coerce_primitive_type(target: target, dag_name: "Refined", decl_file: "")
+        Absent => coerce_primitive_type(decision: type_realization_decision(target: target, dag_name: "Refined", provenance: DeclarationIdentityAbsent), dag_name: "Refined")
       }
       return refined_str
     }
@@ -818,11 +818,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     } else if param_count > 0 {
       let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices))
       let spec = language_spec(target: target)
-      concat(coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n)), spec.type_arg_open, param_strs |> join(separator: ", "), spec.type_arg_close)
+      concat(coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn), spec.type_arg_open, param_strs |> join(separator: ", "), spec.type_arg_close)
     } else if tn == tuple_type_name {
       render_tuple_parts(parts: [], target: target)
     } else {
-      coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
+      coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
     }
     let bare_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return bare_str
@@ -843,9 +843,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       key_type: k,
       val_type: v,
       fallback_base: coerce_primitive_type(
-        target: target,
-        dag_name: tn,
-        decl_file: type_reference_decl_file(n: n)
+        decision: type_reference_realization(n: n, dag_name: tn, target: target),
+        dag_name: tn
       ),
       target: target
     )
@@ -861,7 +860,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     let base = if is_container {
       emit_container(name: tn, inner: child_str, target: target)
     } else {
-      let type_base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
+      let type_base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
       let spec = language_spec(target: target)
       concat(type_base, spec.type_arg_open, child_str, spec.type_arg_close)
     }
@@ -873,7 +872,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
     return multi_tuple_str
   }
-  let type_base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
+  let type_base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
   let args_joined = child_strs |> join(separator: ", ")
   let spec = language_spec(target: target)
   let base = concat(type_base, spec.type_arg_open, args_joined, spec.type_arg_close)
@@ -1039,6 +1038,7 @@ type FileVerb
   = FileRead
   | FileWrite
   | FileWriteOwnerOnly
+  | FileWriteCreateNew
   | FileDelete
   | FileList
 
@@ -1125,13 +1125,14 @@ fn file_result_channel_of_key(key: String) -> FileResultChannel? {
 // put a fact extdeps owns into the compiler (section 3).
 //
 // Total by construction over the admitted set: `file_emission_verb_refusal` has
-// already rejected any verb that is not delete, list or write_owner_only, so the
+// already rejected any verb that is not delete, list, write_owner_only or write_create_new, so the
 // final arm is the floor beneath that wall rather than a second opinion.
 fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileVerb {
   match file_transport_declared_verb(t: t, source_indices: source_indices) {
     Present { value: v } =>
       if v == file_transport_verb_delete { FileDelete }
       else if v == file_transport_verb_list { FileList }
+      else if v == file_transport_verb_write_create_new { FileWriteCreateNew }
       else { FileWriteOwnerOnly }
     Absent =>
       if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { FileWrite }
@@ -2390,7 +2391,7 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
         "' has no file realization handler, so no operation carrying `transport file` is emitted for it")
     FileVerbNotModeled { verb: v } =>
       concat("file transport verb '", v,
-        "' is not a modeled action -- the modeled verbs are delete, list and write_owner_only, and an absent verb means write when the operation declares a `content` input and read otherwise")
+        "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only and write_create_new, and an absent verb means write when the operation declares a `content` input and read otherwise")
     FilePathNotStaticallyRenderable =>
       "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering"
     FileWriteMissingContentInput { verb: v } =>
@@ -2407,6 +2408,8 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
 data file_transport_verb_delete: String = "delete"
 data file_transport_verb_list: String = "list"
 data file_transport_verb_write_owner_only: String = "write_owner_only"
+
+data file_transport_verb_write_create_new: String = "write_create_new"
 
 fn file_transport_declared_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match transport_verb(t: t, source_indices: source_indices) {
@@ -2473,7 +2476,7 @@ fn file_emission_verb_refusal(op_node: Node, verb: String?, source_indices: Map<
     Present { value: v } =>
       if v == file_transport_verb_delete || v == file_transport_verb_list {
         none
-      } else if v == file_transport_verb_write_owner_only {
+      } else if v == file_transport_verb_write_owner_only || v == file_transport_verb_write_create_new {
         if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { none }
         else { Present { value: FileWriteMissingContentInput { verb: v } } }
       } else {

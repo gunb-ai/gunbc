@@ -7,7 +7,7 @@ use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
+pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
@@ -1055,7 +1055,6 @@ pub fn add_emit_item_summary(
     {
         let decl_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
         let alias_rhs = crate::v1_compiler_infer_types::resolved_type(item.clone());
-        let item_decl_file = crate::v1_compiler_coercion::decl_identity_file(item.clone());
         let alias_rhs_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), alias_rhs.clone());
         let is_type_alias = (((((((decl_name.clone() != "".to_string())
@@ -1066,10 +1065,12 @@ pub fn add_emit_item_summary(
             && ((item.children.clone().len() as i64) == 0))
             && (alias_rhs_name.clone() != "Unit".to_string()));
         let is_structural_alias = if is_type_alias.clone() {
-            match crate::v1_compiler_coercion::lookup_checkpoint(
-                RenderTarget::Rust,
-                decl_name.clone(),
-                item_decl_file.clone(),
+            match crate::v1_compiler_coercion::realized_checkpoint(
+                crate::v1_compiler_coercion::declaration_realization(
+                    item.clone(),
+                    decl_name.clone(),
+                    RenderTarget::Rust,
+                ),
             ) {
                 Some(_) => false,
                 std::option::Option::None => true,

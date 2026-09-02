@@ -1111,6 +1111,7 @@ mod witness_report_line_tests {
             wall_nanos: wall_ms * 1_000_000,
             cpu_nanos: cpu_ms * 1_000_000,
             eval_self_nanos: 0,
+            eval_steps: 0,
             sample_count: 1,
         }
     }
