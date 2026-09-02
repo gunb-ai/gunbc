@@ -356,17 +356,16 @@ test fn git_metadata_file_transport_is_present_in_the_legacy_specimen_and_absent
     && !transports_git_metadata_as_files(unit: live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1()))
 }
 
-fn text_marker_offset(text: String, marker: String) -> Int {
-  match split(s: text, sep: marker).first() {
-    Absent => 0 - 1
-    Present { value: prefix } => length(prefix)
-  }
-}
-
-fn marker_precedes(text: String, earlier: String, later: String) -> Bool {
-  let a = text_marker_offset(text: text, marker: earlier)
-  let b = text_marker_offset(text: text, marker: later)
-  a >= 0 && b >= 0 && a < b
+// ONE FORWARD PASS OVER SUCCESSIVELY SHORTER SUFFIXES. The previous comparison computed four
+// offsets by splitting from the start each time, copying the full emitted apply script repeatedly;
+// the required floor measured that shape at 505ms against its 500ms CPU line. This decision keeps
+// the same two authorable reversals while asking the production artifact's order only once.
+fn three_markers_in_order(text: String, first: String, second: String, third: String) -> Bool {
+  let after_first = split(s: text, sep: first).last()
+  let after_second = split(s: after_first, sep: second).last()
+  after_first != text
+    && after_second != after_first
+    && string_contains(s: after_second, pattern: third)
 }
 
 // BOTH ORDERS ARE AUTHORABLE INPUTS TO THE DECISION. The production apply must install the binary
@@ -377,10 +376,9 @@ test fn repository_convergence_is_ordered_after_binary_and_before_readback() -> 
   let converge = "--function repository_converge_srv1_owner_wet"
   let readback = "--function repository_convergence_readback_wet"
   let apply = witness_apply_script()
-  marker_precedes(text: apply, earlier: binary, later: converge)
-    && marker_precedes(text: apply, earlier: converge, later: readback)
-    && !marker_precedes(text: join([converge, binary, readback], "\n"), earlier: binary, later: converge)
-    && !marker_precedes(text: join([binary, readback, converge], "\n"), earlier: converge, later: readback)
+  three_markers_in_order(text: apply, first: binary, second: converge, third: readback)
+    && !three_markers_in_order(text: join([converge, binary, readback], "\n"), first: binary, second: converge, third: readback)
+    && !three_markers_in_order(text: join([binary, readback, converge], "\n"), first: binary, second: converge, third: readback)
 }
 
 data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for #7011/receipt 29928424523: the tree-sync restart is synchronous and precedes the poll-based unit_diagnosis capture, so a bare restart failure carries no WHY. The apply script must fall through to the same unit-status-tail authority the roadmap-unit diagnosis already uses (never a second format), append it to stderr, and still fail the step — never proceed as if the restart had succeeded."
