@@ -18,6 +18,7 @@ import gunbc.workflow_capability_closure {
 import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
@@ -738,6 +739,25 @@ fn witness_toolchain_filesystem_end_probe_step() -> Step {
   witness_toolchain_filesystem_probe_step(phase: "end", condition: "always()")
 }
 
+// A WALL, NOT PART OF THE INSTRUMENT. The filesystem probe above must be total because it reports
+// evidence at a boundary; this step must refuse because an unset isolated home means the job can
+// share a mutable toolchain with another runner slot. Keeping the decision separate from the
+// recorder prevents either fact from weakening the other: a missing stat cannot trip this wall,
+// and a missing home cannot be rendered as a merely observational `unset` and allowed onward.
+fn witness_toolchain_homes_isolated_guard_step() -> Step {
+  RunStep {
+    name: Present { value: "Require isolated toolchain homes" },
+    id: none,
+    run: concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "!cancelled()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 // THE BUILD LANE'S RUN STEP. Same binary, same mode, same source roots, one word different --
 // which is the whole point of the lane being a parameter rather than a second invocation.
 //
@@ -1064,6 +1084,11 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: witness_floor_build_script()),
     items: [
       WitnessFloorBoundStep {
+        step: witness_toolchain_homes_isolated_guard_step(),
+        role: capability_neutral,
+        step_name: "Require isolated toolchain homes",
+      },
+      WitnessFloorBoundStep {
         step: witness_floor_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
@@ -1213,6 +1238,11 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: build_lane_build_script()),
     items: [
+      WitnessFloorBoundStep {
+        step: witness_toolchain_homes_isolated_guard_step(),
+        role: capability_neutral,
+        step_name: "Require isolated toolchain homes",
+      },
       WitnessFloorBoundStep {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),

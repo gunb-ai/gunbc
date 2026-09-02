@@ -64,6 +64,10 @@ jobs:
         run: |
           cargo build --release -p v1-compiler --bins
           cargo build --release -p v1-stage0-runtime -p v1-stage0-std-core -p v1-stage0-std-surface -p v1-stage0-extdeps-languages -p v1-stage0-v1-artifact -p v1-stage0-v1-infer -p v1-stage0-emit-core
+      - name: Require isolated toolchain homes
+        run: |
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+        if: "!cancelled()"
       - name: "Required CI: build lane (phases named by the run, not by this label)"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -125,6 +129,10 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+      - name: Require isolated toolchain homes
+        run: |
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+        if: "!cancelled()"
       - name: "Required CI: witnesses lane (parse, witness floor)"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
