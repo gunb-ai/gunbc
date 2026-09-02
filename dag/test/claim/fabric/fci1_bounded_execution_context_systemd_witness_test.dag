@@ -2,7 +2,7 @@ module test.claim.fabric.fci1_bounded_execution_context_systemd_witness_test
 
 import std.types { Bool, list_length }
 import std.measure { byte_size_count }
-import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, MemoryHigh }
+import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.fci1_bounded_execution_context {
   Fci1BoundedExecutionContextBuilt, fci1_bounded_execution_context,
@@ -13,15 +13,15 @@ import gunbc.fci1_bounded_execution_context_systemd {
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
 fn property_is_working_directory(property: SystemdRunProperty) -> Bool {
-  match property.property { WorkingDirectoryProperty => true _ => false }
+  systemd_unit_property_wire(property: property.property) == "WorkingDirectory"
 }
 
 fn property_is_memory_max(property: SystemdRunProperty) -> Bool {
-  match property.property { MemoryMax => true _ => false }
+  systemd_unit_property_wire(property: property.property) == "MemoryMax"
 }
 
 fn property_is_memory_high(property: SystemdRunProperty) -> Bool {
-  match property.property { MemoryHigh => true _ => false }
+  systemd_unit_property_wire(property: property.property) == "MemoryHigh"
 }
 
 test fn fci1_systemd_projection_is_the_exact_closed_population() -> Bool {
