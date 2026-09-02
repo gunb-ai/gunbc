@@ -5,6 +5,12 @@ import std.types { NonEmptyStr, String, List, Bool }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+
+type SystemdRunProperty {
+  property: SystemdUnitProperty,
+  value: NonEmptyStr,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -27,17 +33,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data systemd_run_authority: ExternalAuthority = extdeps_external_authority_anchor
 
-fn systemd_run_transient_unit_argv(unit: NonEmptyStr, command_argv: List<String>) -> List<String> {
-  fold(
-    command_argv,
-    init: ["systemd-run", concat("--unit=", unit as String), "--collect", "--"],
-    f: (acc, arg) => list_push(acc, arg),
-  )
+fn systemd_run_transient_unit_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
+  let with_properties = fold(properties, init: ["systemd-run", concat("--unit=", unit as String), "--collect"], f: (acc, setting) => list_push(acc, concat("--property=", concat(systemd_unit_property_wire(property: setting.property) as String, concat("=", setting.value as String)))));
+  let with_separator = list_push(with_properties, "--");
+  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
 }
 
 service systemd.SystemdRun {
   operation RunTransient {
-    input { unit: NonEmptyStr, command_argv: List<String> }
+    input { unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
