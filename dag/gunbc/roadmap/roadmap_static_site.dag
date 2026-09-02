@@ -277,7 +277,7 @@ fn roadmap_site_readback_curl_digest_check(url: String, expected: Fnv1a64Structu
 }
 
 fn sh_single_quote(s: String) -> String {
-  concat("'", concat(replace(s: s, delimiter: "'", replacement: "'\\''"), "'"))
+  concat("'", concat(replace(s: s, from: "'", to: "'\\''"), "'"))
 }
 
 fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {

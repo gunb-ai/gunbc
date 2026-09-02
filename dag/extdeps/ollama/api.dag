@@ -5,6 +5,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.llm.anthropic_messages_api {
+  MessagesApiImplementation,
+  VersionHeaderAcceptedUnused,
+  current_api_version
+}
 
 // OLLAMA AS ITS OWN UPSTREAM AUTHORITY, per the external-upstream-decomposition rule: an
 // independently versioned product gets its own extdeps module rather than a variant in a generic
@@ -33,9 +39,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// The endpoints this repository actually reaches. Deliberately NOT the full API surface: modeling
-// endpoints with no consumer would be inventory rather than grounding, and each row here is one a
-// gunbc consumer calls.
+// The endpoints this repository reaches or has declared it will reach. Deliberately NOT the full
+// API surface: modeling endpoints with no bearing here would be inventory rather than grounding.
+// ApiV1Messages is the one row whose gunbc caller does not exist yet — it is named by
+// ollama_messages_api_conformance, which is what makes it a modeled fact rather than inventory, and
+// its caller is the harness the dedicated-coding-harness plan builds at its own gate.
 type OllamaEndpoint
   = ApiVersion
   | ApiTags
@@ -43,6 +51,7 @@ type OllamaEndpoint
   | ApiPull
   | ApiGenerate
   | ApiPs
+  | ApiV1Messages
 
 fn ollama_endpoint_path(endpoint: OllamaEndpoint) -> String {
   match endpoint {
@@ -52,6 +61,7 @@ fn ollama_endpoint_path(endpoint: OllamaEndpoint) -> String {
     ApiPull => "/api/pull"
     ApiGenerate => "/api/generate"
     ApiPs => "/api/ps"
+    ApiV1Messages => "/v1/messages"
   }
 }
 
@@ -67,6 +77,7 @@ fn ollama_endpoint_method(endpoint: OllamaEndpoint) -> OllamaHttpMethod {
     ApiPull => OllamaPost
     ApiGenerate => OllamaPost
     ApiPs => OllamaGet
+    ApiV1Messages => OllamaPost
   }
 }
 
@@ -126,3 +137,45 @@ fn strip_sha256_prefix(text: String) -> String {
 fn ollama_model_content_hash(digest: OllamaModelDigest) -> ContentHash {
   as_content_hash_cryptographic(digest: digest.digest)
 }
+
+// OLLAMA SERVES THE ANTHROPIC MESSAGES SPECIFICATION, AND THE SHAPE IS NOT RE-MODELED HERE. The
+// request and response bodies at this endpoint are extdeps.llm.anthropic_messages_api's subject;
+// this module owns only the fact that this product serves them, at which of its own endpoints, and
+// under which version binding. Restating the content blocks here would fork the shape the way
+// modeling them inside a vendor module did before they were hoisted.
+//
+// The version binding is the arm that matters to a caller: upstream documents that the
+// anthropic-version header is ACCEPTED BUT NOT USED, so an accepted request carries no evidence
+// that the revision asked for is the revision served. VersionHeaderAcceptedUnused is that fact, and
+// it is why the axis is a coproduct rather than a header string every implementation restates.
+data ollama_messages_api_conformance: MessagesApiImplementation = MessagesApiImplementation {
+  implementation: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ollama.api",
+      decl_name: "OllamaEndpoint",
+      field: WholeDeclaration
+    }
+  },
+  spec_version: current_api_version,
+  version_binding: VersionHeaderAcceptedUnused {},
+  citation: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "github.com/ollama/ollama/blob/main/docs/api/anthropic-compatibility.mdx"
+    }
+  }
+}
+
+// CONFORMANCE IS NOT COVERAGE, and this row keeps the difference readable rather than letting the
+// row above be read as "the whole specification is served". Upstream's compatibility page lists the
+// request fields and features it supports; which parts of the modeled shape fall outside that list
+// is unmodeled, so a caller cannot yet be refused structurally for sending one.
+data structural_coverage_gap_ollama_messages_api_supported_surface: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ollama_messages_api_conformance" },
+      Residue { description: "supported_request_field_and_content_block_subset_not_modeled_per_implementation" }
+    ],
+    trigger: "the messages specification carries a per-implementation supported-surface projection that refuses an unsupported field at construction rather than at the wire"
+  }
+]

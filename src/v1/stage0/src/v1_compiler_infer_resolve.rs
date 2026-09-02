@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_resolve
 
 use self::AliasKind::*;
+use self::UnitVariantPhantomLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -40,18 +41,18 @@ use crate::v1_std_core::MatchPattern::Wildcard;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
-    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, join_optional_cardinality, kernel_span,
-    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
-    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
-    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    expr_call_func_at, expr_method_name_at, field_from_key_property_name, field_init_node_name_at,
+    field_init_node_value, field_node_cardinality, field_node_default_value, field_node_from_key,
+    field_node_name_at, field_node_type_expr, foreach_variable_at, generic_param_name_at, intern,
+    is_compiler_error, is_container_type, is_kernel_type, is_local_transport,
+    join_optional_cardinality, kernel_span, let_binding_name_at, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_resolved_param_node, make_resource_use_node, make_text_part_node,
+    make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, resource_use_name_at, resource_use_resource, string_type,
+    transport_request_body, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -62,39 +63,74 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UnitVariantPhantomLookup {
+    UnitVariantPhantomPresent { variant: Rc<Node> },
+    UnitVariantPhantomAbsent,
+    UnitVariantPhantomEvidenceUnavailable,
+}
+impl UnitVariantPhantomLookup {
+    pub fn variant(&self) -> Rc<Node> {
+        match self {
+            UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: __val, .. } => {
+                __val.clone()
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
+                panic!("no variant on unit variant")
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+                panic!("no variant on unit variant")
+            }
+        }
+    }
+}
+
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
-) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
-        Some(contribs) => {
-            let total = Rc::new(v1_rt::map_values(&contribs))
-                .iter()
-                .cloned()
-                .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
-                    (acc + c.count.clone())
-                });
-            if (total.clone() == 1) {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
-                        if (c.count.clone() == 1) {
-                            __result.push(c);
+) -> Rc<UnitVariantPhantomLookup> {
+    if !env.unit_variant_index_observed.clone() {
+        Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable)
+    } else {
+        match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
+            Some(contribs) => {
+                let total = Rc::new(v1_rt::map_values(&contribs))
+                    .iter()
+                    .cloned()
+                    .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
+                        (acc + c.count.clone())
+                    });
+                if (total.clone() == 1) {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
+                            if (c.count.clone() == 1) {
+                                __result.push(c);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(single) => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomPresent {
+                                variant: single.variant.clone(),
+                            })
+                        }
+                        std::option::Option::None => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
                         }
                     }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(single) => Some(single.variant.clone()),
-                    std::option::Option::None => std::option::Option::None,
+                } else {
+                    Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
                 }
-            } else {
-                std::option::Option::None
+            }
+            std::option::Option::None => {
+                Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
             }
         }
-        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1854,14 +1890,21 @@ Rc::new(NodeResolveResult {
     diagnostics: Rc::new(vec![]),
 })
                                                     } else {
-                                                        match lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone())) {
-    Some(phantom) => Rc::new(NodeResolveResult {
+                                                        match (*lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
+    UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: phantom, .. } => Rc::new(NodeResolveResult {
     resolved: phantom.clone(),
     diagnostics: Rc::new(vec![]),
 }),
-    std::option::Option::None => Rc::new(NodeResolveResult {
+    UnitVariantPhantomLookup::UnitVariantPhantomAbsent => Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()), n.span.clone()), module_name.clone())]),
+}),
+    UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable {
+    name: crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()),
+    span: n.span.clone(),
+}), module_name.clone())]),
 }),
 }
                                                     }
@@ -2020,7 +2063,7 @@ pub fn resolve_field(
                         if (crate::v1_std_core::field_init_node_name_at(
                             p.clone(),
                             env.source_indices.clone(),
-                        ) == "from_key".to_string())
+                        ) == field_from_key_property_name())
                         {
                             __result.push(p);
                         }

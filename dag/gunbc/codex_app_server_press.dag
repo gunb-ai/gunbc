@@ -1331,7 +1331,7 @@ fn codex_credential_liveness_from_rate_trip(
       CodexCredentialLivenessUnobserved { reason: m }
     AccountTripNativeCauseNumericCode { code: c } =>
       CodexCredentialLivenessUnobserved {
-        reason: concat("account/rateLimits/read json-rpc error code ", to_string(n: c), "") as NonEmptyStr,
+        reason: concat("account/rateLimits/read json-rpc error code ", to_string(value: c), "") as NonEmptyStr,
       }
     AccountTripNativeCauseMessageUnreadable =>
       CodexCredentialLivenessUnobserved {

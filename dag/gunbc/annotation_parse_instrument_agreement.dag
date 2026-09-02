@@ -3,7 +3,7 @@ module gunbc.annotation_parse_instrument_agreement
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import std.measure { second, ByteSize, byte_size, byte_size_count }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.disposition { Disposition, Terminal, SingleAuthority }
+import std.disposition { Disposition, Terminal }
 import extdeps.posix.rusage { RusageMaxrssObservation, RusageChildren }
 import extdeps.linux.rusage { linux_rusage_maxrss_unit }
 import gunbc.emit_stage_blocking_population_census {
@@ -28,8 +28,7 @@ import gunbc.emit_stage_blocking_population_census {
 // TREE AND ITS REVISION ALONE, and a receipt that omits which build produced it is not a
 // measurement of anything a reader can return to.
 data annotation_parse_instrument_agreement_disposition: Disposition = Terminal {
-  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that the two PARSE ENTRY POINTS in this repository reach one admission seam, that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. The standing enforcement of annotation grain is the required CI parse phase, which folds every authored .dag through the same seam on every push; this module adds no wall beside it and does not weaken it.",
-  authority: SingleAuthority
+  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that the two PARSE ENTRY POINTS in this repository reach one admission seam, that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. The standing enforcement of annotation grain is the required CI parse phase, which folds every authored .dag through the same seam on every push; this module adds no wall beside it and does not weaken it."
 }
 
 // ── WHICH PARSE EACH ENTRY POINT TAKES ────────────────────────────────────────────────────────

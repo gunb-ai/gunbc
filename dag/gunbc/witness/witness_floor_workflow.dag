@@ -15,7 +15,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { list_map }
+import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -55,7 +55,7 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
@@ -688,49 +688,58 @@ fn witness_floor_precondition() -> String {
 
 // AN INSTRUMENT, NOT A CHECK. It records and it never refuses.
 //
-// `spawn rustfmt: No such file or directory (os error 2)` refused a required run on 2026-08-22 and
-// the message reports the syscall and NOTHING about the environment that produced it. The failure
-// destroys its own evidence, so every occurrence is as unreadable as the last: two sessions
-// produced three mutually incompatible readings from it in one night (a per-host fact, a runner
-// lottery, a missing component), and all three were refuted by data neither reading had. The
-// rustup toolchain reported `component rustfmt is up to date` in the same job that could not spawn
-// it, so a bare PATH lookup found neither a rustup shim nor a toolchain binary -- and no run, red
-// or green, records which of those exists.
+// `rustc` and `rustfmt` have both vanished after successful use in the same job. The syscall
+// message reports absence but neither when nor why the file disappeared, so it cannot distinguish
+// disk pressure, age-based cleanup and another runner's initialization. A PATH/toolchain listing
+// added after the build answered a different question and was silent when setup itself failed.
 //
-// THIS IS ALSO WHY IT RUNS ON GREEN JOBS. There is no baseline: nobody knows what a WORKING job's
-// PATH, shim directory or toolchain list looks like either, so a failed run's environment could
-// not be compared against anything. A zero is readable only beside a nonzero, and today there is
-// neither.
-//
-// IT IS GUARDED ONLY ON `!cancelled()`, deliberately weaker than witness_floor_precondition, which
-// additionally requires the build to have succeeded. A build failure is precisely a case where the
-// environment is in question, so gating the recorder on the build would blind it exactly when it
-// is wanted.
-//
-// EVERY PROBE IS TOTAL BY CONSTRUCTION -- each falls back to a printed marker rather than a nonzero
-// exit, so the step cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
+// EVERY PROBE IS TOTAL BY CONSTRUCTION -- fallbacks and output-consuming pipelines turn absent
+// files, commands and filesystems into prefixed readings rather than nonzero exits, so the step
+// cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
 // `continue-on-error` is a step that MAY report a verdict and has been told to be ignored, the
 // escape-hatch shape DESIGN 5 forbids. A step with no verdict to give is a different thing.
-fn witness_toolchain_environment_probe_script() -> String {
+// THIS INSTRUMENT IS TEMPORARY. Its readings distinguish the three live eviction hypotheses:
+// falling free blocks/inodes identifies pressure reclamation; old mtimes plus wall-clock/uptime
+// identify age or periodic cleanup; and an end disappearance coincident with another job's start
+// on the same host/slot identifies runner-initiated cleanup. The start observation is deliberately
+// the FIRST step, before toolchain_home_isolation_step legitimately removes the previous job's
+// homes. The end observation is deliberately the LAST step and uses `always()`: the failing runs
+// are the subject, so a success-conditioned end observation would erase the evidence it exists to
+// collect. An empty start population is still evidence: setup can fail before creating a new
+// toolchain, and the first probe records what the previous job left before isolation deletes it.
+// Every output line has one prefix and a phase so logs can be joined across jobs/runs.
+//
+// DIRECTORY MTIME IS THE EVENT-TIME PROXY. Binary state at two boundaries leaves a deletion
+// window as wide as the job; unlink updates the containing directory's mtime, narrowing the join
+// against another job start or a periodic cleanup boundary to seconds without a background
+// sampler. Both present and absent parents are rendered, so removal of the whole tree cannot look
+// like a probe that failed to run.
+//
+// Shell remains a §6 tell, bounded by the explicit condition below rather than permanent workflow
+// furniture. Runner microVM isolation is independently sufficient because it makes another job's
+// cleanup incapable of reaching this filesystem even before the particular deleter is known.
+data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible")
+
+fn witness_toolchain_filesystem_probe_script(phase: String) -> String {
   concat(
-    "echo \"host=$(hostname) runner=$\{RUNNER_NAME:-unset}\"\n",
+    concat("# ", concat(dissolution_description(condition: toolchain_filesystem_probe_dissolution_condition), "\n")),
     concat(
-      "echo \"PATH=$PATH\"\n",
+      concat("GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=", concat(phase, "'\n")),
       concat(
-        "which -a rustfmt || echo \"which rustfmt: absent from PATH\"\n",
+        "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=$\{RUNNER_NAME:-unset}\"\n",
         concat(
-          "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
+          "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=$\{RUNNER_TEMP:-unset} rustup_home=$\{RUSTUP_HOME:-unset} cargo_home=$\{CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)\"\n",
           concat(
-            concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
+            "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)\"\n",
             concat(
-            "ls -l \"$CARGO_HOME/bin\" || echo \"cargo bin dir: absent\"\n",
-            concat(
-              "rustup which rustfmt || echo \"rustup which rustfmt: no answer\"\n",
+              "df -Pk \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
               concat(
-                "rustup toolchain list || echo \"rustup toolchain list: no answer\"\n",
-                "rustup default || echo \"rustup default: no answer\"\n"
+                "df -Pik \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
+                concat(
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustc \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustfmt \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin/cargo; do if [ -e \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n",
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin; do if [ -d \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n"
+                )
               )
-            )
             )
           )
         )
@@ -739,11 +748,38 @@ fn witness_toolchain_environment_probe_script() -> String {
   )
 }
 
-fn witness_toolchain_environment_probe_step() -> Step {
+fn witness_toolchain_filesystem_probe_step(phase: String, condition: String) -> Step {
   RunStep {
-    name: Present { value: "Record the toolchain environment" },
+    name: Present { value: concat("Record runner filesystem at job ", phase) },
     id: none,
-    run: witness_toolchain_environment_probe_script(),
+    run: witness_toolchain_filesystem_probe_script(phase: phase),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: condition },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn witness_toolchain_filesystem_start_probe_step() -> Step {
+  witness_toolchain_filesystem_probe_step(phase: "start", condition: "always()")
+}
+
+fn witness_toolchain_filesystem_end_probe_step() -> Step {
+  witness_toolchain_filesystem_probe_step(phase: "end", condition: "always()")
+}
+
+// A WALL, NOT PART OF THE INSTRUMENT. The filesystem probe above must be total because it reports
+// evidence at a boundary; this step must refuse because an unset isolated home means the job can
+// share a mutable toolchain with another runner slot. Keeping the decision separate from the
+// recorder prevents either fact from weakening the other: a missing stat cannot trip this wall,
+// and a missing home cannot be rendered as a merely observational `unset` and allowed onward.
+fn witness_toolchain_homes_isolated_guard_step() -> Step {
+  RunStep {
+    name: Present { value: "Require isolated toolchain homes" },
+    id: none,
+    run: concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -1030,6 +1066,11 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_start_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job start",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
@@ -1074,9 +1115,9 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: witness_floor_build_script()),
     items: [
       WitnessFloorBoundStep {
-        step: witness_toolchain_environment_probe_step(),
+        step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
-        step_name: "Record the toolchain environment",
+        step_name: "Require isolated toolchain homes",
       },
       WitnessFloorBoundStep {
         step: witness_floor_run_step(),
@@ -1118,6 +1159,11 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         ),
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1224,14 +1270,19 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: build_lane_build_script()),
     items: [
       WitnessFloorBoundStep {
-        step: witness_toolchain_environment_probe_step(),
+        step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
-        step_name: "Record the toolchain environment",
+        step_name: "Require isolated toolchain homes",
       },
       WitnessFloorBoundStep {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "Required CI: build lane (phases named by the run, not by this label)",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1350,9 +1401,26 @@ fn witness_floor_job() -> Job {
 // THE RUST UNIT TESTS, IN THEIR OWN JOB AND NOT IN EITHER REQUIRED LANE (operator ruling
 // 2026-08-29: "add the rust unit tests but keep them in a separate job for now"). The 774
 // `#[test]`s under src/v1/stage0 ran on no CI path before this job existed. It is not a `needs` of
-// the aggregate, so it does not gate a merge yet; it is a third context beside the two lanes, and
-// promoting it is a one-row edit to `required_lanes_aggregate_job` once its wall clock is measured
-// on the fleet runner.
+// the aggregate, so it does not gate a merge yet; it is a third context beside the two lanes.
+//
+// PROMOTING IT IS NOW ACTUALLY ONE ROW, WHICH IT WAS NOT WHEN THIS SENTENCE WAS FIRST WRITTEN.
+// The claim was true of the aggregate's shape then and had gone stale: the lane axis was a
+// hardcoded pair spelled 28 times across four functions in `gunbc.required_lanes_gate`, so
+// promotion was a signature change in four places, and -- worse -- a `needs`-only edit would have
+// added the wait while granting no authority to block, because the gate reads named variables and
+// a lane whose result it does not read cannot fail it. The axis is now one `RequiredLane` roster
+// from which the gate's verdict, the receipt, both refusal messages, the step's `env` block and
+// the job's `needs` edge are all derived, so adding this job is one row in
+// `required_lanes_roster` and nothing else.
+//
+// WHAT STILL GATES THE PROMOTION IS NOT THE EDIT SIZE. Two conditions, and neither is discharged
+// by this file: main must be green, and the fleet's toolchain-install fault must be fixed. The
+// second is the load-bearing one -- measured over 120 witnesses runs on 2026-09-02, this job's
+// wall clock is BELOW `required-witnesses-floor` at every quantile (p50 21.9 vs 25.9 minutes, p90
+// 32.1 vs 36.2, max 41.5 vs 47.0), so promotion costs nothing on the critical path, but a host
+// fault that evicts the toolchain would become a merge block on every pull request in the
+// repository the moment this lane gates. Re-derive that measurement from
+// `actions/runs/<id>/jobs` rather than trusting these numbers.
 data rust_unit_tests_job_id: String = "rust-unit-tests"
 
 fn rust_unit_tests_step() -> Step {
@@ -1397,6 +1465,11 @@ fn rust_clippy_all_targets_step() -> Step {
 fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_start_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job start",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
@@ -1427,6 +1500,11 @@ fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
       step: rust_clippy_all_targets_step(),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "clippy, all targets",
+    },
+    WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_end_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job end",
     },
   ]
 }
@@ -1467,6 +1545,11 @@ fn fabric_evidence_bound_steps() -> List<WitnessFloorBoundStep> {
         step: fabric_ci_evidence_calibration_step(),
         role: capability_neutral,
         step_name: "Calibrate fabric CI evidence boundary",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1569,6 +1652,11 @@ fn emit_copy_qualification_bound_steps() -> List<WitnessFloorBoundStep> {
         step: emit_copy_qualification_run_step(),
         role: consumes_only(capabilities: [CargoCapability]),
         step_name: "EMIT-COST-QUAL-0: wet copy/share qualification battery",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1826,6 +1914,34 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+
+// THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
+//
+// The gate's verdict and the step's `env` block are the same fact asked in two directions -- which
+// jobs decide the merge -- and they were previously two hand-kept lists whose agreement nothing
+// checked. A lane present here but absent from `needs` reads an unset variable; a lane in `needs`
+// but absent here is a job that runs and cannot block. Both are silent. Deriving both surfaces
+// from this row makes the second state unwritable and leaves only the `needs` edge to keep in
+// step, which is the one edge GitHub owns rather than us.
+//
+// NON-EMPTY BY CONSTRUCTION -- see `RequiredLane` in `gunbc.required_lanes_gate` for why an empty
+// roster is a fail-open rather than a degenerate case.
+fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
+  FreeSemigroup {
+    head: RequiredLane {
+      job_id: build_lane_job_id,
+      label: "build",
+      var_name: required_lanes_gate_build_var
+    },
+    tail: [
+      RequiredLane {
+        job_id: floor_lane_job_id,
+        label: "floor",
+        var_name: required_lanes_gate_floor_var
+      }
+    ]
+  }
+}
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
 data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
@@ -1838,8 +1954,7 @@ data required_lanes_gate_attribution_var: String = "ATTRIBUTION"
 fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
     stmts: required_lanes_gate_stmts(
-      build_var: required_lanes_gate_build_var,
-      floor_var: required_lanes_gate_floor_var,
+      lanes: required_lanes_roster(),
       pull_request_var: required_lanes_gate_pull_request_var,
       event_name_var: required_lanes_gate_event_name_var,
       measured_head_var: required_lanes_gate_measured_head_var,
@@ -1891,14 +2006,20 @@ fn required_lanes_aggregate_script() -> String {
 // takes variable NAMES only and reads them as shell variables; the expressions live here, one row
 // per variable, joined to the gate by the same declarations the gate is handed.
 fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
-  [
-    kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
-    kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+  list_append(
+    left: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) {
+      kv(
+        key: lane.var_name,
+        value: yaml_string(s: required_lane_result_expression(job_id: lane.job_id))
+      )
+    }),
+    right: [
     kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
     kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
     kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
     kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
-  ]
+    ]
+  )
 }
 
 fn required_lanes_aggregate_step() -> Step {
@@ -1933,7 +2054,7 @@ fn required_lanes_aggregate_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: [required_lanes_aggregate_step()],
-    needs: [build_lane_job_id, floor_lane_job_id],
+    needs: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) { lane.job_id }),
     env: none,
     outputs: none,
     if_condition: Present { value: required_lanes_aggregate_job_condition() },

@@ -182,6 +182,7 @@ test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool 
     DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => false
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
     OperatorSuppliedDocumentText {} => false
+    DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => false
   }
 }
 
@@ -192,6 +193,7 @@ test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
     DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => false
     DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => false
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
+    DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => false
   }
     && (mt_jade_ingested_citation_read_receipt.subject.module_path as String) == "extdeps.ocp.mt_jade.subject"
     && (mt_jade_ingested_citation_read_receipt.subject.decl_name as String) == "mt_jade_reference_platform"
