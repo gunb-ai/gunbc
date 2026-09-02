@@ -99,16 +99,120 @@ import v2.std.collection { List }
 //
 // RE-ENROL TRIGGER for these two, naming the capability and not an artifact: a serve that
 // does not re-intern and re-sort per consuming frame — an interner-stable representation the
-// tier can hand over without walking the whole value. This change discharges re-interning;
-// container reconstruction and field sorting remain, so the zero-walk trigger is still open.
+// tier can hand over without walking the whole value.
+//
+// THAT TRIGGER HAS FIRED, AND THIS PARAGRAPH IS THE CAPABILITY IT NAMED. The tier now retains
+// the REIFIED VALUE rather than the portable form: publication still walks the value once —
+// that walk IS the total portability check and the byte-budget measurement, and neither is
+// weakened — but the conversion back happens ONCE, at publication, and every later claim is
+// handed an `Rc` clone. Nothing per-frame remains to do, because nothing in a published value
+// is frame-bound: the portable shape admits no closure and no evaluator-node reference, its
+// symbols are process-canonical `&'static` spelling identities, and record field order sorts
+// on that process-global identity — so a value built in one frame is byte-for-byte the value
+// the walk used to rebuild in the next. A serve went from O(size) to O(1).
+//
+// THE EXECUTED EVIDENCE IS AN ALLOCATION-IDENTITY RED, not an equality one, and that
+// distinction is the whole of why it discriminates: the served value was ALREADY equal under
+// the walk, so a structural assertion is green on both sides and proves nothing.
+// `v1_compiler.v1_interpreter`
+// `two_frames_are_served_the_same_allocation_rather_than_two_reconstructions` asserts
+// `Rc::ptr_eq` across two consuming frames, which is false for a reconstruction and true only
+// for a hand-over. The per-context hit cache that existed solely to amortize the walk within
+// one frame is DELETED with it (DESIGN §4b(4) dissolution on climb).
 //
 // CORRECTNESS ROOT, separated from that cost trigger: Symbol identity in the seed used to be
 // a per-frame encounter ordinal, so a value crossing this boundary could compare the SAME
 // spelling unequal, or DIFFERENT spellings equal, against a consumer-frame value. Symbols are
-// now process-canonical spelling identities; crossing frames no longer changes equality.
-// value_from_portable_ctx carries those symbols directly and therefore stops re-interning, but
-// it still walks the portable value to rebuild containers and re-sort every record. Equality
-// is frame-independent, while zero-walk serving remains a separate performance capability.
+// now process-canonical spelling identities; crossing frames no longer changes equality. That
+// is the property the hand-over rests on, and it was established before this change rather
+// than by it.
+//
+// EVERY RUST TARGET MODEL STAYS OUT, AND THE REASON IS NOW A MEASUREMENT AGAINST THE CURRENT
+// SERVE RATHER THAN AGAINST THE OLD ONE. The zero-walk serve made re-enrolment TESTABLE; it did
+// not decide it, and that difference is the whole of why this note exists. Admission here is a
+// measured present-vs-absent floor receipt and never an inference from "the serve is cheaper
+// now" -- that inference is the specification-without-execution DESIGN section 5 names, and it
+// would have been wrong three times over, because all three candidates were enrolled on exactly
+// that expectation and all three were withdrawn on measurement.
+//
+// WHAT WAS TRIED, ACROSS FOUR RUNS, NORMALISED AGAINST THE ROWS IN NO CONSUMER MODULE OF ANY
+// ENROLLED KEY -- the population the change cannot reach, which is the only sound control when
+// the runner moves 17% between runs of one tree:
+//
+//   - `rust_target_model` regressed the `v2.test.emit.produced_decl_two_target` /
+//     `v2.test.emit.rust_produced_decl_emit` cluster by about 20% normalised, on both present
+//     runs, and refused a floor run at cost=502ms EXACT.
+//     THE BASE IT REGRESSED FROM IS A CROSS-TREE ONE AND NOT A SINGLE OBSERVATION, which is
+//     what licenses reading the regression as large rather than as one run's noise: the same
+//     identities were independently joined on two further MAIN runs by the FLOOR-COST-500MS lane
+//     (33664853305 head 22e3d70963 and 33664768371 head dbd57f2af3, both attempt 1, both green)
+//     and every member moved together between them by 1.09-1.13 while the within-module spread
+//     stayed near 1.17. Four main-ish trees put the cluster's level inside one narrow band, and
+//     the present arms sit half again above it.
+//   - `rust_target_model_core_edges` showed NO effect at all over four consumer modules. A row
+//     that neither costs nor saves is cache population, which this file already refuses.
+//   - `rust_target_model_staging` LOOKED like the survivor -- its 17 consumer modules improved
+//     about an eighth -- and it is out for the same reason as the first, discovered only after
+//     the first was withdrawn: with `rust_target_model` gone, staging inherited that row's
+//     consumer set (58 claims across 17 modules became 133 across 44, the produced-decl cluster
+//     among them) and the cluster's regression came with it, smaller but in the same direction.
+//     Its consumer set as a whole still improves. THAT IS THE TRADE THIS ROSTER MUST NOT MAKE:
+//     the ceiling is PER CLAIM, so a family total that improves while the rows nearest the line
+//     get worse is a loss on the subject, and those six rows sit within one runner-swing of 500.
+//
+// SO THE COMMON FINDING, WHICH IS THE USEFUL PART OF A NEGATIVE RESULT: serving a rust
+// `TargetModel` across claim frames costs its produced-decl consumers MORE than recomputing it,
+// and the per-frame WALK WAS NOT THE CAUSE -- #9721's conclusion survives its own re-enrol
+// trigger being discharged. THE REMAINING COST IS UNIDENTIFIED, and this file leaves it that way
+// rather than carrying a plausible story: an unsupported cause in a carrier is read as a lead by
+// the next reader and spends their time before it spends anyone's doubt.
+//
+// ONE CANDIDATE WAS RAISED HERE AND IS WITHDRAWN, recorded because the next reader will think of
+// it too. The suggestion was copy-on-write: a serve hands over an `Rc` every consumer shares, so
+// a path that would have mutated a freshly recomputed value in place (`Rc::make_mut` at a strong
+// count of one) would copy instead. IT REQUIRES AN IN-PLACE MUTATION PATH OVER `Value` AND THERE
+// IS NONE. The seed's only `Rc::make_mut` in `v1_compiler.v1_interpreter` is inside a test
+// fixture builder over `Node`, not over a `Value` on any evaluation path; the `v1_compiler.v1_rt`
+// occurrences are the EMITTED runtime that compiled `.dag` code calls, which no interpreter serve
+// reaches. Value operations in the interpreter rebuild rather than mutate, so sharing defeats
+// nothing there. The candidate predicted that only MUTATING consumers would regress, which is
+// what made it worth stating and is also what refuted it.
+//
+// NEXT TRIGGER FOR ALL THREE, naming what must be true rather than what must be built: the
+// remaining cost identified, and a measured serve-below-recompute ON THE PRODUCED-DECL
+// CONSUMERS SPECIFICALLY -- not on their family total, which has already been observed pointing
+// the wrong way.
+//
+// THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: the zero-walk serve, no rust row enrolled)
+// AND 33661252708 (PRESENT: the same tree plus those rows), and the comparison is
+// `required_floor_claim_cost.tsv` from each, joined at IDENTITY grain. Re-derive it rather than
+// trusting a sentence: the absent run REFUSED, `verdict=FloorRefused` with `failed=0`, carried
+// entirely by one COMPLETED-OVER-COST-REQUIREMENT row in `v2.test.emit.rust_produced_decl_emit`.
+//
+// FIVE RUNS IN ALL, AND THE LAST TWO ARE THE WITHDRAWAL'S OWN RECEIPT rather than a repetition
+// of the first. 33664119594 carries the same roster as the present arm and agrees with it on
+// every judgment above, which is what distinguishes a repeated effect from a single-run artifact
+// of the runner. 33667640710 carries `rust_target_model_staging` alone -- the state in which
+// that row inherited the wider consumer set -- and 33671317370 carries none of the three, where
+// the produced-decl cluster returns to its absent-arm value on the same normalised basis and the
+// floor is `verdict=FloorClean`. A withdrawal whose receipt is only "the rows are gone" asserts
+// that removing them helped; this pair measures it.
+//
+// AND THE ABSOLUTE DELTA IS NOT THE EVIDENCE, because the two runs did not get the same runner:
+// every row in the corpus got cheaper between them. The admissible reading is the NORMALISED
+// one -- each row set against the rows in NO consumer module of these keys, in the same run
+// pair -- and the consumer sets are read from the present run's own `[floor-shared-fill]`
+// `modules=` field, which names them rather than counting them. A raw comparison would have
+// credited the runner with most of the movement in both directions.
+//
+// MEASURED SHARING WAS NEVER THE QUESTION FOR THE THREE WITHDRAWN ROWS, and saying so guards
+// against the next reader re-proposing them on that evidence: the ledger reports
+// `rust_target_model` served to 75 consumer claims across 29 modules and
+// `rust_target_model_staging` to 133 across 44 once it inherited them -- the widest sharing on
+// the roster, and withdrawn anyway. A row earns its place by measured recompute AND measured
+// sharing AND a serve below that recompute, and it is the third conjunct that refused all
+// three.
+//
 // THE THIRD WARM ROW IS THE PERSISTED FRONTIER STANDING, and it is the first row enrolled from a
 // CANDIDATE THE CENSUS PRODUCED rather than from an incident on somebody else's pull request.
 // gunbc.recurring_failure_mode recurrence_ledger_scoped_below_the_recurrence names that discovery
@@ -208,6 +312,30 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // live_deploy measurement): 21 apply witnesses rebuild one byte-identical script 21 times
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
+//
+// THE PERSISTED FRONTIER STANDING IS NOT ENROLLED HERE, AND ITS ABSENCE IS A DECISION RATHER
+// THAN AN OVERSIGHT. `gunbc.self_host_compile_phase_frontier` `compile_phase_frontier_standing`
+// is the shared producer under `test.claim.self_host_compile_phase_live_gate_witness` and
+// `test.claim.self_host_compile_phase_frontier_witness`, and gunbc#10094 measured a large win
+// from enrolling it CLAIM-FORCED at that general declaration -- 13 rows from 445-467 cpu-ms to
+// about 73, holding across three present runs. The row was WITHDRAWN anyway, and the reason is
+// this file's own single-authority discipline rather than its cost criterion.
+//
+// The general declaration takes the receipt series as an ARGUMENT, so every consuming frame
+// must reify and structurally verify a `List<CompilePhaseFrontierReceipt>` before it may be
+// served -- the shape whose serve cost this file's header already records LOSING to recompute
+// twice. That it measured a win here does not make the shape sound; it makes this measurement
+// the outlier that a nullary enrolment would not need to explain. gunbc#10108 removes the
+// argument instead of paying to verify it: it consolidates the one persisted series into a
+// NULLARY standing, which is preparation-forceable with an empty argument row, and enrols that.
+// That is the DESIGN section 3 repair, and it also reaches consumers this row could not --
+// `test.claim.compiler_frontend_program_status_witness`, and a fold that took the series and
+// re-derived the standing itself.
+//
+// SO ONE FACT GETS ONE ROW, AT THE DECLARATION THAT MAKES IT CHEAP. Landing both would be two
+// roster rows claiming one saving, which is the failure gunbc#10108's own note names about
+// enrolling a nest. This paragraph stands in the withdrawn row's place so the next reader does
+// not re-derive its cost figures and re-propose it.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
   "v2.compiler.translate.grammar_relation_row_for_emitted",

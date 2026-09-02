@@ -14,6 +14,11 @@ import extdeps.ollama.capability {
   OllamaRuntimeAdmissionUnobserved,
   OllamaRuntimeAdmissionUncatalogued,
   ollama_runtime_admission_verdict,
+  OllamaNvidiaDriverRequirementSatisfied,
+  OllamaNvidiaDriverRequirementUnmet,
+  OllamaNvidiaDriverRequirementUnobserved,
+  ollama_nvidia_driver_requirement_verdict,
+  ollama_gb10_minimum_nvidia_driver,
 }
 import extdeps.ollama.gpu_support {
   OllamaNvidiaDriverVersion,
@@ -25,7 +30,13 @@ import gunbc.spark.serving_readback_parse {
   SparkServingReadbackRefused,
   SparkServingReadbackAbsent,
 }
-import gunbc.spark.serving_desired { spark_serving_desired_model_ref }
+import gunbc.spark.serving_desired { spark_serving_desired_model_ref, spark_serving_desired_manifest }
+import gunbc.spark.serving_model_admission {
+  SparkServingModelAxisUpstreamCatalogued,
+  SparkServingModelAxisLocalAttested,
+  SparkServingModelAxisRefused,
+  spark_serving_model_axis,
+}
 
 // HOST RUNTIME ADMISSION (SPARK-SERVE-BIND-0 driver axis). GB10 requires NVIDIA driver 550 or newer
 // per docs.ollama.com/gpu. Ollama falls back to CPU when the driver is too old rather than refusing
@@ -61,7 +72,41 @@ fn spark_serving_observed_nvidia_driver_from_field(
   }
 }
 
+// THE SAME PROVENANCE BRANCH THE DESIRED-STATE ADMISSION MAKES, AND IT HAS TO BE MADE HERE TOO.
+//
+// This is the host-side admission and it composes two axes: does the runtime support the model, and
+// is the GPU driver new enough. Only the FIRST differs by provenance. Routing a locally materialized
+// artifact through the catalogue would refuse it as Uncatalogued and report a cause naming the model
+// as unsupported -- which is false, and worse, is the kind of false that reads as a real finding.
+//
+// The driver axis is untouched and still runs on both arms. That matters: this is not "the local arm
+// skips admission", it is "the local arm answers the model question from an observed load and then
+// takes exactly the same driver check as everything else". An unobserved driver still refuses.
 fn spark_serving_runtime_admission_refusal_cause(
+  nvidia_driver: SparkServingReadbackField,
+) -> NonEmptyStr? {
+  match spark_serving_model_axis(manifest: spark_serving_desired_manifest) {
+    SparkServingModelAxisRefused { cause: c } => Present { value: c }
+    SparkServingModelAxisLocalAttested { runtime_version: _ } =>
+      match ollama_nvidia_driver_requirement_verdict(
+        observed: spark_serving_observed_nvidia_driver_from_field(field: nvidia_driver),
+        minimum: ollama_gb10_minimum_nvidia_driver,
+      ) {
+        OllamaNvidiaDriverRequirementSatisfied => none
+        OllamaNvidiaDriverRequirementUnmet { observed: o, minimum: m } =>
+          Present {
+            value: join([
+              "nvidia driver ", to_string(o.major), " is below minimum ", to_string(m.major),
+            ], "") as NonEmptyStr,
+          }
+        OllamaNvidiaDriverRequirementUnobserved { cause: c } => Present { value: c }
+      }
+    SparkServingModelAxisUpstreamCatalogued =>
+      spark_serving_upstream_runtime_admission_refusal_cause(nvidia_driver: nvidia_driver)
+  }
+}
+
+fn spark_serving_upstream_runtime_admission_refusal_cause(
   nvidia_driver: SparkServingReadbackField,
 ) -> NonEmptyStr? {
   match ollama_runtime_admission_verdict(
