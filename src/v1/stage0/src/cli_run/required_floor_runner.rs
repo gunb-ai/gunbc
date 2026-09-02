@@ -5589,7 +5589,7 @@ pub fn run_required_floor(
                 // interruption plus a measured lower bound on cost, so the enrolled claim was
                 // never decided at all. Holding it reports agreement about a failure that
                 // nobody observed.
-                ExpectedRedArm::BudgetRefused => {
+                ExpectedRedArm::BudgetRefused { raised_by } => {
                     known_red_budget_refused += 1;
                     // ONE RENDERER, NOT A LOCAL FORMAT STRING. The arm reached here is the
                     // interrupted one BY CONSTRUCTION — `ExpectedRedArm::BudgetRefused` has
@@ -5601,7 +5601,13 @@ pub fn run_required_floor(
                     let detail = result
                         .budget_figure_phrase()
                         .unwrap_or_else(|| format!("{result:?}"));
-                    outcome.interrupted_before_verdict.push(format!(
+                    outcome
+                        .interrupted_before_verdict
+                        .push(InterruptedBeforeVerdict {
+                            qualified: claim.qualified.clone(),
+                            raised_by,
+                            enrolled_expected_red: true,
+                            detail: format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
@@ -5612,7 +5618,8 @@ pub fn run_required_floor(
                          removing it from the roster would not help, because it is not passing \
                          either.",
                         claim.qualified, detail
-                    ));
+                            ),
+                        });
                     continue;
                 }
                 // NOT COUNTED AS A PASS. A held row did not pass — it failed as enrolled, and
@@ -5893,17 +5900,25 @@ pub fn run_required_floor(
             // with a number already read in the cost position, and demonstrably loses. The
             // renderer does not put the bound there at all, so the remedy sentences below need
             // only say what to DO, which is the part a caveat was never the right carrier for.
-            ClaimOutcome::BudgetInterrupted { .. } => {
+            ClaimOutcome::BudgetInterrupted { kind, .. } => {
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
-                outcome.interrupted_before_verdict.push(format!(
-                    "{} was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
+                outcome
+                    .interrupted_before_verdict
+                    .push(InterruptedBeforeVerdict {
+                        qualified: claim.qualified.clone(),
+                        // THE ARM ALREADY HELD `kind`; the old push discarded it into prose.
+                        raised_by: SafetyInterruptTrigger::from(kind),
+                        enrolled_expected_red: false,
+                        detail: format!(
+                            "{} was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
                      expected-red, so nothing claims it is broken — but the deadline preempted \
                      the verdict, so whether it PASSES is UNKNOWN too. Reduce the cost, or move \
                      it to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                    claim.qualified, figure
-                ))
+                            claim.qualified, figure
+                        ),
+                    })
             }
             ClaimOutcome::CompletedOverBudget { .. } => {
                 let figure = result
