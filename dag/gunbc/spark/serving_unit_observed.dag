@@ -342,7 +342,16 @@ fn serving_unit_throughput_band(
 }
 
 // The band as measured at the selected slot count. Reported in whole tok/s because the spread
-// between the two runs is larger than any fraction either reported.
+// between the two runs is roughly eight tok/s -- an order of magnitude larger than any fraction
+// either run reported -- so a decimal here would carry precision the measurement does not have.
+//
+// THE ROUNDING IS DIRECTIONAL AND THAT IS THE PART THAT MATTERS, because a band is not a number and
+// rounding it the wrong way changes what admission means. The low end rounds DOWN (50.9 -> 50) and
+// the high end rounds UP (58.8 -> 59), so the recorded band is a SUPERSET of the measured one. Since
+// serving_unit_throughput_meets compares a threshold against the LOW end, understating that end can
+// only make the check stricter: it refuses where the true figure would have passed, never the
+// reverse. Rounding the low end up would have been the fail-open direction and is what this note
+// exists to prevent someone doing later for tidiness.
 fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
   serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
