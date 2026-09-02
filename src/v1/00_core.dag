@@ -155,8 +155,25 @@ type CallTargetIdentity
 
 type CallSemantics
   = PlainCallSemantics { target: CallTargetIdentity }
+  | ResolvedDirectCallSemantics { target: CallTargetIdentity, application_plan: List<ResolvedCallFormal> }
   | LookupCallSemantics { target: CallTargetIdentity }
   | FunctionValueCallSemantics
+
+// One declaration-produced fact, carried intact through application. These fields are not
+// independently recoverable at the call site: parameter identity orders named arguments,
+// conformance drives judgments, and substitution_basis drives generic and emitted type args.
+type ResolvedFormal {
+  parameter_identity: String
+  declared_type: Node
+  declaration_bound_conformance: Node
+  substitution_basis: Node
+}
+
+type ResolvedCallFormal {
+  formal_index: Int
+  formal: ResolvedFormal
+  matched_argument_index: Int?
+}
 
 type MethodSemantics
   = PlainMethodSemantics

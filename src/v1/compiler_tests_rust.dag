@@ -3345,6 +3345,39 @@ fn ct_declared_type_conformance_witness_test() -> String {
     "    }\n\n")
 }
 
+fn ct_direct_call_formal_authority_carrier_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn direct_call_formal_authority_is_declaration_bound() {\n",
+    "        let sources = im::vector![\n",
+    "            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"authority_decl.dag\".to_string(), content: \"module authority.decl\\ntype Left = String\\ntype Right = String\\nfn accept(left: Left, right: Right) { }\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"caller_a.dag\".to_string(), content: \"module authority.caller_a\\nimport authority.decl { accept }\\ntype Left = Int\\ntype Right = Bool\\nfn use() { accept(right: \\\"r\\\", left: \\\"l\\\") }\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"caller_b.dag\".to_string(), content: \"module perturbed.namespace.caller_b\\nimport authority.decl { accept }\\ntype Left = Bool\\ntype Right = Int\\nfn use() { accept(right: \\\"rr\\\", left: \\\"ll\\\") }\\n\".to_string() }),\n",
+    "        ];\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(sources, crate::v1_compiler_artifact::RenderTarget::Dag);\n",
+    "        assert!(result.diagnostics.is_empty(), \"authority carrier fixture must compile: {:?}\", result.diagnostics);\n",
+    "        let artifact = result.files.iter().find(|f| f.path == \"dag-artifact.json\").expect(\"DAG artifact\");\n",
+    "        let json: serde_json::Value = serde_json::from_str(&artifact.content).expect(\"valid DAG artifact JSON\");\n",
+    "        let mut observed = 0usize;\n",
+    "        for node in json[\"nodes\"].as_object().expect(\"nodes table\").values() {\n",
+    "            let semantics = &node[\"expr_data\"][\"call_semantics\"];\n",
+    "            if semantics[\"kind\"] != \"ResolvedDirectCallSemantics\" { continue; }\n",
+    "            let plan = semantics[\"application_plan\"].as_array().expect(\"resolved application plan\");\n",
+    "            for formal in plan {\n",
+    "                if formal[\"parameter_identity\"] != \"left\" && formal[\"parameter_identity\"] != \"right\" { continue; }\n",
+    "                observed += 1;\n",
+    "                let declared_ref = formal[\"declared_type\"][\"$ref\"].as_str().expect(\"declared formal ref\");\n",
+    "                let declaration_conformance = &json[\"nodes\"][declared_ref][\"inferred\"][\"node\"];\n",
+    "                assert_eq!(&formal[\"declaration_bound_conformance\"], declaration_conformance, \"formal conformance must equal the callee declaration's resolved conformance instead of being peeled through the caller TypeEnv\");\n",
+    "                assert!(formal[\"substitution_basis\"][\"$ref\"].is_string(), \"emission substitution basis must survive in the same plan\");\n",
+    "                let expected_argument = if formal[\"parameter_identity\"] == \"left\" { 1 } else { 0 };\n",
+    "                assert_eq!(formal[\"matched_argument_index\"], expected_argument, \"named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation\");\n",
+    "            }\n",
+    "        }\n",
+    "        assert_eq!(observed, 4, \"both caller perturbation controls must expose both declaration-bound formals\");\n",
+    "    }\n\n")
+}
+
 fn ct_shell_service_output_projection_test() -> String {
   concat(
     "    // PERMANENT REGRESSION CONTROL, DESIGN section 4b(4). It landed as a KNOWN-HOLE\n",
@@ -3681,6 +3714,7 @@ fn compiler_tests_source() -> String {
     ct_rendered_leaf_occurrence_identity_pipeline_test(),
     ct_method_existence_wall_witness_test(),
     ct_declared_type_conformance_witness_test(),
+    ct_direct_call_formal_authority_carrier_test(),
     ct_sole_constructor_test(),
     ct_constructor_call_admission_test(),
     ct_constructor_call_admission_same_module_sibling_test(),

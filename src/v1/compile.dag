@@ -12,7 +12,7 @@ import v1.std.core {
   import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
   Resolved, CompilerError, TypeVariable, VarBindingKind,
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
-  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
+  CallSemantics, PlainCallSemantics, ResolvedDirectCallSemantics, ResolvedCallFormal, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
   OccurrenceTransportViolation,
   ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
@@ -308,7 +308,26 @@ fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<
     dag_emit_check_optional_ref_target(value: node.transport, key_to_id: key_to_id),
     node.properties |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id)),
     dag_emit_check_optional_ref_target(value: node.type_annotation, key_to_id: key_to_id),
-    dag_emit_check_inferred_ref_target(value: node.inferred, key_to_id: key_to_id)
+    concat(
+      dag_emit_check_inferred_ref_target(value: node.inferred, key_to_id: key_to_id),
+      match node.expr_data {
+        ExprCall { call_semantics: call_semantics, descent_evidence: _ } => match call_semantics {
+          Present { value: semantics } => match semantics {
+            ResolvedDirectCallSemantics { target: _, application_plan: plan } =>
+              plan |> flat_map(application => concat(
+                dag_emit_check_ref_target(node: application.formal.declared_type, key_to_id: key_to_id),
+                concat(
+                  dag_emit_check_ref_target(node: application.formal.declaration_bound_conformance, key_to_id: key_to_id),
+                  dag_emit_check_ref_target(node: application.formal.substitution_basis, key_to_id: key_to_id)
+                )
+              ))
+            _ => []
+          }
+          Absent => []
+        }
+        _ => []
+      }
+    )
   )
 }
 
@@ -533,10 +552,27 @@ fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIn
   }
 }
 
-fn serialize_call_semantics(value: CallSemantics?) -> String {
+fn serialize_resolved_call_formal(value: ResolvedCallFormal, key_to_id: Map<String, String>) -> String {
+  concat(
+    "{\"formal_index\": ", to_string(value: value.formal_index),
+    ", \"parameter_identity\": ", json_quote(s: value.formal.parameter_identity),
+    ", \"declared_type\": ", serialize_node_ref(node: value.formal.declared_type, key_to_id: key_to_id),
+    ", \"declaration_bound_conformance\": ", serialize_node_ref(node: value.formal.declaration_bound_conformance, key_to_id: key_to_id),
+    ", \"substitution_basis\": ", serialize_node_ref(node: value.formal.substitution_basis, key_to_id: key_to_id),
+    ", \"matched_argument_index\": ", match value.matched_argument_index {
+      Present { value: index } => to_string(value: index)
+      Absent => "null"
+    },
+    "}"
+  )
+}
+
+fn serialize_call_semantics(value: CallSemantics?, key_to_id: Map<String, String>) -> String {
   match value {
     Present { value: PlainCallSemantics { target: target } } =>
       concat("{\"kind\": \"PlainCallSemantics\", \"target\": ", serialize_call_target_identity(value: target), "}")
+    Present { value: ResolvedDirectCallSemantics { target: target, application_plan: plan } } =>
+      concat("{\"kind\": \"ResolvedDirectCallSemantics\", \"target\": ", serialize_call_target_identity(value: target), ", \"application_plan\": ", json_list(items: plan |> map(formal => serialize_resolved_call_formal(value: formal, key_to_id: key_to_id))), "}")
     Present { value: LookupCallSemantics { target: target } } =>
       concat("{\"kind\": \"LookupCallSemantics\", \"target\": ", serialize_call_target_identity(value: target), "}")
     Present { value: FunctionValueCallSemantics } =>
@@ -683,7 +719,7 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
       let func = expr_call_func_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
-        ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
+        ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics, key_to_id: key_to_id),
         ", \"descent_evidence\": ", serialize_descent_evidence(de: de),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")

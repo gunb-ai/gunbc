@@ -10,7 +10,7 @@ import std.primitive_projection {
 
 import v1.std.core {
   DeclaredCallableIdentity,
-  Node, param_node_type_expr,
+  Node, param_node_name_at, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
@@ -58,6 +58,8 @@ import v1.compiler.infer_emit_info {
 
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
+  KernelGroundedFormals, FormalAuthorityUnavailable,
+  BorrowedCensusDeclarationAuthorityUnavailable, GlobalBareDeclarationAuthorityUnavailable,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   parent_closure_callable_candidates, decide_callable_candidates
@@ -124,6 +126,7 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
         sig: ResolvedFuncSig {
           name: name,
           params: [],
+          resolved_formals: KernelGroundedFormals { formals: [] },
           inferred: builtin_return,
           is_async: false,
           output_provenance: [],
@@ -572,6 +575,8 @@ fn func_decl_binding_for_call(
 // rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before
 // the census fallback.
 
+// A whole-pool census node is not a callee module context. Refuse at application instead of
+// manufacturing formal authority through this caller's TypeEnv.
 fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate: GlobalBareCandidate) -> CallableCandidate {
   let node = candidate.binding.resolved
   let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
@@ -593,6 +598,7 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
     sig: ResolvedFuncSig {
       name: name,
       params: node.params,
+      resolved_formals: FormalAuthorityUnavailable { reason: BorrowedCensusDeclarationAuthorityUnavailable },
       inferred: return_type,
       is_async: false,
       output_provenance: [],
@@ -630,6 +636,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
+            resolved_formals: FormalAuthorityUnavailable { reason: GlobalBareDeclarationAuthorityUnavailable },
             inferred: raw_return,
             is_async: false,
             output_provenance: [],
@@ -640,6 +647,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
+            resolved_formals: FormalAuthorityUnavailable { reason: GlobalBareDeclarationAuthorityUnavailable },
             inferred: qualified_return,
             is_async: false,
             output_provenance: [],

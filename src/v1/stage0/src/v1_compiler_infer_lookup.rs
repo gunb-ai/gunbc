@@ -46,14 +46,21 @@ pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
+use crate::v1_compiler_infer_sigs::FormalAuthorityUnavailableReason::{
+    BorrowedCensusDeclarationAuthorityUnavailable, GlobalBareDeclarationAuthorityUnavailable,
+};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
     FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+};
+use crate::v1_compiler_infer_sigs::ResolvedFormals::{
+    FormalAuthorityUnavailable, KernelGroundedFormals,
 };
 pub use crate::v1_compiler_infer_sigs::{
     decide_callable_candidates, lookup_resolved_sig, parent_closure_callable_candidates,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    CallableCandidate, CallableIdentity, FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig,
+    CallableCandidate, CallableIdentity, FormalAuthorityUnavailableReason, FuncSigLookup,
+    ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
@@ -75,9 +82,9 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
-    with_required_cardinality,
+    authored_name_at, error_type, find_child_named, has_child_named, param_node_name_at,
+    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -122,6 +129,9 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
             sig: Rc::new(ResolvedFuncSig {
                 name: name.clone(),
                 params: Rc::new(vec![]),
+                resolved_formals: Rc::new(ResolvedFormals::KernelGroundedFormals {
+                    formals: Rc::new(vec![]),
+                }),
                 inferred: builtin_return.clone(),
                 is_async: false,
                 output_provenance: Rc::new(vec![]),
@@ -615,24 +625,24 @@ pub fn borrowed_census_callable_candidate(
             excluded.clone(),
         );
         Rc::new(CallableCandidate {
-            identity: Rc::new(CallableIdentity::DeclaredCallable {
-                identity: Rc::new(DeclaredCallableIdentity {
-                    owner_module_path: candidate.module_path.clone(),
-                    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
-                }),
-            }),
-            sig: Rc::new(ResolvedFuncSig {
-                name: name.clone(),
-                params: node.params.clone(),
-                inferred: return_type.clone(),
-                is_async: false,
-                output_provenance: Rc::new(vec![]),
-                variant_provenance: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-                >(),
-            }),
-        })
+    identity: Rc::new(CallableIdentity::DeclaredCallable {
+    identity: Rc::new(DeclaredCallableIdentity {
+    owner_module_path: candidate.module_path.clone(),
+    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
+}),
+}),
+    sig: Rc::new(ResolvedFuncSig {
+    name: name.clone(),
+    params: node.params.clone(),
+    resolved_formals: Rc::new(ResolvedFormals::FormalAuthorityUnavailable {
+    reason: FormalAuthorityUnavailableReason::BorrowedCensusDeclarationAuthorityUnavailable,
+}),
+    inferred: return_type.clone(),
+    is_async: false,
+    output_provenance: Rc::new(vec![]),
+    variant_provenance: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>(),
+}),
+})
     }
 }
 
@@ -684,64 +694,42 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
                                     Rc::new(FuncSigLookup::FuncSigResolved {
-                                        sig: Rc::new(ResolvedFuncSig {
-                                            name: name.clone(),
-                                            params: node.params.clone(),
-                                            inferred: raw_return.clone(),
-                                            is_async: false,
-                                            output_provenance: Rc::new(vec![]),
-                                            variant_provenance: v1_rt::rc_empty_map::<
-                                                String,
-                                                Rc<
-                                                    HashMap<
-                                                        String,
-                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
-                                                    >,
-                                                >,
-                                            >(
-                                            ),
-                                        }),
-                                        declared: Rc::new(DeclaredCallableIdentity {
-                                            owner_module_path: bd.owner_module_path.clone(),
-                                            decl_name: crate::v1_std_core::qualified_last_segment(
-                                                name.clone(),
-                                            ),
-                                        }),
-                                    })
+    sig: Rc::new(ResolvedFuncSig {
+    name: name.clone(),
+    params: node.params.clone(),
+    resolved_formals: Rc::new(ResolvedFormals::FormalAuthorityUnavailable {
+    reason: FormalAuthorityUnavailableReason::GlobalBareDeclarationAuthorityUnavailable,
+}),
+    inferred: raw_return.clone(),
+    is_async: false,
+    output_provenance: Rc::new(vec![]),
+    variant_provenance: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>(),
+}),
+    declared: Rc::new(DeclaredCallableIdentity {
+    owner_module_path: bd.owner_module_path.clone(),
+    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
+}),
+})
                                 } else {
                                     {
                                         let qualified_return = crate::v1_compiler_infer_env::qualify_borrowed_type_names(raw_return.clone(), bd.owner_module_path.clone(), type_env.clone(), excluded.clone());
                                         Rc::new(FuncSigLookup::FuncSigResolved {
-                                            sig: Rc::new(ResolvedFuncSig {
-                                                name: name.clone(),
-                                                params: node.params.clone(),
-                                                inferred: qualified_return.clone(),
-                                                is_async: false,
-                                                output_provenance: Rc::new(vec![]),
-                                                variant_provenance: v1_rt::rc_empty_map::<
-                                                    String,
-                                                    Rc<
-                                                        HashMap<
-                                                            String,
-                                                            Rc<
-                                                                HashMap<
-                                                                    String,
-                                                                    Rc<SubValueRelation>,
-                                                                >,
-                                                            >,
-                                                        >,
-                                                    >,
-                                                >(
-                                                ),
-                                            }),
-                                            declared: Rc::new(DeclaredCallableIdentity {
-                                                owner_module_path: bd.owner_module_path.clone(),
-                                                decl_name:
-                                                    crate::v1_std_core::qualified_last_segment(
-                                                        name.clone(),
-                                                    ),
-                                            }),
-                                        })
+    sig: Rc::new(ResolvedFuncSig {
+    name: name.clone(),
+    params: node.params.clone(),
+    resolved_formals: Rc::new(ResolvedFormals::FormalAuthorityUnavailable {
+    reason: FormalAuthorityUnavailableReason::GlobalBareDeclarationAuthorityUnavailable,
+}),
+    inferred: qualified_return.clone(),
+    is_async: false,
+    output_provenance: Rc::new(vec![]),
+    variant_provenance: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>(),
+}),
+    declared: Rc::new(DeclaredCallableIdentity {
+    owner_module_path: bd.owner_module_path.clone(),
+    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
+}),
+})
                                     }
                                 }
                             }

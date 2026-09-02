@@ -257,18 +257,42 @@ pub enum CallTargetIdentity {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
-    PlainCallSemantics { target: Rc<CallTargetIdentity> },
-    LookupCallSemantics { target: Rc<CallTargetIdentity> },
+    PlainCallSemantics {
+        target: Rc<CallTargetIdentity>,
+    },
+    ResolvedDirectCallSemantics {
+        target: Rc<CallTargetIdentity>,
+        application_plan: Rc<Vec<Rc<ResolvedCallFormal>>>,
+    },
+    LookupCallSemantics {
+        target: Rc<CallTargetIdentity>,
+    },
     FunctionValueCallSemantics,
 }
 impl CallSemantics {
     pub fn target(&self) -> Rc<CallTargetIdentity> {
         match self {
             CallSemantics::PlainCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::ResolvedDirectCallSemantics { target: __val, .. } => __val.clone(),
             CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
             CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedFormal {
+    pub parameter_identity: String,
+    pub declared_type: Rc<Node>,
+    pub declaration_bound_conformance: Rc<Node>,
+    pub substitution_basis: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedCallFormal {
+    pub formal_index: i64,
+    pub formal: Rc<ResolvedFormal>,
+    pub matched_argument_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

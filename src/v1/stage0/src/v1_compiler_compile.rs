@@ -71,6 +71,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+    ResolvedDirectCallSemantics,
 };
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
@@ -107,8 +108,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
     ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart,
-    TextFile, Token, UnaryOpKind, VarBindingKind,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -606,7 +607,55 @@ pub fn dag_emit_check_node_refs(
             ),
             dag_emit_check_optional_ref_target(node.type_annotation.clone(), key_to_id.clone()),
         ),
-        dag_emit_check_inferred_ref_target(node.inferred.clone(), key_to_id.clone()),
+        v1_rt::concat(
+            dag_emit_check_inferred_ref_target(node.inferred.clone(), key_to_id.clone()),
+            match (*node.expr_data.clone()).clone() {
+                ExprData::ExprCall { call_semantics, .. } => match call_semantics.clone() {
+                    Some(semantics) => match (*semantics.clone()).clone() {
+                        CallSemantics::ResolvedDirectCallSemantics {
+                            application_plan: plan,
+                            ..
+                        } => Rc::new({
+                            let mut __result = Vec::new();
+                            for application in plan.iter().cloned() {
+                                __result.extend(
+                                    (*v1_rt::concat(
+                                        dag_emit_check_ref_target(
+                                            application.formal.clone().declared_type.clone(),
+                                            key_to_id.clone(),
+                                        ),
+                                        v1_rt::concat(
+                                            dag_emit_check_ref_target(
+                                                application
+                                                    .formal
+                                                    .clone()
+                                                    .declaration_bound_conformance
+                                                    .clone(),
+                                                key_to_id.clone(),
+                                            ),
+                                            dag_emit_check_ref_target(
+                                                application
+                                                    .formal
+                                                    .clone()
+                                                    .substitution_basis
+                                                    .clone(),
+                                                key_to_id.clone(),
+                                            ),
+                                        ),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        }),
+                        _ => Rc::new(vec![]),
+                    },
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+                _ => Rc::new(vec![]),
+            },
+        ),
     )
 }
 
@@ -1136,12 +1185,98 @@ pub fn serialize_string_part(
     }
 }
 
-pub fn serialize_call_semantics(value: Option<Rc<CallSemantics>>) -> String {
+pub fn serialize_resolved_call_formal(
+    value: Rc<ResolvedCallFormal>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "{\"formal_index\": ".to_string(),
+                                                    (value.formal_index.clone()).to_string(),
+                                                ),
+                                                ", \"parameter_identity\": ".to_string(),
+                                            ),
+                                            crate::v1_compiler_dag_collect_support::json_quote(
+                                                value.formal.clone().parameter_identity.clone(),
+                                            ),
+                                        ),
+                                        ", \"declared_type\": ".to_string(),
+                                    ),
+                                    serialize_node_ref(
+                                        value.formal.clone().declared_type.clone(),
+                                        key_to_id.clone(),
+                                    ),
+                                ),
+                                ", \"declaration_bound_conformance\": ".to_string(),
+                            ),
+                            serialize_node_ref(
+                                value.formal.clone().declaration_bound_conformance.clone(),
+                                key_to_id.clone(),
+                            ),
+                        ),
+                        ", \"substitution_basis\": ".to_string(),
+                    ),
+                    serialize_node_ref(
+                        value.formal.clone().substitution_basis.clone(),
+                        key_to_id.clone(),
+                    ),
+                ),
+                ", \"matched_argument_index\": ".to_string(),
+            ),
+            match value.matched_argument_index.clone() {
+                Some(index) => (index.clone()).to_string(),
+                std::option::Option::None => "null".to_string(),
+            },
+        ),
+        "}".to_string(),
+    )
+}
+
+pub fn serialize_call_semantics(
+    value: Option<Rc<CallSemantics>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
     match value.clone().as_deref().cloned() {
         Some(CallSemantics::PlainCallSemantics { target: target, .. }) => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"PlainCallSemantics\", \"target\": ".to_string(),
                 serialize_call_target_identity(target.clone()),
+            ),
+            "}".to_string(),
+        ),
+        Some(CallSemantics::ResolvedDirectCallSemantics {
+            target,
+            application_plan: plan,
+            ..
+        }) => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "{\"kind\": \"ResolvedDirectCallSemantics\", \"target\": ".to_string(),
+                        serialize_call_target_identity(target.clone()),
+                    ),
+                    ", \"application_plan\": ".to_string(),
+                ),
+                json_list(Rc::new({
+                    let mut __result = Vec::new();
+                    for formal in plan.iter().cloned() {
+                        __result.push(serialize_resolved_call_formal(
+                            formal.clone(),
+                            key_to_id.clone(),
+                        ));
+                    }
+                    __result
+                })),
             ),
             "}".to_string(),
         ),
@@ -1518,7 +1653,10 @@ pub fn serialize_expr_data(
                                             ),
                                             ", \"call_semantics\": ".to_string(),
                                         ),
-                                        serialize_call_semantics(call_semantics.clone()),
+                                        serialize_call_semantics(
+                                            call_semantics.clone(),
+                                            key_to_id.clone(),
+                                        ),
                                     ),
                                     ", \"descent_evidence\": ".to_string(),
                                 ),

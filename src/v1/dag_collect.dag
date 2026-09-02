@@ -3,7 +3,7 @@ module v1.compiler.dag_collect
 import v1.std.core {
   Node,
   InferredNode, Resolved,
-  ExprData,
+  ExprData, ExprCall, ResolvedDirectCallSemantics,
   Connective, NoConnective,
   MatchPattern, Bind, LitPattern, VariantPattern, Wildcard,
   ErrorNode,
@@ -105,6 +105,24 @@ fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, DagColle
   }
 }
 
+fn dag_collect_call_formals(expr_data: ExprData, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
+  match expr_data {
+    ExprCall { call_semantics: call_semantics, descent_evidence: _ } => match call_semantics {
+      Present { value: semantics } => match semantics {
+        ResolvedDirectCallSemantics { target: _, application_plan: plan } =>
+          fold(plan, init: slots, f: (acc, application) =>
+            let acc = dag_collect_insert_slots(node: application.formal.declared_type, slots: acc, collision_errors: collision_errors)
+            let acc = dag_collect_insert_slots(node: application.formal.declaration_bound_conformance, slots: acc, collision_errors: collision_errors)
+            dag_collect_insert_slots(node: application.formal.substitution_basis, slots: acc, collision_errors: collision_errors)
+          )
+        _ => slots
+      }
+      Absent => slots
+    }
+    _ => slots
+  }
+}
+
 fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let slots = dag_collect_nodes_list(nodes: node.children, slots: slots, collision_errors: collision_errors)
   let slots = if is_module_shell_node(n: node) {
@@ -118,6 +136,7 @@ fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collisi
   let slots = dag_collect_nodes_list(nodes: node.properties, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_optional_node(value: node.type_annotation, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_match_pattern(pattern: node.match_pattern, slots: slots, collision_errors: collision_errors)
+  let slots = dag_collect_call_formals(expr_data: node.expr_data, slots: slots, collision_errors: collision_errors)
   dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
 }
 
