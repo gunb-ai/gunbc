@@ -52,6 +52,9 @@ data nfr_reason_mint_era: String = "match over a closed-coproduct param carrying
 
 data nfr_dissolve_wildcard_total: DissolutionCondition = unbound_dissolution(description: "the site's wildcard arm migrates to a total match — or the fn is declared kernel-permanent in cla_is_kernel_permanent_fn, which forces this row's deletion (DESIGN §6 exclusivity, per non_fold_residue_stale_row_ruling_note) — and the row deletes")
 
+data nfr_reason_fci1_cleanup: String = "FCI-1 cleanup observation dispatch retains explicit refusal wildcard arms; declared so the non-fold ratchet covers the live instrument sites"
+data nfr_dissolve_fci1_cleanup: DissolutionCondition = unbound_dissolution(description: "FCI-1 cleanup prestate and observation dispatches become total over their coproducts or move the consequence into a typed projection, then these rows delete")
+
 data nfr_reason_floor_discovery_transport: String = "typed transport-state projection: the observation coproduct's non-applicable variants share one located refusal arm at each phase; enumerating them would duplicate the same wrong-phase refusal rather than add semantic coverage. Declared with the transport boundary so the ratchet remains armed."
 
 data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
@@ -159,6 +162,8 @@ data nfr_reason_generated_workflow_provenance_projection: String = "subset proje
 data nfr_dissolve_generated_workflow_provenance_projection: DissolutionCondition = unbound_dissolution(description: "the generated-artifact registry admission for GithubActionsWorkflow carries provenance fused with its generating dispatch, so the artifact-visible citation is derivable only from the actual producer and neither an omitted nor a disagreeing provenance row is constructible; emission consumes that refined workflow-artifact declaration without projecting from the full GeneratedArtifact coproduct, and this wildcard match deletes with its row")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_cleanup, dissolution: nfr_dissolve_fci1_cleanup },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_cleanup_authority_for_observation" }, reason: nfr_reason_fci1_cleanup, dissolution: nfr_dissolve_fci1_cleanup },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
     reason: nfr_reason_dispatch_selection_routing,
