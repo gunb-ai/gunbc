@@ -1,0 +1,129 @@
+module test.claim.asrock_standoff_placement_witness
+import std.types { Bool, Int, List }
+import extdeps.standards.atx_2_2 { MountingLocationId, LocJ, LocS, LocF, LocB }
+import extdeps.boards.asrock_rack {
+  BoardLocationStanding,
+  HoleCorrespondenceInferred, HoleAbsenceExplicitlyDirected, HoleNotObservedInDrawing,
+  HolePhysicallyConfirmedPresent, HolePhysicallyConfirmedAbsent,
+  StandoffPlacementDecision, StandoffAdmitted, StandoffProhibited,
+  StandoffProhibitionCause, ProductSaysRemove, NoAdmittedBoardHole,
+  standoff_placement,
+  BoardStandardLocationCorrespondence,
+  asrock_altrad8ud_standard_location_correspondence,
+  Altrad8udMountingUnknown,
+  HoleCorrespondencePhysicallyUnconfirmed, ProductHoleDiameterUnmeasured,
+  UndersideKeepOutUnmeasured, MountingHoleGroundBondUnknown, StandoffHeightAndPadUnmeasured,
+  MountingUnknownDischarge, DischargedByMountingTheBoard, DischargedByCalipers,
+  DischargedByContinuityMeter,
+  mounting_unknown_discharge,
+  asrock_altrad8ud_open_mounting_unknowns,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESS 1 — THE POSITIVE CONTROL. An inferred hole admits a standoff. Without this, every witness
+// below is satisfied by a derivation that prohibits everything, which is the failure mode of a
+// safety-shaped model: refusing universally looks conservative and is useless.
+test fn w_an_inferred_hole_admits_a_standoff() -> Bool {
+  match standoff_placement(standing: HoleCorrespondenceInferred) {
+    StandoffAdmitted => true
+    StandoffProhibited { cause: _ } => false
+  }
+}
+
+// WITNESS 2 — THE DISCRIMINATING RED, and the whole reason the standing type exists. J and S both
+// end at "leave it empty", so a model that reports only the decision is green either way. This goes
+// red the moment the two evidence routes are collapsed back into one constructor: it asserts that
+// the same actuation arrives carrying DIFFERENT causes.
+test fn w_j_and_s_are_both_prohibited_for_different_causes() -> Bool {
+  let j = standoff_placement(standing: HoleAbsenceExplicitlyDirected)
+  let s = standoff_placement(standing: HoleNotObservedInDrawing)
+  match j {
+    StandoffProhibited { cause: jc } => {
+      match s {
+        StandoffProhibited { cause: sc } => {
+          match jc {
+            ProductSaysRemove => {
+              match sc {
+                NoAdmittedBoardHole => true
+                ProductSaysRemove => false
+              }
+            }
+            NoAdmittedBoardHole => false
+          }
+        }
+        StandoffAdmitted => false
+      }
+    }
+    StandoffAdmitted => false
+  }
+}
+
+// WITNESS 3 — A PHYSICAL CONFIRMATION AT FIT OVERTURNS THE WEAKER ROUTE WITHOUT SPECIAL-CASING.
+// The unobserved-in-drawing claim about S is the one a real board can refute. This asserts the
+// derivation already has somewhere for that measurement to land: confirming a hole admits a
+// standoff by the same total function, no new branch, no edit to the J row.
+test fn w_physical_confirmation_reaches_the_same_derivation() -> Bool {
+  let present = match standoff_placement(standing: HolePhysicallyConfirmedPresent) {
+    StandoffAdmitted => true
+    StandoffProhibited { cause: _ } => false
+  }
+  let absent = match standoff_placement(standing: HolePhysicallyConfirmedAbsent) {
+    StandoffAdmitted => false
+    StandoffProhibited { cause: c } => {
+      match c {
+        NoAdmittedBoardHole => true
+        ProductSaysRemove => false
+      }
+    }
+  }
+  present && absent
+}
+
+// WITNESS 4 — THE ROSTER IS THE FULL MICRO-ATX POPULATION. Nine standard locations, every one
+// decided. A chassis is built from the standard's grid, so a location this board simply forgot to
+// mention is a location a chassis silently populates with a metal post.
+test fn w_the_roster_decides_every_standard_location() -> Bool {
+  asrock_altrad8ud_standard_location_correspondence.length() == 9
+}
+
+// WITNESS 5 — EXACTLY TWO LOCATIONS ARE PROHIBITED, counted through the derivation rather than by
+// reading the standings back. This is the count a chassis emitter consumes: seven posts, two voids.
+test fn w_exactly_seven_of_nine_admit_a_post() -> Bool {
+  fold(asrock_altrad8ud_standard_location_correspondence, init: 0, f: fn(acc, row) {
+    match standoff_placement(standing: row.standing) {
+      StandoffAdmitted => acc + 1
+      StandoffProhibited { cause: _ } => acc
+    }
+  }) == 7
+}
+
+// WITNESS 6 — THE OPEN UNKNOWNS ARE COUNTABLE, which is the whole reason they stopped being a
+// paragraph. Five product-specific facts the standard cannot answer. This number is expected to go
+// DOWN at FIT, and a change to it is a real event rather than someone rewording prose.
+test fn w_five_mounting_unknowns_remain_open() -> Bool {
+  asrock_altrad8ud_open_mounting_unknowns.length() == 5
+}
+
+// WITNESS 7 — THE GROUND-BOND UNKNOWN NEEDS AN INSTRUMENT NOBODY ELSE NEEDS, and separating it is
+// the point. Four of the five are answered by looking at or measuring the board; whether a mounting
+// hole is bonded to board ground is answered only by a continuity meter. A derivation that routed
+// everything to one instrument would let "I measured the board" discharge an electrical claim.
+test fn w_the_bond_unknown_routes_to_its_own_instrument() -> Bool {
+  let bond = match mounting_unknown_discharge(u: MountingHoleGroundBondUnknown) {
+    DischargedByContinuityMeter => true
+    DischargedByCalipers => false
+    DischargedByMountingTheBoard => false
+  }
+  let fit = match mounting_unknown_discharge(u: HoleCorrespondencePhysicallyUnconfirmed) {
+    DischargedByMountingTheBoard => true
+    DischargedByCalipers => false
+    DischargedByContinuityMeter => false
+  }
+  let caliper = match mounting_unknown_discharge(u: ProductHoleDiameterUnmeasured) {
+    DischargedByCalipers => true
+    DischargedByMountingTheBoard => false
+    DischargedByContinuityMeter => false
+  }
+  bond && fit && caliper
+}

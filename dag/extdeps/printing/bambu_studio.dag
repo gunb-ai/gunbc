@@ -108,11 +108,20 @@ data bambu_studio_release_artifact_platforms: List<PlatformSupportClaim> = [
   },
 ]
 
+// THE JOIN IS A CONCATENATION, NOT AN ADJUDICATION, and reading it requires knowing that.
+//
+// The two rosters disagree about Linux: the specification table lists macOS and Windows only, while
+// the release feed publishes Ubuntu AppImages. Every claim below therefore carries its own kind and
+// its own authority, and nothing in this module says which wins — a Linux toolchain is demonstrably
+// available and is not promised by the spec sheet, and those are both true at once.
+//
+// The disagreement is not restated as a datum here. An earlier revision carried it as a standalone
+// NonEmptyStr, which is the unclassified prose DESIGN section 4c forbids: every fact in that
+// sentence is already in a typed row above (the kinds, the platforms, the authorities, the asset
+// names), so the row duplicated modelled data in a form no program can read. What is left is the
+// rationale for the shape, which is what an annotation is for.
 data bambu_studio_platform_support: List<PlatformSupportClaim> = concat(
   bambu_studio_spec_sheet_platforms,
   bambu_studio_release_artifact_platforms
 )
 
-// The disagreement stated as a fact of its own, so a reader who consults only one list is told the
-// other exists. It is NOT a resolution: no arm of this module says which claim wins.
-data bambu_studio_platform_claim_divergence: NonEmptyStr = "The vendor's specification table and the vendor's release feed disagree about Linux. The table lists macOS and Windows only; the release feed publishes Ubuntu 22.04 and 24.04 AppImages and Flathub serves the application. Both are cited above with separate authorities and separate claim kinds. This repository does not adjudicate between them: a Linux toolchain is demonstrably available, and is not promised by the specification sheet."

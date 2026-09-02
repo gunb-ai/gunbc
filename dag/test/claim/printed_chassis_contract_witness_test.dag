@@ -107,3 +107,23 @@ test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
     _ => false
   }
 }
+
+// WITNESS 6 — THE SCAN REPORTS THE FIRST DIVERGENCE, NOT THE LAST. The rewrite from recursion to a
+// fold visits every pair instead of stopping at one, so "keep the earliest" moved from early exit
+// into the accumulator. This is the discriminating red for that move: the realized ladder here is
+// shifted by two, so EVERY rung differs, and the reported index must still be 0. An accumulator that
+// overwrote would report 10 and would look correct on any single-divergence test.
+test fn w_the_scan_reports_the_earliest_of_many_divergences() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let modeled = specimen_hole_diameters(s: hole_ladder_specimen(l: l))
+      let shifted = concat(modeled.skip(n: 2), [micrometer(count: 1), micrometer(count: 2)])
+      match compare_rungs(modeled: modeled, realized: shifted) {
+        ContractRungValueDiverges { index: i, modeled: _, realized: _ } => i == 0
+        ContractConforms => false
+        ContractRungCountDiverges { modeled: _, realized: _ } => false
+      }
+    }
+    _ => false
+  }
+}

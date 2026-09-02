@@ -671,11 +671,24 @@ data asrock_altrad8ud_board_outline_citation: FactCitation = FactCitation {
 // them by letter, so "this board's visible hole IS standard location C" is a strongly supported
 // inference from a to-scale drawing, not a vendor statement. It is discharged physically at FIT.
 //
-// J AND S ARE PROHIBITIONS, NOT ABSENCES, and this is the distinction that has a short circuit at
-// the end of it. Both are standard micro-ATX locations. Neither carries a board hole here. A chassis
-// built to the full micro-ATX population puts a metal standoff at each, under a board with copper
-// and no hole above it. "Not in my list of holes" and "must not be populated" were the same state in
-// the earlier model; they are now different constructors, because only one of them is a warning.
+// J AND S REACH THE SAME ACTUATION THROUGH DIFFERENT EVIDENCE, and collapsing that was the defect.
+// Both are standard micro-ATX locations, neither carries a board hole here, and a chassis built to
+// the full micro-ATX population would put a metal standoff at each. So both must be left empty.
+//
+// But the REASONS are not the same strength, and only the model can keep them apart:
+//   J is DIRECTED. The vendor's own layout figure marks it as a standoff to remove. That is a
+//     product statement, and it is the strongest evidence in this file.
+//   S is UNOBSERVED. It is simply not drawn. Absence from a figure is weaker than an instruction,
+//     and it is exactly the kind of claim a physical check at FIT can overturn.
+// One earlier revision spelled both as a single ChassisStandoffForbidden constructor, which made the
+// weaker claim indistinguishable from the stronger one and gave a future reader no way to know which
+// row to re-examine when a board is finally in hand. Evidence and decision are now two types joined
+// by a total derivation: the standing is what is known, the placement is what is done.
+//
+// NOT CLAIMED, and an earlier revision did claim it: that either location "sits under copper". What
+// the underside actually carries at J and S has not been observed by anything. The reason to keep a
+// standoff out of an unpopulated location is that it is unpopulated; inventing a specific hazard to
+// justify a correct decision weakens the decision by attaching it to a fact nobody checked.
 // ---------------------------------------------------------------------------------------------
 
 data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAuthority {
@@ -685,39 +698,79 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
   }
 }
 
-type BoardLocationDisposition
-  = BoardHolePresent
-  | ChassisStandoffForbidden
+// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
+// route, so the grade is readable from the constructor rather than from prose beside it.
+type BoardLocationStanding
+  = HoleCorrespondenceInferred
+  | HoleAbsenceExplicitlyDirected
+  | HoleNotObservedInDrawing
+  | HolePhysicallyConfirmedPresent
+  | HolePhysicallyConfirmedAbsent
+
+// WHY a location must stay empty. Distinct from the standing that established it.
+type StandoffProhibitionCause
+  = ProductSaysRemove
+  | NoAdmittedBoardHole
+
+// WHAT IS DONE at a standard location by a chassis built for this board.
+type StandoffPlacementDecision
+  = StandoffAdmitted
+  | StandoffProhibited { cause: StandoffProhibitionCause }
+
+// The join, and the reason the two types are worth separating: this is total, so a new standing arm
+// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
+// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
+fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
+  match standing {
+    HoleCorrespondenceInferred => StandoffAdmitted
+    HolePhysicallyConfirmedPresent => StandoffAdmitted
+    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
+    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
+  }
+}
 
 type BoardStandardLocationCorrespondence sole_constructor {
   location: MountingLocationId
-  disposition: BoardLocationDisposition
+  standing: BoardLocationStanding
 }
 
 fn board_location_correspondence(
   location: MountingLocationId,
-  disposition: BoardLocationDisposition,
+  standing: BoardLocationStanding,
 ) -> BoardStandardLocationCorrespondence {
-  BoardStandardLocationCorrespondence { location: location, disposition: disposition }
+  BoardStandardLocationCorrespondence { location: location, standing: standing }
 }
 
 // Coordinates are deliberately ABSENT from these rows. A correspondence names a location; the
 // location owns its position. Copying the coordinates here would fork the grid — the exact defect
 // this session already paid for once, where the coupon's holes were computed a second time instead
 // of being read from the ladder that defined them.
+// HOW THE CORRESPONDENCE BELOW WAS ESTABLISHED, and its exact strength.
+//
+// A scale reading of the section 1.4 motherboard-layout figure over the operator-supplied grid
+// overlay cited above. The figure is to scale: its measured outline aspect ratio agrees with
+// 10.5/9.6 to within a thousandth, which is the check that makes reading positions off it legitimate
+// at all. Seven marked holes then land on micro-ATX grid values, J is marked on the figure as a
+// standoff to remove, and S is not drawn.
+//
+// What that establishes is WHICH standard locations this board populates. It does NOT establish the
+// coordinates — those are the standard's — and it is not a vendor statement of conformance. The
+// aspect-ratio agreement is deliberately not carried as a datum: it was a one-off sanity check with
+// no instrument behind it, and DESIGN section 6 says a number worth re-deriving is worth an entry
+// point while one that is not is not an instrument at all.
 data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
-  board_location_correspondence(location: LocF, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocM, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocC, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocH, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocL, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocB, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocR, disposition: BoardHolePresent),
-  board_location_correspondence(location: LocJ, disposition: ChassisStandoffForbidden),
-  board_location_correspondence(location: LocS, disposition: ChassisStandoffForbidden),
+  board_location_correspondence(location: LocF, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocM, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocC, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocH, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocL, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocB, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocR, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocJ, standing: HoleAbsenceExplicitlyDirected),
+  board_location_correspondence(location: LocS, standing: HoleNotObservedInDrawing),
 ]
 
-data asrock_altrad8ud_correspondence_evidence: NonEmptyStr = "Scale reading of the section 1.4 motherboard-layout figure via an operator-supplied grid overlay (cited above). The figure's outline is to scale, measured aspect ratio 1.0935 against 10.5/9.6 = 1.0938. Seven marked holes land on micro-ATX grid values; J is marked on the figure as a standoff to remove; S is not drawn and is inferred absent. This establishes WHICH standard locations the board populates. It does NOT establish the coordinates, which are the standard's, and it is not a vendor statement of conformance."
 
 // THE DEEP EXTENSION, and the cassette requirement that falls out of it.
 //
@@ -733,4 +786,47 @@ data asrock_altrad8ud_correspondence_evidence: NonEmptyStr = "Scale reading of t
 // keep-out measurement, since a support that fouls a solder joint is worse than none.
 data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
 
-data asrock_altrad8ud_standoff_measurement_obligation: NonEmptyStr = "STILL OPEN, and narrower than it was: the standard LOCATIONS are exact, so what remains unmeasured is product-specific. (1) Physical confirmation that each visible hole is the named standard location — discharged at FIT by mounting the board. (2) This board's actual hole diameter: the standard's 3.96 mm belongs to the location definition, not to the product. (3) Underside component and copper keep-outs around each hole. (4) Whether any mounting hole is bonded to board ground, which the protective-earth requirement makes load-bearing rather than trivia, since the earth path runs through the standoffs. (5) Standoff height and permissible contact-pad diameter."
+// THE OPEN MOUNTING UNKNOWNS, AS A CLOSED TYPE RATHER THAN A PARAGRAPH.
+//
+// An earlier revision carried these five as one NonEmptyStr. DESIGN section 4c names a dissolution
+// condition as something that belongs in a typed carrier specifically, and the reason is mechanical:
+// a paragraph cannot be counted, cannot be discharged one item at a time, and cannot refuse. This
+// can. Each arm names one product-specific fact that the standard does not supply, and the total
+// derivation beside it names what discharges it — so an arm added later cannot be left without a
+// route, and the roster going empty is a real, checkable event rather than someone editing prose.
+//
+// Note what is NOT in here: the standard LOCATIONS. Those are exact. Everything below is a fact
+// about this physical product that no specification can answer.
+type Altrad8udMountingUnknown
+  = HoleCorrespondencePhysicallyUnconfirmed
+  | ProductHoleDiameterUnmeasured
+  | UndersideKeepOutUnmeasured
+  | MountingHoleGroundBondUnknown
+  | StandoffHeightAndPadUnmeasured
+
+type MountingUnknownDischarge
+  = DischargedByMountingTheBoard
+  | DischargedByCalipers
+  | DischargedByContinuityMeter
+
+// Total by construction: a new unknown must be given a discharge route here or fail to compile.
+fn mounting_unknown_discharge(u: Altrad8udMountingUnknown) -> MountingUnknownDischarge {
+  match u {
+    HoleCorrespondencePhysicallyUnconfirmed => DischargedByMountingTheBoard
+    ProductHoleDiameterUnmeasured => DischargedByCalipers
+    UndersideKeepOutUnmeasured => DischargedByCalipers
+    StandoffHeightAndPadUnmeasured => DischargedByCalipers
+    MountingHoleGroundBondUnknown => DischargedByContinuityMeter
+  }
+}
+
+// MountingHoleGroundBondUnknown governs the FUNCTIONAL board-to-chassis bond only. Protective earth
+// is bolted to rack metal and must survive board, standoff and cassette removal, so no entry in this
+// roster sits on the safety path — see the grounding section of the printed-chassis program.
+data asrock_altrad8ud_open_mounting_unknowns: List<Altrad8udMountingUnknown> = [
+  HoleCorrespondencePhysicallyUnconfirmed,
+  ProductHoleDiameterUnmeasured,
+  UndersideKeepOutUnmeasured,
+  MountingHoleGroundBondUnknown,
+  StandoffHeightAndPadUnmeasured,
+]

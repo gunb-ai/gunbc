@@ -32,22 +32,42 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // conversion the document itself carries — they are not converted here, which is why both numbers
 // appear and agree.
 //
-// WHAT THIS MODULE DELIBERATELY DOES NOT CARRY: the per-hole coordinate table. The specification
-// places the holes in FIGURE 3 ("see Figure 3 for exact locations"), which is vector artwork with no
-// extractable text layer. So the exact lettered hole positions are NOT established here, and no
-// consumer may read this module as supplying them. Adding them requires reading that figure by an
-// instrument this session does not have, and inventing them from recall is precisely the fabrication
-// the neighbouring board module's standoff obligation refuses.
+// HOW THE LETTERED COORDINATES BELOW WERE ESTABLISHED, stated here because an earlier revision of
+// this very paragraph said they could NOT be and then carried them anyway — two contradictory
+// authority claims standing in one file, which is worse than either alone.
+//
+// This session's own extraction of ATX 2.2 recovered the figure text layer for Figure 7 only; the
+// mounting-location artwork in Figure 3 yielded nothing. So the coordinates below are NOT this
+// session's reading of that figure. They were supplied by a routed review reporting the micro-ATX
+// specification's named location population and dimensions, and they are corroborated — not
+// established — by an independent route: seven marked holes on the ASRock layout drawing land on
+// them exactly, which is not a coincidence available to invented numbers.
+//
+// That makes their grade CITED-VIA-RELAY, the grade extdeps.climbing_holds.atomik defines and this
+// corpus already uses when a document was read by someone other than the authoring session. It is
+// stronger than recall and weaker than a first-party read, and it is recorded as such rather than
+// promoted because the numbers are almost certainly right. Being correct is not the same as being
+// read.
+// THE ROUNDED AND THE EXACT ARE BOTH CARRIED, and the exact one is a Micrometer rather than a
+// sentence. An earlier revision kept 243.84 in a prose row that said it was "preserved in this note
+// rather than silently lost" — but a note is exactly where a number IS lost: no Accepted program can
+// read one, so the only surviving machine-readable value was the rounded 244. The whole-millimetre
+// carrier cannot hold the spec's figure; the micrometre carrier can, so the spec's figure lives
+// there and the rounding stops being lossy.
 data atx_board_width_along_rear_io: Millimeter = millimeter(count: 244)
-data atx_board_width_inches_note: NonEmptyStr = "The specification prints 9.600 in / 243.84 mm as the board dimension along the rear I/O edge. 244 mm is that figure rounded to this corpus's whole-millimetre Millimeter carrier; the exact 243.84 is preserved in this note rather than silently lost."
+data atx_board_width_along_rear_io_exact: Micrometer = micrometer(count: 243840)
+
+// 12.000 in, the full-size ATX board depth. Carried because it is the dimension the micro-ATX and
+// deep-micro-ATX variants reduce, NOT as a claim about any board in this corpus.
 data atx_full_size_depth: Millimeter = millimeter(count: 305)
-data atx_full_size_depth_inches_note: NonEmptyStr = "12.000 in / 304.8 mm, the full-size ATX board depth. Recorded because it is the dimension the micro-ATX and deep-micro-ATX variants reduce; it is NOT a claim about any board in this corpus."
+data atx_full_size_depth_exact: Micrometer = micrometer(count: 304800)
 // THE TWO BOARD-MOUNTING-HOLE OFFSETS the specification's figure labels as REF dimensions. They are
 // the only hole-related numbers with an extractable text layer in the whole document, and they are
-// offsets from datum rather than hole positions: on their own they place nothing.
+// offsets from datum rather than hole positions: on their own they place nothing — two offsets
+// cannot locate seven holes. They are kept because they are cited and exact, and because any later
+// first-party reading of Figure 3 has to agree with them, which makes them a check on that reading.
 data atx_board_mtg_hole_offset_a: Micrometer = micrometer(count: 16510)
 data atx_board_mtg_hole_offset_b: Micrometer = micrometer(count: 10160)
-data atx_board_mtg_hole_offset_note: NonEmptyStr = "Figure 7 labels these .650 in / 16.51 mm and .400 in / 10.16 mm as REF (Board Mtg Hole). They are datum offsets, not a hole table: two offsets cannot locate seven holes. Recorded because they are cited and exact, and because a later reading of Figure 3 must agree with them."
 // THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
 // and because this session got it BACKWARDS once and shipped the error.
 //
@@ -58,8 +78,11 @@ data atx_board_mtg_hole_offset_note: NonEmptyStr = "Figure 7 labels these .650 i
 // The error worth recording: an earlier revision of extdeps.boards.asrock_rack read the ALTRAD8UD's
 // 9.6 x 10.5 in as 267 mm WIDE against micro-ATX's 244 mm, and concluded that a micro-ATX hole
 // pattern would be laid out at the wrong width. The axes were transposed. The board is 244 mm wide,
-// which is the micro-ATX width exactly, and 267 mm deep. The consequence inverts: the rear-edge hole
-// columns are the standard ones, and it is the FRONT row that moves outward by the extra depth.
+// which is the micro-ATX width exactly, and 267 mm deep.
+//
+// RETRACTED, and it was written in this file: the sentence that followed said "it is the FRONT row
+// that moves outward by the extra depth". That is false, for the datum reason recorded at the
+// mounting-location grid below. The front row does not move. A deep board extends PAST it.
 // THE LETTERED MOUNTING-LOCATION GRID. The specifications name their location populations by letter,
 // and the letters — not coordinates — are the identity: a location is the same location across
 // revisions and across boards, which is what makes "this board populates C" a checkable claim rather
@@ -104,14 +127,25 @@ data micro_atx_mounting_locations: List<MountingLocation> = [
 // The STANDARD's nominal mounting-hole diameter. It is a property of the location definition and
 // NOT of any product: a board populating location C is not thereby asserted to have a 3.96 mm hole.
 // A product's actual hole diameter is a product fact and stays unknown until measured or cited.
+// 0.156 in nominal. This belongs to the STANDARD LOCATION definition and to nothing else; no
+// consumer may read a product's physical hole diameter from it.
 data micro_atx_standard_hole_diameter: Micrometer = micrometer(count: 3962)
-data micro_atx_hole_diameter_note: NonEmptyStr = "0.156 in nominal, from the micro-ATX specification's Figure 3. This belongs to the STANDARD LOCATION definition. It is not a claim about any board's physical hole, and no consumer may read a product's hole diameter from it."
 
 // The maximum envelope, and the reason reusing the grid is not conformance. A design exceeding this
 // envelope requires a dedicated chassis by the specification's own statement, so a 9.6 x 10.5 in
 // board cannot be called mechanically conforming micro-ATX merely because it populates the grid.
-data micro_atx_maximum_envelope_note: NonEmptyStr = "Micro-ATX maximum envelope is 9.6 x 9.6 in. A board exceeding it requires a dedicated chassis per the specification. Populating the lettered grid is therefore NOT conformance: grid reuse and envelope conformance are separate claims and a board can make the first while failing the second."
-
+// GRID REUSE AND ENVELOPE CONFORMANCE ARE SEPARATE CLAIMS, and a board can make the first while
+// failing the second. The two rows below ARE the maximum envelope: a design exceeding it requires a
+// dedicated chassis by the specification's own statement. So populating the lettered grid does not
+// make a 9.6 x 10.5 in board mechanically conforming micro-ATX.
+//
+// AND THE VENDOR PHRASE IS NOT A FORM FACTOR. An earlier revision of this module generalised "deep
+// micro-ATX" to mean 9.6 in wide plus extra depth. That is refuted by the vendor's own catalogue:
+// ASRock applies the same phrase to a 9.6 x 10.5 in board AND to a 10.4 x 10.5 in board. The label
+// determines neither the outline nor a mounting-hole population, which is why this corpus carries a
+// standard with a lettered location catalog, a separately cited vendor label claim carrying no
+// dimensions, and a per-product mechanical profile — rather than a FormFactor coproduct with a
+// DeepMicroAtx arm. A name that silently implies an envelope is the category error that produced the
+// axis transposition recorded above.
 data micro_atx_width_along_rear_io: Millimeter = millimeter(count: 244)
 data micro_atx_depth: Millimeter = millimeter(count: 244)
-data deep_micro_atx_axis_note: NonEmptyStr = "Deep micro-ATX keeps the micro-ATX 9.6 in rear-I/O width and extends the depth beyond 9.6 in. A deep-micro-ATX board is as wide as a micro-ATX board and deeper, never wider. Stated because transposing these axes inverts every conclusion about which mounting holes are standard."

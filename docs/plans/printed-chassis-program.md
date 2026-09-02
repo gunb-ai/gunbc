@@ -38,7 +38,7 @@ whether more printers are worth buying.
 
 - **Missing physical input policy: refuse.** No default, no nominal catalogue figure, no nearby standard.
 - **Hidden CAD geometry authority: refuse.** The model owns dimensions *and* geometry-selection laws.
-- **Printed polymer is never the mains enclosure and never the sole protective-earth path.**
+- **Printed polymer is never the mains enclosure and never a conductor in either grounding network.** Protective earth is bolted to metal and survives every removal the design invites; the board-to-chassis bond is functional only.
 - **MVP thermal fixture choice carries no authority over deployment layout.** Using the 4U cooler
   first to reduce thermal uncertainty must not silently become the rack pitch.
 - **Bay pitch derives from measured millimetres.** "2U" and "4U" are catalogue labels, not lengths.
@@ -52,7 +52,7 @@ because a step without one cannot be said to be done.
 
 | Step | Project | Terminal evidence | State |
 |---|---|---|---|
-| **PRINT-0** | MEASURE | Board outline typed from the vendor manual; standoff map refused with a named trigger, not derived | **done** |
+| **PRINT-0** | MEASURE | Board outline typed from the vendor manual (244 x 267, axes corrected); micro-ATX lettered grid modelled as its own standard authority; standoff placement derived from per-location evidence standings | **done** |
 | **PRINT-1** | TOOLCHAIN | Printer, build envelope, filament classes, slicer platform claims as separate authorities | **done** |
 | **PRINT-2** | MEASURE | Measurement authority: absent refuses, duplicate-key conflict refuses, precision budget enforced | **done** |
 | **PRINT-3** | CAL | Coupon authority: ladder as modeled experimental design, rungs and plate derived | **done** |
@@ -63,7 +63,7 @@ because a step without one cannot be said to be done.
 | **PRINT-8** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
 | **PRINT-9** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | needs printers + board |
 | **PRINT-10** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
-| **PRINT-11** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **earth bond continuous from board standoffs to PSU PE** | needs PSU envelope |
+| **PRINT-11** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
 | **PRINT-11b** | CASSETTE | **Cable model**: every run carries endpoints, bend/service volume, clip positions, strain relief, moving-vs-fixed segment, and separation from blades and hot surfaces | |
 | **PRINT-13b** | RACK | **Management-node mount** (Raspberry-Pi class) on the rack, with its own cable route into the spine | |
 | **PRINT-12** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
@@ -251,25 +251,73 @@ contradiction. A future adjudication relation may supersede a measurement, but s
 be smuggled into ordinary resolution.
 
 
-## Grounding — R14, and why it is a structural constraint rather than a wiring detail
+## Grounding — R14, and why it is TWO networks rather than one path
 
-A printed cassette has **no earth path**. On a metal chassis the standoffs bond the board's mounting
-holes to the tray and the tray to PSU protective earth; replace the tray with PETG and that path is
-simply gone, silently, while everything still fits and powers on.
+**Corrected.** An earlier revision of this section said the earth connection is "part of the docking
+interface" and that the earth path runs through the standoffs. That is wrong, and wrong in the
+dangerous direction: it makes the safety path depend on a mechanism whose whole purpose is to be
+disconnected by hand, routinely, by design. The requirement below replaces it.
 
-So the bond is a modelled requirement, not an assembly note:
+There are two networks. They serve different purposes, they have different failure consequences, and
+conflating them is what produced the earlier error.
+
+**1. Protective earth (PE) — a safety network, and never load-bearing on anything removable.**
+From the AC inlet's earth pin, through the PSU's own vendor enclosure, to a dedicated bonding point
+on the rack's metal member, and from there to every accessible conductive part. It is bolted, not
+docked. The witness is stated as three simultaneous conditions, because any one of them alone is a
+state the rack will really be in:
+
+> PE continuity holds with the motherboard removed, AND with every motherboard standoff removed, AND
+> with the removable cassette undocked.
+
+If pulling a node can open the earth network, the design is wrong regardless of how good the contact
+is when it is seated.
+
+**2. Board-to-chassis bond — a functional network, for EMI and reference, not for safety.**
+Board mounting hole → metal standoff → cassette metal reference. This one legitimately breaks when
+the board is removed, because that is what it is for. It may be a return and reference path; it may
+never be the reason a chassis surface is safe to touch.
+
+The consequences for the build:
 
 - **Metal standoffs into a metal member.** The hybrid load path already buys aluminium extrusion or
-  threaded rod for the rack — that member is the natural bonding conductor, and it is present for
-  structural reasons anyway.
-- **A continuous path** from every board mounting hole to PSU protective earth, through metal only.
-- **Printed polymer is never the sole earth path and never the mains enclosure.** The PSU stays in
-  its vendor enclosure.
-- The cassette moves; the bond must survive extraction and reinsertion, so the earth connection is
-  part of the **docking interface**, not a loose wire someone remembers to reattach.
+  threaded rod — that member is the natural bonding conductor and is present for structural reasons
+  anyway. It serves network 2, and is a *bonded branch of* network 1, not a segment of it.
+- **Printed polymer is never a conductor in either network, never the mains enclosure, and never the
+  sole earth path.** The PSU stays in its vendor enclosure.
+- **The docking interface carries no PE obligation.** A dock is a connector; PE is a bolt.
 
-The obligation this creates for MEASURE: PSU earth-stud or mounting-screw location, and the standoff
-material and thread. Neither is measured yet.
+The obligation this creates for MEASURE: the PSU's earth-stud or bonding-screw location, the rack
+member's bonding point, and the standoff material and thread. None is measured yet.
+
+The witness set, written now so the design is falsifiable before anything is printed:
+
+| # | Condition | Required outcome |
+|---|---|---|
+| G1 | Motherboard absent | All accessible rack metal remains PE-bonded |
+| G2 | Every motherboard standoff absent | PE continuity holds |
+| G3 | One cassette extracted | PE continuity holds for the remaining rack |
+| G4 | Board-hole bonding unknown | **No** board-to-chassis bond is claimed |
+| G5 | Any printed polymer segment | Never carries PE continuity |
+
+G4 is the one that is easy to skip: not knowing whether a mounting hole is bonded to board ground is
+a reason to make no claim, not a reason to assume the convenient answer. A dedicated bonding stud,
+conductor, terminal and tested connection are part of the rack design. Incidental contact through
+rails or mounting screws is never the bond.
+
+### Front-edge support — admitted only under all five conjuncts
+
+The 29.21 mm of board hanging past the last mounting row is a cassette input, not a description. A
+support there is a *candidate*, and it is admitted only when all of the following hold, because each
+one of them independently turns a helpful support into a defect:
+
+1. The underside keep-out at the contact region is known.
+2. The contact region is non-conductive.
+3. The support does not obstruct the extraction path (R-middle-node-removal).
+4. The support actually reacts connector insertion load — otherwise it is decoration.
+5. The support does not become an **unintended electrical bond**, which is where this requirement
+   meets the grounding correction above: a support that quietly bonds the board underside to the
+   cassette creates a path nobody modelled and nobody tests.
 
 ## Cable routing — R12, at every layer
 

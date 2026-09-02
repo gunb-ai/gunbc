@@ -1,5 +1,6 @@
 module product.printed_chassis.realization_contract
 import std.types { Bool, Int, List, NonEmptyStr }
+import v2.std.algebra { zip_map }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
@@ -121,16 +122,54 @@ type ContractConformance
   = ContractConforms
   | ContractRungCountDiverges { modeled: Int, realized: Int }
   | ContractRungValueDiverges { index: Int, modeled: Micrometer, realized: Micrometer }
-// The scan is recursive and carries the index, following the std.realization_schedule string_list_eq
-// precedent rather than folding: a fold cannot stop at the first divergence and cannot report WHERE
-// it was, and "the ladders differ" without an index sends a human to diff two lists by eye.
-fn compare_rungs_from(index: Int, modeled: List<Micrometer>, realized: List<Micrometer>) -> ContractConformance {
-  if modeled.count() == 0 {
-    ContractConforms
-  } else if micrometer_count(m: modeled.first()) != micrometer_count(m: realized.first()) {
-    ContractRungValueDiverges { index: index, modeled: modeled.first(), realized: realized.first() }
-  } else {
-    compare_rungs_from(index: index + 1, modeled: modeled.skip(n: 1), realized: realized.skip(n: 1))
+// THE SCAN IS ONE FOLD OVER ZIPPED PAIRS, and the shape is the point rather than the speed.
+//
+// The first revision recursed with `modeled.count() == 0` as its base case. List is an alias for
+// FreeMonoid, so `.count()` walks the whole spine — an O(n) emptiness test inside an O(n) recursion,
+// quadratic over the ladder. DESIGN section 6's bare-minimum-cost rule says that is always fixed and
+// that "n is small here" is not a time-stable rebuttal, because reuse changes n.
+//
+// The cost was not the worse half. That recursion read `realized.first()` while only `modeled` was
+// tested for emptiness, so it was total only because a separate count precheck happened to run
+// first. Called with a shorter realized list it would have read past the end; called with a shorter
+// MODELED list it would have returned ContractConforms — a fabricated pass, which is precisely the
+// absorbing fallback DESIGN section 5 forbids, guarded by nothing but a caller's good manners.
+//
+// Zipping removes the state rather than checking for it: a ragged pair has no representation, so the
+// scan cannot be handed one. Two length reads (which the count diagnostic needs anyway), one zip and
+// one fold — linear, and the raggedness question is answered by construction.
+type RungComparison sole_constructor {
+  modeled: Micrometer
+  realized: Micrometer
+}
+
+// The accumulator keeps the FIRST divergence rather than the last. A fold visits every pair, so
+// without this the reported index would be the final mismatch, and "where does it first go wrong" is
+// the only question an index answers usefully.
+type RungScan sole_constructor {
+  index: Int
+  outcome: ContractConformance
+}
+
+fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
+  match acc.outcome {
+    ContractRungValueDiverges { index: _, modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    ContractRungCountDiverges { modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    ContractConforms =>
+      if micrometer_count(m: pair.modeled) != micrometer_count(m: pair.realized) {
+        RungScan {
+          index: acc.index + 1,
+          outcome: ContractRungValueDiverges {
+            index: acc.index,
+            modeled: pair.modeled,
+            realized: pair.realized,
+          },
+        }
+      } else {
+        RungScan { index: acc.index + 1, outcome: ContractConforms }
+      }
   }
 }
 
@@ -138,10 +177,18 @@ fn compare_rungs_from(index: Int, modeled: List<Micrometer>, realized: List<Micr
 // correctness: with unequal lengths the first differing index is an artefact of where the shorter
 // list ran out, so reporting it as a value divergence would name a position that means nothing.
 fn compare_rungs(modeled: List<Micrometer>, realized: List<Micrometer>) -> ContractConformance {
-  if modeled.count() != realized.count() {
-    ContractRungCountDiverges { modeled: modeled.count(), realized: realized.count() }
+  let modeled_count = modeled.length()
+  let realized_count = realized.length()
+  if modeled_count != realized_count {
+    ContractRungCountDiverges { modeled: modeled_count, realized: realized_count }
   } else {
-    compare_rungs_from(index: 0, modeled: modeled, realized: realized)
+    fold(
+      zip_map(a: modeled, b: realized, f: fn(m, r) {
+        RungComparison { modeled: m, realized: r }
+      }),
+      init: RungScan { index: 0, outcome: ContractConforms },
+      f: rung_scan_step
+    ).outcome
   }
 }
 
