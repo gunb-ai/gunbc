@@ -3143,6 +3143,22 @@ fn ct_shell_service_output_projection_test() -> String {
 // no modeled channel must REFUSE, typed and located, rather than being answered
 // with stdout. The refusal is minted at the BINDING, before a target is chosen,
 // so there is no renderer default arm left for it to fall through.
+//
+// ASSERT THROUGH THE WALL, NOT ABOUT THE BYTES. This test first asked for the
+// refusal TEXT inside an emitted src/probe.rs, and it was RED on main for exactly
+// as long as that shape stood, because emit_artifact in v1.compiler.compile pairs
+// the refusal EXPRESSION with a BLOCKING diagnostic and returns `files: []` --
+// the compile itself stops, so there is no src/probe.rs to read. The weaker claim
+// was not merely unsatisfiable here; it was satisfiable by precisely the class the
+// wall exists to close, refusal_deferred_to_emitted_runtime: a compile that reports
+// success while shipping bytes that carry the refusal to a runtime nobody reads.
+// So the assertion is now the compile's own verdict -- a located diagnostic naming
+// the key, and the ABSENCE of any emitted body for the refused module.
+//
+// ITS POSITIVE CONTROL IS THE SIBLING ABOVE. shell_service_output_projection_binds
+// _each_declared_channel compiles the same fixture with every key modeled and gets
+// src/probe.rs with zero diagnostics, so "no file" here is the refusal firing and
+// not an emitter that emits nothing for services.
 fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
   concat(
     "    #[test]\n",
@@ -3158,23 +3174,51 @@ fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
     "                    std::rc::Rc::new(im::vector![source]),\n",
     "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
     "                );\n",
-    "                let emitted = r\n",
-    "                    .files\n",
+    "                let errors: Vec<_> = r\n",
+    "                    .diagnostics\n",
     "                    .iter()\n",
-    "                    .find(|f| f.path == \"src/probe.rs\")\n",
-    "                    .map(|f| f.content.clone())\n",
-    "                    .expect(\"service module must emit src/probe.rs\");\n",
+    "                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))\n",
+    "                    .collect();\n",
+    "                // The line stops, and it stops with the TYPED cause -- not merely\n",
+    "                // with some error that happens to be present.\n",
     "                assert!(\n",
-    "                    emitted.contains(\"not_a_channel\")\n",
-    "                        && emitted.contains(\"has no modeled channel\"),\n",
-    "                    \"an unmodeled output key must refuse and name the key. Got:\\n{}\",\n",
-    "                    emitted\n",
+    "                    errors.iter().any(|d| matches!(\n",
+    "                        *d.diagnostic,\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled { .. }\n",
+    "                    )),\n",
+    "                    \"an unmodeled output key must refuse with TransportEmissionNotModeled. \\\n",
+    "                     Got: {:?}\",\n",
+    "                    r.diagnostics\n",
     "                );\n",
+    "                // ...and it is LOCATED at the field: the message names the key the\n",
+    "                // author wrote, so an operation with one bad key among several says\n",
+    "                // which one.\n",
+    "                let messages: Vec<String> = errors\n",
+    "                    .iter()\n",
+    "                    .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))\n",
+    "                    .collect();\n",
     "                assert!(\n",
-    "                    !emitted.contains(\"stdout.clone()\"),\n",
+    "                    messages.iter().any(|m| m.contains(\"not_a_channel\")\n",
+    "                        && m.contains(\"has no modeled channel\")),\n",
+    "                    \"the refusal must name the unmodeled key. Got: {:?}\",\n",
+    "                    messages\n",
+    "                );\n",
+    "                // THE DISCRIMINATING HALF. A refusal deferred into emitted bytes\n",
+    "                // would still satisfy both assertions above while leaving a\n",
+    "                // src/probe.rs behind; the wall is that emit returns no files at all.\n",
+    "                let paths: Vec<String> = r.files.iter().map(|f| f.path.clone()).collect();\n",
+    "                assert!(\n",
+    "                    !paths.iter().any(|p| p == \"src/probe.rs\"),\n",
+    "                    \"a refused operation must not be emitted at all -- the refusal may \\\n",
+    "                     not be deferred into a body. Got files: {:?}\",\n",
+    "                    paths\n",
+    "                );\n",
+    "                // And nothing anywhere fell through to the stdout channel.\n",
+    "                assert!(\n",
+    "                    !r.files.iter().any(|f| f.content.contains(\"stdout.clone()\")),\n",
     "                    \"a refused operation must not fall through to the stdout channel. \\\n",
-    "                     Got:\\n{}\",\n",
-    "                    emitted\n",
+    "                     Got files: {:?}\",\n",
+    "                    paths\n",
     "                );\n",
     "            })\n",
     "            .expect(\"failed to spawn thread\")\n",
