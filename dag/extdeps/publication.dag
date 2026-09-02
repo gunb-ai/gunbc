@@ -72,6 +72,12 @@ type DocumentPublicationStatus
 // served right now at a locator we fetched" carry different obligations: the first is a standing
 // we may hold indefinitely because there is nothing to read, the second is a live citation debt.
 // Collapsing them would let a retrievable supersession hide behind the unretrieved arm's excuse.
+//
+// THE SERVED ARM POINTS AT THE SUCCESSOR, it does not describe where the successor lives. An
+// earlier revision carried the locator as a bare NonEmptyStr, which admits any prose at all and
+// stands up a second, untyped citation scheme beside the ExternalAuthority system this file
+// already owns. A retrieved document has an authority; that is the whole point of having retrieved
+// it.
 type HeldSpecificationSupersessionStanding
   = HeldRevisionIsCurrentPublicCopy
   | NewerRevisionExistsUnretrieved {
@@ -83,7 +89,7 @@ type HeldSpecificationSupersessionStanding
     }
   | NewerRevisionPubliclyServed {
       newer_version_label: NonEmptyStr,
-      newer_locator: NonEmptyStr,
+      newer_authority: ExternalAuthority,
       index_authority: ExternalAuthority,
       held_version_label: NonEmptyStr,
       detail: NonEmptyStr,
@@ -93,7 +99,7 @@ fn supersession_standing_is_current(s: HeldSpecificationSupersessionStanding) ->
   match s {
     HeldRevisionIsCurrentPublicCopy => true
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
-    NewerRevisionPubliclyServed { newer_version_label: _, newer_locator: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => false
   }
 }
 

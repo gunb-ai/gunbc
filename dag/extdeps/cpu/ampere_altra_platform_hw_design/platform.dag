@@ -72,7 +72,7 @@ fn platform_facts_are_from_the_latest_revision() -> Bool {
   match altra_platform_hw_design_subject.supersession_standing {
     HeldRevisionIsCurrentPublicCopy => true
     NewerRevisionExistsUnretrieved { newer_version_label, newer_publication_date, index_authority, held_version_label, detail } => false
-    NewerRevisionPubliclyServed { newer_version_label, newer_locator, index_authority, held_version_label, detail } => false
+    NewerRevisionPubliclyServed { newer_version_label, newer_authority, index_authority, held_version_label, detail } => false
   }
 }
 

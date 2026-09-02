@@ -1,6 +1,8 @@
 module test.claim.altra_datasheet_supersession_witness_test
 
 import std.types { Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.publication {
   HeldSpecificationSupersessionStanding, supersession_standing_is_current,
   HeldRevisionIsCurrentPublicCopy, NewerRevisionExistsUnretrieved, NewerRevisionPubliclyServed,
@@ -9,6 +11,7 @@ import extdeps.cpu.ampere {
   ampere_altra_max_rev_a1_datasheet_supersession_standing,
   ampere_altra_classic_rev_a1_datasheet_supersession_standing,
   ampere_altra_device_documentation_authority,
+  ampere_altra_max_rev_a1_v1_30_authority,
 }
 
 // EXECUTING EVIDENCE that both datasheet citations declare which revision they hold and name a
@@ -22,7 +25,7 @@ test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool {
   match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
-    NewerRevisionPubliclyServed { newer_version_label: v, newer_locator: _, index_authority: _, held_version_label: h, detail: _ } =>
+    NewerRevisionPubliclyServed { newer_version_label: v, newer_authority: _, index_authority: _, held_version_label: h, detail: _ } =>
       v == "1.55" && h == "v1.50"
   }
 }
@@ -31,8 +34,8 @@ test fn w_the_altra_max_citation_is_superseded() -> Bool {
   match ampere_altra_max_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
-    NewerRevisionPubliclyServed { newer_version_label: v, newer_locator: _, index_authority: _, held_version_label: h, detail: _ } =>
-      v == "v1.25" && h == "v1.15"
+    NewerRevisionPubliclyServed { newer_version_label: v, newer_authority: _, index_authority: _, held_version_label: h, detail: _ } =>
+      v == "v1.30" && h == "v1.15"
   }
 }
 
@@ -53,12 +56,42 @@ test fn w_RED_the_predicate_separates_current_from_superseded() -> Bool {
 }
 
 // THE INDEX IS PART OF THE FACT. Both standings must name the surface that actually serves the
-// newer revision, not the stale product brief that produced the original wrong conclusion.
+// newer revision, not the stale product brief that produced the original wrong conclusion, and not
+// the login redirect an earlier revision recorded.
+//
+// AN EARLIER VERSION OF THIS WITNESS READ ONLY THE NON-MAX STANDING while being named for both. A
+// name asserting a conjunction its body never constructs is worse than a missing test: dropping or
+// swapping the Max index edge would have left it green. It now folds over both, and the control
+// below proves that reading both is load-bearing.
+fn standing_index_authority_is(s: HeldSpecificationSupersessionStanding, a: ExternalAuthority) -> Bool {
+  match s {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: i, held_version_label: _, detail: _ } => i == a
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: i, held_version_label: _, detail: _ } => i == a
+  }
+}
+
 test fn w_both_standings_cite_the_device_documentation_surface() -> Bool {
-  match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
+  standing_index_authority_is(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing, a: ampere_altra_device_documentation_authority)
+    && standing_index_authority_is(s: ampere_altra_max_rev_a1_datasheet_supersession_standing, a: ampere_altra_device_documentation_authority)
+}
+
+// EITHER EDGE MATTERS. The conjunction above is only meaningful if a wrong authority on EITHER
+// side is refused, so this constructs a different authority and asserts both standings reject it.
+test fn w_RED_a_wrong_index_authority_is_refused_on_either_standing() -> Bool {
+  let other = ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/not-the-index" } }
+  !standing_index_authority_is(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing, a: other)
+    && !standing_index_authority_is(s: ampere_altra_max_rev_a1_datasheet_supersession_standing, a: other)
+}
+
+// AND THE SUCCESSOR IS A TYPED AUTHORITY, not prose. An earlier revision carried the served
+// locator as a bare string, which admits any text at all beside the ExternalAuthority system this
+// vocabulary already owns.
+test fn w_the_served_successor_is_a_typed_authority() -> Bool {
+  match ampere_altra_max_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
-    NewerRevisionPubliclyServed { newer_version_label: _, newer_locator: _, index_authority: a, held_version_label: _, detail: _ } =>
-      a == ampere_altra_device_documentation_authority
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: n, index_authority: _, held_version_label: _, detail: _ } =>
+      n == ampere_altra_max_rev_a1_v1_30_authority
   }
 }
