@@ -334,7 +334,7 @@ test fn apply_script_and_tree_sync_unit_stay_within_ci_runner_grants() -> Bool {
     && string_contains(s: apply, pattern: "gunbc deployed-repository git-native convergence")
     && string_contains(s: apply, pattern: concat("--arg candidate=", deploy_witness_release_revision as String))
     && string_contains(s: apply, pattern: "--function repository_converge_srv1_owner_wet")
-    && string_contains(s: apply, pattern: "--function repository_convergence_readback_wet")
+    && string_contains(s: apply, pattern: "repository_convergence_readback_wet")
     && string_contains(s: apply, pattern: "/opt/gunbc/receipts/repository-convergence.json")
     && !string_contains(s: apply, pattern: "--include=/HEAD")
     && !string_contains(s: apply, pattern: "--include=/objects/***")
@@ -388,7 +388,7 @@ fn three_markers_in_order(text: String, first: String, second: String, third: St
 test fn repository_convergence_is_ordered_after_binary_and_before_readback() -> Bool {
   let binary = "target/release/gunbc"
   let converge = "--function repository_converge_srv1_owner_wet"
-  let readback = "--function repository_convergence_readback_wet"
+  let readback = "repository_convergence_readback_wet"
   let apply = witness_apply_script()
   three_markers_in_order(text: apply, first: binary, second: converge, third: readback)
     && !three_markers_in_order(text: join([converge, binary, readback], "\n"), first: binary, second: converge, third: readback)

@@ -798,13 +798,20 @@ fn apply_repository_convergence_unit_write_step(
 fn repository_convergence_readback_command(
   spec: DeploymentSpec,
 ) -> String {
-  join([
-    spec.service.serve_binary as String, " run",
-    " --source-root dag --source-root src/v2",
-    " --entry ", convergence_placement_entry_path,
-    " --function repository_convergence_readback_wet",
-    " --arg receipt=", convergence_receipt_path(instance_root: spec.service.instance_root as String),
-  ], "")
+  shell_command_text_of_argv(argv: [
+    spec.service.serve_binary as String,
+    "run",
+    "--source-root",
+    "dag",
+    "--source-root",
+    "src/v2",
+    "--entry",
+    convergence_placement_entry_path,
+    "--function",
+    "repository_convergence_readback_wet",
+    "--arg",
+    concat("receipt=", convergence_receipt_path(instance_root: spec.service.instance_root as String)),
+  ])
 }
 
 fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> PipelineStep {
