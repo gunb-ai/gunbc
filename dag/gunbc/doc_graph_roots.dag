@@ -236,6 +236,15 @@ data body_lowering_production_consumer_ref: DeclarationRef = DeclarationRef { mo
 data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "required-floor-in-flight-shared-fill-findings",
+    primary_work: DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "changed_witness_cpu_deadline", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the required floor's in-flight shared-fill ownership and deadline accounting are changed so this characterization no longer describes the shipped mechanism; the row deletes with the superseded findings document. Registered at subject grain: changed_witness_cpu_deadline is the modeled CPU enforcement decision whose bootstrap realization this document characterizes.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "fabric-ci-replacement",
     primary_work: DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_job", field: WholeDeclaration },
     additional_works: [
