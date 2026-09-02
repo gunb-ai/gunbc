@@ -1,0 +1,124 @@
+module gunbc.payroll.period_settlement
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.nat { Nat, nat_min }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
+import extdeps.payroll.contribution {
+  ContributionSpec, YearToDateWages, ContributionOutcome, ContributionRefusal,
+  ContributionOriginated, ContributionRefused,
+  BearingParty, Employer, Worker,
+  contribution_for_period,
+}
+
+// One pay period, settled against whichever cited contribution rows apply to it. This is the
+// workflow layer: extdeps.payroll.contribution owns what a contribution IS and each tax
+// authority owns its own rates, while the decision to run a period against a particular set of
+// rows is a business fact and lives here.
+//
+// WHAT THIS SETTLEMENT IS NOT. It covers statutory CONTRIBUTIONS only. Federal and state income
+// tax withholding are a different authority with a different method - IRS Publication 15-T and
+// its state analogues - and no row for them exists yet. The residual field is therefore named
+// net_after_modeled_contributions and not "net pay", because a figure that omits income tax
+// withholding is not take-home and a name that implied it would be wrong in exactly the way that
+// survives being quoted somewhere else. The gap is a declared boundary, not silence: the field
+// name carries it, and it closes when the 15-T authority lands.
+
+type PeriodSettlement {
+  gross: MoneyAmountMicro
+  worker_withheld: MoneyAmountMicro
+  employer_contributions: MoneyAmountMicro
+  net_after_modeled_contributions: MoneyAmountMicro
+  employer_cost: MoneyAmountMicro
+  lines: List<ContributionOutcome>
+}
+
+// A settlement either derives whole or refuses whole, carrying EVERY cause rather than the first
+// one found. There is no partially-settled arm, and that is the fail-closed shape rather than a
+// convenience: a payroll run that dropped one refused contribution and paid the rest would move
+// real money against a position the model just said it could not compute, and it would look
+// exactly like a successful run while doing it. Reporting all causes at once matters for the
+// same reason a build reports all errors - a January run refuses once per stale row, and fixing
+// them one round-trip at a time is how a fix gets abandoned halfway.
+type PeriodSettlementOutcome =
+  | SettlementDerived { settlement: PeriodSettlement }
+  | SettlementRefused { causes: List<ContributionRefusal> }
+
+type SettlementAccumulator {
+  worker_micros: Nat
+  employer_micros: Nat
+  refusals: List<ContributionRefusal>
+}
+
+fn accumulate_borne(
+  acc: SettlementAccumulator,
+  borne_by: BearingParty,
+  amount: MoneyAmountMicro,
+) -> SettlementAccumulator {
+  match borne_by {
+    Worker => SettlementAccumulator {
+      worker_micros: acc.worker_micros + money_amount_micro_count(m: amount),
+      employer_micros: acc.employer_micros,
+      refusals: acc.refusals,
+    }
+    Employer => SettlementAccumulator {
+      worker_micros: acc.worker_micros,
+      employer_micros: acc.employer_micros + money_amount_micro_count(m: amount),
+      refusals: acc.refusals,
+    }
+  }
+}
+
+fn accumulate_outcome(
+  acc: SettlementAccumulator,
+  outcome: ContributionOutcome,
+) -> SettlementAccumulator {
+  match outcome {
+    ContributionOriginated { spec, borne_by, subject_wages, amount } =>
+      accumulate_borne(acc: acc, borne_by: borne_by, amount: amount)
+    ContributionRefused { cause } => SettlementAccumulator {
+      worker_micros: acc.worker_micros,
+      employer_micros: acc.employer_micros,
+      refusals: concat(acc.refusals, [cause]),
+    }
+  }
+}
+
+fn settle_period(
+  specs: List<ContributionSpec>,
+  wages: YearToDateWages,
+) -> PeriodSettlementOutcome {
+  let outcomes = map(specs, s => contribution_for_period(spec: s, wages: wages))
+  let acc = fold(
+    outcomes,
+    init: SettlementAccumulator { worker_micros: 0, employer_micros: 0, refusals: [] },
+    f: accumulate_outcome
+  )
+  return if count(acc.refusals) > 0 {
+    SettlementRefused { causes: acc.refusals }
+  } else {
+    SettlementDerived { settlement: derive_settlement(acc: acc, wages: wages, lines: outcomes) }
+  }
+}
+
+// Both identities are DERIVED here and never stored as independent fields that could disagree
+// with the lines that produced them: what the worker receives is gross less what the worker
+// bears, and what the employer spends is gross plus what the employer bears. The same amount
+// never appears on both sides, which is the arithmetic content of borne_by being a field on the
+// contribution rather than a property of which function computed it.
+fn derive_settlement(
+  acc: SettlementAccumulator,
+  wages: YearToDateWages,
+  lines: List<ContributionOutcome>,
+) -> PeriodSettlement {
+  let gross_micros = money_amount_micro_count(m: wages.this_period)
+  return PeriodSettlement {
+    gross: wages.this_period,
+    worker_withheld: money_amount_micro(count: acc.worker_micros),
+    employer_contributions: money_amount_micro(count: acc.employer_micros),
+    net_after_modeled_contributions: money_amount_micro(
+      count: gross_micros - nat_min(a: gross_micros, b: acc.worker_micros)
+    ),
+    employer_cost: money_amount_micro(count: gross_micros + acc.employer_micros),
+    lines: lines,
+  }
+}

@@ -1,0 +1,206 @@
+module extdeps.payroll.contribution
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.nat { Nat, nat_min }
+import std.measure {
+  MoneyAmountMicro, BasisPoint,
+  money_amount_micro, money_amount_micro_count, basis_point_count,
+  measure_scale_fraction_floor,
+}
+import extdeps.currency.currency { CurrencyCode }
+import extdeps.units.dimensionless { parts_per_ten_thousand_unity_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// Statutory payroll contribution, the upstream this module models. A jurisdiction names a
+// rate, the band of annual earnings that rate applies to, and which party bears it. Every
+// social-insurance system in the world is that shape: the United States caps Social Security
+// at an indexed wage base and leaves Medicare uncapped, Germany caps at the
+// Beitragsbemessungsgrenze, the United Kingdom bands National Insurance between a lower and an
+// upper earnings limit. One carrier, N cited rows - not one module per country.
+//
+// The kernel knows no jurisdiction and names no country. That is the whole design constraint:
+// a Country enum here would make adding Germany an edit to the type the United States depends
+// on, which is the fork DESIGN 3 forbids and the one that makes payroll systems unmaintainable.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Payroll_tax"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.payroll.contribution",
+      decl_name: "ContributionSpec",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Who bears the contribution is a fact about the contribution, not two parallel code paths.
+// Modeling it as a field is what lets employer-borne and worker-borne amounts be derived by one
+// fold, and is what will later make employee-versus-contractor a change of which rows apply
+// rather than a second implementation of payroll.
+type BearingParty = Employer | Worker
+
+// The four real statutory band shapes, closed. Every one of them is an annual interval over
+// year-to-date earnings, which is why the subject-wage computation below is a single formula
+// rather than a match with four arms of arithmetic.
+type ContributionBand =
+  | FromFirstDollarUncapped
+  | CappedAtAnnualLimit { annual_limit: MoneyAmountMicro }
+  | AboveAnnualThreshold { annual_threshold: MoneyAmountMicro }
+  | BetweenAnnualBounds { annual_threshold: MoneyAmountMicro, annual_limit: MoneyAmountMicro }
+
+// effective_year is load-bearing, not bookkeeping. Rates and indexed wage bases reset every
+// January, and a model that silently computes this year's payroll from last year's row is
+// exactly the silent wrongness DESIGN 5 forbids - it produces a plausible number, files it, and
+// is discovered by a tax authority rather than by the software. A spec is therefore admitted
+// only against wages from its own year, and a year with no authored row REFUSES.
+//
+// currency is carried because MoneyAmountMicro cannot carry it: that carrier is
+// Measure<Currency, Micro, Nat>, where Currency is the QUANTITY - the dimension - and not a
+// code. Two amounts in different currencies have the same type there and add without complaint.
+// The fix is the one product.fabric.budget already established: bind the code once to the
+// authority that declares it and refuse anything presented against it in another code. There is
+// no converting arm, because a conversion needs a rate, a rate needs a source and a date, and
+// inventing one here would fabricate the very fact the refusal exists to demand.
+type ContributionSpec {
+  name: NonEmptyStr
+  effective_year: Int
+  currency: CurrencyCode
+  rate: BasisPoint
+  band: ContributionBand
+  borne_by: BearingParty
+}
+
+// Year-to-date earnings BEFORE this period, and the period's own earnings, as separate fields.
+// This is the single most consequential shape decision in the module. An annual band can only be
+// applied to a cumulative position: a worker who has already crossed the Social Security wage
+// base owes nothing further on this period, and a worker who crosses it mid-period owes on the
+// portion below it only. A carrier that offered just the period's wages would make that
+// distinction unrepresentable, so the cap would silently be applied per period - the classic
+// payroll defect, which overcharges every high earner in exactly the way nobody notices.
+type YearToDateWages {
+  year: Int
+  currency: CurrencyCode
+  before_period: MoneyAmountMicro
+  this_period: MoneyAmountMicro
+}
+
+fn band_floor_micros(b: ContributionBand) -> Nat {
+  match b {
+    FromFirstDollarUncapped => 0
+    CappedAtAnnualLimit { annual_limit } => 0
+    AboveAnnualThreshold { annual_threshold } => money_amount_micro_count(m: annual_threshold)
+    BetweenAnnualBounds { annual_threshold, annual_limit } => money_amount_micro_count(m: annual_threshold)
+  }
+}
+
+fn band_ceiling_micros(b: ContributionBand) -> Nat? {
+  match b {
+    FromFirstDollarUncapped => none
+    AboveAnnualThreshold { annual_threshold } => none
+    CappedAtAnnualLimit { annual_limit } => Present { value: money_amount_micro_count(m: annual_limit) }
+    BetweenAnnualBounds { annual_threshold, annual_limit } => Present { value: money_amount_micro_count(m: annual_limit) }
+  }
+}
+
+// Saturating subtraction with no branch and no zero literal: subtracting the MINIMUM of the two
+// is exactly x - lower where that is defined and exactly zero where it is not, so the function is
+// total on the naturals by construction rather than by an if-arm that has to invent a zero.
+fn amount_above(x: Nat, lower: Nat) -> Nat {
+  x - nat_min(a: x, b: lower)
+}
+
+fn within_band(x: Nat, lower: Nat, upper: Nat?) -> Nat {
+  match upper {
+    Absent => amount_above(x: x, lower: lower)
+    Present { value: c } =>
+      nat_min(a: amount_above(x: x, lower: lower), b: amount_above(x: c, lower: lower))
+  }
+}
+
+// The subject wage is the band-clamped cumulative position AFTER this period minus the
+// band-clamped position BEFORE it. One expression covers all four band shapes, and it is correct
+// at every boundary by construction: a period entirely above a cap contributes zero because both
+// clamps saturate to the same value, and a period straddling a cap contributes exactly the
+// portion below it.
+fn subject_wage_micros(band: ContributionBand, before: Nat, total: Nat) -> Nat {
+  let band_lower = band_floor_micros(b: band)
+  let band_upper = band_ceiling_micros(b: band)
+  let after_position = within_band(x: total, lower: band_lower, upper: band_upper)
+  let before_position = within_band(x: before, lower: band_lower, upper: band_upper)
+  return amount_above(x: after_position, lower: before_position)
+}
+
+type ContributionRefusal =
+  | EffectiveYearMismatch { spec: NonEmptyStr, spec_year: Int, wages_year: Int }
+  | ContributionCurrencyMismatch {
+      spec: NonEmptyStr,
+      spec_currency: CurrencyCode,
+      presented_currency: CurrencyCode
+    }
+
+// The originated arm carries the subject wages beside the amount. A contribution reported as a
+// bare figure cannot be checked against the authority that produced it: the subject base is the
+// number a reconciliation against a payroll provider actually disagrees on, and dropping it here
+// would leave the divergence with nothing to name.
+type ContributionOutcome =
+  | ContributionOriginated {
+      spec: NonEmptyStr,
+      borne_by: BearingParty,
+      subject_wages: MoneyAmountMicro,
+      amount: MoneyAmountMicro
+    }
+  | ContributionRefused { cause: ContributionRefusal }
+
+fn contribution_for_period(spec: ContributionSpec, wages: YearToDateWages) -> ContributionOutcome {
+  if spec.effective_year != wages.year {
+    ContributionRefused {
+      cause: EffectiveYearMismatch {
+        spec: spec.name,
+        spec_year: spec.effective_year,
+        wages_year: wages.year
+      }
+    }
+  } else if spec.currency != wages.currency {
+    ContributionRefused {
+      cause: ContributionCurrencyMismatch {
+        spec: spec.name,
+        spec_currency: spec.currency,
+        presented_currency: wages.currency
+      }
+    }
+  } else {
+    contribution_originated(spec: spec, wages: wages)
+  }
+}
+
+// Rounding is floor at micro grain. That is a declared boundary and not a claim of statutory
+// correctness: real filings round to the cent under rules the authority publishes, and this
+// module does not yet model them. The residue is bounded by one micro-unit per contribution and
+// is therefore observable in a reconciliation rather than silent - which is the condition for
+// leaving it unmodeled at all.
+fn contribution_originated(spec: ContributionSpec, wages: YearToDateWages) -> ContributionOutcome {
+  let before = money_amount_micro_count(m: wages.before_period)
+  let total = before + money_amount_micro_count(m: wages.this_period)
+  let subject = subject_wage_micros(band: spec.band, before: before, total: total)
+  let subject_amount = money_amount_micro(count: subject)
+  return ContributionOriginated {
+    spec: spec.name,
+    borne_by: spec.borne_by,
+    subject_wages: subject_amount,
+    amount: measure_scale_fraction_floor(
+      m: subject_amount,
+      num: basis_point_count(bp: spec.rate),
+      den: parts_per_ten_thousand_unity_count()
+    )
+  }
+}

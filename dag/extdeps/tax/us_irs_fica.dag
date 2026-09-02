@@ -1,0 +1,121 @@
+module extdeps.tax.us_irs_fica
+
+import std.types { Int, List }
+import std.measure { MoneyAmountMicro, basis_point, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import extdeps.payroll.contribution {
+  ContributionSpec,
+  FromFirstDollarUncapped, CappedAtAnnualLimit, AboveAnnualThreshold,
+  Employer, Worker,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// The Federal Insurance Contributions Act taxes, as the Internal Revenue Service publishes them
+// in Publication 15 (Circular E), Employer's Tax Guide. The IRS is one independently governed
+// authority and gets one module; New Jersey's unemployment and disability contributions are a
+// different authority on a different schedule and will get their own, importing nothing from
+// here. That separation is the point - a federal rate change must not require editing New
+// Jersey, and adding New Jersey must not widen anything federal.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.irs.gov/publications/p15"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tax.us_irs_fica",
+      decl_name: "fica_specs_2025",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// TWO KINDS OF NUMBER LIVE IN THIS FILE AND THEY HAVE DIFFERENT STANDING.
+//
+// The RATES are fixed in statute and have not moved in decades: OASDI at 6.2 percent per side,
+// Hospital Insurance at 1.45 percent per side, Additional Medicare at 0.9 percent on the
+// employee alone. The $200,000 Additional Medicare withholding threshold is likewise statutory
+// and unindexed - and note it is the WITHHOLDING threshold, which an employer applies without
+// regard to the employee's filing status, not the employee's own liability threshold, which
+// varies by status and is reconciled on their return.
+//
+// The SOCIAL SECURITY WAGE BASE is indexed and republished every year. It is therefore an
+// observed external fact with a date, and the only defensible way to carry it is one row per
+// year, each verified against the published figure before it is used to pay anyone. The 2025 row
+// below carries $176,100 and must be confirmed against Publication 15 for 2025 before any live
+// use; it is authored here because the shape needs a real row to be exercised at all, not
+// because an unverified figure is acceptable in a filing.
+//
+// THERE IS DELIBERATELY NO 2026 ROW. A 2026 pay period presented against this authority derives
+// EffectiveYearMismatch and refuses, which is the correct behavior and the whole reason
+// effective_year exists: the alternative - quietly computing January on last year's wage base -
+// is a plausible wrong number that reaches a filing. The row lands when someone reads the
+// published 2026 figure, and not before.
+
+data us_social_security_wage_base_2025: MoneyAmountMicro = money_amount_micro(count: 176100000000)
+
+data us_additional_medicare_withholding_threshold: MoneyAmountMicro = money_amount_micro(count: 200000000000)
+
+data us_social_security_employee_2025: ContributionSpec = ContributionSpec {
+  name: "us-irs-oasdi-employee",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 620),
+  band: CappedAtAnnualLimit { annual_limit: us_social_security_wage_base_2025 },
+  borne_by: Worker,
+}
+
+data us_social_security_employer_2025: ContributionSpec = ContributionSpec {
+  name: "us-irs-oasdi-employer",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 620),
+  band: CappedAtAnnualLimit { annual_limit: us_social_security_wage_base_2025 },
+  borne_by: Employer,
+}
+
+data us_medicare_employee_2025: ContributionSpec = ContributionSpec {
+  name: "us-irs-hi-employee",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 145),
+  band: FromFirstDollarUncapped,
+  borne_by: Worker,
+}
+
+data us_medicare_employer_2025: ContributionSpec = ContributionSpec {
+  name: "us-irs-hi-employer",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 145),
+  band: FromFirstDollarUncapped,
+  borne_by: Employer,
+}
+
+// Employee-borne only. There is no employer match on Additional Medicare, and the asymmetry is
+// carried by the absence of an employer row rather than by a flag - a row that does not exist
+// cannot be applied by mistake.
+data us_additional_medicare_employee_2025: ContributionSpec = ContributionSpec {
+  name: "us-irs-additional-medicare-employee",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 90),
+  band: AboveAnnualThreshold { annual_threshold: us_additional_medicare_withholding_threshold },
+  borne_by: Worker,
+}
+
+data fica_specs_2025: List<ContributionSpec> = [
+  us_social_security_employee_2025,
+  us_social_security_employer_2025,
+  us_medicare_employee_2025,
+  us_medicare_employer_2025,
+  us_additional_medicare_employee_2025,
+]

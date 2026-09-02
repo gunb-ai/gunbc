@@ -1,0 +1,202 @@
+module test.claim.payroll_contribution_band_witness
+
+import std.types { Bool }
+import std.nat { Nat }
+import std.measure { money_amount_micro, money_amount_micro_count }
+import extdeps.currency.currency { Usd, Eur }
+import extdeps.payroll.contribution {
+  YearToDateWages, ContributionOutcome,
+  ContributionOriginated, ContributionRefused,
+  contribution_for_period,
+}
+import extdeps.tax.us_irs_fica {
+  fica_specs_2025,
+  us_social_security_employee_2025,
+  us_additional_medicare_employee_2025,
+}
+import gunbc.payroll.period_settlement {
+  PeriodSettlement, PeriodSettlementOutcome, SettlementDerived, SettlementRefused,
+  settle_period,
+}
+
+// THE DISCRIMINATING CLAIMS.
+//
+// (1) The annual band is clamped against the CUMULATIVE year-to-date position, not against the
+// period in isolation. This is the defect the carrier exists to make unwritable: a period that
+// straddles the Social Security wage base owes on the portion below it only, and an
+// implementation that applied the cap per period would return the full period wage here. The
+// probe below crosses the cap mid-period, so the two implementations return different numbers
+// and the assertion separates them.
+//
+// (2) A period entirely above the cap owes nothing further - the saturating case, which a naive
+// subtraction gets wrong in the other direction.
+//
+// (3) The above-threshold band is the mirror image and is exercised on the row that actually has
+// one, Additional Medicare.
+//
+// (4) and (5) Both refusal arms execute and are asserted at the SETTLEMENT boundary, where a
+// dropped refusal would move money: a stale effective year refuses, a foreign currency refuses,
+// and in both cases the whole settlement refuses rather than paying the rows that happened to
+// succeed.
+//
+// (6) The positive control - an ordinary sub-cap period whose every figure is hand-computable
+// from the published rates, so the machinery is proven to compute rather than merely to typecheck.
+
+// $170,000 already paid this year, $10,000 this period, against a $176,100 cap: $6,100 subject.
+data probe_crossing_the_cap: YearToDateWages = YearToDateWages {
+  year: 2025,
+  currency: Usd,
+  before_period: money_amount_micro(count: 170000000000),
+  this_period: money_amount_micro(count: 10000000000),
+}
+
+// $180,000 already paid, entirely past the cap: nothing further is subject.
+data probe_above_the_cap: YearToDateWages = YearToDateWages {
+  year: 2025,
+  currency: Usd,
+  before_period: money_amount_micro(count: 180000000000),
+  this_period: money_amount_micro(count: 5000000000),
+}
+
+// $190,000 already paid, $20,000 this period, against the $200,000 Additional Medicare
+// threshold: $10,000 subject.
+data probe_crossing_the_threshold: YearToDateWages = YearToDateWages {
+  year: 2025,
+  currency: Usd,
+  before_period: money_amount_micro(count: 190000000000),
+  this_period: money_amount_micro(count: 20000000000),
+}
+
+// An ordinary $4,000 period, first of the year.
+data probe_ordinary_period: YearToDateWages = YearToDateWages {
+  year: 2025,
+  currency: Usd,
+  before_period: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+// The January case: a 2026 period presented against an authority that has only 2025 rows.
+data probe_next_year: YearToDateWages = YearToDateWages {
+  year: 2026,
+  currency: Usd,
+  before_period: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+// The same period denominated in euros. MoneyAmountMicro cannot tell these apart on its own,
+// which is precisely why the code is carried and checked.
+data probe_foreign_currency: YearToDateWages = YearToDateWages {
+  year: 2025,
+  currency: Eur,
+  before_period: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+// Optional-returning readers rather than a bare Nat with a zero on the refusal arm. A refusal
+// that read as zero would make every amount assertion below pass vacuously the moment the
+// computation broke - the absorbing-fixture failure, where the test survives the defect it
+// exists to catch.
+fn originated_subject_micros(o: ContributionOutcome) -> Nat? {
+  match o {
+    ContributionOriginated { spec, borne_by, subject_wages, amount } =>
+      Present { value: money_amount_micro_count(m: subject_wages) }
+    ContributionRefused { cause } => none
+  }
+}
+
+fn originated_amount_micros(o: ContributionOutcome) -> Nat? {
+  match o {
+    ContributionOriginated { spec, borne_by, subject_wages, amount } =>
+      Present { value: money_amount_micro_count(m: amount) }
+    ContributionRefused { cause } => none
+  }
+}
+
+fn subject_is(o: ContributionOutcome, micros: Nat) -> Bool {
+  match originated_subject_micros(o: o) {
+    Absent => false
+    Present { value: v } => v == micros
+  }
+}
+
+fn amount_is(o: ContributionOutcome, micros: Nat) -> Bool {
+  match originated_amount_micros(o: o) {
+    Absent => false
+    Present { value: v } => v == micros
+  }
+}
+
+test fn witness_wage_base_clamps_the_cumulative_position() -> Bool {
+  let o = contribution_for_period(spec: us_social_security_employee_2025, wages: probe_crossing_the_cap)
+  return subject_is(o: o, micros: 6100000000)
+    && amount_is(o: o, micros: 378200000)
+}
+
+test fn witness_period_entirely_above_the_cap_owes_nothing() -> Bool {
+  let o = contribution_for_period(spec: us_social_security_employee_2025, wages: probe_above_the_cap)
+  return subject_is(o: o, micros: 0)
+    && amount_is(o: o, micros: 0)
+}
+
+test fn witness_above_threshold_band_charges_only_the_excess() -> Bool {
+  let crossing = contribution_for_period(
+    spec: us_additional_medicare_employee_2025,
+    wages: probe_crossing_the_threshold
+  )
+  let ordinary = contribution_for_period(
+    spec: us_additional_medicare_employee_2025,
+    wages: probe_ordinary_period
+  )
+  return subject_is(o: crossing, micros: 10000000000)
+    && amount_is(o: crossing, micros: 90000000)
+    && amount_is(o: ordinary, micros: 0)
+}
+
+fn settlement_refusal_count(o: PeriodSettlementOutcome) -> Nat? {
+  match o {
+    SettlementRefused { causes } => Present { value: count(causes) }
+    SettlementDerived { settlement } => none
+  }
+}
+
+fn refuses_with(o: PeriodSettlementOutcome, n: Nat) -> Bool {
+  match settlement_refusal_count(o: o) {
+    Absent => false
+    Present { value: v } => v == n
+  }
+}
+
+// Every row in the 2025 authority refuses a 2026 period, and the settlement refuses whole rather
+// than paying the rows that happened not to depend on the stale figure.
+test fn witness_stale_effective_year_refuses_the_whole_settlement() -> Bool {
+  refuses_with(o: settle_period(specs: fica_specs_2025, wages: probe_next_year), n: count(fica_specs_2025))
+}
+
+test fn witness_foreign_currency_refuses_the_whole_settlement() -> Bool {
+  refuses_with(o: settle_period(specs: fica_specs_2025, wages: probe_foreign_currency), n: count(fica_specs_2025))
+}
+
+fn derived_settlement(o: PeriodSettlementOutcome) -> PeriodSettlement? {
+  match o {
+    SettlementDerived { settlement } => Present { value: settlement }
+    SettlementRefused { causes } => none
+  }
+}
+
+// The positive control. On $4,000 of first-of-year wages the published rates give, to the cent:
+// OASDI 6.2% = $248.00 on each side, Hospital Insurance 1.45% = $58.00 on each side, Additional
+// Medicare nil because the period is nowhere near $200,000. So the worker bears $306.00, the
+// employer bears $306.00, and the two totals are equal here only because every 2025 row below
+// the threshold happens to be matched - which is a fact about the rates, not an invariant, and
+// is asserted as two separate figures rather than one.
+test fn witness_ordinary_period_reconciles_against_published_rates() -> Bool {
+  match derived_settlement(o: settle_period(specs: fica_specs_2025, wages: probe_ordinary_period)) {
+    Absent => false
+    Present { value: s } =>
+      money_amount_micro_count(m: s.gross) == 4000000000
+        && money_amount_micro_count(m: s.worker_withheld) == 306000000
+        && money_amount_micro_count(m: s.employer_contributions) == 306000000
+        && money_amount_micro_count(m: s.net_after_modeled_contributions) == 3694000000
+        && money_amount_micro_count(m: s.employer_cost) == 4306000000
+  }
+}
