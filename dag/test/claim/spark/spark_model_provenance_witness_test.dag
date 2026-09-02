@@ -26,6 +26,7 @@ import gunbc.spark.serving_model_admission {
   SparkServingModelAxisRefused,
   spark_serving_model_axis_in,
   spark_serving_local_model_attestations,
+  spark_serving_local_model_attestation,
 }
 
 // ================= FIXTURES =================
@@ -215,5 +216,34 @@ test fn an_upstream_manifest_routes_to_the_catalogue() -> Bool {
     SparkServingModelAxisUpstreamCatalogued => true
     SparkServingModelAxisLocalAttested { runtime_version: _ } => false
     SparkServingModelAxisRefused { cause: _ } => false
+  }
+}
+
+// A TAG RE-CREATED OVER DIFFERENT BYTES REFUSES, which is the failure a name-and-tag attestation
+// could not see. `POST /api/create` can be re-run with a different Modelfile and produce the same
+// `deepseek-v4-gguf:no-h3-stop` naming entirely different bytes; an attestation keyed only on the
+// reference would go on reporting an observed load of bytes nobody loaded. This is the 2026-08-19
+// republish shape reproduced locally, and the manifest identity is what discriminates it.
+test fn an_attestation_naming_other_bytes_refuses() -> Bool {
+  match spark_serving_model_axis_in(
+    manifest: deepseek_v4_no_h3_stop_manifest,
+    attestations: [
+      spark_serving_local_model_attestation(
+        model: OllamaModelRef {
+          name: "deepseek-v4-gguf" as NonEmptyStr,
+          tag: "no-h3-stop" as NonEmptyStr,
+        },
+        manifest_identity: fx_digest_b.hex as NonEmptyStr,
+        runtime_version: "0.32.9" as NonEmptyStr,
+        hosts: [],
+        observed_at: "2026-09-02T00:00Z",
+        instrument: "fixture" as NonEmptyStr,
+      ),
+    ],
+    required_runtime_version: fx_required_version,
+  ) {
+    SparkServingModelAxisRefused { cause: c } => string_contains(c as String, "re-created over different bytes")
+    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
+    SparkServingModelAxisUpstreamCatalogued => false
   }
 }
