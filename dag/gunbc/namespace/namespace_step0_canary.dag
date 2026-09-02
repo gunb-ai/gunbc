@@ -31,6 +31,7 @@ type NamespaceStep0CompletedTransition
   | SourceTreePinned
   | CompilerExecutablePinned
   | InputSubjectManifestPinned
+  | TypedImportStripApplied
 
 type NamespaceStep0BlockingTransition
   = ApplyTypedImportStrip
@@ -41,6 +42,7 @@ type NamespaceStep0BlockingCause
       missing_operation: NonEmptyStr,
       missing_producer: NonEmptyStr
     }
+  | ContainmentCompileObservationRefused { cause: NonEmptyStr }
 
 type NamespaceStep0SubjectEntry
   = Step0SubjectEntered
@@ -49,6 +51,14 @@ type NamespaceStep0SubjectEntry
 type NamespaceStep0ObservationCompleteness
   = Step0ObservationComplete
   | Step0ObservationIncomplete
+
+type NamespaceStep0ObservedSubject
+  = NoStep0Observation
+  | Step0StripObservation {
+      observed_tree: GitObjectId
+      observed_manifest: NonEmptyStr
+      observed_import_statements: List<NonEmptyStr>
+    }
 
 type NamespaceStep0CanaryReceipt {
   contract_identity: NonEmptyStr
@@ -62,7 +72,28 @@ type NamespaceStep0CanaryReceipt {
   first_blocking_cause: NamespaceStep0BlockingCause
   subject_entry: NamespaceStep0SubjectEntry
   observation_completeness: NamespaceStep0ObservationCompleteness
+  observed_subject: NamespaceStep0ObservedSubject
 }
+
+type NamespaceStep0ReceiptField
+  = CanaryContractIdentityField
+  | SourceCommitField
+  | SourceTreeField
+  | CompilerProgramField
+  | CompilerExecutableField
+  | InputSubjectManifestField
+  | CompletedProductionPrefixField
+  | FirstBlockingTransitionField
+  | SubjectEntryField
+  | ObservationCompletenessField
+  | ObservedSubjectField
+
+type NamespaceStep0CanaryAdmission
+  = NamespaceStep0ReceiptAdmitted
+  | NamespaceStep0ReceiptRefused {
+      field: NamespaceStep0ReceiptField
+      cause: NonEmptyStr
+    }
 
 fn namespace_step0_manifest_identity() -> NonEmptyStr {
   "roots=dag,src/v2,src/v1; syntax=parsed import statements including braced, single-name, and bare forms; action=remove each whole statement; successor=containment resolution; counts=non-authoritative" as NonEmptyStr
@@ -95,41 +126,95 @@ fn namespace_step0_unavailable_receipt(
       missing_producer: "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr
     },
     subject_entry: Step0SubjectNotEntered,
-    observation_completeness: Step0ObservationIncomplete
+    observation_completeness: Step0ObservationIncomplete,
+    observed_subject: NoStep0Observation
   }
 }
 
-// Admission is intentionally exact and narrow. In particular, an empty observation cannot turn
-// NotEntered into Entered, and a foreign tree cannot inherit this baseline merely because every
-// other field agrees. Subject entry and completeness are checked separately because failure to
-// reach the strip and failure to finish observing a reached strip have different remedies.
-fn namespace_step0_unavailable_receipt_admitted(
+// Admission is intentionally exact and narrow, but it is NOT frozen to today's frontier. The two
+// coherent shapes are today's stop at the strip and the next possible stop after a real strip has
+// entered the subject. That makes a longer prefix and a different blocker fixture-authorable now,
+// before either exists in production. In particular, an empty observation cannot turn NotEntered
+// into Entered, and a foreign tree cannot inherit this baseline merely because every other field
+// agrees. Subject entry and completeness are checked separately because failure to reach the strip
+// and failure to finish observing a reached strip have different remedies.
+fn admit_namespace_step0_canary_receipt(
   receipt: NamespaceStep0CanaryReceipt,
   expected_commit: GitObjectId,
   expected_tree: GitObjectId,
   expected_compiler_sha256: Sha256Digest
-) -> Bool {
-  receipt.contract_identity == namespace_step0_canary_contract.identity
-    && git_object_id_eq(left: receipt.source_commit, right: expected_commit)
-    && git_object_id_eq(left: receipt.source_tree, right: expected_tree)
-    && receipt.compiler_program == "target/release/gunbc" as NonEmptyStr
-    && receipt.compiler_executable_sha256.hex == expected_compiler_sha256.hex
-    && receipt.input_subject_manifest == namespace_step0_manifest_identity()
-    && receipt.completed_production_prefix == [
+) -> NamespaceStep0CanaryAdmission {
+  if !(receipt.contract_identity == namespace_step0_canary_contract.identity) {
+    NamespaceStep0ReceiptRefused { field: CanaryContractIdentityField, cause: "receipt names a foreign canary contract" as NonEmptyStr }
+  } else if !git_object_id_eq(left: receipt.source_commit, right: expected_commit) {
+    NamespaceStep0ReceiptRefused { field: SourceCommitField, cause: "receipt names a stale or foreign dispatch commit" as NonEmptyStr }
+  } else if !git_object_id_eq(left: receipt.source_tree, right: expected_tree) {
+    NamespaceStep0ReceiptRefused { field: SourceTreeField, cause: "receipt observation is bound to a foreign source tree" as NonEmptyStr }
+  } else if !(receipt.compiler_program == "target/release/gunbc" as NonEmptyStr) {
+    NamespaceStep0ReceiptRefused { field: CompilerProgramField, cause: "receipt names a different compiler program" as NonEmptyStr }
+  } else if !(receipt.compiler_executable_sha256.hex == expected_compiler_sha256.hex) {
+    NamespaceStep0ReceiptRefused { field: CompilerExecutableField, cause: "receipt names a different compiler executable" as NonEmptyStr }
+  } else if !(receipt.input_subject_manifest == namespace_step0_manifest_identity()) {
+    NamespaceStep0ReceiptRefused { field: InputSubjectManifestField, cause: "receipt input/subject manifest does not match the frozen contract" as NonEmptyStr }
+  } else if receipt.completed_production_prefix == [
       CanaryContractFrozen,
       SourceTreePinned,
       CompilerExecutablePinned,
       InputSubjectManifestPinned,
-    ]
-    && match receipt.first_blocking_transition {
-      ApplyTypedImportStrip => true
-      CompileContainmentResolution => false
+    ] {
+    match receipt.first_blocking_transition {
+      CompileContainmentResolution => NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "containment compilation cannot block before the strip transition completed" as NonEmptyStr }
+      ApplyTypedImportStrip => match receipt.first_blocking_cause {
+        ContainmentCompileObservationRefused { cause: _ } => NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "strip blocker carries a containment-compile cause" as NonEmptyStr }
+        TypedSourceRewriteAndStripObservationProducerUnavailable { missing_operation: operation, missing_producer: producer } =>
+          if !(operation == "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr)
+            || !(producer == "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr) {
+            NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "strip blocker cause does not name the frozen missing capabilities" as NonEmptyStr }
+          } else { match receipt.subject_entry {
+        Step0SubjectEntered => NamespaceStep0ReceiptRefused { field: SubjectEntryField, cause: "the Step 0 subject cannot be entered before the strip transition completes" as NonEmptyStr }
+        Step0SubjectNotEntered => match receipt.observation_completeness {
+          Step0ObservationComplete => NamespaceStep0ReceiptRefused { field: ObservationCompletenessField, cause: "an unentered subject cannot carry a complete observation" as NonEmptyStr }
+          Step0ObservationIncomplete => match receipt.observed_subject {
+            Step0StripObservation { observed_tree: _, observed_manifest: _, observed_import_statements: _ } => NamespaceStep0ReceiptRefused { field: ObservedSubjectField, cause: "an unentered subject cannot carry a planted strip observation" as NonEmptyStr }
+            NoStep0Observation => NamespaceStep0ReceiptAdmitted
+          }
+        }
+      } }
+      }
     }
-    && match receipt.first_blocking_cause {
-      TypedSourceRewriteAndStripObservationProducerUnavailable { missing_operation: op, missing_producer: producer } =>
-        op == "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr
-          && producer == "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr
+  } else if receipt.completed_production_prefix == [
+      CanaryContractFrozen,
+      SourceTreePinned,
+      CompilerExecutablePinned,
+      InputSubjectManifestPinned,
+      TypedImportStripApplied,
+    ] {
+    match receipt.first_blocking_transition {
+      ApplyTypedImportStrip => NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "a completed strip cannot remain the first blocker" as NonEmptyStr }
+      CompileContainmentResolution => match receipt.first_blocking_cause {
+        TypedSourceRewriteAndStripObservationProducerUnavailable { missing_operation: _, missing_producer: _ } => NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "containment-compile blocker carries the retired strip-unavailable cause" as NonEmptyStr }
+        ContainmentCompileObservationRefused { cause: _ } => match receipt.subject_entry {
+        Step0SubjectNotEntered => NamespaceStep0ReceiptRefused { field: SubjectEntryField, cause: "a completed strip must report that the Step 0 subject was entered" as NonEmptyStr }
+        Step0SubjectEntered => match receipt.observation_completeness {
+          Step0ObservationComplete => NamespaceStep0ReceiptRefused { field: ObservationCompletenessField, cause: "a receipt blocked on containment compilation cannot claim a complete observation" as NonEmptyStr }
+          Step0ObservationIncomplete => match receipt.observed_subject {
+            NoStep0Observation => NamespaceStep0ReceiptRefused { field: ObservedSubjectField, cause: "a completed strip must carry the observation that established subject entry" as NonEmptyStr }
+            Step0StripObservation { observed_tree: observed_tree, observed_manifest: observed_manifest, observed_import_statements: observed_imports } =>
+              if !git_object_id_eq(left: observed_tree, right: expected_tree) {
+                NamespaceStep0ReceiptRefused { field: ObservedSubjectField, cause: "planted strip observation was taken from a different tree" as NonEmptyStr }
+              } else if !(observed_manifest == namespace_step0_manifest_identity()) {
+                NamespaceStep0ReceiptRefused { field: ObservedSubjectField, cause: "planted strip observation names a different manifest" as NonEmptyStr }
+              } else if observed_imports == [] {
+                NamespaceStep0ReceiptRefused { field: ObservedSubjectField, cause: "empty strip observation cannot establish that the Step 0 subject was entered" as NonEmptyStr }
+              } else {
+                NamespaceStep0ReceiptAdmitted
+              }
+          }
+        }
+      }
+      }
     }
-    && match receipt.subject_entry { Step0SubjectEntered => false Step0SubjectNotEntered => true }
-    && match receipt.observation_completeness { Step0ObservationComplete => false Step0ObservationIncomplete => true }
+  } else {
+    NamespaceStep0ReceiptRefused { field: CompletedProductionPrefixField, cause: "completed production prefix is neither the frozen baseline nor its immediate Step 0 successor" as NonEmptyStr }
+  }
 }
