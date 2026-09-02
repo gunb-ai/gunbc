@@ -576,6 +576,22 @@ data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = Guaran
 // A trigger reading "model the overhead" would presume that number exists and would be
 // unsatisfiable in exactly the way this carrier's own rows warn about.
 //
+// THE POPULATION WAS RE-CENSUSED, NOT SPOT-REPAIRED, AND THE MEMBERSHIP RULE IS WRITTEN DOWN SO
+// COMPLETENESS IS CHECKABLE. An earlier version of this row named runner_microvm_sizing_of_cores,
+// which the same commit deleted, and gave the witness module as test.claim.runner.runner_microvm_
+// witness_test when the module declares test.claim.runner_microvm_witness_test with no intermediate
+// segment. A phantom member beside an omitted live one means the row never carried the BOUNDED
+// population DESIGN 4b requires, and two spot fixes would have left completeness unestablished --
+// so the row was re-derived from the module's declarations rather than edited.
+//
+// MEMBERSHIP RULE: a symbol is a member when, IN PRODUCTION, it cannot reach its intended answer
+// because of the two missing quantities. That deliberately includes guest_memory_fits, which is
+// correct code that always returns MemoryFitUnresolved on the production path, and deliberately
+// excludes guest_resources_of_machine_config and the topology and credential arms, which decide
+// fully today. It also includes fabric_cell_slice_desired_directives, which is not in this module:
+// the CPU obstacle is owed there, and a row scoped to the file rather than the class would be
+// satisfied while the capability stayed dead.
+//
 // THE TRIGGER CARRIES TWO CLAUSES AND BOTH ARE REQUIRED, because satisfying the first alone would
 // take the admission's accept arm live having never executed. Retargeting the microVM witnesses
 // onto the refusal path left the success path with NO executed coverage: RunnerMicroVmAdmitted is
@@ -606,12 +622,16 @@ data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall
   },
   population: BoundedPopulation {
     members: [
-      "gunbc.runner_microvm runner_microvm_sizing_of_cores",
+      "gunbc.runner_microvm guest_memory_fits",
+      "gunbc.runner_microvm gunbc_runner_microvm_realization_reserve",
+      "gunbc.runner_microvm gunbc_runner_microvm_cell_cpu_entitlement",
+      "gunbc.runner_microvm runner_microvm_sizing",
       "gunbc.runner_microvm runner_microvm_size_from_cell_envelope",
       "gunbc.runner_microvm runner_microvm_admission_after_credential",
+      "gunbc.runner_microvm gunbc_runner_microvm_admission",
       "gunbc.runner_microvm gunbc_runner_microvm_vm_config",
       "gunbc.fabric.fabric_cell_effect fabric_cell_slice_desired_directives",
-      "test.claim.runner.runner_microvm_witness_test",
+      "test.claim.runner_microvm_witness_test",
     ],
   },
   next_rung_trigger: "BOTH of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from -- a CPUQuota or CPU set on the CELL SLICE, not the CPUQuota gunbc.host.host_converge already writes onto the runner UNIT -- or guest topology renamed as a separately declared product decision that is NOT derived from the cell. The clauses are separate because the obstacles differ in kind: the memory quantity may exist and merely be uncited, while the cell grants no CPU quantity at all, so a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded. THE THIRD CLAUSE THIS ROW CARRIED IS DISCHARGED: RunnerMicroVmAdmitted is reachable again and executed, because the realization reserve is a PARAMETER of the admission rather than a global, so a witness declaring one drives the accept arm while production still refuses. What is NOT discharged and is not claimed here is that PRODUCTION can reach that arm -- it cannot, and clauses 1 and 2 are what would change that"

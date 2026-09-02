@@ -110,9 +110,14 @@ type RunnerMicroVmSize {
 
 // THE MVP SIZE, DECLARED AS THE MVP SIZE AND NOT AS THIS FLEET'S SIZE. It is what was booted on
 // srv4 and it is a RECORD OF ONE BOOT, not a sizing anyone may provision against. It is retained
-// because deleting it would erase the only executed evidence that the configuration derivation
-// below produces a VM that starts at all; it is deliberately NOT the row any admission consults,
-// and runner_microvm_mvp_size_is_not_the_cell_envelope is the executed statement of that.
+// because it is the only configuration here known to have started a VM, which makes it the right
+// fixture for the witnesses; no production path reads it.
+//
+// AN EARLIER VERSION OF THIS ANNOTATION CITED runner_microvm_mvp_size_is_not_the_cell_envelope AS
+// THE EXECUTED STATEMENT OF THAT, and that declaration does not exist -- it went with the withdrawn
+// equality design. An annotation asserting a machine fact no Accepted program can read is exactly
+// what DESIGN 4c forbids, and it is removed rather than repointed: the claim it made belonged to a
+// design that no longer stands.
 data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
   vcpu_count: hardware_thread_count(count: 4),
   memory: mebibyte(count: 4096),
@@ -138,6 +143,60 @@ data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
 // opposite directions while the pair looked discriminating.
 type CellMemoryEnvelope { bytes: ByteSize }
 type GuestMemoryRequest { bytes: ByteSize }
+
+// THE FIRECRACKER MACHINE CONFIG IS A SIGNED EXTERNAL BOUNDARY, AND IT IS VALIDATED HERE OR
+// NOWHERE.
+//
+// FirecrackerMachineConfig carries `vcpu_count: Int` and `mem_size_mib: Int` -- upstream's own
+// shape, faithfully modeled, and SIGNED. The spelling `Nat` downstream does not rescue it: the
+// generated realization is i64 and byte_size constructs the measure from whatever count it is
+// handed. So a config with mem_size_mib = -1 previously flowed straight through
+// mebibyte -> mebibyte_to_byte_size -> GuestMemoryRequest and satisfied -1 MiB + 256 MiB <= 16 GiB,
+// reaching GuestFitsWithinCell and then RunnerMicroVmAdmitted. A fail-open arm INSIDE the very
+// relation this module exists to establish.
+//
+// It is not enough to be caught later: nothing downstream re-reads the sign, and the admission is
+// the last gate before a VM is provisioned. So the signed values become VALIDATED MAGNITUDES or a
+// typed refusal, BEFORE fit and before admission, and the fit function is never handed an
+// unvalidated number.
+//
+// THE UPPER BOUND IS THE REPRESENTABLE ONE, not a policy guess. mebibyte_to_byte_size multiplies by
+// 2^20, so any mem_size_mib above (2^63 - 1) / 2^20 makes the byte magnitude unrepresentable in the
+// i64 the realization uses. Refusing there is refusing the arithmetic we cannot perform, which is
+// the honest boundary; picking a smaller "reasonable" ceiling would be an unstated policy wearing
+// a representability argument's clothes.
+data guest_memory_mib_representable_max: Int = 8796093022207
+
+type GuestResources
+  = GuestResourcesValidated { memory: GuestMemoryRequest, vcpus: HardwareThreadCount }
+  | GuestResourcesInvalid { cause: String }
+
+fn guest_resources_of_machine_config(mc: FirecrackerMachineConfig) -> GuestResources {
+  if mc.mem_size_mib <= 0 {
+    GuestResourcesInvalid {
+      cause: "the guest machine configuration declares a memory size that is zero or negative, which is not a magnitude; a guest cannot be provisioned with it and no fit judgment against the cell is meaningful",
+    }
+  } else {
+    if mc.mem_size_mib > guest_memory_mib_representable_max {
+      GuestResourcesInvalid {
+        cause: "the guest machine configuration declares a memory size whose conversion to bytes is not representable, so the fit comparison cannot be performed rather than being performed on a wrapped value",
+      }
+    } else {
+      if mc.vcpu_count <= 0 {
+        GuestResourcesInvalid {
+          cause: "the guest machine configuration declares a vCPU count that is zero or negative, which is not a cardinality; the guest could not be started with it",
+        }
+      } else {
+        GuestResourcesValidated {
+          memory: GuestMemoryRequest {
+            bytes: mebibyte_to_byte_size(m: mebibyte(count: mc.mem_size_mib)),
+          },
+          vcpus: hardware_thread_count(count: mc.vcpu_count),
+        }
+      }
+    }
+  }
+}
 
 // THE RESERVE IS AN INPUT, NOT A GLOBAL, AND THAT IS WHAT MAKES THE FIT CONTROLS AUTHORABLE.
 //
@@ -167,11 +226,23 @@ fn guest_memory_fits(
         cause: concat("the guest's memory cannot be judged against the cell without the realization's own reserve: ", c),
       }
     ReserveDeclared { bytes: r } =>
-      if byte_size_count(b: guest.bytes) + byte_size_count(b: r) <= byte_size_count(b: envelope.bytes) {
-        GuestFitsWithinCell
-      } else {
+      // COMPARED BY SUBTRACTION RATHER THAN BY ADDITION, so the comparison itself cannot overflow.
+      // `guest + reserve <= envelope` is the law, but evaluating the left side can exceed the
+      // representable range on a hostile guest value and then WRAP, which would answer the wrong
+      // question silently. Subtracting the reserve from the envelope stays inside the range for
+      // any non-negative inputs, and the reserve-exceeds-envelope case is split out so the
+      // subtraction is never performed below zero.
+      if byte_size_count(b: r) > byte_size_count(b: envelope.bytes) {
         GuestExceedsCell {
-          detail: "the guest's memory plus the realization's reserve exceeds the cell's MemoryMax, so the slice would kill the VM it exists to bound",
+          detail: "the realization's own reserve alone exceeds the cell's MemoryMax, so no guest of any size fits beside it",
+        }
+      } else {
+        if byte_size_count(b: guest.bytes) <= byte_size_count(b: envelope.bytes) - byte_size_count(b: r) {
+          GuestFitsWithinCell
+        } else {
+          GuestExceedsCell {
+            detail: "the guest's memory plus the realization's reserve exceeds the cell's MemoryMax, so the slice would kill the VM it exists to bound",
+          }
         }
       }
   }
@@ -403,22 +474,27 @@ fn runner_microvm_admission_after_credential(
       reason: "the Firecracker configuration does not name exactly one root device, so the guest either cannot boot or its root is ambiguous",
     }
   } else {
-    match guest_memory_fits(
-      guest: GuestMemoryRequest {
-        bytes: mebibyte_to_byte_size(m: mebibyte(count: config.machine_config.mem_size_mib)),
-      },
-      reserve: reserve,
-      envelope: CellMemoryEnvelope { bytes: gunbc_runner_slot_desired().memory_max },
-    ) {
-      MemoryFitUnresolved { cause: c } =>
-        RunnerMicroVmRefusedEnvelopeUnresolved {
-          reason: concat("this guest cannot be judged against the bounded cell, so no VM is admissible: ", c),
+    match guest_resources_of_machine_config(mc: config.machine_config) {
+      GuestResourcesInvalid { cause: c } =>
+        RunnerMicroVmRefusedMalformedVm {
+          reason: concat("the guest machine configuration does not carry usable magnitudes, so it is refused before any fit judgment: ", c),
         }
-      GuestExceedsCell { detail: d } =>
-        RunnerMicroVmRefusedEnvelopeDisagreement {
-          reason: concat("the guest would not fit the bounded cell FCI-1 admitted: ", d),
+      GuestResourcesValidated { memory: g, vcpus: _ } =>
+        match guest_memory_fits(
+          guest: g,
+          reserve: reserve,
+          envelope: CellMemoryEnvelope { bytes: gunbc_runner_slot_desired().memory_max },
+        ) {
+          MemoryFitUnresolved { cause: c } =>
+            RunnerMicroVmRefusedEnvelopeUnresolved {
+              reason: concat("this guest cannot be judged against the bounded cell, so no VM is admissible: ", c),
+            }
+          GuestExceedsCell { detail: d } =>
+            RunnerMicroVmRefusedEnvelopeDisagreement {
+              reason: concat("the guest would not fit the bounded cell FCI-1 admitted: ", d),
+            }
+          GuestFitsWithinCell => RunnerMicroVmAdmitted
         }
-      GuestFitsWithinCell => RunnerMicroVmAdmitted
     }
   }
 }

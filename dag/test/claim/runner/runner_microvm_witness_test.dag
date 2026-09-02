@@ -10,6 +10,7 @@ import product.fabric.isolation {
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
 import extdeps.virtualization.firecracker {
+  FirecrackerMachineConfig,
   FirecrackerVmConfig,
   FirecrackerDrive,
   firecracker_config_has_single_root,
@@ -122,9 +123,18 @@ fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
   }
 }
 
-fn admission_is_envelope_unresolved_refusal(a: RunnerMicroVmAdmission) -> Bool {
+// THE REASON IS MATCHED, NOT DISCARDED, AND THAT IS THE POINT OF THIS RECOGNIZER.
+//
+// It previously accepted RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ }. That established
+// the DISPOSITION and threw away the located cause, so the control stayed green under a mutation
+// where the producer names the missing Firecracker reserve and the ADMISSION returns a bare
+// "unresolved" -- still discriminating admit from refuse, no longer carrying the cause the source
+// claims it protects. A separate witness on the producer cannot close that: it establishes what
+// the producer emits, not that this path PRESERVES it.
+fn admission_refuses_naming_the_missing_reserve(a: RunnerMicroVmAdmission) -> Bool {
   match a {
-    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => true
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: r } =>
+      cause_mentions(cause: r, needle: "extdeps.virtualization.firecracker")
     RunnerMicroVmAdmitted => false
     RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
@@ -349,7 +359,7 @@ data witness_reserve: RealizationReserve = ReserveDeclared { bytes: byte_size(co
 // fail. This one reaches the admission and fails if the cause stops naming where the quantity is
 // owed.
 test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
-  admission_is_envelope_unresolved_refusal(
+  admission_refuses_naming_the_missing_reserve(
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
@@ -359,6 +369,69 @@ test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
       reserve: gunbc_runner_microvm_realization_reserve(),
     ),
   )
+}
+
+// THE SIGNED BOUNDARY, WHICH IS WHERE THIS CHANGE WAS FAIL-OPEN.
+//
+// FirecrackerMachineConfig carries vcpu_count and mem_size_mib as SIGNED Int -- upstream's shape,
+// faithfully modeled. Before the validation below, a config declaring mem_size_mib = -1 flowed
+// into the fit comparison and satisfied -1 MiB + 256 MiB <= 16 GiB, so a hostile or corrupt value
+// was ADMITTED by the very relation this module exists to enforce. These five witnesses are the
+// wall; the fifth is what stops the other four being satisfied by a predicate that refuses
+// everything.
+fn config_with_machine(vcpus: Int, mib: Int) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: mvp_sized_config().boot_source,
+    drives: mvp_sized_config().drives,
+    network_interfaces: mvp_sized_config().network_interfaces,
+    machine_config: FirecrackerMachineConfig { vcpu_count: vcpus, mem_size_mib: mib },
+  }
+}
+
+fn admission_of_machine(vcpus: Int, mib: Int) -> RunnerMicroVmAdmission {
+  runner_microvm_admission(
+    topology: VmmUnderLifecycleController,
+    intent: repaired_lifecycle_intent,
+    listener_is_main_process: false,
+    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+    config: config_with_machine(vcpus: vcpus, mib: mib),
+    reserve: witness_reserve,
+  )
+}
+
+// NEGATIVE MEMORY IS REFUSED. This is the authorable red: without the boundary validation this
+// exact config reached GuestFitsWithinCell and then RunnerMicroVmAdmitted.
+test fn a_negative_guest_memory_is_refused() -> Bool {
+  admission_is_malformed_refusal(a: admission_of_machine(vcpus: 4, mib: -1))
+}
+
+// ZERO MEMORY IS REFUSED. Asserted separately from the negative case because zero is not caught by
+// a sign test alone and is the value an uninitialised field most plausibly carries.
+test fn a_zero_guest_memory_is_refused() -> Bool {
+  admission_is_malformed_refusal(a: admission_of_machine(vcpus: 4, mib: 0))
+}
+
+// A NON-POSITIVE vCPU COUNT IS REFUSED. The admitted arm never validated it, so a guest that could
+// not start was previously admissible on the memory axis alone.
+test fn a_non_positive_vcpu_count_is_refused() -> Bool {
+  admission_is_malformed_refusal(a: admission_of_machine(vcpus: 0, mib: 4096))
+    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: -2, mib: 4096))
+}
+
+// AN UNREPRESENTABLE MEMORY SIZE IS REFUSED RATHER THAN WRAPPED. mebibyte_to_byte_size multiplies
+// by 2^20, so beyond this bound the byte magnitude does not fit the realization's i64 and the
+// comparison would be performed on a wrapped value -- answering the wrong question silently, which
+// is worse than refusing.
+test fn an_unrepresentable_guest_memory_is_refused() -> Bool {
+  admission_is_malformed_refusal(a: admission_of_machine(vcpus: 4, mib: 9007199254740992))
+}
+
+// THE NON-DEGENERATE CONTROL, AND IT IS NOT OPTIONAL. Without it the four refusals above are all
+// satisfied by an admission that refuses everything. A small positive guest, well inside the cell
+// beside its reserve, is still ADMITTED -- so the wall rejects bad magnitudes rather than rejecting
+// magnitudes.
+test fn a_small_positive_guest_is_still_admitted() -> Bool {
+  admission_is_admitted(a: admission_of_machine(vcpus: 2, mib: 1024))
 }
 
 // ARM ONE OF THE FIT PAIR -- SMALLER PASSES. The 4 GiB MVP guest plus a 256 MiB reserve against a
