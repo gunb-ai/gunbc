@@ -278,6 +278,20 @@ data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
 // is repaired in the same change by re-pointing at `test.claim.gitattributes_emit_witness`
 // `witness_committed_matches_emit_holds`, a live per-PR row whose `Filesystem.Read` carries no
 // `expect:`; the cadence half is not repairable here and is what this row records.
+//
+// A GRAIN MISMATCH THIS ROW JOINS RATHER THAN INTRODUCES, named so the next reader is not misled.
+// `deleted_cadence_reference_drop`'s restoration trigger is written in the plural -- a predict-only
+// cold comparison landing, at which point "each row above" is reclassified -- but the population it
+// covers spans THREE cadences, and a row is restored by ITS OWN cadence regaining a route, which is
+// what each `CoverageNotEstablished` carries. This row's condition is
+// `witness_cadence_has_scheduled_route(FalsifierRehomedBinWet)`, which that trigger would not
+// deliver. It is the third member of the `bin_wet_template_coverage` subclass, after
+// `gunbc.ci_layer_roots` `bin_witness_wet_note` and `test.claim.long.dag_compile_clean_perturb_corpus`
+// `perturb_cross_tree_import_corpus_green_holds`, so the mismatch predates it and is not repaired here.
+// WHAT BOUNDS THE HAZARD is that the plural trigger is PROSE and nothing folds it: the executing
+// check, `deleted_cadence_reference_row_holds`, reads `coverage.lost_with` per row, so a returning
+// route flips exactly the rows it actually restores and cannot green this one on another cadence
+// re-add. The defect is therefore a misdescribing trigger sentence, not a reclassifying mechanism.
 fn deleted_cadence_references() -> List<DeletedCadenceReference> {
   [
     DeletedCadenceReference {
