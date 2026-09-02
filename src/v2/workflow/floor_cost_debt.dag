@@ -2,7 +2,6 @@ module v2.workflow.floor_cost_debt
 
 import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
-import v2.std.text { String }
 
 // THE OVER-COST WITHHOLDING MECHANISM. ITS POPULATION IS NOT STATED HERE -- ASK
 // `floor_cost_debt_population_report`, WHICH FOLDS THE SAME CHUNKS THE ROSTER DOES.
@@ -222,6 +221,13 @@ import v2.std.text { String }
 // FILL, not the cost of the row. Releasing on a 0ms reading would have been the charged-basis
 // error this file was rebuilt once to correct, in mirror image: there a real number belonged to
 // another row, here a real zero does.
+
+// THE 500ms CEILING ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
+// Every release and hold reasoned about here compares a claim's cost against
+// `required_floor_claim_cpu_safety_limit_ms`, and the standing of that comparison -- its measured
+// inflation, its bounded population, and the capability that restores it -- is carried by
+// `gunbc.rung_drop floor_cost_contention_verdict`. Cited rather than repeated: a second telling
+// would drift from the authority that retires it.
 
 // THE 45 test.claim.live_deploy ROWS ARE HELD, AND THEIR TRIGGER IS NOT A COST MEASUREMENT.
 //

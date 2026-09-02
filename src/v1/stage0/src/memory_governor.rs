@@ -694,7 +694,7 @@ pub fn host_budget_unreadable_reason() -> String {
          admitting against the widest signal available: a host-shared reading is a number \
          about the MACHINE, not about this slot, and admitting against one is the rc=137 \
          SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
-         gunbc.host_budget_source host_budget_unreadable_cgroup_receipt_note). The executor must \
+         gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must \
          expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
         std::env::consts::OS
     )

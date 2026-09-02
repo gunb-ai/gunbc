@@ -757,6 +757,35 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.len(),
             phase_failures.len()
         );
+        let judged_module_identities =
+            v1_compiler::cli_run::required_lane_judged_module_identities_for_ci();
+        eprintln!(
+            "required-ci: judged-module-identities {:?}",
+            judged_module_identities
+        );
+        eprintln!(
+            "required-ci: cross-process-content-judged-module-identities {:?}",
+            v1_compiler::cli_run::required_lane_cross_process_content_judged_module_identities_for_ci()
+        );
+        match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(&source_roots) {
+            Ok(admitted_module_identities) => {
+                eprintln!(
+                    "required-ci: admitted-module-identities {:?}",
+                    admitted_module_identities
+                );
+                eprintln!(
+                    "required-ci: unresolved-module-identities {:?}",
+                    v1_compiler::cli_run::declaration_index::modules_unresolved_by_lane(
+                        admitted_module_identities,
+                        &judged_module_identities,
+                    )
+                );
+            }
+            Err(cause) => {
+                eprintln!("required-ci: source-root ingest receipt refused: {cause}");
+                phase_failures.push(format!("source-root ingest receipt refused: {cause}"));
+            }
+        }
         for failure in &phase_failures {
             eprintln!("required-ci: FAILED PHASE {failure}");
         }

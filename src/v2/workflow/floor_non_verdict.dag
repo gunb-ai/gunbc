@@ -2,7 +2,6 @@ module v2.workflow.floor_non_verdict
 
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
-import v2.std.text { String }
 
 // THE NON-VERDICT ROSTER: identities enrolled as expected-red that the required floor EXECUTES
 // and that produce NO BOOLEAN VERDICT -- they throw, or answer with something that is not a

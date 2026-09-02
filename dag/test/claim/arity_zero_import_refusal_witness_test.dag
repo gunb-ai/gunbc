@@ -11,7 +11,8 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // WHY THIS FILE EXISTS, and the reason is a defect in the PR that installed the wall rather than
 // a defect in the wall. The refusal was proven by execution against a throwaway fixture written
 // outside the tree and deleted afterwards, and the corpus's one live specimen -- an
-// `import std.realization_schedule { }` in gunbc.floor_component_receipt -- was deleted in the
+// `import std.realization_schedule { }` in gunbc.floor_component_receipt (that module itself was
+// later deleted, 2026-09-01, as unreachable residue of the 2026-08-15 CI cut) -- was deleted in the
 // same diff, because a wall is not installable over a corpus that violates it. Those two facts
 // together removed the only authored instance of the state the wall refuses. THE WALL EXECUTED
 // AND NOTHING WENT RED IF IT WERE DELETED: a live corpus specimen had been doing double duty as

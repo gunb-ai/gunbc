@@ -1,6 +1,6 @@
 module extdeps.gpu.types
 
-import std.types { Int, NonEmptyStr, String, List }
+import std.types { Int, NonEmptyStr, String, List, Bool }
 import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -22,6 +22,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data cuda_compute_capabilities_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
+
+// THE ONE PLACE THE RUNTIME VARIANTS ARE ENUMERATED, so a consumer comparing two runtimes reads this
+// rather than matching the coproduct against itself. A second enumeration beside it would let a
+// fifth runtime compile against half the corpus: the projection would fail to build while every
+// hand-rolled equality quietly answered false for the new arm.
+fn gpu_runtime_wire(runtime: GpuRuntime) -> String {
+  match runtime {
+    Cuda => "cuda"
+    Rocm => "rocm"
+    Metal => "metal"
+    OpenCl => "opencl"
+  }
+}
+
+fn gpu_runtime_eq(a: GpuRuntime, b: GpuRuntime) -> Bool {
+  gpu_runtime_wire(runtime: a) == gpu_runtime_wire(runtime: b)
+}
 
 type GpuComputeCapability {
   vendor: Vendor<Hardware>
