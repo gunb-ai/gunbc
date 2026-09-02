@@ -418,3 +418,47 @@ test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
     LadderTooFewRungs { supplied: _ } => false
   }
 }
+
+fn reversed_rows(rows: List<RawOperationRow>) -> List<RawOperationRow> {
+  fold(rows, init: [], f: fn(acc, row) { concat([row], acc) })
+}
+
+// WITNESS 12 — AN UNAUTHORISED OPERATION ORDER REFUSES, AND THE DIAGNOSTIC NAMES A FIELD RATHER THAN
+// NAMING "ORDER". That is worth stating rather than leaving for a reader to discover.
+//
+// The ladder ascends, so reversing the operations puts the LARGEST diameter at index 0. The positional
+// comparison therefore refuses immediately -- order is not a separate check and does not need to be,
+// because comparing operation i against operation i already makes a permutation a divergence. The
+// refusal reports FieldDiameter at index 0, which is TRUE and is the first place the artifact differs
+// from the model; it simply is not the word "order".
+//
+// WHY NO SEPARATE ORDER CHECK IS OWED: one would be a second authority for a question the positional
+// comparison already answers, and it could disagree with it. What IS owed is this witness, because
+// without it the property is an inference from how zip_map happens to work rather than an executed
+// fact -- and a reader could later "optimise" the comparison into a set or multiset comparison, which
+// would still pass every other witness in this file while silently admitting every permutation.
+test fn w_an_unauthorised_operation_order_refuses() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let rows = reversed_rows(rows: rows_of(s: contract.specimen))
+      let bad = envelope_with_rows(s: contract.specimen, rows: rows)
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationJudged { conformance: c } => match c {
+          ContractOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
+            match f {
+              FieldDiameter => i == 0 && micrometer_count(m: m) == 3000 && micrometer_count(m: r) == 4000
+              FieldCenterX => false
+              FieldCenterY => false
+            }
+          ContractConforms => false
+          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
