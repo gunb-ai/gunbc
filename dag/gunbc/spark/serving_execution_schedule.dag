@@ -18,6 +18,8 @@ import gunbc.membership_reconcile {
   MemberRemovalRefused,
   MemberRosterDuplicateKeyRefused,
 }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,

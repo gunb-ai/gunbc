@@ -1,6 +1,7 @@
 module gunbc.specification_citation_read_provenance
 
 import std.integer { Int }
+import std.measure { ByteSize, byte_size }
 import std.types { NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
@@ -16,6 +17,14 @@ import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_au
 // licence terms on OcpSpecificationLicense instead. The two axes stay independent — a document may
 // be publicly published under OWFa 1.0 while our publisher fetch was refused.
 
+// THE ARMS DIFFER BY WHO OBTAINED THE TEXT, which is the fact that decays differently: a peer
+// session's decode, a dated mirror's capture and an operator hand-off each carry a different reason
+// the bytes might not be what the publisher serves today. DocumentLocatorFetchedAndTextIngested is
+// this repository fetching the live publisher locator itself and decoding it, so it carries the
+// response status, the byte count and the content digest - the three facts that let a later reader
+// re-run the fetch and tell whether they got the same artifact. It was added because the Mt. Collins
+// receipts had no honest arm: the brief's receipt claimed the text was UNREAD while
+// extdeps.ampere.mt_collins_product_brief.platform models rows read from it (review 5084368000).
 type SpecificationCitationReadProvenance
   = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
   | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
@@ -26,6 +35,12 @@ type SpecificationCitationReadProvenance
       detail: NonEmptyStr,
     }
   | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
+  | DocumentLocatorFetchedAndTextIngested {
+      http_status: Int,
+      byte_count: ByteSize,
+      content_digest: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
   | OperatorSuppliedDocumentText {}
 
 type SpecificationCitationReadReceipt {
@@ -54,6 +69,12 @@ data altra_platform_hw_design_specification_subject_ref: DeclarationRef = Declar
 data mt_collins_public_product_brief_subject_ref: DeclarationRef = DeclarationRef {
   module_path: "extdeps.ampere.mt_collins_product_brief.subject",
   decl_name: "mt_collins_public_product_brief",
+  field: WholeDeclaration,
+}
+
+data mt_collins_getting_started_guide_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ampere.mt_collins_getting_started_guide.subject",
+  decl_name: "mt_collins_getting_started_guide",
   field: WholeDeclaration,
 }
 
@@ -102,10 +123,27 @@ data altra_platform_hw_design_citation_read_receipt: SpecificationCitationReadRe
   },
 }
 
+// CORRECTED 2026-09-02. This receipt said the text was UNREAD and that no interior fact was
+// modelled. Both halves were false by the time they were read: extdeps.ampere.mt_collins_product_brief.platform
+// carries mechanical rows it states were read from this brief, and the brief's full text has now
+// been decoded here. The superseded claim is named rather than overwritten in silence, because a
+// receipt that was wrong about its own subject is exactly the kind of thing a later reader trusts.
 data mt_collins_product_brief_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
   subject: mt_collins_public_product_brief_subject_ref,
-  provenance: DocumentLocatorFetchedButTextUnread {
+  provenance: DocumentLocatorFetchedAndTextIngested {
     http_status: 200,
-    detail: "public marketing PDF fetched successfully; no interior engineering fact is modelled because the authoritative design package is NDA-gated",
+    byte_count: byte_size(count: 701666),
+    content_digest: "sha256 961b98a41971bc5e8d189f795dec3b2a5249268d1845decfb71a7fad802f1c14",
+    detail: "the anchor was fetched by this session and its full text decoded (zlib content-stream decompression with per-font ToUnicode CMap decoding): 1304 characters, a one-page specifications sheet from the Model row to the Dimensions row, carrying no proprietary, confidential, copyright, trademark, reserved or licence token and no document or issue number. Embedded metadata records Title 'Microsoft Word - Mt._Collins_2U_2022_V2', Producer 'Microsoft: Print To PDF', created 2022-10-17. That reading is what grounds mt_collins_product_brief_publication_status on the no-stated-terms arm.",
+  },
+}
+
+data mt_collins_getting_started_guide_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_collins_getting_started_guide_subject_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 9409569),
+    content_digest: "sha256 1c41b4f088fa9c8b760d21d57ae93b0d1a68ee67a740d4eb7ac893753fc580b3",
+    detail: "the guide's locator was fetched by this session with NO credentials - no Customer Connect session and no cookie - returning application/pdf whose digest equals the identity recorded on the document module. That is the observation the public-availability axis turns on; the resulting status is an upstream fact and lives on the document module, not here.",
   },
 }

@@ -506,178 +506,93 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
 /// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
 /// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "DelimitedState",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexMatchResult",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexMatchThunk",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexRuleApply",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexWalkAcc",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "RepeatState",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_match_char_pred",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_match_prefix",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_strip_prefix",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_compiled",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_rule",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_rules",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk_artifact",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk_init",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.lexing",
-            in_declaration: "LexPattern",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.lexing",
-            in_declaration: "LexPatternFold",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// TWELFTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
+/// gunbc#9832): ONE relocation, rostered by its author under the rule this ledger states -- a run
+/// carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row here.
+/// `fleet_converge_plan_spark_typed_actions_wire_path` is the on-disk path of one of the three
+/// members of the plan BUNDLE DIGEST, and the digest is computed in `gunbc.fleet_converge_plan`
+/// while the path constant was declared in `gunbc.fleet_converge_plan_cli`. That split is what the
+/// PR's persisted-member work made untenable: the manifest admission must name the path it is
+/// judging, and a transport module cannot be the authority for a member of an identity the plan
+/// module mints. The constant therefore moves to the module that owns the digest -- same spelling,
+/// same value, one declaring module, no second declaration left behind and no requalification. The
+/// two rows it added were the CLI's own call sites resolving to the new declarer. That paragraph
+/// previously reported them as `closure blast radius: 0 module(s)`, which gunbc#9908 has since made
+/// a wrong sentence rather than a stale one: closure is a pure function of MEMBERSHIP, so a binding
+/// row is not asked the question and now carries `None` and renders no clause at all. Quoting a
+/// measured zero for it would be the exact conflation that change removed. Their declared trigger
+/// was that PR merging; the fourteenth entry records it firing and the rows are gone.
+/// THIRTEENTH DISSOLUTION (2026-09-01). The seventeen XL-0T rows above were removed by THEIR OWN
+/// dissolve-on trigger, which the paragraph declaring them states as "#9907 merging". #9907 merged
+/// to main at 14:02:39; the first merge of main into this branch that carried them was made at
+/// 14:12:13, ten minutes AFTER their lifetime ended, and preserved them anyway. Base and head both
+/// carry the qualification now, so no run can produce those deltas and all seventeen report stale --
+/// and a stale row here refuses every unrelated PR in the repository, which is why the deletion is
+/// owed on the roster's next touch rather than at someone's convenience. This merge is that touch.
+///
+/// THE MISTAKE WAS ASKING THE QUESTION OF ONE SIDE ONLY, and it is recorded because the resolution
+/// recipe is what failed, not the arithmetic. The trigger check was run carefully against the rows
+/// being KEPT -- this PR's own two, whose trigger is this PR merging and has not fired -- and was
+/// never run against the cohort being IMPORTED. "Preserve both sides" is the wrong default for a
+/// ledger with dissolution rules: the resolved roster is the old cohort, UNION newly live main
+/// cohorts, MINUS every cohort whose trigger has fired as of the base being merged, asked of each
+/// side independently.
+/// FOURTEENTH DISSOLUTION (2026-09-02), AND IT IS THE THIRTEENTH'S OWN LESSON APPLIED TO THE ROWS
+/// THAT TAUGHT IT. RLM-2b's two rows declared their trigger as "#9832 merging". #9832 IS the
+/// base this change merges -- main's head is that merge -- so their lifetime ended at the moment
+/// this merge began. Base and head both carry the constant's relocation, no run can produce those
+/// deltas, and both rows would report stale, refusing every unrelated PR exactly as the seventeen
+/// did. They are removed here.
+///
+/// THE THIRTEENTH ENTRY WARNED THAT "PRESERVE BOTH SIDES" IS THE WRONG DEFAULT FOR A LEDGER WITH
+/// DISSOLUTION RULES, and asking the trigger question of the kept rows only is how the previous
+/// cohort outlived itself by ten minutes. Keeping RLM-2b's rows through this merge because they
+/// arrived from main would be that identical mistake one iteration later, with the roles swapped.
+/// The recipe was run against BOTH sides: that change's own cohort had an unfired trigger and
+/// stayed; the imported cohort's had fired and went.
+///
+/// A TENSE CORRECTION, MADE BY THE FIFTEENTH DISSOLUTION AND RECORDED RATHER THAN SILENTLY APPLIED.
+/// The three paragraphs above were written from inside the commits that made them, and referred to
+/// their cohorts DEICTICALLY -- rows "above", deltas "below", a cohort that "stays". Every one of
+/// those referents has since been deleted, so sentences that were true when authored became prose
+/// asserting a present-tense fact that is false, inside the very ledger whose subject is rows
+/// outliving their truth. Only the tense and the position words were changed; no claim was altered.
+/// This is DESIGN section 3's standing rule reaching prose: cite the cohort by NAME, never by where
+/// it sits, because a ledger's positions are exactly what its own dissolution rule destroys.
+/// FIFTEENTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
+/// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
+/// module more than one implementation cites. No declaration was renamed and no name was minted:
+/// every spelling below denotes the same declaration it denoted at the base, at a new home, so
+/// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
+/// `{extdeps.llm.anthropic_messages_api}`.
+///
+/// THE POPULATION IS EXACTLY NINE, AND THE REST OF THE MOTION NEEDED NO ROW. The same phase
+/// classified this change's membership and closure motion automatically -- the memberships
+/// `extdeps.llm.anthropic` lost are `SameDeclarationIdentityRebind`, the memberships the new module
+/// gained are `ExplicitlyEvaluatedZeroDelta` -- so the nine below are the whole unadjudicated set,
+/// not a sample of it. Every row names one exact (module, declaration, spelling) triple: a tenth
+/// binding re-pointed at the new module anywhere in the corpus still refuses as UNADJUDICATED.
+///
+/// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
+/// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
+/// here refuses every unrelated PR in the repository.
+/// FOURTEENTH DISSOLUTION, AND THE FIRST ONE A MECHANISM CAN SEE (2026-09-02). The nine DCH-1
+/// rows authored by gunbc#9985 are removed by their own dissolve-on trigger, which is that pull
+/// request merging: c2cd45dcff9 IS that merge, so `extdeps.llm.anthropic_rest` already imports the
+/// four hoisted spellings from `extdeps.llm.anthropic_messages_api` on the base of every run, and
+/// `admission_consumed_at_base` proves the relocation the rows admit. Like the RLM-2b pair before
+/// them, they were BORN CONSUMED — authored in the same commit that merged their subject, so no
+/// run after that commit could ever match them.
+///
+/// THIS DELETION IS NOT HOUSEKEEPING ATTACHED TO AN UNRELATED CHANGE; IT IS THIS CHANGE'S OWN
+/// FIRST POSITIVE CONTROL. The commit removing them is also the commit that makes
+/// `roster_touched` reachable, and it touches this file, so under the arm it enables these nine
+/// rows would come due and refuse it. A change that turns a wall on and leaves standing exactly
+/// the population that wall refuses would be reporting a green it did not earn.
+///
+/// EMPTY IS THE RESTING STATE and empty is not permissive: with no rows, a run with no delta
+/// passes and a run with a real delta refuses it as UNADJUDICATED.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -1409,6 +1324,59 @@ pub enum WaveAdmissionOutcome {
 /// deletion obligation.
 pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_admission.rs";
 
+/// Whether one adjudicated run REFUSES, and the sentence naming why — the wall's verdict, held by
+/// the wall.
+///
+/// IT LIVES HERE SO ITS RED IS AUTHORABLE WHERE THE VERDICT IS ACTUALLY REACHED. The decision was
+/// interleaved with the executor's printing, in a private function of a binary, so nothing outside
+/// that binary could construct the refusal and no test could discriminate the roster-touched arm
+/// on the path CI runs. DESIGN §4b puts that squarely: a wall whose RED cannot be authored on the
+/// acceptance path is a decoration, and the missing harness is the trigger rather than a ceiling.
+/// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
+/// so "does this run refuse" has one authority instead of one authority and one printer.
+///
+/// AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a permission standing
+/// over nothing — author error, and leaving it means the roster stops being a fact about the
+/// corpus.
+///
+/// A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already holds at the
+/// base (a positive proof), so for an unrelated run it is an inert typed receipt; billing its
+/// cleanup to that run was the externalized degradation eight dissolution PRs paid for. The
+/// deletion is due — and enforced — on the first change that touches the roster file itself,
+/// which every future relocation PR does by construction.
+pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
+    match outcome {
+        WaveAdmissionOutcome::NoSubject { head: _ } => None,
+        WaveAdmissionOutcome::NotEvaluated { reason: _ } => {
+            Some("namespace-wave-admission (NotEvaluated)".to_string())
+        }
+        WaveAdmissionOutcome::Adjudicated {
+            base: _,
+            head: _,
+            report,
+            roster_touched,
+        } => {
+            let unadjudicated = report_unadjudicated(report);
+            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+                return None;
+            }
+            Some(format!(
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
+                 consumed admission(s){})",
+                unadjudicated.len(),
+                report.stale_admissions.len(),
+                report.consumed_admissions.len(),
+                if consumed_due {
+                    " due for deletion on this roster-touching change"
+                } else {
+                    ""
+                }
+            ))
+        }
+    }
+}
+
 /// Run git in the workspace and return stdout with TRAILING whitespace removed, or a refusal
 /// naming the command.
 ///
@@ -1444,7 +1412,18 @@ pub fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// `run_dag_parse_sweep`'s: build output, and the parser's deliberately malformed fixtures. A
 /// base file the head sweep would not read must not enter the base index, or the two sides are
 /// measured by different instruments.
-fn in_sweep_scope(rel: &str) -> bool {
+///
+/// THIS ANSWERS THE PARSER'S QUESTION AND NOTHING ELSE, AND IT IS APPLIED AT THE POINT OF USE.
+/// It used to be applied inside `diff_sides`, so the only available answer to "what did this
+/// change touch" was already narrowed to `.dag` — and a second consumer asking a DIFFERENT
+/// question read that narrowed list as if it were the diff. `roster_touched` asks about a `.rs`
+/// path, a `.rs` path cannot survive a `.dag` filter, and the arm it fed was therefore false on
+/// every production run: an upstream filter written for one question silently deciding another,
+/// with nothing joining them (`gunbc.recurring_failure_mode` `incidental_denominator_as_wall`).
+/// The repair is not a second path list — that would be two representations of one fact, the same
+/// class one step later. `diff_sides` reports what the diff touched, once; every consumer applies
+/// the scope its own question needs, here.
+pub fn in_sweep_scope(rel: &str) -> bool {
     rel.ends_with(".dag")
         && DAG_PARSE_SWEEP_ROOTS
             .iter()
@@ -1465,8 +1444,14 @@ fn in_sweep_scope(rel: &str) -> bool {
 ///
 /// So the diff is read rename-aware, `--name-status -z -M`, each entry contributing to the sides
 /// SEPARATELY: a rename gives its destination to head and its source to base, an addition only a
-/// head path, a deletion only a base path, a modification the same path to both. Scope is applied
-/// per side, because a rename may cross the sweep boundary either way.
+/// head path, a deletion only a base path, a modification the same path to both.
+///
+/// THE SIDES ARE UNFILTERED, WHICH IS WHAT MAKES THIS ONE AUTHORITY FOR WHAT THE DIFF TOUCHED.
+/// Scope is not applied here: it belongs to the QUESTION being asked, not to the diff, and two
+/// consumers downstream ask different ones — the base-index reconstruction wants the parser's
+/// `in_sweep_scope`, and `roster_touched` wants a `.rs` path that predicate can never admit.
+/// A rename may still cross a scope boundary either way, so each consumer applies its own scope
+/// PER SIDE at its call site.
 pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
     let mut head_touched = Vec::new();
     let mut base_side = Vec::new();
@@ -1488,8 +1473,6 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
             head_touched.push(first.to_string());
         }
     }
-    head_touched.retain(|p| in_sweep_scope(p));
-    base_side.retain(|p| in_sweep_scope(p));
     (head_touched, base_side)
 }
 
@@ -1572,9 +1555,18 @@ pub fn run_required_wave_admission(
     )?;
     let (head_touched, base_side) = diff_sides(&name_status);
 
+    // THE PARSER'S SCOPE IS APPLIED HERE, WHERE THE PARSER'S QUESTION IS ASKED, AND NOWHERE ELSE.
+    // `head_touched` and `base_side` are what the diff touched; these two are what the baseline
+    // reconstruction may read. Filtering per side rather than once is not redundancy: a rename may
+    // cross the sweep boundary in either direction, which is why `diff_sides` splits the sides in
+    // the first place. Everything below that asks a DIFFERENT question — `roster_touched` — reads
+    // the unfiltered list, because its subject is a `.rs` path this predicate cannot admit.
+    let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
+    let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
+
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
-        if !head_touched.iter().any(|c| c == &record.rel_path) {
+        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
     }
@@ -1589,8 +1581,8 @@ pub fn run_required_wave_admission(
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: std::collections::BTreeSet<String> =
         base_paths.lines().map(|l| l.trim().to_string()).collect();
-    for rel in &base_side {
-        if !base_paths.contains(rel) {
+    for rel in &base_parsed {
+        if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
             continue;
         }
@@ -1616,6 +1608,10 @@ pub fn run_required_wave_admission(
         }
     }
 
+    // READ FROM THE UNFILTERED HEAD SIDE. This is the whole subject of the repair: the roster is a
+    // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this
+    // predicate was false on every production run and the consumed-row deletion obligation it
+    // gates could never come due.
     let roster_touched = head_touched.iter().any(|p| p == ADMISSION_ROSTER_REL_PATH);
     let report = adjudicate(&base_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS);
     Ok(WaveAdmissionOutcome::Adjudicated {

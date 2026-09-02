@@ -320,6 +320,56 @@ pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<Strin
         .collect()
 }
 
+/// The member names an `import path { A, B }` line names explicitly.
+///
+/// An import edge is the AUTHORITY for a name it names: the author has already said
+/// which module they mean. Consulting the global bare census for such a name asks a
+/// question that was answered at the import site, and can re-open as AMBIGUOUS a name
+/// the author already disambiguated -- which is why this set is subtracted from the
+/// bare-name universe before the census is asked anything.
+pub(crate) fn explicit_import_member_names(content: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut in_block = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // THE MEMBER LIST SPANS LINES. The corpus writes the multi-line form freely --
+        // `dag/std/computation.dag` opens `import std.termination {` and lists
+        // `RankingDimension` on the NEXT line -- so reading members only when `{` shares the
+        // `import` line missed the disambiguating import at the very sites that had one, and
+        // the resolver refused a name the author had already named the module for. This
+        // scans from the opening brace to the closing one, whether or not they share a line.
+        let mut rest = if in_block {
+            trimmed
+        } else if trimmed.starts_with("import ") {
+            match trimmed.find('{') {
+                Some(open) => {
+                    in_block = true;
+                    &trimmed[open + 1..]
+                }
+                None => continue,
+            }
+        } else {
+            continue;
+        };
+        if let Some(close) = rest.find('}') {
+            rest = &rest[..close];
+            in_block = false;
+        }
+        for member in rest.split(',') {
+            // `A as B` binds B locally; the local binder is what a bare reference names.
+            let member = member.trim();
+            let bound = member
+                .rsplit_once(" as ")
+                .map(|(_, alias)| alias.trim())
+                .unwrap_or(member);
+            if !bound.is_empty() {
+                names.insert(bound.to_string());
+            }
+        }
+    }
+    names
+}
+
 pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
@@ -623,7 +673,123 @@ fn test_sig_or_none(
 
 #[cfg(test)]
 mod bare_reference_scanner_tests {
-    use super::{bare_identifier_candidates, module_self_declared_names};
+    use super::{
+        bare_identifier_candidates, explicit_import_member_names, module_self_declared_names,
+    };
+
+    /// A caret symbol literal is a Symbol, not a reference to a declaration. RED before the
+    /// `^` guard landed: `probe` appeared in the reference set, so a file whose only use of
+    /// the spelling is `^probe` was reported AMBIGUOUS against unrelated modules declaring
+    /// `fn probe`. One of the real sites is the caret-symbol lex test itself.
+    #[test]
+    fn a_caret_symbol_literal_is_not_an_identifier_reference() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f() -> Int { match tokenize(text: \"x\", file: ^probe) { _ => 1 } }\n",
+        );
+        assert!(
+            !c.names.contains("probe"),
+            "^probe is a symbol literal, not a reference to whatever declares `fn probe`"
+        );
+        assert!(
+            c.names.contains("tokenize") || c.call_position.contains("tokenize"),
+            "positive control: a real call in the same source IS still collected"
+        );
+    }
+
+    /// The workflow binding form binds with no `let` keyword, so the binder-keyword rule
+    /// cannot see it. RED before the fix: `page` resolved against the whole pool.
+    #[test]
+    fn a_bare_assignment_target_is_bound_not_referenced() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f() -> Int {\n  page = fetch(limit: 1)\n  return page.total\n}\n",
+        );
+        assert!(c.bound.contains("page"), "`page = expr` binds page");
+        assert!(
+            !c.names.contains("page"),
+            "a bound name is never a reference to another module's declaration"
+        );
+        assert!(
+            !c.bound.contains("fetch"),
+            "positive control: the call on the right-hand side is not bound by this rule"
+        );
+    }
+
+    /// `==` and `=>` must not be read as the binding form.
+    #[test]
+    fn a_comparison_and_a_lambda_arrow_are_not_the_binding_form() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f(xs: List<Int>) -> Bool { total == 1 && any(xs, f: e => e > 0) }\n",
+        );
+        assert!(
+            !c.bound.contains("total"),
+            "`total ==` is a comparison, not a binding"
+        );
+        assert!(
+            c.names.contains("total"),
+            "so `total` stays a real reference"
+        );
+    }
+
+    /// An import edge is the authority for a name it names, so the resolve loop subtracts
+    /// these before consulting the global bare census. Without that precedence, an author
+    /// who added the disambiguating import would STILL see the ambiguity refusal, because
+    /// the import does not remove the name from the census's candidate set.
+    #[test]
+    fn explicit_import_members_are_read_including_the_alias_binder() {
+        let names = explicit_import_member_names(
+            "module t\nimport v2.std.logic { Bool, True as Yes }\nimport std.types\n",
+        );
+        assert!(names.contains("Bool"), "a plain member is named");
+        assert!(
+            names.contains("Yes"),
+            "`True as Yes` binds Yes locally — Yes is what a bare reference names"
+        );
+        assert!(
+            !names.contains("True"),
+            "the aliased-away original is not the local binder"
+        );
+        assert!(
+            !names.contains("std.types"),
+            "a memberless import names no members, and the module path is not a member"
+        );
+    }
+
+    /// The multi-line member list is what the corpus actually writes, and missing it was a
+    /// real refusal: dag/std/computation.dag imports `RankingDimension` from std.termination
+    /// on the line AFTER the brace, and the resolver refused it as ambiguous against
+    /// v2.std.cardinality anyway. RED before the block scan landed.
+    #[test]
+    fn a_multi_line_import_block_names_its_members() {
+        let names = explicit_import_member_names(concat!(
+            "module std.computation\n",
+            "import std.termination {\n",
+            "  DescentEvidence, DescentUnknown, RankingDimension,\n",
+            "  descent_evidence_meet\n",
+            "}\n",
+            "import std.algebra { FreeMonoid }\n",
+            "fn f() -> Int { 1 }\n",
+        ));
+        for expected in [
+            "DescentEvidence",
+            "DescentUnknown",
+            "RankingDimension",
+            "descent_evidence_meet",
+            "FreeMonoid",
+        ] {
+            assert!(
+                names.contains(expected),
+                "{expected} is imported explicitly"
+            );
+        }
+        assert!(
+            !names.contains("f"),
+            "the block ends at `}}` — a later declaration is not swept in as a member"
+        );
+        assert!(
+            !names.contains("module std.computation"),
+            "nor is anything before the first import"
+        );
+    }
 
     /// Every coproduct shape the corpus actually writes. The multiline form is the one
     /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
@@ -964,6 +1130,737 @@ pub fn workspace_root() -> PathBuf {
         workspace_root_from(&cwd)
     })
     .clone()
+}
+
+/// The process working directory is one mutable cell shared by every test thread in this binary,
+/// and `cargo test` runs those threads concurrently. A test that chdirs therefore does not perturb
+/// only itself: for the width of the call it redirects every RELATIVE path any concurrent test
+/// resolves, and the restore idiom (`prior = current_dir(); chdir(ws); …; chdir(prior)`) can hand
+/// the cwd back while a sibling is still mid-read. That is the nondeterminism `entry_admission_tests`
+/// already measured on this file — a DIFFERENT pair of tests failing on each run of identical code
+/// — and the victim population is not the mutators, it is every non-ignored test in the binary.
+///
+/// So the gate is REACHABILITY, not a grep for the literal in a test body. All seven mutators this
+/// module was written to remove reached the call through a helper (`with_workspace_cwd`,
+/// `enter_workspace`, and three roster helpers), so a body-local check would have been green over
+/// every one of them, and would go green again the first time someone moves the write one call
+/// deeper. This computes the same transitive closure the census did.
+///
+/// CONTAINMENT IS BRACE DEPTH, NOT INDENTATION, and the first cut of this module got that wrong in
+/// the direction that matters. Taking a declaration's extent as "up to the next declaration at the
+/// same or shallower indent" makes a top-level `fn` swallow every `mod` that follows it, so a
+/// module-level line was attributed to the preceding function — which here was `workspace_root`
+/// itself, a function nearly every test calls. The closure then reported 220 offenders. An
+/// over-approximating gate is the absorbing fallback DESIGN §5 refuses: it would have been cited as
+/// coverage while carrying no information. Extents are now closed on real brace depth, computed
+/// over a projection with comments and string bodies removed.
+///
+/// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
+/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
+/// `repo_self_test_command`), and the EVIDENCE population is the whole of that lane's library
+/// source — every `.rs` file under the crate root, not this file alone. Scanning one file while
+/// claiming the lane was a selection view read as a population, and is the finding of review
+/// 58640. The `#[ignore]`d live-corpus tests still reach mutators and are the
+/// named residue — excluded here because the gating lane does not run them, not because they are
+/// safe. Their next-rung trigger is the capability "every live-tree test resolves paths from an
+/// explicitly passed root", after which the ambient write has no consumer in the test tree and the
+/// call can be removed rather than merely counted.
+///
+/// Rung: the class was found BELOW the ladder (a silently wrong answer — a test resolves against
+/// another tree and can pass or fail either way, with no typed refusal anywhere). For the gating
+/// population the state is now absent; this lens is what keeps it absent, so that population sits
+/// at 2, mechanically preventable, with ceiling 4 named above.
+/// Class: `gunbc.recurring_failure_mode` `ambient_process_state_read_by_a_concurrent_reader`.///
+/// THIS MODULE IS MACHINERY THAT DISSOLVES, AND SAYS SO RATHER THAN WAITING TO BE ASKED. It is
+/// several hundred lines of hand-Rust that re-authors a slice of Rust name resolution in
+/// prose-scanning form — a parallel representation of something the substrate will own, and by
+/// DESIGN §6's test it does NOT survive the terminal architecture. It is admitted as rung-2
+/// machinery, which §4b(4) requires to be DELETED by the climb it enables rather than kept beside
+/// it: when the trigger above lands and every reader in the population resolves from an explicitly
+/// passed root, the ambient write has no consumer, the invalid state has no constructor, and there
+/// is nothing left for a scanner to scan. The whole module goes then — the wall, the closure, and
+/// the projection controls with it, since those exist only to make this scanner honest and have no
+/// subject once it is gone. What does NOT go is the fact it defends, which by then is carried by
+/// construction instead. Read as a permanent lens it would be exactly the parallel authority §3
+/// forbids; read as a countdown to its own deletion it is the cheapest thing that keeps the class
+/// absent until the capability exists.
+#[cfg(test)]
+mod process_cwd_mutation_reachability_gate {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    /// THE BARE CALLEE NAME, NOT THE QUALIFIED PATH. Seeding on `std::env::set_current_dir` would
+    /// match only the spelling the corpus happens to use today: a future author who writes
+    /// `use std::env;` and calls `env::set_current_dir(…)`, or imports the function directly and
+    /// calls it unqualified, would leave the gate green while reintroducing the exact defect. The
+    /// call is matched as an identifier-bounded callee below, so every path spelling of the same
+    /// function seeds the closure. Residue, stated rather than implied: a rename-import
+    /// (`use std::env::set_current_dir as chdir`) still escapes, because the callee is then a
+    /// different identifier — that is the same residue the module ceiling already names, and it is
+    /// narrower than the qualified-path-only form it replaces.
+    ///
+    /// SPELLED IN PIECES ON PURPOSE. This module scans its own file, so a verbatim occurrence of
+    /// the name it hunts for would make the gate an offender against itself, and that false RED
+    /// would be indistinguishable from a real one.
+    const MUTATOR_CALL: &str = concat!("set_", "current_dir");
+    const LIB_SRC_REL: &str = "src/v1/stage0/src";
+
+    #[derive(Debug, Clone)]
+    struct FnDecl {
+        name: String,
+        start: usize,
+        end: usize,
+        is_test: bool,
+        is_ignored: bool,
+    }
+
+    /// Comments and string BODIES removed, everything else kept at its original line. Two jobs at
+    /// once: brace counting must not see a `{` inside a comment or a literal, and name matching
+    /// must not see a function name inside prose — this file's doc comments name most of its own
+    /// symbols, so scanning raw text would fabricate call edges wholesale.
+    fn code_projection(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut in_block_comment = false;
+        // Raw strings span lines and suppress every escape, so the open hash count has to
+        // survive across lines exactly the way a block comment does.
+        let mut in_raw: Option<usize> = None;
+        for line in text.split('\n') {
+            let chars: Vec<char> = line.chars().collect();
+            let mut kept = String::with_capacity(line.len());
+            let mut i = 0usize;
+            let mut in_string = false;
+            let mut in_char = false;
+            while i < chars.len() {
+                let c = chars[i];
+                if let Some(hashes) = in_raw {
+                    // Closing delimiter is `"` followed by EXACTLY the opening hash count, and the
+                    // length check is load-bearing rather than defensive: `take(n).all(..)` over a
+                    // remainder shorter than `n` iterates fewer items and an empty `all` is TRUE,
+                    // so a `"` close to end-of-line would false-close the raw string and hand the
+                    // rest of the fixture back to the code scanner — reintroducing the very
+                    // brace-depth skew this raw-string handling exists to prevent. Found by review
+                    // 58606. `hashes == 0` (a bare `r".."`) still closes on the bare quote, since
+                    // the bound is trivially satisfied.
+                    let closes = i + 1 + hashes <= chars.len()
+                        && chars[i + 1..i + 1 + hashes].iter().all(|h| *h == '#');
+                    if c == '"' && closes {
+                        i += 1 + hashes;
+                        in_raw = None;
+                        kept.push('"');
+                        continue;
+                    }
+                    i += 1;
+                    continue;
+                }
+                if in_block_comment {
+                    if c == '*' && chars.get(i + 1) == Some(&'/') {
+                        i += 2;
+                        in_block_comment = false;
+                        continue;
+                    }
+                    i += 1;
+                    continue;
+                }
+                if in_string {
+                    if c == '\\' {
+                        i += 2;
+                        continue;
+                    }
+                    if c == '"' {
+                        in_string = false;
+                        kept.push('"');
+                    }
+                    i += 1;
+                    continue;
+                }
+                if in_char {
+                    if c == '\\' {
+                        i += 2;
+                        continue;
+                    }
+                    if c == '\'' {
+                        in_char = false;
+                    }
+                    i += 1;
+                    continue;
+                }
+                // A raw-string opener: `r`, then zero or more `#`, then `"`, and not preceded by
+                // an identifier character (else it is the tail of a name like `attr`).
+                if c == 'r'
+                    && i.checked_sub(1).map_or(true, |prev| {
+                        !(chars[prev].is_ascii_alphanumeric() || chars[prev] == '_')
+                    })
+                {
+                    let hashes = chars[i + 1..].iter().take_while(|h| **h == '#').count();
+                    if chars.get(i + 1 + hashes) == Some(&'"') {
+                        in_raw = Some(hashes);
+                        i += 2 + hashes;
+                        kept.push('"');
+                        continue;
+                    }
+                }
+                match c {
+                    '/' if chars.get(i + 1) == Some(&'/') => break,
+                    '/' if chars.get(i + 1) == Some(&'*') => {
+                        in_block_comment = true;
+                        i += 2;
+                        continue;
+                    }
+                    '"' => {
+                        in_string = true;
+                        kept.push('"');
+                    }
+                    // A lifetime (`'a`) is not a char literal; only a quote followed by an escape
+                    // or by a single character then a closing quote opens one.
+                    '\'' => {
+                        let opens_char =
+                            chars.get(i + 1) == Some(&'\\') || chars.get(i + 2) == Some(&'\'');
+                        if opens_char {
+                            in_char = true;
+                        } else {
+                            kept.push(c);
+                        }
+                    }
+                    _ => kept.push(c),
+                }
+                i += 1;
+            }
+            out.push(kept);
+        }
+        out
+    }
+
+    /// Brace depth at the START of each line, over the code projection.
+    fn depth_at_line_start(code: &[String]) -> Vec<i64> {
+        let mut depths = Vec::with_capacity(code.len());
+        let mut depth: i64 = 0;
+        for line in code {
+            depths.push(depth);
+            for c in line.chars() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+            }
+        }
+        depths
+    }
+
+    /// Every `fn` declaration with the half-open line range its BODY occupies, plus the
+    /// `#[test]`/`#[ignore]` attributes above it.
+    fn declarations(raw: &[&str], code: &[String], depths: &[i64]) -> Vec<FnDecl> {
+        let mut decls: Vec<FnDecl> = Vec::new();
+        for (i, line) in code.iter().enumerate() {
+            let mut rest = line.trim_start();
+            for prefix in [
+                "pub(crate) ",
+                "pub(super) ",
+                "pub ",
+                "async ",
+                "const ",
+                "unsafe ",
+                "extern ",
+            ] {
+                if let Some(stripped) = rest.strip_prefix(prefix) {
+                    rest = stripped;
+                }
+            }
+            let Some(after) = rest.strip_prefix("fn ") else {
+                continue;
+            };
+            let name: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            // The body opener may sit on a later line for a wrapped signature.
+            let Some(open) = (i..code.len().min(i + 12)).find(|j| code[*j].contains('{')) else {
+                continue;
+            };
+            let base = depths[open];
+            let end = (open + 1..code.len())
+                .find(|j| depths[*j] <= base)
+                .unwrap_or(code.len());
+            let mut is_test = false;
+            let mut is_ignored = false;
+            let mut k = i;
+            while k > 0 {
+                let above = raw[k - 1].trim();
+                if above.starts_with("#[") {
+                    if above.starts_with("#[test]") {
+                        is_test = true;
+                    }
+                    if above.starts_with("#[ignore") {
+                        is_ignored = true;
+                    }
+                } else if !(above.is_empty() || above.starts_with("//")) {
+                    break;
+                }
+                k -= 1;
+            }
+            decls.push(FnDecl {
+                name,
+                start: i,
+                end,
+                is_test,
+                is_ignored,
+            });
+        }
+        decls
+    }
+
+    /// Innermost owning declaration per line. A line outside every function body — a `mod`-level
+    /// `const`, a `use`, a type declaration — is owned by NOBODY, which is the correction that
+    /// collapsed the first cut's 220 false offenders to nothing.
+    fn owner_per_line(len: usize, decls: &[FnDecl]) -> Vec<Option<usize>> {
+        let mut owner: Vec<Option<usize>> = vec![None; len];
+        let mut width: Vec<usize> = vec![usize::MAX; len];
+        for (d_index, d) in decls.iter().enumerate() {
+            let w = d.end.saturating_sub(d.start);
+            for line in d.start..d.end.min(len) {
+                if w <= width[line] {
+                    width[line] = w;
+                    owner[line] = Some(d_index);
+                }
+            }
+        }
+        owner
+    }
+
+    /// Every identifier in `line` that is APPLIED — an identifier-bounded run followed by `(`.
+    /// Extracted once per line instead of testing each known name against each line: the gate now
+    /// scans the whole crate library source, so the per-name form is quadratic in (lines x
+    /// declarations) and would cost minutes in a lane whose whole `--lib` budget is measured. The
+    /// admitted predicate is identical — same identifier boundary, same `(` follow — so widening
+    /// the population did not quietly widen what counts as a call.
+    fn called_names(line: &str) -> Vec<&str> {
+        let bytes = line.as_bytes();
+        let mut out: Vec<&str> = Vec::new();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            if c.is_ascii_alphabetic() || c == '_' {
+                let start = i;
+                while i < bytes.len() {
+                    let b = bytes[i] as char;
+                    if b.is_ascii_alphanumeric() || b == '_' {
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if line[i..].trim_start().starts_with('(') {
+                    out.push(&line[start..i]);
+                }
+            } else {
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// The transitive closure itself, shared by the single-file control and the crate-wide wall so
+    /// the control cannot pass over a different reachability rule than the wall enforces.
+    fn close_over_callers(
+        mut reaching: BTreeSet<String>,
+        callers_of: &BTreeMap<String, BTreeSet<String>>,
+    ) -> BTreeSet<String> {
+        loop {
+            let mut grew = false;
+            for callee in reaching.clone() {
+                if let Some(callers) = callers_of.get(&callee) {
+                    for c in callers {
+                        grew |= reaching.insert(c.clone());
+                    }
+                }
+            }
+            if !grew {
+                return reaching;
+            }
+        }
+    }
+
+    /// Seeds and call edges for ONE projected file.
+    ///
+    /// NAME RESOLUTION, AND WHY IT IS NOT A BARE GLOBAL MERGE. A first cut at the crate-wide
+    /// population unioned every call edge by name across all files, and that is unsound in the
+    /// direction that looks safe: the crate declares `main` 18 times, `new` 13, `probe`, `fail`
+    /// and `foo` besides, so one production function reaching the mutator (`pre_push::run_inner`)
+    /// bridged through those shared spellings into hundreds of unrelated tests. A wall that names
+    /// `two_identical_runs_mark_nothing_unstable` as a cwd offender is the absorbing fallback
+    /// §5 refuses — it cannot be acted on, so it would be silenced rather than fixed.
+    ///
+    /// An edge is therefore admitted only where the callee is UNAMBIGUOUS: declared in this file,
+    /// or declared exactly once in the whole crate. A name declared in several files resolves to
+    /// no cross-file edge, because this scanner has no scope information and guessing one is how
+    /// the merge above happened. That leaves a hole rather than a widening, so the hole is made
+    /// loud instead of assumed empty: `ambiguous_reaching` collects every reaching name that is
+    /// declared more than once, and the wall refuses on a non-empty set rather than reporting a
+    /// clean population it could not actually decide.
+    fn edges_in_file(
+        code: &[String],
+        decls: &[FnDecl],
+        local: &BTreeSet<String>,
+        unique_crate_wide: &BTreeSet<String>,
+        seeds: &mut BTreeSet<String>,
+        callers_of: &mut BTreeMap<String, BTreeSet<String>>,
+        callers_of_ambiguous: &mut BTreeMap<String, BTreeSet<String>>,
+    ) {
+        let owner = owner_per_line(code.len(), decls);
+        for (i, line) in code.iter().enumerate() {
+            let Some(d) = owner[i] else { continue };
+            let caller = decls[d].name.as_str();
+            for callee in called_names(line) {
+                if callee == MUTATOR_CALL {
+                    seeds.insert(caller.to_string());
+                } else if callee == caller {
+                    continue;
+                } else if local.contains(callee) || unique_crate_wide.contains(callee) {
+                    callers_of
+                        .entry(callee.to_string())
+                        .or_default()
+                        .insert(caller.to_string());
+                } else {
+                    callers_of_ambiguous
+                        .entry(callee.to_string())
+                        .or_default()
+                        .insert(caller.to_string());
+                }
+            }
+        }
+    }
+
+    /// Declarations that reach the ambient write, directly or through any number of helpers,
+    /// within a single projected file. The crate-wide wall uses `edges_in_file` directly so that
+    /// a call edge may cross a module boundary; this single-file form is what the raw-string
+    /// control asserts against.
+    fn mutator_reaching(code: &[String], decls: &[FnDecl]) -> BTreeSet<String> {
+        let names: BTreeSet<String> = decls.iter().map(|d| d.name.clone()).collect();
+        let mut seeds = BTreeSet::new();
+        let mut callers_of = BTreeMap::new();
+        let mut ambiguous_edges = BTreeMap::new();
+        edges_in_file(
+            code,
+            decls,
+            &names,
+            &names,
+            &mut seeds,
+            &mut callers_of,
+            &mut ambiguous_edges,
+        );
+        close_over_callers(seeds, &callers_of)
+    }
+
+    /// Every `.rs` file under the crate's library source root, sorted so the reported offender
+    /// list is stable across runs and filesystems.
+    fn lib_source_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut out: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let entries = std::fs::read_dir(&dir).unwrap_or_else(|e| {
+                panic!("read {} for the cwd-mutation gate: {e}", dir.display())
+            });
+            for entry in entries {
+                let path = entry
+                    .unwrap_or_else(|e| panic!("entry under {}: {e}", dir.display()))
+                    .path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    out.push(path);
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// THE POPULATION IS THE LANE'S, NOT THIS FILE'S. An earlier cut scanned only `cli_run.rs`
+    /// while the scope declaration above claimed every test the required `--lib` lane runs, and
+    /// review 58640 was right that this makes the reported rung broader than the executed
+    /// evidence: a mutator introduced in any other module of the same crate would leave the wall
+    /// green. DESIGN §4b(1) puts the rung at the MINIMUM across in-scope paths, so the honest
+    /// repair is to widen the evidence to the declared boundary rather than to narrow the claim —
+    /// the lane compiles one library and runs its tests in one process, so the crate's library
+    /// source IS the guarded population and anything smaller is a selection view read as one.
+    ///
+    /// Call edges are unioned across files by NAME. Two modules declaring the same helper name
+    /// therefore merge into one node, which OVER-approximates reachability — the direction that
+    /// produces a false RED a reader can dismiss by inspection, never a false green. The
+    /// over-approximation bound in the non-vacuity control is what keeps that from drifting into
+    /// the absorbing fallback §5 refuses.
+    fn closure_over_lib_sources() -> (Vec<FnDecl>, BTreeSet<String>, BTreeSet<String>) {
+        let root = super::workspace_root().join(LIB_SRC_REL);
+        let files = lib_source_files(&root);
+        assert!(
+            files.len() > 100,
+            "the library source scan found only {} file(s) under {} — the wall would be scoped to \
+             a population it did not read",
+            files.len(),
+            root.display()
+        );
+        let mut projected: Vec<(Vec<String>, Vec<FnDecl>)> = Vec::new();
+        let mut decls: Vec<FnDecl> = Vec::new();
+        for file in &files {
+            let text = std::fs::read_to_string(file).unwrap_or_else(|e| {
+                panic!("read {} for the cwd-mutation gate: {e}", file.display())
+            });
+            let raw: Vec<&str> = text.split('\n').collect();
+            let code = code_projection(&text);
+            let depths = depth_at_line_start(&code);
+            let file_decls = declarations(&raw, &code, &depths);
+            decls.extend(file_decls.iter().cloned());
+            projected.push((code, file_decls));
+        }
+        let mut declared_in: BTreeMap<String, usize> = BTreeMap::new();
+        for (f, (_, file_decls)) in projected.iter().enumerate() {
+            for name in file_decls
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<BTreeSet<_>>()
+            {
+                declared_in
+                    .entry(name)
+                    .and_modify(|seen| {
+                        if *seen != f {
+                            *seen = usize::MAX;
+                        }
+                    })
+                    .or_insert(f);
+            }
+        }
+        let unique_crate_wide: BTreeSet<String> = declared_in
+            .iter()
+            .filter(|(_, f)| **f != usize::MAX)
+            .map(|(n, _)| n.clone())
+            .collect();
+        let mut seeds: BTreeSet<String> = BTreeSet::new();
+        let mut callers_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut callers_of_ambiguous: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (code, file_decls) in &projected {
+            let local: BTreeSet<String> = file_decls.iter().map(|d| d.name.clone()).collect();
+            edges_in_file(
+                code,
+                file_decls,
+                &local,
+                &unique_crate_wide,
+                &mut seeds,
+                &mut callers_of,
+                &mut callers_of_ambiguous,
+            );
+        }
+        let reaching = close_over_callers(seeds, &callers_of);
+        // THE UNDECIDED FRONTIER, PINNED AT IDENTITY GRAIN RATHER THAN ASSUMED EMPTY. A reaching
+        // name declared in several files has no resolvable definition site for a scanner with no
+        // scope information, so its cross-file callers are not admitted as edges above. Two arms
+        // were measured and rejected before this one. Merging every declaration of a shared
+        // spelling (`main` 18 times in this crate, `run`, `new`, `probe`, `foo`) bridged one
+        // production seed into hundreds of unrelated tests — the absorbing fallback §5 refuses,
+        // since a wall naming `two_identical_runs_mark_nothing_unstable` as a cwd offender cannot
+        // be acted on and would be silenced. Closing over those callers instead reproduced the
+        // same blowup one step later. Dropping them silently is the narrowing arm.
+        //
+        // So the set is returned and contracted on by NAME. On this corpus it is exactly {`main`,
+        // `run`}: the crate's only two mutator seeds live in `cli_run` and `pre_push`, the
+        // `pre_push` one is `run_inner`, and `run` and `main` are the process entry points above
+        // it — a `--lib` unit test does not call a binary entry point, and a new ambiguous name
+        // entering this set is the event that would change that. The caller asserts membership,
+        // not size, so the contract cannot be satisfied by a coincidence of counts.
+        let undecided: BTreeSet<String> = reaching
+            .iter()
+            .filter(|n| declared_in.get(*n) == Some(&usize::MAX))
+            .cloned()
+            .collect();
+        (decls, reaching, undecided)
+    }
+
+    /// RAW STRINGS, WHICH THIS FILE ALREADY CONTAINS. `code_projection` must swallow a raw string
+    /// whole, because a `.dag` or TOML fixture embedded in one carries braces and can carry the
+    /// callee name. If it did not, every brace inside a fixture would shift the depth array from
+    /// that line to the end of the file, and the containment those depths define would be wrong
+    /// for every declaration after it — silently, and in the UNDER-approximating direction, which
+    /// is the one the wall's own emptiness cannot detect and the over-approximation bound in the
+    /// non-vacuity control does not cover.
+    ///
+    /// The two raw strings in this file today are brace-BALANCED, so the gate was correct by
+    /// coincidence of their content rather than by construction. That is not a safe place to
+    /// leave it: a compiler's test corpus is exactly where a deliberately unbalanced fixture
+    /// appears — a parse-refusal probe for an unclosed brace is the obvious one — and the failure
+    /// would arrive as a silently weakened wall, not as a red.
+    ///
+    /// Each case below is asserted on a projection, not on the live file, so the control keeps its
+    /// discriminating power when the file's own raw strings change.
+    #[test]
+    fn a_raw_string_neither_shifts_brace_depth_nor_seeds_a_call_edge() {
+        let unbalanced = concat!(
+            "fn outer() {\n",
+            "    let fixture = r#\"module probe\nfn broken() {\n\"#;\n",
+            "}\n",
+            "fn later() {\n",
+            "}\n"
+        );
+        let code = code_projection(unbalanced);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "an unbalanced brace inside a raw string must not leak into the depth array: {depths:?}"
+        );
+        let decls = declarations(&unbalanced.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let later = decls
+            .iter()
+            .find(|d| d.name == "later")
+            .expect("the declaration after the raw string must still be found");
+        assert!(
+            later.start < later.end,
+            "the declaration after the raw string got an empty extent, so it owns no lines"
+        );
+
+        // Hash-delimited forms, and the callee name INSIDE a raw string, which must seed nothing.
+        let with_callee = concat!(
+            "fn quiet() {\n",
+            "    let src = r##\"call std::env::set_",
+            "current_dir(p) inside a fixture\"##;\n",
+            "}\n"
+        );
+        let code = code_projection(with_callee);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&with_callee.split('\n').collect::<Vec<_>>(), &code, &depths);
+        assert!(
+            mutator_reaching(&code, &decls).is_empty(),
+            "a mutator name quoted inside a raw string is data, not a call"
+        );
+
+        // A QUOTE AT END-OF-LINE INSIDE A HASH-DELIMITED RAW STRING must not close it. The
+        // close test takes the next `hashes` characters and requires them all to be `#`; over a
+        // remainder shorter than `hashes` that iterator is empty and `all` is vacuously true, so
+        // without an explicit length bound this quote ends the string and the rest of the fixture
+        // is scanned as code — the same depth skew the case above exists to prevent, arriving by
+        // a different door (review 58606).
+        let quote_at_eol = concat!(
+            "fn holder() {\n",
+            "    let fixture = r##\"a fixture line ending in a quote \"\n",
+            "still inside the raw string {\n",
+            "\"##;\n",
+            "}\n",
+            "fn after() {\n",
+            "}\n"
+        );
+        let code = code_projection(quote_at_eol);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "a quote at end-of-line must not close a `##`-delimited raw string: {depths:?}"
+        );
+
+        // And the positive control, so the case above is not passing because the seed is broken:
+        // the same call OUTSIDE a raw string must still be found.
+        let real = concat!(
+            "fn loud() {\n",
+            "    std::env::set_",
+            "current_dir(p);\n",
+            "}\n"
+        );
+        let code = code_projection(real);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&real.split('\n').collect::<Vec<_>>(), &code, &depths);
+        assert!(
+            mutator_reaching(&code, &decls).contains("loud"),
+            "the seed must still fire on a real call"
+        );
+    }
+
+    /// THE WALL. No test the required unit lane runs may reach a process-cwd mutation.
+    #[test]
+    fn no_gating_test_reaches_a_process_cwd_mutator() {
+        let (decls, reaching, undecided) = closure_over_lib_sources();
+        let offenders: Vec<&str> = decls
+            .iter()
+            .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.name))
+            .map(|d| d.name.as_str())
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "a test the required unit lane RUNS reaches {MUTATOR_CALL}, directly or through a \
+             helper: {offenders:?}. The process cwd is one cell shared by every test thread, so \
+             this redirects relative-path resolution for the whole binary while it is set. Resolve \
+             paths from an explicitly passed root instead."
+        );
+        // THE UNDECIDED ARM. `undecided` is the closure over the callers of every reaching name
+        // this scanner could not resolve to one definition. Its emptiness at the TEST grain is
+        // what makes the offender list above a verdict rather than a selection: if a gating test
+        // could reach the mutator through an ambiguous spelling, it is named here instead of
+        // being silently outside the walk.
+        let expected: BTreeSet<String> = ["main", "run"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            undecided, expected,
+            "the set of mutator-reaching names this scanner cannot resolve to one definition has \
+             changed. The offender list above is a verdict only over names it could resolve, so a \
+             new entry here is a hole in the wall, not a bookkeeping difference: either the name \
+             is a binary entry point above `pre_push::run_inner` (in which case pin it here with \
+             that reason) or a test can now reach the ambient write through a spelling nothing \
+             walked."
+        );
+    }
+
+    /// NON-VACUITY, against the SAME computed closure the wall consumes. The wall is an emptiness
+    /// assertion, so without this the module stays green if the declaration scan collapses, if the
+    /// extent rule closes every body at zero width, or if `closure_over_lib_sources` reads
+    /// some other tree. Each assertion below is a way the wall could go green while proving nothing.
+    #[test]
+    fn the_closure_still_finds_the_ignored_residue_it_is_scoped_around() {
+        let (decls, reaching, _undecided) = closure_over_lib_sources();
+        assert!(
+            decls.len() > 8_000,
+            "the declaration scan found only {} fns; the crate library source carries 10199, and \
+             `cli_run.rs` alone carries under 2000 — a count in that range means the scan \
+             collapsed or fell back to one file, and the wall would be claiming a population it \
+             did not read",
+            decls.len()
+        );
+        assert!(
+            reaching.contains("with_workspace_cwd"),
+            "the direct-write scan lost a known mutator helper"
+        );
+        let residue: Vec<&str> = decls
+            .iter()
+            .filter(|d| d.is_test && d.is_ignored && reaching.contains(&d.name))
+            .map(|d| d.name.as_str())
+            .collect();
+        assert!(
+            residue.len() >= 20,
+            "the ignored live-corpus residue must still be REACHED by this closure, else the wall \
+             proves nothing about helpers; found {}: {residue:?}",
+            residue.len()
+        );
+        assert!(
+            residue.contains(&"class_b_gate_skip_runs_on_subject_entry"),
+            "the closure stopped being transitive — this test reaches a write ONLY through \
+             `with_workspace_cwd`: {residue:?}"
+        );
+        // And the over-approximation control, in the direction two cuts of this gate failed: the
+        // closure must NOT swallow the corpus. If it reaches a large fraction of the declarations
+        // it is measuring containment or name-collision failure rather than call edges, and the
+        // wall's emptiness would be unattainable noise.
+        //
+        // RE-DERIVED AGAINST THE CRATE-WIDE DENOMINATOR, because the previous bound was
+        // calibrated against one file and a bound that no longer discriminates is the absorbing
+        // shape this same guard already caught once. Measured here: 78 reaching of 10199
+        // declarations, 0.76%. The old `decls.len() / 4` would now admit 2549 and would have
+        // passed the global-name-merge arm that produced hundreds of offender tests. One
+        // fiftieth admits 203 — an order of magnitude of headroom over the observed 78, and
+        // still an order of magnitude below the failure it must catch.
+        assert!(
+            reaching.len() * 50 < decls.len(),
+            "the closure reached {} of {} declarations — that is containment or name-collision \
+             failure, not call edges",
+            reaching.len(),
+            decls.len()
+        );
+    }
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
@@ -2809,7 +3706,37 @@ fn try_index_source_root_into_module_index(
 ) -> Result<(), String> {
     let anchored = try_anchor_source_root(root);
     let root = anchored.as_deref().unwrap_or(root);
-    let root_path = std::path::Path::new(root);
+    // STAT AGAINST THE WORKSPACE ROOT, NEVER THE PROCESS CWD, and this is a correctness fix
+    // rather than a convenience. `canonical_shared_index_roots` is the KEY and the BUILD input
+    // both: it normalizes an absolute root under the workspace to its repo-relative form so that
+    // the executor's `$ROOT/dag` and the plan's declared `dag` address ONE index. That key is
+    // right. But the same relative spelling arrived here and was stat'd against the process cwd,
+    // so discovery answered a different question depending on where the process happened to
+    // stand. `try_anchor_source_root` re-anchors above -- except that every one of its arms
+    // requires `is_dir`, so a root that EXISTS BUT IS A FILE falls through unanchored, and the
+    // two refusals below then swap: a file that exists is reported as `does not exist`. That is a
+    // located lie about the filesystem, and it collapses precisely the distinction the caller
+    // built these two arms to hold apart -- create the file versus move it -- which is the
+    // state-space conflation §5 names.
+    //
+    // MEASURED, by isolating the one test that asks for this distinction
+    // (`entry_admission_tests::a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory`):
+    // it fails IDENTICALLY on main and on this branch when run alone, and passes on main only
+    // inside the full suite -- where a concurrent test's `set_current_dir(workspace_root())` moved
+    // the cwd under it. Its green was another test's side effect, not this code working.
+    //
+    // The resolution is added, the JUDGMENT is untouched: still two arms, still fail-closed,
+    // still refusing. The diagnostics keep the caller's own spelling of the root, because that is
+    // what the caller passed and what it can act on.
+    let resolved = {
+        let p = std::path::Path::new(root);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            process_workspace_root().join(p)
+        }
+    };
+    let root_path = resolved.as_path();
     if !root_path.exists() {
         return Err(format!("source root does not exist: {root}"));
     }
@@ -7301,7 +8228,14 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             just_saw_colon = false;
             continue;
         }
-        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
+        // `^name` is a SYMBOL LITERAL, not a reference to a declaration. Skipping it byte
+        // by byte here (the same mechanism this guard already uses for `.`) keeps a
+        // Symbol's spelling out of the reference set. Receipt: `^probe`, `^check` and
+        // `^unit` in the caret-lex and lens-discriminator tests were reported AMBIGUOUS
+        // against unrelated modules that happen to declare `fn probe` / `fn check` /
+        // `data unit` -- a fork over a name these files use only as a symbol.
+        if !is_ident_start(bytes[i])
+            || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.' || bytes[i - 1] == b'^'))
         {
             if bytes[i] == b'(' {
                 if prev_token == Some("fn") || lambda_paren_starts.contains(&i) {
@@ -7380,6 +8314,26 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             arrow && matches!(prev, b'(' | b',' | b':')
         };
         if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
+        // `name = expr` binds, with no `let` keyword for the binder-keyword rule to catch
+        // -- the workflow binding form (`page = ebay.Inventory.GetInventoryItems(...)` in
+        // gunbc.tools.ebay_listing, then `page.total`). The bound name leaked into the
+        // reference set and resolved against the whole pool. `==` and `=>` are excluded:
+        // the first is a comparison, the second a lambda or match arm.
+        let is_bare_assignment_binder = {
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            j < bytes.len()
+                && bytes[j] == b'='
+                && !matches!(bytes.get(j + 1), Some(b'=') | Some(b'>'))
+        };
+        if is_bare_assignment_binder {
             out.bound.insert(name.to_string());
             prev_token = Some(name);
             just_saw_colon = false;
@@ -7730,11 +8684,24 @@ fn bare_reference_pull_paths_for_source(
             service_prefixes.insert((*service_key).to_string());
         }
     }
+    // A dotted head is asked BOTH as a service prefix (above) and, here, as a plain bare
+    // name, because `X.y` is a service call when X is a service key and a member reference
+    // otherwise. But when the services census DOES answer for the head, the bare attempt is
+    // asking a question the source already settled: `Filesystem.Write(path: ...)` is a
+    // capability invocation on the `resource Filesystem` in std.resources, and it is
+    // ambiguous only if you discard the `.Write` that says so. Keeping the bare attempt
+    // manufactured 7 refusals against `type Filesystem` in v2.extdeps.file_system -- a name
+    // none of those 7 files mentions undotted even once.
+    //
+    // This is specificity, not widening: the more specific reading (a resolved service key)
+    // wins over the less specific one, and a head the services census does NOT answer for
+    // still goes to the census exactly as before.
     let dotted_head_refs: Vec<String> = candidates
         .dotted_chains
         .iter()
         .filter_map(|chain| chain.split('.').next())
         .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
+        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -7749,6 +8716,24 @@ fn bare_reference_pull_paths_for_source(
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
     let self_declared = module_self_declared_names(&sf.content);
+    let explicit_imports = explicit_import_member_names(&sf.content);
+    // SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER. The 8 kernel type names
+    // (`std_types::kernel_type_set` -- String/Int/Bool/Float/Secret/Json/Unit/Bytes) and the
+    // container carrier spellings (`std_types::container_type_arity`, itself derived from the
+    // `std.algebra` carrier roster) are resolved by the type env as primitives: a `-> Bool`
+    // annotation binds to `bool_type()` and pulls no module. Asking the global bare census
+    // about them is a category error, and it is the one that produced every AMBIGUOUS state
+    // in this corpus -- `Bool` is declared identically by `std.types` and `v2.std.logic`, and
+    // `List` by `std.types` and `v2.std.collection`, so the census reports a fork over a name
+    // whose meaning was never the census's to decide.
+    //
+    // This does not under-pull. A module that uses a kernel type's CONSTRUCTORS references
+    // those names (`True`, `False`) directly, and they resolve on their own; what is skipped
+    // here is only the type spelling, which needs no declaring module.
+    let substrate_vocabulary = |name: &str| -> bool {
+        crate::std_types::kernel_type_set().contains_key(name)
+            || crate::std_types::container_type_arity().contains_key(name)
+    };
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
@@ -7756,6 +8741,16 @@ fn bare_reference_pull_paths_for_source(
     for (name, service_head) in all_names {
         // Bound by this module's own declaration — see `module_self_declared_names`.
         if !service_head && self_declared.contains(&name) {
+            continue;
+        }
+        // Bound by an explicit import edge, which is the single authority for this name
+        // (`explicit_import_member_names`). The import closure already pulls the named
+        // module, so there is nothing for the census to add -- and asking it anyway is
+        // what would report AMBIGUOUS for a name the author disambiguated by hand.
+        if !service_head && explicit_imports.contains(&name) {
+            continue;
+        }
+        if !service_head && substrate_vocabulary(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
@@ -7774,53 +8769,82 @@ fn bare_reference_pull_paths_for_source(
         // entirely) and a permissive one overcounts (it reads an alias target and a
         // `data` initializer's head as variants), and the two answers differ by 30x on
         // the same trace. The census already knows; carrying its verdict costs nothing.
-        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
-            if service_head {
-                return (
-                    v1_rt::map_get(&census.services, name.clone())
-                        .map(|entry| entry.module_path.clone()),
-                    "service",
-                );
-            }
-            match v1_rt::map_get(&census.global_bare, name.clone()) {
-                Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path,
-                        binding,
-                    } => (
-                        if pullable(binding) {
-                            Some(module_path.clone())
+        let resolve_in =
+            |census: &Rc<SymbolIndex>| -> Result<(Option<String>, &'static str), String> {
+                if service_head {
+                    return Ok((
+                        v1_rt::map_get(&census.services, name.clone())
+                            .map(|entry| entry.module_path.clone()),
+                        "service",
+                    ));
+                }
+                Ok(match v1_rt::map_get(&census.global_bare, name.clone()) {
+                    Some(state) => match state.as_ref() {
+                        GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path,
+                            binding,
+                        } => (
+                            if pullable(binding) {
+                                Some(module_path.clone())
+                            } else {
+                                None
+                            },
+                            "unique",
+                        ),
+                        GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                            // THE DECISION IS NAMED AND TESTED ELSEWHERE.
+                            // `closure_bare_disposition` owns the zero/one/many classification
+                            // over the chain-filtered candidates; this arm only projects it.
+                            // It was inline here until review 58002 pointed out the obvious:
+                            // every test I had enrolled exercised the SCANNER, and none reached
+                            // the arm this change rewrote. A decision buried in a closure inside
+                            // a 200-line function cannot be witnessed, so the fix is to give it
+                            // a name, not to write a test that approaches it sideways.
+                            match closure_bare_disposition(&referencing_module, candidates.clone())
+                            {
+                                ClosureBareDisposition::UniqueOnChain {
+                                    module_path,
+                                    binding,
+                                } => {
+                                    return Ok((
+                                        if pullable(&binding) {
+                                            Some(module_path)
+                                        } else {
+                                            None
+                                        },
+                                        "unique-on-chain",
+                                    ));
+                                }
+                                ClosureBareDisposition::NoOnChainCandidate => {
+                                    return Ok((None, "no-on-chain-candidate"));
+                                }
+                                ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                                    return Err(format!(
+                                        "bare_reference_closure: bare reference '{name}' in \
+                                         '{file_rel}' is AMBIGUOUS -- {} bindings ON THIS \
+                                         MODULE'S ANCESTOR CHAIN declare that name ({}), and \
+                                         this resolver does not rank candidates. Name the one \
+                                         you mean with an explicit import, e.g. \
+                                         `import {} {{ {name} }}`.",
+                                        modules.len(),
+                                        modules.join(", "),
+                                        modules.first().map(String::as_str).unwrap_or("<module>"),
+                                    ));
+                                }
+                            }
+                        }
+                    },
+                    None => (
+                        if in_call_position {
+                            v1_rt::map_get(&census.services, name.clone())
+                                .map(|entry| entry.module_path.clone())
                         } else {
                             None
                         },
-                        "unique",
+                        "absent",
                     ),
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
-                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
-                            referencing_module.clone(),
-                            candidates.clone(),
-                        )
-                        .and_then(|c| {
-                            if pullable(&c.binding) {
-                                Some(c.module_path.clone())
-                            } else {
-                                None
-                            }
-                        }),
-                        "ambiguous",
-                    ),
-                },
-                None => (
-                    if in_call_position {
-                        v1_rt::map_get(&census.services, name.clone())
-                            .map(|entry| entry.module_path.clone())
-                    } else {
-                        None
-                    },
-                    "absent",
-                ),
-            }
-        };
+                })
+            };
         // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
         // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
         // and a whole-pool fallback hit into one `Option<String>`, so a name that the
@@ -7833,10 +8857,10 @@ fn bare_reference_pull_paths_for_source(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
-        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
             (None, _) => {
-                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                let (m, state) = resolve_in(&pool_bare_census(index)?)?;
                 (m, "pool-fallback", state)
             }
         };
@@ -8598,6 +9622,10 @@ pub enum WitnessRuntimeCause {
     HostToolRelativePathAmbiguous,
     ShellOutputLimitExceeded,
     CallContractMismatch,
+    /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
+    /// ceiling fired. The token makes the prospective-fill population countable without
+    /// treating first-touch order as intrinsic claim cost.
+    FillBudgetExceeded,
     /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
     /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
     /// it should say so on the row rather than presenting the throw as an ordinary one.
@@ -8630,6 +9658,7 @@ impl WitnessRuntimeCause {
             }
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
+            WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
         }
     }
@@ -8663,6 +9692,7 @@ impl WitnessRuntimeCause {
             }
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
+            E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
             | E::HermeticHostEffectRefused { .. }
@@ -8839,6 +9869,149 @@ impl From<BudgetKind> for SafetyInterruptTrigger {
             BudgetKind::Cpu => SafetyInterruptTrigger::CpuDeadlineRaised,
             BudgetKind::Wall => SafetyInterruptTrigger::WallDeadlineRaised,
         }
+    }
+}
+
+impl SafetyInterruptTrigger {
+    /// The wire tag for one trigger. One authority, so the headline counter name, the per-row
+    /// diagnostic prefix and any later reader cannot drift into three spellings of one arm.
+    pub fn label(self) -> &'static str {
+        match self {
+            SafetyInterruptTrigger::CpuDeadlineRaised => "cpu_deadline",
+            SafetyInterruptTrigger::WallDeadlineRaised => "wall_deadline",
+        }
+    }
+}
+
+/// ONE INTERRUPTED CLAIM, WITH THE CAUSE STILL TYPED.
+///
+/// `RequiredFloorOutcome::interrupted_before_verdict` was a `Vec<String>`: one bucket whose
+/// members differ in WHICH SAFETY MECHANISM RAISED THE STOP, an axis the producer holds typed
+/// (`SafetyInterruptTrigger`) and every consumer of the bucket had already lost. The headline
+/// printed `interrupted_before_verdict=<len>`, which is the count of a union — a run whose
+/// interruptions are all CPU-deadline raises and a run where the wall clock is firing are the
+/// same number, and those have different remedies (reduce the witness's own work versus look at
+/// what the host is doing to the run). Recovering the cause from the prose is a grep over a
+/// sentence, which is the positional-citation shape one layer down.
+///
+/// So the collection carries rows, and the cause is a field rather than a word inside `detail`.
+/// The per-cause counters are DERIVED from these rows (`interrupted_cause_census`), so a counter
+/// that disagrees with the population has no constructor.
+///
+/// THE ARMS ARE `SafetyInterruptTrigger`'S, NOT A FRESH VOCABULARY. This lane's brief named four
+/// terminal states — cpu deadline, executor invalidated, cancelled, unknown. Two of those have
+/// NO PRODUCER anywhere in this tree: nothing invalidates an executor and nothing cancels a
+/// claim, so an `ExecutorInvalidated` or `Cancelled` arm would be a case no row can reach, and
+/// an `Unknown` arm would be reachable only by fabricating one where the two push sites both
+/// match `ClaimOutcome::BudgetInterrupted` and hold `kind` in hand. Declaring them would be the
+/// hollow-carrier shape this file already names — arms whose asserted population does not exist,
+/// cited later as coverage. They become real arms the day something produces them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterruptedBeforeVerdict {
+    pub qualified: String,
+    /// WHICH MECHANISM RAISED THIS OCCURRENCE. Read `SafetyInterruptTrigger`'s own note before
+    /// treating it as a statement about which clock is responsible for the cost: it is not one.
+    pub raised_by: SafetyInterruptTrigger,
+    /// Whether the identity was enrolled as expected-red when it was interrupted. The enrolled
+    /// and unenrolled populations have the same terminal state and different remedies, and the
+    /// bucket fused them too: `known_red_budget_refused` counted the enrolled half separately
+    /// but nothing recovered which ROWS it referred to.
+    pub enrolled_expected_red: bool,
+    /// The rendered sentence, unchanged. It stays prose because it is a REMEDY, not a fact the
+    /// floor decides on.
+    pub detail: String,
+}
+
+/// The per-cause counts of one interrupted population, derived from the rows themselves.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InterruptedCauseCensus {
+    pub cpu_deadline: usize,
+    pub wall_deadline: usize,
+}
+
+/// A TOTAL FOLD, so a trigger added to `SafetyInterruptTrigger` fails to compile here rather
+/// than landing silently in whichever counter the fallthrough happened to name.
+pub fn interrupted_cause_census(rows: &[InterruptedBeforeVerdict]) -> InterruptedCauseCensus {
+    let mut census = InterruptedCauseCensus::default();
+    for row in rows {
+        match row.raised_by {
+            SafetyInterruptTrigger::CpuDeadlineRaised => census.cpu_deadline += 1,
+            SafetyInterruptTrigger::WallDeadlineRaised => census.wall_deadline += 1,
+        }
+    }
+    census
+}
+
+#[cfg(test)]
+mod interrupted_before_verdict_tests {
+    use super::{
+        interrupted_cause_census, InterruptedBeforeVerdict, InterruptedCauseCensus,
+        SafetyInterruptTrigger,
+    };
+
+    fn row(raised_by: SafetyInterruptTrigger) -> InterruptedBeforeVerdict {
+        InterruptedBeforeVerdict {
+            qualified: "m.w".to_string(),
+            raised_by,
+            enrolled_expected_red: false,
+            detail: String::new(),
+        }
+    }
+
+    /// THE DISCRIMINATING CASE: two populations of the SAME SIZE that the old `Vec<String>`
+    /// bucket reported identically. If the census ever stops reading `raised_by`, one of these
+    /// two assertions goes red.
+    #[test]
+    fn same_length_populations_with_different_causes_do_not_report_alike() {
+        let all_cpu = vec![
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+        ];
+        let mixed = vec![
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+            row(SafetyInterruptTrigger::WallDeadlineRaised),
+        ];
+        assert_eq!(all_cpu.len(), mixed.len(), "the bucket count is the same");
+        assert_eq!(
+            interrupted_cause_census(&all_cpu),
+            InterruptedCauseCensus {
+                cpu_deadline: 2,
+                wall_deadline: 0
+            }
+        );
+        assert_eq!(
+            interrupted_cause_census(&mixed),
+            InterruptedCauseCensus {
+                cpu_deadline: 1,
+                wall_deadline: 1
+            }
+        );
+        assert_ne!(
+            interrupted_cause_census(&all_cpu),
+            interrupted_cause_census(&mixed)
+        );
+    }
+
+    /// THE CENSUS IS EXHAUSTIVE OVER THE ROWS, not a filtered view: the arms sum to the
+    /// population, so a row that reaches neither counter is a red rather than a silent drop.
+    #[test]
+    fn census_arms_sum_to_the_population() {
+        let rows = vec![
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+            row(SafetyInterruptTrigger::WallDeadlineRaised),
+            row(SafetyInterruptTrigger::WallDeadlineRaised),
+        ];
+        let census = interrupted_cause_census(&rows);
+        assert_eq!(census.cpu_deadline + census.wall_deadline, rows.len());
+    }
+
+    /// THE LABELS ARE DISTINCT, so the two counters cannot print as one name.
+    #[test]
+    fn trigger_labels_are_distinct() {
+        assert_ne!(
+            SafetyInterruptTrigger::CpuDeadlineRaised.label(),
+            SafetyInterruptTrigger::WallDeadlineRaised.label()
+        );
     }
 }
 
@@ -16243,7 +17416,13 @@ enum ExpectedRedArm {
     NowPassing,
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
-    BudgetRefused,
+    ///
+    /// CARRIES THE TRIGGER, because the arm is the caller's ONLY view of the outcome on this
+    /// path and the caller has to record which mechanism raised the stop. Reconstructing it by
+    /// re-matching `ClaimOutcome` at the call site would be a second dispatch over one value,
+    /// which the caller's own comment argues against; taking it as a field means the classifier
+    /// answers once and the axis survives the projection instead of being dropped by it.
+    BudgetRefused { raised_by: SafetyInterruptTrigger },
     /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
     /// claim was never decided, so there is no expected failure for the enrollment to hold.
     RuntimeErrored,
@@ -16688,7 +17867,9 @@ pub fn seed_ledger_row(
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::BudgetInterrupted { kind, .. } => ExpectedRedArm::BudgetRefused {
+            raised_by: SafetyInterruptTrigger::from(*kind),
+        },
         ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
         // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
@@ -17862,6 +19043,253 @@ pub fn classify_exit(
         other => ExitClass::NotProcessExit {
             type_name: ctx.format_value(other),
         },
+    }
+}
+
+/// What the closure resolver does with a bare name the census reports as FORKED.
+///
+/// One name for the zero/one/many classification, so it can be witnessed. Review 58002's
+/// sharpest finding was that the five tests I had enrolled all exercised
+/// `bare_identifier_candidates` and `explicit_import_member_names` -- the scanner -- and not
+/// one of them reached the ambiguity arm this branch rewrote. It also noted that `[AMBIG] = 0`
+/// over the repaired corpus proves the current population no longer REACHES the arm, which is
+/// not evidence about what the arm DOES. Both are right, and they are the same mistake I have
+/// a standing note about: an executed conjunct can still be an inert wall.
+///
+/// The CHAIN FILTER is not reimplemented here. It delegates to
+/// `v1_compiler_infer_env::global_bare_chain_candidates`, the §13 authority the type env uses,
+/// so there is one containment rule and this function only classifies its output.
+pub enum ClosureBareDisposition {
+    /// Exactly one candidate on the referencing module's ancestor chain: that is what the
+    /// reference means, and an unrelated same-spelled declaration elsewhere is not a reason to
+    /// reject a program the type env accepts.
+    UniqueOnChain {
+        module_path: String,
+        binding: Rc<crate::v1_compiler_infer_env::TypeBinding>,
+    },
+    /// Two or more on-chain. Refuse, naming the full on-chain population in deterministic
+    /// order -- never rank them.
+    AmbiguousOnChain { modules: Vec<String> },
+    /// Nothing on the chain. `global_bare_lookup` returns `Absent` here and
+    /// `global_bare_is_ambiguous` answers false (ModulePathBindingMiss), so the semantic result
+    /// is UNRESOLVED and the closure must not fabricate a provider. It pulls nothing.
+    NoOnChainCandidate,
+}
+
+pub fn closure_bare_disposition(
+    referencing_module: &str,
+    candidates: Rc<im::Vector<Rc<crate::v1_compiler_infer_env::GlobalBareCandidate>>>,
+) -> ClosureBareDisposition {
+    let on_chain = crate::v1_compiler_infer_env::global_bare_chain_candidates(
+        referencing_module.to_string(),
+        candidates,
+    );
+    if on_chain.is_empty() {
+        return ClosureBareDisposition::NoOnChainCandidate;
+    }
+    if on_chain.len() == 1 {
+        let cand = on_chain[0].clone();
+        return ClosureBareDisposition::UniqueOnChain {
+            module_path: cand.module_path.clone(),
+            binding: cand.binding.clone(),
+        };
+    }
+    // COUNT BINDERS, NOT MODULE LABELS. An earlier revision projected the on-chain candidates to
+    // module paths, deduped THOSE, and returned UniqueOnChain when they all came from one module,
+    // taking `on_chain[0]` as the binding. That is not §13's rule and it diverged from inference
+    // exactly where it matters: `global_bare_unique_chain_candidate` routes the COMPLETE on-chain
+    // owner list through `module_path_owner_binding_decide`, which counts the list and answers
+    // ModulePathBindingAmbiguous at two entries EVEN WHEN THE OWNER STRINGS ARE EQUAL. So two
+    // distinct bindings at one module path are ambiguous to the type env and were a free choice
+    // here — a silent pick inside the change whose whole purpose is banning silent picks.
+    // Caught by external review; my own sixth test had canonized the wrong answer.
+    //
+    // Duplicates are KEPT rather than collapsed: two bindings at one module path is what the
+    // operator has to fix, and naming that module once would describe it as something else.
+    // Sorted for determinism — a candidate list that permutes between runs cannot be diffed.
+    let mut modules: Vec<String> = on_chain.iter().map(|c| c.module_path.clone()).collect();
+    modules.sort();
+    ClosureBareDisposition::AmbiguousOnChain { modules }
+}
+
+#[cfg(test)]
+mod closure_bare_disposition_tests {
+    use super::{closure_bare_disposition, ClosureBareDisposition};
+    use crate::v1_compiler_infer_env::{GlobalBareCandidate, TypeBinding};
+    use std::rc::Rc;
+
+    /// A synthetic binding: this decision reads only `module_path`, so the node carries no
+    /// meaning and must not pretend to. Same shape the generated tests use for a synthetic node.
+    fn candidate(module_path: &str) -> Rc<GlobalBareCandidate> {
+        candidate_bound_as(module_path, "Target")
+    }
+
+    /// Two candidates at ONE module path must be able to DIFFER, or the duplicate case degenerates
+    /// into the same value twice — which the production index already suppresses, so it would not
+    /// be the counterexample that matters.
+    fn candidate_bound_as(module_path: &str, decl_name: &str) -> Rc<GlobalBareCandidate> {
+        let span = crate::v1_std_core::no_span();
+        let node = Rc::new(crate::v1_std_core::Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: decl_name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: crate::v1_std_core::empty_node_list(),
+            connective: crate::v1_std_core::Connective::NoConnective,
+            params: crate::v1_std_core::empty_node_list(),
+            inferred: None,
+            return_cardinality: crate::v1_std_core::Cardinality::Required,
+            uses: crate::v1_std_core::empty_node_list(),
+            body: None,
+            transport: None,
+            properties: crate::v1_std_core::empty_node_list(),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
+        });
+        Rc::new(GlobalBareCandidate {
+            module_path: module_path.to_string(),
+            binding: Rc::new(TypeBinding {
+                name: decl_name.to_string(),
+                resolved: node,
+                provenance: Rc::new(crate::std_induction::SubValueRelation::PreservedValue),
+            }),
+        })
+    }
+
+    /// CASE 1 — one on-chain, one off-chain. The on-chain declaration is what the reference
+    /// means. RED if the flat raw-candidate rule is restored: that rule refuses here.
+    #[test]
+    fn one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a.b"), candidate("x.y")])),
+        );
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(
+                    module_path, "a.b",
+                    "containment decides, not proximity or count"
+                );
+            }
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "refused a reference the type env resolves; a flat rule was restored: {modules:?}"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => {
+                panic!("a.b IS on a.b.c's chain")
+            }
+        }
+    }
+
+    /// CASE 2 — two on-chain at different depths. §13 refuses and names BOTH. RED if
+    /// nearest/LCP ranking is restored: ranking would pick `a.b` as the longer prefix.
+    #[test]
+    fn two_on_chain_candidates_refuse_and_name_the_whole_on_chain_population() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a"), candidate("a.b")])),
+        );
+        match d {
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                assert_eq!(
+                    modules,
+                    vec!["a".to_string(), "a.b".to_string()],
+                    "both on-chain candidates, deterministically ordered"
+                );
+            }
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "ranked instead of refusing — picked {module_path}; the deleted proximity                  heuristic is back"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => panic!("both are on-chain"),
+        }
+    }
+
+    /// CASE 3 — zero on-chain with several global candidates. The type env returns `Absent`
+    /// here, so the semantic result is unresolved and the closure pulls nothing rather than
+    /// fabricating a provider. RED if a raw-candidate refusal is restored.
+    ///
+    /// This is also the case the corpus is FULL of: 129 forked names span std.* and v2.std.*,
+    /// and none has two candidates on one referencing module's chain.
+    #[test]
+    fn zero_on_chain_pulls_nothing_rather_than_refusing_or_choosing() {
+        let d = closure_bare_disposition(
+            "gunbc.ci.ci_spec",
+            Rc::new(im::Vector::from(vec![
+                candidate("std.nat"),
+                candidate("v2.std.nat"),
+            ])),
+        );
+        match d {
+            ClosureBareDisposition::NoOnChainCandidate => {}
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "refused with off-chain candidates {modules:?} — that is a rule the type env                  does not apply"
+            ),
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                panic!("fabricated a provider off-chain: {module_path}")
+            }
+        }
+    }
+
+    /// The chain is LEADING-SEGMENT containment, not string prefix: `a.bc` is not on `a.b.c`'s
+    /// chain, and a rule written with `starts_with` would say it is.
+    #[test]
+    fn a_segment_boundary_is_respected_so_a_bc_is_not_on_a_b_c_s_chain() {
+        let d =
+            closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.bc")])));
+        assert!(
+            matches!(d, ClosureBareDisposition::NoOnChainCandidate),
+            "a.bc shares a string prefix with a.b.c but is not an ancestor of it"
+        );
+    }
+
+    /// The referencing module itself is on its own chain (equal, not strictly above).
+    #[test]
+    fn the_referencing_module_is_on_its_own_chain() {
+        let d =
+            closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.b.c")])));
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(module_path, "a.b.c")
+            }
+            _ => panic!("a module declaring a name is on its own chain"),
+        }
+    }
+
+    /// CASE 6 — two DISTINCT bindings at one module path are AMBIGUOUS, not a free choice.
+    ///
+    /// This asserted the OPPOSITE until review caught it. §13 is unique BINDER on the chain, not
+    /// unique module containing one or more binders: `module_path_owner_binding_decide` counts the
+    /// owner list (`owners |> count`) and answers Ambiguous at two entries EVEN WHEN THE STRINGS
+    /// ARE EQUAL. A closure resolver that deduped the labels and took `on_chain[0]` would silently
+    /// pick — the exact class this change bans — and would disagree with the type env on one input.
+    #[test]
+    fn two_distinct_bindings_at_one_module_path_are_ambiguous_not_a_free_choice() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![
+                candidate_bound_as("a.b", "Target"),
+                candidate_bound_as("a.b", "TargetAgain"),
+            ])),
+        );
+        match d {
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                assert_eq!(
+                    modules,
+                    vec!["a.b".to_string(), "a.b".to_string()],
+                    "both binders are reported; collapsing them to one label would describe two \
+                     bindings at one path as something else"
+                );
+            }
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "chose a binding where inference refuses — module-label dedup is back: {module_path}"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => panic!("a.b is on-chain"),
+        }
     }
 }
 
@@ -24602,8 +26030,6 @@ mod node_frontier_plumbing_controls {
     // would go green on any pair of compensating edits.
     #[test]
     fn frozen_path_deferral_roster_carries_no_stale_rows() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let stale = super::collect_stale_frozen_path_deferrals();
         super::refuse_stale_frozen_path_deferrals(&stale)
             .unwrap_or_else(|e| panic!("frozen roster must join the live tree exactly: {e}"));
@@ -24646,7 +26072,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn frozen_roster_monotonicity_reads_a_real_baseline() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let additions = super::collect_frozen_path_deferral_additions_for(
             &ws,
             &super::FreezeBaselineComparison::Direct {
@@ -24669,7 +26094,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn appending_a_row_to_the_live_roster_source_refuses() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let content =
             std::fs::read_to_string(ws.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
                 .expect("read the live freeze authority");
@@ -24780,7 +26204,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn frozen_roster_monotonicity_refuses_an_unresolvable_baseline() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let err = super::collect_frozen_path_deferral_additions_for(
             &ws,
             &super::FreezeBaselineComparison::Direct {
@@ -25434,7 +26857,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = vec![ws
             .join("dag/test/fixture/effect_reach_conjunction")
             .to_string_lossy()
@@ -26711,7 +28133,6 @@ mod construction_authority_graph_tests {
     #[test]
     fn wall_now_authority_graph_is_total() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
         let roots = vec![
             ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
@@ -31365,18 +32786,20 @@ mod witness_layer_roots_compile_clean_tests {
     /// Class B gate skip: non-pull_request always runs (cold control).
     #[test]
     fn class_b_gate_skip_runs_on_push_event() {
+        // NO `with_workspace_cwd` HERE, deliberately: the label is derived from the two env vars
+        // below and this body resolves no path at all, so the chdir was pure residue — and a
+        // process-global chdir in a lane-gating test yanks the cwd out from under every other
+        // test in the binary for the width of this call (see `no_gating_test_reaches_a_process_cwd_mutator`).
         with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
+            let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+            let _ns = EnvGuard::set(
+                "GUNBC_CI_DIFF_NAME_STATUS",
+                "M\\000src/v2/lens/machine_shape.dag\\000",
+            );
+            assert_eq!(
+                class_b_import_closure_gate_skip_label_for_ci(),
+                RUN_CLASS_B_GATE_LABEL
+            );
         });
     }
 
@@ -34877,6 +36300,7 @@ mod peel_alias_fixpoint_termination {
                 authored_import_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
+                unit_variant_index_observed: false,
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
@@ -34900,6 +36324,17 @@ mod peel_alias_fixpoint_termination {
                     matches!(
                         *d.diagnostic,
                         crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
+                            | crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. }
+                    )
+                })
+                .count();
+            let unavailable_evidence_count = out
+                .diagnostics
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        &*d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. }
                     )
                 })
                 .count();
@@ -34931,14 +36366,20 @@ mod peel_alias_fixpoint_termination {
                 termination_probe,
                 quiet_diagnostic_count,
                 refusal_count,
+                unavailable_evidence_count,
                 retired_count,
             ));
         });
-        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count, retired_count) =
-            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
-                "peel_alias_once_for_field_access did not terminate within 30s — the \
+        let (
+            (name, is_fixpoint),
+            quiet_diagnostic_count,
+            refusal_count,
+            unavailable_evidence_count,
+            retired_count,
+        ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+            "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
-            );
+        );
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
             quiet_diagnostic_count, 0,
@@ -34947,6 +36388,10 @@ mod peel_alias_fixpoint_termination {
         assert_eq!(
             refusal_count, 2,
             "a resolver refusal during speculative peel must remain typed and countable"
+        );
+        assert_eq!(
+            unavailable_evidence_count, 2,
+            "an unobserved marker census must remain a distinct typed refusal"
         );
         assert_eq!(
             retired_count, 0,
@@ -37555,7 +39000,11 @@ pub struct RequiredFloorOutcome {
     /// which remedy applied. `NotEvaluated` is never green: this population still blocks
     /// admission exactly as `budget_refused` did. What changed is that it is now visible
     /// separately from `completed_over_cost_requirement`, not that either stops blocking.
-    pub interrupted_before_verdict: Vec<String>,
+    ///
+    /// TYPED ROWS, NOT SENTENCES: the mechanism that raised each stop is a field, so the
+    /// headline can report the population BY CAUSE instead of as one length. See
+    /// `InterruptedBeforeVerdict`.
+    pub interrupted_before_verdict: Vec<InterruptedBeforeVerdict>,
     /// A CLAIM THAT REACHED A VERDICT BUT COST MORE THAN THE COMPLETED-COST LINE. Separate
     /// from `interrupted_before_verdict` for the same reason: this claim answered, and the
     /// remedy is reducing what it costs, not investigating why it never returned. Still
@@ -38844,7 +40293,8 @@ pub use emitted_closure_compile_host::{
 pub(crate) use emitted_closure_compile_host::{
     fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
     fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_fixture_closure_discrimination, FixtureClosureOutcome,
+    fixture_discrimination_report, run_fixture_closure_discrimination,
+    run_function_value_adapter_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

@@ -42,10 +42,6 @@ import gunbc.fleet_converge_plan {
   ApplyAllocationStorePrestateMismatch,
 }
 
-fn string_contains(s: String, pattern: String) -> Bool {
-  s.contains(pattern)
-}
-
 fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestate> {
   let spec = fabric_allocation_store_substrate_spec()
   match filesystem_entry_presence(
@@ -101,20 +97,20 @@ test fn witness_allocation_store_plan_names_exact_substrate_without_cell_or_host
         Absent => false
         Present { value: artifact } =>
             fleet_converge_scope_matches(planned: artifact.subject.scope, observed: FabricAllocationStoreOnly)
-            && string_contains(s: artifact.plan_body, pattern: "subject_scope:scope:fabric-allocation-store-only")
-            && string_contains(s: artifact.plan_body, pattern: "# allocation-store")
-            && string_contains(s: artifact.plan_body, pattern: "allocation-store:absent:path=/var/lib/gunbc/fabric")
-            && string_contains(s: artifact.plan_body, pattern: "allocation-store:absent-because-namespace-absent:path=/var/lib/gunbc/fabric/allocation")
-            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:path=/var/lib/gunbc/fabric")
-            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:path=/var/lib/gunbc/fabric/allocation")
-            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:mode=0700")
-            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:owner=CellSubstrateRootOwned")
-            && string_contains(s: artifact.plan_body, pattern: "# allocation-store-refusals=0")
-            && string_contains(s: artifact.plan_body, pattern: "apply-admission:ready")
-            && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
-            && !string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
-            && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
-            && !string_contains(s: artifact.plan_body, pattern: "# runner-slot")
+            && artifact.plan_body.contains("subject_scope:scope:fabric-allocation-store-only")
+            && artifact.plan_body.contains("# allocation-store")
+            && artifact.plan_body.contains("allocation-store:absent:path=/var/lib/gunbc/fabric")
+            && artifact.plan_body.contains("allocation-store:absent-because-namespace-absent:path=/var/lib/gunbc/fabric/allocation")
+            && artifact.plan_body.contains("ensure-directory:path=/var/lib/gunbc/fabric")
+            && artifact.plan_body.contains("ensure-directory:path=/var/lib/gunbc/fabric/allocation")
+            && artifact.plan_body.contains("ensure-directory:mode=0700")
+            && artifact.plan_body.contains("ensure-directory:owner=CellSubstrateRootOwned")
+            && artifact.plan_body.contains("# allocation-store-refusals=0")
+            && artifact.plan_body.contains("apply-admission:ready")
+            && !artifact.plan_body.contains("# fabric-cell")
+            && !artifact.plan_body.contains("# timer-retirement")
+            && !artifact.plan_body.contains("# cap-axis")
+            && !artifact.plan_body.contains("# runner-slot")
       }
   }
 }
@@ -255,8 +251,8 @@ fn allocation_store_changed_admission_is_located(
     ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
       n == fabric_allocation_store_substrate_spec().namespace_path
         && p == fabric_allocation_store_substrate_spec().path
-        && string_contains(s: o, pattern: expected_tag)
-        && string_contains(s: o, pattern: expected_mode)
+        && o.contains(expected_tag)
+        && o.contains(expected_mode)
     ApplyAdmitted => false
     ApplySubjectHostMismatch { planned: _, observed: _ } => false
     ApplyScopeUndecodable { cause: _ } => false
