@@ -9148,10 +9148,22 @@ impl SafetyInterruptTrigger {
 /// great deal of cpu in a subprocess. A reader may admit a row to "did real work" on a large cpu
 /// reading; a reader may NOT conclude "was blocked" from a small one.
 ///
-/// That is a deficit of THIS CLOCK and not of the pair, so it names its own repair: a
-/// process-tree cpu reading rather than a thread one. Recorded here because the earlier draft of
-/// this comment stated the blocked case as though the pair identified it, which would have been
-/// cited later as coverage for a judgement the readings do not support.
+/// THE PAIR DOES EXCLUDE THE SUBPROCESS CASE IN ONE SHAPE, and the correction is recorded rather
+/// than quietly applied because the paragraph above previously read as though it never could.
+/// When `elapsed_wall_at_least_ms` is CLOSE TO `elapsed_cpu_at_least_ms`, there was no material
+/// interval in which the thread was not burning cpu — so there was no room for a child process
+/// or a blocked call, both of which accrue wall while this thread's cpu stands still. The
+/// ambiguity is real only in the OTHER shape: small cpu beside large wall, where blocked and
+/// subprocess-heavy remain indistinguishable. Observed on the required floor at head 932d90c8,
+/// where all five interrupted rows read cpu 502-518ms against a 500ms limit with wall 3-50ms
+/// above cpu against an 8000ms limit — over its own cpu ceiling and nowhere near its wall one,
+/// which is a clean in-process cost population and not a runner casualty.
+///
+/// So the deficit is narrower than "the negative direction is unavailable": it is a deficit of
+/// THIS CLOCK in the wall-dominated shape, and it names its own repair — a process-tree cpu
+/// reading rather than a thread one. Stated at this grain because an earlier draft stated the
+/// blocked case as though the pair identified it, and the correction of that overshot in the
+/// other direction; both would have been cited later as coverage.
 ///
 /// STILL LOWER BOUNDS, AND THE FIELD NAMES SAY SO. `at_least` is not decoration: the deadline
 /// preempted the witness, so the true cost is above these readings by an unbounded amount. They
