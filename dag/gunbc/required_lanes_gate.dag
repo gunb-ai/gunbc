@@ -230,7 +230,8 @@ fn required_lanes_head_standing_stmts(
 // GENERAL record-completeness wall, not anything this roster authored, and the roadmap node
 // `floor-record-construction-wall` (rn_ILWLG34LVL5SAS6QPN5GZDPMFY) records that wall's own
 // evidence as NOT YET ENROLLED -- in its words, a construction wall "currently rests on
-// record-completeness enforcement that is itself unmeasured". So this roster's rung is section
+// record-completeness enforcement that is itself unmeasured" -- the refusal measured here is
+// recorded as that node's executed RED specimen rather than restated. So this roster's rung is section
 // 4b(4) CONDITIONAL ON that wall, and its next-rung trigger is that node's probe-pairing rather
 // than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
 // NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
