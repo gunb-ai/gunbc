@@ -9631,12 +9631,18 @@ type BodyTerminal {
 // path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
 // ones, and the check refused that correct module before this predicate existed.
 //
-// TWO DECLARATIONS OF THIS PREDICATE MET IN A MERGE (2026-09-02, #9964 into main after #10045) and
-// this one survived, because it is not merely the incumbent: it delegates the walk to
-// ownership.fold_terminal_expr, which folds through ExprLet AS WELL AS ExprBlock. The deleted one
-// hand-rolled the block-tail recursion and handled no ExprLet, so a `let x = ...; return y` arm
-// diverges and it answered false. Re-inventing a walk the codebase already owned is the DESIGN
-// section 2 failure, and here it also cost correctness.
+// TWO DECLARATIONS OF THIS PREDICATE MET IN A MERGE (2026-09-02, #9964 into main after #10045).
+// The survivor is this one, and it is the NEWCOMER, not the incumbent: it delegates the walk to
+// ownership.fold_terminal_expr, which folds through ExprLet as well as ExprBlock. The deleted
+// declaration was main's incumbent from #10045; it hand-rolled the block-tail recursion and handled
+// no ExprLet, so an arm shaped `let x = ...; return y` diverges and it answered false. Re-inventing
+// a walk the codebase already owns is the DESIGN section 2 failure, and here it cost correctness
+// too. Deleting the incumbent re-points its call site at this declaration -- a deliberate narrowing
+// of two spellings to one, not an incidental merge artifact.
+//
+// THE MERGE WAS TEXTUALLY CLEAN. The two declarations landed in different regions of one file, so
+// no conflict was raised and no diff review of either side could see it; only compiling the merged
+// authority reported it, as a call-shape mismatch against the surviving parameter name.
 fn arm_body_diverges(body: Node) -> Bool {
   match fold_terminal_expr(body: body).expr_data {
     ExprReturn => true
