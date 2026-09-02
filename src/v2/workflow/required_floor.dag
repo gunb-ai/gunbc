@@ -1005,19 +1005,101 @@ type ClaimPreemptionReachability =
     CooperativelyPollable
   | OpaqueHostCallUnbounded { operation: String }
 
-// THE ONE CLOSED, NO-GROWTH POPULATION of opaque host operations grandfathered under a per-claim
-// safety guarantee TODAY, and it is exhaustive rather than illustrative: `compile_dag_rust_emit_check`
-// is the only native `free_call.*` arm this corpus has measured reaching CPU cost the safety poll
-// cannot see (root_d_checkpoint_scalar_declared_arity_witness_holds, floor run 32301212975,
-// 60317ms against a 5000ms `required_floor_claim_cpu_safety_limit_ms`). This is the population
-// the §4b rung-drop below reads -- named by the operations actually found reaching an opaque host
-// call, not by which CLAIMS happen to call them today, so the population does not grow by a claim
-// being added or removed; it grows only when a DIFFERENT operation is found to share this shape,
-// which is a new finding, not a declaration.
+// THE POPULATION OF OPAQUE HOST OPERATIONS THE PREEMPTION-1 RUNG DROP IS DECLARED OVER, AND IT
+// IS EIGHT MEMBERS RATHER THAN ONE. CORRECTED 2026-09-02; the correction is a rung-honesty repair,
+// not a widening of what is tolerated.
+//
+// WHAT THE PRIOR REVISION SAID AND WHY IT WAS WRONG. It carried exactly one member and called
+// itself "exhaustive rather than illustrative", on this reasoning: `compile_dag_rust_emit_check`
+// "is the only native `free_call.*` arm this corpus has MEASURED reaching CPU cost the safety poll
+// cannot see", citing root_d_checkpoint_scalar_declared_arity_witness_holds at 60317ms in floor run
+// 32301212975. Both halves of that sentence are true and the arrow between them is invented: being
+// measured over a limit in one floor run is how the operation was FOUND, and is not what makes it
+// unbounded. The finding aid was read as the population -- DESIGN's
+// `selection_view_read_as_population` -- so a §4b drop under-reported its own bounded population by
+// eight to one, and every arm outside the one measured row was left describing itself as covered by
+// a safety guarantee that has never held for it.
+//
+// WHAT DECIDES MEMBERSHIP NOW is the mechanism the drop is about, stated as a falsifiable
+// criterion and owned by one authority: `gunbc.v1_interpreter_opaque_host_call` admits a
+// `free_call.*` dispatch arm whose Rust realization synchronously runs a NESTED COMPILE of `.dag`
+// sources, and grounds every member against `gunbc.v1_interpreter_primitive_surface`
+// `v1_interpreter_primitive_arms` -- the seed's single dispatch-surface authority, itself drift-
+// gated against the generated lookup tables. That module's `opaque_host_call_surface` refuses
+// rather than shortening its list when a member fails to resolve, and names the residue its
+// criterion deliberately excludes (a whole-corpus INDEX build is unbounded in the same way and is
+// not a compile).
+//
+// THIS LIST IS THE V2-TOWER PROJECTION OF THAT AUTHORITY, NOT A SECOND ONE. It is spelled here
+// because `gunbc.v1_interpreter_opaque_host_call` is authored in the `std.types` tower while this
+// module is v2's (`v2.std.collection` List, `v2.std.logic` Bool) -- the same tower gap
+// `flat_scalar_millisecond_fields_dissolve_on` above already records for this file's millisecond
+// fields. The two spellings are held together by an EXECUTED two-way identity join
+// (`test.claim.preemption_reachability` `w_grandfather_population_matches_the_grounded_surface`),
+// which goes red on any member present in one and absent from the other, so drift is decidable
+// rather than trusted.
+//
+// IT STILL DOES NOT GROW BY DECLARATION. It is keyed on OPERATIONS, never on which claims reach
+// them, so adding or retiring a witness moves nothing here; it grows only when an arm is found to
+// meet the criterion, which is a source-verifiable finding against a named Rust entry point.
+data opaque_host_call_population_authority_dissolves_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: opaque_host_call_grandfather_population is deleted and this module imports gunbc.v1_interpreter_opaque_host_call opaque_host_call_surface directly, once a verified List<String> bridge exists between the std.types tower that module is authored in and v2.std.collection's List -- the same tower gap flat_scalar_millisecond_fields_dissolve_on records for this module's millisecond fields. Until then the two spellings are joined at identity by test.claim.preemption_reachability w_grandfather_population_matches_the_grounded_surface, which is executed evidence rather than a promise." as NonEmptyStr,
+)
+
 fn opaque_host_call_grandfather_population() -> List<String> {
   Cons {
     head: "compile_dag_rust_emit_check",
-    tail: Empty {}
+    tail: Cons {
+      head: "compile_dag_diagnostic_census",
+      tail: Cons {
+        head: "compile_dag_multi_module_fixture",
+        tail: Cons {
+          head: "observe_declared_import_closure_symbol_binding",
+          tail: Cons {
+            head: "witness_layer_roots_compile_clean_check",
+            tail: Cons {
+              head: "witness_layer_roots_compile_clean_emit_check",
+              tail: Cons {
+                head: "install_or_consume_floor_compile_clean_gate_receipt",
+                tail: Cons {
+                  head: "witness_compile_clean_cli_floor_verdicts_agree",
+                  tail: Empty {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// TWO PROJECTIONS OF THE POPULATION THAT EXIST FOR THE IDENTITY JOIN, NOT FOR REPORTING. The
+// join with `gunbc.v1_interpreter_opaque_host_call` runs in the witness and can only carry values
+// one way across the tower boundary: it can hand each grounded operation to
+// `claim_preemption_admission` and get an answer, which establishes grounded-surface SUBSET-OF
+// this list. It cannot fold this list against a `std.types`-tower predicate. Cardinality plus
+// distinctness closes the other direction exactly -- an injection from a set of size n into a
+// duplicate-free list of size n is onto -- so the two are held equal at IDENTITY rather than at
+// count, which is what DESIGN section 5 requires of a completeness claim. Both are recursive over
+// the `Cons`/`Empty` spine rather than folds so this module stays inside the vocabulary it
+// already uses.
+fn grandfather_population_size(population: List<String>) -> Int {
+  match population {
+    Empty {} => 0
+    Cons { head: _, tail: t } => 1 + grandfather_population_size(population: t)
+  }
+}
+
+fn grandfather_population_has_duplicate(population: List<String>) -> Bool {
+  match population {
+    Empty {} => false
+    Cons { head: h, tail: t } =>
+      if string_in_grandfather_population(needle: h, population: t) {
+        true
+      } else {
+        grandfather_population_has_duplicate(population: t)
+      }
   }
 }
 
@@ -1155,11 +1237,23 @@ fn claim_safety_outcome(
 // to reach `compile_dag_rust_emit_check` would be uncovered by a list keyed on identity rather
 // than on the operation it reaches. Any claim reaching a listed operation is, by that reach
 // alone, in the dropped population; `claim_preemption_admission` is the decidable membership
-// test over it, and it is exhaustive today at exactly one member.
+// test over it.
+//
+// THE POPULATION WAS RESTATED FROM ONE MEMBER TO EIGHT ON 2026-09-02, and that is a correction to
+// this drop's own honesty rather than a new loss. Nothing about the corpus changed: the seven arms
+// added had always reached the same unpollable dispatch shape, and the drop had simply been
+// declared over the one operation a floor run happened to catch over its limit -- the discovery
+// instrument read as the population. A §4b drop that under-states its bounded population
+// under-states the loss, and the arms outside it were describing themselves as protected by a
+// guarantee that had never held for them, which is rung inflation at the population grain rather
+// than at the rung grain. The criterion, the eight members and the join back to the seed's
+// dispatch authority now live in `gunbc.v1_interpreter_opaque_host_call`; the residue that
+// criterion deliberately excludes is named there too, so the next widening is a stated finding and
+// not a silent one.
 //
 // RESTORATION TRIGGER: this rung restores to mechanically preventable for the
-// `OpaqueHostCallUnbounded` population when `compile_dag_rust_emit_check` (or any future member
-// of the grandfather population) gains a deadline-aware contract or runs behind a killable
+// `OpaqueHostCallUnbounded` population when EVERY member of that population -- all eight today,
+// not the one measured member -- gains a deadline-aware contract or runs behind a killable
 // process/worker boundary -- per `ClaimPreemptionReachability`'s own doc comment and
 // v1_interpreter's `eval_expr` comment naming worker isolation, not a budget, as what would bound
 // it unconditionally. Until then this rung is the honest one, and S2 (building that boundary) is
