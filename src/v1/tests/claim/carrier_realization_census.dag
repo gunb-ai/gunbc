@@ -4,12 +4,12 @@ import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_reso
 import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params }
 import v1.compiler.emit_core_support { is_type_def_item }
 import v1.compiler.infer_types { is_coproduct_type, child_type_node }
-import v1.compiler.coercion { type_realization_decision, type_reference_decl_file, decl_identity_file }
+import v1.compiler.coercion { type_realization_decision }
 import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
-import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow }
-import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
+import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
+import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
 import std.types { List, String, Map, Bool }
 
 // THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
@@ -46,10 +46,15 @@ import std.types { List, String, Map, Bool }
 // comparison. That independence is the whole design: the defect under measurement is one
 // arm serving two states, so an instrument that lets a missing answer be filled in by a
 // present one reproduces the very conflation it exists to detect.
+// THE COLUMNS ARE PROVENANCES NOW, NOT PATHS. The instrument shrank rather than converted: the
+// legacy column it existed to compare against was a String identity key, and that key no longer
+// exists -- so what it records is the same three answers in the type the tree now carries. An
+// absent answer is DeclarationIdentityAbsent rather than an empty string, which is the distinction
+// this instrument was built to keep and could previously only keep by convention.
 type DeclarationIdentityObservation
-  = IdentityFromInference { decl_file: String }
-  | IdentityFromEnvironment { decl_file: String }
-  | IdentitiesAgree { decl_file: String }
+  = IdentityFromInference { provenance: TypeDeclarationProvenance }
+  | IdentityFromEnvironment { provenance: TypeDeclarationProvenance }
+  | IdentitiesAgree { provenance: TypeDeclarationProvenance }
   | IdentitiesDisagree { inferred: String, environment: String }
   | IdentityUnavailableBoth
 
@@ -65,7 +70,7 @@ type CensusOutcome
   | IdentityUnavailable
 
 // IdentityUnavailable is NOT folded into structural rendering. Unrealized (a known structural
-// declaration) and Refused (identity not supplied) are different answers, and merging them
+// declaration) and RealizationRefused (identity not supplied) are different answers, and merging them
 // reproduces the bypass under a newer name.
 type TypedCarrierRow {
   module_file: String
@@ -79,34 +84,36 @@ type TypedCarrierRow {
   outcome: CensusOutcome
 }
 
-fn identity_observation(inferred: String, environment: String) -> DeclarationIdentityObservation {
-  if inferred == "" && environment == "" {
+fn identity_observation(inferred: TypeDeclarationProvenance, environment: TypeDeclarationProvenance) -> DeclarationIdentityObservation {
+  let inf = provenance_reported_file(p: inferred)
+  let env = provenance_reported_file(p: environment)
+  if inf == "" && env == "" {
     IdentityUnavailableBoth
-  } else if inferred == "" {
-    IdentityFromEnvironment { decl_file: environment }
-  } else if environment == "" {
-    IdentityFromInference { decl_file: inferred }
-  } else if inferred == environment {
-    IdentitiesAgree { decl_file: inferred }
+  } else if inf == "" {
+    IdentityFromEnvironment { provenance: environment }
+  } else if env == "" {
+    IdentityFromInference { provenance: inferred }
+  } else if inf == env {
+    IdentitiesAgree { provenance: inferred }
   } else {
-    IdentitiesDisagree { inferred: inferred, environment: environment }
+    IdentitiesDisagree { inferred: inf, environment: env }
   }
 }
 
 // NOTE the asymmetry with type_reference_decl_file, and it is deliberate: this reads the
 // resolved node ONLY, with no fallback to the reference's own span. An absent answer is
 // reported as absent. That is the refusal the production helper does not make.
-fn inferred_identity_file(n: Node) -> String {
+fn inferred_identity_provenance(n: Node) -> TypeDeclarationProvenance {
   match n.inferred {
-    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
-    _ => ""
+    Present { value: Resolved { node: rt } } => declaration_provenance_of(item: rt)
+    _ => DeclarationIdentityAbsent
   }
 }
 
-fn environment_identity_file(env: TypeEnv, n: Node) -> String {
+fn environment_identity_provenance(env: TypeEnv, n: Node) -> TypeDeclarationProvenance {
   match lookup_type_for(env: env, node: n) {
-    Present { value: d } => decl_identity_file(item: d)
-    Absent => ""
+    Present { value: d } => declaration_provenance_of(item: d)
+    Absent => DeclarationIdentityAbsent
   }
 }
 
@@ -116,13 +123,13 @@ fn legacy_observation(had_inference: Bool, key: String) -> LegacyKeyObservation 
   if had_inference { LegacyKeyResolved { decl_file: key } } else { LegacyFallbackUsed { reference_file: key } }
 }
 
-fn identity_query_file(o: DeclarationIdentityObservation) -> String {
+fn identity_query_provenance(o: DeclarationIdentityObservation) -> TypeDeclarationProvenance {
   match o {
-    IdentityFromInference { decl_file: d } => d
-    IdentityFromEnvironment { decl_file: d } => d
-    IdentitiesAgree { decl_file: d } => d
-    IdentitiesDisagree { inferred: _, environment: _ } => ""
-    IdentityUnavailableBoth => ""
+    IdentityFromInference { provenance: d } => d
+    IdentityFromEnvironment { provenance: d } => d
+    IdentitiesAgree { provenance: d } => d
+    IdentitiesDisagree { inferred: _, environment: _ } => DeclarationIdentityAbsent
+    IdentityUnavailableBoth => DeclarationIdentityAbsent
   }
 }
 
@@ -130,11 +137,11 @@ fn legacy_claims_text(n: Node, si: Map<String, NewlineIndex>) -> Bool {
   is_host_text_carrier_type(n: n, source_indices: si)
 }
 
-fn authority_realizes(name: String, decl_file: String) -> Bool {
-  match type_realization_decision(target: Rust, dag_name: name, decl_file: decl_file) {
-    Realized { checkpoint: _ } => true
+fn authority_realizes(name: String, provenance: TypeDeclarationProvenance) -> Bool {
+  match type_realization_decision(target: Rust, dag_name: name, provenance: provenance) {
+    Realized { checkpoint: _, ground: _ } => true
     Unrealized => false
-    Refused { cause: _ } => false
+    RealizationRefused { cause: _ } => false
   }
 }
 
@@ -142,11 +149,11 @@ fn legacy_base_label(n: Node, si: Map<String, NewlineIndex>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: si) { "String" } else { "<not-short-circuited>" }
 }
 
-fn authority_base_of(name: String, decl_file: String) -> String {
-  match type_realization_decision(target: Rust, dag_name: name, decl_file: decl_file) {
-    Realized { checkpoint: cp } => cp.target_type
+fn authority_base_of(name: String, provenance: TypeDeclarationProvenance) -> String {
+  match type_realization_decision(target: Rust, dag_name: name, provenance: provenance) {
+    Realized { checkpoint: cp, ground: _ } => cp.target_type
     Unrealized => "<structural>"
-    Refused { cause: _ } => "<refused>"
+    RealizationRefused { cause: _ } => "<refused>"
   }
 }
 
@@ -174,11 +181,12 @@ fn typed_decision_row(
   env: TypeEnv,
   si: Map<String, NewlineIndex>
 ) -> TypedCarrierRow {
-  let inferred = inferred_identity_file(n: n)
-  let environment = environment_identity_file(env: env, n: n)
-  let legacy_key = type_reference_decl_file(n: n)
+  let inferred = inferred_identity_provenance(n: n)
+  let environment = environment_identity_provenance(env: env, n: n)
+  let legacy_key = provenance_reported_file(p: type_reference_provenance(n: n))
   let identity = identity_observation(inferred: inferred, environment: environment)
-  let query_file = identity_query_file(o: identity)
+  let query_provenance = identity_query_provenance(o: identity)
+  let query_file = provenance_reported_file(p: query_provenance)
   let name = authored_name_at(source_indices: si, node: n)
   let claims_text = legacy_claims_text(n: n, si: si)
   TypedCarrierRow {
@@ -187,10 +195,10 @@ fn typed_decision_row(
     position_kind: position_kind,
     authored_name: name,
     identity: identity,
-    legacy: legacy_observation(had_inference: inferred != "", key: legacy_key),
+    legacy: legacy_observation(had_inference: provenance_reported_file(p: inferred) != "", key: legacy_key),
     legacy_base: legacy_base_label(n: n, si: si),
-    authority_base: authority_base_of(name: name, decl_file: query_file),
-    outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, decl_file: query_file), query_file: query_file)
+    authority_base: authority_base_of(name: name, provenance: query_provenance),
+    outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
   }
 }
 
@@ -298,9 +306,9 @@ fn typed_module_rows(m: TypedModule, si: Map<String, NewlineIndex>) -> List<Type
 
 fn identity_label(o: DeclarationIdentityObservation) -> String {
   match o {
-    IdentityFromInference { decl_file: _ } => "FromInference"
-    IdentityFromEnvironment { decl_file: _ } => "FromEnvironment"
-    IdentitiesAgree { decl_file: _ } => "Agree"
+    IdentityFromInference { provenance: _ } => "FromInference"
+    IdentityFromEnvironment { provenance: _ } => "FromEnvironment"
+    IdentitiesAgree { provenance: _ } => "Agree"
     IdentitiesDisagree { inferred: _, environment: _ } => "DISAGREE"
     IdentityUnavailableBoth => "UnavailableBoth"
   }
@@ -308,9 +316,9 @@ fn identity_label(o: DeclarationIdentityObservation) -> String {
 
 fn identity_file_label(o: DeclarationIdentityObservation) -> String {
   match o {
-    IdentityFromInference { decl_file: d } => d
-    IdentityFromEnvironment { decl_file: d } => d
-    IdentitiesAgree { decl_file: d } => d
+    IdentityFromInference { provenance: d } => provenance_reported_file(p: d)
+    IdentityFromEnvironment { provenance: d } => provenance_reported_file(p: d)
+    IdentitiesAgree { provenance: d } => provenance_reported_file(p: d)
     IdentitiesDisagree { inferred: i, environment: e } => concat(concat(i, " != "), e)
     IdentityUnavailableBoth => ""
   }

@@ -1,11 +1,17 @@
 module gunbc.runner_unit_file
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.measure { hardware_thread_count_value }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth }
+import gunbc.compile_permit_scope {
+  CompileParallelismRealization,
+  BorrowerHeldCooperativeHostFifo,
+  InvocationLocalCargo
+}
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -167,14 +173,53 @@ fn runner_unit_app_environment(app: GithubAppRunnerConfig) -> List<SystemdServic
 // ctrl's own template carries a comment warning that splitting them is what creates a
 // silent-misconfig boundary; here they cannot be split, because there is one parameter and the
 // MAKEFLAGS spelling comes from the cited jobserver authority rather than from a second literal.
-fn runner_unit_jobserver_environment(fifo_path: String) -> List<SystemdServiceDirective> {
-  [
-    runner_unit_environment(name: "CTRL_JOBSERVER_FIFO", value: fifo_path),
-    runner_unit_environment(
-      name: "MAKEFLAGS",
-      value: jobserver_makeflags_fifo_auth(fifo_path: fifo_path),
-    ),
-  ]
+// UNDER THE CUTOVER ARM THERE IS NO MAKEFLAGS, AND THAT ABSENCE IS THE POINT. Invocation-local
+// parallelism advertises no shared pool, so handing cargo an auth clause would point it at a FIFO
+// nobody serves -- and cargo does not refuse an unrecognised clause, it builds unbounded. The bound
+// moves to CARGO_BUILD_JOBS, which cargo applies per invocation and which therefore cannot survive
+// the process that read it.
+fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> List<SystemdServiceDirective> {
+  match scope {
+    BorrowerHeldCooperativeHostFifo { fifo_path: p, daemon_service: _ } =>
+      [
+        runner_unit_environment(name: "CTRL_JOBSERVER_FIFO", value: p as String),
+        runner_unit_environment(
+          name: "MAKEFLAGS",
+          value: jobserver_makeflags_fifo_auth(fifo_path: p as String),
+        ),
+      ]
+    InvocationLocalCargo { jobs_per_slot: j } =>
+      [
+        runner_unit_environment(
+          name: "CARGO_BUILD_JOBS",
+          value: to_string(hardware_thread_count_value(t: j)),
+        ),
+      ]
+  }
+}
+
+// THE ORDERING DEPENDENCY IS PART OF THE SAME FACT, not a constant beside it. Under the host-
+// persistent arm a runner that starts before the daemon gets a job whose first cargo invocation
+// fails on an unserved FIFO -- the pair was found ABSENT from the live srv1 unit on 2026-08-26.
+// Under the invocation-local arm the service does not exist, and a unit ordering itself After a
+// unit systemd cannot resolve is a fresh failure introduced by the cutover. So the dependency
+// arrives and departs WITH the environment that needs it.
+// Two accessors rather than one pair, because the emitted unit interleaves them -- After=network,
+// After=daemon, Wants=network, Wants=daemon -- and a single function returning the pair would have
+// reordered the file. The bytes are the artifact here (gunbc.generated_artifact_boundary), so a
+// refactor that changes them is a change, not a cleanup.
+fn runner_unit_jobserver_after(scope: CompileParallelismRealization) -> List<SystemdUnitDirective> {
+  match scope {
+    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: svc } => [After { target: svc }]
+    InvocationLocalCargo { jobs_per_slot: _ } => []
+  }
+}
+
+fn runner_unit_jobserver_wants(scope: CompileParallelismRealization) -> List<SystemdUnitDirective> {
+  match scope {
+    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: svc } => [Wants { target: svc }]
+    InvocationLocalCargo { jobs_per_slot: _ } => []
+  }
 }
 
 // THE TEARDOWN PAIR IS THE WHOLE POINT OF THIS MODULE, AND IT IS A PARAMETER RATHER THAN A CONSTANT.
@@ -198,7 +243,7 @@ type RunnerUnitFileRendering
 fn runner_unit_file(
   deploy: RunnerHostDeploy,
   spec: RunnerSpec,
-  jobserver_fifo: String,
+  permit_scope: CompileParallelismRealization,
   intent: RunnerUnitLifecycleIntent,
 ) -> RunnerUnitFileRendering {
   match runner_unit_labels_json(spec: spec) {
@@ -217,20 +262,28 @@ fn runner_unit_file(
     RunnerUnitLabels { json_text: labels_json } =>
       RunnerUnitFileRendered {
         file: ServiceUnitFile {
-          unit: [
-            Description {
-              text: join([
-                "Ephemeral GitHub Actions Runner (",
-                systemd_instance_name_specifier,
-                ")",
-              ], "") as NonEmptyStr,
-            },
-            After { target: "network-online.target" as NonEmptyStr },
-            After { target: gunbc_runner_jobserver_service as NonEmptyStr },
-            Wants { target: "network-online.target" as NonEmptyStr },
-            Wants { target: gunbc_runner_jobserver_service as NonEmptyStr },
-            StartLimitIntervalSec { duration: "0" as NonEmptyStr },
-          ],
+          unit: concat(
+            [
+              Description {
+                text: join([
+                  "Ephemeral GitHub Actions Runner (",
+                  systemd_instance_name_specifier,
+                  ")",
+                ], "") as NonEmptyStr,
+              },
+              After { target: "network-online.target" as NonEmptyStr },
+            ],
+            concat(
+              runner_unit_jobserver_after(scope: permit_scope),
+              concat(
+                [Wants { target: "network-online.target" as NonEmptyStr }],
+                concat(
+                  runner_unit_jobserver_wants(scope: permit_scope),
+                  [StartLimitIntervalSec { duration: "0" as NonEmptyStr }],
+                ),
+              ),
+            ),
+          ),
           service: concat(
             concat(
               [
@@ -248,7 +301,7 @@ fn runner_unit_file(
               ),
             ),
             concat(
-              runner_unit_jobserver_environment(fifo_path: jobserver_fifo),
+              runner_unit_jobserver_environment(scope: permit_scope),
               concat(
                 [
                   ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
@@ -272,12 +325,12 @@ fn runner_unit_file(
 fn gunbc_runner_unit_file(
   deploy: RunnerHostDeploy,
   spec: RunnerSpec,
-  jobserver_fifo: String,
+  permit_scope: CompileParallelismRealization,
 ) -> RunnerUnitFileRendering {
   runner_unit_file(
     deploy: deploy,
     spec: spec,
-    jobserver_fifo: jobserver_fifo,
+    permit_scope: permit_scope,
     intent: gunbc_runner_lifecycle_intent,
   )
 }
