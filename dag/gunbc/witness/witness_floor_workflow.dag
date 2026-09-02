@@ -18,7 +18,6 @@ import gunbc.workflow_capability_closure {
 import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
@@ -657,49 +656,58 @@ fn witness_floor_precondition() -> String {
 
 // AN INSTRUMENT, NOT A CHECK. It records and it never refuses.
 //
-// `spawn rustfmt: No such file or directory (os error 2)` refused a required run on 2026-08-22 and
-// the message reports the syscall and NOTHING about the environment that produced it. The failure
-// destroys its own evidence, so every occurrence is as unreadable as the last: two sessions
-// produced three mutually incompatible readings from it in one night (a per-host fact, a runner
-// lottery, a missing component), and all three were refuted by data neither reading had. The
-// rustup toolchain reported `component rustfmt is up to date` in the same job that could not spawn
-// it, so a bare PATH lookup found neither a rustup shim nor a toolchain binary -- and no run, red
-// or green, records which of those exists.
+// `rustc` and `rustfmt` have both vanished after successful use in the same job. The syscall
+// message reports absence but neither when nor why the file disappeared, so it cannot distinguish
+// disk pressure, age-based cleanup and another runner's initialization. A PATH/toolchain listing
+// added after the build answered a different question and was silent when setup itself failed.
 //
-// THIS IS ALSO WHY IT RUNS ON GREEN JOBS. There is no baseline: nobody knows what a WORKING job's
-// PATH, shim directory or toolchain list looks like either, so a failed run's environment could
-// not be compared against anything. A zero is readable only beside a nonzero, and today there is
-// neither.
-//
-// IT IS GUARDED ONLY ON `!cancelled()`, deliberately weaker than witness_floor_precondition, which
-// additionally requires the build to have succeeded. A build failure is precisely a case where the
-// environment is in question, so gating the recorder on the build would blind it exactly when it
-// is wanted.
-//
-// EVERY PROBE IS TOTAL BY CONSTRUCTION -- each falls back to a printed marker rather than a nonzero
-// exit, so the step cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
+// EVERY PROBE IS TOTAL BY CONSTRUCTION -- fallbacks and output-consuming pipelines turn absent
+// files, commands and filesystems into prefixed readings rather than nonzero exits, so the step
+// cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
 // `continue-on-error` is a step that MAY report a verdict and has been told to be ignored, the
 // escape-hatch shape DESIGN 5 forbids. A step with no verdict to give is a different thing.
-fn witness_toolchain_environment_probe_script() -> String {
+// THIS INSTRUMENT IS TEMPORARY. Its readings distinguish the three live eviction hypotheses:
+// falling free blocks/inodes identifies pressure reclamation; old mtimes plus wall-clock/uptime
+// identify age or periodic cleanup; and an end disappearance coincident with another job's start
+// on the same host/slot identifies runner-initiated cleanup. The start observation is deliberately
+// the FIRST step, before toolchain_home_isolation_step legitimately removes the previous job's
+// homes. The end observation is deliberately the LAST step and uses `always()`: the failing runs
+// are the subject, so a success-conditioned end observation would erase the evidence it exists to
+// collect. An empty start population is still evidence: setup can fail before creating a new
+// toolchain, and the first probe records what the previous job left before isolation deletes it.
+// Every output line has one prefix and a phase so logs can be joined across jobs/runs.
+//
+// DIRECTORY MTIME IS THE EVENT-TIME PROXY. Binary state at two boundaries leaves a deletion
+// window as wide as the job; unlink updates the containing directory's mtime, narrowing the join
+// against another job start or a periodic cleanup boundary to seconds without a background
+// sampler. Both present and absent parents are rendered, so removal of the whole tree cannot look
+// like a probe that failed to run.
+//
+// Shell remains a §6 tell, bounded by the explicit condition below rather than permanent workflow
+// furniture. Runner microVM isolation is independently sufficient because it makes another job's
+// cleanup incapable of reaching this filesystem even before the particular deleter is known.
+data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible")
+
+fn witness_toolchain_filesystem_probe_script(phase: String) -> String {
   concat(
-    "echo \"host=$(hostname) runner=$\{RUNNER_NAME:-unset}\"\n",
+    concat("# ", concat(dissolution_description(condition: toolchain_filesystem_probe_dissolution_condition), "\n")),
     concat(
-      "echo \"PATH=$PATH\"\n",
+      concat("GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=", concat(phase, "'\n")),
       concat(
-        "which -a rustfmt || echo \"which rustfmt: absent from PATH\"\n",
+        "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=$\{RUNNER_NAME:-unset}\"\n",
         concat(
-          "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
+          "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=$\{RUNNER_TEMP:-unset} rustup_home=$\{RUSTUP_HOME:-unset} cargo_home=$\{CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)\"\n",
           concat(
-            concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
+            "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)\"\n",
             concat(
-            "ls -l \"$CARGO_HOME/bin\" || echo \"cargo bin dir: absent\"\n",
-            concat(
-              "rustup which rustfmt || echo \"rustup which rustfmt: no answer\"\n",
+              "df -Pk \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
               concat(
-                "rustup toolchain list || echo \"rustup toolchain list: no answer\"\n",
-                "rustup default || echo \"rustup default: no answer\"\n"
+                "df -Pik \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
+                concat(
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustc \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustfmt \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin/cargo; do if [ -e \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n",
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin; do if [ -d \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n"
+                )
               )
-            )
             )
           )
         )
@@ -708,18 +716,26 @@ fn witness_toolchain_environment_probe_script() -> String {
   )
 }
 
-fn witness_toolchain_environment_probe_step() -> Step {
+fn witness_toolchain_filesystem_probe_step(phase: String, condition: String) -> Step {
   RunStep {
-    name: Present { value: "Record the toolchain environment" },
+    name: Present { value: concat("Record runner filesystem at job ", phase) },
     id: none,
-    run: witness_toolchain_environment_probe_script(),
+    run: witness_toolchain_filesystem_probe_script(phase: phase),
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: Present { value: "!cancelled()" },
+    if_condition: Present { value: condition },
     continue_on_error: none,
     timeout_minutes: none
   }
+}
+
+fn witness_toolchain_filesystem_start_probe_step() -> Step {
+  witness_toolchain_filesystem_probe_step(phase: "start", condition: "always()")
+}
+
+fn witness_toolchain_filesystem_end_probe_step() -> Step {
+  witness_toolchain_filesystem_probe_step(phase: "end", condition: "always()")
 }
 
 // THE BUILD LANE'S RUN STEP. Same binary, same mode, same source roots, one word different --
@@ -999,6 +1015,11 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_start_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job start",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
@@ -1043,11 +1064,6 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: witness_floor_build_script()),
     items: [
       WitnessFloorBoundStep {
-        step: witness_toolchain_environment_probe_step(),
-        role: capability_neutral,
-        step_name: "Record the toolchain environment",
-      },
-      WitnessFloorBoundStep {
         step: witness_floor_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
@@ -1087,6 +1103,11 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         ),
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1193,14 +1214,14 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: build_lane_build_script()),
     items: [
       WitnessFloorBoundStep {
-        step: witness_toolchain_environment_probe_step(),
-        role: capability_neutral,
-        step_name: "Record the toolchain environment",
-      },
-      WitnessFloorBoundStep {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "Required CI: build lane (phases named by the run, not by this label)",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1366,6 +1387,11 @@ fn rust_clippy_all_targets_step() -> Step {
 fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_start_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job start",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
@@ -1396,6 +1422,11 @@ fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
       step: rust_clippy_all_targets_step(),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "clippy, all targets",
+    },
+    WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_end_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job end",
     },
   ]
 }
@@ -1436,6 +1467,11 @@ fn fabric_evidence_bound_steps() -> List<WitnessFloorBoundStep> {
         step: fabric_ci_evidence_calibration_step(),
         role: capability_neutral,
         step_name: "Calibrate fabric CI evidence boundary",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1538,6 +1574,11 @@ fn emit_copy_qualification_bound_steps() -> List<WitnessFloorBoundStep> {
         step: emit_copy_qualification_run_step(),
         role: consumes_only(capabilities: [CargoCapability]),
         step_name: "EMIT-COST-QUAL-0: wet copy/share qualification battery",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
