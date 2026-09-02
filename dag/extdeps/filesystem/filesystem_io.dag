@@ -123,6 +123,27 @@ fn admit_filesystem_entry_name(name: String) -> FilesystemEntryNameAdmission {
         "than the one the joined path names",
       ], ""),
     }
+  } else if string_contains(s: name, pattern: "\\") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a backslash, which is a path separator on some hosts ",
+        "this operation is implemented for -- so `..\\victim` is a parent traversal there while ",
+        "passing a check that rejects only `/`, which is the exact defect this carrier exists to ",
+        "make impossible. The grammar is the UNION over supported targets, not the one the author ",
+        "happens to be running on: a carrier that admits on Linux what it must refuse on Windows ",
+        "answers about a different subject depending on where it runs",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\0") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a NUL, which terminates a C string -- so the name the ",
+        "host syscall sees is a PREFIX of the name the listing was asked about, and the two ",
+        "describe different subjects with no diagnostic between them",
+      ], ""),
+    }
   } else if string_contains(s: name, pattern: "\n") {
     FilesystemEntryNameRefused {
       name: name,
@@ -326,6 +347,18 @@ fn filesystem_file_observation(
 // carrier holds them rather than being a token.
 fn filesystem_established_absence_detail(absence: FilesystemEstablishedAbsence) -> String {
   join(["no ", absence.name, " is listed in ", absence.directory], "")
+}
+
+// AND THE SUBJECT IT ESTABLISHED IS THE ONLY PATH IT CAN AUTHORIZE. A consumer that takes an
+// established absence AND a separately supplied target has not been authorized by the token at all:
+// the absence is about `directory + name`, the actuation is about whatever String arrived beside it,
+// and nothing joins them. That is a real defect and it was found in review on gunbc#10026 --
+// `ScmInitMayCreate(_)` discarded the token and wrote to an independent `path`, so an absence
+// established for one subject could coexist with a write to another. Deriving the path HERE, from
+// the carrier's own fields, is what makes consuming the token mean something: there is no second
+// target to disagree with.
+fn filesystem_established_absence_path(absence: FilesystemEstablishedAbsence) -> String {
+  join([absence.directory, "/", absence.name], "")
 }
 
 data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false. THIS ROW IS CLASSIFIED FROM THE PRODUCER RATHER THAN FROM THE CALL SITE, on a caution from the lane that shipped this defect today: a predicate whose job is to answer the presence question would not belong here. extdeps.shell Test.IsFile is `test -f` with its own declared exit table reading `1 => Path is missing or not a regular file`, so ONE exit code carries missing, wrong-kind, and -- since `test -f` is false when the parent directory cannot be searched -- could-not-look. It answers false on an unreadable-but-present path, so it is the same defect with a different producer, and it is the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."

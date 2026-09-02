@@ -18,12 +18,27 @@
 //! of one that does. Its dissolution trigger is in `gunbc.seed_growth_admission`.
 
 use std::process::{Child, Command};
+#[cfg(test)]
 use std::time::{Duration, Instant};
 
 /// WHAT A WAIT ACTUALLY OBSERVED, kept as three states because collapsing them is the exact defect
 /// this repository keeps paying for: a timed-out wait and a process that exited nonzero are
 /// different facts, and a classifier that returns a bare code for both cannot tell "the subject
 /// refused" from "the instrument gave up".
+// GATED TO MATCH THE ONLY CONSUMER, not to hide dead code. Everything from here down is reached
+// solely by `evaluation_budget_consequence_falsifier_host`, which `cli_run` declares `#[cfg(test)]`
+// because it exists to be driven by one `#[ignore]` test and has no production caller. This module
+// is declared unconditionally through `lib.rs`, so an ungated item here is genuinely uninhabited in
+// a release build and `-D warnings` says so correctly. The two items ABOVE this line --
+// `spawn_in_new_process_group` and `signal_process_group` -- stay ungated: they have a production
+// consumer in `codex_app_server_stdio_session`.
+//
+// The gate is therefore about REACHABILITY, and it is not a judgement that the teardown discipline
+// below belongs only to a test. `codex_app_server_stdio_session` still tears its group down by
+// signalling AFTER it has reaped the leader, which is the pid-reuse hazard `terminate_process_group`
+// was written to remove; wiring that call site to this function changes production teardown
+// semantics and is filed as its own change rather than smuggled in beneath a floor PR.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessGroupWait {
     Exited { code: i32 },
@@ -59,6 +74,7 @@ pub(crate) fn signal_process_group(pid: u32, signal: i32) {
 /// Poll for termination up to a deadline WITHOUT blocking forever. `try_wait` is used rather than
 /// `wait` precisely so a server that ignores the signal produces `TimedOut` -- an adjudicable
 /// state -- instead of hanging the instrument that was supposed to judge it.
+#[cfg(test)]
 pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroupWait {
     let deadline = Instant::now() + budget;
     loop {
@@ -96,6 +112,7 @@ pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroup
 /// ONE PROCESS AS /proc REPORTS IT. The pid and its process-group id are read from
 /// `/proc/<pid>/stat`, which is what makes group membership decidable at all: a signal cannot ask
 /// "who is in this group", it can only act on everyone who is.
+#[cfg(test)]
 struct ProcEntry {
     pid: i32,
     state: char,
@@ -107,6 +124,7 @@ struct ProcEntry {
 /// from the LAST ')' rather than by splitting the whole line -- splitting naively misreads any
 /// process whose name contains a space, which is precisely the kind of quiet misparse that would
 /// make this instrument report an empty group.
+#[cfg(test)]
 fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
     let mut found = Vec::new();
     let entries = std::fs::read_dir("/proc").map_err(|e| format!("reading /proc: {e}"))?;
@@ -150,6 +168,7 @@ fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
 /// separately, by its exit status; this answers the different question of whether the server's
 /// HELPERS outlived it -- the ones that would otherwise still hold the port when the next run of
 /// this instrument tries to bind.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessGroupResidue {
     /// No process other than the leader remains in the group.
@@ -164,6 +183,7 @@ pub(crate) enum ProcessGroupResidue {
 /// The full teardown verdict: what the leader did, what survived it, and whether SIGKILL was
 /// needed. Kept as three fields rather than one enum because a caller adjudicating cleanup and a
 /// caller adjudicating the subject's exit are asking different questions of the same event.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessGroupTermination {
     pub(crate) leader: ProcessGroupWait,
@@ -171,6 +191,7 @@ pub(crate) struct ProcessGroupTermination {
     pub(crate) escalated_to_kill: bool,
 }
 
+#[cfg(test)]
 impl ProcessGroupTermination {
     /// Teardown succeeded only when nothing but the leader remained. A leader that exited cleanly
     /// while a child still holds the port is a FAILED teardown, and this is the single place that
@@ -194,6 +215,7 @@ impl ProcessGroupTermination {
 /// An unreaped leader -- running or zombie -- keeps its pid allocated, and therefore keeps the
 /// group identity pinned. So every signal this function sends happens before the reap, and after
 /// the reap it neither signals nor observes: a surviving group is REFUSED to the caller instead.
+#[cfg(test)]
 pub(crate) fn terminate_process_group(
     child: &mut Child,
     pid: u32,
