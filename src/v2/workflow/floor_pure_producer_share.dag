@@ -372,29 +372,6 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
   reverse(fold(refused, init: [], f: fn(acc, row) { concat([row.producer], acc) }))
 }
 
-// THE WALL: an identity may not stand in an admitted roster and in the refused roster at once.
-// Re-proposing a measured-and-refused producer then REFUSES by execution, naming the row that
-// already measured it, instead of depending on the next author reading a paragraph.
-//
-// TAKES ITS POPULATIONS AS ARGUMENTS SO ITS RED IS AUTHORABLE. DESIGN section 4b says to ask
-// whether the forbidden state can be written anywhere the check could run before writing the
-// check. Over the live rosters alone it cannot -- they are disjoint today and a check that can
-// only be reddened by editing the corpus it guards is a decoration. As a function of two lists it
-// is red on an authored fixture, and the live tree is its positive control.
-fn share_roster_refusal_collisions(
-  admitted: List<String>,
-  refused: List<RefusedShareCandidate>
-) -> List<String> {
-  let refused_names = refused_share_producers(refused: refused)
-  reverse(fold(admitted, init: [], f: fn(acc, name) {
-    if any(xs: refused_names, predicate: fn(r) { r == name }) {
-      concat([name], acc)
-    } else {
-      acc
-    }
-  }))
-}
-
 // THIS WALL IS AT IDENTITY GRAIN AND IDENTITY GRAIN IS NOT SUFFICIENT. Stated here rather than
 // discovered later, because this file already contains the case it misses.
 //
@@ -444,3 +421,26 @@ fn share_roster_refusal_collisions(
 // the modeled effect/realization facts that would let a producer's consumers be computed from
 // the graph instead of read off a run. That, and only that, moves the second path from a runtime
 // refusal to a structural one; a second observed-ledger check would not.
+//
+// THE WALL: an identity may not stand in an admitted roster and in the refused roster at once.
+// Re-proposing a measured-and-refused producer then REFUSES by execution, naming the row that
+// already measured it, instead of depending on the next author reading a paragraph.
+//
+// TAKES ITS POPULATIONS AS ARGUMENTS SO ITS RED IS AUTHORABLE. DESIGN section 4b says to ask
+// whether the forbidden state can be written anywhere the check could run before writing the
+// check. Over the live rosters alone it cannot -- they are disjoint today and a check that can
+// only be reddened by editing the corpus it guards is a decoration. As a function of two lists it
+// is red on an authored fixture, and the live tree is its positive control.
+fn share_roster_refusal_collisions(
+  admitted: List<String>,
+  refused: List<RefusedShareCandidate>
+) -> List<String> {
+  let refused_names = refused_share_producers(refused: refused)
+  reverse(fold(admitted, init: [], f: fn(acc, name) {
+    if any(xs: refused_names, predicate: fn(r) { r == name }) {
+      concat([name], acc)
+    } else {
+      acc
+    }
+  }))
+}
