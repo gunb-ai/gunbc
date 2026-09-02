@@ -1204,57 +1204,91 @@ mod process_cwd_mutation_reachability_gate {
     fn code_projection(text: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         let mut in_block_comment = false;
+        // Raw strings span lines and suppress every escape, so the open hash count has to
+        // survive across lines exactly the way a block comment does.
+        let mut in_raw: Option<usize> = None;
         for line in text.split('\n') {
+            let chars: Vec<char> = line.chars().collect();
             let mut kept = String::with_capacity(line.len());
-            let mut chars = line.chars().peekable();
+            let mut i = 0usize;
             let mut in_string = false;
             let mut in_char = false;
-            let mut escaped = false;
-            while let Some(c) = chars.next() {
-                if in_block_comment {
-                    if c == '*' && chars.peek() == Some(&'/') {
-                        chars.next();
-                        in_block_comment = false;
+            while i < chars.len() {
+                let c = chars[i];
+                if let Some(hashes) = in_raw {
+                    // Closing delimiter is `"` followed by exactly the opening hash count.
+                    if c == '"' && chars[i + 1..].iter().take(hashes).all(|h| *h == '#') {
+                        i += 1 + hashes;
+                        in_raw = None;
+                        kept.push('"');
+                        continue;
                     }
+                    i += 1;
+                    continue;
+                }
+                if in_block_comment {
+                    if c == '*' && chars.get(i + 1) == Some(&'/') {
+                        i += 2;
+                        in_block_comment = false;
+                        continue;
+                    }
+                    i += 1;
                     continue;
                 }
                 if in_string {
-                    if escaped {
-                        escaped = false;
-                    } else if c == '\\' {
-                        escaped = true;
-                    } else if c == '"' {
+                    if c == '\\' {
+                        i += 2;
+                        continue;
+                    }
+                    if c == '"' {
                         in_string = false;
                         kept.push('"');
                     }
+                    i += 1;
                     continue;
                 }
                 if in_char {
-                    if escaped {
-                        escaped = false;
-                    } else if c == '\\' {
-                        escaped = true;
-                    } else if c == '\'' {
+                    if c == '\\' {
+                        i += 2;
+                        continue;
+                    }
+                    if c == '\'' {
                         in_char = false;
                     }
+                    i += 1;
                     continue;
                 }
+                // A raw-string opener: `r`, then zero or more `#`, then `"`, and not preceded by
+                // an identifier character (else it is the tail of a name like `attr`).
+                if c == 'r'
+                    && i.checked_sub(1).map_or(true, |prev| {
+                        !(chars[prev].is_ascii_alphanumeric() || chars[prev] == '_')
+                    })
+                {
+                    let hashes = chars[i + 1..].iter().take_while(|h| **h == '#').count();
+                    if chars.get(i + 1 + hashes) == Some(&'"') {
+                        in_raw = Some(hashes);
+                        i += 2 + hashes;
+                        kept.push('"');
+                        continue;
+                    }
+                }
                 match c {
-                    '/' if chars.peek() == Some(&'/') => break,
-                    '/' if chars.peek() == Some(&'*') => {
-                        chars.next();
+                    '/' if chars.get(i + 1) == Some(&'/') => break,
+                    '/' if chars.get(i + 1) == Some(&'*') => {
                         in_block_comment = true;
+                        i += 2;
+                        continue;
                     }
                     '"' => {
                         in_string = true;
                         kept.push('"');
                     }
-                    // A lifetime (`'a`) is not a char literal; only a quote followed by a
-                    // non-identifier start opens one, and `'\''` is the case that needs the escape
-                    // branch above.
+                    // A lifetime (`'a`) is not a char literal; only a quote followed by an escape
+                    // or by a single character then a closing quote opens one.
                     '\'' => {
-                        let opens_char = matches!(chars.peek(), Some(&'\\'))
-                            || matches!(chars.clone().nth(1), Some('\''));
+                        let opens_char =
+                            chars.get(i + 1) == Some(&'\\') || chars.get(i + 2) == Some(&'\'');
                         if opens_char {
                             in_char = true;
                         } else {
@@ -1263,6 +1297,7 @@ mod process_cwd_mutation_reachability_gate {
                     }
                     _ => kept.push(c),
                 }
+                i += 1;
             }
             out.push(kept);
         }
@@ -1441,6 +1476,80 @@ mod process_cwd_mutation_reachability_gate {
         let decls = declarations(&raw, &code, &depths);
         let reaching = mutator_reaching(&code, &decls);
         (decls, reaching)
+    }
+
+    /// RAW STRINGS, WHICH THIS FILE ALREADY CONTAINS. `code_projection` must swallow a raw string
+    /// whole, because a `.dag` or TOML fixture embedded in one carries braces and can carry the
+    /// callee name. If it did not, every brace inside a fixture would shift the depth array from
+    /// that line to the end of the file, and the containment those depths define would be wrong
+    /// for every declaration after it — silently, and in the UNDER-approximating direction, which
+    /// is the one the wall's own emptiness cannot detect and the over-approximation bound in the
+    /// non-vacuity control does not cover.
+    ///
+    /// The two raw strings in this file today are brace-BALANCED, so the gate was correct by
+    /// coincidence of their content rather than by construction. That is not a safe place to
+    /// leave it: a compiler's test corpus is exactly where a deliberately unbalanced fixture
+    /// appears — a parse-refusal probe for an unclosed brace is the obvious one — and the failure
+    /// would arrive as a silently weakened wall, not as a red.
+    ///
+    /// Each case below is asserted on a projection, not on the live file, so the control keeps its
+    /// discriminating power when the file's own raw strings change.
+    #[test]
+    fn a_raw_string_neither_shifts_brace_depth_nor_seeds_a_call_edge() {
+        let unbalanced = concat!(
+            "fn outer() {\n",
+            "    let fixture = r#\"module probe\nfn broken() {\n\"#;\n",
+            "}\n",
+            "fn later() {\n",
+            "}\n"
+        );
+        let code = code_projection(unbalanced);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "an unbalanced brace inside a raw string must not leak into the depth array: {depths:?}"
+        );
+        let decls = declarations(&unbalanced.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let later = decls
+            .iter()
+            .find(|d| d.name == "later")
+            .expect("the declaration after the raw string must still be found");
+        assert!(
+            later.start < later.end,
+            "the declaration after the raw string got an empty extent, so it owns no lines"
+        );
+
+        // Hash-delimited forms, and the callee name INSIDE a raw string, which must seed nothing.
+        let with_callee = concat!(
+            "fn quiet() {\n",
+            "    let src = r##\"call std::env::set_",
+            "current_dir(p) inside a fixture\"##;\n",
+            "}\n"
+        );
+        let code = code_projection(with_callee);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&with_callee.split('\n').collect::<Vec<_>>(), &code, &depths);
+        assert!(
+            mutator_reaching(&code, &decls).is_empty(),
+            "a mutator name quoted inside a raw string is data, not a call"
+        );
+
+        // And the positive control, so the case above is not passing because the seed is broken:
+        // the same call OUTSIDE a raw string must still be found.
+        let real = concat!(
+            "fn loud() {\n",
+            "    std::env::set_",
+            "current_dir(p);\n",
+            "}\n"
+        );
+        let code = code_projection(real);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&real.split('\n').collect::<Vec<_>>(), &code, &depths);
+        assert!(
+            mutator_reaching(&code, &decls).contains("loud"),
+            "the seed must still fire on a real call"
+        );
     }
 
     /// THE WALL. No test the required unit lane runs may reach a process-cwd mutation.
