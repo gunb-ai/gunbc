@@ -1671,15 +1671,27 @@ struct CrossClaimPureMemo {
     /// recompute, never a wrong value. Served-on-hash-alone, main's floor produced six emit
     /// failures whose values belonged to OTHER calls of the same producer (no field
     /// 'produced_decl_support' on type 'TargetModel', run 33269961629).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
+    /// THE RETAINED VALUE IS THE REIFIED `Value`, NOT THE PORTABLE FORM, AND THAT IS WHAT
+    /// MAKES A SERVE ZERO-WALK. Publication still reifies to `PortableValue` first — that walk
+    /// is the TOTAL portability check and the byte-budget measurement — but the portable form
+    /// is then converted ONCE, here, and every later claim is handed an `Rc` clone. `Value`'s
+    /// containers are all `Rc`-backed and `Symbol` is a process-canonical `&'static str`, so a
+    /// value reconstructed from a portable form carries nothing frame-bound: field order sorts
+    /// on process-global pointer identity, and equality no longer depends on which frame
+    /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
+    /// used to rebuild per consuming frame, at O(1) instead of O(size).
+    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
     /// from missing hits.
     overflow: u64,
     /// Estimated retained bytes over every stored entry (argument rows AND values, collision
-    /// buckets included), computed from the reified `PortableValue` at publication — reification
-    /// is total, so the size is known before the store lands. The ACTUAL byte bound review
+    /// buckets included), measured on the `PortableValue` at publication — reification is
+    /// total, so the size is known before the store lands. It is measured on the portable form
+    /// and CHARGED for the `Value` retained in its place: the two carry the same reachable
+    /// content (the same `Rc<str>` spellings, the same numbers, the same field count), so the
+    /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
@@ -2010,16 +2022,11 @@ fn try_cross_claim_pure_memo(
     // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
     // the full portable argument row, so an intra-frame hash collision cannot alias either.
     let portable_args = portable_args_from_ctx(ctx, args)?;
-    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key).and_then(
-        |entries: &Vec<(Vec<(Option<String>, PortableValue)>, Value)>| {
-            entries.iter().find_map(|(stored_args, v)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| v.clone())
-            })
-        },
-    ) {
-        return Some(v);
-    }
-    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| {
+    // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
+    // per-context hit cache this path used to maintain is gone with the walk it existed to
+    // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
+    // machinery it obsoletes.
+    let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
         m.borrow().map.get(&memo_key).and_then(|bucket| {
             bucket.iter().find_map(|(stored_args, stored)| {
                 cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
@@ -2027,12 +2034,6 @@ fn try_cross_claim_pure_memo(
         })
     })?;
     cross_claim_observe_hit(func_name);
-    let value = value_from_portable_ctx(ctx, &portable);
-    ctx.cross_claim_hit_cache
-        .borrow_mut()
-        .entry(memo_key)
-        .or_default()
-        .push((portable_args, value.clone()));
     Some(value)
 }
 
@@ -2163,10 +2164,14 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedByteBudget;
         }
         m.bytes += entry_bytes;
+        // Reify ONCE, at publication, and retain the value every later claim will be handed.
+        // The portable form has done its two jobs by here — it proved total portability and it
+        // measured the entry — and nothing downstream needs it again.
+        let served = value_from_portable_ctx(ctx, &portable);
         m.map
             .entry(memo_key)
             .or_default()
-            .push((portable_args, portable));
+            .push((portable_args, served));
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -2741,6 +2746,60 @@ mod cross_claim_memo_tests {
             try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
             "control: the resolved roster identity stores and serves"
         );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED FOR THE ZERO-WALK SERVE. The re-enrol trigger `v2.workflow.floor_pure_producer_share`
+    // carries is "a serve that does not re-intern and re-sort per consuming frame — an
+    // interner-stable representation the tier can hand over without walking the whole value".
+    // This is the executed evidence that it holds, and it discriminates: under the previous
+    // serve every consuming frame ran `value_from_portable_ctx` over the whole value, so two
+    // frames received two DISTINCT allocations of an equal value and `Rc::ptr_eq` was false.
+    // Structural equality cannot see the difference — it was equal before and is equal now —
+    // so the assertion is on ALLOCATION IDENTITY, which is what "did not walk it" means.
+    #[test]
+    fn two_frames_are_served_the_same_allocation_rather_than_two_reconstructions() {
+        use super::{
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let filling = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args: [(Option<String>, Value); 0] = [];
+        // A nested value, so a walk would have to rebuild an inner container too.
+        let value = list_value(vec![
+            Value::Str(RcStr::from("alpha")),
+            list_value(vec![Value::Int(1), Value::Int(2)]),
+        ]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&filling, &fn_node, "prepare_grammar", &args, &value, None),
+            CrossClaimStoreOutcome::Stored
+        );
+
+        let consumer_a = fresh_ctx();
+        let consumer_b = fresh_ctx();
+        let served_a = try_cross_claim_pure_memo(&consumer_a, &fn_node, "prepare_grammar", &args)
+            .expect("frame A is served");
+        let served_b = try_cross_claim_pure_memo(&consumer_b, &fn_node, "prepare_grammar", &args)
+            .expect("frame B is served");
+
+        let (Value::List(a), Value::List(b)) = (&served_a, &served_b) else {
+            panic!("expected two served lists, got {served_a:?} and {served_b:?}");
+        };
+        assert!(
+            Rc::ptr_eq(a, b),
+            "two consuming frames must share one allocation: a serve that reconstructs the \
+             value per frame is the cost this tier's re-enrol trigger names"
+        );
+        // And the served value is still the value that was stored, in both frames.
+        assert_eq!(served_a, value);
+        assert_eq!(served_b, value);
         super::clear_cross_claim_pure_memos();
     }
 
@@ -4104,13 +4163,6 @@ pub struct InterpContext {
     // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values already served from the cross-claim tier: reconstruction
-    /// still rebuilds the value containers (but carries canonical symbols without re-interning),
-    /// so a hot producer served on every call would pay that per CALL; this bounds it to once
-    /// per frame. Keyed identically to the global tier; lives and dies with the frame.
-    cross_claim_hit_cache: std::cell::RefCell<
-        HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
-    >,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -4417,7 +4469,6 @@ impl InterpContext {
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
-            cross_claim_hit_cache: std::cell::RefCell::new(HashMap::new()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new({
                 let mut interner = SymbolInterner::default();
