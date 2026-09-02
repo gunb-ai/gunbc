@@ -1,0 +1,376 @@
+module gunbc.self_host_compile_phase_live_gate
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import extdeps.languages.rust.compiler_phases { RustcPhase, rustc_phase_name }
+import tools.emission_entry_instrument {
+  RustfmtParseObservation,
+  EmissionMeasurement,
+  EmissionMeasured,
+  cargo_error_identity_rows
+}
+import gunbc.self_host_compile_phase_frontier {
+  target_selection_label,
+  RustcPhaseBoard,
+  CompilePhaseInvocation,
+  CompilePhaseFrontierReceipt,
+  CompilePhaseFrontierStanding,
+  CompilePhaseFrontierEmpty,
+  CompilePhaseFrontierValidated,
+  CompilePhaseFrontierInvalid,
+  compile_phase_frontier_standing,
+  CompilePhaseReceiptSubject,
+  comparison_inputs_same,
+  PersistedPhaseBoardFold,
+  phase_board_from_census_identities,
+  PhaseRatchetHeld,
+  PhaseRatchetRefused,
+  phase_ratchet_with_dispositions,
+  board_all_identities
+}
+
+// WHY THIS MODULE EXISTS, AND WHAT IT DELIBERATELY DOES NOT DO.
+//
+// `gunbc.self_host_compile_phase_frontier` already carries the ratchet. Its subject is the
+// PERSISTED RECEIPT SERIES: it decides whether the recorded observations are linked, coherent and
+// non-regressing with respect to one another. Nothing in it re-measures the tree, so between one
+// receipt and the next a regression is invisible -- it surfaces only when a human dispatches a run
+// and authors the next receipt. This module closes that window by supplying the LIVE tree as the
+// current row against the persisted latest.
+//
+// IT MINTS NO SECOND CENSUS. The live board is folded by the frontier's own
+// `phase_board_from_census_identities` over raw identity rows produced by the same
+// `rustc_diagnostic_row` serializer the receipts carry, and the comparison is the frontier's own
+// `phase_ratchet_with_dispositions`. There is no count literal anywhere in this module and no
+// second digest: the persisted receipt is the monotone debt contract, its universe is the closure
+// the instrument measured, membership is at identity grain, and this module only joins the live
+// population to it. Automating the receipt's update could not collapse anything here into
+// `measure() == measure()`, because nothing here compares a measurement to a transcription.
+//
+// SCOPE, STATED SO IT CANNOT BE READ WIDER THAN IT IS. The subject is ONE ENTRY CLOSURE -- the
+// closure the persisted receipts name in their producer row, `src/v2/compiler/00_compile.dag`.
+// It is not the corpus, and `gunbc.compiler_frontend_program_status` records why the two are
+// different questions: the union of per-entry closures is not the corpus. A verdict from this
+// module answers for the compiler's own entry closure and for nothing else.
+
+// The toolchain half of the receipt subject, read from the host rather than authored. The live
+// observation is comparable to a receipt only when these agree EXACTLY with what that receipt
+// declares; a difference is a different comparison epoch, and the frontier already refuses to
+// compare across one without a reclassified predecessor.
+type LiveToolchainReading {
+  cargo_identity: NonEmptyStr
+  rustc_identity: NonEmptyStr
+  invocation: CompilePhaseInvocation
+  classification_policy_digest: Fnv1a64Structural
+}
+
+type LiveComparability
+  = LiveComparable
+  | LiveIncomparable { reason: NonEmptyStr }
+
+// THE EPOCH DECISION IS DELEGATED, NOT REIMPLEMENTED. Which fields constitute a comparison epoch
+// is the frontier's fact, and `comparison_inputs_same` is where it is answered when the series fold
+// decides whether two receipts may be counted against one another. A second list here -- five
+// fields, or six, chosen by hand -- would be a second authority for the epoch, and it would drift
+// silently the day the subject gains a field: the new field would be a comparison input for the
+// series and not for the live tree, and this module would stay green while checking less than it
+// claims. So this asks that function rather than re-deciding.
+//
+// THE PROBE SUBJECT LISTS EVERY FIELD ON PURPOSE, AND THAT IS THE STRUCTURAL HALF. Building it by
+// naming each field means a field ADDED to CompilePhaseReceiptSubject stops this module compiling
+// until someone decides how the live side sources it. Inheriting the record wholesale, or copying
+// it with an update, would compile fine and quietly compare the new field to itself -- the drift
+// above, arriving without a diagnostic. The refusal to compile IS the enforcement.
+//
+// WHY THE NON-EPOCH FIELDS ARE TAKEN FROM THE RECEIPT AND WHY THAT IS NOT A FABRICATION. This value
+// is never persisted, never rendered, and never presented as an observation; it exists only as the
+// right-hand argument to the epoch predicate. The fields `comparison_inputs_same` does not read --
+// the revision, the tree object, and the artifact, compiler and assembler digests -- are precisely
+// the ones that SHOULD differ between the receipt's tree and the live one, so carrying live values
+// there would assert a difference the predicate is required to ignore. Sourcing them from the
+// receipt keeps the record what its name says it is: a probe about the epoch and about nothing else.
+fn epoch_probe_subject(latest: CompilePhaseFrontierReceipt, live: LiveToolchainReading) -> CompilePhaseReceiptSubject {
+  CompilePhaseReceiptSubject {
+    source_revision: latest.subject.source_revision,
+    git_tree_object: latest.subject.git_tree_object,
+    emitted_artifact_identity: latest.subject.emitted_artifact_identity,
+    compiler_identity: latest.subject.compiler_identity,
+    assembler_identity: latest.subject.assembler_identity,
+    cargo_identity: live.cargo_identity,
+    rustc_identity: live.rustc_identity,
+    invocation: live.invocation,
+    classification_policy_digest: live.classification_policy_digest,
+    comparison_epoch: latest.subject.comparison_epoch
+  }
+}
+
+// ONE OF THE COMPARED INPUTS CANNOT DISCRIMINATE ON THE REAL PATH TODAY, AND SAYING SO IS THE
+// HONEST PART. Both persisted receipts spell `classification_policy_digest:
+// rustc_phase_classification_policy_digest` -- the live SYMBOL, not a snapshot of its value -- and
+// the actuator supplies that same symbol, so the two sides are equal by construction and a policy
+// change moves both at once. It is also why such a change does not in fact strand an old board: a
+// receipt's board is not stored, it is re-derived at load by `phase_board_from_census_identities`
+// from the receipt's raw identities, so a new policy reclassifies BOTH populations uniformly rather
+// than only the live one. It is compared here for the case that makes it load-bearing -- the first
+// receipt to record a LITERAL digest for a historical epoch, which is the honest way to record one
+// and the point at which the two sides can differ. Its RED is authorable now, and is authored,
+// against a perturbed reading rather than against a fabricated receipt.
+//
+// THE ERROR DIRECTION IS THE POINT. The live toolchain strings are composed from the toolchain's
+// own self-report; if that composition is wrong by one character the answer is Incomparable, which
+// the gate reports as UNMEASURED and exits nonzero on. No spelling error in this derivation can
+// produce a green.
+//
+// THE RESIDUAL ARM -- the final else of this fold -- REFUSES RATHER THAN NARROWING. The authority said the epochs differ
+// and every reason this module can spell says they agree, which means the frontier compares
+// something this module has no sentence for -- a field added to the subject since these arms
+// were written. Rendering that as Comparable would be the absorbing fallback: the gate would
+// proceed on an epoch the authority just rejected, and the newer the field the more likely it
+// is the one that mattered. So the arm names its own ignorance and stops the line.
+fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainReading) -> LiveComparability {
+  if comparison_inputs_same(a: latest.subject, b: epoch_probe_subject(latest: latest, live: live)) {
+    LiveComparable
+  } else if latest.subject.cargo_identity != live.cargo_identity {
+    LiveIncomparable {
+      reason: concat(
+        concat("the live cargo identity is not the latest receipt's: live=", live.cargo_identity as String),
+        concat(" receipt=", latest.subject.cargo_identity as String)
+      ) as NonEmptyStr
+    }
+  } else if latest.subject.rustc_identity != live.rustc_identity {
+    LiveIncomparable {
+      reason: concat(
+        concat("the live rustc identity is not the latest receipt's: live=", live.rustc_identity as String),
+        concat(" receipt=", latest.subject.rustc_identity as String)
+      ) as NonEmptyStr
+    }
+  } else if latest.subject.invocation.target != live.invocation.target {
+    LiveIncomparable {
+      reason: concat(
+        concat("the live host target is not the latest receipt's: live=", live.invocation.target),
+        concat(" receipt=", latest.subject.invocation.target)
+      ) as NonEmptyStr
+    }
+  } else if latest.subject.invocation.target_selection != live.invocation.target_selection {
+    LiveIncomparable {
+      reason: concat(
+        concat(
+          "the live invocation selects its target differently from the latest receipt's: live=",
+          target_selection_label(t: live.invocation.target_selection)
+        ),
+        concat(
+          concat(" receipt=", target_selection_label(t: latest.subject.invocation.target_selection)),
+          ". The two spell the same triple, and that agreement is incidental: a defaulted invocation records what rustc reported as the host while a pinned one records what cargo was told to compile. Comparing them is a comparison across an instrument change."
+        )
+      ) as NonEmptyStr
+    }
+  } else if latest.subject.invocation.profile != live.invocation.profile {
+    LiveIncomparable {
+      reason: concat(
+        concat("the live cargo profile is not the latest receipt's: live=", live.invocation.profile),
+        concat(" receipt=", latest.subject.invocation.profile)
+      ) as NonEmptyStr
+    }
+  } else if latest.subject.classification_policy_digest != live.classification_policy_digest {
+    LiveIncomparable {
+      reason: concat(
+        concat("the live phase-classification policy is not the latest receipt's: live=", live.classification_policy_digest.digest as String),
+        concat(" receipt=", latest.subject.classification_policy_digest.digest as String)
+      ) as NonEmptyStr
+    }
+  } else if latest.subject.invocation.features != live.invocation.features {
+    LiveIncomparable {
+      reason: "the live feature selection is not the latest receipt's" as NonEmptyStr
+    }
+  } else {
+    LiveIncomparable {
+      reason: "the frontier's comparison inputs differ between the live observation and the latest receipt on a field this gate cannot name, which means the receipt subject has gained a comparison input the live side does not yet source" as NonEmptyStr
+    }
+  }
+}
+
+// THREE OUTCOMES, NOT TWO, AND THE THIRD IS WHY THIS IS NOT AN ABSORBING FALLBACK. A gate that
+// could only hold or refuse would have to fold "the tree regressed" together with "the measurement
+// never happened", and the second would then be indistinguishable from the first for a reader and
+// from a pass for a maintainer who saw the run complete. Unmeasured is its own arm, it names its
+// cause, and the actuator exits nonzero on it exactly as it does on a refusal: a live gate that
+// cannot measure stops the line, it does not widen to a pass.
+type LiveFrontierVerdict
+  = LiveFrontierHeld { live_identity_count: Int }
+  | LiveFrontierRefused { identities: List<String>, reason: NonEmptyStr }
+  | LiveFrontierUnmeasured { reason: NonEmptyStr }
+
+// The live observation, in exactly the two populations a receipt carries: rustfmt's refusal list
+// and the raw coded/uncoded error identity rows. Everything else about the live board is DERIVED
+// from these by the frontier's fold, so a board cannot be authored beside its census.
+type LiveCompilePhaseObservation {
+  parse_observation: RustfmtParseObservation
+  raw_error_diagnostic_identities: List<String>
+  toolchain: LiveToolchainReading
+}
+
+// THE OBSERVATION IS CONSTRUCTIBLE ONLY FROM A COMPLETED MEASUREMENT, AND THAT IS A WALL RATHER
+// THAN A CONVENTION. An emission that never reached cargo carries no census, and the tempting
+// spelling -- hand the fold an empty identity list and let it proceed -- is the one arm that would
+// be catastrophically wrong here: an empty census against a nonempty receipt is a STRICT REMOVAL,
+// which this ratchet correctly reads as progress and greens. So a killed instrument, an OOM, a
+// truncated JSON stream or a missing artifact would each render as the compiler having been fixed.
+//
+// Routing every construction through this function is what makes that unwritable. The observation
+// is built in the EmissionMeasured arm and nowhere else, so "the measurement did not happen" cannot
+// arrive at the fold wearing the shape of "the measurement found nothing". The actuator no longer
+// owns this decision, which also means deleting the actuator's measurement call cannot silently
+// produce a green: with no measurement there is no observation, and with no observation there is no
+// verdict to be Held.
+type LiveObservationAttempt
+  = LiveObservationTaken { observation: LiveCompilePhaseObservation }
+  | LiveObservationNotTaken { cause: NonEmptyStr }
+
+fn live_observation_from_measurement(
+  m: EmissionMeasurement,
+  toolchain: LiveToolchainReading
+) -> LiveObservationAttempt {
+  match m {
+    EmissionMeasured {
+      subject: _,
+      emitted_files: _,
+      emit_diagnostics: _,
+      emitted_artifact_identity: _,
+      rustfmt_parse_observation: parse,
+      cargo_clean: _,
+      cargo_diagnostics: ds,
+      cargo_lines_scanned: _
+    } => LiveObservationTaken {
+      observation: LiveCompilePhaseObservation {
+        parse_observation: parse,
+        raw_error_diagnostic_identities: cargo_error_identity_rows(ds: ds),
+        toolchain: toolchain
+      }
+    }
+    measurement => LiveObservationNotTaken {
+      cause: "the emission instrument did not reach a cargo measurement, so there is no live census -- and an absent census is not an empty one" as NonEmptyStr
+    }
+  }
+}
+
+// The verdict for a measurement, which is the only entry point a consumer should use: it cannot be
+// handed an observation that no measurement produced.
+fn live_tree_verdict_for_measurement(
+  series: List<CompilePhaseFrontierReceipt>,
+  m: EmissionMeasurement,
+  toolchain: LiveToolchainReading
+) -> LiveFrontierVerdict {
+  match live_observation_from_measurement(m: m, toolchain: toolchain) {
+    LiveObservationNotTaken { cause: why } => LiveFrontierUnmeasured { reason: why }
+    LiveObservationTaken { observation: observation } =>
+      live_tree_frontier_verdict(series: series, observation: observation)
+  }
+}
+
+fn live_phase_board(observation: LiveCompilePhaseObservation) -> PersistedPhaseBoardFold {
+  phase_board_from_census_identities(
+    parse_observation: observation.parse_observation,
+    raw_identities: observation.raw_error_diagnostic_identities
+  )
+}
+
+// THE DISPOSITION LIST IS EMPTY AND THAT IS THE RATCHET, NOT AN OVERSIGHT. A newly exposed
+// identity is admitted by a receipt that names its cause and is checked against the predecessor
+// board; a live tree carries no such authored disposition, so any identity the live board holds
+// and the latest receipt does not refuses here. The remedy is to append a receipt -- to make the
+// exposure a declared, checked fact -- and not to teach this gate to guess a cause.
+fn live_tree_frontier_verdict(
+  series: List<CompilePhaseFrontierReceipt>,
+  observation: LiveCompilePhaseObservation
+) -> LiveFrontierVerdict {
+  match compile_phase_frontier_standing(series: series) {
+    CompilePhaseFrontierInvalid { reason: why } => LiveFrontierRefused {
+      identities: [],
+      reason: concat(
+        "the persisted receipt series does not validate, so the live tree has nothing to be ratcheted against: ",
+        why as String
+      ) as NonEmptyStr
+    }
+    CompilePhaseFrontierEmpty => LiveFrontierUnmeasured {
+      reason: "the persisted receipt series is empty, so no frontier exists for the live tree to be compared to" as NonEmptyStr
+    }
+    CompilePhaseFrontierValidated { latest: latest } =>
+      match live_comparability(latest: latest, live: observation.toolchain) {
+        LiveIncomparable { reason: why } => LiveFrontierUnmeasured {
+          reason: concat(
+            "the live observation is not in the latest receipt's comparison epoch, so no count between them is meaningful: ",
+            why as String
+          ) as NonEmptyStr
+        }
+        LiveComparable => {
+          let live = live_phase_board(observation: observation).board
+          match phase_ratchet_with_dispositions(previous: latest.board, current: live, dispositions: []) {
+            PhaseRatchetHeld => LiveFrontierHeld { live_identity_count: count(board_all_identities(board: live)) }
+            PhaseRatchetRefused { phase: p, identities: ids, reason: why } => LiveFrontierRefused {
+              identities: ids,
+              reason: concat(
+                concat(concat("the live tree regressed against receipt ", latest.invocation as String), concat(" at rustc phase ", rustc_phase_name(phase: p))),
+                concat(": ", why as String)
+              ) as NonEmptyStr
+            }
+          }
+        }
+      }
+  }
+}
+
+fn live_frontier_verdict_text(verdict: LiveFrontierVerdict) -> String {
+  match verdict {
+    LiveFrontierHeld { live_identity_count: n } =>
+      concat("held\tthe live 00_compile closure carries ", concat(to_string(n), " diagnostic identities and gained none against the latest receipt"))
+    LiveFrontierRefused { identities: ids, reason: why } =>
+      concat(concat("refused\t", why as String), concat("\n", ids |> map(identity => concat("identity\t", identity)) |> join(separator: "\n")))
+    LiveFrontierUnmeasured { reason: why } => concat("unmeasured\t", why as String)
+  }
+}
+
+// ENROLMENT, IN TWO HALVES, BECAUSE STATING ONLY ONE OF THEM WOULD BE THE INERT-LENS LIE IN EITHER
+// DIRECTION.
+//
+// THE GATE'S BEHAVIOUR IS ENFORCED TODAY. The fold above is witnessed by
+// `test.claim.self_host_compile_phase_live_gate_witness`, which the required floor already picks up
+// under its existing `test.claim.self_host_` prefix -- no roster widening, nothing to price. Break
+// the join, weaken it to a count comparison, or let the unmeasurable arm render as a pass, and a
+// required run goes red on the next push.
+//
+// THE TREE IS NOT YET GATED BY IT. What executes on every required run is the LOGIC; what does not
+// execute there is the MEASUREMENT. So a reader who sees eight passing required witnesses must not
+// conclude the compile-phase frontier is walled: it is walled against its own regressions, and the
+// live population still reaches it only when `tools.compile_phase_frontier_live_gate` `check` is
+// invoked by hand.
+//
+// WHY, AND IT IS NOT COST. The wet measurement was priced by one dispatch of
+// `tools.emission_entry_instrument` `measure` over the entry named above, on an amd64 runner with
+// eleven cores and a twenty-gigabyte budget, and it returned inside the floor lane's wall clock.
+// Re-derive that with the same instrument rather than quoting a figure from here.
+//
+// The blocker is the COMPARISON EPOCH, and it generalises past this gate. Every persisted receipt
+// names host x86_64-unknown-linux-gnu; every required lane of `gunbc.witness_floor_workflow` runs
+// on self-hosted arm64. A measurement taken where the gate would be enrolled is therefore not in
+// the latest receipt's epoch, the frontier already refuses to count across one without a
+// reclassified predecessor, and this gate answers Unmeasured and exits nonzero there. A required
+// phase wired today would be permanently red rather than protective -- which is worse than absent,
+// because a permanently red required phase is disabled by whoever is unblocking the trunk.
+//
+// THE DURABLE FINDING IS ABOUT THE RECEIPT SUBJECT, NOT ABOUT THIS GATE. The subject binds the
+// tree, the invocation, the artifact and compiler digests, the identities and the producer. It does
+// not bind the assembled-module SCOPE, and the export index is scoped to the run's assembled module
+// list, so an entry-scoped and a pool-scoped run can resolve the same source differently. It also
+// does not bind the toolchain EPOCH in any form a consumer enforces -- the epoch string is authored
+// and checked only for changing when the other fields do, never against the host that produced the
+// measurement. Both are parameters that VARY THE ANSWER while being absent from what any consumer
+// checks, which is one defect with two instances. This gate is the first consumer that refuses
+// instead of silently comparing, and that refusal is what surfaced the second instance.
+type LiveGateEnrolment
+  = LiveGateEnrolledAsRequiredPhase { phase: NonEmptyStr, lane: NonEmptyStr }
+  | LiveGateDeclaredNotEnrolled { blocker: NonEmptyStr, trigger: NonEmptyStr }
+
+data self_host_compile_phase_live_gate_enrolment: LiveGateEnrolment = LiveGateDeclaredNotEnrolled {
+  blocker: "the live measurement of the tree is not enrolled in any required lane. The fold and its refusals ARE enrolled, through the required floor's existing test.claim.self_host_ prefix; what no required run performs is the measurement that would supply the tree as the current row. The cause is not wall clock: every persisted receipt names host x86_64-unknown-linux-gnu while every required lane of gunbc.witness_floor_workflow runs on self-hosted linux/arm64, so a measurement taken on a required runner falls outside the latest receipt's comparison epoch, this gate answers Unmeasured there, and a required phase wired today would be permanently red" as NonEmptyStr,
+  trigger: "a VALIDATED compile-phase frontier receipt in the required runners' own comparison epoch, SUFFICIENT FOR enrolling the live measurement as a required phase -- which is more than an arm64 row existing. Sufficiency is decided by execution, not by inspection: the receipt's rustc_identity, cargo_identity and invocation.target must equal what the self-hosted arm64 runners actually report, and the check is that live_tree_frontier_verdict returns Held on an UNPERTURBED run of tools.compile_phase_frontier_live_gate check ON ONE OF THOSE RUNNERS. A receipt that leaves the gate answering Unmeasured there does not retire this row, a measurement taken anywhere the gate will not be enrolled does not retire it, and neither does the required-phase edit itself. Because this is an epoch transition, that receipt also owes the reclassified predecessor the frontier's fold demands, joined to the x86_64 population at identity grain -- file, code and label -- and never by position: the arm64 population will differ from the x86_64 one in ways that are real rather than regressions" as NonEmptyStr
+}
