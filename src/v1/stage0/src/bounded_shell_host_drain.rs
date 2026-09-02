@@ -4,6 +4,17 @@
 //! native serve and the shared `CapturedProcessStream` carrier land. `std.shell_stream_capture`
 //! carries scaffold prose and predicate witnesses only — not parallel limits.
 
+// CLIPPY ROSTER -- 2 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::io_other_error,  // 2
+)]
+
 use std::io::Read;
 use std::process::{Child, ExitStatus};
 
