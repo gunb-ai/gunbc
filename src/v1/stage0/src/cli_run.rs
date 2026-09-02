@@ -3154,6 +3154,14 @@ const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witne
 const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness/witness_deferral_freeze.dag";
 const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
+/// The roster of witness MODULE NAMESPACES the required fold cannot execute, read from the same
+/// `ci_layer_roots` authority as `witness_layer_roots`. Fail-closed by construction: the exemption
+/// it grants is keyed on MEMBERSHIP IN THIS ROSTER, never on the absence of a match in
+/// `witness_layer_roots` -- "not declared executing" and "declared non-executing" are different
+/// claims, and only the second carries the 4b(2) stall and its trigger
+/// (`non_executing_witness_module_prefixes_restoration`). An unreadable or empty roster exempts nothing.
+const NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME: &str =
+    "non_executing_witness_module_prefixes";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 /// The v2 entry roster the emission phase compiles — one `.dag` row, so re-deciding
@@ -3282,6 +3290,25 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
 /// authority.
 pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<String> {
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
+}
+
+/// Project the `non_executing_witness_module_prefixes` `List<String>` literal out of the ci_layer_roots
+/// authority.
+pub(crate) fn non_executing_witness_module_prefixes_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME,
+    )
+}
+
+/// The declared non-executing witness module namespaces, read once.
+pub fn non_executing_witness_module_prefixes() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            non_executing_witness_module_prefixes_from_source(ci_layer_roots_authority_content())
+        })
+        .clone()
 }
 
 /// One `witness_exclusion_frontier` row as the host reads it: the discovery-exclusion
@@ -39407,6 +39434,26 @@ pub enum RequiredFloorDisposition {
     /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
     /// this is the identity grain the population join is keyed on.
     DeclinedDiscoveryExcluded { matched_substring: String },
+    /// Selected by the changed-witness sublane and NOT PRESENT IN THE DECLARED POPULATION at all,
+    /// because the module that declares it is outside the run's discovery roots.
+    ///
+    /// TWO RANGES OVER ONE POPULATION, which is what this variant exists to make sayable.
+    /// `changed_witness_set` is derived from the run's git diff and is ROOT-AGNOSTIC; the declared
+    /// population is enumerated from the discovered index, which is scoped to the run's
+    /// `--source-root`s. The selector's range is therefore strictly wider than the enumerator's,
+    /// so a witness homed outside those roots is SELECTABLE AND UNDECLARABLE by construction, and
+    /// every PR touching one used to refuse with `ChangedWitnessSublaneJoinInexact` naming
+    /// identities no in-diff edit could ever satisfy.
+    ///
+    /// It is a DECLINE and not a filter, deliberately. Dropping the selection before the join
+    /// would have greened the floor by making the over-selection invisible — the absorbing arm,
+    /// where the selector keeps over-selecting and nobody ever learns. This row is counted,
+    /// named, and carries the module, so the mismatch is visible in the disposition receipt.
+    ///
+    /// THIS DOES NOT RETIRE THE MISMATCH. The repair is that selection and disposition consume
+    /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
+    /// denominators have been reconciled.
+    DeclinedChangedWitnessOutsideDiscovery { module_path: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -40122,6 +40169,60 @@ fn write_required_floor_claim_cost_tsv(
     Ok(())
 }
 
+/// The cross-claim demand receipt: one row per RETAINED producer identity, whether or not more
+/// than one claim demanded it. The single-claim rows are kept deliberately — they are the
+/// control population that makes `claims > 1` mean something, and dropping them would leave an
+/// artifact in which every row looks shared.
+///
+/// The header line carries the census's own disclosure: how many claims were folded in, and what
+/// the retention floor and the key cap did NOT retain. An artifact that truncates without saying
+/// so is read as a population, which is the failure this instrument exists to stop making.
+fn write_required_floor_cross_claim_demand_tsv(
+    path: &str,
+    rows: &[v1_interpreter::CrossClaimDemandRow],
+    disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
+    claim_cpu_total_ms: u128,
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
+    writeln!(
+        file,
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
+        disclosure.claims_absorbed,
+        rows.len(),
+        disclosure.omitted_keys,
+        disclosure.omitted_ns / 1_000_000,
+        disclosure.overflow_keys,
+        disclosure.absorb_ns_total / 1_000_000,
+        disclosure.absorb_ns_max / 1_000_000,
+        claim_cpu_total_ms
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    writeln!(
+        file,
+        "producer\targ_shape\tclaims\tevals\ttotal_ms\tcross_claim_ms\tmodules\tmodule_sample\tdecl_site"
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            row.producer.replace(['\t', '\n'], " "),
+            row.arg_shape,
+            row.claims,
+            row.evals,
+            row.total_ns / 1_000_000,
+            row.cross_claim_wasted_ns() / 1_000_000,
+            row.modules,
+            row.module_sample.join(",").replace(['\t', '\n'], " "),
+            row.decl_site.replace(['\t', '\n'], " ")
+        )
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
 fn write_required_floor_disposition_tsv(
     path: &str,
     rows: &[RequiredFloorDispositionRow],
@@ -40152,6 +40253,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_outside_gate = 0usize;
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
+    let mut declined_changed_witness_outside_discovery = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -40164,13 +40266,17 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
                 declined_discovery_excluded += 1
             }
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                declined_changed_witness_outside_discovery += 1
+            }
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
-         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
+         \tdeclined_changed_witness_outside_discovery={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -40179,7 +40285,8 @@ fn write_required_floor_disposition_tsv(
         declined_outside_gate,
         declined_gate_closure,
         declined_discovery_excluded,
-        declined_cost_debt
+        declined_cost_debt,
+        declined_changed_witness_outside_discovery
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
@@ -40906,10 +41013,11 @@ pub use emitted_closure_compile_host::{
 /// public surface merely because Rust needs a path to it.
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
-    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, FixtureClosureOutcome,
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
+    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
