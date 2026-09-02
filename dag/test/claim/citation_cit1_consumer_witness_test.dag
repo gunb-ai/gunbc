@@ -12,12 +12,13 @@ import gunbc.citation.x86_64_abi_pdf_consumer {
   x86_64_abi_pdf_syscall_navigable_uri_projection,
   x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points,
   x86_64_abi_syscall_evidence_link_construction,
-  x86_64_abi_syscall_citation_rung_disposition,
   x86_64_abi_syscall_citation_page_is_authoritative,
   x86_64_abi_pdf_fragment_selector_from_page,
   x86_64_abi_pdf_retrieval_observation_from_hex,
   x86_64_abi_pdf_base_locator_probe,
   witness_syscall_citation_below_digest_matched_rung,
+  citation_rung_is_below_on_independent_pin_unavailable,
+  PinEstablishmentReceiptHexRefused,
   X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
   X86_64AbiPdfNavigableUriRefused,
@@ -54,11 +55,24 @@ test fn x86_64_abi_pdf_pin_reports_independent_expected_pin_unavailable() -> Boo
   }
 }
 
+// THE SECOND CONJUNCT USED TO RE-DERIVE THE FIRST. It matched the same module-level constant
+// with the same single arm, so it could not be false whenever the call above was true, and the
+// pair measured one thing twice. It is replaced by the arm the constant CANNOT reach: the
+// predicate is now exercised on both refusal causes, so this claim discriminates the cause
+// rather than restating that the constant is what it is declared to be.
 test fn x86_64_abi_syscall_citation_below_digest_matched_rung() -> Bool {
   witness_syscall_citation_below_digest_matched_rung()
-    && match x86_64_abi_syscall_citation_rung_disposition {
-      BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable } => true
-    }
+    && citation_rung_is_below_on_independent_pin_unavailable(
+      disposition: BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable }
+    )
+    && !citation_rung_is_below_on_independent_pin_unavailable(
+      disposition: BelowDigestMatchedRung {
+        cause: PinEstablishmentReceiptHexRefused {
+          hex: "zz",
+          cause: WetReceiptHexMalformed { hex: "zz" }
+        }
+      }
+    )
 }
 
 test fn x86_64_abi_syscall_citation_fact_refused_without_digest_matched_rung_RED() -> Bool {
