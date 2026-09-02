@@ -505,30 +505,31 @@ test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
 // The refused-file population had no duplicate wall at all until this predicate was wired into
 // receipt_population_coherent: rustfmt refusing one path twice would double-count the Parse row and
 // carry the repeat into the digest. This is the discriminating pair for that wall.
-// FIRST-OCCURRENCE ORDER IS A CONTRACT OF THIS FUNCTION, AND THE SET-ORDERED MUTANT IS WHY THIS
-// ARM EXISTS. deduplicate_identities decides membership with a Set, and a set-backed dedup that
-// returns the SET's own ordering produces the same members in a different order -- semantically
-// identical for a caller that counts, byte-drifting for a caller that renders. The subject
-// population is chosen so those two answers cannot coincide: first-occurrence order here is
-// ["b", "a", "c"] and any sorted or set-ordered spelling answers ["a", "b", "c"], so replacing the
-// ordered accumulator with the set's iteration turns this arm RED. A population that happened to
-// arrive already sorted would have made the assertion pass while discriminating nothing, which is
-// the whole reason the fixture is authored rather than read off the live series.
+// THE SORT IS LOAD-BEARING FOR CORRECTNESS, NOT FOR TIDINESS, AND NOTHING PINNED THAT.
 //
-// WHERE THE ORDER CAN AND CANNOT ESCAPE, stated so the arm is read as a contract rather than as a
-// belt on a caller that does not need one: the function has exactly two consumers in the corpus,
-// canonical_identity_set (which sorts the result, so order is erased) and
-// census_population_is_duplicate_free (which counts it). The projection consumers downstream --
-// gunbc.design_ledgers compile_phase_frontier_blocks renders committed bytes -- reach it only
-// through the sorting one, and that order-independence is separately executed by
-// the_census_digest_is_invariant_under_reordering_of_either_population and
-// phase_boards_are_invariant_under_population_reordering. This arm holds the contract for the next
-// consumer, which is the one that would not survive a silent reordering.
-test fn deduplication_keeps_first_occurrence_order_and_not_set_order() -> Bool {
-  deduplicate_identities(identities: ["b", "a", "b", "c", "a"]) == ["b", "a", "c"]
-    && deduplicate_identities(identities: []) == []
-    && deduplicate_identities(identities: ["a", "a", "a"]) == ["a"]
-    && deduplicate_identities(identities: ["b", "a", "c"]) == ["b", "a", "c"]
+// `deduplicate_identities` decides membership by comparing against the LAST KEPT element only. That
+// is sound exactly because the input was sorted first, which puts equal identities adjacent -- so the
+// sort is not a presentation choice that happens to precede the fold, it is the precondition the
+// one-element comparison depends on. Delete `|> sort_by(identity => identity)` and the fold silently
+// stops collapsing duplicates that are separated by any other identity, while continuing to collapse
+// adjacent ones: a dedup that works on the easy inputs and quietly fails on the real ones.
+//
+// THE SUBJECT IS CHOSEN SO THE MUTANT CANNOT PASS. ["b", "a", "b"] holds a duplicate that is NOT
+// adjacent in encounter order; the sorted fold answers ["a", "b"], and the same fold without its sort
+// answers ["b", "a", "b"] -- three elements, both `b`s surviving. The all-adjacent case is asserted
+// beside it as the positive control that the mutant still passes, which is what makes the first arm
+// the discriminating one rather than the pair merely being two examples.
+//
+// WHY THIS AND NOT AN ORDER ASSERTION: encounter order is unobservable through either consumer --
+// `canonical_identity_set` sorts the result and `census_population_is_duplicate_free` reads only the
+// count -- so pinning the output ORDER would assert a property no caller can distinguish. What IS
+// observable through both is whether a duplicate survives, and that is what this holds.
+test fn deduplication_collapses_a_non_adjacent_duplicate_and_not_only_an_adjacent_one() -> Bool {
+  count(deduplicate_identities(identities: ["b", "a", "b"])) == 2
+    && count(deduplicate_identities(identities: ["b", "b", "a"])) == 2
+    && count(deduplicate_identities(identities: ["a", "a", "a"])) == 1
+    && count(deduplicate_identities(identities: [])) == 0
+    && count(deduplicate_identities(identities: ["b", "a", "c"])) == 3
 }
 
 test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
