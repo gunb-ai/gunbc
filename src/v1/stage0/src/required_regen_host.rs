@@ -4820,6 +4820,11 @@ where
         &checkpoint_basenames,
         checkpoint_subject,
     )?;
+    // THE PRE-STAGE HALF OF THE INDEPENDENT EFFECT OBSERVATION, over the WHOLE journalled
+    // roster rather than the planned subset. It is taken here, before the first copy, so the
+    // delta below denominates in the population the checkpoint restores and not in the plan.
+    let pre_stage_population =
+        observe_generated_population_state(stage0_src, &checkpoint_basenames)?;
     let mut surfaces = Vec::new();
     for basename in basenames {
         let destination = stage0_src.join(basename);
@@ -4895,7 +4900,16 @@ where
         let observed_digest = path_digest(&workspace.join(&surface.projected_path))?;
         observed_population.push((surface.projected_path.clone(), observed_digest));
     }
-    admit_stage_execution_from_model(model, &surfaces, &observed_population)?;
+    // The post-stage half. `ObservedEffectPopulation` is the only thing the model sees as
+    // `executed`, and it is a digest delta over the roster — never a projection of `surfaces`.
+    let post_stage_population =
+        observe_generated_population_state(stage0_src, &checkpoint_basenames)?;
+    let executed = ObservedEffectPopulation::from_stage_delta(
+        &pre_stage_population,
+        &post_stage_population,
+        basename_to_module,
+    )?;
+    admit_stage_execution_from_model(model, &surfaces, &observed_population, &executed)?;
     for surface in &mut surfaces {
         surface.standing = RegenSurfaceExecutionStandingReceipt::TerminalPassed;
     }
@@ -4921,10 +4935,130 @@ where
     })
 }
 
+/// THE INDEPENDENTLY OBSERVED EFFECT POPULATION OF ONE STAGE — the `executed` side of the
+/// planned/executed join, and a distinct TYPE precisely so it cannot be the planned side.
+///
+/// Before this existed, `admit_stage_execution_from_model` built one `Value::List` from the
+/// stage plan and passed it as BOTH `planned` and `executed`, so the model's
+/// `regen_identity_population_eq` conjunct was `x == x.clone()`: executed, reached, gated on,
+/// and incapable of ever going red (DESIGN `executed_conjunct_discriminates_nothing`), while
+/// `StagePlannedExecutedMismatch` stayed authorable in the `.dag` witness and unreachable from
+/// the host. A permanently-green check standing where a wall is claimed is rung inflation.
+///
+/// The repair is a SECOND PRODUCER, not a second read of the first. This population is a
+/// digest delta over the whole generated roster the checkpoint already journals — pre-stage
+/// digests taken before the copy loop, post-stage digests taken after the build — so it is
+/// derived from the filesystem and knows nothing about which surfaces were planned. The
+/// denominator is the roster, not the plan.
+///
+/// IT IS A NEWTYPE AND THAT IS THE POINT. `admit_stage_execution_from_model` takes
+/// `&[RegenConvergenceSurfaceReceipt]` for planned and `&ObservedEffectPopulation` for
+/// executed; there is no conversion from the former to the latter, so a later refactor cannot
+/// re-collapse the two sides into one value without deleting this type. A reviewer noticing is
+/// not what keeps them apart.
+///
+/// THE OBSERVATION IS AN ENUMERATION, NOT A ROSTER LOOKUP, and the first draft got this wrong.
+/// It named `checkpoint_basenames` as the population and declared that a file CREATED outside
+/// that roster was covered by the `UnplannedPathMutated` git observation. That declaration was
+/// false: `git_changed_stage0_paths` runs `git diff --name-only`, which reports tracked
+/// modifications and says nothing about untracked files. A build creating a new file in the seed
+/// source directory was therefore absent from the roster, absent from git, and absent from the
+/// restoration journal — invisible to every producer at once. So both halves walk the DIRECTORY,
+/// with the roster as a floor rather than as the population, and a path present after the stage
+/// that was absent before is an effect like any other.
+///
+/// EVERY top-level regular file, not only the `.rs` generated ones. A build has no business
+/// writing anything into `stage0_src`, and a file whose basename resolves to no declaring module
+/// is refused as `SurfaceOwnershipUnresolved` — typed and located, naming the path. Files that
+/// merely EXIST unchanged never reach that lookup, so the hand-maintained population costs
+/// nothing here and a build MUTATING one refuses whether or not git tracks it.
+struct ObservedEffectPopulation {
+    identities: Vec<(String, String)>,
+}
+
+/// Absent is a state, not a missing digest: a surface that did not exist before the stage and
+/// one whose bytes did not move are different observations, and collapsing them would make an
+/// install onto a fresh path indistinguishable from a no-op.
+#[derive(PartialEq, Eq)]
+enum GeneratedSurfaceState {
+    Absent,
+    Present { digest: String },
+}
+
+fn observe_generated_population_state(
+    stage0_src: &Path,
+    roster: &[String],
+) -> Result<BTreeMap<String, GeneratedSurfaceState>, String> {
+    let mut basenames = roster.iter().cloned().collect::<BTreeSet<_>>();
+    for entry in fs::read_dir(stage0_src)
+        .map_err(|e| format!("enumerate stage0 src {}: {e}", stage0_src.display()))?
+    {
+        let entry = entry.map_err(|e| format!("read stage0 src entry: {e}"))?;
+        if !entry.path().is_file() {
+            continue;
+        }
+        let basename = entry
+            .file_name()
+            .to_str()
+            .ok_or_else(|| {
+                format!(
+                    "InstallObservationPathNotUtf8: {} holds a non-UTF-8 entry name",
+                    stage0_src.display()
+                )
+            })?
+            .to_string();
+        basenames.insert(basename);
+    }
+    let mut observed = BTreeMap::new();
+    for basename in basenames {
+        let path = stage0_src.join(&basename);
+        let state = if path.is_file() {
+            GeneratedSurfaceState::Present {
+                digest: path_digest(&path)?,
+            }
+        } else {
+            GeneratedSurfaceState::Absent
+        };
+        observed.insert(basename, state);
+    }
+    Ok(observed)
+}
+
+impl ObservedEffectPopulation {
+    /// The ONLY constructor. It takes two observations of the roster and never the plan.
+    fn from_stage_delta(
+        before: &BTreeMap<String, GeneratedSurfaceState>,
+        after: &BTreeMap<String, GeneratedSurfaceState>,
+        basename_to_module: &HashMap<String, String>,
+    ) -> Result<Self, String> {
+        let mut identities = Vec::new();
+        for (basename, after_state) in after {
+            let before_state = before
+                .get(basename)
+                .unwrap_or(&GeneratedSurfaceState::Absent);
+            if before_state == after_state {
+                continue;
+            }
+            let declaring_module = basename_to_module.get(basename).ok_or_else(|| {
+                format!(
+                    "SurfaceOwnershipUnresolved: observed effect on {basename} has no declaring \
+                     module"
+                )
+            })?;
+            identities.push((
+                declaring_module.clone(),
+                format!("src/v1/stage0/src/{basename}"),
+            ));
+        }
+        Ok(Self { identities })
+    }
+}
+
 fn admit_stage_execution_from_model(
     model: &RegenConvergenceModel,
     planned: &[RegenConvergenceSurfaceReceipt],
     observed: &[(String, String)],
+    executed: &ObservedEffectPopulation,
 ) -> Result<(), String> {
     use crate::v1_interpreter::{self, str_value, Value};
     let ctx = model.context();
@@ -4957,12 +5091,25 @@ fn admit_stage_execution_from_model(
         &serde_json::to_vec(observed)
             .map_err(|e| format!("encode observed stage population: {e}"))?,
     );
-    let identity_list = Value::List(Rc::new(identities.into()));
+    let executed_identities = executed
+        .identities
+        .iter()
+        .map(|(declaring_module, projected_path)| Value::Record {
+            type_name: ctx.sym("RegenSurfaceIdentity"),
+            fields: Rc::new(vec![
+                (ctx.sym("declaring_module"), str_value(declaring_module)),
+                (ctx.sym("projected_path"), str_value(projected_path)),
+            ]),
+        })
+        .collect::<Vec<_>>();
     let observation = Value::Record {
         type_name: ctx.sym("RegenStageExecutionObservation"),
         fields: Rc::new(vec![
-            (ctx.sym("planned"), identity_list.clone()),
-            (ctx.sym("executed"), identity_list),
+            (ctx.sym("planned"), Value::List(Rc::new(identities.into()))),
+            (
+                ctx.sym("executed"),
+                Value::List(Rc::new(executed_identities.into())),
+            ),
             (
                 ctx.sym("expected_candidate_digest"),
                 str_value(expected_digest),
@@ -4990,6 +5137,7 @@ fn admit_stage_execution_from_model(
         )
     })
     .map_err(|e| format!("refusal: stage execution admission did not answer: {e}"))?;
+    let admission_for_detail = admission.clone();
     let label = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -5001,7 +5149,26 @@ fn admit_stage_execution_from_model(
     .map_err(|e| format!("refusal: stage execution admission label failed: {e}"))?;
     match label {
         Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
-        Value::Str(label) => Err(format!("stage execution admission {label}")),
+        Value::Str(label) => {
+            // The label NAMES the arm; the detail LOCATES it. Rendering only the name collapsed
+            // every unlabelled arm to one word and discarded the populations that caused a
+            // population verdict -- which is what a reader needs and what §5 asks a typed
+            // diagnostic to carry. A detail that itself refuses is reported rather than dropped,
+            // because a silent renderer here would reintroduce exactly the silence it repairs.
+            let detail = match v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "regen_stage_execution_admission_detail",
+                    &[(Some("admission".to_string()), admission_for_detail)],
+                    false,
+                )
+            }) {
+                Ok(Value::Str(detail)) => detail.to_string(),
+                Ok(other) => format!("<detail returned {}>", other.type_label_public()),
+                Err(e) => format!("<detail refused: {e}>"),
+            };
+            Err(format!("stage execution admission {label}: {detail}"))
+        }
         other => Err(format!(
             "refusal: stage execution admission label returned {}",
             other.type_label_public()
@@ -5582,6 +5749,202 @@ mod regen_convergence_host_instrument_tests {
             preserved,
             "an install escaped stage0_src through a destination symlink"
         );
+    }
+
+    /// THE DISCRIMINATING RED FOR THE PLANNED/EXECUTED JOIN, and the reason it is not the
+    /// decoration it was.
+    ///
+    /// `admit_stage_execution_from_model` used to build one identity list from the stage plan
+    /// and pass it as both `planned` and `executed`, so the model conjunct was `x == x.clone()`.
+    /// `StagePlannedExecutedMismatch` was authorable in the `.dag` witness and unreachable from
+    /// the host. Both arms below construct populations that the old form scored as equal.
+    ///
+    /// ARM A -- AN EFFECT OUTSIDE THE PLAN, AND IT WAS GREEN. The producer is installed in
+    /// stage 1, so its path is git-dirty when stage 2 begins and lands in `changed_before`.
+    /// `allowed_after` is `changed_before` UNION the planned paths, so the `UnplannedPathMutated`
+    /// git observation cannot see stage 2's build rewriting it: every already-dirty stage0 path
+    /// is blanket-permitted for the rest of the transaction. Nothing else looked. The delta over
+    /// the journalled roster does, because its denominator is the roster and not the plan.
+    ///
+    /// ARM B -- A PLANNED SURFACE WITH NO EFFECT, AND IT REFUSED ON THE WRONG AXIS. Reverting an
+    /// installed surface to its pre-stage bytes was already caught, but as
+    /// `InstalledDigestMismatch` -- a CONTENT verdict standing in for a POPULATION one. The
+    /// assertion is on the cause, not on "it refused", because "it refused" was true before this
+    /// change and would carry no information.
+    #[test]
+    fn stage_execution_joins_the_plan_to_independently_observed_effects() {
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        // One module map covering BOTH surfaces: an observed effect on an unplanned path must
+        // reach the population join, not stop at `SurfaceOwnershipUnresolved`. In production
+        // this map is the whole-corpus one `convergence_surface_roles` returns.
+        let modules = fixture_modules(&[
+            ("fixture_producer.rs", "fixture.producer", ""),
+            ("fixture_subject.rs", "fixture.subject", ""),
+        ]);
+        let passing_build = |_: &Path| -> Result<CargoBuildObservation, String> {
+            Ok(CargoBuildObservation {
+                compiled_crates: 1,
+                compiled_packages: vec!["fixture-seed".to_string()],
+            })
+        };
+
+        // Stage 1: install the producer. This is also the POSITIVE CONTROL -- planned and
+        // independently observed effects agree, so the join admits. Without it, a join that
+        // refused everything would satisfy both arms below.
+        let p_rows = [(
+            "fixture_producer.rs",
+            "fixture.producer",
+            "// new producer\n",
+        )];
+        let (_, p_admitted) = fixture_manifest(&candidate, &p_rows);
+        install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[p_rows[0].0.to_string()],
+            &p_admitted,
+            &modules,
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-p",
+            "generation-input-cut",
+            &subject,
+            passing_build,
+            || Ok("seed-1".to_string()),
+        )
+        .expect("planned and observed agree, so the stage is admitted");
+
+        // ARM A.
+        let s_rows = [("fixture_subject.rs", "fixture.subject", "// new subject\n")];
+        let (_, s_admitted) = fixture_manifest(&candidate, &s_rows);
+        let outside_the_plan = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[s_rows[0].0.to_string()],
+            &s_admitted,
+            &modules,
+            2,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut,
+            "seed-1",
+            "generation-0",
+            "tree-0",
+            "manifest-s",
+            "seed-compatibility-cut",
+            &subject,
+            |root| {
+                fs::write(
+                    root.join("src/v1/stage0/src/fixture_producer.rs"),
+                    "// rewritten by a build that was not planned to touch this\n",
+                )
+                .unwrap();
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-2".to_string()),
+        )
+        .unwrap_err();
+        assert!(
+            outside_the_plan.contains("StagePlannedExecutedMismatch"),
+            "an effect on an already-dirty path outside the plan must refuse as a population \
+             mismatch, got: {outside_the_plan}"
+        );
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
+
+        // ARM B: the build reverts the surface this stage just installed.
+        let planned_without_effect = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[s_rows[0].0.to_string()],
+            &s_admitted,
+            &modules,
+            2,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut,
+            "seed-1",
+            "generation-0",
+            "tree-0",
+            "manifest-s",
+            "seed-compatibility-cut",
+            &subject,
+            |root| {
+                fs::write(
+                    root.join("src/v1/stage0/src/fixture_subject.rs"),
+                    "// old subject\n",
+                )
+                .unwrap();
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-2".to_string()),
+        )
+        .unwrap_err();
+        assert!(
+            planned_without_effect.contains("StagePlannedExecutedMismatch"),
+            "a planned surface the stage left byte-identical must refuse as a population \
+             mismatch, not as a content digest verdict, got: {planned_without_effect}"
+        );
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
+
+        // ARM C -- A FILE THE BUILD CREATES, which the first version of this observation could
+        // not see. `git_changed_stage0_paths` runs `git diff --name-only` and reports tracked
+        // modifications only, so an UNTRACKED creation is absent from the git observation; it was
+        // also absent from a roster-lookup observation and from the restoration journal, which is
+        // three producers blind at once. The observation enumerates the directory, so the path is
+        // an effect the moment it appears.
+        let created = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[s_rows[0].0.to_string()],
+            &s_admitted,
+            &fixture_modules(&[
+                ("fixture_producer.rs", "fixture.producer", ""),
+                ("fixture_subject.rs", "fixture.subject", ""),
+                ("fixture_created.rs", "fixture.created", ""),
+            ]),
+            2,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut,
+            "seed-1",
+            "generation-0",
+            "tree-0",
+            "manifest-s",
+            "seed-compatibility-cut",
+            &subject,
+            |root| {
+                fs::write(
+                    root.join("src/v1/stage0/src/fixture_created.rs"),
+                    "// invented by the build, tracked by nothing\n",
+                )
+                .unwrap();
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-2".to_string()),
+        )
+        .unwrap_err();
+        assert!(
+            created.contains("StagePlannedExecutedMismatch"),
+            "an untracked file created by the build must refuse as a population mismatch, \
+             got: {created}"
+        );
+        fs::remove_file(stage0.join("fixture_created.rs")).unwrap();
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
+        fs::remove_dir_all(&workspace).unwrap();
     }
 
     #[test]

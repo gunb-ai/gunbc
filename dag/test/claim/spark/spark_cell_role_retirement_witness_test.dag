@@ -102,7 +102,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_refusal_text,
   fleet_converge_plan_artifact_hash,
   fleet_converge_spark_serving_row_effects,
-  SparkServingPlannedEffect,
+  SparkServingExecutablePlannedEffect,
   PlannedInstallEffect,
   PlannedRetirementEffect,
 }
