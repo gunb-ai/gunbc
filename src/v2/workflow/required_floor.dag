@@ -931,6 +931,9 @@ fn required_floor_declared_long_budget_claim_cpu_safety_limit_ms() -> Int {
 // The `match` is exhaustive over `WitnessExecutionBudget`, so a third arm fails to compile HERE
 // rather than falling into a default anywhere.
 
+// `cpu_limit_ms` is a bare `Int` under the declared flat-scalar obligation below
+// (`flat_scalar_millisecond_fields_dissolve_on`), which this field is enrolled in rather than
+// exempt from -- see that gate for why it converts together with the constants that produce it.
 type ClaimCpuCeiling {
   entry: String
   function: String
@@ -1262,7 +1265,9 @@ type ClaimSafetyOutcome =
 
 // FLAT-SCALAR MILLISECOND FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review
 // 53860 on gunbc#8584, BLOCKING on `observed_cpu_ms`/`observed_wall_ms`/`cpu_limit_ms`/
-// `wall_limit_ms` and the `ClaimSafetyOutcome` fields derived from them). The finding is correct
+// `wall_limit_ms` and the `ClaimSafetyOutcome` fields derived from them; RE-RAISED against
+// `ClaimCpuCeiling.cpu_limit_ms` by review 58744 on gunbc#10068, which is the same finding on a
+// new field and is enrolled here rather than answered separately). The finding is correct
 // on the merits and matches this repository's own sibling precedent: `std.evaluation_budget`
 // (the caller-agnostic kernel this module's constants already cite) carries the identical
 // domain -- a cooperative deadline observed in milliseconds -- through `std.measure`
@@ -1276,8 +1281,18 @@ type ClaimSafetyOutcome =
 // cross-representation mismatch this repository's own incident history warns against (a prior
 // PR read cleanly and mismatched a carrier seal at runtime). Recorded as a typed obligation
 // rather than a prose promise so it cannot decay into an unmarked scaffold.
+//
+// `ClaimCpuCeiling.cpu_limit_ms` JOINS THIS GATE AND DOES NOT CONVERT AHEAD OF IT. The field
+// carries the value `required_floor_claim_cpu_safety_limit_for` returns, and that function's two
+// arms are `required_floor_claim_cpu_safety_limit_ms` / the declared-budget constant beside it --
+// both `-> Int` on this same tower. Converting the FIELD while its PRODUCERS stay `Int` would put
+// two representations of one quantity inside one module and force the unverified bridge at the
+// stamping site, which is the mismatch this gate exists to avoid; converting the producers too is
+// the whole obligation below, not a smaller edit this change can make on the way past. So the
+// field is enrolled in the existing obligation rather than granted an exception, and the gate
+// widens by naming it rather than by a second row that could dissolve on different terms.
 data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/cpu_limit_ms/wall_limit_ms parameters convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
+  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least, claim_safety_outcome's observed_cpu_ms/observed_wall_ms/cpu_limit_ms/wall_limit_ms parameters, ClaimCpuCeiling's cpu_limit_ms field, and the two constants that produce it (required_floor_claim_cpu_safety_limit_ms, required_floor_declared_long_budget_claim_cpu_safety_limit_ms) convert from bare Int to std.measure Millisecond TOGETHER, once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584 and review 58744 on gunbc#10068). Together rather than field-by-field: a converted field fed by an Int producer would need the unverified bridge at the stamping site, which is the mismatch this obligation exists to prevent." as NonEmptyStr,
 )
 
 // THE DERIVATION. `reached_verdict` is the one fact that decides between `SafetyInterrupted` and
