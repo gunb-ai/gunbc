@@ -506,174 +506,124 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
 /// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
 /// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
+/// ELEVENTH DISSOLUTION (2026-09-02). #9907 merged, so base and head both carry the structural
+/// text qualification and the required run for gunbc#9985 reported all seventeen CONSUMED at the
+/// base -- "deletion is owed on the roster's next touch", and this change is that touch. The
+/// seventeen rows are removed by their own dissolve-on trigger, exactly as the ten shrinks above.
+/// TWELFTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
+/// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
+/// module more than one implementation cites. No declaration was renamed and no name was minted:
+/// every spelling below denotes the same declaration it denoted at the base, at a new home, so
+/// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
+/// `{extdeps.llm.anthropic_messages_api}`.
+///
+/// THE POPULATION IS EXACTLY NINE, AND THE REST OF THE MOTION NEEDED NO ROW. The same phase
+/// classified this change's membership and closure motion automatically -- the memberships
+/// `extdeps.llm.anthropic` lost are `SameDeclarationIdentityRebind`, the memberships the new module
+/// gained are `ExplicitlyEvaluatedZeroDelta` -- so the nine below are the whole unadjudicated set,
+/// not a sample of it. Every row names one exact (module, declaration, spelling) triple: a tenth
+/// binding re-pointed at the new module anywhere in the corpus still refuses as UNADJUDICATED.
+///
+/// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
+/// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
+/// here refuses every unrelated PR in the repository.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "DelimitedState",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "AnthropicChatMessage",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexMatchResult",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "AnthropicMessages200Body",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexMatchThunk",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "AnthropicStopReason",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexRuleApply",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "current_api_version",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexWalkAcc",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "test.claim.extdeps_llm_type_grounding_witness",
+            in_declaration: "w_anthropic_messages_object_type",
+            spelling: "Assistant",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "RepeatState",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "test.claim.extdeps_llm_type_grounding_witness",
+            in_declaration: "w_anthropic_messages_object_type",
+            spelling: "Standard",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_match_char_pred",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+            in_declaration: "redundancy_region1_anthropic_green_against_nonmatching_present",
+            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_match_prefix",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+            in_declaration: "redundancy_region1_anthropic_marks_nonempty",
+            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_strip_prefix",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_compiled",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_rule",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_rules",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk_artifact",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk_init",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.lexing",
-            in_declaration: "LexPattern",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.lexing",
-            in_declaration: "LexPatternFold",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+            in_declaration: "redundancy_region1_fires_when_a_real_mark_successor_present",
+            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
