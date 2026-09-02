@@ -469,7 +469,11 @@ mod compiler_tests {
     /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below
     /// proves only that something in the tree is broken. The red must be refused BY RUSTC and
     /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the
-    /// hundreds of modules in its closure would pass for the fixture's own defect.
+    /// hundreds of modules in its closure would pass for the fixture's own defect -- and the
+    /// attributed diagnostic must be the ERROR CLASS this arm claims (rustc E0308, mismatched
+    /// types), because a location says WHERE rustc refused and never WHAT. Without the code a
+    /// fixture edited into a syntax error, or an emitter regression producing an unresolved
+    /// path, reds in the right file and passes for the text-boundary subject it is not.
     ///
     /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
     /// compiles two emitted crates, which is minutes rather than milliseconds, and
@@ -492,10 +496,11 @@ mod compiler_tests {
         );
         assert!(
             crate::cli_run::fixture_discrimination_passed(&pair),
-            "the control must compile and the meaning-level red must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            "the control must compile and the meaning-level red must be refused by rustc, attributed to its own emitted module, and carry the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
-            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
         );
     }
 
