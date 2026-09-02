@@ -16,6 +16,7 @@ import extdeps.systems.nvidia_dgx_spark_setup {
 import gunbc.spark.oobe_screen_observation {
   ObservedOobeScreen,
   OobeControl,
+  OobeControlIdentity,
   AdvanceButton,
   SubmitButton,
   WelcomeGetStartedAction,
@@ -24,6 +25,7 @@ import gunbc.spark.oobe_screen_observation {
   ComboBoxOverHiddenField,
   HiddenBackingField,
   TestId,
+  FormFieldName,
   ControlLabel,
   SubmittedValueRepresentation,
   VendorOpaqueOrdinal,
@@ -299,7 +301,35 @@ test fn w_all_forward_controls_share_one_address_so_identity_must_be_separate() 
     f: (acc, s) => acc && fold(s.controls, init: true, f: (a, c) => a && forward_control_address(c: c)))
 }
 
+// The FIELD NAME is compared, not counted. The previous revision folded the settings controls
+// into the number 3 and wildcarded every backing_field, so renaming "language" to anything at
+// all left a witness that advertised itself as defending screen content fully green. A count is
+// not a content guard: it defends the ARITY of the control list and nothing about what those
+// controls address. An actuator locates these fields BY NAME, so the name is the whole subject.
+fn control_binds_field(c: OobeControl, field: FormFieldName, rep: SubmittedValueRepresentation) -> Bool {
+  match c {
+    ComboBoxOverHiddenField { placeholder: _, backing_field: f, submitted_representation: r } =>
+      f == field && r == rep
+    HiddenBackingField { field: f, submitted_representation: r } => f == field && r == rep
+    AdvanceButton { identity: _, address: _, label: _ } => false
+    SubmitButton { identity: _, address: _, label: _ } => false
+  }
+}
+
+fn settings_binds_field(field: FormFieldName, rep: SubmittedValueRepresentation) -> Bool {
+  fold(oobe_screen_settings.controls, init: false,
+    f: (acc, c) => acc || control_binds_field(c: c, field: field, rep: rep))
+}
+
 test fn w_settings_screen_carries_all_three_backing_fields() -> Bool {
+  settings_binds_field(field: "language" as FormFieldName, rep: VendorOpaqueOrdinal)
+    && settings_binds_field(field: "timezone" as FormFieldName, rep: VendorOpaqueOrdinal)
+    && settings_binds_field(field: "locale" as FormFieldName, rep: Bcp47LanguageTagValue)
+}
+
+// The arity stays defended SEPARATELY, so a fourth undeclared field cannot slip in behind the
+// three named ones. Naming and counting are two different questions and neither implies the other.
+test fn w_settings_screen_carries_no_field_beyond_the_three_named() -> Bool {
   fold(
     oobe_screen_settings.controls,
     init: 0,
