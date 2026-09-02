@@ -194,6 +194,9 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
     }, required: ci_required) {
       AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
       AssimilationComplete => false
+      AssimilationIncomplete { input: NodeRegistered, reason: _ } => false
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: _ } => false
+      AssimilationIncomplete { input: RunnerSlotHealthy, reason: _ } => false
     }
 }
 
