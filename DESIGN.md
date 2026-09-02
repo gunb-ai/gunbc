@@ -232,6 +232,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `fabricated_debt`
+- `yaml_inline_comment_ingested_as_scalar_content`
 - `accepted_source_emits_uncompilable_target`
 - `incidental_denominator_as_wall`
 - `compensating_errors_cancel_in_the_aggregate`
