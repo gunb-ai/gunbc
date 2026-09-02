@@ -1,0 +1,21 @@
+module gunbc.claim_batch_function_preflight_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for claim_batch's entry-local function preflight. The invalid name was
+// already refused by the evaluator, but only after whole-corpus preparation and entry resolution;
+// the two-arm claim_batch reproducer at 224b1879191 showed the unknown arm exiting 1 with
+// no-such-function only after resolve, while a declared sibling exited 0. The preflight moves that
+// existing refusal ahead of redundant corpus work. It reads the canonical parser's Node items and
+// the same item_kind discriminator the evaluator's function index uses; it does not scan text.
+data claim_batch_function_preflight_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.claim_batch", decl_name: "validate_explicit_functions", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: claim_batch is a seed-host CLI and its argv is consumed before any .dag evaluation frame exists. validate_explicit_functions adds no declaration vocabulary and no selection policy: it asks module_path_index.parse_dag_file, the canonical tokenizer/parser path, for the entry's constructed Node items and retains exactly ItemKind.FnItem or ItemKind.FuncItem, the same callable partition used by the interpreter. A parse failure refuses; it never becomes an empty declaration set. The function exists only to place the evaluator's existing no-such-function refusal before whole-corpus preparation.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete validate_explicit_functions and this row when claim_batch argv ingestion is modeled in .dag and function selections are constructed as declaration identities before the seed host receives an execution plan.",
+  current_boundary: "Only explicit --function/--functions rows are checked, immediately after path argv validation and before the bare-reference warm. Discovery-produced rows retain their existing producer-owned identity path. A declared callable proceeds unchanged; a missing name or an entry that cannot be parsed exits 2 before any corpus preparation."
+}
