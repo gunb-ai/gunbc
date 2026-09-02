@@ -289,7 +289,15 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // because `free` on that runner reports 7 GiB TOTAL, so both caps were larger than the machine and
 // the refusal is the budget arm doing its job rather than a limit worth raising. Landing the carrier edit without its projection would have been the drift
 // the gate exists to catch, so the instance is recorded HERE and in the two fixture files, and the
-// ledger append is left as follow-up work for a lane that can execute that actuator.
+// ledger append is OWNED ELSEWHERE RATHER THAN MERELY DEFERRED, which is the difference between a
+// named obligation and an orphan: the class row already exists on main (gunbc#9909 filed
+// accepted_source_emits_uncompilable_target with two instances and an explicit scope sentence
+// limiting them to a unit arm at field and parameter position, Rust target). What this lane
+// discovered is a THIRD INSTANCE widening that sentence, not an unfiled class -- and vivid-lark-739
+// is filing it from this lane's executed receipts in gunbc#10020, on a rig that can run the
+// projection actuator. That PR is OPEN at this writing and is named here in the same disposition it
+// uses toward this one: it cites the PR carrying the fixtures rather than asserting paths that do
+// not yet resolve on main. If #10020 does not land, this sentence is the thing that says so.
 //
 // EXECUTED, BOTH DIRECTIONS, ON ONE BuildBuddy RUNNER (2026-09-02). Cited by naming the producer
 // that re-derives it -- `cargo test --release -p v1-compiler --lib
