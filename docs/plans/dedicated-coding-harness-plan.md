@@ -13,7 +13,9 @@ on, or cite `ctrl` as authority.** Stated at that grain deliberately: the wider 
 of the repository today, because `extdeps.ctrl.gunbc_pin` already declares an `ExternalAuthority`
 pointing into `gunb-ai/ctrl` and compares the host pin against the ctrl pin. That row is out of this
 lane's scope and is not to be touched here. Spark parity is to be handled by fleet convergence
-rather than by hand. RLM closes first; this lane starts after it.
+rather than by hand. **Operator direction 2026-09-02 withdrew the RLM-first start barrier**: DCH-0
+through DCH-2 proceed CONCURRENTLY with RLM, and the two lanes meet at DCH-3 rather than queueing.
+DCH-3 is a join, not a start barrier.
 
 ## 0. What is measured, and what is assumed
 
@@ -28,7 +30,8 @@ Success is the RLM terminal procedure, unchanged, executed with our harness sele
 provider realization:
 
 > From a clean revision R on main, clicking Launch on the roadmap canary creates exactly one
-> attempt, one worktree, **one harness process of ours**, and one durable attempt record; the
+> attempt, one worktree, **one harness process of ours — the default and only harness**, and one
+> durable attempt record; the
 > worker performs only the canary's exact change; verification evaluates the pinned oracle against
 > the exact attempt head; publication records a receipt; the child unblocks on acceptance.
 
@@ -38,6 +41,20 @@ own homework. `docs/plans/roadmap-launch-mvp-plan.md` is that procedure.
 
 No substitute terminal counts. A harness that completes a turn against a Spark in isolation is a
 component probe, not this terminal.
+
+**And this terminal is necessary without being sufficient** — accepted without objection by the
+controlling reviewer on 2026-09-02, at this grain:
+
+> The RLM terminal is the sole DCH integration terminal and remains necessary; it is **not a
+> coverage closure** for DCH's operational failure classes. Its bounded canary proves that the
+> accepted components compose on one exact task. It does not prove behavior under long context,
+> long tools, unreadable observation, process failure, control-plane deployment, serving
+> maintenance, cache reuse, or transport truncation. Each such class is discharged only by its own
+> named instrument, exact subject, positive control, and discriminating refused case. **A green RLM
+> terminal carries no evidence for a class whose distinguishing subject it did not execute.**
+
+This strengthens the rule already in §4 — treat one completed turn as evidence for nothing but that
+— rather than weakening the terminal.
 
 ## 2. Current-state ruling
 
@@ -76,16 +93,11 @@ component probe, not this terminal.
   them. The structural tell, from eager-pike-541: the materializer carries a single manifest, digest
   and blob closure, so no carrier could hold seven. Nobody can state, check, or drift-detect the
   difference between the model we converge and the models the hosts hold.
-- **Concurrency is unmodeled, and it is the binding constraint.** `spark.serving_unit_render` emits
-  exactly three environment axes — `OLLAMA_HOST`, `OLLAMA_MODELS`, `OLLAMA_CONTEXT_LENGTH`.
-  `OLLAMA_NUM_PARALLEL` is absent, and unset means Ollama serializes. eager-pike-541 measured the
-  consequence: a 350-token probe queued behind a ~61k-token prefill running at a healthy
-  ~290–330 tok/s. N concurrent harness sessions against one host is a queue, not N sessions. An
-  unmodeled axis has no desired value, so it cannot even be reported as drifted. The corpus also
-  carries a **false cost model** for the axis it is missing — see DCH-0.
 - **Desired and observed disagree on both hosts.** The deployed user unit still describes
   `gpt-oss:20b`, predating the #9859 amendment to 120b, and carried no context-length line at all.
-  Two independently declared desired values, un-rendered on both hosts.
+  Two independently declared desired values, un-rendered on both hosts. **This survives #9960**
+  (see §2.1): that PR completed the DESIRED side, and a complete desired value is not a converged
+  host.
 - **There is no generic inference interface.** `extdeps/llm/llm.dag` is 11 lines and
   `llm_contracts.dag` is 14 — anchors only. Every wire fact lives in a per-vendor module, and
   tool-calling is modeled only inside `openai.dag` and `cursor_stream.dag`. What exists in
@@ -97,6 +109,39 @@ component probe, not this terminal.
   two lanes delete it — and its refusal names the live successor route. But this lane's own wet plan
   run came back `PartiallyApplied` with apply refused. That is what RLM-2b is currently measuring.
 
+### 2.1 Changes since the baseline — the concurrency axis is RESOLVED ON MAIN
+
+The baseline above is fixed at `main@de2f5f86346` and is not rewritten as main moves; completed work
+is dispositioned here instead. Recorded 2026-09-01, after the controlling reviewer identified that
+this plan's active claims had been falsified by a merge that landed while it was in review.
+
+**#9960 (`7810e68b3ea`, ancestor of current main) resolves the concurrency-axis item outright**, and
+verified here rather than relayed:
+
+- `extdeps.ollama.server_env` declares `OllamaNumParallel` → `OLLAMA_NUM_PARALLEL`, and
+  `spark.serving_unit_render` now emits **four** environment axes, binding
+  `ollama_num_parallel_env_assignment` to the spec's slot count. The axis is no longer absent.
+- `spark_serving_desired_serving_slots_value` carries a desired count of 4, so the axis has a
+  desired value and is drift-reportable — the specific consequence this plan said was missing.
+- The false cost model is corrected at the desired value, in the direction this plan predicted:
+  the count does **not** divide the window, each slot receives its own full window, and the
+  per-slot price is recorded as a property of the **realization** rather than a fleet-wide constant
+  — the per-realization objection this plan raised is answered by a declared §4b drop naming that
+  exact subject.
+
+**One defect found while verifying it, and it is not #9960's to fix by this lane.**
+`gunbc.spark.serving_desired` still carries an *earlier* annotation block stating in the present
+tense that concurrency "is not modeled anywhere in desired state", that the two facts trade "because
+the slot count divides the context window", and that the concurrency row "is P1b and is deliberately
+not smuggled in here". All three are now false, and they contradict that same module's own value and
+annotation roughly 140 lines below. That is a §3 meaning fork inside one authority — a stale
+annotation is data the substrate cannot check, so nothing reds. **Reported, not repaired here**, and
+out of this lane's scope.
+
+**What this does NOT resolve.** #9960 made the state representable, declared and renderable. It did
+not read either host back. The observed-versus-desired receipt below stays open, and so do the two
+outstanding operator hand-edits it must account for.
+
 ### Explicitly off the critical path
 
 `ctrl`'s harness and router are **prior art, not a dependency and not a citation**. Two of their
@@ -106,37 +151,80 @@ timeout, and that an assistant turn must be echoed back verbatim — thinking bl
 all tool results for one turn batched into a single user message. Treat both as **hypotheses with a
 predicted failure**, not as facts on loan.
 
+Two more joined that list on 2026-09-01 from the transcript §5 reads, on the same terms: that a
+streaming request may terminate a response early where an otherwise identical non-streaming request
+returns it complete, and that an assistant turn may stop at `end_turn` having announced work it did
+not perform.
+
+**The second is superseded on 2026-09-02, and the correction is worth more than the hypothesis.**
+A mechanical cause was found: a serving package carrying `PARAMETER stop ###` terminates generation
+on ordinary Markdown H3 output while returning a well-formed stream and `stop_reason: end_turn`.
+That is a *package configuration* colliding with content, reproduced by a tiny prompt and removed by
+rebuilding the package — not a model deciding to stop, which is what the single surviving
+observation appeared to show. The heading-then-stop symptom therefore had a determinate external
+cause the whole time, and the hypothesis about model behaviour was an artifact of reading a
+transport symptom as a semantic one. It leaves the hypothesis list and becomes DCH-0p's subject.
+The streaming hypothesis is untouched and still has **no** observation: its isolating step was never
+run.
+
 ## 3. Serial gate chain
 
 Only one gate mutates at a time. A later gate may author inert types and fixtures but may not
 activate production rows before its predecessor's receipt is accepted.
 
-### DCH-0 — Enrol the Sparks and model the parallel axis
+**A gate does not complete while a §5.2 question that owns one of its dispositions is open.** This
+is a precondition of the gate, not a note beside it: §5 exists to answer these classes *in advance*,
+and a plan that lets a gate finish while its own identified fail-open is unadjudicated has recorded
+the class instead of handling it. The bindings, and each is repeated in the gate itself:
 
-**Question owned:** what does the fleet know about these two machines, and who says so?
+**All five returned on 2026-09-02** (§5.2). The rule stands for any question opened later; what the
+returned rulings changed in the chain is recorded here:
+
+| Question | Effect on the chain |
+|---|---|
+| Q3 | **A new gate, DCH-0r, is inserted before DCH-0c.** A §4b drop was REJECTED as the normal shape — reordering removes the need for debt. |
+| Q1 | DCH-2's failure-arm partition is specified, not left open. |
+| Q2 | DCH-2 owes a typed-obligation adjudication; length-based dispositions are forbidden. |
+| Q5 | DCH-2 owes journal-before-effect ordering and a two-axis model. |
+| Q4 | Governs how §2's hypothesis list is read; each hypothesis owes its own instrument before DCH-3. |
+
+The resulting order is:
+
+```
+DCH-0  endpoint rows
+DCH-0r quiescent-maintenance construction
+DCH-0c ComputeHost enrolment / apply reachability
+DCH-2  turn activation
+```
+
+DCH-0c may precede DCH-0r **only** if the destructive restart path stays structurally unreachable,
+or refuses because the maintenance fence is absent.
+
+### DCH-0 — Enrol the Sparks, and reconcile the rendered unit against the live hosts
+
+**Question owned:** what does the fleet know about these two machines, who says so, and does either
+host actually carry what desired state now declares?
+
+The parallel axis and the cost model **left this gate on 2026-09-01**; #9960 performed both, and
+§2.1 records the verification. What remains is enrolment and the live reconciliation.
 
 - Enrol srv5/srv6 in `fleet_intent_network.endpoints` and `fleet_intent`'s `ComputeHost` list — the
-  act the address correction deliberately did not perform.
-- Add `OLLAMA_NUM_PARALLEL` to the rendered unit, or declare in a row why serialization is desired.
-- **Correct the cost model while adding it.** `serving_desired` states that context length and slot
-  count "trade against each other inside one memory budget, because the slot count divides the
-  context window." Measured by eager-pike-541 on idle spark-3bd5, same model, only the slot count
-  changed: 1 slot gives `context_length` 1048576 at `size_vram` 88,865,253,620; 2 slots gives the
-  same 1048576 at 90,543,761,652. **The window is not divided.** Each slot gets its own full window
-  and the second cost +1,678,508,032 bytes — slot count multiplies KV, it does not divide context.
-  On this hardware concurrency is close to free and serialization was the expensive thing. The
-  sentence is deleted, not softened; the measured per-slot cost goes behind the desired value.
-- **The per-slot number does not generalize.** 1.68 GB/slot is a DeepSeek MLA figure; a non-MLA
-  model pays more. A fleet-wide slot count measured on one realization is the same overreach as a
-  fleet-wide context ceiling measured on one realization. Either the desired value is
-  per-realization, or a row says why one number covers the roster.
+  act the address correction deliberately did not perform. (The `ComputeHost` half is DCH-0c; see
+  below.)
+- Reconcile the rendered unit on both hosts against desired state, which is now complete on four
+  axes where it was complete on three.
+- Q3 **returned**: the drain is not deferred and not declared as debt. It becomes its own gate,
+  **DCH-0r**, sequenced immediately after this one. This gate's own receipt is unchanged.
 
 **Receipt:** an observed-vs-desired comparison of the rendered unit on both hosts, not a return
 code. The rendered unit is the only member of the must-move-together set that produces **no failure
 signal** when stale — ref, manifest, digest and closure each raise a checksum event, while a stale
 unit is silent, which is how both hosts drifted on two axes unreported. Two hand-edits are
 outstanding against that receipt: the context length raised today, and `OLLAMA_NUM_PARALLEL=4` set
-on both hosts, each under operator instruction.
+on both hosts, each under operator instruction. **#9960 does not discharge this and it sharpens
+it**: a hand-set value on a host and a declared value in the corpus agreeing by coincidence is
+exactly what a silent carrier cannot distinguish from convergence, so the readback is the whole
+receipt.
 
 **Enrolment is inert today, and that is the risk rather than the reassurance.**
 eager-pike-541 looked for the executor rather than arguing from principle: no
@@ -197,6 +285,112 @@ is the load-bearing half and the row is the quiet one.
 
 **Owner: eager-pike-541**, agreed 2026-09-01.
 
+### DCH-0r — Quiescent serving maintenance
+
+**Question owned:** can a converge restart the serving process without destroying work in flight,
+and can it prove it?
+
+Created by the Q3 ruling. A §4b drop was **rejected** as the normal shape: a drop reports a lower
+guarantee, it does not turn an unsafe arm green, and DESIGN is explicit that a dissolution trigger
+does not authorize creating the debt. Reordering the chain removes the need for debt entirely.
+
+**The mechanical blocker, verified in this tree rather than relayed.** `spark.serving_realization`
+realizes `EnableSystemUnit` as three commands in one effect — `systemctl enable`, `systemctl start`
+and `systemctl restart` — so **restart has no independently matchable effect identity** and no fence
+can structurally guard it. Two refinements found while verifying, both sharper than the finding as
+received:
+
+- The restart is **unconditional**: it is emitted every time the effect is realized, not only when
+  the unit definition changed. So converging this unit is destructive to in-flight work even when it
+  changes nothing.
+- **The user-unit path is the opposite shape**, and the Sparks are on it. Its closure is
+  `[… EnableUserUnit, StartUserUnit …]` — enable and start already separated — and it carries **no
+  restart effect at all**. So on the very hosts this lane targets, a changed unit definition has no
+  modeled route to take effect. That is a candidate cause for the observed-versus-desired drift
+  DCH-0 must reconcile, and it is stated as a candidate because nothing here has read a host back.
+
+So the first required change is that restart becomes its own typed effect, distinct from
+enablement and from initial start, on both paths.
+
+**The admitted restart sequence.** A bare `active == 0` reading is insufficient, because a turn may
+enter immediately after the read: **the admission fence and the drain are one protocol.**
+
+**THREE IDENTITIES, NOT ONE.** The 2026-09-02 ruling corrected an earlier conflation in this
+protocol, and the correction is the load-bearing part of the gate:
+
+| Identity | Stability | Answers |
+|---|---|---|
+| **Service locus** | stable across restarts | which service is fenced — host plus unit slot |
+| **Service invocation identity** | changes on every activation | is this still the exact process generation observed before? |
+| **Running-definition identity** | stable for equal restart-relevant specs | which definition produced this invocation? |
+
+The `/proc/<MainPID>/environ` stamp answers the **third**. It is invocation-BOUND evidence but it is
+not an invocation IDENTITY: two successive restarts from one definition carry the same stamp, so it
+cannot prove the old process was replaced. DCH-0r still needs the second, read from observation
+rather than desired state, and it must change whenever the process is replaced, stay stable within
+one observation transaction, never repeat merely because a PID was reused, and bind to the process
+whose environment and health were read. `MainPID` alone satisfies none of the last two.
+
+**The fence is keyed by the LOCUS, not by the incarnation.** An earlier wording said draining refuses
+leases "for that incarnation"; that is too narrow, and it fails exactly when it matters — if the
+backend restarts unexpectedly mid-drain, an incarnation-scoped fence stops blocking admissions at the
+moment an unvalidated new incarnation appears. The pre-restart invocation is a compare-and-swap
+condition and an evidence anchor, never the scope of the refusal. Each running lease separately binds
+the invocation it uses, which is what lets an unexpected replacement produce a typed interruption
+against the right turns.
+
+1. Observe one transactional pre-state: locus, invocation `J0`, running definition `D0`, desired `D*`.
+2. Atomically move `Open` to `Draining`, keyed by locus and maintenance, with `J0` as the expected
+   pre-invocation.
+3. Refuse **every** new turn admission at the locus, whatever invocation is present.
+4. Drain the complete active lease population at the locus to zero; each lease identifies its
+   invocation.
+5. While the same fence is held, re-observe zero leases **and** that the invocation is still `J0`.
+   If it changed, the drain did not succeed: settle the affected turns as interrupted, reconcile the
+   pre-state, and restart the protocol.
+6. Execute the independently typed restart.
+7. Read one transactionally joined post-state and require ALL of: `J1 != J0`; `D1 == D*`; the
+   registered definition equals the render of `D*`; readiness and health belong to `J1`; and an
+   empty replan.
+8. Reopen admission bound to the pair `(J1, D1)`, and have every later admission recheck that the
+   observed pair still equals the admitted one — so an out-of-band restart refuses immediately
+   rather than silently granting a turn against an unvalidated backend.
+
+`std.temporal_effect` already carries the general direction — held leases, refusal on foreign
+ownership, `DrainThenStart` as a distinct plan — but the service-level population and admission
+fence that make the drain exact do not exist yet.
+
+**Guarantee grain, stated rather than assumed.** A census of DCH turn leases proves quiescence for
+DCH-managed clients only. To claim the *service* is quiescent, one of these must hold: every
+admitted client routes through the same lease authority; DCH holds exclusive access for the window;
+or the service exposes a complete active-request observation including external clients. Otherwise
+external occupancy is **outside the modeled guarantee** — and then an automated destructive restart
+must refuse, or the guarantee is stated narrowly as DCH-managed-turn continuity. It may not be
+stated broadly and held narrowly.
+
+**THE UNSTAMPED READING, NARROWED.** A complete successful environment read that finds no stamp is
+positive evidence and is not "unobservable" — but its honest conclusion is that **this invocation
+cannot be established as having been started from the current desired definition**, whose render
+stamps unconditionally. It is NOT that the process temporally predates that definition: a foreign or
+manually started process could have been launched later and would carry no stamp either. It still
+requires reactivation; chronology is simply not what was established. The arm holds only while four
+conditions do: the environment read completed, absence is distinguished from permission, parse,
+truncation and observation failure, the desired unit specification stamps unconditionally, and the
+stamp identity covers every process-start input whose change requires reactivation.
+
+**THE SUBORDER.** DCH-0r-a deletes the fused unconditional restart, separates enable from start, and
+defines the reactivation vocabulary with its refusing selector. DCH-0r-b observes the
+running-definition identity AND the service-invocation identity, and proves the process/environment
+read is transactionally joined. DCH-0r-c builds the locus admission fence, the exact lease drain, the
+guarded production reactivation, the two-identity readback and the validated reopening. Joining the
+reactivation arm into the production planned-effect sum belongs with DCH-0r-c's guarded producer, not
+with DCH-0r-a — no production consumer can use the arm before then.
+
+**Receipt:** a restart executed against a held fence, with the drain observed to zero under that
+same fence, and a post-restart incarnation readback. An exit status of zero from the invoking
+program establishes only that the program reported completion — service convergence still requires
+independent observation and an empty replan.
+
 ### DCH-0b — Make residency representable
 
 **Question owned:** what is a resident-model fact, and who owns the six nobody converged?
@@ -212,6 +406,63 @@ it into a gate of row-writes would make the row-writes wait on it.
 The structural tell that no carrier exists: the materializer carries a single manifest, digest and
 blob closure, so nothing in it could hold seven.
 
+**AND THE SUBJECT IS A BEHAVIOUR-BEARING PACKAGE, NOT RESIDENT WEIGHTS** (ruling, 2026-09-02). The
+discriminating pair is: same weight blob, same template, same runtime, same host, **different
+effective stop set** — materially different observable behaviour. So a weights digest, a GGUF
+manifest or a model tag is not the model identity this lane needs. The carrier is a
+`ServingModelPackageIdentity` over the target model artifact, quantization, prompt-template identity,
+parser/renderer identity, effective parameter identity, **effective stop-sequence set**, runtime
+release and decoding realization. A tag is an allocated handle to that package and must never be
+treated as the semantic identity — a package rebuilt from the same weights without a stop string is
+a **different serving package**, and treating it as identical makes the repair invisible to
+convergence. The gate's question becomes *which exact behaviour-bearing package is resident and
+active on each router-eligible host*, not which weights occupy disk.
+
+### DCH-0p — Effective package qualification
+
+**Question owned:** what is this endpoint actually serving, and can a stop string in its package
+silently truncate our output?
+
+Created by the 2026-09-02 ruling. It runs after DCH-0b makes package identity representable and
+after DCH-0r makes a required restart safe, and it must complete before DCH-2's production
+qualification.
+
+**The defect it exists to prevent, which is not hypothetical.** A serving package carrying
+`PARAMETER stop ###` terminates generation on ordinary Markdown H3 output, while the serving surface
+returns a well-formed stream and `stop_reason: end_turn`. A tiny prompt reproduces it; removing the
+package stop restores the answer. The client can neither identify the cause from the response nor
+remove a server-side stop through an additive request option. **This is a mechanical cause for the
+heading-then-stop symptom §5 records as a hypothesis** — see the reclassification there.
+
+**Read the effective configuration, never the intended one.** Before admitting a backend, read what
+the running endpoint actually serves (Ollama exposes template, serialized parameters and model
+information on `/api/show`). A source Modelfile, a tag name, or the command used to build the package
+are all statements of intent, not observations. The receipt binds host, service invocation, model
+handle, target artifact, runtime release, template, the complete effective parameter set, the
+canonicalized stop-sequence population, parser and decode realizations, and the observation
+transaction. Where a behaviour-bearing field is not fully exposed, the answer is
+`PackageConfigurationIncomplete` — never an inferred value.
+
+**Stop-sequence admission is the wall.** Every effective stop carries a typed role: either a
+protocol-boundary sentinel binding uniquely to a declared boundary in that exact package's
+template/parser contract, or an unbound content stop. A copied allowlist of strings is not a role.
+`###` has no protocol-boundary role and is ordinary output content, so a package carrying it refuses
+**before** DCH starts a turn. Sentinel-looking values inherited from a prior lane are admitted only
+once DCH independently establishes their relationship to the exact conversation protocol — "the
+other lane called them legitimate" is not our evidence.
+
+**Controls this gate does not exit without:** stop sets differing only by `###` produce different
+package identities; a package carrying unbound `###` refuses; a fixed package completes a request
+requiring H3 output with the H3 bytes present; the original package discriminates by terminating
+before those bytes; an unreadable, incomplete, or handle-inconsistent `/api/show` refuses; one tag
+resolving to different package identities on two router-eligible hosts refuses; a router endpoint
+missing the selected package becomes ineligible rather than silently retained; and a package
+configuration changing under an active session changes the session generation, so old evidence
+cannot carry.
+
+The runtime H3 pair is evidence that the endpoint realizes the modeled rule. It is not a substitute
+for reading the effective configuration.
+
 ### DCH-1 — Hoist the wire shape off the vendor
 
 **Question owned:** what is the interface, and which module owns it?
@@ -222,12 +473,59 @@ blob closure, so nothing in it could hold seven.
 - This is a replacement migration at the root, not a new fork: the vendor module's shape rows move,
   they are not duplicated.
 
+The authority is `extdeps.llm.anthropic_messages_api`, its own module rather than a row
+in `extdeps.llm.llm` or `extdeps.llm.llm_contracts`: those two are agnostic anchors, and the
+specification is a named, versioned upstream subject with a citation and a version axis of its own,
+which is the `extdeps.whatwg.html_navigation` position rather than the generic-hub one. It keeps the
+publisher's names because coining a neutral second name for a concept that already has one is the
+nicknaming violation, and it names no implementation: `MessagesApiImplementation` is the carrier
+each implementation declares its own row in.
+
+The shape rows MOVE, they are not copied. `extdeps.llm.anthropic` retains only what is true of the
+API product — its model roster — plus its own conformance row; the wire contracts move with the
+shape into the `_contracts` sidecar the emitter merges into the specification module, so no contract
+row is left pointing at the vendor module. `extdeps.ollama.api` gains the `/v1/messages` endpoint
+row and `ollama_messages_api_conformance`, and re-models none of the shape. This section records the
+design the gate implements; git records what merged, and nothing here claims a merge state.
+
+The version binding is the axis worth having, and it lives on the carrier rather than in this
+document. Upstream documents that Ollama ACCEPTS the `anthropic-version` header and does not use it,
+so an accepted request is not evidence of the revision served — an accepted-and-ignored parameter is
+worse than a refused one, because it looks like a control and is not. The two implementations
+therefore declare different arms of `MessagesApiVersionBinding` against the same spec version.
+`test.claim.messages_api_conformance_witness_test` carries the discriminating controls: it goes red
+if the axis collapses, if either arm goes uninhabited, if a conformance row stops pointing at a
+declaration in its own module, or if a wire contract is left behind on the vendor module. Ollama's
+`/v1/messages` behaviour is grounded in upstream's own `docs/api/anthropic-compatibility.mdx`, not in
+a probe transcribed into prose.
+
 ### DCH-2 — The harness, in `.dag` and Rust
 
 **Question owned:** can we drive a turn to a terminal disposition and report it?
 
 - The loop: post a request, and while the response stops on tool use, execute the tools and post the
   results back. Four tools is the starting surface: run a command, read, write, edit.
+- **The tool surface is where §5.1 row 7 lands, so it is specified here rather than left to the
+  implementer.** Every quirk in the relayed transcript was a real semantic of this surface that
+  nothing announced, so the rule for all of them is one rule: **a tool's contract is carried in the
+  tool's declared shape, and any limit it enforces is reported in its result rather than inferred
+  from a truncated or missing one.** Concretely, six dispositions this gate owes:
+  - **Working directory.** Either a command's working directory is part of the call's declared
+    input, or the surface states that each call is independent — the failure to avoid is a caller
+    that happens to comply, which is what theirs did, by luck and unprompted.
+  - **Duration.** A limit that kills a build is a real refusal and must arrive as one: a typed
+    timeout disposition naming the limit, distinguishable from the command's own failure. A default
+    chosen for a chat turn is the wrong default for a compile.
+  - **Input.** No stdin means anything that prompts hangs until the limit kills it, and the operator
+    sees a timeout rather than a prompt. Either the surface supplies input, or a prompt-shaped hang
+    is typed as its own disposition.
+  - **Truncation.** Keep their shape: a cap that **announces** it, so a large result is
+    distinguishable from a complete one. This is already right and is adopted deliberately.
+  - **Edit matching.** Keep their shape: refuse on zero or multiple matches rather than patching the
+    first. Construction over validation, and already right.
+  - **Context exhaustion.** A full window must be a typed refusal, not a turn that begins to fail.
+    Compaction is a later capability; the disposition is owed now, because without it exhaustion
+    presents as the model getting worse.
 - Preserve what the codex realization learned expensively, because these are provider-independent
   and were paid for once: the three separated layers (durable goal, execution lease, controller),
   the exactly-once command identity, and the trap that an idle thread never authorizes a start.
@@ -235,14 +533,76 @@ blob closure, so nothing in it could hold seven.
   existing provider module — guessing which transcript belongs to a session, inferring state from a
   foreign schema. That is where the simplification is, and it should be measured, not asserted.
 
-### DCH-3 — Bind it at the seam and run RLM's terminal
+**The exit bar, set by the Q1/Q2/Q5 rulings.** This gate does not exit on "it performs the four
+tools and reaches one terminal turn". Four qualification groups, each owing a named instrument with
+a positive control and a discriminating refused case:
 
-- A second `ProviderControlInterface` variant, its receipt types, and the belt binding.
-- Re-run the RLM terminal with the variant selected. That is the acceptance test.
+- **Supervision and observation.** A harness throw yields a durable failed-or-interrupted attempt
+  **while the controller stays observable**. A transcript-resolution failure stays distinct from
+  idle and from provider silence — the specific conflation that made a working session read as a
+  frozen one.
+- **Execution provenance and lifecycle.** Tests execute the production transport rather than a
+  test-owned twin; a control-plane restart does not terminate the turn worker; a backend restart
+  produces a typed interruption.
+- **Turn and transport semantics.** The stream/non-stream differential; `EndTurn` with outstanding
+  typed obligations; performance separated by cold, warm and cache-reused state.
+  - **The harness may never state that `end_turn` means the model naturally finished.** On this
+    transport at least two upstream causes produce that same observed label — natural completion,
+    and a configured server-side stop colliding with content. So the raw provider observation and
+    the semantic disposition stay different axes: a provider terminal observation carries the wire
+    stop reason and, honestly, that the native cause is *not exposed*; the DCH disposition is
+    decided by obligations, and external pinned verification — never the model's stop reason —
+    decides success. This is the second of two independent walls: DCH-0p prevents known
+    content-colliding package stops, and DCH-2 still refuses to equate a provider label with task
+    completion, because the client cannot prove the native cause from a surface that erased it.
+  - **Throughput is a construction, not a threshold.** "No four-digit rate is reachable" is a
+    threshold over a measured value — a view, which #9946's ruling forbids as a correctness wall,
+    and which faster hardware would falsify while a smaller fabricated value passed. The durable
+    shape is a cache lineage (backend host, service invocation, package identity, conversation
+    prefix identity, cache generation) joined to per-turn accounting that separates total input
+    tokens from **newly evaluated** and **reused** ones. A prefill rate may be constructed only over
+    newly evaluated tokens against the prefill duration; anything else divides mismatched subjects
+    and produces a valid arithmetic operation that is not a hardware measurement.
+- **Tool-contract honesty.** The six dispositions above, at this grain: explicit working directory
+  on every invocation or a separately leased persistent shell; typed stdin or a typed refusal; a
+  per-operation budget rather than one universal kill; termination of the **owned process
+  population** rather than one PID; and compaction or an explicit typed context-exhaustion refusal.
+
+### DCH-3 — Bind it at the seam, make it the default, and run RLM's terminal
+
+**Operator direction, 2026-09-02: the harness is to be the only and default harness; Claude and
+Codex are to be ignored.** That is adopted, and it changes this gate's shape in a way worth stating
+rather than absorbing.
+
+**Default is a selection; retirement is a deletion. They are separated deliberately.** "Ignore the
+other providers" is discharged by making ours the default selection at the seam and stopping
+investment in the others — it does **not** require deleting them, and DCH-4's deletion still waits
+on this gate's receipt. Deleting them to satisfy "only" before that receipt would leave the
+repository with zero working harnesses, which is the failure mode the replacement-migration doctrine
+calls erasing a correctness distinction rather than completing the replacement. The other variants
+stay **frozen** in the doctrine's sense — no new investment, no new rows on their growth surfaces —
+until DCH-4.
+
+**"Only" raises this gate's bar; it does not lower it.** With three providers, a weak DCH-3 is
+tolerable because a fallback exists. With one, there is none — every DCH-2 qualification class
+becomes load-bearing on the day it becomes default, and the relayed transcript in §5 is precisely a
+record of what a sole harness with no fallback feels like when it breaks: three sessions dead, an
+exit status of zero, and an operator who cannot tell working from dead. So the combined admission
+below is not ceremony to be traded away for focus — it is the thing that makes "only" survivable.
+
+- The `ProviderControlInterface` variant, its receipt types, and the belt binding.
+- Make it the **default selection** at that seam.
+- Re-run the RLM terminal with the variant selected.
+- **Admission requires BOTH**, and neither substitutes for the other: every DCH-2 qualification
+  receipt accepted, **and** the unchanged RLM 14-step terminal with the DCH variant selected. The
+  §2 hypotheses each owe their own DCH-run instrument before this gate, per Q4.
 
 ### DCH-4 — Retire the three provider runtimes
 
-Delete-first at the root, per the replacement-migration doctrine, once DCH-3's receipt is accepted.
+Delete-first at the root, per the replacement-migration doctrine, once DCH-3's receipt is accepted
+— which now means the **combined** admission above, not the canary alone. Retiring a working runtime
+on the strength of an easy-path green is how a replacement erases a correctness distinction instead
+of completing.
 The population, to be counted rather than estimated at the time: in `extdeps/llm` the anthropic,
 openai, cursor and codex families; in `gunbc` the codex supervised-turn and runtime modules, the
 cursor SDK modules, provider account and standing, and the Claude setup-token enrolment. The auth
@@ -251,8 +611,165 @@ surface goes with them — it exists to solve a problem that a self-hosted endpo
 ## 4. What this lane must not do
 
 - Import, vendor, or cite `ctrl`.
-- Start before RLM's terminal receipt is accepted.
+- Become the default production harness before DCH-2's qualification receipts and the RLM terminal
+  are BOTH ready for the DCH-3 join. Concurrent authoring and qualification are authorized; an early
+  cutover is not, and "only" raises that bar rather than licensing it.
+- Land a change to an authority already inside another lane's frozen approved delta without
+  serializing it. Concurrency is authorized for authoring, testing and review; it is not authorized
+  for landing on a shared file, because a clean textual composition still yields a blob nobody
+  approved. `dag/gunbc/fleet/fleet_converge_plan.dag` is the live instance, shared with #9832.
 - Enrol the Sparks as a side effect of harness work — DCH-0 is a separate gate with a separate owner.
 - Bump `fleet_intent_network_witness_test`'s endpoint-count literal to absorb enrolment. Repair the
   oracle or leave it red; a count copied from the tree it measures is not one.
 - Treat "it completed one turn" as evidence for anything but that.
+- Delete or break the existing provider runtimes to satisfy "ours is the only harness" before
+  DCH-3's receipt. Default first, retire after — otherwise the count of working harnesses passes
+  through zero.
+
+## 5. Adversarial review — the failure classes this lane must answer in advance
+
+**Provenance, stated once.** On 2026-09-01 the operator relayed a transcript of the `ctrl`
+mini-agent lane debugging its own harness against these same Sparks, and directed that DCH be made
+to answer it before it starts. Everything in this section is **second-hand and unreproduced here**.
+It is admitted on exactly the terms §2 sets for the rest of that lane's output: each row is a
+**hypothesis about our design with a predicted failure**, never a fact on loan, and none of it is
+citable as evidence. What their session buys us is not findings — it is a cheap enumeration of
+where a harness of this shape breaks, produced by someone who paid for it.
+
+The value is concentrated in one property: **every class below was operator-visible as something
+other than itself.** A harness throw read as a clean exit. A dead session read as a working one. A
+control-plane restart read as a Spark fault. An inflated rate read as fast hardware. A model that
+stopped early read as a truncated message. That is one class, not five, and it is the class DESIGN
+§5 exists for — so the obligation this section places on DCH is not "handle these bugs" but
+**produce a disposition that cannot be mistaken for a different one.**
+
+### 5.1 Classes, and the gate that owns each
+
+| # | Class | Observed as | Owner |
+|---|---|---|---|
+| 1 | A harness fault reaches the operator as success | process exited 0 for an hour after a first-write throw | DCH-2, and Q5 below |
+| 2 | One throw destroys unrelated work | any error in the loop took down the whole container | DCH-2, and Q1 below |
+| 3 | Self-reported status that no observer can resolve | frozen at `idle` while the harness emitted `working` throughout | DCH-2 |
+| 4 | A backend restart kills every in-flight turn | control plane and inference router shared a process | **DCH-0**, and Q3 below |
+| 5 | A turn ends without doing the work and nothing types it | `end_turn`, one heading, after 50k input | DCH-2, and Q2 below |
+| 6 | An instrument that fails toward a flattering number | 687 tok/s the hardware never reached, from KV reuse | DCH-2 |
+| 7 | Tool-surface semantics that are real and unannounced | `cd` not persisting; a 120s SIGKILL; no stdin; no compaction | DCH-2 |
+| 8 | A repair whose blast radius exceeds the bug's | a failed `chown` under `set -e` blocked every spawn on the node | this lane's own discipline |
+| 9 | Evidence filtered by survivorship | one completed final turn existed; the rest died of other bugs | Q4 below |
+
+Row 3 is the one that most directly touches a claim this plan already makes. DCH-2 says a harness
+that reports its own status retires the observation layer. Their harness **did** report its own
+status, correctly, the entire time — and the operator still saw a frozen session, because the
+report's *transport* failed independently of the report. So self-reporting is necessary and is not
+the simplification on its own; the plan's existing instruction to **measure** that claim rather
+than assert it is upheld, and this is what it will be measured against.
+
+Row 6 is the same defect this plan already corrects in DCH-0 for a different subject: a plausible
+number that nobody could re-derive. DESIGN §6 governs both — name the instrument, never transcribe
+its output. A harness of ours may not report a rate it cannot ground, and where a quantity is not
+measurable the honest render is a refusal to render, not a zero.
+
+Row 7 was a single line in DCH-2 ("four tools: run a command, read, write, edit"), and that line is
+where every operator-visible quirk in their lane lived. **It is now specified in DCH-2 as six owed
+dispositions** — working directory, duration, input, truncation, edit matching, context exhaustion —
+rather than deferred by a forward reference, since a promise to expand a brief elsewhere is the same
+unreachable route this plan refuses in others. Two of their choices are adopted deliberately because
+they are already the right shape: an output cap that **announces** its truncation, so a large result
+is distinguishable from a complete one; and an edit that **refuses on zero or multiple matches**
+rather than patching the first, which is construction over validation.
+
+Row 8 is not about the harness. It is a note to this lane's own reviewers: their repair for a
+mini-agent-only failure aborted bootstrap for every session on the node. A fix that widens the
+failure population is a regression regardless of the class it closes.
+
+### 5.2 The five dispositions, returned 2026-09-02
+
+Sent 2026-09-01 and **all five returned**. Recorded as rulings rather than positions; where my
+proposal was accepted with refinement, the refinement is what binds.
+
+**Q1 — the stop-the-line boundary. Accepted with refinement.** "Whose failure?" is evidence; it does
+not decide. The controlling discriminator is **which continuation preconditions remain established,
+and what is the smallest closed causal scope containing the uncertainty**. Stop-the-line means no
+ordinary next effect is admissible — it does **not** mean the supervisor must die: a supervisor
+alive in a typed stopped state substitutes no answer and admits no ordinary work, so it is not an
+absorbing fallback, and destroying the mechanism that reports the failure was never §5's bar.
+Consequences DCH-2 owes:
+
+- A tool timeout is first an observation that completion was **not seen by the deadline** — not
+  proof the command failed or changed nothing. It splits: timeout **plus** a settled owned process
+  population **plus** known effect state may be returned to the model as a typed result and the turn
+  continues; timeout with a surviving process or unknown effect state enters reconciliation, where
+  mutating tools and automatic retry are refused. So the honest surface is two dispositions,
+  `TimedOutQuiesced` and `TimedOutEffectStateUnknown`, plus termination of the owned process
+  population rather than one PID, and captured output through the last observed byte.
+- An unexpected model stop reason is **turn-stopping**, not tool-level. A recognized-but-state-
+  invalid reason is a typed turn-protocol refusal; an undecodable wire value is a typed
+  unreadable-stop-reason observation carrying its raw evidence. None may throw through the
+  supervisor boundary, and none may collapse into one generic failure — terminal disposition and
+  native cause are separate axes, and an unreadable stream is neither "nothing happened" nor "the
+  provider failed".
+
+**Q2 — a degenerate turn. Accepted at typed-obligation grain, rejected at prose or character grain.**
+No length, token count or heading shape may produce a disposition; those may drive an operator
+attention view and nothing more. The adjudication is over **outstanding typed obligations**, whose
+authority is the task and execution contract — the requested change, required validation, tool calls
+awaiting results, mutations requiring readback — not the assistant's prose. The model may add
+structured obligations; it may not erase task-owned ones or self-declare an empty set to obtain
+completion. Three arms: `EndTurn` with obligations outstanding is **ended-incomplete**; with
+obligations closed it is **awaiting verification**, which is deliberately *not* acceptance, because
+the model's own `EndTurn` cannot grade the model's work; with obligation standing unobserved it is
+**unadjudicated**. A heading-only reply becomes incomplete without any length rule, whenever the
+task obligation is still unsatisfied. This also fixes the UI defect at its root: the surface renders
+a typed state and never infers idle from a small text buffer.
+
+**Q3 — convergence restarting the serving process. (a) required, a constrained (b) required, (c)
+rejected.** The drain is the construction and it becomes its own gate, **DCH-0r**; a §4b drop is not
+the planned answer, because a drop reports a lower guarantee rather than making an unsafe arm green.
+The prior-art incident is also **two** defects, answered differently: a control-plane restart killing
+the worker is a lifecycle-separation problem (the harness worker must be supervised independently of
+the dashboard), while a serving restart killing a request is a quiescence problem. The constrained
+(b): the harness must survive backend death as a typed `BackendStreamInterrupted` carrying the old
+incarnation, the observed termination and the retained stream prefix — and it must **not** resend.
+A partially streamed response may already have executed tool calls and shown the operator prose;
+exactly-once command identity covers commands that reached that boundary, not the replayability of a
+model turn. Restart survival means **survive to report interruption**, never transparent
+continuation.
+
+**Q4 — n=1 under survivorship.** It licenses exactly one existential proposition — that at least one
+surviving execution showed the symptom — and not frequency, typicality, threshold, cause, or any
+claim about long-context turns in general. Because it is prior art rather than DCH-owned evidence,
+it does not establish even that existential proposition **for our harness**. Both hypotheses join
+§2's list now and stay **separate**, because they are different subjects: streaming terminal
+integrity is transport and decoder; incomplete-stop is turn semantics. Sharing a fixture does not
+merge their verdicts. The streaming instrument is a paired differential holding model artifact,
+host, service incarnation, request bytes, sampling parameters, context and cache condition fixed and
+**changing only the stream mode**, judged on content-block sequence, tool-call sequence, usage and
+terminal completeness rather than final rendered text. The incomplete-stop instrument constructs a
+typed task with a known outstanding obligation and must not mention character count. And any
+throughput receipt binds its cache condition as an **input identity**, not a footnote.
+
+**Q5 — the process exit status. Neither of my options exactly; closest to the first, corrected.**
+An exit status carries **how that exact observed process terminated** — never whether the attempt
+completed. An exhaustive integer partition does not fix the incident, because no mapping can say
+whether the integer belongs to the watchdog, the wrapper, the container or the harness, whether the
+harness ever started, whether a child outlived its wrapper, or whether the attempt had already
+failed before something else exited zero. Two axes: a process-termination observation
+(exited / signaled / unobserved, which this tree already models in `std.process_termination`,
+including its refusal to fabricate a code for signal death) is **evidence carried into** an attempt
+disposition, and never substitutes for it. The ordering, which is a real constraint on DCH-2:
+**journal before effect** — attempt, task, base and worktree identity durably written before the
+harness spawns or mutates anything; the process bound to that record; the semantic receipt written
+before voluntary exit; and if the harness disappears without one, an independent supervisor records
+interrupted, carrying the exact termination observation. A supervisor may move a journaled record
+from running to interrupted and **may never move it to accepted**. So a watchdog exiting zero over a
+thrown harness resolves to interrupted-with-receipt-missing, and no integer is read as "done".
+
+### 5.3 Standing rules this section adds to §4
+
+- Do not report a measurement the harness cannot ground; render a refusal where a quantity is not
+  measurable, never a zero and never a back-computed figure.
+- Do not treat a green canary as evidence for any class in §5.1.
+- Do not land a repair whose failure population is larger than the one it closes.
+- Do not produce a turn or attempt disposition from a length, token count or output shape.
+- Do not resend a request whose response was already partially streamed.
+- Do not read any process exit status as evidence that an attempt completed.

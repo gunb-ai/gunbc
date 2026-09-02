@@ -142,7 +142,7 @@ fn jwt_scheme_char_allowed(cp: Int) -> Bool {
 fn jwt_first_colon_from(s: String, i: Int, len: Int) -> JwtColonPosition {
   if i >= len {
     NoColonPresent
-  } else if code_point(ch: char_at(s, i)) == jwt_colon_code_point {
+  } else if code_point(c: char_at(s, i)) == jwt_colon_code_point {
     ColonAt { index: i }
   } else {
     jwt_first_colon_from(s: s, i: i + 1, len: len)
@@ -156,7 +156,7 @@ fn jwt_first_colon(s: String) -> JwtColonPosition {
 fn jwt_scheme_tail_valid(s: String, i: Int, end: Int) -> Bool {
   if i >= end {
     true
-  } else if !jwt_scheme_char_allowed(cp: code_point(ch: char_at(s, i))) {
+  } else if !jwt_scheme_char_allowed(cp: code_point(c: char_at(s, i))) {
     false
   } else {
     jwt_scheme_tail_valid(s: s, i: i + 1, end: end)
@@ -166,7 +166,7 @@ fn jwt_scheme_tail_valid(s: String, i: Int, end: Int) -> Bool {
 fn jwt_scheme_valid(s: String, end: Int) -> Bool {
   if end <= 0 {
     false
-  } else if !jwt_scheme_first_char_allowed(cp: code_point(ch: char_at(s, 0))) {
+  } else if !jwt_scheme_first_char_allowed(cp: code_point(c: char_at(s, 0))) {
     false
   } else {
     jwt_scheme_tail_valid(s: s, i: 1, end: end)
