@@ -669,3 +669,67 @@ recompute half, and a present-versus-absent join of `required_floor_claim_cost.t
 across two runs answers the other. A row that fails the serve half comes back out;
 the roster's header already records one such exclusion with the capability that
 would retire it.
+
+### Screening candidates from the census, by reading a declaration
+
+The demand census ranks by cost, and cost is the wrong sort key: three large
+classes on it cannot be shared at all, and one of them refuses at publication
+rather than losing a measurement. Screen with the signature before spending a
+controlled pair, because a row that never stores cannot have its serve measured —
+the resulting pair is noise, not a negative result.
+
+**The rule is a ratio.** Serve cost scales with the size of the ARGUMENT plus the
+VALUE — hashing the argument row, verifying it structurally equal in portable
+form, and rebuilding the value's containers in the consuming frame. Recompute
+cost scales with the DERIVATION between them. A row admits when the derivation is
+large relative to what must be hashed, verified and rebuilt. Not when the
+argument is small: `phase_board_series_ratchet` carries a whole receipt series as
+its key and still admits, because the fold over it is 585,854 eval steps and
+amortises the verify. Size is not the test; the ratio is.
+
+Three classes are disqualified without a run:
+
+- **A fn-typed parameter anywhere in the signature.** Reification refuses a
+  `Value::Fn` as `OriginBoundNode` and a `Value::Closure` as `Closure`, and
+  arguments are reified on the same path as values
+  (`v1_interpreter::portable_args_from_ctx` → `CrossClaimStoreOutcome::RefusedArgsNotPortable`),
+  so the key cannot be formed and the store refuses at publication. This is the
+  class that excluded the two rust target models, met on the argument side rather
+  than the value side. *e.g.* `target_project_arrow_body_to_value_expression` and
+  `target_project_match`, both carrying
+  `handle_transform: fn(Node, Node, TargetModel) -> …`.
+- **A hot utility — evals far exceeding claims.** A function called many times
+  per claim is not one derivation shared across claims; per-argument keys with
+  little reuse are cache population, which is why `formal_production_for_lhs_exact`
+  was removed from the roster after a run measured 1,635 fills against 113
+  consumer claims. *e.g.* `bind_outcome`, `zip_eq`, `fold_grammar_expr`,
+  `emit_host_list_map`. **claims ≈ evals is the shape that admits.**
+- **A constructor.** Its census cost is call volume plus inclusive callees, not a
+  derivation, so there is nothing to serve. *e.g.* `decl_ref`,
+  `effect_demand_key`, `formal_productions_catalog_to_node`.
+
+A fourth shape is admissible but usually a loss: a large argument reduced to a
+small value with little work between, such as
+`target_catalog_contains_node_shape(slot: Node, catalog_targets: List<Node>) -> Bool`,
+where hashing and verifying the node list per serve costs more than the fold it
+replaces. That one is the ratio rule applied, not a separate exclusion.
+
+Applied to the post-`phase_board_series_ratchet` census, these three classes
+account for every remaining producer above a second. The residue is the emit
+family, which the roster header records as measured serve-above-recompute with a
+re-enrol trigger naming a capability — a serve that does not rebuild containers
+and re-sort records per consuming frame. Whether that same capability would also
+lift the fn-in-key limitation is **open and should not be assumed either way**:
+one is about the cost of walking a portable value, the other about whether an
+origin-bound reference can be represented in one at all.
+
+### The rows nearest the deadline are the ones whose refusals are being silenced
+
+Recorded because it reorders the population by something other than milliseconds.
+The two rows the 500ms CPU deadline preempted on the absent arm of that pair were
+not incidental: they were `self_host_compile_phase_live_gate_witness`'s
+discriminating REDs — the planted-identity refusal and the equal-cardinality swap
+refusal. A preempted row is not a slow row that still answered; it is a refusal
+that did not execute, which is why the floor refuses to call the run green. So
+cost work on this population is not traded against safety — sharing that fold
+restored two controls that were not running.
