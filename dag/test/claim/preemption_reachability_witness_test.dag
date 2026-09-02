@@ -14,6 +14,17 @@ import v2.workflow.required_floor {
   claim_preemption_admission,
   required_floor_claim_cpu_safety_limit_ms,
   required_floor_claim_wall_safety_limit_ms,
+  opaque_host_call_grandfather_population,
+  grandfather_population_size,
+  grandfather_population_has_duplicate,
+}
+import gunbc.v1_interpreter_opaque_host_call {
+  OpaqueHostCallSurfaceGrounded,
+  OpaqueHostCallSurfaceUngrounded,
+  opaque_host_call_surface,
+  opaque_host_call_surface_is_grounded,
+  opaque_host_call_surface_contains,
+  v1_interpreter_nested_compile_reaches,
 }
 
 // PREEMPTION-1 (gunbc#8584 REWORK): floor run 32301212975 recorded
@@ -131,10 +142,11 @@ test fn w_within_limits_does_not_block() -> Bool {
   } && (claim_safety_outcome_blocks(CompletedWithinSafetyLimits) == false)
 }
 
-// THE MIGRATION WALL, both arms. compile_dag_rust_emit_check is the one grandfathered opaque host
-// operation and is admitted; a hypothetical second operation never measured reaching this shape is
-// refused; cooperative reachability is always admitted, the case the safety limits genuinely
-// protect.
+// THE MIGRATION WALL, both arms. compile_dag_rust_emit_check is a declared member of the opaque
+// host-call population and is admitted; a hypothetical operation that does not meet the
+// population's criterion is refused; cooperative reachability is always admitted, the case the
+// safety limits genuinely protect. These three exercise the wall's SHAPE against fixture inputs;
+// the four below exercise it against the live dispatch surface.
 
 test fn w_grandfathered_operation_is_admitted() -> Bool {
   claim_preemption_admission(OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }) == true
@@ -146,4 +158,69 @@ test fn w_new_opaque_operation_is_refused() -> Bool {
 
 test fn w_cooperatively_pollable_is_always_admitted() -> Bool {
   claim_preemption_admission(CooperativelyPollable) == true
+}
+
+// ── THE POPULATION IS GROUNDED, AND THE WALL IS JUDGED AGAINST THE LIVE SURFACE ─────────────
+//
+// WHAT THESE ADD OVER THE THREE ABOVE. The migration wall's two arms were previously exercised
+// against one hand-typed string that is admitted and one invented string
+// (`some_unmeasured_new_host_call`) that is refused. Neither input is joined to anything: the
+// admitted spelling could name an operation the seed no longer dispatches and every assertion here
+// would still pass, and the refused spelling names something that cannot occur, so the refusal arm
+// had never been shown against a REAL host operation. These four close both ends.
+
+// BINDING CONSTRAINT: every declared member resolves in the seed's dispatch-surface authority, as
+// a FreeCall arm. This is the discriminating half of the grounding -- rename or delete an arm in
+// `gunbc.v1_interpreter_primitive_surface` (which is itself drift-gated against the generated
+// lookup tables) and this goes red, where the prior hand-typed literal stayed green.
+test fn w_opaque_host_call_surface_is_grounded_in_the_dispatch_roster() -> Bool {
+  opaque_host_call_surface_is_grounded() == true
+}
+
+// BINDING CONSTRAINT: the v2-tower population this module's wall reads and the std-tower authority
+// that derives it name the SAME operations, joined at identity in BOTH directions. A count
+// comparison would pass on two lists that disagree member-for-member; a one-way containment would
+// pass on a projection that silently dropped a member. So the join is an injection plus
+// cardinality plus distinctness -- grounded-surface subset-of the wall's population by ADMISSION
+// per member, the wall's population duplicate-free, and the two sizes equal -- which forces set
+// equality rather than merely agreeing totals. The tower gap that forces two spellings is
+// recorded on `opaque_host_call_population_authority_dissolves_on`; this is what keeps it from
+// becoming parallel-representation debt in the meantime.
+test fn w_grandfather_population_matches_the_grounded_surface() -> Bool {
+  match opaque_host_call_surface() {
+    OpaqueHostCallSurfaceUngrounded { unresolved: _, not_free_call: _ } => false
+    OpaqueHostCallSurfaceGrounded { operations: ops } =>
+      (ops |> all(o =>
+        claim_preemption_admission(OpaqueHostCallUnbounded { operation: o }) == true
+      ))
+        && (grandfather_population_has_duplicate(
+              population: opaque_host_call_grandfather_population()
+            ) == false)
+        && (grandfather_population_size(population: opaque_host_call_grandfather_population())
+              == count(ops))
+        && (count(ops) == count(v1_interpreter_nested_compile_reaches()))
+  }
+}
+
+// BINDING CONSTRAINT, AND THIS IS THE ONE THE PRIOR REVISION GOT WRONG. Seven arms that reach the
+// identical unpollable dispatch shape were REFUSED by the wall, because the population had been
+// declared over the single operation a floor run happened to catch over its limit. Refusing a
+// live, corpus-exercised operation is not a conservative default here: the wall's `false` says
+// "this operation is not covered by the declared drop", which was the false statement. One of the
+// seven is asserted by name so the correction cannot be silently reverted to the measured-only
+// reading.
+test fn w_a_second_nested_compile_operation_is_admitted() -> Bool {
+  claim_preemption_admission(
+    OpaqueHostCallUnbounded { operation: "install_or_consume_floor_compile_clean_gate_receipt" }
+  ) == true
+}
+
+// BINDING CONSTRAINT: the refusal arm, exercised against a REAL live `free_call.*` operation that
+// does not meet the criterion, rather than against a fabricated name. `filesystem_read` is
+// dispatched by the seed today and reaches no nested compile, so it must be refused -- which is
+// what shows the wall discriminates on the criterion and has not collapsed to "admit every host
+// operation" as the population grew from one member to eight.
+test fn w_a_live_non_nested_compile_operation_is_still_refused() -> Bool {
+  (claim_preemption_admission(OpaqueHostCallUnbounded { operation: "filesystem_read" }) == false)
+    && (opaque_host_call_surface_contains(operation: "filesystem_read") == false)
 }
