@@ -23,6 +23,16 @@ import gunbc.runner_microvm {
   RunnerMicroVmRefusedOrphanableUnit,
   RunnerMicroVmRefusedSharedCredential,
   RunnerMicroVmRefusedMalformedVm,
+  RunnerMicroVmRefusedEnvelopeDisagreement,
+  RunnerMicroVmRefusedEnvelopeUnresolved,
+  RunnerMicroVmConfigResolution,
+  MicroVmConfigResolved,
+  MicroVmConfigUnresolved,
+  RunnerMicroVmSizing,
+  MicroVmSized,
+  MicroVmSizeUnresolved,
+  runner_microvm_size_from_cell_envelope,
+  gunbc_runner_microvm_vm_config,
   JitCredentialTransport,
   JitConfigOnReadOnlyDrive,
   JitConfigInSharedSlotDirectory,
@@ -35,10 +45,37 @@ import gunbc.runner_microvm {
   gunbc_runner_guest_image,
 }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
+import std.measure { mebibyte_count, hardware_thread_count_value, byte_size_count, mebibyte_to_byte_size }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
 
-// THE SPECIMEN CONFIGURATION IS THE ONE THAT BOOTED ON srv4, DERIVED THROUGH THE MODULE'S OWN
-// CONSTRUCTOR RATHER THAN HAND-AUTHORED, SO A FIXTURE CANNOT DISAGREE WITH THE THING IT TESTS.
+// THE SPECIMEN CONFIGURATION IS THE FLEET'S OWN VM, BUILT THROUGH THE CONSTRUCTOR THAT HAS NO SIZE
+// ARGUMENT, so the configuration every admission witness below is judged against carries the
+// bounded cell's declared envelope by construction rather than by a fixture author agreeing with it.
+//
+// IT WAS THE srv4 MVP CONFIGURATION UNTIL THE FCI-1 RECONCILIATION LANDED, AND THAT SUBSTITUTION IS
+// THE POINT. The MVP row is 4 vCPU / 4 GiB against a cell declaring 6 cores / 16 GiB, so the old
+// specimen is now exactly the discriminating RED for the envelope wall -- it is kept below under
+// its own name rather than deleted, because a wall whose refused input no longer exists anywhere is
+// a wall nothing runs (DESIGN 4b).
+//
+// THE UNRESOLVED ARM FAILS THE WITNESS RATHER THAN BEING SKIPPED. If the cell's envelope stops
+// resolving, every admission witness in this file is measuring nothing, and a fixture that quietly
+// substituted a fallback config would report green over exactly that.
 fn specimen_config() -> FirecrackerVmConfig {
+  match gunbc_runner_microvm_vm_config(
+    rootfs_path: "/var/tmp/fcmvp/rootfs.ext4",
+    jit_config_path: "/var/tmp/fcmvp/jitcfg.ext4",
+    kernel_path: "/var/tmp/fcmvp/vmlinux",
+    tap_device: "fcmvp0",
+    guest_mac: "06:00:AC:10:00:02",
+  ) {
+    MicroVmConfigResolved { config: c } => c
+    MicroVmConfigUnresolved { cause: _ } => two_root_config()
+  }
+}
+
+// THE srv4 MVP CONFIGURATION, RETAINED AS THE ENVELOPE WALL'S RED INPUT.
+fn mvp_sized_config() -> FirecrackerVmConfig {
   runner_microvm_vm_config(
     rootfs_path: "/var/tmp/fcmvp/rootfs.ext4",
     jit_config_path: "/var/tmp/fcmvp/jitcfg.ext4",
@@ -56,6 +93,8 @@ fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
   }
 }
 
@@ -65,6 +104,8 @@ fn admission_is_orphan_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmAdmitted => false
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
   }
 }
 
@@ -74,6 +115,19 @@ fn admission_is_credential_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmAdmitted => false
     RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+  }
+}
+
+fn admission_is_envelope_refusal(a: RunnerMicroVmAdmission) -> Bool {
+  match a {
+    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => true
+    RunnerMicroVmAdmitted => false
+    RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
+    RunnerMicroVmRefusedSharedCredential { reason: _ } => false
+    RunnerMicroVmRefusedMalformedVm { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
   }
 }
 
@@ -83,6 +137,8 @@ fn admission_is_malformed_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmAdmitted => false
     RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
   }
 }
 
@@ -241,4 +297,82 @@ test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
 // THE GUEST IMAGE CARRIES THE FLEET'S OWN CITED RUNNER RELEASE, NOT A SECOND VERSION ROW.
 test fn guest_image_runner_is_the_cited_fleet_release() -> Bool {
   gunbc_runner_guest_image.runner.version == actions_runner_release_2_336_0.version
+}
+
+// THE FCI-1 RECONCILIATION, STATED AS EXECUTED WITNESSES RATHER THAN AS A PARAGRAPH IN THE MODULE.
+
+// THE CELL'S ENVELOPE RESOLVES AT ALL. Every admission witness above is judged against a
+// configuration built from this resolution, so if it stopped resolving those witnesses would be
+// measuring a substituted fixture instead of the fleet's VM. This is the guard that makes their
+// green mean what it says, and it is asserted rather than assumed for exactly that reason.
+test fn the_bounded_cell_envelope_resolves() -> Bool {
+  match runner_microvm_size_from_cell_envelope() {
+    MicroVmSized { size: _ } => true
+    MicroVmSizeUnresolved { cause: _ } => false
+  }
+}
+
+// THE DERIVED SIZE IS THE CELL'S OWN ENVELOPE ON BOTH AXES, READ BACK FROM THE AUTHORITIES THE
+// CGROUP BOUNDARY READS. This is the join FCI-1 freezes as `cell-resource-envelope`: the guest's
+// machine configuration and gunbc.fabric_cell_effect's slice directives are two projections of
+// gunbc_runner_slot_desired, and this witness is what makes "two projections" a measured claim
+// rather than an assertion. It compares against the ceiling and the core resolution DIRECTLY --
+// not against a literal copied out of them, which would be a change detector (DESIGN 5).
+test fn the_derived_vm_size_is_the_cell_resource_envelope() -> Bool {
+  match runner_microvm_size_from_cell_envelope() {
+    MicroVmSizeUnresolved { cause: _ } => false
+    MicroVmSized { size: s } =>
+      match gunbc_runner_cores_per_slot() {
+        CoresPerSlotUnresolved { cause: _ } => false
+        CoresPerSlotResolved { threads: want_threads } =>
+          hardware_thread_count_value(t: s.vcpu_count) == hardware_thread_count_value(t: want_threads)
+            && byte_size_count(b: mebibyte_to_byte_size(m: s.memory))
+              == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+      }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE ENVELOPE WALL. The srv4 MVP VM -- 4 vCPU, 4 GiB -- is a real
+// configuration that really booted, and it is exactly the shape the wall exists to refuse: a guest
+// sized under the bounded cell's ceiling makes the same work die inside a slice that still had
+// room. Refused, and refused with THAT cause rather than a generic no.
+test fn the_mvp_sized_vm_is_refused_against_the_cell_envelope() -> Bool {
+  admission_is_envelope_refusal(
+    a: runner_microvm_admission(
+      topology: VmmUnderLifecycleController,
+      intent: repaired_lifecycle_intent,
+      listener_is_main_process: false,
+      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+      config: mvp_sized_config(),
+    ),
+  )
+}
+
+// THE MVP ROW IS NOT THIS FLEET'S SIZING, ASSERTED SO THAT NOBODY MAY QUIETLY START CONSUMING IT AS
+// ONE. If the MVP row ever equalled the cell envelope, the witness above would be green by
+// coincidence rather than by the wall, and this is the arm that says so out loud.
+test fn the_mvp_size_is_not_the_cell_envelope() -> Bool {
+  match runner_microvm_size_from_cell_envelope() {
+    MicroVmSizeUnresolved { cause: _ } => false
+    MicroVmSized { size: want } =>
+      !(hardware_thread_count_value(t: runner_microvm_mvp_size.vcpu_count)
+          == hardware_thread_count_value(t: want.vcpu_count)
+        && mebibyte_count(m: runner_microvm_mvp_size.memory) == mebibyte_count(m: want.memory))
+  }
+}
+
+// THE FLEET CONSTRUCTOR HAS NO SIZE AXIS TO GET WRONG, AND ITS OUTPUT PASSES THE WALL IT IS NOT
+// CHECKED BY. This is the positive control for construction-over-validation: the same admission
+// that refuses the MVP configuration admits the derived one, so the wall is discriminating rather
+// than constant, and the constructed path needs no fixing up to clear it.
+test fn the_fleet_constructed_vm_carries_the_cell_envelope() -> Bool {
+  admission_is_admitted(
+    a: runner_microvm_admission(
+      topology: VmmUnderLifecycleController,
+      intent: repaired_lifecycle_intent,
+      listener_is_main_process: false,
+      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+      config: specimen_config(),
+    ),
+  )
 }
