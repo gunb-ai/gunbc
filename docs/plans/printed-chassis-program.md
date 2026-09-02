@@ -63,7 +63,9 @@ because a step without one cannot be said to be done.
 | **PRINT-8** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
 | **PRINT-9** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | needs printers + board |
 | **PRINT-10** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
-| **PRINT-11** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded | needs PSU envelope |
+| **PRINT-11** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **earth bond continuous from board standoffs to PSU PE** | needs PSU envelope |
+| **PRINT-11b** | CASSETTE | **Cable model**: every run carries endpoints, bend/service volume, clip positions, strain relief, moving-vs-fixed segment, and separation from blades and hot surfaces | |
+| **PRINT-13b** | RACK | **Management-node mount** (Raspberry-Pi class) on the rack, with its own cable route into the spine | |
 | **PRINT-12** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
 | **PRINT-13** | RACK | One fixed bay; cassette retained in service, removable after disconnect; empty bay structurally complete | |
 | **PRINT-14** | RACK | 2x2 block; an enclosed node extracted with neighbours untouched | |
@@ -247,3 +249,41 @@ printer setup and identity observation
 The duplicate-measurement repair already has the right semantics for this: lookup refuses
 contradiction. A future adjudication relation may supersede a measurement, but selection must never
 be smuggled into ordinary resolution.
+
+
+## Grounding — R14, and why it is a structural constraint rather than a wiring detail
+
+A printed cassette has **no earth path**. On a metal chassis the standoffs bond the board's mounting
+holes to the tray and the tray to PSU protective earth; replace the tray with PETG and that path is
+simply gone, silently, while everything still fits and powers on.
+
+So the bond is a modelled requirement, not an assembly note:
+
+- **Metal standoffs into a metal member.** The hybrid load path already buys aluminium extrusion or
+  threaded rod for the rack — that member is the natural bonding conductor, and it is present for
+  structural reasons anyway.
+- **A continuous path** from every board mounting hole to PSU protective earth, through metal only.
+- **Printed polymer is never the sole earth path and never the mains enclosure.** The PSU stays in
+  its vendor enclosure.
+- The cassette moves; the bond must survive extraction and reinsertion, so the earth connection is
+  part of the **docking interface**, not a loose wire someone remembers to reattach.
+
+The obligation this creates for MEASURE: PSU earth-stud or mounting-screw location, and the standoff
+material and thread. Neither is measured yet.
+
+## Cable routing — R12, at every layer
+
+Every run gets endpoints, an access envelope, a minimum bend and service allowance, fixed clip
+positions, strain relief, a moving-versus-fixed segment classification, and declared separation from
+fan blades and hot surfaces. The service witness stays structural: after disconnecting the declared
+external bundle and releasing the latch, the extraction path is collision-free and no neighbouring
+cable or node has to move.
+
+**PST changes the fan harness.** The ARCTIC P8 PWM PST carries a 4-pin connector AND a 4-pin socket,
+so fans daisy-chain and fan count is decoupled from the board's five headers. That is a cardinality
+fact only: a chain still owes admission against header continuous and startup current, connector and
+wire rating, maximum chain length, failure isolation, and tach semantics. At the published 0.09 A a
+three-fan chain draws 0.27 A and a five-fan chain 0.45 A steady — neither figure proves a chain safe,
+because the header rating and startup behaviour are unmeasured. Do not assume every chained fan is
+independently observable just because a downstream socket exists; tach forwarding needs manufacturer
+authority or an executed electrical observation.

@@ -138,15 +138,55 @@ data hole_ladder_plate_thickness: Micrometer = micrometer(count: 4000)
 fn hole_ladder_plate_width(l: LengthLadder) -> Micrometer {
   micrometer(count: 2 * micrometer_count(m: hole_ladder_margin) + (ladder_rung_count(l: l) - 1) * micrometer_count(m: hole_ladder_pitch))
 }
+// THE HOLES ARE THE RUNGS. This function folds over ladder_rungs and does NOT recompute the series.
+//
+// THE FIRST REVISION RECOMPUTED IT, and that was the most serious defect in this module — found in
+// review, not by any witness here, because no witness could see it. Both this function and
+// ladder_rungs independently evaluated base + i * step, so there were TWO derivations of one law
+// while the module's own annotation claimed there was one. The contract layer then compared
+// ladder_rungs against the handler's output and reported conformance, while the holes actually cut
+// into the plate came from this other computation entirely. Change the step here alone and every
+// witness stays green while the physical coupon carries the wrong holes — and the coupon's whole
+// purpose is to be the nominal that later measurements are deviations FROM, so a wrong coupon
+// silently miscalibrates every tolerance derived from it.
+//
+// That is DESIGN §2 horizontal redundancy in its most expensive form: not two authored spellings
+// that a reader might notice disagree, but two derivations of one law where only one is checked.
+// The check was real, the wall was real, and they were pointed at a sidecar.
+//
+// The index is carried in the fold accumulator rather than recovered by position, because a second
+// nat_range over the same rung count would reintroduce exactly the parallel enumeration this repair
+// removes.
+type HoleLadderAcc sole_constructor {
+  index: Int
+  ops: List<CouponOperation>
+}
+
 fn hole_ladder_features(l: LengthLadder) -> List<CouponOperation> {
-  fold(nat_range_inclusive(lo: 0, hi: ladder_rung_count(l: l) - 1), init: [], f: fn(acc, i) {
-    concat(acc, [OpThroughHole {
-      diameter: micrometer(count: micrometer_count(m: ladder_base(l: l)) + i * micrometer_count(m: ladder_step(l: l))),
-      center_x: micrometer(count: micrometer_count(m: hole_ladder_margin) + i * micrometer_count(m: hole_ladder_pitch)),
-      center_y: micrometer(count: 9000),
-    }])
+  fold(ladder_rungs(l: l), init: HoleLadderAcc { index: 0, ops: [] }, f: fn(acc, rung) {
+    HoleLadderAcc {
+      index: acc.index + 1,
+      ops: concat(acc.ops, [OpThroughHole {
+        diameter: rung,
+        center_x: micrometer(count: micrometer_count(m: hole_ladder_margin) + acc.index * micrometer_count(m: hole_ladder_pitch)),
+        center_y: micrometer(count: 9000),
+      }])
+    }
+  }).ops
+}
+
+// The specimen's hole diameters, projected back out so a consumer can check that the geometry and
+// the ladder agree WITHOUT trusting this module's claim that they do. This is what the contract
+// layer must compare against — not ladder_rungs, which is the law rather than the artifact.
+fn specimen_hole_diameters(s: CouponSpecimen) -> List<Micrometer> {
+  fold(s.features, init: [], f: fn(acc, op) {
+    match op {
+      OpThroughHole { diameter: d, center_x: _, center_y: _ } => concat(acc, [d])
+      _ => acc
+    }
   })
 }
+
 fn hole_ladder_specimen(l: LengthLadder) -> CouponSpecimen {
   coupon_specimen(
     id: "machine-process-hole-diameter-ladder",

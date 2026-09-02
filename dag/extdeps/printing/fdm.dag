@@ -179,26 +179,69 @@ fn material_suitability_row(material: FilamentMaterial, suitability: MaterialSui
   MaterialSuitabilityRow { material: material, suitability: suitability }
 }
 
-fn filament_material_eq(a: FilamentMaterial, b: FilamentMaterial) -> Bool {
-  match a {
-    Pla => match b { Pla => true, _ => false }
-    Petg => match b { Petg => true, _ => false }
-    Tpu => match b { Tpu => true, _ => false }
-    Pva => match b { Pva => true, _ => false }
-    Abs => match b { Abs => true, _ => false }
-    Asa => match b { Asa => true, _ => false }
-    Polycarbonate => match b { Polycarbonate => true, _ => false }
-    Polyamide => match b { Polyamide => true, _ => false }
-    Pet => match b { Pet => true, _ => false }
-    FiberReinforcedPolymer => match b { FiberReinforcedPolymer => true, _ => false }
+// EQUALITY BY EXHAUSTIVE TAG PROJECTION, NOT BY NESTED MATCH WITH A WILDCARD.
+//
+// The first revision wrote the pairwise form: match a { Pla => match b { Pla => true, _ => false }
+// ... }. The corpus's non-fold-residue lens flags exactly that shape, and it is right to. The inner
+// wildcard is the defect: adding an eleventh material would be ABSORBED by every `_ => false` arm,
+// so the new variant would silently compare unequal to itself in some arms and nothing would fail to
+// compile. A wildcard over a closed coproduct converts "I enumerated the domain" into "I did not,
+// and the compiler may not tell you".
+//
+// The projection below is one exhaustive match with no wildcard, so a new material fails to compile
+// HERE, at the one place that must learn about it, and equality is then ordinary integer comparison.
+// The tag is an ordinal comparison device and not a second name for the material: it is not
+// serialized, not cited, and not stable across edits — anything needing a stable external spelling
+// must model that separately rather than reading these numbers.
+fn filament_material_tag(m: FilamentMaterial) -> Int {
+  match m {
+    Pla => 0
+    Petg => 1
+    Tpu => 2
+    Pva => 3
+    Abs => 4
+    Asa => 5
+    Polycarbonate => 6
+    Polyamide => 7
+    Pet => 8
+    FiberReinforcedPolymer => 9
   }
 }
 
-fn material_suitability(rows: List<MaterialSuitabilityRow>, material: FilamentMaterial) -> MaterialSuitability {
-  fold(rows, init: SuitabilityUnstated, f: fn(acc, row) {
+fn filament_material_eq(a: FilamentMaterial, b: FilamentMaterial) -> Bool {
+  filament_material_tag(m: a) == filament_material_tag(m: b)
+}
+
+// DUPLICATE ROWS REFUSE, AND THIS IS THE SAME DEFECT THIS SESSION ALREADY FIXED ONCE ELSEWHERE.
+//
+// The first revision folded and returned the last matching row, so two rows for PETG — one Ideal,
+// one NotRecommended — resolved by list order with nothing refusing. That is byte-for-byte the
+// last-match-wins bug found and repaired in product.printed_chassis.measurement, and it was left
+// standing here because that repair was applied at the site where it was noticed rather than swept
+// across the class. Found in review. A defect class is not closed at one site.
+//
+// A vendor table stating a material twice with different grades is a reading error or a table
+// change, and either way the honest answer is that the rows disagree — not whichever the fold
+// happened to see last.
+type MaterialSuitabilityLookup
+  = SuitabilityResolved { suitability: MaterialSuitability }
+  | SuitabilityRowsConflict { material: FilamentMaterial, count: Int }
+
+type SuitabilityScan sole_constructor {
+  count: Int
+  suitability: MaterialSuitability
+}
+
+fn material_suitability(rows: List<MaterialSuitabilityRow>, material: FilamentMaterial) -> MaterialSuitabilityLookup {
+  let scan = fold(rows, init: SuitabilityScan { count: 0, suitability: SuitabilityUnstated }, f: fn(acc, row) {
     match filament_material_eq(a: row.material, b: material) {
-      true => row.suitability
+      true => SuitabilityScan { count: acc.count + 1, suitability: row.suitability }
       false => acc
     }
   })
+  if scan.count > 1 {
+    SuitabilityRowsConflict { material: material, count: scan.count }
+  } else {
+    SuitabilityResolved { suitability: scan.suitability }
+  }
 }

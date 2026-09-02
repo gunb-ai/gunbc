@@ -1,0 +1,65 @@
+module extdeps.standards.atx_2_2
+import std.types { NonEmptyStr }
+import std.measure { Micrometer, micrometer, Millimeter, millimeter }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+// THE ATX SPECIFICATION, VERSION 2.2, as its own subject. It is the form-factor authority that the
+// ATX FAMILY of board outlines and mounting-hole grids descends from, and it is modelled separately
+// from any board because a specification and a product that claims conformance to it are two
+// subjects, not one. A board module citing this one asserts a conformance CLAIM; this module asserts
+// only what the document says.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20180417122513/http://www.formfactors.org:80/developer/specs/atx2_2.pdf"
+  }
+}
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.atx_2_2",
+      decl_name: "atx_board_width_along_rear_io",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+// PROVENANCE. The PDF was fetched and read first-party by the authoring session from the Internet
+// Archive snapshot named above; formfactors.org itself no longer serves it. The figures below are
+// the dimensions the document prints in its own figure text layer, in inches with the millimetre
+// conversion the document itself carries — they are not converted here, which is why both numbers
+// appear and agree.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT CARRY: the per-hole coordinate table. The specification
+// places the holes in FIGURE 3 ("see Figure 3 for exact locations"), which is vector artwork with no
+// extractable text layer. So the exact lettered hole positions are NOT established here, and no
+// consumer may read this module as supplying them. Adding them requires reading that figure by an
+// instrument this session does not have, and inventing them from recall is precisely the fabrication
+// the neighbouring board module's standoff obligation refuses.
+data atx_board_width_along_rear_io: Millimeter = millimeter(count: 244)
+data atx_board_width_inches_note: NonEmptyStr = "The specification prints 9.600 in / 243.84 mm as the board dimension along the rear I/O edge. 244 mm is that figure rounded to this corpus's whole-millimetre Millimeter carrier; the exact 243.84 is preserved in this note rather than silently lost."
+data atx_full_size_depth: Millimeter = millimeter(count: 305)
+data atx_full_size_depth_inches_note: NonEmptyStr = "12.000 in / 304.8 mm, the full-size ATX board depth. Recorded because it is the dimension the micro-ATX and deep-micro-ATX variants reduce; it is NOT a claim about any board in this corpus."
+// THE TWO BOARD-MOUNTING-HOLE OFFSETS the specification's figure labels as REF dimensions. They are
+// the only hole-related numbers with an extractable text layer in the whole document, and they are
+// offsets from datum rather than hole positions: on their own they place nothing.
+data atx_board_mtg_hole_offset_a: Micrometer = micrometer(count: 16510)
+data atx_board_mtg_hole_offset_b: Micrometer = micrometer(count: 10160)
+data atx_board_mtg_hole_offset_note: NonEmptyStr = "Figure 7 labels these .650 in / 16.51 mm and .400 in / 10.16 mm as REF (Board Mtg Hole). They are datum offsets, not a hole table: two offsets cannot locate seven holes. Recorded because they are cited and exact, and because a later reading of Figure 3 must agree with them."
+// THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
+// and because this session got it BACKWARDS once and shipped the error.
+//
+// micro-ATX is 9.6 x 9.6 in: it reduces full-size ATX along the DEPTH axis and leaves the rear-I/O
+// width alone. "Deep micro-ATX" restores some of that depth while keeping the same 9.6 in width. So
+// a deep-micro-ATX board is NOT a wider micro-ATX board — it is exactly as wide, and deeper.
+//
+// The error worth recording: an earlier revision of extdeps.boards.asrock_rack read the ALTRAD8UD's
+// 9.6 x 10.5 in as 267 mm WIDE against micro-ATX's 244 mm, and concluded that a micro-ATX hole
+// pattern would be laid out at the wrong width. The axes were transposed. The board is 244 mm wide,
+// which is the micro-ATX width exactly, and 267 mm deep. The consequence inverts: the rear-edge hole
+// columns are the standard ones, and it is the FRONT row that moves outward by the extra depth.
+data micro_atx_width_along_rear_io: Millimeter = millimeter(count: 244)
+data micro_atx_depth: Millimeter = millimeter(count: 244)
+data deep_micro_atx_axis_note: NonEmptyStr = "Deep micro-ATX keeps the micro-ATX 9.6 in rear-I/O width and extends the depth beyond 9.6 in. A deep-micro-ATX board is as wide as a micro-ATX board and deeper, never wider. Stated because transposing these axes inverts every conclusion about which mounting holes are standard."

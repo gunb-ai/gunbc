@@ -3,6 +3,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
+  specimen_hole_diameters,
   LengthLadder,
   CouponSpecimen,
   CouponOperation,
@@ -147,11 +148,19 @@ fn compare_rungs(modeled: List<Micrometer>, realized: List<Micrometer>) -> Contr
   }
 }
 
-// THE BOUNDARY CHECK the handler's output is admitted through. No version arm today, per the note on
-// contract_schema_version: with one schema there is no unknown-version state to refuse.
+// THE BOUNDARY CHECK, AND IT READS THE SPECIMEN'S ACTUAL HOLES.
+//
+// The first revision compared contract.ladder.derived_rungs — the sidecar. Review found that the
+// specimen's holes were computed by a SECOND derivation, so this check could pass while the geometry
+// handed to CadQuery carried different diameters. Comparing the law instead of the artifact made the
+// wall structurally unable to see the fault it existed to catch.
+//
+// It now reads specimen_hole_diameters: the diameters actually present in the operation graph that
+// the handler will consume. The rung list remains in the contract as the declaration's projection,
+// but it is no longer what conformance is measured against — the artifact is.
 fn admit_realized_ladder(
   contract: RealizationContract,
   realized_rungs: List<Micrometer>,
 ) -> ContractConformance {
-  compare_rungs(modeled: contract.ladder.derived_rungs, realized: realized_rungs)
+  compare_rungs(modeled: specimen_hole_diameters(s: contract.specimen), realized: realized_rungs)
 }

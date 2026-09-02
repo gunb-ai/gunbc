@@ -3,7 +3,7 @@ import std.types { Bool, Int, List }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
   LengthLadder, LadderConstruction, LadderReady,
-  hole_ladder_spec, hole_ladder_specimen, ladder_rungs,
+  hole_ladder_spec, hole_ladder_specimen, ladder_rungs, specimen_hole_diameters,
 }
 import product.printed_chassis.realization_contract {
   LadderRealization, RealizationContract,
@@ -88,6 +88,29 @@ test fn w_the_contract_derives_its_own_rungs_from_the_declaration() -> Bool {
         _ => false
       }
     }
+    _ => false
+  }
+}
+
+// WITNESS 5 — THE GEOMETRY-BINDING CONTROL, added after review found that this suite could not see
+// its own most serious defect.
+//
+// The first revision computed the specimen's holes with a SECOND derivation of base + i * step,
+// independent of ladder_rungs. Conformance compared the rung list, so changing only the hole
+// derivation left every witness green while the plate carried the wrong diameters. This witness
+// asserts the binding directly: the diameters PRESENT IN THE OPERATION GRAPH are the ladder's rungs.
+// It is the assertion that would have gone red on the defect, and it goes red again if anyone
+// reintroduces a parallel computation.
+test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } =>
+      match compare_rungs(
+        modeled: specimen_hole_diameters(s: hole_ladder_specimen(l: l)),
+        realized: ladder_rungs(l: l)
+      ) {
+        ContractConforms => true
+        _ => false
+      }
     _ => false
   }
 }
