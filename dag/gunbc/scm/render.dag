@@ -52,6 +52,7 @@ import gunbc.scm.repository_load { repository_load_refusal_lines }
 import gunbc.scm.init {
   ScmInitOutcome,
   ScmInitialized,
+  ScmInitWriteRefused,
   ScmInitRefused,
   ScmInitRefusal,
   ScmInitRepositoryPresent,
@@ -271,7 +272,9 @@ fn scm_save_cli_response(
 // foreign file at that path is a choice about someone else's bytes.
 fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
   match outcome {
-    ScmInitialized { save: save } => repository_save_lines(save: save)
+    ScmInitialized { path: p, written: _ } =>
+      [concat("initialized repository at ", p)]
+    ScmInitWriteRefused { save: save } => repository_save_lines(save: save)
     ScmInitRefused { cause: cause } => scm_init_refusal_lines(cause: cause)
   }
 }
@@ -303,7 +306,8 @@ fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
 
 fn scm_init_exit(outcome: ScmInitOutcome) -> ProcessExit {
   match outcome {
-    ScmInitialized { save: save } => scm_save_exit(save: save)
+    ScmInitialized { path: _, written: _ } => ExitSuccess
+    ScmInitWriteRefused { save: save } => scm_save_exit(save: save)
     ScmInitRefused { cause: cause } => scm_init_refusal_exit(cause: cause)
   }
 }
