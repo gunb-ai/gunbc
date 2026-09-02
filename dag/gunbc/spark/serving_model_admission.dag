@@ -1,0 +1,195 @@
+module gunbc.spark.serving_model_admission
+
+import std.types { String, Bool, List, Int, NonEmptyStr, Timestamp }
+import std.content_hash { Sha256Digest }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
+import extdeps.ollama.binary_release { ollama_required_release }
+import gunbc.ollama_model_resolution {
+  OllamaResolvedManifest,
+  OllamaManifestProvenance,
+  UpstreamPublished,
+  LocallyMaterialized,
+  ollama_resolved_manifest_reference,
+  ollama_resolved_manifest_sha256_digest,
+}
+
+// WHETHER THE RUNTIME SUPPORTS THE MODEL, ASKED SEPARATELY FOR THE TWO KINDS OF MODEL THERE ARE.
+//
+// extdeps.ollama.capability answers this for upstream library tags, and answers it the only way an
+// upstream fact CAN be answered: a release-note citation naming the version that introduced the
+// family. `ollama_model_support_catalog` is a table of exactly that, and a model absent from it is
+// `Uncatalogued`, which refuses. That is right and stays right.
+//
+// IT CANNOT ANSWER FOR A LOCALLY MATERIALIZED ARTIFACT, AND THE FAILURE IS SILENT-LOOKING BUT LOUD.
+// deepseek-v4-gguf:no-h3-stop is not in the ollama library and never will be, so the catalogue
+// returns Uncatalogued for it and every serving admission refuses. The refusal is CORRECT -- nothing
+// in the corpus establishes that this runtime can run this model -- but it is unfixable at the
+// catalogue, because writing a row there would author a fact about ollama that ollama does not hold.
+// DESIGN's external-upstream rule forbids exactly that, and the temptation is strong precisely
+// because one fabricated row would turn the whole tree green.
+//
+// SO THE MISSING FACT IS SUPPLIED AT THE RIGHT LAYER, AS A RECEIPT THIS REPOSITORY OWNS. For a
+// locally materialized artifact, "the runtime supports this model" is not a claim about a release
+// note. It is a claim that THIS runtime version was OBSERVED to load and serve THIS artifact, and
+// that is a measurement, not a citation. It is strictly weaker than the upstream arm -- it
+// generalizes to no other version -- and the constructor below is built so that weakness cannot be
+// hidden: an attestation names one exact runtime version, and admission requires the version the
+// fleet actually requires to be that same one.
+//
+// WHY VERSION EQUALITY AND NOT A FLOOR. A floor would be an extrapolation from a single observation
+// to every later release, which is the same move as the fabricated catalogue row wearing a
+// comparison operator. An observed load establishes one point. When the required release moves, this
+// refuses until the load is re-observed -- which is the honest consequence and the reason the
+// restoration is cheap rather than the reason to avoid it.
+// THE ATTESTATION NAMES THE BYTES, NOT ONLY THE REFERENCE, and that distinction is the whole reason
+// gunbc.ollama_model_resolution exists one layer down. A tag is a LOCATOR. `no-h3-stop` is a
+// MUTABLE local one: `POST /api/create` can be re-run with a different Modelfile and produce the
+// same `deepseek-v4-gguf:no-h3-stop` over entirely different bytes. An attestation keyed on name and
+// tag alone would keep admitting that -- reporting an observed load of bytes nobody ever loaded --
+// which is the 2026-08-19 republish failure re-created locally, where a digest pin behind a
+// tag-addressed remedy proved unenforceable. Binding the manifest identity makes the observation say
+// WHICH ARTIFACT was loaded, so re-creating the tag refuses until the load is re-observed.
+type SparkServingLocalModelAttestation sole_constructor {
+  model: OllamaModelRef
+  manifest_identity: NonEmptyStr
+  runtime_version: NonEmptyStr
+  hosts: List<HostIdentity>
+  observed_at: Timestamp
+  instrument: NonEmptyStr
+}
+
+// THE OBSERVED LOAD, 2026-09-02. Both serving cells answered /api/tags for this reference at the
+// resolved identity, and the model is resident and serving on the cell under ollama 0.32.9 -- the
+// same release ollama_required_release names, which is what makes the equality below hold rather
+// than a coincidence to be noticed later.
+//
+// NO BYTE FIGURE IS TRANSCRIBED HERE. The instrument named in the row is the producer of the
+// residency reading, and a number copied into this file would be unreachable from it -- the exact
+// defect the serving context-length note in gunbc.spark.serving_desired records having made once.
+fn spark_serving_local_model_attestation(
+  model: OllamaModelRef,
+  manifest_identity: NonEmptyStr,
+  runtime_version: NonEmptyStr,
+  hosts: List<HostIdentity>,
+  observed_at: Timestamp,
+  instrument: NonEmptyStr,
+) -> SparkServingLocalModelAttestation {
+  SparkServingLocalModelAttestation {
+    model: model,
+    manifest_identity: manifest_identity,
+    runtime_version: runtime_version,
+    hosts: hosts,
+    observed_at: observed_at,
+    instrument: instrument,
+  }
+}
+
+data spark_serving_local_model_attestations: List<SparkServingLocalModelAttestation> = [
+  SparkServingLocalModelAttestation {
+    model: OllamaModelRef {
+      name: "deepseek-v4-gguf" as NonEmptyStr,
+      tag: "no-h3-stop" as NonEmptyStr,
+    },
+    manifest_identity: "52ff2c31b90ec6680869fa0604e4c719a1a8553ee498c2e46109f331e83f6eed" as NonEmptyStr,
+    runtime_version: "0.32.9" as NonEmptyStr,
+    hosts: [operator_host_srv5, operator_host_srv6],
+    observed_at: "2026-09-02T17:00Z",
+    instrument: "gunbc.spark.serving_observe spark_serving_observe_ci_wet" as NonEmptyStr,
+  },
+]
+
+fn spark_serving_local_model_attestation_for(
+  model: OllamaModelRef,
+  attestations: List<SparkServingLocalModelAttestation>,
+) -> SparkServingLocalModelAttestation? {
+  fold(attestations, init: none, f: fn(found, a) {
+    match found {
+      Present { value: hit } => Present { value: hit }
+      Absent =>
+        if (a.model.name as String) == (model.name as String)
+          && (a.model.tag as String) == (model.tag as String) {
+          Present { value: a }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+// THE MODEL AXIS OF SERVING ADMISSION, and only that axis. Platform, architecture and driver stay
+// where they are; this decides the one question whose answer differs by provenance, so the call
+// sites keep their existing verdict for the upstream arm rather than routing it through a second
+// authority that would have to re-derive it.
+type SparkServingModelAxis
+  = SparkServingModelAxisUpstreamCatalogued
+  | SparkServingModelAxisLocalAttested { runtime_version: NonEmptyStr }
+  | SparkServingModelAxisRefused { cause: NonEmptyStr }
+
+fn spark_serving_model_axis_in(
+  manifest: OllamaResolvedManifest,
+  attestations: List<SparkServingLocalModelAttestation>,
+  required_runtime_version: NonEmptyStr,
+) -> SparkServingModelAxis {
+  match manifest.provenance {
+    UpstreamPublished { registry_authority: _ } =>
+      SparkServingModelAxisUpstreamCatalogued
+    LocallyMaterialized { producer: _, derived_from: _ } => {
+      let model = ollama_resolved_manifest_reference(m: manifest)
+      match ollama_resolved_manifest_sha256_digest(m: manifest) {
+        Absent =>
+          SparkServingModelAxisRefused {
+            cause: "the desired manifest identity is not a sha256 digest, so no attestation can be bound to the bytes it names" as NonEmptyStr,
+          }
+        Present { value: want } =>
+      match spark_serving_local_model_attestation_for(model: model, attestations: attestations) {
+        Absent =>
+          SparkServingModelAxisRefused {
+            cause: join([
+              "the desired model ",
+              ollama_model_ref_wire(ref: model),
+              " is locally materialized and no observed-load attestation exists for it, so nothing establishes that this runtime can serve it",
+            ], "") as NonEmptyStr,
+          }
+        Present { value: a } =>
+          if (a.manifest_identity as String) != (want.hex as String) {
+            SparkServingModelAxisRefused {
+              cause: join([
+                "the observed-load attestation for ",
+                ollama_model_ref_wire(ref: model),
+                " names manifest identity ",
+                a.manifest_identity as String,
+                ", but desired state resolves that reference to ",
+                want.hex as String,
+                "; the tag was re-created over different bytes and the load must be re-observed",
+              ], "") as NonEmptyStr,
+            }
+          } else if (a.runtime_version as String) == (required_runtime_version as String) {
+            SparkServingModelAxisLocalAttested { runtime_version: a.runtime_version }
+          } else {
+            SparkServingModelAxisRefused {
+              cause: join([
+                "the desired model ",
+                ollama_model_ref_wire(ref: model),
+                " was observed to load under ollama ",
+                a.runtime_version as String,
+                ", but the required release is ",
+                required_runtime_version as String,
+                "; an observed load establishes one version and does not generalize",
+              ], "") as NonEmptyStr,
+            }
+          }
+      }
+      }
+    }
+  }
+}
+
+fn spark_serving_model_axis(manifest: OllamaResolvedManifest) -> SparkServingModelAxis {
+  spark_serving_model_axis_in(
+    manifest: manifest,
+    attestations: spark_serving_local_model_attestations,
+    required_runtime_version: ollama_required_release.version,
+  )
+}
