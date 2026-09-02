@@ -270,9 +270,27 @@ fn list_snoc_unique_node(items: List<Node>, item: Node) -> List<Node> {
 }
 
 fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUnitId> {
-  items
-    |> fold(init: [], f: fn(acc, item) { list_snoc_unique(items: acc, item: item) })
-    |> sort_by(id => id)
+  // SORT BEFORE DEDUP, not after. `assignment |> map_values` is this function's production
+  // input at all three partition folds below, and a Map has no encounter-order contract. The
+  // old fold scanned the growing accumulator with `any` and only sorted its result afterward:
+  // the result was canonical, but the amount of evaluator work depended on the HAMT iteration
+  // order because a duplicate stopped the scan wherever its earlier copy happened to sit.
+  // Required-floor's same-tree corpus A/B measured that defect directly: identical source moved
+  // this family's per-claim evaluator-step counts in both directions.
+  //
+  // Sorting first makes equal ids adjacent. Membership is then decidable against the last kept
+  // identity alone, so the work no longer depends on the unmodeled Map order and the growing
+  // accumulator is not rescanned for every item. This is the same sort-then-neighbour substrate
+  // pattern used by gunbc.self_host_compile_phase_frontier.deduplicate_identities; it lives here
+  // because CompilationUnitId, and the partition semantics being preserved, are owned here.
+  fold(
+    items |> sort_by(id => id),
+    init: [],
+    f: (unique, item) => match unique |> last {
+      Present { value: prior } => if prior == item { unique } else { unique |> list_push(item) }
+      Absent => [item]
+    }
+  )
 }
 
 fn node_sort_key(n: Node) -> Fnv1a64Structural {
