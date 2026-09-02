@@ -8164,15 +8164,25 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // measured: 32 rows with byte-identical `eval_steps` and cpu up 1.31-1.80x between two runs over
 // a byte-identical payload module (gentle-wolf-793, 2026-09-02). The two compose into the shape
 // the floor keeps showing: the constant puts a family AT the line, and something run-to-run
-// decides WHICH of its rows cross it. THE EVIDENCE FOR THAT SECOND HALF IS A SINGLE RUN AND NOT A
-// CROSS-RUN DELTA, deliberately: two rows of one module measured 502ms and EXACTLY 500ms against
-// the 500ms budget, and a row sitting at its budget lands in interrupted-before-verdict or in
-// completed-over-cost according to whether the poll fired before or after the work finished — a
-// fact about the poll, not about the row. (A cross-run near-disjointness reading was offered and
-// WITHDRAWN by its author: a rerun replaces a job's attempt while the logs API serves the latest
-// one for a fixed job id, so the two readings addressed different attempts through one
-// identifier. This census keys PRODUCERS and never which rows tipped, which is exactly why that
-// retraction changes nothing here.) Neither half alone predicts it — a constant alone gives
+// decides WHICH of its rows cross it, and there are TWO INDEPENDENT RECEIPTS for that, neither of
+// which is a cross-run comparison. (i) ZERO MARGIN, single attempt: two rows of one module
+// measured 502ms and EXACTLY 500ms against the 500ms budget. (ii) A ROW OBSERVED CROSSING THE
+// TWO POPULATIONS ON ONE TREE: run 33620893203, attempt 1, records
+// `test.claim.self_host_compile_phase_live_gate_witness.an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held`
+// as INTERRUPTED-BEFORE-VERDICT at 502ms, and ATTEMPT 2 of the SAME RUN records it as
+// COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500 — reaching its verdict. Those are the two
+// populations the 2026-08-19 budget cut separated BECAUSE THEY ARE DIFFERENT FACTS WITH DIFFERENT
+// REMEDIES, and at this margin which one a row lands in is decided by whether the poll fired
+// before or after the work finished. A fact about the poll, not about the row.
+//
+// CITE THE ATTEMPT, NOT THE RUN. Both readings above are pinned to
+// `/actions/runs/<id>/attempts/<n>/logs`, because a bare run id and a bare job id BOTH resolve to
+// the latest attempt: a rerun silently changes what a stable citation serves, with no error and
+// nothing visible from the citing end. A near-disjointness reading was retracted and then
+// partially restored on exactly that discovery. This file's other figures come from run
+// 33615659836 and run 33622954427, both `run_attempt=1` at the time of writing — recorded so a
+// reader can tell whether the citation still points at what was read. Neither half alone predicts
+// the wandering — a constant alone gives
 // the same rows every run, and runner noise alone over a corpus with p50=2ms tips nobody. This
 // census addresses the charge; the tipping variable is separately open and is not this
 // instrument's subject.
