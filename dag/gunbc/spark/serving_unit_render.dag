@@ -21,7 +21,7 @@ import extdeps.systemd.unit_file {
 import extdeps.ollama.server_env {
   ollama_host_env_assignment,
   ollama_models_env_assignment,
-  ollama_context_length_env_assignment,
+  ollama_context_length_env_assignment, ollama_num_parallel_env_assignment,
 }
 import gunbc.spark.serving_install_paths {
   SparkServingUserUnitSpec,
@@ -32,7 +32,8 @@ import gunbc.spark.serving_install_paths {
 }
 import gunbc.spark.serving_desired {
   spark_serving_desired_bind_host_port,
-  spark_serving_desired_configured_context,
+  spark_serving_desired_default_context,
+  spark_serving_desired_serving_slots,
 }
 
 // THE ONE PLACE A SPARK SERVING UNIT BECOMES BYTES.
@@ -79,7 +80,10 @@ fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFi
         assignment: ollama_models_env_assignment(root: spark_serving_models_root() as NonEmptyStr),
       },
       Environment {
-        assignment: ollama_context_length_env_assignment(configured_context: spec.configured_context),
+        assignment: ollama_context_length_env_assignment(default_context: spec.default_context),
+      },
+      Environment {
+        assignment: ollama_num_parallel_env_assignment(slots: spec.serving_slots),
       },
       WorkingDirectory { path: spark_serving_required_runtime_root() as NonEmptyStr },
       ExecStart { command: spark_serving_exec_start_command(spec: spec) },
@@ -100,7 +104,8 @@ fn spark_serving_desired_user_unit_text() -> String {
   spark_serving_user_unit_text(
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-      configured_context: spark_serving_desired_configured_context(),
+      default_context: spark_serving_desired_default_context(),
+      serving_slots: spark_serving_desired_serving_slots(),
     ),
   )
 }
