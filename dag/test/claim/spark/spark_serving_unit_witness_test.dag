@@ -3,6 +3,7 @@ module test.claim.spark_serving_unit_witness
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.measure {
   token_count, token_count_value, tokens_per_second,
+  positive_shard_count,
   PositiveSlotCount, positive_slot_count, positive_measure_count,
 }
 import extdeps.network.ipv4 { ipv4_address }
@@ -22,6 +23,12 @@ import gunbc.spark.serving_unit_observed {
   serving_unit_observed_units,
   serving_unit_observed_slot_plan,
   serving_unit_host_is_weights_peer,
+  ArtifactIdentityBound,
+  ArtifactIdentityUnobserved,
+  serving_unit_observed_artifact,
+  serving_unit_observed_shard_digests,
+  serving_unit_artifact_is_bound,
+  serving_unit_artifact,
   serving_unit_throughput_band,
   serving_unit_observed_throughput,
   serving_unit_throughput_meets,
@@ -200,4 +207,35 @@ test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
   length(serving_unit_observed_units()) > 0
     && !any(spark_serving_cell_hosts(), h =>
          serving_unit_host_is_weights_peer(deployments: serving_unit_observed_units(), host: h))
+}
+
+
+// THE ARTIFACT IDENTITY IS BOUND, established by hashing the shards in place and corroborated by the
+// digests the registration payload recorded independently. Both sources agree on all four.
+test fn the_observed_artifact_identity_is_bound() -> Bool {
+  serving_unit_artifact_is_bound(a: serving_unit_observed_artifact)
+    && length(serving_unit_observed_shard_digests) == 4
+}
+
+// A DISCRIMINATING RED, AND IT IS THE COUNT-VERSUS-COVERAGE CLASS. "Bound" previously meant the
+// digest list was non-empty, so an artifact of four shards carrying ONE digest answered true -- a
+// closure naming a quarter of the bytes, reported as a fully identified artifact. Binding must cover
+// every shard the artifact declares, so a short closure is refused.
+test fn an_artifact_whose_closure_misses_a_shard_is_not_bound() -> Bool {
+  !serving_unit_artifact_is_bound(a: serving_unit_artifact(
+    primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
+    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
+    identity: ArtifactIdentityBound { shard_digests: [fx_only_digest] },
+  ))
+}
+
+data fx_only_digest: NonEmptyStr = "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr
+
+// An unobserved identity is never bound, whatever else the record carries.
+test fn an_unobserved_artifact_identity_is_not_bound() -> Bool {
+  !serving_unit_artifact_is_bound(a: serving_unit_artifact(
+    primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
+    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 0)),
+    identity: ArtifactIdentityUnobserved { cause: "fixture" as NonEmptyStr },
+  ))
 }

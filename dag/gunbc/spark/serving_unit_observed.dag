@@ -373,28 +373,31 @@ fn serving_unit_throughput_meets(
 
 // ================= THE ARTIFACT THE UNIT ACTUALLY LOADED =================
 //
-// ITS IDENTITY IS NOT ESTABLISHED, AND THIS CARRIER EXISTS TO SAY SO RATHER THAN TO IMPLY OTHERWISE.
+// ITS IDENTITY IS BOUND, BY TWO INDEPENDENT SOURCES THAT AGREE.
 //
-// The unit serves from a four-shard GGUF set whose first shard the front door reports as its
-// model_path. What no observation reaches is WHICH BYTES those shards hold. Two independent reasons,
-// both measured rather than assumed:
+// This carrier first shipped with the identity UNOBSERVED, and that was honest at the time: the
+// serving surface carries no digest -- GET /v1/models returns this model with `"digest": ""`, an
+// empty string rather than an absent field, so no probe against the API can bind identity however it
+// is written -- and the shard files were outside the convergence principal's reach. The operator
+// then granted access, and the gap closed with a MEASUREMENT rather than a promotion of the prose.
 //
-//   - THE SERVING SURFACE DOES NOT CARRY ONE. GET /v1/models on the front door returns this model
-//     with `"digest": ""` -- an empty string, not an absent field. The server holds no artifact
-//     digest to report, so no probe against the API can bind identity no matter how it is written.
-//   - THE FILES ARE NOT REACHABLE FROM THE CONVERGENCE PRINCIPAL. The shards sit under a personal
-//     home on the experimentation pair, which the automation account does not have access to.
+// THE TWO SOURCES, AND WHY BOTH ARE NEEDED. The four shards were hashed in place on the front-door
+// host with sha256sum, which is an observation of the bytes that are actually loaded. Independently,
+// the registration payload written when the model was created carries its own four digests. All four
+// agree exactly. Either alone would have been weaker in a specific way: the recorded payload is a
+// CLAIM IN A LOCAL FILE, and reading a recorded value as a measurement is the precise error that
+// once had an ollama blob on a different pair of hosts reported as this unit's artifact identity;
+// while a hash with nothing to check against establishes only that some bytes exist.
 //
-// WHY THIS IS RECORDED AND NOT PAPERED OVER. An earlier attempt to close this condition hashed the
-// wrong object entirely -- an ollama blob on a different pair of hosts -- and reported the artifact
-// identity as established. It was not, and the correction is the reason this carrier makes the
-// unbound state a CONSTRUCTOR ARM rather than a missing field: an artifact realization with no
-// identity is writable here, is visibly distinct from one with an identity, and cannot be mistaken
-// for the latter by a consumer that forgets to check.
+// FOUR SHARDS, AND THE FIRST IS NOT THE MODEL. The front door reports shard 00001 as its model_path
+// and that file is about five megabytes -- the index that names the rest. A reader who bound
+// identity to "the model_path" would therefore have pinned the index and left roughly 108 GiB of
+// weights unnamed, which is why identity here is the WHOLE ORDERED CLOSURE and not one path.
 //
-// The spec's own provenance agrees and is quoted rather than improved on: the ~108 GiB weight split
-// is "inferred from file size, not per-host layer accounting", and reboot survival is "not
-// verified". Nothing here upgrades either.
+// UPSTREAM PROVENANCE, RECORDED BUT NOT VERIFIED HERE. The shards were fetched from the unsloth
+// DeepSeek-V4-Flash-0731-GGUF repository on huggingface. That is where they CAME FROM; this module
+// does not claim the upstream still serves these bytes, because that would be a fact about a remote
+// registry nobody re-read. What is established is what this host holds.
 type ServingUnitArtifactIdentity
   = ArtifactIdentityBound { shard_digests: List<NonEmptyStr> }
   | ArtifactIdentityUnobserved { cause: NonEmptyStr }
@@ -405,12 +408,32 @@ type ServingUnitArtifact sole_constructor {
   identity: ServingUnitArtifactIdentity
 }
 
+// THE ORDER IS PART OF THE FACT. These are shards 00001 through 00004 in sequence, because a GGUF
+// shard set is an ordered chain the loader follows from the index; a closure holding the right four
+// digests in the wrong order names a different artifact than the one that loaded.
+fn serving_unit_artifact(
+  primary_shard_path: NonEmptyStr,
+  shard_count: PositiveShardCount,
+  identity: ServingUnitArtifactIdentity,
+) -> ServingUnitArtifact {
+  ServingUnitArtifact {
+    primary_shard_path: primary_shard_path,
+    shard_count: shard_count,
+    identity: identity,
+  }
+}
+
+data serving_unit_observed_shard_digests: List<NonEmptyStr> = [
+  "2baab0767d2630cb1633495ff6ccf10bdc5b83de7d66a0d3728a1a0f38e96220" as NonEmptyStr,
+  "3495d0e8218c5a526d66a4901114a7ee4c5e25f84fe1f4bc632b5cbfdac57ac7" as NonEmptyStr,
+  "57ad22e505204245020644de9143accfe3be91951efaa809bf59fa640ec278ea" as NonEmptyStr,
+  "87b2e7956b08954dd0d9ba71801f623fdcd1762f252ea3d18018798a1718bfc9" as NonEmptyStr,
+]
+
 data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
   primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
   shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
-  identity: ArtifactIdentityUnobserved {
-    cause: "GET /v1/models on the front door reports this model with an empty digest, and the shard files are outside the convergence principal's access on the experimentation pair" as NonEmptyStr,
-  },
+  identity: ArtifactIdentityBound { shard_digests: serving_unit_observed_shard_digests },
 }
 
 // A UNIT WHOSE ARTIFACT IDENTITY IS UNBOUND MAY BE OBSERVED AND MAY NOT BE CONVERGED, and that is
@@ -419,7 +442,8 @@ data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
 // step must consult, and it answers false today.
 fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
   match a.identity {
-    ArtifactIdentityBound { shard_digests: ds } => length(ds) > 0
+    ArtifactIdentityBound { shard_digests: ds } =>
+      length(ds) == positive_shard_count_value(shards: a.shard_count)
     ArtifactIdentityUnobserved { cause: _ } => false
   }
 }
