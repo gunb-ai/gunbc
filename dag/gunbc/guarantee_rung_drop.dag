@@ -322,6 +322,26 @@ data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
 // repair is specifiable. Assignment is a dashboard routing fact and deliberately does not live in
 // this semantic carrier.
 
+// THE GENERATED-ARTIFACT REGISTRY IS GUARDED INDIRECTLY, AND THIS ROW EXISTS BECAUSE THE MUTATION
+// WAS RUN RATHER THAN REASONED ABOUT. Deleting a member from generated_artifact_registry and
+// running the gate produced EXACTLY ONE finding, and it was `.gitattributes` drift -- the
+// merge-driver enrollment projection enumerates registry members, so dropping one changes its
+// bytes. Nothing said what an author would actually want said: that a COMMITTED file at a
+// generated location is now adjudicated by nobody. The wall is real and it is one step removed
+// from its subject, so an artifact excluded from the .gitattributes projection for any reason
+// would leave the registry silently. Current rung is the honest one for a guard that holds by
+// side effect; the trigger names the direct capability, a census joining committed files at
+// generated-artifact locations back to registry membership, because a guard that answers about
+// enrollment bytes is not the guard that answers about orphaned artifacts.
+data generated_artifact_registry_membership_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a committed generated artifact leaves generated_artifact_registry and stops being adjudicated",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "gunbc.generated_artifact generated_artifact_registry", tail: Cons { head: "gunbc.generated_artifact_merge_driver", tail: Empty {} } } },
+  next_rung_trigger: "a census that enumerates committed files at every artifact_location and refuses one with no generated_artifact_registry member, so registry departure is refused by its own subject rather than by .gitattributes drift"
+}
+
 data doc_graph_orphan_population_stall: GuaranteeStall = GuaranteeStall {
   subject: "the derived documentation graph contains orphan documents",
   current: OutsideTheLadder,
