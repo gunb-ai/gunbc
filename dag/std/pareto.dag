@@ -473,32 +473,28 @@ fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
   concat(from_a, from_b)
 }
 
-// MALFORMED BEATS INCOMPLETE, AND THE PRECEDENCE IS NOT A CHOICE - this file already fixed it one
-// layer up. entry_contradicts_its_declaration exempts an ABSENT reading when the entry declares its
-// gaps, and pointedly does NOT exempt a DUPLICATE: "two readings on one axis identity is malformed
-// evidence whatever else the entry declares", because the spine would have to pick one. The gate
-// below must mirror that or the two disagree, which is the defect this whole PR is about.
+// MALFORMED BEATS INCOMPLETE, AND THE SHARED FUNCTION IS THE WHOLE POINT - compare_pair and
+// field_contradictions consume ONE projector-contradiction reader, entry_contradicts_its_declaration,
+// so the two paths cannot answer differently about the same evidence. That reader exempts an ABSENT
+// reading when the entry declares its gaps, and pointedly does NOT exempt a DUPLICATE: two readings
+// on one axis identity is malformed evidence whatever else the entry declares, because the spine
+// would have to pick one.
 //
-// Reported on review of this change (review 58743) and it was right: the first version returned
-// PairEvidenceIncomplete before looking at any reading, so an entry carrying BOTH a declared gap and
-// a duplicate reading stopped reporting PairRefused and started reporting an honest incompleteness -
-// a projector defect wearing the report of an honest one. A declared gap is an honest statement
-// about the world; a duplicate reading is a bug in the projector, and no declaration excuses it.
-fn duplicate_reading_causes(e: ParetoEntry, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
-  fold(axes, init: no_names, f: fn(acc, ax) {
-    match reading_for(e: e, wanted: ax.identity) {
-      ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
-        declaration_ref_display_key(ref: e.identity),
-        " has duplicate readings on funded axis ",
-        declaration_ref_display_key(ref: duplicated_axis)], ""))),
-      ReadingFound { interval_micro } => acc,
-      ReadingAbsent { absent_axis } => acc,
-    }
-  })
-}
-
+// duplicate_reading_causes WAS HERE AND IS DELETED (2026-09-02). It was a second, weaker copy of
+// that reader - identical duplicate arm, right down to the message string, with the absent arm
+// dropped - and a second authority for one question is the §3 violation whichever copy is wrong.
+// This one was wrong in a specific way: an entry declaring complete inputs while missing a funded
+// reading is a projector defect the field path refuses as SelectionRefused, but the pair path never
+// reached its axis fold to see it, because an HONEST declared gap on the OTHER operand
+// short-circuited first. So malformed evidence on one entry was masked by truthful incompleteness on
+// its opponent - the same masking review 58743 caught one arm earlier, surviving in the arm that
+// review did not name. Reported on review 5091604216, which was right.
+//
+// The precedence now falls out of the shared reader rather than being restated here: projector
+// contradiction (duplicate anywhere, or absent-while-declaring-complete) > honest declared
+// incompleteness > ordinary axis comparison.
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
-  let malformed = concat(duplicate_reading_causes(e: a, axes: axes), duplicate_reading_causes(e: b, axes: axes))
+  let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
   if count(malformed) > 0 {
     PairRefused { cause: join(malformed, " ; ") }
   } else {

@@ -462,6 +462,39 @@ test fn the_pair_api_and_the_standing_path_agree_about_a_gap() -> Bool {
   gapped_row_is_not_computable && never_a_dominator
 }
 
+// AN HONEST GAP MUST NOT MASK A PROJECTOR DEFECT ON THE OTHER OPERAND, IN EITHER DIRECTION. This is
+// the control for review 5091604216, and it is the one the pre-existing duplicate-focused controls
+// could not express: entry_reading_hole declares COMPLETE inputs while missing a funded reading -- a
+// projector contradiction, not an honest gap -- and entry_gap_but_best declares a gap truthfully.
+// Pairing them is the case where the old duplicate-only pre-scan found nothing malformed, took the
+// declared-gap arm, and returned an honest PairEvidenceIncomplete while the field path returned
+// SelectionRefused on the very same evidence.
+//
+// Both operand orders are required because the pre-scan reads a and b through one shared reader now;
+// a repair that only fixed the subject side would leave the challenger side answering differently,
+// which is the same disagreement one argument position over.
+//
+// THE KILLING MUTATION, named so a later reader can re-run it: restore the duplicate-only pre-scan
+// (match ReadingAbsent => acc in the function compare_pair consults) and this control goes red while
+// every duplicate-based control stays green -- which is precisely why those controls did not catch it.
+test fn an_honest_gap_does_not_mask_a_contradiction_on_the_other_side() -> Bool {
+  let hole_as_challenger = match compare_pair(a: entry_reading_hole, b: entry_gap_but_best, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  let hole_as_subject = match compare_pair(a: entry_gap_but_best, b: entry_reading_hole, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  hole_as_challenger && hole_as_subject
+}
+
 fn pareto_witness_report() -> NonEmptyStr {
   join([
     "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
@@ -477,6 +510,7 @@ fn pareto_witness_report() -> NonEmptyStr {
     " gap_ineligible_to_dominate=", flag(b: a_declared_gap_is_ineligible_to_dominate()),
     " pair_and_standing_agree=", flag(b: the_pair_api_and_the_standing_path_agree_about_a_gap()),
     " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
+    " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
   ], "")
 }
 
@@ -492,6 +526,7 @@ fn pareto_witness_main() -> ProcessExit {
     && a_declared_gap_is_ineligible_to_dominate()
     && the_pair_api_and_the_standing_path_agree_about_a_gap()
     && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
+    && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
