@@ -70,6 +70,7 @@ type SparkServingProbeRequest
   | UserUnitReadRequest
   | UserUnitIsEnabledRequest
   | RunningDefinitionRequest
+  | InvocationIdentityRequest
   | RuntimeRootRequest
   | RuntimeExecutableRequest
   | RuntimeExecutableBitRequest
@@ -97,6 +98,7 @@ fn spark_serving_probe_request_leg(request: SparkServingProbeRequest) -> SparkSe
     UserUnitReadRequest => ProbeUserUnitRead
     UserUnitIsEnabledRequest => ProbeUserUnitIsEnabled
     RunningDefinitionRequest => ProbeRunningDefinition
+    InvocationIdentityRequest => ProbeInvocationIdentity
     RuntimeRootRequest => ProbeRuntimeRoot
     RuntimeExecutableRequest => ProbeRuntimeExecutable
     RuntimeExecutableBitRequest => ProbeRuntimeExecutableBit
@@ -125,6 +127,7 @@ type SparkServingProbeLeg
   | ProbeUserUnitRead
   | ProbeUserUnitIsEnabled
   | ProbeRunningDefinition
+  | ProbeInvocationIdentity
   | ProbeRuntimeRoot
   | ProbeRuntimeExecutable
   | ProbeRuntimeExecutableBit
@@ -152,6 +155,7 @@ fn spark_serving_probe_leg_key(leg: SparkServingProbeLeg) -> NonEmptyStr {
     ProbeUserUnitRead => "user_unit_read" as NonEmptyStr
     ProbeUserUnitIsEnabled => "user_unit_is_enabled" as NonEmptyStr
     ProbeRunningDefinition => "running_definition" as NonEmptyStr
+    ProbeInvocationIdentity => "invocation_identity" as NonEmptyStr
     ProbeRuntimeRoot => "runtime_root" as NonEmptyStr
     ProbeRuntimeExecutable => "runtime_executable" as NonEmptyStr
     ProbeRuntimeExecutableBit => "runtime_executable_bit" as NonEmptyStr
@@ -600,7 +604,7 @@ fn spark_serving_required_probe_legs() -> List<SparkServingProbeLeg> {
     ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
     ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
     ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
-    ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition,
+    ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition, ProbeInvocationIdentity,
     ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
   ]
 }

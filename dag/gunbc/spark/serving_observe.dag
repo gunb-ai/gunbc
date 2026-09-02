@@ -154,7 +154,7 @@ import gunbc.spark.serving_observation_transaction {
   ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
   ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
   ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
-  ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition,
+  ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition, ProbeInvocationIdentity,
   ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
   SparkServingProbeRequest,
   SparkServingProbeOutcome,
@@ -166,7 +166,7 @@ import gunbc.spark.serving_observation_transaction {
   RuntimeReceiptRequest, ActiveEnterRequest, DefaultTargetEnterRequest, UptimeRequest,
   GrantsRequest, PasswdRequest, AuthorizedKeysRequest, LingerRequest,
   ModelManifestRequest, ModelBlobsListingRequest, ModelManifestDigestRequest, ModelBlobDigestsRequest,
-  UserUnitReadRequest, UserUnitIsEnabledRequest, RunningDefinitionRequest,
+  UserUnitReadRequest, UserUnitIsEnabledRequest, RunningDefinitionRequest, InvocationIdentityRequest,
   RuntimeRootRequest, RuntimeExecutableRequest, RuntimeExecutableBitRequest, RuntimeRootListingRequest,
 }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused, spark_managed_executor_login, spark_managed_principal_home }
@@ -267,7 +267,8 @@ fn spark_serving_active_probe_words() -> List<String> {
 // window.
 //
 // A SUCCESSFUL read with no marker prints `absent`: that is positive evidence that this invocation
-// came from the earlier, unstamped definition deployed before this capability existed. It is not
+// cannot be established as having started from the current stamped definition. It says nothing
+// chronological -- a foreign or manually started process can also be unstamped. It is not
 // unobservable. Only inability to read procfs or a malformed/moving MainPID refuses.
 fn spark_serving_running_definition_probe_argv() -> List<String> {
   [
@@ -283,6 +284,42 @@ fn spark_serving_running_definition_probe_argv() -> List<String> {
       "start_after=$(awk '\{sub(/^.*\\) /, \"\"); print $20\}' /proc/$pid_after/stat) || exit $?; ",
       "test \"$pid_before:$start_before\" = \"$pid_after:$start_after\" || \{ echo 'running-definition: MainPID or process start time moved during observation' >&2; exit 67; \}; ",
       "printf '%s\\n' \"$identity\"",
+    ], ""),
+  ]
+}
+
+// SYSTEMD'S INVOCATION ID IS THE GENERATION IDENTITY; PID AND START TIME ARE ITS BRACKET.
+//
+// InvocationID is minted by the supervisor for every activation, so two restarts from the same
+// definition cannot compare equal. PID:start-time is still read on both sides: it binds the opaque
+// supervisor token to the exact process whose environment is readable and whose unit is active,
+// and prevents PID reuse or a concurrent restart from returning a plausible identity for a mixed
+// observation. The environment is deliberately read here even though this carrier does not expose
+// its definition stamp: otherwise the invocation identity would not identify the process about
+// which the sibling running-definition probe can speak.
+fn spark_serving_invocation_identity_probe_argv() -> List<String> {
+  [
+    "bash", "-lc",
+    join([
+      "active_before=$(systemctl --user is-active ", spark_serving_unit_name, ") || exit $?; ",
+      "test \"$active_before\" = active || exit 65; ",
+      "pid_before=$(systemctl --user show ", spark_serving_unit_name,
+      " --property=MainPID --value) || exit $?; ",
+      "case \"$pid_before\" in ''|*[!0-9]*|0) echo 'invocation-identity: MainPID did not name a running process' >&2; exit 65;; esac; ",
+      "start_before=$(awk '\{sub(/^.*\\) /, \"\"); print $20\}' /proc/$pid_before/stat) || exit $?; ",
+      "invocation_before=$(systemctl --user show ", spark_serving_unit_name,
+      " --property=InvocationID --value) || exit $?; ",
+      "test -n \"$invocation_before\" || \{ echo 'invocation-identity: systemd returned an empty InvocationID' >&2; exit 66; \}; ",
+      "test -r /proc/$pid_before/environ || \{ echo 'invocation-identity: process environment is unreadable' >&2; exit 66; \}; ",
+      "awk -v 'RS=\\0' '\{ seen=1 \}' /proc/$pid_before/environ >/dev/null || exit $?; ",
+      "pid_after=$(systemctl --user show ", spark_serving_unit_name,
+      " --property=MainPID --value) || exit $?; ",
+      "start_after=$(awk '\{sub(/^.*\\) /, \"\"); print $20\}' /proc/$pid_after/stat) || exit $?; ",
+      "invocation_after=$(systemctl --user show ", spark_serving_unit_name,
+      " --property=InvocationID --value) || exit $?; ",
+      "active_after=$(systemctl --user is-active ", spark_serving_unit_name, ") || exit $?; ",
+      "test \"$pid_before:$start_before:$invocation_before:$active_before\" = \"$pid_after:$start_after:$invocation_after:$active_after\" || \{ echo 'invocation-identity: process generation or activity moved during observation' >&2; exit 67; \}; ",
+      "printf '%s\\n' \"$invocation_before\"",
     ], ""),
   ]
 }
@@ -888,6 +925,7 @@ fn spark_serving_acquire_observation_transaction(
         spark_serving_captured_leg(context: context, host: host, request: UserUnitReadRequest),
         spark_serving_captured_leg(context: context, host: host, request: UserUnitIsEnabledRequest),
         spark_serving_captured_leg(context: context, host: host, request: RunningDefinitionRequest),
+        spark_serving_captured_leg(context: context, host: host, request: InvocationIdentityRequest),
         spark_serving_captured_leg(context: context, host: host, request: RuntimeRootRequest),
         spark_serving_captured_leg(context: context, host: host, request: RuntimeExecutableRequest),
         spark_serving_captured_leg(context: context, host: host, request: RuntimeExecutableBitRequest),
@@ -941,6 +979,7 @@ fn spark_serving_probe_request_argv(request: SparkServingProbeRequest) -> List<S
     UserUnitReadRequest => spark_serving_user_unit_read_argv()
     UserUnitIsEnabledRequest => spark_serving_user_unit_is_enabled_argv()
     RunningDefinitionRequest => spark_serving_running_definition_probe_argv()
+    InvocationIdentityRequest => spark_serving_invocation_identity_probe_argv()
     RuntimeRootRequest => spark_serving_runtime_root_probe_argv()
     RuntimeExecutableRequest => spark_serving_runtime_executable_probe_argv()
     RuntimeExecutableBitRequest => spark_serving_runtime_executable_bit_probe_argv()
@@ -1010,6 +1049,7 @@ fn spark_serving_request_prerequisite_refusal(
     UserUnitReadRequest => none
     UserUnitIsEnabledRequest => none
     RunningDefinitionRequest => none
+    InvocationIdentityRequest => none
     RuntimeRootRequest => none
     RuntimeExecutableRequest => none
     RuntimeExecutableBitRequest => none
@@ -2053,6 +2093,68 @@ fn spark_serving_running_definition_from_transaction(
   spark_serving_running_definition_from_probe_results(
     is_active: spark_serving_transaction_result(txn: txn, leg: ProbeIsActive),
     running_definition: spark_serving_transaction_result(txn: txn, leg: ProbeRunningDefinition),
+  )
+}
+
+// INVOCATION GENERATION AND RUNNING DEFINITION HAVE DIFFERENT STABILITY.
+//
+// The definition identity is equal across restarts from one spec. This identity must differ across
+// those restarts, so a post-reactivation observation can prove replacement rather than merely prove
+// that both processes came from the same desired definition. Unobserved remains located; an empty
+// or unreadable supervisor token must never be replaced with PID, definition identity, or a
+// fabricated sentinel.
+type SparkServingInvocationIdentity
+  = InvocationIdentityObserved { invocation_identity: NonEmptyStr }
+  | InvocationIdentityNotRunning
+  | InvocationIdentityUnobserved { cause: NonEmptyStr }
+
+fn spark_serving_invocation_identity_from_probe_results(
+  is_active: SshSessionExecResult?,
+  invocation: SshSessionExecResult?,
+) -> SparkServingInvocationIdentity {
+  match is_active {
+    Absent => InvocationIdentityUnobserved {
+      cause: "unit activity probe did not run, so no serving invocation can be selected" as NonEmptyStr,
+    }
+    Present { value: active } =>
+      if active.success && trim(s: active.stdout) == "active" {
+        match invocation {
+          Absent => InvocationIdentityUnobserved {
+            cause: "unit is active but the invocation-identity probe did not run" as NonEmptyStr,
+          }
+          Present { value: observed } =>
+            if observed.success && trim(s: observed.stdout) != "" {
+              InvocationIdentityObserved {
+                invocation_identity: trim(s: observed.stdout) as NonEmptyStr,
+              }
+            } else {
+              InvocationIdentityUnobserved {
+                cause: join([
+                  "invocation-identity probe refused exit=", to_string(observed.exit_code),
+                  " stderr=", observed.stderr,
+                ], "") as NonEmptyStr,
+              }
+            }
+        }
+      } else if active.exit_code == 3 || active.exit_code == 4 || active.success {
+        InvocationIdentityNotRunning
+      } else {
+        InvocationIdentityUnobserved {
+          cause: join([
+            "unit activity probe refused exit=", to_string(active.exit_code),
+            " stderr=", active.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn spark_serving_invocation_identity_from_transaction(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingInvocationIdentity {
+  spark_serving_invocation_identity_from_probe_results(
+    is_active: spark_serving_transaction_result(txn: txn, leg: ProbeIsActive),
+    invocation: spark_serving_transaction_result(txn: txn, leg: ProbeInvocationIdentity),
   )
 }
 

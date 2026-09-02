@@ -75,6 +75,11 @@ import gunbc.spark.serving_observe {
   SparkServingHostObservation,
   spark_serving_observation_report_text,
   spark_serving_running_definition_from_probe_results,
+  spark_serving_invocation_identity_probe_argv,
+  spark_serving_invocation_identity_from_probe_results,
+  InvocationIdentityObserved,
+  InvocationIdentityNotRunning,
+  InvocationIdentityUnobserved,
 }
 import gunbc.spark.serving_realization {
   RunningDefinitionObserved,
@@ -114,6 +119,77 @@ test fn running_definition_identity_is_observed_from_the_invocation() -> Bool {
     RunningDefinitionUnstamped => false
     RunningDefinitionNotRunning => false
     RunningDefinitionUnobserved { cause: _ } => false
+  }
+}
+
+test fn invocation_identity_is_a_separate_observed_generation() -> Bool {
+  match spark_serving_invocation_identity_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") },
+    invocation: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "9f6a-generation-a\n", stderr: "") },
+  ) {
+    InvocationIdentityObserved { invocation_identity: identity } =>
+      identity == ("9f6a-generation-a" as NonEmptyStr)
+    InvocationIdentityNotRunning => false
+    InvocationIdentityUnobserved { cause: _ } => false
+  }
+}
+
+// The RED is authorable: returning a definition-derived constant for both observations makes this
+// fail. Successive activations of one unchanged definition must remain distinguishable.
+test fn successive_invocation_identities_can_differ_without_definition_drift() -> Bool {
+  let active = Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") }
+  let first = spark_serving_invocation_identity_from_probe_results(
+    is_active: active,
+    invocation: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "generation-a\n", stderr: "") },
+  )
+  let second = spark_serving_invocation_identity_from_probe_results(
+    is_active: active,
+    invocation: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "generation-b\n", stderr: "") },
+  )
+  match first {
+    InvocationIdentityObserved { invocation_identity: a } =>
+      match second {
+        InvocationIdentityObserved { invocation_identity: b } => a != b
+        InvocationIdentityNotRunning => false
+        InvocationIdentityUnobserved { cause: _ } => false
+      }
+    InvocationIdentityNotRunning => false
+    InvocationIdentityUnobserved { cause: _ } => false
+  }
+}
+
+// The command itself is the executable control for all four generation properties. InvocationID is
+// the value returned (not PID or definition identity); PID:start-time and InvocationID are bracketed
+// across the environment read; and activity is checked on both sides of that same read.
+test fn invocation_identity_probe_binds_supervisor_generation_process_environment_and_health() -> Bool {
+  let command = spark_serving_invocation_identity_probe_argv().skip(n: 2).first()
+  string_contains(s: command, pattern: "--property=InvocationID")
+    && string_contains(s: command, pattern: "/proc/$pid_before/environ")
+    && string_contains(s: command, pattern: "$pid_before:$start_before:$invocation_before:$active_before")
+    && string_contains(s: command, pattern: "$pid_after:$start_after:$invocation_after:$active_after")
+    && string_contains(s: command, pattern: "printf '%s\\n' \"$invocation_before\"")
+}
+
+test fn invocation_identity_refuses_when_the_generation_cannot_be_observed() -> Bool {
+  match spark_serving_invocation_identity_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") },
+    invocation: Present { value: running_definition_exec(success: false, exit_code: 67, stdout: "", stderr: "process generation moved") },
+  ) {
+    InvocationIdentityUnobserved { cause: cause } =>
+      string_contains(s: cause as String, pattern: "process generation moved")
+    InvocationIdentityObserved { invocation_identity: _ } => false
+    InvocationIdentityNotRunning => false
+  }
+}
+
+test fn inactive_unit_has_no_invocation_identity() -> Bool {
+  match spark_serving_invocation_identity_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: false, exit_code: 3, stdout: "inactive\n", stderr: "") },
+    invocation: none,
+  ) {
+    InvocationIdentityNotRunning => true
+    InvocationIdentityObserved { invocation_identity: _ } => false
+    InvocationIdentityUnobserved { cause: _ } => false
   }
 }
 
