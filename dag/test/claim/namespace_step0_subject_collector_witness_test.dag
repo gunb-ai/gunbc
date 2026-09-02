@@ -1,0 +1,208 @@
+module test.claim.namespace_step0_subject_collector_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.lens.module_graph { ImportResolutionFact }
+import v2.std.algebra { length }
+import gunbc.namespace_step0_canary {
+  namespace_step0_canary_contract,
+  namespace_step0_manifest_identity
+}
+import gunbc.namespace_step0_subject_collector {
+  Step0SubjectVector,
+  Step0SubjectCollection,
+  Step0SubjectCollected,
+  Step0SubjectCollectionRefused,
+  Step0SubjectPinRefusal,
+  Step0WorkingTreeNotPinned,
+  Step0SubjectVectorEmpty,
+  Step0CommitIdentityUnreadable,
+  Step0TreeIdentityUnreadable,
+  Step0HeadCommitUnreadable,
+  Step0HeadTreeUnreadable,
+  Step0WorkingTreeStandingUnreadable,
+  assemble_step0_subject_vector,
+  collect_current_step0_subject_vector,
+  step0_subject_occurrence_identity,
+  step0_subject_vector_occurrence_identities,
+  step0_subject_vector_size
+}
+
+// THIS ENTRY READS THE LIVE TREE BY CONSTRUCTION -- the collector's whole subject is the checkout
+// it is run in, so the declaration is the fact rather than a conservative stamp.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE LIVE PROBE'S ORACLE IS THIS FILE. A live collector can be wrong in a way no synthetic
+// fixture reaches: it can scan the wrong roots, or a stale population, and still return a
+// well-formed non-empty vector. So the positive control does not assert a count -- a count copied
+// from the same tree is not an oracle (DESIGN section 5) -- it asserts that the vector contains an
+// occurrence whose referent is independent of the measurement: the import line THIS witness file
+// carries, three lines above, naming the collector module it is testing. If the scan misses the
+// dag root, reads a different revision's population, or drops braced imports, that occurrence is
+// absent and the probe reds; and the referent cannot rot silently, because deleting the import
+// that grounds it also deletes the symbols this file calls.
+data self_occurrence_identity: NonEmptyStr = "dag/test/claim/namespace_step0_subject_collector_witness_test.dag imports gunbc.namespace_step0_subject_collector" as NonEmptyStr
+
+fn well_formed_commit_hex() -> String {
+  "20caf4eb0477c5a46d5b0d1302e337db14fcbd59"
+}
+
+fn well_formed_tree_hex() -> String {
+  "a6a6e0a531e23cc88fbbe01a2fa582b84867c625"
+}
+
+fn one_import_fact() -> List<ImportResolutionFact> {
+  [ImportResolutionFact { path: "dag/std/types.dag", import_module: "std.algebra", target_declared: true }]
+}
+
+fn collection_is_collected(c: Step0SubjectCollection) -> Bool {
+  match c {
+    Step0SubjectCollected { vector: _ } => true
+    Step0SubjectCollectionRefused { cause: _ } => false
+  }
+}
+
+fn refusal_is_not_pinned(c: Step0SubjectCollection) -> Bool {
+  match c {
+    Step0SubjectCollected { vector: _ } => false
+    Step0SubjectCollectionRefused { cause: cause } => match cause {
+      Step0WorkingTreeNotPinned { entries_nul: _ } => true
+      Step0SubjectVectorEmpty { tree_hex: _ } => false
+      Step0CommitIdentityUnreadable { hex: _ } => false
+      Step0TreeIdentityUnreadable { hex: _ } => false
+      Step0HeadCommitUnreadable { detail: _ } => false
+      Step0HeadTreeUnreadable { detail: _ } => false
+      Step0WorkingTreeStandingUnreadable { detail: _ } => false
+    }
+  }
+}
+
+fn refusal_is_empty_subject(c: Step0SubjectCollection) -> Bool {
+  match c {
+    Step0SubjectCollected { vector: _ } => false
+    Step0SubjectCollectionRefused { cause: cause } => match cause {
+      Step0SubjectVectorEmpty { tree_hex: _ } => true
+      Step0WorkingTreeNotPinned { entries_nul: _ } => false
+      Step0CommitIdentityUnreadable { hex: _ } => false
+      Step0TreeIdentityUnreadable { hex: _ } => false
+      Step0HeadCommitUnreadable { detail: _ } => false
+      Step0HeadTreeUnreadable { detail: _ } => false
+      Step0WorkingTreeStandingUnreadable { detail: _ } => false
+    }
+  }
+}
+
+fn refusal_is_unreadable_commit(c: Step0SubjectCollection) -> Bool {
+  match c {
+    Step0SubjectCollected { vector: _ } => false
+    Step0SubjectCollectionRefused { cause: cause } => match cause {
+      Step0CommitIdentityUnreadable { hex: _ } => true
+      Step0SubjectVectorEmpty { tree_hex: _ } => false
+      Step0WorkingTreeNotPinned { entries_nul: _ } => false
+      Step0TreeIdentityUnreadable { hex: _ } => false
+      Step0HeadCommitUnreadable { detail: _ } => false
+      Step0HeadTreeUnreadable { detail: _ } => false
+      Step0WorkingTreeStandingUnreadable { detail: _ } => false
+    }
+  }
+}
+
+fn refusal_is_unreadable_tree(c: Step0SubjectCollection) -> Bool {
+  match c {
+    Step0SubjectCollected { vector: _ } => false
+    Step0SubjectCollectionRefused { cause: cause } => match cause {
+      Step0TreeIdentityUnreadable { hex: _ } => true
+      Step0CommitIdentityUnreadable { hex: _ } => false
+      Step0SubjectVectorEmpty { tree_hex: _ } => false
+      Step0WorkingTreeNotPinned { entries_nul: _ } => false
+      Step0HeadCommitUnreadable { detail: _ } => false
+      Step0HeadTreeUnreadable { detail: _ } => false
+      Step0WorkingTreeStandingUnreadable { detail: _ } => false
+    }
+  }
+}
+
+fn identities_contain(xs: List<NonEmptyStr>, want: NonEmptyStr) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x as String) == (want as String) })
+}
+
+// THE PRODUCER JOIN, EXECUTED. A clean checkout yields a vector whose tree is the one the same
+// call observed, and whose occurrences include this file's own import of the module under test.
+test fn the_live_collector_binds_a_nonempty_vector_to_the_tree_it_read() -> Bool {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: _ } => false
+    Step0SubjectCollected { vector: vector } =>
+      step0_subject_vector_size(vector: vector) > 0
+        && (vector.contract_identity as String) == (namespace_step0_canary_contract.identity as String)
+        && (vector.input_subject_manifest as String) == (namespace_step0_manifest_identity() as String)
+        && identities_contain(
+             xs: step0_subject_vector_occurrence_identities(vector: vector),
+             want: self_occurrence_identity
+           )
+  }
+}
+
+// A DIRTY CHECKOUT IS NOT A VECTOR WITH A CAVEAT. The on-disk population is not a reading of the
+// tree whose id would be stamped on it, so the collection refuses.
+test fn a_dirty_checkout_refuses_instead_of_binding_a_vector_to_a_tree_it_did_not_read() -> Bool {
+  refusal_is_not_pinned(c: assemble_step0_subject_vector(
+    head_commit_hex: well_formed_commit_hex(),
+    head_tree_hex: well_formed_tree_hex(),
+    working_tree_entries_nul: " M dag/std/types.dag",
+    occurrences: one_import_fact()
+  ))
+}
+
+// AN EMPTY POPULATION IS AN UNOBSERVED SUBJECT, NOT A SUBJECT OF SIZE ZERO -- the same rule the
+// frozen canary applies to a planted empty observation.
+test fn an_empty_import_population_refuses_instead_of_reporting_an_empty_subject() -> Bool {
+  refusal_is_empty_subject(c: assemble_step0_subject_vector(
+    head_commit_hex: well_formed_commit_hex(),
+    head_tree_hex: well_formed_tree_hex(),
+    working_tree_entries_nul: "",
+    occurrences: []
+  ))
+}
+
+test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool {
+  refusal_is_unreadable_commit(c: assemble_step0_subject_vector(
+    head_commit_hex: "not-a-sha",
+    head_tree_hex: well_formed_tree_hex(),
+    working_tree_entries_nul: "",
+    occurrences: one_import_fact()
+  ))
+}
+
+test fn an_unreadable_tree_refuses_before_any_vector_is_built() -> Bool {
+  refusal_is_unreadable_tree(c: assemble_step0_subject_vector(
+    head_commit_hex: well_formed_commit_hex(),
+    head_tree_hex: "",
+    working_tree_entries_nul: "",
+    occurrences: one_import_fact()
+  ))
+}
+
+// THE POSITIVE CONTROL FOR THE PURE HALF: well-formed observations produce a vector carrying
+// exactly the tree that was observed, so the refusals above discriminate rather than being the
+// function's only behaviour.
+test fn a_clean_observation_produces_a_vector_bound_to_the_observed_tree() -> Bool {
+  match assemble_step0_subject_vector(
+    head_commit_hex: well_formed_commit_hex(),
+    head_tree_hex: well_formed_tree_hex(),
+    working_tree_entries_nul: "",
+    occurrences: one_import_fact()
+  ) {
+    Step0SubjectCollectionRefused { cause: _ } => false
+    Step0SubjectCollected { vector: vector } => match git_sha1_object_id(hex: well_formed_tree_hex()) {
+      Absent => false
+      Present { value: expected_tree } =>
+        git_object_id_eq(left: vector.source_tree, right: expected_tree)
+          && step0_subject_vector_size(vector: vector) == 1
+          && identities_contain(
+               xs: step0_subject_vector_occurrence_identities(vector: vector),
+               want: "dag/std/types.dag imports std.algebra" as NonEmptyStr
+             )
+    }
+  }
+}

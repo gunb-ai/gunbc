@@ -1,0 +1,165 @@
+module gunbc.namespace_step0_subject_collector
+
+import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import extdeps.git.inspect
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import gunbc.namespace_step0_canary {
+  namespace_step0_canary_contract,
+  namespace_step0_manifest_identity
+}
+import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live }
+import v2.std.algebra { length, list_map }
+
+// THE STEP 0 SUBJECT VECTOR AND THE TREE IT WAS TAKEN FROM HAVE ONE PRODUCER, WHICH IS THE WHOLE
+// POINT OF THIS MODULE. The Step 0 receipt zero bound its baseline to a commit, a tree and a
+// compiler digest transcribed from a shell run, and the strip subject those literals are supposed
+// to describe -- the import statements the cut deletes -- was measured separately, by hand, by an
+// unowned procedure (docs/plans/namespace-cut-replacement-plan.md, Step 0). Two producers for one
+// observation is the shape that lets a vector be quoted beside a tree it was never read from:
+// nothing joins them, so nothing can refuse the mismatch.
+//
+// collect_current_step0_subject_vector is the join. It observes the revision, the tree of that
+// revision, and the working-tree standing in one pass, and only then reads the import population;
+// the vector it returns cannot name a tree other than the one the same call observed, because the
+// constructor is reachable only through this fold. A caller cannot supply either half.
+//
+// WHY THE WORKING TREE MUST BE CLEAN, AND WHY THAT IS A REFUSAL RATHER THAN A NOTE. The import
+// population is produced by the compiler's own parse of the source roots ON DISK, while the tree
+// id names what git has. Those two agree exactly when the checkout is clean. A dirty checkout does
+// not make the reading approximately right; it makes the vector a reading of a tree that has no
+// id, presented under the id of a different one -- which is the defect this module exists to close,
+// re-entering through the back door. So a dirty checkout is a typed, located refusal that names
+// the entries that made it dirty, never a vector carrying a caveat.
+//
+// GRAIN, STATED SO IT IS NOT READ FOR MORE THAN IT SAYS. An occurrence here is one
+// (importer path, imported module) fact from v2.lens.module_graph's import producer -- the
+// compiler's parse, not a text scan. That is statement grain for every import form the corpus
+// actually carries, single-line, braced and bare alike, because one statement names one module.
+// It is NOT the brace-balanced textual extent of the statement: this vector locates and identifies
+// the subject, it does not carry the bytes a rewrite would delete. The remaining span is exactly
+// the capability Step 0's retirement trigger names -- a typed source-rewrite op -- and that
+// producer, when it exists, extends this vector rather than replacing it: it is the thing that
+// turns an identified occurrence into a removed one.
+type Step0SubjectPinRefusal
+  = Step0HeadCommitUnreadable { detail: String }
+  | Step0HeadTreeUnreadable { detail: String }
+  | Step0WorkingTreeStandingUnreadable { detail: String }
+  | Step0WorkingTreeNotPinned { entries_nul: String }
+  | Step0CommitIdentityUnreadable { hex: String }
+  | Step0TreeIdentityUnreadable { hex: String }
+  | Step0SubjectVectorEmpty { tree_hex: String }
+
+// sole_constructor: every field is observed in one fold, so there is no second way to mint a
+// vector whose tree and occurrences came from different reads.
+type Step0SubjectVector sole_constructor {
+  contract_identity: NonEmptyStr
+  source_commit: GitObjectId
+  source_tree: GitObjectId
+  input_subject_manifest: NonEmptyStr
+  occurrences: List<ImportResolutionFact>
+}
+
+type Step0SubjectCollection
+  = Step0SubjectCollected { vector: Step0SubjectVector }
+  | Step0SubjectCollectionRefused { cause: Step0SubjectPinRefusal }
+
+fn step0_subject_source_roots() -> List<String> {
+  list_map(xs: namespace_step0_canary_contract.source_roots, f: fn(root) { root as String })
+}
+
+// THE PURE HALF, SEPARATED SO ITS REFUSALS ARE AUTHORABLE WITHOUT A HOST. It takes raw
+// observations -- two hex strings, the porcelain entry blob, the import facts -- and never a
+// pre-built vector, so the ordering of the four refusals is executable evidence rather than a
+// claim about what the live call does.
+fn assemble_step0_subject_vector(
+  head_commit_hex: String,
+  head_tree_hex: String,
+  working_tree_entries_nul: String,
+  occurrences: List<ImportResolutionFact>
+) -> Step0SubjectCollection {
+  match git_sha1_object_id(hex: trim(s: head_commit_hex)) {
+    Absent => Step0SubjectCollectionRefused {
+      cause: Step0CommitIdentityUnreadable { hex: head_commit_hex }
+    }
+    Present { value: commit } => match git_sha1_object_id(hex: trim(s: head_tree_hex)) {
+      Absent => Step0SubjectCollectionRefused {
+        cause: Step0TreeIdentityUnreadable { hex: head_tree_hex }
+      }
+      Present { value: tree } =>
+        if trim(s: working_tree_entries_nul) != "" {
+          Step0SubjectCollectionRefused {
+            cause: Step0WorkingTreeNotPinned { entries_nul: working_tree_entries_nul }
+          }
+        } else if length(xs: occurrences) == 0 {
+          Step0SubjectCollectionRefused {
+            cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) }
+          }
+        } else {
+          Step0SubjectCollected {
+            vector: Step0SubjectVector {
+              contract_identity: namespace_step0_canary_contract.identity,
+              source_commit: commit,
+              source_tree: tree,
+              input_subject_manifest: namespace_step0_manifest_identity(),
+              occurrences: occurrences
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE LIVE HALF. Three host observations and one corpus read, in that order, every failure a typed
+// refusal naming what could not be observed. The import read happens LAST, after the tree is
+// established and the checkout proved clean, so a vector never exists without the pin it belongs to.
+fn collect_current_step0_subject_vector() -> Step0SubjectCollection {
+  let head = git.Inspect.HeadCommit()
+  if !head.success {
+    Step0SubjectCollectionRefused {
+      cause: Step0HeadCommitUnreadable { detail: "git.Inspect.HeadCommit refused (git rev-parse HEAD)" }
+    }
+  } else {
+    let revision = trim(s: head.sha as String)
+    let tree = git.Inspect.ShowTree(ref: revision as GitRef)
+    if !tree.success {
+      Step0SubjectCollectionRefused {
+        cause: Step0HeadTreeUnreadable { detail: trim(s: tree.stderr) }
+      }
+    } else {
+      let status = git.Inspect.WorkingTreeStatus()
+      if !status.success {
+        Step0SubjectCollectionRefused {
+          cause: Step0WorkingTreeStandingUnreadable { detail: trim(s: status.stderr) }
+        }
+      } else {
+        let roots = step0_subject_source_roots()
+        assemble_step0_subject_vector(
+          head_commit_hex: revision,
+          head_tree_hex: trim(s: tree.tree),
+          working_tree_entries_nul: status.entries_nul,
+          occurrences: import_resolution_facts_live(
+            pool_roots: roots,
+            importer_roots: roots,
+            exclude_substrings: []
+          )
+        )
+      }
+    }
+  }
+}
+
+// THE RENDERING THE CANARY'S OBSERVATION FIELD TAKES, derived from the vector rather than authored
+// beside it. It is deliberately an OCCURRENCE IDENTITY and not statement text: this producer read
+// a parse, so rendering "the statement" would fabricate bytes it never observed.
+fn step0_subject_occurrence_identity(occurrence: ImportResolutionFact) -> NonEmptyStr {
+  concat(occurrence.path, concat(" imports ", occurrence.import_module)) as NonEmptyStr
+}
+
+fn step0_subject_vector_occurrence_identities(vector: Step0SubjectVector) -> List<NonEmptyStr> {
+  list_map(xs: vector.occurrences, f: fn(occurrence) { step0_subject_occurrence_identity(occurrence: occurrence) })
+}
+
+fn step0_subject_vector_size(vector: Step0SubjectVector) -> Int {
+  length(xs: vector.occurrences)
+}
