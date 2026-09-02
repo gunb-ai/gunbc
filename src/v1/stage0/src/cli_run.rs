@@ -17788,18 +17788,20 @@ pub fn handle_serve(
     // The budget is announced at startup because "unset" is a policy state that must be visible.
     // A process serving with no bound and a process serving with a bound are different
     // operational facts, and the difference has to be readable without inspecting argv.
+    // ONE CONTRACT, BOUND ONCE, BEFORE THE LISTENER SERVES. Every later use of the evaluated
+    // function name and of the limits reads THIS value; `function` and `serve_budget` are not
+    // consulted again below.
+    let armed_contract = serve_budget_refusal::serve_armed_contract(function.clone(), serve_budget);
     eprintln!(
         "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
         host,
         port,
-        function,
+        serve_budget_refusal::serve_contract_entry(&armed_contract),
         release_revision,
-        serve_budget
-            .cpu_limit_ms
+        serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
-        serve_budget
-            .wall_limit_ms
+        serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
     );
@@ -17840,13 +17842,22 @@ pub fn handle_serve(
                     // arms and restores — a leaked deadline would be worse than none here,
                     // since `ctx` outlives every request and a stale CPU baseline would refuse
                     // all subsequent requests for the life of the process.
+                    // BOTH DERIVE FROM ONE CONTRACT. The arming subject and the invoked function
+                    // are read from the same value, so the interface no longer permits a process
+                    // armed for one entry to evaluate another and report a refusal naming the
+                    // wrong subject.
                     let result = {
                         let _budget = ctx.enter_evaluation_budget(
-                            &function,
-                            serve_budget.cpu_limit_ms,
-                            serve_budget.wall_limit_ms,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract),
+                            serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract),
                         );
-                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                        v1_interpreter::run_in_context_with_args(
+                            &ctx,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            &args,
+                            true,
+                        )
                     };
                     match result {
                         // ONE CLASSIFICATION, NOT A GUARD PLUS A RE-ASK. The previous shape called
@@ -17855,6 +17866,25 @@ pub fn handle_serve(
                         // one decision. The `Option` IS the decision.
                         Err(ref e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(e) {
                             Some(refusal) => {
+                                // THE REFUSAL MUST BE ABOUT THE CONTRACT THIS PROCESS ARMED. The
+                                // interpreter reports the entry it was armed with; a mismatch here
+                                // would mean arming and evaluation had different subjects, which
+                                // the single contract value exists to make unreachable. It refuses
+                                // rather than rendering a diagnostic that names the wrong function.
+                                if !serve_budget_refusal::serve_refusal_names_contract(
+                                    &refusal,
+                                    &armed_contract,
+                                ) {
+                                    eprintln!(
+                                        "serve: refusing to render a budget refusal whose entry is not the armed contract's subject"
+                                    );
+                                    serve_write_response(
+                                        &mut stream,
+                                        500,
+                                        "text/plain; charset=utf-8",
+                                        "budget refusal did not name the armed contract\n",
+                                    )
+                                } else {
                                 // Refusal rendering is HOST-SIDE by necessity, not by preference:
                                 // the evaluation that would have rendered it is the one that was
                                 // just aborted, so asking it to describe its own abort would put
@@ -17877,6 +17907,7 @@ pub fn handle_serve(
                                         &refusal,
                                     ),
                                 )
+                                }
                             }
                             None => serve_write_response(
                                 &mut stream,

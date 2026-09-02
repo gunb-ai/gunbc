@@ -90,3 +90,63 @@ pub(super) fn serve_budget_refusal_diagnostic_line(refusal: &ServeBudgetRefusal)
         refusal.entry, refusal.clock_key, refusal.elapsed_nanos, refusal.limit_ms
     )
 }
+
+/// THE ARMED CONTRACT: ONE VALUE THAT NAMES THE SUBJECT AND CARRIES ITS LIMITS.
+///
+/// The host used to take the executed function and the budget limits as two independently supplied
+/// values, and arm the evaluator from one while invoking the other. Today's call site happens to
+/// pass the same `function` to both -- but "happens to" is a fact about one call, not about the
+/// interface, and the interface is what a second caller inherits. A serve process armed for one
+/// entry while evaluating another would produce a refusal whose `entry` names the wrong subject,
+/// which is worse than no refusal: it is a located diagnostic pointing somewhere true-looking and
+/// wrong.
+///
+/// So the two facts become one value. `serve_contract_entry` is the ONLY way to name the evaluated
+/// function at this seam, and the same value supplies the limits, so arming and invocation cannot
+/// disagree without someone constructing a second contract on purpose.
+///
+/// This is the host realization of `std.evaluation_budget`'s `EvaluationBudgetPolicy`, whose
+/// `contract` + `cpu_limit` + `wall_limit` shape it mirrors. It is deliberately NOT the full
+/// `ContractIdentity<Subject>`: surface and epoch have no host consumer at this seam yet, and
+/// minting fields nothing reads would be the richer-type-name-as-safety move DESIGN §4b names.
+pub(super) struct ServeArmedContract {
+    entry: String,
+    cpu_limit_ms: Option<u64>,
+    wall_limit_ms: Option<u64>,
+}
+
+pub(super) fn serve_armed_contract(
+    entry: String,
+    budget: super::ServeEvaluationBudget,
+) -> ServeArmedContract {
+    ServeArmedContract {
+        entry,
+        cpu_limit_ms: budget.cpu_limit_ms,
+        wall_limit_ms: budget.wall_limit_ms,
+    }
+}
+
+/// The subject, for BOTH arming and invocation. There is no second accessor returning a different
+/// string, which is the whole content of the repair.
+pub(super) fn serve_contract_entry(contract: &ServeArmedContract) -> &str {
+    &contract.entry
+}
+
+pub(super) fn serve_contract_cpu_limit_ms(contract: &ServeArmedContract) -> Option<u64> {
+    contract.cpu_limit_ms
+}
+
+pub(super) fn serve_contract_wall_limit_ms(contract: &ServeArmedContract) -> Option<u64> {
+    contract.wall_limit_ms
+}
+
+/// THE EXCEEDED CARRIER MUST NAME THE ARMED SUBJECT. The interpreter reports the entry it was armed
+/// with, so this asks whether the refusal that came back is about the contract this process armed.
+/// A false answer is not a rendering problem -- it means the arming and the evaluation were about
+/// two different functions, which is exactly the state the single value exists to prevent.
+pub(super) fn serve_refusal_names_contract(
+    refusal: &ServeBudgetRefusal,
+    contract: &ServeArmedContract,
+) -> bool {
+    refusal.entry == contract.entry
+}
