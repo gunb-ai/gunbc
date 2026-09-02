@@ -985,6 +985,112 @@ fn ct_diagnostics_carrier_grounding_test() -> String {
     "    }\n\n")
 }
 
+fn ct_rendered_leaf_occurrence_identity_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn rendered_leaf_use_site_preserves_authored_occurrence_identity() {\n",
+    "        let mut authored_value = (*named_type_node(\"Time\")).clone();\n",
+    "        authored_value.occurrence_identity = std::rc::Rc::new(\n",
+    "            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {\n",
+    "                id: crate::std_occurrence_identity::OccurrenceId { value: 101 },\n",
+    "            },\n",
+    "        );\n",
+    "        let authored = std::rc::Rc::new(authored_value);\n",
+    "        let mut resolved_value = (*named_type_node(\"Quantity\")).clone();\n",
+    "        resolved_value.occurrence_identity = std::rc::Rc::new(\n",
+    "            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {\n",
+    "                id: crate::std_occurrence_identity::OccurrenceId { value: 202 },\n",
+    "            },\n",
+    "        );\n",
+    "        let resolved = std::rc::Rc::new(resolved_value);\n",
+    "        let rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(\n",
+    "            authored.clone(),\n",
+    "            resolved.clone(),\n",
+    "        );\n",
+    "        let mut expected_value = (*resolved).clone();\n",
+    "        expected_value.occurrence_identity = authored.occurrence_identity.clone();\n",
+    "        assert_eq!(\n",
+    "            rendered,\n",
+    "            std::rc::Rc::new(expected_value),\n",
+    "            \"a rendered leaf must preserve the exact authored occurrence identity while every other field remains the selected declaration's field\"\n",
+    "        );\n",
+    "        let mut wrong_present_value = (*rendered).clone();\n",
+    "        wrong_present_value.occurrence_identity = std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic);\n",
+    "        assert_ne!(rendered, std::rc::Rc::new(wrong_present_value), \"a wrong-but-present occurrence identity must not satisfy exact fidelity\");\n",
+    "        let mut sibling_a_value = (*named_type_node(\"Time\")).clone();\n",
+    "        sibling_a_value.occurrence_identity = std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: crate::std_occurrence_identity::OccurrenceId { value: 301 } });\n",
+    "        let sibling_a = std::rc::Rc::new(sibling_a_value);\n",
+    "        let mut sibling_b_value = (*named_type_node(\"Time\")).clone();\n",
+    "        sibling_b_value.occurrence_identity = std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: crate::std_occurrence_identity::OccurrenceId { value: 302 } });\n",
+    "        let sibling_b = std::rc::Rc::new(sibling_b_value);\n",
+    "        let sibling_a_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(sibling_a.clone(), resolved.clone());\n",
+    "        let sibling_b_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(sibling_b.clone(), resolved.clone());\n",
+    "        assert_eq!(sibling_a_rendered.name, sibling_b_rendered.name, \"equal-looking siblings must render the same textual carrier\");\n",
+    "        assert_eq!(sibling_a_rendered.occurrence_identity, sibling_a.occurrence_identity);\n",
+    "        assert_eq!(sibling_b_rendered.occurrence_identity, sibling_b.occurrence_identity);\n",
+    "        assert_ne!(sibling_a_rendered.occurrence_identity, sibling_b_rendered.occurrence_identity, \"equal-looking siblings must not exchange occurrences\");\n",
+    "        let projected_identity = std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceProjected {\n",
+    "            id: crate::std_occurrence_identity::OccurrenceId { value: 401 },\n",
+    "            caused_by: std::rc::Rc::new(crate::std_occurrence_identity::ScopedOccurrenceRef {\n",
+    "                scope: std::rc::Rc::new(crate::std_content_hash::Fnv1a64Structural { digest: \"scope-identity\".to_string() }),\n",
+    "                occurrence: crate::std_occurrence_identity::OccurrenceId { value: 400 },\n",
+    "            }),\n",
+    "        });\n",
+    "        let mut projected_authored_value = (*named_type_node(\"Time\")).clone();\n",
+    "        projected_authored_value.occurrence_identity = projected_identity.clone();\n",
+    "        let projected_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(std::rc::Rc::new(projected_authored_value), resolved.clone());\n",
+    "        assert_eq!(projected_rendered.occurrence_identity, projected_identity, \"projected id and caused_by must survive exactly\");\n",
+    "        let mut nonleaf_authored_value = (*shaped_type_node(\"Box\", vec![named_type_node(\"Time\")])).clone();\n",
+    "        nonleaf_authored_value.occurrence_identity = std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: crate::std_occurrence_identity::OccurrenceId { value: 501 } });\n",
+    "        let nonleaf_authored = std::rc::Rc::new(nonleaf_authored_value);\n",
+    "        let nonleaf_resolved = shaped_type_node(\"Vec\", vec![named_type_node(\"Int\")]);\n",
+    "        let nonleaf_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(nonleaf_authored.clone(), nonleaf_resolved.clone());\n",
+    "        let mut nonleaf_expected_value = (*nonleaf_authored).clone();\n",
+    "        nonleaf_expected_value.children = nonleaf_resolved.children.clone();\n",
+    "        nonleaf_expected_value.inferred = Some(std::rc::Rc::new(crate::v1_std_core::InferredNode::Resolved { node: nonleaf_resolved.clone() }));\n",
+    "        nonleaf_expected_value.properties = nonleaf_resolved.properties.clone();\n",
+    "        assert_eq!(nonleaf_rendered, std::rc::Rc::new(nonleaf_expected_value), \"the children-present arm must remain byte-for-byte structurally stable\");\n",
+    "    }\n\n")
+}
+
+fn ct_rendered_leaf_occurrence_identity_pipeline_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn resolved_pipeline_preserves_leaf_type_reference_occurrence_identity() {\n",
+    "        let result = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {\n",
+    "            let producer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                path: \"identity_producer.dag\".to_string(),\n",
+    "                content: \"module identity.producer\\ntype Foreign { value: Int }\\n\".to_string(),\n",
+    "            });\n",
+    "            let consumer_text = \"module identity.consumer\\nimport identity.producer { Foreign }\\nfn leaf(x: Foreign) -> Int { x.value }\\nfn applied(x: List<Foreign>) -> Int { 0 }\\n\".to_string();\n",
+    "            let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                path: \"identity_consumer.dag\".to_string(),\n",
+    "                content: consumer_text.clone(),\n",
+    "            });\n",
+    "            let resolved = crate::v1_compiler_compile::compile_to_resolved(\n",
+    "                std::rc::Rc::new(im::vector![producer, consumer]),\n",
+    "            );\n",
+    "            let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();\n",
+    "            assert!(blocking.is_empty(), \"identity fixture must traverse the live acceptance path: {:?}\", blocking);\n",
+    "            let graph = resolved.graph.as_ref().expect(\"identity fixture must produce a typed graph\");\n",
+    "            let typed = graph.modules.iter().find(|m| m.module.name == \"identity.consumer\").expect(\"consumer typed module\");\n",
+    "            let transport = typed.occurrence_transport.as_ref().expect(\"consumer occurrence transport\");\n",
+    "            let occurrence_at = |needle: &str, ordinal: usize| {\n",
+    "                let start = consumer_text.match_indices(needle).nth(ordinal).expect(\"fixture occurrence\").0 as i64;\n",
+    "                transport.index.entries.iter().find(|e| e.projection.diagnostic_span.start == start).expect(\"transport projection at fixture occurrence\").projection.occurrence\n",
+    "            };\n",
+    "            let leaf = typed.items.iter().find(|item| item.name == \"leaf\").expect(\"leaf function\");\n",
+    "            let leaf_type = crate::v1_std_core::param_node_type_expr(leaf.params[0].clone());\n",
+    "            let leaf_reference = occurrence_at(\"Foreign\", 1);\n",
+    "            assert_eq!(leaf_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: leaf_reference }), \"typed leaf must carry the authored parameter reference, not the resolved declaration occurrence\");\n",
+    "            let applied = typed.items.iter().find(|item| item.name == \"applied\").expect(\"applied function\");\n",
+    "            let applied_type = crate::v1_std_core::param_node_type_expr(applied.params[0].clone());\n",
+    "            let applied_reference = occurrence_at(\"List\", 0);\n",
+    "            assert_eq!(applied_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: applied_reference }), \"neighbouring children-present type must retain its authored outer occurrence\");\n",
+    "        }).expect(\"spawn identity pipeline test\").join().expect(\"identity pipeline test panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_rust_btree_set_ord_eligibility_test() -> String {
   concat(
     "    fn shaped_type_node(name: &str, children: Vec<std::rc::Rc<crate::v1_std_core::Node>>) -> std::rc::Rc<crate::v1_std_core::Node> {\n",
@@ -3143,6 +3249,18 @@ fn ct_shell_service_output_projection_test() -> String {
 // no modeled channel must REFUSE, typed and located, rather than being answered
 // with stdout. The refusal is minted at the BINDING, before a target is chosen,
 // so there is no renderer default arm left for it to fall through.
+//
+// THIS CONTROL PREVIOUSLY ASSERTED THE WRONG SHAPE and was red on main from the
+// commit that introduced it. It required src/probe.rs to BE EMITTED and then
+// grepped its bytes for the refusal text -- which is refusal_deferred_to_emitted
+// _runtime: it can only pass if the compiler emits a program carrying the refusal
+// into ITS runtime instead of stopping. The compiler does the stronger, correct
+// thing: it refuses AT EMIT with a structural diagnostic and writes no file, so
+// the `.expect("service module must emit src/probe.rs")` fired on the RIGHT
+// behaviour. The assertion is now over the diagnostic VARIANT rather than over
+// emitted text, and the stdout fall-through it used to check by substring is
+// subsumed by the no-file assertion: if the emitter ever falls through, a file
+// appears and the second assertion reds.
 fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
   concat(
     "    #[test]\n",
@@ -3158,23 +3276,22 @@ fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
     "                    std::rc::Rc::new(im::vector![source]),\n",
     "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
     "                );\n",
-    "                let emitted = r\n",
-    "                    .files\n",
-    "                    .iter()\n",
-    "                    .find(|f| f.path == \"src/probe.rs\")\n",
-    "                    .map(|f| f.content.clone())\n",
-    "                    .expect(\"service module must emit src/probe.rs\");\n",
+    "                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {\n",
+    "                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {\n",
+    "                        missing_realization_fact,\n",
+    "                        ..\n",
+    "                    } => missing_realization_fact.contains(\"not_a_channel\"),\n",
+    "                    _ => false,\n",
+    "                });\n",
     "                assert!(\n",
-    "                    emitted.contains(\"not_a_channel\")\n",
-    "                        && emitted.contains(\"has no modeled channel\"),\n",
-    "                    \"an unmodeled output key must refuse and name the key. Got:\\n{}\",\n",
-    "                    emitted\n",
+    "                    named,\n",
+    "                    \"an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}\",\n",
+    "                    r.diagnostics\n",
     "                );\n",
     "                assert!(\n",
-    "                    !emitted.contains(\"stdout.clone()\"),\n",
-    "                    \"a refused operation must not fall through to the stdout channel. \\\n",
-    "                     Got:\\n{}\",\n",
-    "                    emitted\n",
+    "                    !r.files.iter().any(|f| f.path == \"src/probe.rs\"),\n",
+    "                    \"a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}\",\n",
+    "                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()\n",
     "                );\n",
     "            })\n",
     "            .expect(\"failed to spawn thread\")\n",
@@ -3371,6 +3488,8 @@ fn compiler_tests_source() -> String {
     ct_shell_service_unmodeled_output_key_refusal_test(),
     ct_shell_service_exit_error_arm_boxed_test(),
     ct_function_value_adapter_bound_alignment_control_test(),
+    ct_rendered_leaf_occurrence_identity_test(),
+    ct_rendered_leaf_occurrence_identity_pipeline_test(),
     ct_method_existence_wall_witness_test(),
     ct_declared_type_conformance_witness_test(),
     ct_sole_constructor_test(),
