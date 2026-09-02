@@ -3,7 +3,7 @@ module gunbc.model.publication
 import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.nat { Nat }
-import std.measure { TokenCount }
+import std.measure { TokenCount, ParameterCount }
 
 // WHAT A MODEL RELEASE IS, modeled independently of anyone who serves, packages or hosts it.
 //
@@ -54,10 +54,15 @@ type WeightLicense
 //
 // activated is the per-token count for a mixture-of-experts release and equals total for a dense
 // one. It governs decode bandwidth; total governs whether the release is resident at all.
+// THE SCALE IS IN THE TYPE, NOT IN THE READER'S HEAD. These were bare `Nat`s, and the fixture that
+// established this module wrote `base_total: 284` to mean 284 BILLION -- a factor of a billion
+// carried entirely by prose, in a module whose whole subject is which quantization fits which host.
+// A ParameterCount is Measure<Count, Mega, Nat> from std.measure, so 284.3B is written as 284300 and
+// means one thing.
 type ParameterCounts {
-  base_total: Nat
-  activated_per_token: Nat
-  attached_speculative: Nat
+  base_total: ParameterCount
+  activated_per_token: ParameterCount
+  attached_speculative: ParameterCount
 }
 
 // WEIGHTS AS A PUBLISHED FACT: a repository, a revision, a license. This is what makes a release

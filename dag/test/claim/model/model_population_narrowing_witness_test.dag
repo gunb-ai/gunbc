@@ -2,7 +2,7 @@ module test.claim.model.model_population_narrowing_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count }
+import std.measure { TokenCount, token_count, parameter_count }
 import gunbc.model.publication {
   ModelRelease, OpenWeightRelease, ClosedWeightRelease,
   ReleaseIdentity, WeightPublication, ParameterCounts, DeclaredContext,
@@ -62,9 +62,9 @@ data deepseek_v4_flash: ModelRelease = OpenWeightRelease {
     revision: "main" as NonEmptyStr,
     license: MitLicense,
     parameters: ParameterCounts {
-      base_total: 284,
-      activated_per_token: 13,
-      attached_speculative: 20,
+      base_total: parameter_count(millions: 284300),
+      activated_per_token: parameter_count(millions: 13000),
+      attached_speculative: parameter_count(millions: 20000),
     },
   },
   declared_context: DeclaredContext {
