@@ -9133,10 +9133,25 @@ impl SafetyInterruptTrigger {
 /// does: `claim_terminality` samples BOTH clocks around the same call regardless of how the
 /// claim ends, and threads both limits in from the `WitnessSafetyPolicy` that armed them.
 ///
-/// The pair separates two populations that print identically today. A claim blocked on I/O that
-/// went away burns WALL and no CPU, so its `elapsed_cpu_at_least_ms` stays small while its wall
-/// reading runs to the ceiling. A claim that genuinely computed has `elapsed_cpu_at_least_ms` at
-/// or above `cpu_safety_limit_ms`. One number cannot tell those apart; two can.
+/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A reading at or above its own limit PROVES
+/// real in-process computation: a thread-cpu observation cannot reach `cpu_safety_limit_ms` on a
+/// claim that burned no CPU. That direction is sound and it is the one a reader may use.
+///
+/// THE CONVERSE IS NOT SOUND, and the reason is not that these are bounds. Both readings are
+/// genuine observations at interrupt time — `run_claim_measured` samples both clocks around the
+/// same call regardless of how the claim ends — so cpu-consumed-up-to-the-stop is not silently
+/// under-reported. The reason is that `BudgetKind::Cpu` is THREAD cpu time, as its own
+/// declaration says, while wall is what counts "emit + cargo subprocess I/O". A claim that
+/// SHELLS OUT burns its cpu in a child process, which never enters this thread's `cpu_nanos`. So
+/// a small `elapsed_cpu_at_least_ms` beside a large wall reading has at least two producers this
+/// pair cannot separate: a claim that blocked and burned nothing, and a claim that burned a
+/// great deal of cpu in a subprocess. A reader may admit a row to "did real work" on a large cpu
+/// reading; a reader may NOT conclude "was blocked" from a small one.
+///
+/// That is a deficit of THIS CLOCK and not of the pair, so it names its own repair: a
+/// process-tree cpu reading rather than a thread one. Recorded here because the earlier draft of
+/// this comment stated the blocked case as though the pair identified it, which would have been
+/// cited later as coverage for a judgement the readings do not support.
 ///
 /// STILL LOWER BOUNDS, AND THE FIELD NAMES SAY SO. `at_least` is not decoration: the deadline
 /// preempted the witness, so the true cost is above these readings by an unbounded amount. They
@@ -9271,9 +9286,14 @@ mod interrupted_before_verdict_tests {
 
     /// THE DISCRIMINATING CASE FOR THE PAIR, and the one the trigger alone cannot decide. Both
     /// rows are `CpuDeadlineRaised` — identical on every fact the row carried before this
-    /// change — and they are opposite populations: one burned CPU to its ceiling, the other
-    /// burned almost none while its wall clock ran out on a blocked call. If the readings ever
-    /// stop travelling, these two become the same row again.
+    /// change — and they differ on the readings. If the readings ever stop travelling, these two
+    /// become the same row again.
+    ///
+    /// WHAT THIS FIXTURE DOES NOT LICENSE: reading the second shape as "blocked" in a live log.
+    /// These are constructed values, so here the populations are known by construction. In the
+    /// wild, small-cpu-beside-large-wall is a blocked claim OR a claim that shelled out — see
+    /// `SafetyInterruptReading`. The test proves the carrier transports the pair, which is the
+    /// only claim it makes.
     #[test]
     fn two_cpu_raised_rows_separate_on_the_elapsed_pair() {
         let computed = SafetyInterruptReading {
