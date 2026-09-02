@@ -16,8 +16,7 @@ import gunbc.citation.x86_64_abi_pdf_consumer {
   x86_64_abi_pdf_fragment_selector_from_page,
   x86_64_abi_pdf_retrieval_observation_from_hex,
   x86_64_abi_pdf_base_locator_probe,
-  witness_syscall_citation_below_digest_matched_rung,
-  citation_rung_is_below_on_independent_pin_unavailable,
+  x86_64_abi_syscall_citation_rung_disposition,
   PinEstablishmentReceiptHexRefused,
   X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
@@ -29,6 +28,7 @@ import gunbc.citation.x86_64_abi_pdf_consumer {
   X86_64AbiEvidenceLinkRefused,
   X86_64AbiPdfRetrievalObserved,
   X86_64AbiPdfRetrievalDigestHexRefused,
+  X86_64AbiPdfCitationRungDisposition,
   BelowDigestMatchedRung,
   IndependentExpectedPinUnavailable,
   WetReceiptHexMalformed,
@@ -55,17 +55,43 @@ test fn x86_64_abi_pdf_pin_reports_independent_expected_pin_unavailable() -> Boo
   }
 }
 
+// THE READING LIVES HERE, NOT IN THE PRODUCTION MODULE. The consumer module exports the
+// disposition; turning it into a Bool is this witness's question, so the predicate is local.
+// It was briefly a `citation_rung_is_below_on_independent_pin_unavailable` in
+// gunbc.citation.x86_64_abi_pdf_consumer, which put a hand-rolled is_* predicate over a
+// coproduct into production for the sake of a test -- flagged in review 58989, and the older
+// witness_syscall_citation_below_digest_matched_rung beside it had the same shape. Both are
+// gone from that module; nothing else consumed them.
+//
+// WHY THE SECOND CAUSE ANSWERS false. The disposition type has one variant, so
+// `BelowDigestMatchedRung` alone discriminates nothing -- the content of this check has always
+// been WHICH refusal cause put the citation below the rung. Answering true for
+// PinEstablishmentReceiptHexRefused would widen the check to the rung and drop the distinction
+// it exists to hold: a receipt-hex refusal is a different standing to re-examine, not one to
+// absorb into this one.
+fn rung_is_below_on_independent_pin_unavailable(
+  disposition: X86_64AbiPdfCitationRungDisposition
+) -> Bool {
+  match disposition {
+    BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable } => true
+    BelowDigestMatchedRung {
+      cause: PinEstablishmentReceiptHexRefused { hex: _, cause: _ }
+    } => false
+  }
+}
+
 // THE SECOND CONJUNCT USED TO RE-DERIVE THE FIRST. It matched the same module-level constant
 // with the same single arm, so it could not be false whenever the call above was true, and the
-// pair measured one thing twice. It is replaced by the arm the constant CANNOT reach: the
-// predicate is now exercised on both refusal causes, so this claim discriminates the cause
-// rather than restating that the constant is what it is declared to be.
+// pair measured one thing twice. The constant is still read -- that is the live claim -- and
+// the other two conjuncts exercise the arm the constant cannot reach.
 test fn x86_64_abi_syscall_citation_below_digest_matched_rung() -> Bool {
-  witness_syscall_citation_below_digest_matched_rung()
-    && citation_rung_is_below_on_independent_pin_unavailable(
+  rung_is_below_on_independent_pin_unavailable(
+    disposition: x86_64_abi_syscall_citation_rung_disposition
+  )
+    && rung_is_below_on_independent_pin_unavailable(
       disposition: BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable }
     )
-    && !citation_rung_is_below_on_independent_pin_unavailable(
+    && !rung_is_below_on_independent_pin_unavailable(
       disposition: BelowDigestMatchedRung {
         cause: PinEstablishmentReceiptHexRefused {
           hex: "zz",

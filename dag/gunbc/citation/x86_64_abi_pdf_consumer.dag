@@ -274,32 +274,6 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
   }
 }
 
-// THE PREDICATE PINS THE CAUSE, AND THE OLD NAME CLAIMED ONLY THE RUNG. The disposition type
-// has one variant, so `BelowDigestMatchedRung` alone discriminates nothing; the content of this
-// check has always been WHICH refusal cause put the citation below the rung. Answering `true`
-// for `PinEstablishmentReceiptHexRefused` would widen the witness to the rung and silently drop
-// the distinction it was written to hold, so the second cause answers `false`: a receipt-hex
-// refusal is a different standing that must be re-examined rather than absorbed into this one.
-//
-// It takes the disposition as a PARAMETER because the module-level value is a constant, and a
-// check whose only input is a constant cannot exercise its own second arm.
-fn citation_rung_is_below_on_independent_pin_unavailable(
-  disposition: X86_64AbiPdfCitationRungDisposition
-) -> Bool {
-  match disposition {
-    BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable } => true
-    BelowDigestMatchedRung {
-      cause: PinEstablishmentReceiptHexRefused { hex: _, cause: _ }
-    } => false
-  }
-}
-
-fn witness_syscall_citation_below_digest_matched_rung() -> Bool {
-  citation_rung_is_below_on_independent_pin_unavailable(
-    disposition: x86_64_abi_syscall_citation_rung_disposition
-  )
-}
-
 fn witness_syscall_evidence_link_binds_fact() -> Bool {
   match x86_64_abi_syscall_evidence_link_construction() {
     X86_64AbiEvidenceLinkConstructed(link) =>
