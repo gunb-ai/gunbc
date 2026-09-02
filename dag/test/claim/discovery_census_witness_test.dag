@@ -31,6 +31,10 @@ import gunbc.discovery_census {
 // `DeclinedDiscoveryExcluded`: both are decided before a module reaches the prepared subject,
 // from facts a module NAME cannot carry. So their arms here are a claim about that
 // unreachability, not an omission padded out to satisfy exhaustiveness.
+// `PlannedAsChangedWitness` IS DIFFERENT: it remains a planned disposition and is reachable for
+// the witness changed by this patch. Assertions accepting `Planned` therefore accept it too;
+// assertions selecting a particular decline answer false. The required floor executed this
+// distinction: treating all ten added arms as false made the changed planned witness fail.
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
@@ -251,7 +255,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
-    PlannedAsChangedWitness => false
+    PlannedAsChangedWitness => true
   }
 }
 
@@ -267,7 +271,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
-    PlannedAsChangedWitness => false
+    PlannedAsChangedWitness => true
   }
 }
 
@@ -368,7 +372,7 @@ test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    PlannedAsChangedWitness => false
+    PlannedAsChangedWitness => true
   }
 }
 
@@ -436,7 +440,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
-      PlannedAsChangedWitness => false
+      PlannedAsChangedWitness => true
     })
     && all(split.declined, r => match r.disposition {
       DeclinedOutsideRequiredGate => true
