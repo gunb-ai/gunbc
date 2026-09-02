@@ -73,6 +73,7 @@ import gunbc.scm.log {
   CommitLogRow,
   LoggedCommitStanding,
   LoggedCommitRootHeld,
+  LoggedCommitRootIsAuthoredSource,
   LoggedCommitRootMissingFromStore,
 }
 import gunbc.scm.status {
@@ -110,6 +111,7 @@ fn log_standing_suffix(standing: LoggedCommitStanding) -> String {
   match standing {
     LoggedCommitRootHeld => ""
     LoggedCommitRootMissingFromStore => "  (program not held -- cannot be checked out)"
+    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a program -- cannot be checked out)"
   }
 }
 

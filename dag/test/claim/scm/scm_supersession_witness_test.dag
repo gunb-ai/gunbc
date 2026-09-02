@@ -29,7 +29,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
 }
 import gunbc.scm.supersession {
   HeadSlot, SupersessionEvidence, SupersessionOutcome,
@@ -48,7 +48,7 @@ fn sup_node(tag: Symbol) -> Node {
 
 fn sup_identity(tag: Symbol) -> ObjectId {
   match store_node(store: empty_store(), n: sup_node(tag: tag)) {
-    Stored { store: _, identity: i } => i
+    Stored { store: _, node: n } => n.locator
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
@@ -78,7 +78,7 @@ fn sup_evidence(slot: HeadSlot, examined_root: ObjectId, standing: LoadStanding)
   observe_generation(
     slot: slot,
     examined_root: examined_root,
-    schema_identity: "gunbc-scm-commit-closure-v2",
+    schema_identity: "gunbc-scm-commit-closure-v3",
     standing: standing,
     authority: sup_authority(),
   )
@@ -201,15 +201,23 @@ test fn proposing_the_generation_already_installed_refuses() -> Bool {
     && supersession_applied(outcome: sup_admitting_outcome())
 }
 
-// THE FOUR NON-PERMITTING STANDINGS EACH REFUSE, AND THE REFUSAL NAMES WHICH ONE. A collapsed
-// permission arm would satisfy the first conjunct and fail the second: `StandingDoesNotPermit`
-// carrying the wrong standing sends a caller to the wrong remedy -- fetch a newer reader when the
-// real answer was supply the missing objects.
+// EVERY NON-PERMITTING STANDING REFUSES, AND THE REFUSAL NAMES WHICH ONE. A collapsed permission arm
+// would satisfy the first conjunct and fail the second: `StandingDoesNotPermit` carrying the wrong
+// standing sends a caller to the wrong remedy -- fetch a newer reader when the real answer was
+// supply the missing objects.
+//
+// THE CONJUNCTION IS THE WHOLE POPULATION, and it was not: this claim's name quantifies over EVERY
+// non-permitting standing while it checked four of the five, so `LoadRequiresNodeAtAuthoredSource`
+// could have collapsed to the permitting arm with this claim still green. A universally named claim
+// that enumerates a subset is worse than a narrower name, because the gap is invisible at the call
+// site. `standing_name` below already carried all six arms, which is what makes the omission a
+// stale enumeration rather than a missing vocabulary.
 test fn every_non_permitting_standing_refuses_and_says_which() -> Bool {
   standing_refusal_is_itself(standing: LoadComplete)
     && standing_refusal_is_itself(standing: LoadPartial)
     && standing_refusal_is_itself(standing: LoadUnsupportedProtocol)
     && standing_refusal_is_itself(standing: LoadIdentityCollision)
+    && standing_refusal_is_itself(standing: LoadRequiresNodeAtAuthoredSource)
     && supersession_applied(outcome: sup_admitting_outcome())
 }
 
@@ -220,6 +228,7 @@ fn standing_name(s: LoadStanding) -> String {
     LoadUnsupportedProtocol => "protocol"
     LoadDocumentMalformed => "malformed"
     LoadIdentityCollision => "collision"
+    LoadRequiresNodeAtAuthoredSource => "source_occupied"
   }
 }
 

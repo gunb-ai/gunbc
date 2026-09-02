@@ -9111,6 +9111,149 @@ impl From<BudgetKind> for SafetyInterruptTrigger {
     }
 }
 
+impl SafetyInterruptTrigger {
+    /// The wire tag for one trigger. One authority, so the headline counter name, the per-row
+    /// diagnostic prefix and any later reader cannot drift into three spellings of one arm.
+    pub fn label(self) -> &'static str {
+        match self {
+            SafetyInterruptTrigger::CpuDeadlineRaised => "cpu_deadline",
+            SafetyInterruptTrigger::WallDeadlineRaised => "wall_deadline",
+        }
+    }
+}
+
+/// ONE INTERRUPTED CLAIM, WITH THE CAUSE STILL TYPED.
+///
+/// `RequiredFloorOutcome::interrupted_before_verdict` was a `Vec<String>`: one bucket whose
+/// members differ in WHICH SAFETY MECHANISM RAISED THE STOP, an axis the producer holds typed
+/// (`SafetyInterruptTrigger`) and every consumer of the bucket had already lost. The headline
+/// printed `interrupted_before_verdict=<len>`, which is the count of a union — a run whose
+/// interruptions are all CPU-deadline raises and a run where the wall clock is firing are the
+/// same number, and those have different remedies (reduce the witness's own work versus look at
+/// what the host is doing to the run). Recovering the cause from the prose is a grep over a
+/// sentence, which is the positional-citation shape one layer down.
+///
+/// So the collection carries rows, and the cause is a field rather than a word inside `detail`.
+/// The per-cause counters are DERIVED from these rows (`interrupted_cause_census`), so a counter
+/// that disagrees with the population has no constructor.
+///
+/// THE ARMS ARE `SafetyInterruptTrigger`'S, NOT A FRESH VOCABULARY. This lane's brief named four
+/// terminal states — cpu deadline, executor invalidated, cancelled, unknown. Two of those have
+/// NO PRODUCER anywhere in this tree: nothing invalidates an executor and nothing cancels a
+/// claim, so an `ExecutorInvalidated` or `Cancelled` arm would be a case no row can reach, and
+/// an `Unknown` arm would be reachable only by fabricating one where the two push sites both
+/// match `ClaimOutcome::BudgetInterrupted` and hold `kind` in hand. Declaring them would be the
+/// hollow-carrier shape this file already names — arms whose asserted population does not exist,
+/// cited later as coverage. They become real arms the day something produces them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterruptedBeforeVerdict {
+    pub qualified: String,
+    /// WHICH MECHANISM RAISED THIS OCCURRENCE. Read `SafetyInterruptTrigger`'s own note before
+    /// treating it as a statement about which clock is responsible for the cost: it is not one.
+    pub raised_by: SafetyInterruptTrigger,
+    /// Whether the identity was enrolled as expected-red when it was interrupted. The enrolled
+    /// and unenrolled populations have the same terminal state and different remedies, and the
+    /// bucket fused them too: `known_red_budget_refused` counted the enrolled half separately
+    /// but nothing recovered which ROWS it referred to.
+    pub enrolled_expected_red: bool,
+    /// The rendered sentence, unchanged. It stays prose because it is a REMEDY, not a fact the
+    /// floor decides on.
+    pub detail: String,
+}
+
+/// The per-cause counts of one interrupted population, derived from the rows themselves.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InterruptedCauseCensus {
+    pub cpu_deadline: usize,
+    pub wall_deadline: usize,
+}
+
+/// A TOTAL FOLD, so a trigger added to `SafetyInterruptTrigger` fails to compile here rather
+/// than landing silently in whichever counter the fallthrough happened to name.
+pub fn interrupted_cause_census(rows: &[InterruptedBeforeVerdict]) -> InterruptedCauseCensus {
+    let mut census = InterruptedCauseCensus::default();
+    for row in rows {
+        match row.raised_by {
+            SafetyInterruptTrigger::CpuDeadlineRaised => census.cpu_deadline += 1,
+            SafetyInterruptTrigger::WallDeadlineRaised => census.wall_deadline += 1,
+        }
+    }
+    census
+}
+
+#[cfg(test)]
+mod interrupted_before_verdict_tests {
+    use super::{
+        interrupted_cause_census, InterruptedBeforeVerdict, InterruptedCauseCensus,
+        SafetyInterruptTrigger,
+    };
+
+    fn row(raised_by: SafetyInterruptTrigger) -> InterruptedBeforeVerdict {
+        InterruptedBeforeVerdict {
+            qualified: "m.w".to_string(),
+            raised_by,
+            enrolled_expected_red: false,
+            detail: String::new(),
+        }
+    }
+
+    /// THE DISCRIMINATING CASE: two populations of the SAME SIZE that the old `Vec<String>`
+    /// bucket reported identically. If the census ever stops reading `raised_by`, one of these
+    /// two assertions goes red.
+    #[test]
+    fn same_length_populations_with_different_causes_do_not_report_alike() {
+        let all_cpu = vec![
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+        ];
+        let mixed = vec![
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+            row(SafetyInterruptTrigger::WallDeadlineRaised),
+        ];
+        assert_eq!(all_cpu.len(), mixed.len(), "the bucket count is the same");
+        assert_eq!(
+            interrupted_cause_census(&all_cpu),
+            InterruptedCauseCensus {
+                cpu_deadline: 2,
+                wall_deadline: 0
+            }
+        );
+        assert_eq!(
+            interrupted_cause_census(&mixed),
+            InterruptedCauseCensus {
+                cpu_deadline: 1,
+                wall_deadline: 1
+            }
+        );
+        assert_ne!(
+            interrupted_cause_census(&all_cpu),
+            interrupted_cause_census(&mixed)
+        );
+    }
+
+    /// THE CENSUS IS EXHAUSTIVE OVER THE ROWS, not a filtered view: the arms sum to the
+    /// population, so a row that reaches neither counter is a red rather than a silent drop.
+    #[test]
+    fn census_arms_sum_to_the_population() {
+        let rows = vec![
+            row(SafetyInterruptTrigger::CpuDeadlineRaised),
+            row(SafetyInterruptTrigger::WallDeadlineRaised),
+            row(SafetyInterruptTrigger::WallDeadlineRaised),
+        ];
+        let census = interrupted_cause_census(&rows);
+        assert_eq!(census.cpu_deadline + census.wall_deadline, rows.len());
+    }
+
+    /// THE LABELS ARE DISTINCT, so the two counters cannot print as one name.
+    #[test]
+    fn trigger_labels_are_distinct() {
+        assert_ne!(
+            SafetyInterruptTrigger::CpuDeadlineRaised.label(),
+            SafetyInterruptTrigger::WallDeadlineRaised.label()
+        );
+    }
+}
+
 /// Whether one claim reached a verdict, or was interrupted before it could. Operator ruling
 /// 2026-08-19 (BUDGET POLICY CUT, corrected by the operator's superseding message the same
 /// day — read this doc comment, not an older diff, if the two disagree): the prior fused model
@@ -16512,7 +16655,13 @@ enum ExpectedRedArm {
     NowPassing,
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
-    BudgetRefused,
+    ///
+    /// CARRIES THE TRIGGER, because the arm is the caller's ONLY view of the outcome on this
+    /// path and the caller has to record which mechanism raised the stop. Reconstructing it by
+    /// re-matching `ClaimOutcome` at the call site would be a second dispatch over one value,
+    /// which the caller's own comment argues against; taking it as a field means the classifier
+    /// answers once and the axis survives the projection instead of being dropped by it.
+    BudgetRefused { raised_by: SafetyInterruptTrigger },
     /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
     /// claim was never decided, so there is no expected failure for the enrollment to hold.
     RuntimeErrored,
@@ -16957,7 +17106,9 @@ pub fn seed_ledger_row(
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::BudgetInterrupted { kind, .. } => ExpectedRedArm::BudgetRefused {
+            raised_by: SafetyInterruptTrigger::from(*kind),
+        },
         ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
         // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
@@ -38542,7 +38693,11 @@ pub struct RequiredFloorOutcome {
     /// which remedy applied. `NotEvaluated` is never green: this population still blocks
     /// admission exactly as `budget_refused` did. What changed is that it is now visible
     /// separately from `completed_over_cost_requirement`, not that either stops blocking.
-    pub interrupted_before_verdict: Vec<String>,
+    ///
+    /// TYPED ROWS, NOT SENTENCES: the mechanism that raised each stop is a field, so the
+    /// headline can report the population BY CAUSE instead of as one length. See
+    /// `InterruptedBeforeVerdict`.
+    pub interrupted_before_verdict: Vec<InterruptedBeforeVerdict>,
     /// A CLAIM THAT REACHED A VERDICT BUT COST MORE THAN THE COMPLETED-COST LINE. Separate
     /// from `interrupted_before_verdict` for the same reason: this claim answered, and the
     /// remedy is reducing what it costs, not investigating why it never returned. Still

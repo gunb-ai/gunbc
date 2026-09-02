@@ -46,8 +46,13 @@ import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
   StoredEdge,
+  SemanticNodeTarget,
+  node_target_locator,
   ObjectStore,
-  find_object,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
+  find_node_record,
   store_contains,
   store_object_count,
   copy_object,
@@ -63,6 +68,7 @@ import gunbc.scm.checkout {
   Commit,
   CheckoutRefusal,
   MissingObject,
+  ObjectIsAuthoredSource,
   commit_of_root,
   checkout,
   CheckedOut,
@@ -160,17 +166,25 @@ fn structurally_same(left: Node, right: Node) -> Bool {
 // 64-bit value. This carrier keeps the claims readable while making a collision VISIBLE rather than
 // absorbed: `collided` is asserted false across the whole fixture set by its own claim below, so a
 // fixture that started colliding would surface instead of quietly reshaping every other claim.
+// THE FIXTURE CARRIES A SemanticNodeTarget, AND THE COLLISION ARM IS WHY IT IS NOT THE BRANDED REFERENCE.
+//
+// A SemanticNodeObjectRef is `sole_constructor` -- only the store mints one -- so this arm, which
+// has no stored node, has nothing to put there and no way to fabricate one. That refusal is the
+// wall working: the fixture cannot assert a node reference it never obtained. SemanticNodeTarget is the
+// type that CAN say what is true in both arms -- resolved to a node, or a bare locator whose kind
+// nothing established -- and it is exactly what commit_of_root takes.
 type Put {
   store: ObjectStore
-  identity: ObjectId
+  identity: SemanticNodeTarget
   collided: Bool
 }
 
 fn put_node(store: ObjectStore, n: Node) -> Put {
   match store_node(store: store, n: n) {
-    Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
+    Stored { store: s, node: i } =>
+      Put { store: s, identity: node_target_of(reference: i), collided: false }
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-      Put { store: empty_store(), identity: i, collided: true }
+      Put { store: empty_store(), identity: SemanticNodeTarget { locator: i }, collided: true }
   }
 }
 
@@ -182,6 +196,7 @@ fn refusal_names(store: ObjectStore, commit: Commit, expected: ObjectId) -> Bool
     CheckoutRefused { cause: cause } =>
       match cause {
         MissingObject { identity: identity } => object_id_eq(left: identity, right: expected)
+        ObjectIsAuthoredSource { identity: _ } => false
       }
   }
 }
@@ -210,7 +225,7 @@ fn checkout_refuses(store: ObjectStore, commit: Commit) -> Bool {
 // fixture can be incomplete but cannot be dishonest.
 fn store_of_root_only(full: ObjectStore, root: ObjectId) -> ObjectStore {
   match copy_object(from: full, to: empty_store(), identity: root) {
-    Copied { store: store, identity: _ } => store
+    Copied { store: store, reference: _ } => store
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -260,7 +275,10 @@ test fn absent_root_refuses() -> Bool {
 // has to come from the recursive descent, not from a guard on the entry point.
 test fn missing_reachable_child_refuses() -> Bool {
   let stored = put_node(store: empty_store(), n: program_ab())
-  let severed = store_of_root_only(full: stored.store, root: stored.identity)
+  let severed = store_of_root_only(
+    full: stored.store,
+    root: node_target_locator(target: stored.identity),
+  )
   checkout_refuses(
     store: severed,
     commit: commit_of_root(root: stored.identity),
@@ -271,20 +289,29 @@ test fn missing_reachable_child_refuses() -> Bool {
 // what distinguishes a located refusal from a refusal that merely echoes what was asked for.
 test fn the_refusal_names_the_missing_child_not_the_root() -> Bool {
   let stored = put_node(store: empty_store(), n: program_ab())
-  let severed = store_of_root_only(full: stored.store, root: stored.identity)
+  let severed = store_of_root_only(
+    full: stored.store,
+    root: node_target_locator(target: stored.identity),
+  )
   let left_child = put_node(store: empty_store(), n: atom_node(identity: ^L))
   refusal_names(
     store: severed,
     commit: commit_of_root(root: stored.identity),
-    expected: left_child.identity,
-  ) && !object_id_eq(left: left_child.identity, right: stored.identity)
+    expected: node_target_locator(target: left_child.identity),
+  ) && !object_id_eq(
+    left: node_target_locator(target: left_child.identity),
+    right: node_target_locator(target: stored.identity),
+  )
 }
 
 // CONTROL for the case above: the severed store is not merely empty. If it were, the claim would be
 // a restatement of absent_root_refuses rather than a statement about a missing child.
 test fn severed_store_still_holds_its_root() -> Bool {
   let stored = put_node(store: empty_store(), n: program_ab())
-  let severed = store_of_root_only(full: stored.store, root: stored.identity)
+  let severed = store_of_root_only(
+    full: stored.store,
+    root: node_target_locator(target: stored.identity),
+  )
   store_object_count(store: severed) == 1
 }
 
@@ -335,12 +362,14 @@ test fn reordered_named_children_share_one_identity() -> Bool {
 // of one was already true under the defect, because dedup was keyed on identity and the identity
 // was never in question.
 fn same_record(left: ObjectStore, right: ObjectStore, identity: ObjectId) -> Bool {
-  match find_object(store: left, identity: identity) {
-    Absent => false
-    Present { value: l } =>
-      match find_object(store: right, identity: identity) {
-        Absent => false
-        Present { value: r } => (l.kind == r.kind) && (l.children == r.children)
+  match find_node_record(store: left, identity: identity) {
+    NodeRecordAbsent { identity: _ } => false
+    NodeRecordIsAuthoredSource { identity: _ } => false
+    NodeRecordFound(l) =>
+      match find_node_record(store: right, identity: identity) {
+        NodeRecordAbsent { identity: _ } => false
+        NodeRecordIsAuthoredSource { identity: _ } => false
+        NodeRecordFound(r) => (l.kind == r.kind) && (l.children == r.children)
       }
   }
 }
@@ -351,14 +380,14 @@ fn same_record(left: ObjectStore, right: ObjectStore, identity: ObjectId) -> Boo
 test fn both_insertion_orders_produce_the_same_canonical_record() -> Bool {
   let a_then_b = put_node(store: put_node(store: empty_store(), n: alpha_first()).store, n: beta_first())
   let b_then_a = put_node(store: put_node(store: empty_store(), n: beta_first()).store, n: alpha_first())
-  same_record(left: a_then_b.store, right: b_then_a.store, identity: a_then_b.identity)
+  same_record(left: a_then_b.store, right: b_then_a.store, identity: node_target_locator(target: a_then_b.identity))
 }
 
 // CONTROL: same_record is not vacuously true -- an absent record does not read as equal to a
 // present one.
 test fn the_record_comparison_discriminates() -> Bool {
   let stored = put_node(store: empty_store(), n: alpha_first())
-  !same_record(left: stored.store, right: empty_store(), identity: stored.identity)
+  !same_record(left: stored.store, right: empty_store(), identity: node_target_locator(target: stored.identity))
 }
 
 // The store holds ONE record for that one identity, whichever order arrived first.
@@ -399,7 +428,7 @@ test fn the_two_orders_are_different_as_authored() -> Bool {
 test fn independently_built_equal_programs_share_one_identity() -> Bool {
   let one = put_node(store: empty_store(), n: program_ab())
   let two = put_node(store: empty_store(), n: program_ab())
-  object_id_eq(left: one.identity, right: two.identity)
+  object_id_eq(left: node_target_locator(target: one.identity), right: node_target_locator(target: two.identity))
 }
 
 // CRITERION 3, second half -- and the gap the first half leaves open. If every node carried the same
@@ -410,8 +439,8 @@ test fn identity_survives_reminted_occurrences() -> Bool {
   let synthetic = put_node(store: empty_store(), n: program_ab())
   let minted_low = put_node(store: empty_store(), n: minted_program_ab(base: 10))
   let minted_high = put_node(store: empty_store(), n: minted_program_ab(base: 900))
-  object_id_eq(left: synthetic.identity, right: minted_low.identity)
-    && object_id_eq(left: minted_low.identity, right: minted_high.identity)
+  object_id_eq(left: node_target_locator(target: synthetic.identity), right: node_target_locator(target: minted_low.identity))
+    && object_id_eq(left: node_target_locator(target: minted_low.identity), right: node_target_locator(target: minted_high.identity))
 }
 
 // CONTROL for the remint claim: the two bases really do allocate different occurrence ids, so the
@@ -424,7 +453,7 @@ test fn reminted_programs_carry_different_occurrences() -> Bool {
 test fn different_programs_get_different_identities() -> Bool {
   let one = put_node(store: empty_store(), n: program_a())
   let two = put_node(store: empty_store(), n: program_ab())
-  !object_id_eq(left: one.identity, right: two.identity)
+  !object_id_eq(left: node_target_locator(target: one.identity), right: node_target_locator(target: two.identity))
 }
 
 // Storing the same program twice adds nothing: content addressing makes writes idempotent.
@@ -486,9 +515,14 @@ test fn the_oracle_distinguishes_node_kinds() -> Bool {
 // fixture takes.
 test fn grafting_an_absent_object_refuses() -> Bool {
   let stored = put_node(store: empty_store(), n: program_ab())
-  match copy_object(from: empty_store(), to: empty_store(), identity: stored.identity) {
-    CopySourceAbsent { identity: identity } => object_id_eq(left: identity, right: stored.identity)
-    Copied { store: _, identity: _ } => false
+  match copy_object(
+    from: empty_store(),
+    to: empty_store(),
+    identity: node_target_locator(target: stored.identity),
+  ) {
+    CopySourceAbsent { identity: identity } =>
+      object_id_eq(left: identity, right: node_target_locator(target: stored.identity))
+    Copied { store: _, reference: _ } => false
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
   }
 }
@@ -497,8 +531,13 @@ test fn grafting_an_absent_object_refuses() -> Bool {
 // than about copy_object refusing unconditionally.
 test fn grafting_a_present_object_copies_it() -> Bool {
   let stored = put_node(store: empty_store(), n: program_ab())
-  match copy_object(from: stored.store, to: empty_store(), identity: stored.identity) {
-    Copied { store: store, identity: _ } => store_contains(store: store, identity: stored.identity)
+  match copy_object(
+    from: stored.store,
+    to: empty_store(),
+    identity: node_target_locator(target: stored.identity),
+  ) {
+    Copied { store: store, reference: _ } =>
+      store_contains(store: store, identity: node_target_locator(target: stored.identity))
     CopySourceAbsent { identity: _ } => false
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
   }
@@ -567,7 +606,10 @@ test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
 // Within its boundary it is discriminating by execution: reversing the child fold in the STORE path
 // only -- so the two paths genuinely diverge -- turns it red (DIVERGE_PROBE 1, "claim red").
 fn stored_identity_matches_content_hash(n: Node) -> Bool {
-  object_id_eq(left: put_node(store: empty_store(), n: n).identity, right: content_hash(n: n))
+  object_id_eq(
+    left: node_target_locator(target: put_node(store: empty_store(), n: n).identity),
+    right: content_hash(n: n),
+  )
 }
 
 test fn store_node_identity_commutes_with_content_hash() -> Bool {
