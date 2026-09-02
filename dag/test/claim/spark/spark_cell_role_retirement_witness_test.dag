@@ -105,6 +105,7 @@ import gunbc.fleet_converge_plan {
   SparkServingPlannedEffect,
   PlannedInstallEffect,
   PlannedRetirementEffect,
+  PlannedReactivationEffect,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -574,6 +575,7 @@ fn w_row_is_retirement(row: FleetConvergeSparkServingTypedAction) -> Bool {
       match e {
         PlannedRetirementEffect { retirement: _ } => true
         PlannedInstallEffect { install: _ } => false
+        PlannedReactivationEffect { reactivation: _ } => false
       })
 }
 

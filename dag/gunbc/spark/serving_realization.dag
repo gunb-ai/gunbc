@@ -379,10 +379,33 @@ type SparkServingRealizationPolicy {
 // supported one. What is bought is that first install on a clean Spark requires no administrator
 // credential at all. Both effects stay in the coproduct because a host that genuinely wants the
 // packaged runtime is still expressible; the realization chooses, and the grant follows.
+// ENABLE AND START ARE TWO EFFECTS ON BOTH PATHS NOW, AND RESTART IS NEITHER.
+//
+// `EnableSystemUnit` used to actuate three commands -- enable, start and restart -- under one
+// identity. Three consequences, and only the first is about tidiness. Nothing could match on a
+// restart, because no arm of any match ever saw one, so a guard, a fence or a refusal aimed at
+// restarts specifically had no value to be written against. The restart was UNCONDITIONAL: every
+// realization of the effect issued it, so converging a unit whose definition had not changed still
+// killed whatever it was serving. And the ranking fold counted the fused effect once while the host
+// paid for three operations, so the privilege count that decides which realization wins was reading
+// a number the argv did not support.
+//
+// The user path already had the right shape -- `EnableUserUnit` and `StartUserUnit` are separate --
+// so the split is the system path being brought to the model the user path already carried, not a
+// new decomposition invented here.
+//
+// Restart does not become a fourth arm of this sum, and that is the load-bearing half. Every
+// constructor here is the price of STANDING A SERVICE UP, which is the property
+// `realization_install_effects` and `realization_privileged_effect_count` both presume; a restart is
+// what a service that is ALREADY UP needs when the definition underneath it moved. Adding it here
+// would put an arm in the sum that no realization can select -- exactly the state-space conflation
+// the retirement vocabulary below was minted to avoid. It gets its own sibling sum, for the same
+// reason and by the same move.
 type ServingInstallEffect
   = WriteSystemUnitFile
   | ReloadSystemManager
   | EnableSystemUnit
+  | StartSystemUnit
   | WriteUserUnitFile
   | ReloadUserManager
   | EnableUserUnit
@@ -457,7 +480,136 @@ fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) ->
   }
 }
 
-// THE ONE PLACE THE TWO VOCABULARIES MEET, AND IT IS A SUM RATHER THAN A UNION.
+// REACTIVATION: THE THIRD VOCABULARY, AND THE SMALLEST ONE.
+//
+// Install stands a service up. Retirement takes it down. Neither answers the state in between: the
+// unit is running, it is meant to be running, and the definition it was started from is no longer
+// the definition we want it to hold. Nothing installs (the bytes are already written, the manager
+// has already reloaded them) and nothing retires (the service is meant to survive). The remedy is a
+// restart, and it is a restart of a specific unit for a specific stated reason.
+//
+// So restart is named for what it is FOR rather than for the command it runs. `RestartSystemUnit`
+// would be the argv wearing a type; the question a plan asks is not "run systemctl restart" but
+// "this unit is serving a definition it was not started from" -- and the answer to the second is
+// derivable while the first is only ever an instruction.
+//
+// NO ARM OF THIS TYPE HAS A REACHABLE GREEN PATH TODAY, and that is a property of the corpus, not
+// of the type. `spark_serving_reactivation_remedy` can only return `ReactivationRequired` when it is
+// handed a `RunningDefinitionObserved`, and nothing in this repository mints one against a real
+// host: the probe that would is not written. A fixture can construct it -- which is why the
+// selector's behaviour is checked by execution rather than asserted -- but no Spark convergence has
+// ever emitted a restart through this vocabulary, and none can until the observation lands.
+//
+// This is written here, on the carrier, so that "we model restart" cannot be cited as coverage for a
+// capability that has never once executed. The rung this class stands at is the refusal; the green
+// path is unbuilt and named.
+//
+// THE CAPABILITY THAT UNBLOCKS IT: an observation that joins a unit's RUNNING INVOCATION to the
+// definition it was started from, sufficient to mint RunningDefinitionObserved for a live Spark.
+// Nothing smaller retires this note -- a probe that reads the file, the manager's loaded definition,
+// or is-active answers a different subject and would leave the capability dead while looking like
+// its trigger.
+//
+// AND THE DERIVATION THAT LOOKS AVAILABLE AND IS NOT: selecting a restart when the REGISTRATION
+// member changes. That reads "the file on disk is now what we want" as "the process is stale", which
+// is the observed importing the desired -- the error gunbc.spark.serving_observed_members records
+// against its own earlier revision -- and it would restart a converged host whose file was merely
+// rewritten.
+//
+// There is no container arm. A rootless container's reactivation is a different operation on a
+// different subject, and minting an arm for it here would be a constructor whose actuation nobody
+// has modeled. `spark_serving_reactivation_remedy` refuses for that realization instead.
+type ServingReactivationEffect
+  = RestartSystemUnitForChangedDefinition
+  | RestartUserUnitForChangedDefinition
+
+fn serving_reactivation_effect_wire(effect: ServingReactivationEffect) -> String {
+  match effect {
+    RestartSystemUnitForChangedDefinition => "restart-system-unit-for-changed-definition"
+    RestartUserUnitForChangedDefinition => "restart-user-unit-for-changed-definition"
+  }
+}
+
+// WHAT THE RUNNING PROCESS WAS STARTED FROM, WHICH IS NOT WHAT ANY PROBE ANSWERS TODAY.
+//
+// gunbc.spark.serving_observed_members reads `systemctl --user is-active`, whose four states are
+// running, stopped, no-such-unit and unobserved. None of them names a definition. The registration
+// member is richer and answers a DIFFERENT subject: its digest is the content on disk, so a manager
+// reload converges it while the process keeps serving the bytes it started with. `is-active` says
+// active for both worlds.
+//
+// This type is therefore the observation the remedy needs, declared at the grain that decides the
+// question, with its own unobserved arm carrying a cause. It is constructible by a fixture today and
+// mintable by a probe when one is written; what it is NOT is derivable from the members we already
+// have, and deriving it from the registration digest would read "the file on disk is what we want"
+// as "the process is stale" -- the observed-imports-the-desired error serving_observed_members
+// records against itself.
+//
+// NEXT-RUNG TRIGGER for the reactivation class: a host readback that reports the definition identity
+// of the RUNNING invocation, sufficient to mint RunningDefinitionObserved for a real Spark. Until it
+// exists the remedy is undecidable rather than absent, and undecidable REFUSES.
+type SparkServingRunningDefinition
+  = RunningDefinitionObserved { content_digest: NonEmptyStr }
+  | RunningDefinitionUnobserved { cause: NonEmptyStr }
+
+// THE VERDICT HAS THREE ARMS BECAUSE THERE ARE THREE ANSWERS, and the third is the one that keeps a
+// missing observation from being spent as a restart.
+//
+// `ReactivationNotRequired` is a positive finding: the running definition was read and it is the one
+// we want. `ReactivationUndecidable` is the absence of that reading. Collapsing the two would make
+// an unobserved host look converged, and collapsing undecidable into required would restart every
+// host on every converge -- which is what the fused effect did, and the reason this function exists.
+type SparkServingReactivationVerdict
+  = ReactivationRequired { effect: ServingReactivationEffect }
+  | ReactivationNotRequired
+  | ReactivationUndecidable { cause: NonEmptyStr }
+
+fn serving_realization_reactivation_effect(
+  realization: SparkServingRealization,
+) -> ServingReactivationEffect? {
+  match realization {
+    UserUnitRealization => Present { value: RestartUserUnitForChangedDefinition }
+    SystemUnitRealization => Present { value: RestartSystemUnitForChangedDefinition }
+    RootlessContainerRealization => none
+  }
+}
+
+// THE CONDITION IS AN EQUALITY BETWEEN TWO OBSERVATIONS' IDENTITY DOMAIN, not a flag anybody sets.
+// A restart is emitted exactly when a definition was read off the running process and it differs
+// from the one desired. Every other input refuses with a located cause.
+fn spark_serving_reactivation_remedy(
+  realization: SparkServingRealization,
+  running: SparkServingRunningDefinition,
+  desired_content_digest: NonEmptyStr,
+) -> SparkServingReactivationVerdict {
+  match running {
+    RunningDefinitionUnobserved { cause: why } =>
+      ReactivationUndecidable {
+        cause: join([
+          "spark_serving_reactivation_remedy: the running definition was not observed — ",
+          why as String,
+        ], "") as NonEmptyStr,
+      }
+    RunningDefinitionObserved { content_digest: d } =>
+      if (d as String) == (desired_content_digest as String) {
+        ReactivationNotRequired
+      } else {
+        match serving_realization_reactivation_effect(realization: realization) {
+          Present { value: e } => ReactivationRequired { effect: e }
+          Absent =>
+            ReactivationUndecidable {
+              cause: join([
+                "spark_serving_reactivation_remedy: ",
+                realization_label(realization: realization),
+                " has no modeled reactivation remedy",
+              ], "") as NonEmptyStr,
+            }
+        }
+      }
+  }
+}
+
+// THE ONE PLACE THE VOCABULARIES MEET, AND IT IS A SUM RATHER THAN A UNION.
 //
 // A planned row carries effects, and after this change a row's effects are either all installs or
 // all retirements -- never mixed, because the member ACTION that produced them was either an add /
@@ -468,6 +620,7 @@ fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) ->
 type SparkServingPlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
+  | PlannedReactivationEffect { reactivation: ServingReactivationEffect }
 
 // PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
 // the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an
@@ -482,7 +635,7 @@ fn realization_install_effects(realization: SparkServingRealization) -> List<Ser
     UserUnitRealization =>
       [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, MaterializeModelArtifact]
     SystemUnitRealization =>
-      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, MaterializeModelArtifact]
+      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, StartSystemUnit, MaterializeModelArtifact]
     RootlessContainerRealization =>
       [GrantContainerRuntimeAccess, RunContainerAsOwnUser, MaterializeModelArtifact]
   }
@@ -843,6 +996,7 @@ fn effect_mutation_subject(
     WriteSystemUnitFile => SystemUnitRegistry
     ReloadSystemManager => SystemUnitRegistry
     EnableSystemUnit => SystemUnitRegistry
+    StartSystemUnit => SystemUnitRegistry
     InstallRuntimePackage => PackageDatabase
     InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
     GrantContainerRuntimeAccess => GroupMembership
@@ -912,8 +1066,9 @@ fn effect_actuation(
     ReloadSystemManager => ActuatedByEscalation { commands: ["/usr/bin/systemctl daemon-reload" as NonEmptyStr] }
     EnableSystemUnit => ActuatedByEscalation { commands: [
       join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as NonEmptyStr,
+    ] }
+    StartSystemUnit => ActuatedByEscalation { commands: [
       join(["/usr/bin/systemctl start ", target.unit_name as String], "") as NonEmptyStr,
-      join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as NonEmptyStr,
     ] }
     InstallRuntimePackage => ActuatedByEscalation { commands: [
       join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as NonEmptyStr,

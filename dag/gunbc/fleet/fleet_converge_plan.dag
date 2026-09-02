@@ -198,6 +198,7 @@ import gunbc.spark.serving_membership {
 import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
   SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+  PlannedReactivationEffect, serving_reactivation_effect_wire,
   spark_serving_retirement_effect_wire,
 }
 import gunbc.remote_operation {
@@ -1623,6 +1624,7 @@ fn fleet_converge_spark_serving_install_effect_wire(effect: ServingInstallEffect
     WriteSystemUnitFile => "WriteSystemUnitFile"
     ReloadSystemManager => "ReloadSystemManager"
     EnableSystemUnit => "EnableSystemUnit"
+    StartSystemUnit => "StartSystemUnit"
     WriteUserUnitFile => "WriteUserUnitFile"
     ReloadUserManager => "ReloadUserManager"
     EnableUserUnit => "EnableUserUnit"
@@ -1647,6 +1649,8 @@ fn fleet_converge_spark_serving_effect_wire(effect: SparkServingPlannedEffect) -
       fleet_converge_spark_serving_install_effect_wire(effect: e)
     PlannedRetirementEffect { retirement: e } =>
       join(["retire:", spark_serving_retirement_effect_wire(effect: e)], "")
+    PlannedReactivationEffect { reactivation: e } =>
+      join(["reactivate:", serving_reactivation_effect_wire(effect: e)], "")
   }
 }
 

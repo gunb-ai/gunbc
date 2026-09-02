@@ -6,6 +6,7 @@ import gunbc.spark.serving_realization {
   PlannedInstallEffect,
   EnableLingerForOwnAccount,
   EnableSystemUnit,
+  StartSystemUnit,
   EnableUserUnit,
   GrantContainerRuntimeAccess,
   InstallOwnedRuntimeClosure,
@@ -14,8 +15,12 @@ import gunbc.spark.serving_realization {
   ReloadSystemManager,
   ReloadUserManager,
   RunContainerAsOwnUser,
+  StartUserUnit,
   WriteSystemUnitFile,
   WriteUserUnitFile,
+  PlannedReactivationEffect,
+  RestartSystemUnitForChangedDefinition,
+  RestartUserUnitForChangedDefinition,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -32,6 +37,7 @@ test fn w_each_serving_effect_wires_to_its_own_name() -> Bool {
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: WriteSystemUnitFile }) == "WriteSystemUnitFile"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: ReloadSystemManager }) == "ReloadSystemManager"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit }) == "EnableSystemUnit"
+    && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartSystemUnit }) == "StartSystemUnit"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: WriteUserUnitFile }) == "WriteUserUnitFile"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: ReloadUserManager }) == "ReloadUserManager"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableUserUnit }) == "EnableUserUnit"
@@ -52,4 +58,24 @@ test fn w_no_two_effects_share_a_wire_label() -> Bool {
       != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: ReloadUserManager })
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit })
       != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableUserUnit })
+}
+
+// THE THIRD VOCABULARY RENDERS AS ITS OWN KIND. A reactivation is not an install and not a
+// retirement, and a plan a human reads must say which of the three it was: `StartUserUnit` beside a
+// bare `RestartUserUnit...` would read as two members of one closed install set. The prefix comes
+// from the sum's own arm, so the rendering cannot claim a kind the value does not have.
+test fn w_reactivation_effects_render_with_their_own_kind_prefix() -> Bool {
+  fleet_converge_spark_serving_effect_wire(effect: PlannedReactivationEffect { reactivation: RestartUserUnitForChangedDefinition })
+    == "reactivate:restart-user-unit-for-changed-definition"
+    && fleet_converge_spark_serving_effect_wire(effect: PlannedReactivationEffect { reactivation: RestartSystemUnitForChangedDefinition })
+      == "reactivate:restart-system-unit-for-changed-definition"
+}
+
+// AND THE THREE KINDS ARE MUTUALLY DISTINGUISHABLE IN THE RENDERED STRING, which is the claim the
+// prefix exists to support: a restart of the user unit must not read as its start.
+test fn w_a_restart_never_renders_as_a_start() -> Bool {
+  fleet_converge_spark_serving_effect_wire(effect: PlannedReactivationEffect { reactivation: RestartUserUnitForChangedDefinition })
+    != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartUserUnit })
+    && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartSystemUnit })
+      != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit })
 }
