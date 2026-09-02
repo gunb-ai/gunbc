@@ -10,6 +10,7 @@ import gunbc.fci1_bounded_execution_context {
   finite_byte_size_count,
 }
 import v2.std.optional { Present, Absent }
+import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 
 type Fci1BoundedExecutionContextEmission
   = Fci1BoundedExecutionContextEmitted { content: String }
@@ -48,29 +49,29 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           "fci1_run_bounded_driver() {\n",
           "  local checkout_root=$1; shift\n",
           "  systemd-run --quiet --wait --collect --unit=\"$FCI1_DRIVER_UNIT\" \\\n",
-          "    --property=\"WorkingDirectory=$checkout_root\" \\\n",
-          "    --property=\"MemoryMax=$FCI1_MEMORY_MAX_BYTES\" \\\n",
-          "    --property=\"MemoryHigh=$FCI1_MEMORY_HIGH_BYTES\" -- \"$@\"\n",
+          "    --property=\"", systemd_unit_property_wire(property: WorkingDirectoryProperty) as String, "=$checkout_root\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryMax) as String, "=$FCI1_MEMORY_MAX_BYTES\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryHigh) as String, "=$FCI1_MEMORY_HIGH_BYTES\" -- \"$@\"\n",
           "}\n",
           "fci1_run_bounded_submitter() {\n",
           "  local unit=$1 checkout_root=$2; shift 2\n",
           "  systemd-run --quiet --wait --collect --unit=\"$unit\" \\\n",
-          "    --property=\"WorkingDirectory=$checkout_root\" \\\n",
-          "    --property=\"MemoryMax=$FCI1_MEMORY_MAX_BYTES\" \\\n",
-          "    --property=\"MemoryHigh=$FCI1_MEMORY_HIGH_BYTES\" -- \"$@\"\n",
+          "    --property=\"", systemd_unit_property_wire(property: WorkingDirectoryProperty) as String, "=$checkout_root\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryMax) as String, "=$FCI1_MEMORY_MAX_BYTES\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryHigh) as String, "=$FCI1_MEMORY_HIGH_BYTES\" -- \"$@\"\n",
           "}\n",
           "fci1_run_bounded_dependent_submitter() {\n",
           "  local unit=$1 checkout_root=$2 runtime_directory=$3; shift 3\n",
           "  systemd-run --quiet --wait --collect --unit=\"$unit\" \\\n",
-          "    --property=\"WorkingDirectory=$checkout_root\" \\\n",
-          "    --property=\"MemoryMax=$FCI1_MEMORY_MAX_BYTES\" \\\n",
-          "    --property=\"MemoryHigh=$FCI1_MEMORY_HIGH_BYTES\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: WorkingDirectoryProperty) as String, "=$checkout_root\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryMax) as String, "=$FCI1_MEMORY_MAX_BYTES\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryHigh) as String, "=$FCI1_MEMORY_HIGH_BYTES\" \\\n",
           "    --property=\"RuntimeDirectory=$runtime_directory\" -- \"$@\"\n",
           "}\n",
           "fci1_run_unbounded_memory_control() {\n",
           "  local unit=$1 checkout_root=$2; shift 2\n",
           "  systemd-run --quiet --wait --collect --unit=\"$unit\" \\\n",
-          "    --property=\"WorkingDirectory=$checkout_root\" \\\n",
+          "    --property=\"", systemd_unit_property_wire(property: WorkingDirectoryProperty) as String, "=$checkout_root\" \\\n",
           "    --property=\"MemoryMax=infinity\" -- \"$@\"\n",
           "}\n",
         ], "") }
