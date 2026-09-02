@@ -37,6 +37,7 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.standards.atx_2_2 { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.uri { Uri, Https }
@@ -652,39 +653,29 @@ data asrock_altrad8ud_board_outline_citation: FactCitation = FactCitation {
 // chassis depth. That is the trigger: measured standoff coordinates, not a second reading of this
 // manual, which does not contain them.
 // ---------------------------------------------------------------------------------------------
-// THE STANDOFF POSITIONS: MODELLED AS ESTIMATES, NOT AS MEASUREMENTS.
+// THE STANDOFF POSITIONS: A CORRESPONDENCE TO THE MICRO-ATX GRID, NOT A SET OF READ COORDINATES.
 //
-// These are the seven mounting holes plus the one chassis standoff that must be REMOVED, read off
-// an annotated overlay of the manual's section 1.4 layout figure. The figure is drawn to scale —
-// its outline aspect ratio matches 10.5/9.6 to four figures — so it can be used as a ruler. The
-// circles marking the holes are schematic markers rather than dimensioned features, so the reading
-// carries roughly +/- 0.4 in.
+// AN EARLIER REVISION OF THIS BLOCK GOT THE EPISTEMICS WRONG IN THE CONSERVATIVE DIRECTION, which is
+// still wrong. It recorded all seven holes as estimates with a +/- 0.4 in region, reasoning that
+// they came from reading a figure. But the readings land exactly on 0.250, 6.450, 8.250, 9.050,
+// 6.500 and 9.350 — the micro-ATX grid's own values — and two near-misses (1.29, 0.39) are raster
+// approximations of 1.300 and 0.400. Values do not land on nine standard coordinates by accident.
 //
-// WHY THAT MAKES THEM ESTIMATES AND NOT MEASUREMENTS, which is the whole content of this block.
-// +/- 0.4 in is +/- 10.16 mm. A standoff hole is about 4 mm across. The uncertainty is two and a
-// half times the diameter of the thing being located, so these coordinates cannot place a hole,
-// cannot drill a tray, and cannot be checked against by a part that must fit. Admitting them as
-// measured values would put a number where no number is known, and every downstream part would
-// inherit a precision nobody has.
+// So the reading is not evidence about WHERE the holes are. It is evidence for a different
+// proposition: that this board POPULATES those named standard locations. The coordinates themselves
+// are exact and come from extdeps.standards.atx_2_2, not from any pixel. Treating registration
+// evidence as coordinate uncertainty put a +/- 10 mm region on numbers that are known to the
+// thousandth of an inch, and would have forced a slotted carrier where a drilled hole is justified.
 //
-// std.spatial_knowledge already draws exactly this distinction: an ESTIMATE is a region with no
-// privileged point, carrying the method that produced it, and it is a different arm from a measured
-// value with an uncertainty. So these are estimates, they carry the figure-reading method, and a
-// consumer demanding MeasuredOnly standing — which placing a standoff does — refuses them. That
-// refusal is the correct behaviour, not a gap.
+// WHAT REMAINS INFERRED is the correspondence itself: ASRock does not dimension these holes or name
+// them by letter, so "this board's visible hole IS standard location C" is a strongly supported
+// inference from a to-scale drawing, not a vendor statement. It is discharged physically at FIT.
 //
-// WHAT THEY ARE NEVERTHELESS GOOD FOR, and it is not nothing:
-//   - they confirm the pattern is the ATX-family grid rather than something proprietary;
-//   - they locate the REMOVE-THIS-STANDOFF position well enough to act on, because that decision
-//     has a tolerance of "which standoff", not "where exactly";
-//   - they size and place the SLOTTED standoff carriers of the FIT fixture, whose whole purpose is
-//     to let the physical board establish the exact positions, which are then measured back and
-//     frozen. A slot only needs to be in the right neighbourhood.
-//
-// COORDINATES: x is along the rear I/O edge, y is depth from that edge, matching the outline above,
-// in micrometres. Converted from the source's inches at 25400 um/in. Both maxima fall inside the
-// outline (229870 < 244000 and 237490 < 267000), which is a cheap consistency check the transposed
-// axes would have failed.
+// J AND S ARE PROHIBITIONS, NOT ABSENCES, and this is the distinction that has a short circuit at
+// the end of it. Both are standard micro-ATX locations. Neither carries a board hole here. A chassis
+// built to the full micro-ATX population puts a metal standoff at each, under a board with copper
+// and no hole above it. "Not in my list of holes" and "must not be populated" were the same state in
+// the earlier model; they are now different constructors, because only one of them is a warning.
 // ---------------------------------------------------------------------------------------------
 
 data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAuthority {
@@ -694,47 +685,52 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
   }
 }
 
-type BoardStandoffEstimate sole_constructor {
-  label: NonEmptyStr
-  along_rear_edge: Micrometer
-  depth_from_rear_edge: Micrometer
-  disposition: StandoffDisposition
+type BoardLocationDisposition
+  = BoardHolePresent
+  | ChassisStandoffForbidden
+
+type BoardStandardLocationCorrespondence sole_constructor {
+  location: MountingLocationId
+  disposition: BoardLocationDisposition
 }
 
-// A position where the board HAS a hole is a different fact from a position where a standard tray
-// has a standoff the board does NOT use. Conflating them is how a live standoff ends up under a
-// board with no hole above it, which is a short circuit rather than a fit problem.
-type StandoffDisposition
-  = BoardMountingHole
-  | ChassisStandoffMustBeRemoved
-
-fn board_standoff_estimate(
-  label: NonEmptyStr,
-  along_rear_edge: Micrometer,
-  depth_from_rear_edge: Micrometer,
-  disposition: StandoffDisposition,
-) -> BoardStandoffEstimate {
-  BoardStandoffEstimate {
-    label: label,
-    along_rear_edge: along_rear_edge,
-    depth_from_rear_edge: depth_from_rear_edge,
-    disposition: disposition,
-  }
+fn board_location_correspondence(
+  location: MountingLocationId,
+  disposition: BoardLocationDisposition,
+) -> BoardStandardLocationCorrespondence {
+  BoardStandardLocationCorrespondence { location: location, disposition: disposition }
 }
 
-data asrock_altrad8ud_standoff_estimates: List<BoardStandoffEstimate> = [
-  board_standoff_estimate(label: "H1", along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 32766), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "H2", along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 237490), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "H3", along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 9906), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "H4", along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 165100), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "H5", along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 237490), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "H6", along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 9906), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "H7", along_rear_edge: micrometer(count: 229870), depth_from_rear_edge: micrometer(count: 165100), disposition: BoardMountingHole),
-  board_standoff_estimate(label: "X1", along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 165100), disposition: ChassisStandoffMustBeRemoved),
+// Coordinates are deliberately ABSENT from these rows. A correspondence names a location; the
+// location owns its position. Copying the coordinates here would fork the grid — the exact defect
+// this session already paid for once, where the coupon's holes were computed a second time instead
+// of being read from the ladder that defined them.
+data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
+  board_location_correspondence(location: LocF, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocM, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocC, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocH, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocL, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocB, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocR, disposition: BoardHolePresent),
+  board_location_correspondence(location: LocJ, disposition: ChassisStandoffForbidden),
+  board_location_correspondence(location: LocS, disposition: ChassisStandoffForbidden),
 ]
 
-data asrock_altrad8ud_standoff_estimate_region: Micrometer = micrometer(count: 10160)
+data asrock_altrad8ud_correspondence_evidence: NonEmptyStr = "Scale reading of the section 1.4 motherboard-layout figure via an operator-supplied grid overlay (cited above). The figure's outline is to scale, measured aspect ratio 1.0935 against 10.5/9.6 = 1.0938. Seven marked holes land on micro-ATX grid values; J is marked on the figure as a standoff to remove; S is not drawn and is inferred absent. This establishes WHICH standard locations the board populates. It does NOT establish the coordinates, which are the standard's, and it is not a vendor statement of conformance."
 
-data asrock_altrad8ud_standoff_estimate_method: NonEmptyStr = "Scale reading of the section 1.4 motherboard-layout figure via an annotated grid overlay (operator-supplied, cited above). The figure's outline is to scale — measured aspect ratio 1.0935 against 10.5/9.6 = 1.0938 — so it functions as a ruler at roughly 136 px/in; the hole markers are schematic circles, giving a half-width of about 0.4 in / 10160 um. ESTIMATE, not measurement: the region is 2.5x the diameter of a standoff hole, so these locate no hole and drill no tray."
+// THE DEEP EXTENSION, and the cassette requirement that falls out of it.
+//
+// The front mounting row L/M sits at 9.350 in from the rear edge — the ORDINARY micro-ATX position,
+// not a moved one. An earlier revision of this file claimed the extra depth pushed that row outward
+// from a nominal 8.95; it does not. 8.950 is measured from Datum B, which is itself 0.400 in from
+// the board edge, so 0.400 + 8.950 = 9.350 on a standard-depth board and on this one alike.
+//
+// What the extra depth does is leave board hanging PAST the last mounting row: 10.500 - 9.350 =
+// 1.150 in, 29.21 mm, against 0.250 in on an ordinary micro-ATX board. Power and SlimSAS connectors
+// sit near that edge and take insertion force on unsupported PCB. A non-conductive front-edge
+// support is therefore a cassette candidate rather than a nicety — gated on an underside-component
+// keep-out measurement, since a support that fouls a solder joint is worse than none.
+data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
 
-data asrock_altrad8ud_standoff_measurement_obligation: NonEmptyStr = "STILL OPEN: standoff hole centres and diameter at a precision that can place a hole. The estimates above are a region, not a position, and the vendor manual dimensions none of the holes. Cleared by EITHER a reading of ATX specification Figure 3 by an instrument that can extract vector artwork — extdeps.standards.atx_2_2 records that this session could not, since the figure has no text layer — OR caliper positions from a declared origin corner on a held board. Until then the FIT fixture carries SLOTTED standoff carriers and the board itself establishes the positions, which are then measured back and frozen."
+data asrock_altrad8ud_standoff_measurement_obligation: NonEmptyStr = "STILL OPEN, and narrower than it was: the standard LOCATIONS are exact, so what remains unmeasured is product-specific. (1) Physical confirmation that each visible hole is the named standard location — discharged at FIT by mounting the board. (2) This board's actual hole diameter: the standard's 3.96 mm belongs to the location definition, not to the product. (3) Underside component and copper keep-outs around each hole. (4) Whether any mounting hole is bonded to board ground, which the protective-earth requirement makes load-bearing rather than trivia, since the earth path runs through the standoffs. (5) Standoff height and permissible contact-pad diameter."

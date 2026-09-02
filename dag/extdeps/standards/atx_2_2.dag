@@ -60,6 +60,58 @@ data atx_board_mtg_hole_offset_note: NonEmptyStr = "Figure 7 labels these .650 i
 // pattern would be laid out at the wrong width. The axes were transposed. The board is 244 mm wide,
 // which is the micro-ATX width exactly, and 267 mm deep. The consequence inverts: the rear-edge hole
 // columns are the standard ones, and it is the FRONT row that moves outward by the extra depth.
+// THE LETTERED MOUNTING-LOCATION GRID. The specifications name their location populations by letter,
+// and the letters — not coordinates — are the identity: a location is the same location across
+// revisions and across boards, which is what makes "this board populates C" a checkable claim rather
+// than a coincidence of numbers.
+//
+// Coordinates are in the board frame used throughout this corpus: x ALONG THE REAR I/O EDGE, y DEPTH
+// FROM THAT EDGE, micrometres. They are exact standard values, not readings.
+//
+// THE DATUM CORRECTION THAT MAKES THE FRONT ROW MAKE SENSE, and it killed a wrong claim of ours.
+// The specification's figure gives the front row as 8.950 in — measured FROM DATUM B, which itself
+// sits 0.400 in from the rear board edge. So the front row is 0.400 + 8.950 = 9.350 in from the
+// edge. An earlier revision of extdeps.boards.asrock_rack asserted that a deep board's extra depth
+// PUSHED this row outward from a nominal 8.95; it does not. L and M sit at the ordinary micro-ATX
+// location on a deep board and on a standard-depth board alike. What the extra depth does is extend
+// the board PAST them.
+type MountingLocationId
+  = LocB | LocC | LocF | LocH | LocJ | LocL | LocM | LocR | LocS
+
+type MountingLocation sole_constructor {
+  id: MountingLocationId
+  along_rear_edge: Micrometer
+  depth_from_rear_edge: Micrometer
+}
+
+fn mounting_location(id: MountingLocationId, along_rear_edge: Micrometer, depth_from_rear_edge: Micrometer) -> MountingLocation {
+  MountingLocation { id: id, along_rear_edge: along_rear_edge, depth_from_rear_edge: depth_from_rear_edge }
+}
+
+// The micro-ATX population the specification names: B, C, F, H, J, L, M, R, S.
+data micro_atx_mounting_locations: List<MountingLocation> = [
+  mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 33020)),
+  mounting_location(id: LocJ, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocM, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocC, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocH, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocL, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocB, along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocS, along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocR, along_rear_edge: micrometer(count: 229870), depth_from_rear_edge: micrometer(count: 165100)),
+]
+
+// The STANDARD's nominal mounting-hole diameter. It is a property of the location definition and
+// NOT of any product: a board populating location C is not thereby asserted to have a 3.96 mm hole.
+// A product's actual hole diameter is a product fact and stays unknown until measured or cited.
+data micro_atx_standard_hole_diameter: Micrometer = micrometer(count: 3962)
+data micro_atx_hole_diameter_note: NonEmptyStr = "0.156 in nominal, from the micro-ATX specification's Figure 3. This belongs to the STANDARD LOCATION definition. It is not a claim about any board's physical hole, and no consumer may read a product's hole diameter from it."
+
+// The maximum envelope, and the reason reusing the grid is not conformance. A design exceeding this
+// envelope requires a dedicated chassis by the specification's own statement, so a 9.6 x 10.5 in
+// board cannot be called mechanically conforming micro-ATX merely because it populates the grid.
+data micro_atx_maximum_envelope_note: NonEmptyStr = "Micro-ATX maximum envelope is 9.6 x 9.6 in. A board exceeding it requires a dedicated chassis per the specification. Populating the lettered grid is therefore NOT conformance: grid reuse and envelope conformance are separate claims and a board can make the first while failing the second."
+
 data micro_atx_width_along_rear_io: Millimeter = millimeter(count: 244)
 data micro_atx_depth: Millimeter = millimeter(count: 244)
 data deep_micro_atx_axis_note: NonEmptyStr = "Deep micro-ATX keeps the micro-ATX 9.6 in rear-I/O width and extends the depth beyond 9.6 in. A deep-micro-ATX board is as wide as a micro-ATX board and deeper, never wider. Stated because transposing these axes inverts every conclusion about which mounting holes are standard."
