@@ -39,11 +39,19 @@ own homework. `docs/plans/roadmap-launch-mvp-plan.md` is that procedure.
 No substitute terminal counts. A harness that completes a turn against a Spark in isolation is a
 component probe, not this terminal.
 
-**And this terminal is necessary without being sufficient.** The canary is one small change: it
-will not fill a context window, will not run a build long enough to meet a tool timeout, and will
-not sit through a convergence of the serving unit. So the classes in §5 cannot be discharged by
-passing it, and a green on the canary is a green on the easy path. Each class in §5 owes its own
-evidence, named there. Stating this is the difference between a terminal and a demonstration.
+**And this terminal is necessary without being sufficient** — accepted without objection by the
+controlling reviewer on 2026-09-02, at this grain:
+
+> The RLM terminal is the sole DCH integration terminal and remains necessary; it is **not a
+> coverage closure** for DCH's operational failure classes. Its bounded canary proves that the
+> accepted components compose on one exact task. It does not prove behavior under long context,
+> long tools, unreadable observation, process failure, control-plane deployment, serving
+> maintenance, cache reuse, or transport truncation. Each such class is discharged only by its own
+> named instrument, exact subject, positive control, and discriminating refused case. **A green RLM
+> terminal carries no evidence for a class whose distinguishing subject it did not execute.**
+
+This strengthens the rule already in §4 — treat one completed turn as evidence for nothing but that
+— rather than weakening the terminal.
 
 ## 2. Current-state ruling
 
@@ -156,15 +164,28 @@ is a precondition of the gate, not a note beside it: §5 exists to answer these 
 and a plan that lets a gate finish while its own identified fail-open is unadjudicated has recorded
 the class instead of handling it. The bindings, and each is repeated in the gate itself:
 
-| Question | Gate it blocks | What the gate may not do until it returns |
-|---|---|---|
-| Q3 — converge restarts the serving process mid-turn | **DCH-0** | complete without a drain/lease, or without a declared §4b drop naming the restoration trigger |
-| Q1 — stop-the-line boundary | **DCH-2** | fix the failure-arm partition |
-| Q2 — typed disposition for a degenerate turn | **DCH-2** | claim a terminal disposition is total |
-| Q5 — is a process exit status a carrier | **DCH-2** | fix where the attempt record is written relative to process death |
-| Q4 — what n=1 under survivorship licenses | none | it governs how §2's hypothesis list is read, not a gate's completion |
+**All five returned on 2026-09-02** (§5.2). The rule stands for any question opened later; what the
+returned rulings changed in the chain is recorded here:
 
-An open question is not a reason to stop work inside a gate; it is a bar on that gate's **receipt**.
+| Question | Effect on the chain |
+|---|---|
+| Q3 | **A new gate, DCH-0r, is inserted before DCH-0c.** A §4b drop was REJECTED as the normal shape — reordering removes the need for debt. |
+| Q1 | DCH-2's failure-arm partition is specified, not left open. |
+| Q2 | DCH-2 owes a typed-obligation adjudication; length-based dispositions are forbidden. |
+| Q5 | DCH-2 owes journal-before-effect ordering and a two-axis model. |
+| Q4 | Governs how §2's hypothesis list is read; each hypothesis owes its own instrument before DCH-3. |
+
+The resulting order is:
+
+```
+DCH-0  endpoint rows
+DCH-0r quiescent-maintenance construction
+DCH-0c ComputeHost enrolment / apply reachability
+DCH-2  turn activation
+```
+
+DCH-0c may precede DCH-0r **only** if the destructive restart path stays structurally unreachable,
+or refuses because the maintenance fence is absent.
 
 ### DCH-0 — Enrol the Sparks, and reconcile the rendered unit against the live hosts
 
@@ -179,12 +200,8 @@ The parallel axis and the cost model **left this gate on 2026-09-01**; #9960 per
   below.)
 - Reconcile the rendered unit on both hosts against desired state, which is now complete on four
   axes where it was complete on three.
-- **Answer Q3 before this gate's receipt is accepted, and carry the answer in a row.** Placing the
-  serving unit under convergence means a converge can restart the serving process, and a restart
-  mid-turn is the failure that dominated the relayed transcript in §5. This gate may not complete
-  while that is neither prevented nor declared. The admissible endings are a drain or lease so a
-  converge cannot land against an in-flight turn; or, if the drain is deferred, a §4b(3) row whose
-  trigger names the drain capability — never silence, and never a note that a restart is unlikely.
+- Q3 **returned**: the drain is not deferred and not declared as debt. It becomes its own gate,
+  **DCH-0r**, sequenced immediately after this one. This gate's own receipt is unchanged.
 
 **Receipt:** an observed-vs-desired comparison of the rendered unit on both hosts, not a return
 code. The rendered unit is the only member of the must-move-together set that produces **no failure
@@ -255,6 +272,64 @@ is the load-bearing half and the row is the quiet one.
 
 **Owner: eager-pike-541**, agreed 2026-09-01.
 
+### DCH-0r — Quiescent serving maintenance
+
+**Question owned:** can a converge restart the serving process without destroying work in flight,
+and can it prove it?
+
+Created by the Q3 ruling. A §4b drop was **rejected** as the normal shape: a drop reports a lower
+guarantee, it does not turn an unsafe arm green, and DESIGN is explicit that a dissolution trigger
+does not authorize creating the debt. Reordering the chain removes the need for debt entirely.
+
+**The mechanical blocker, verified in this tree rather than relayed.** `spark.serving_realization`
+realizes `EnableSystemUnit` as three commands in one effect — `systemctl enable`, `systemctl start`
+and `systemctl restart` — so **restart has no independently matchable effect identity** and no fence
+can structurally guard it. Two refinements found while verifying, both sharper than the finding as
+received:
+
+- The restart is **unconditional**: it is emitted every time the effect is realized, not only when
+  the unit definition changed. So converging this unit is destructive to in-flight work even when it
+  changes nothing.
+- **The user-unit path is the opposite shape**, and the Sparks are on it. Its closure is
+  `[… EnableUserUnit, StartUserUnit …]` — enable and start already separated — and it carries **no
+  restart effect at all**. So on the very hosts this lane targets, a changed unit definition has no
+  modeled route to take effect. That is a candidate cause for the observed-versus-desired drift
+  DCH-0 must reconcile, and it is stated as a candidate because nothing here has read a host back.
+
+So the first required change is that restart becomes its own typed effect, distinct from
+enablement and from initial start, on both paths.
+
+**The admitted restart sequence.** A bare `active == 0` reading is insufficient, because a turn may
+enter immediately after the read: **the admission fence and the drain are one protocol.**
+
+1. Bind a maintenance intent to the exact host, desired unit identity, and observed service
+   incarnation.
+2. Atomically move service admission from open to draining, keyed by that maintenance and
+   incarnation.
+3. Draining refuses every new turn lease for that incarnation.
+4. Drain the exact active lease identities to zero, or terminate each through a typed cancellation.
+5. Re-observe zero active leases **while the same fence is still held**.
+6. Execute the independently typed restart.
+7. Read back a new incarnation, readiness, desired unit identity, and endpoint health.
+8. Reopen admission only when every readback agrees.
+
+`std.temporal_effect` already carries the general direction — held leases, refusal on foreign
+ownership, `DrainThenStart` as a distinct plan — but the service-level population and admission
+fence that make the drain exact do not exist yet.
+
+**Guarantee grain, stated rather than assumed.** A census of DCH turn leases proves quiescence for
+DCH-managed clients only. To claim the *service* is quiescent, one of these must hold: every
+admitted client routes through the same lease authority; DCH holds exclusive access for the window;
+or the service exposes a complete active-request observation including external clients. Otherwise
+external occupancy is **outside the modeled guarantee** — and then an automated destructive restart
+must refuse, or the guarantee is stated narrowly as DCH-managed-turn continuity. It may not be
+stated broadly and held narrowly.
+
+**Receipt:** a restart executed against a held fence, with the drain observed to zero under that
+same fence, and a post-restart incarnation readback. An exit status of zero from the invoking
+program establishes only that the program reported completion — service convergence still requires
+independent observation and an empty replan.
+
 ### DCH-0b — Make residency representable
 
 **Question owned:** what is a resident-model fact, and who owns the six nobody converged?
@@ -314,14 +389,38 @@ blob closure, so nothing in it could hold seven.
   existing provider module — guessing which transcript belongs to a session, inferring state from a
   foreign schema. That is where the simplification is, and it should be measured, not asserted.
 
+**The exit bar, set by the Q1/Q2/Q5 rulings.** This gate does not exit on "it performs the four
+tools and reaches one terminal turn". Four qualification groups, each owing a named instrument with
+a positive control and a discriminating refused case:
+
+- **Supervision and observation.** A harness throw yields a durable failed-or-interrupted attempt
+  **while the controller stays observable**. A transcript-resolution failure stays distinct from
+  idle and from provider silence — the specific conflation that made a working session read as a
+  frozen one.
+- **Execution provenance and lifecycle.** Tests execute the production transport rather than a
+  test-owned twin; a control-plane restart does not terminate the turn worker; a backend restart
+  produces a typed interruption.
+- **Turn and transport semantics.** The stream/non-stream differential; `EndTurn` with outstanding
+  typed obligations; performance separated by cold, warm and cache-reused state.
+- **Tool-contract honesty.** The six dispositions above, at this grain: explicit working directory
+  on every invocation or a separately leased persistent shell; typed stdin or a typed refusal; a
+  per-operation budget rather than one universal kill; termination of the **owned process
+  population** rather than one PID; and compaction or an explicit typed context-exhaustion refusal.
+
 ### DCH-3 — Bind it at the seam and run RLM's terminal
 
 - A second `ProviderControlInterface` variant, its receipt types, and the belt binding.
-- Re-run the RLM terminal with the variant selected. That is the acceptance test.
+- Re-run the RLM terminal with the variant selected.
+- **Admission requires BOTH**, and neither substitutes for the other: every DCH-2 qualification
+  receipt accepted, **and** the unchanged RLM 14-step terminal with the DCH variant selected. The
+  §2 hypotheses each owe their own DCH-run instrument before this gate, per Q4.
 
 ### DCH-4 — Retire the three provider runtimes
 
-Delete-first at the root, per the replacement-migration doctrine, once DCH-3's receipt is accepted.
+Delete-first at the root, per the replacement-migration doctrine, once DCH-3's receipt is accepted
+— which now means the **combined** admission above, not the canary alone. Retiring a working runtime
+on the strength of an easy-path green is how a replacement erases a correctness distinction instead
+of completing.
 The population, to be counted rather than estimated at the time: in `extdeps/llm` the anthropic,
 openai, cursor and codex families; in `gunbc` the codex supervised-turn and runtime modules, the
 cursor SDK modules, provider account and standing, and the Claude setup-token enrolment. The auth
@@ -392,42 +491,94 @@ Row 8 is not about the harness. It is a note to this lane's own reviewers: their
 mini-agent-only failure aborted bootstrap for every session on the node. A fix that widens the
 failure population is a regression regardless of the class it closes.
 
-### 5.2 Five questions sent for adjudication, 2026-09-01
+### 5.2 The five dispositions, returned 2026-09-02
 
-These are **open**, and this section will not be treated as settled until they return. They were
-sent to the controlling reviewer rather than decided here because each one is contestable and three
-of them can change a gate.
+Sent 2026-09-01 and **all five returned**. Recorded as rulings rather than positions; where my
+proposal was accepted with refinement, the refinement is what binds.
 
-1. **Where is the stop-the-line boundary inside a coding harness?** DESIGN §5 says a failure arm
-   must refuse, never widen — and their harness refuses maximally, which is what destroyed the
-   sessions. The reflexive repair, "survive your own errors", has the shape of an absorbing
-   fallback, so it is not adopted by reflex. Proposed discriminator: a **tool** failure is an
-   observation and returning it typed to the model is the answer, not a widening; a **harness
-   invariant** failure stops the line. Ruling wanted on the boundary, and on which side a tool
-   timeout and an unexpected stop reason fall.
-2. **Can a degenerate turn carry a typed disposition at all?** "Shorter than N is degenerate" is
-   precisely the view-read-as-population defect that landed in #9946. What may be typeable without
-   a threshold: the turn ended while an **announced and unperformed** intent stands — a structural
-   fact about the last message, not a length.
-3. **Convergence is their router restart.** DCH-0 places the serving unit under fleet convergence;
-   converging it restarts the serving process; so this lane imports their worst open defect **by
-   construction**, into the layer it chose on purpose. Candidates: a drain or lease so a converge
-   cannot land mid-turn; or DCH-2 surviving a mid-stream backend restart, which needs real design
-   because replaying a partially streamed response can duplicate work; or a declared §4b drop with
-   a restoration trigger. Position taken into the ruling: the drain is the construction, and until
-   it exists the drop is what honesty requires.
-4. **What does n=1 under survivorship license?** The degenerate stop has one observation, and the
-   sample is survivorship-filtered rather than merely small. Do these two join the
-   hypotheses-with-a-predicted-failure list in §2, or does each first owe its own instrument?
-5. **Is a process exit status a carrier?** Their operator read `0` for an hour; the zero was a
-   watchdog's, not the harness's — a refusal typed as success at a boundary that can only carry an
-   integer. Preferred answer: the exit status is **not** a carrier, the durable attempt record is
-   the only disposition, and the process boundary is declared lossy. That preference imposes a real
-   ordering constraint on DCH-2 — the record must be written before the process can die.
+**Q1 — the stop-the-line boundary. Accepted with refinement.** "Whose failure?" is evidence; it does
+not decide. The controlling discriminator is **which continuation preconditions remain established,
+and what is the smallest closed causal scope containing the uncertainty**. Stop-the-line means no
+ordinary next effect is admissible — it does **not** mean the supervisor must die: a supervisor
+alive in a typed stopped state substitutes no answer and admits no ordinary work, so it is not an
+absorbing fallback, and destroying the mechanism that reports the failure was never §5's bar.
+Consequences DCH-2 owes:
 
-### 5.3 What is already added to §4 regardless of the rulings
+- A tool timeout is first an observation that completion was **not seen by the deadline** — not
+  proof the command failed or changed nothing. It splits: timeout **plus** a settled owned process
+  population **plus** known effect state may be returned to the model as a typed result and the turn
+  continues; timeout with a surviving process or unknown effect state enters reconciliation, where
+  mutating tools and automatic retry are refused. So the honest surface is two dispositions,
+  `TimedOutQuiesced` and `TimedOutEffectStateUnknown`, plus termination of the owned process
+  population rather than one PID, and captured output through the last observed byte.
+- An unexpected model stop reason is **turn-stopping**, not tool-level. A recognized-but-state-
+  invalid reason is a typed turn-protocol refusal; an undecodable wire value is a typed
+  unreadable-stop-reason observation carrying its raw evidence. None may throw through the
+  supervisor boundary, and none may collapse into one generic failure — terminal disposition and
+  native cause are separate axes, and an unreadable stream is neither "nothing happened" nor "the
+  provider failed".
+
+**Q2 — a degenerate turn. Accepted at typed-obligation grain, rejected at prose or character grain.**
+No length, token count or heading shape may produce a disposition; those may drive an operator
+attention view and nothing more. The adjudication is over **outstanding typed obligations**, whose
+authority is the task and execution contract — the requested change, required validation, tool calls
+awaiting results, mutations requiring readback — not the assistant's prose. The model may add
+structured obligations; it may not erase task-owned ones or self-declare an empty set to obtain
+completion. Three arms: `EndTurn` with obligations outstanding is **ended-incomplete**; with
+obligations closed it is **awaiting verification**, which is deliberately *not* acceptance, because
+the model's own `EndTurn` cannot grade the model's work; with obligation standing unobserved it is
+**unadjudicated**. A heading-only reply becomes incomplete without any length rule, whenever the
+task obligation is still unsatisfied. This also fixes the UI defect at its root: the surface renders
+a typed state and never infers idle from a small text buffer.
+
+**Q3 — convergence restarting the serving process. (a) required, a constrained (b) required, (c)
+rejected.** The drain is the construction and it becomes its own gate, **DCH-0r**; a §4b drop is not
+the planned answer, because a drop reports a lower guarantee rather than making an unsafe arm green.
+The prior-art incident is also **two** defects, answered differently: a control-plane restart killing
+the worker is a lifecycle-separation problem (the harness worker must be supervised independently of
+the dashboard), while a serving restart killing a request is a quiescence problem. The constrained
+(b): the harness must survive backend death as a typed `BackendStreamInterrupted` carrying the old
+incarnation, the observed termination and the retained stream prefix — and it must **not** resend.
+A partially streamed response may already have executed tool calls and shown the operator prose;
+exactly-once command identity covers commands that reached that boundary, not the replayability of a
+model turn. Restart survival means **survive to report interruption**, never transparent
+continuation.
+
+**Q4 — n=1 under survivorship.** It licenses exactly one existential proposition — that at least one
+surviving execution showed the symptom — and not frequency, typicality, threshold, cause, or any
+claim about long-context turns in general. Because it is prior art rather than DCH-owned evidence,
+it does not establish even that existential proposition **for our harness**. Both hypotheses join
+§2's list now and stay **separate**, because they are different subjects: streaming terminal
+integrity is transport and decoder; incomplete-stop is turn semantics. Sharing a fixture does not
+merge their verdicts. The streaming instrument is a paired differential holding model artifact,
+host, service incarnation, request bytes, sampling parameters, context and cache condition fixed and
+**changing only the stream mode**, judged on content-block sequence, tool-call sequence, usage and
+terminal completeness rather than final rendered text. The incomplete-stop instrument constructs a
+typed task with a known outstanding obligation and must not mention character count. And any
+throughput receipt binds its cache condition as an **input identity**, not a footnote.
+
+**Q5 — the process exit status. Neither of my options exactly; closest to the first, corrected.**
+An exit status carries **how that exact observed process terminated** — never whether the attempt
+completed. An exhaustive integer partition does not fix the incident, because no mapping can say
+whether the integer belongs to the watchdog, the wrapper, the container or the harness, whether the
+harness ever started, whether a child outlived its wrapper, or whether the attempt had already
+failed before something else exited zero. Two axes: a process-termination observation
+(exited / signaled / unobserved, which this tree already models in `std.process_termination`,
+including its refusal to fabricate a code for signal death) is **evidence carried into** an attempt
+disposition, and never substitutes for it. The ordering, which is a real constraint on DCH-2:
+**journal before effect** — attempt, task, base and worktree identity durably written before the
+harness spawns or mutates anything; the process bound to that record; the semantic receipt written
+before voluntary exit; and if the harness disappears without one, an independent supervisor records
+interrupted, carrying the exact termination observation. A supervisor may move a journaled record
+from running to interrupted and **may never move it to accepted**. So a watchdog exiting zero over a
+thrown harness resolves to interrupted-with-receipt-missing, and no integer is read as "done".
+
+### 5.3 Standing rules this section adds to §4
 
 - Do not report a measurement the harness cannot ground; render a refusal where a quantity is not
   measurable, never a zero and never a back-computed figure.
 - Do not treat a green canary as evidence for any class in §5.1.
 - Do not land a repair whose failure population is larger than the one it closes.
+- Do not produce a turn or attempt disposition from a length, token count or output shape.
+- Do not resend a request whose response was already partially streamed.
+- Do not read any process exit status as evidence that an attempt completed.
