@@ -32,6 +32,25 @@ fn rust_source_binding(module_path: String, decl_name: String, representation: R
   }
 }
 
+// THIS ROSTER IS OPEN AND NOTHING OWNS ITS ABSENCE, measured 2026-09-02 (quick-crab-396). The header
+// above authorizes reading absence as a positive fact -- "their absence here is the same fact stated
+// once at the exact key" -- and that reading is sound for the declarations it names. It is not sound
+// in general, because a row can be absent for a second reason with the opposite meaning: NOBODY HAS
+// ADDED IT YET.
+//
+// THE STANDING SPECIMEN IS Nat. v1.compiler.coercion numeric_realization_declaring_modules asserts that
+// dag/std/nat.dag realizes natively on Rust; there is no std.nat Nat row here. So a consumer that read
+// absence-from-these-rows as "declares structurally" would answer wrongly for Nat today, and the only
+// thing preventing that is that no consumer asks the question that way yet.
+//
+// WHAT WOULD CLOSE IT, AND WHAT DOES NOT. Every invariant in dag.test.claim.self_host_symbol_identity_binding_witness_test
+// runs FROM a row TO something -- migrated names absent from the bare table, migrated bindings have
+// exact rows, every bare row carries a verdict, corpus bindings are unambiguous. NOT ONE runs from a
+// REALIZATION to a REQUIRED ROW, and sibling_declarations_without_bindings is a hand-authored list of
+// four standing where a discovered population would be. NEXT-RUNG TRIGGER, a capability and not an
+// artifact: a completeness join over a DISCOVERED population of natively-realizing declarations that
+// refuses when one has no row here -- sufficient that absence carries exactly one meaning, at which
+// point the header's reading becomes structural rather than authorized.
 data rust_source_type_binding_rows: List<SourceTypeTargetBinding<RustRepresentation>> = [
   rust_source_binding(module_path: "v2.std.node", decl_name: "Symbol", representation: RustStdString),
   rust_source_binding(module_path: "std.types", decl_name: "Secret", representation: RustStdString),
