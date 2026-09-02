@@ -14043,6 +14043,18 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
   }
 }
 
+// Every emitted service operation method declares
+// `-> Result<T, Box<dyn std::error::Error>>`, so every error arm owes that Box and
+// reaches it through `Into`. This is the ONE place the conversion is spelled.
+// It was two: the REST arms wrote `.into()` at their own call sites while the shell
+// arm carried its own constant. They agreed only by coincidence -- the shell arm
+// spent its whole life NOT agreeing, emitting `Err(stderr)` against the declared
+// Box -- and the emitter does not typecheck what it emits, so nothing caught it.
+// A second site is where that divergence gets written; there is no second site.
+fn emit_rust_boxed_error_return(message_expr: String) -> String {
+  concat("Err(", message_expr, ".into())")
+}
+
 fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
@@ -14058,7 +14070,9 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
       "let status = response.status().as_u16();\n",
       "match status {\n",
       arms |> join(separator: "\n"),
-      "\n    _ => Err(format!(\"unexpected status code: {}\", status).into())\n",
+      "\n    _ => ",
+      emit_rust_boxed_error_return(message_expr: "format!(\"unexpected status code: {}\", status)"),
+      "\n",
       "}")
   }
 }
@@ -14082,7 +14096,8 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }
   } else {
-    concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },")
+    concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); ",
+      emit_rust_boxed_error_return(message_expr: "format!(\"HTTP {}: {}\", status, err_body)"), " },")
   }
 }
 
@@ -14099,7 +14114,7 @@ fn emit_exit_code_handling(op_node: Node, result_fields: List<ShellResultField>,
     let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, result_fields: result_fields, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { concat("\n    _ => { ", shell_stderr_binding_line, " ", shell_boxed_stderr_error_arm, " },") }
+      else { concat("\n    _ => { ", shell_stderr_binding_line, " ", emit_rust_boxed_error_return(message_expr: "stderr"), " },") }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -14118,7 +14133,7 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(result_fields: result_fields), " },")
   } else {
-    concat("    ", pattern, " => { ", shell_stderr_binding_line, " ", shell_boxed_stderr_error_arm, " },")
+    concat("    ", pattern, " => { ", shell_stderr_binding_line, " ", emit_rust_boxed_error_return(message_expr: "stderr"), " },")
   }
 }
 
@@ -14226,17 +14241,11 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
   }
 }
 
-// The error arm of a shell operation, boxed.
-//
-// The method's declared Rust return is `Result<T, Box<dyn std::error::Error>>`,
-// which the REST arm has always respected (`...into()`) and this arm did not:
-// it emitted `Err(stderr)` against a `String`, so every operation declaring an
-// `exit` block emitted a function that does not compile (E0308). It also ran the
-// payload through the host-to-dag String seam, which is the wrong seam -- the
-// error arm does not produce a dag value at all, it produces the method's host
-// error -- so the seam call is gone rather than boxed.
+// The stderr the shell error arm reports on. It is bound as a host String and
+// handed to emit_rust_boxed_error_return, NOT through the host-to-dag String seam:
+// the error arm does not produce a dag value at all, it produces the method's host
+// error.
 data shell_stderr_binding_line: String = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
-data shell_boxed_stderr_error_arm: String = "Err(stderr.into())"
 
 // Answers the declared fields in declared order, from the projection the binding
 // resolved. A single-field projection answers one expression rather than a
