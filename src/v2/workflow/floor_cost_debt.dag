@@ -226,7 +226,7 @@ import v2.std.collection { List }
 // Every release and hold reasoned about here compares a claim's cost against
 // `required_floor_claim_cpu_safety_limit_ms`, and the standing of that comparison -- its measured
 // inflation, its bounded population, and the capability that restores it -- is carried by
-// `gunbc.rung_drop floor_cost_contention_verdict`. Cited rather than repeated: a second telling
+// `gunbc.rung_drop floor_cost_claim_qualification_unavailable`. Cited rather than repeated: a second telling
 // would drift from the authority that retires it.
 
 // THE 45 test.claim.live_deploy ROWS ARE HELD, AND THEIR TRIGGER IS NOT A COST MEASUREMENT.

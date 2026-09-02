@@ -1,0 +1,55 @@
+module extdeps.posix.locale
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE LOCALE IDENTIFIER, homed here rather than beside the time zone it is usually prompted
+// with. It first landed in extdeps.iana.time_zone_database because the DGX Spark's setup screen
+// asks for language and timezone together, and the screen's convenience is not an authority:
+// a POSIX locale is not an IANA fact. IANA publishes the time zone database; the locale
+// identifier's shape is POSIX's, and its territory and language subtags are ISO's. Leaving it
+// in the tz module made one module speak for two independently versioned upstreams, which
+// DESIGN §3's external-upstream decomposition forbids -- and the row's own comment already
+// admitted the concepts were distinct while the placement said otherwise.
+//
+// The cost of leaving it was not hypothetical: the moment a second consumer imported
+// PosixLocaleId from the IANA module, the wrong authority would have been frozen by use, and
+// moving it later becomes a migration rather than a rename.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap07.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.locale",
+      decl_name: "PosixLocaleId",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.posix.locale.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A locale names language, territory and codeset, and decides collation, formatting and
+// translation. It is branded rather than left a bare String because "English", "US", "en-US"
+// and "en_US.UTF-8" are all things a human writes and only ONE of them is what POSIX defines.
+//
+// THE SPELLING IS language[_TERRITORY][.codeset], AND THE SEPARATOR IS AN UNDERSCORE. This row
+// first carried "en-US", which is a BCP 47 LANGUAGE TAG and not a POSIX locale at all -- the
+// module cited POSIX while declaring IETF's spelling, so the authority named one upstream and
+// the value came from another. The repository already had the correct form in hand: the
+// os-install rows emit en_US.UTF-8, so the wrong spelling here was also a second answer to a
+// question this repository had already answered (DESIGN §3).
+//
+// The two concepts are NOT interchangeable and the distinction is load-bearing downstream: a
+// POSIX locale selects a codeset, a language tag does not, and setting LANG to a language tag
+// yields a system with no working locale rather than an error anyone notices.
+type PosixLocaleId = NonEmptyStr where brand("PosixLocaleId")
+
+data locale_en_us_utf8: PosixLocaleId = "en_US.UTF-8" as PosixLocaleId

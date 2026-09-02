@@ -121,7 +121,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Rust fmt as a merge-path gate** — declared 2026-09-01
 - **Merge-admission stamping: the receipt has no producer** — declared 2026-09-01
 - **Falsifier cadence: exposure open, disposition NOT decided** — declared 2026-09-01
-- **Stable per-claim cost qualification under a shared execution envelope** — declared 2026-09-01
+- **Per-claim cost qualification is unavailable at the subject grain the gate consumes** — declared 2026-09-01
 - **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
 - **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
@@ -246,6 +246,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `liveness_probe_read_as_currency`
 - `non_verdict_disposition_surfaces_as_refusal`
 - `empty_capture_read_as_clean_result`
+- `unhandled_state_falls_to_the_not_yet_arm`
 - `salience_instrument_blind_to_the_record_it_sizes`
 - `ambient_process_state_read_by_a_concurrent_reader`
 - `predicate_vacuously_true_on_an_empty_domain`

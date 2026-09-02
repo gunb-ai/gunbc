@@ -31,9 +31,13 @@ import extdeps.firmware.types {
   InstantFlashRom,
   firmware_semantic_version,
 }
-import std.measure { ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.measure { Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { point2 }
+import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.uri { Uri, Https }
@@ -571,3 +575,325 @@ data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAlt
 }
 
 data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."
+
+// ---------------------------------------------------------------------------------------------
+// BOARD GEOMETRY, read first-party from the vendor manual this module already cites.
+//
+// PROVENANCE, stated before the numbers because it is the fact that decides how they may be used.
+// extdeps_external_authority_anchor names download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf. That
+// document was FETCHED AND READ by the authoring session — download.asrock.com answers 200 from
+// this environment, unlike the general web, which is refused — so these are a first-party read of
+// the manual and not the relayed grade extdeps.climbing_holds.atomik is stamped with. Section 1.4
+// "Motherboard Layout" carries the outline as leader dimensions: 26.7 cm (10.5 in) by 24.4 cm
+// (9.6 in).
+//
+// WHAT THIS REPLACES. asrock_altrad8ud_1l2t_mechanical carries form_factor_label, a String reading
+// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which DESIGN §4c names
+// as the thing a typed carrier must hold instead — a String cannot be asked whether a chassis panel
+// clears the board. The label is left standing because it also carries a FORM-FACTOR CLAIM, which
+// is a different fact from an outline and is not established by these two lengths.
+//
+// THE AXES, AND AN ERROR THIS FILE SHIPPED ONCE. The board is 244 mm ALONG THE REAR I/O EDGE and
+// 267 mm DEEP: the manual prints 24.4 cm (9.6 in) and 26.7 cm (10.5 in), and the vendor calls the
+// form factor "deep micro-ATX (9.6 x 10.5 in)".
+//
+// An earlier revision transposed these and asserted the board was 267 mm WIDE against micro-ATX's
+// 244 mm, concluding that a micro-ATX hole pattern would be laid out 23 mm too narrow. That was
+// backwards and the conclusion inverts. The board is 244 mm along the rear I/O edge — the micro-ATX
+// width exactly — and deeper. The error mattered: it is the difference between "the standard pattern
+// does not apply" and "the standard pattern applies except at known positions".
+//
+// THIS PARAGRAPH CARRIED THREE DEAD CLAIMS UNTIL THE STANDARD SPLIT FORCED THEM INTO VIEW, and they
+// are recorded because the way they survived is more instructive than any of them.
+//
+// It cited `extdeps.standards.atx_2_2 deep_micro_atx_axis_note`, a symbol DELETED earlier in this
+// same program. It said that module "deliberately does not supply that grid", which became false the
+// moment the grid was added. And it repeated the retracted claim that the FRONT ROW MOVES OUTWARD BY
+// THE EXTRA 0.9 IN — retracted in the standard module hours before, and still asserted here.
+//
+// All three are the same failure: a correction was applied where it was pointed out and the CLASS
+// was treated as closed. The front row does not move. 8.950 in is measured from Datum B, itself
+// 0.400 in from the edge, so L and M sit at 9.350 in on a deep board and a standard-depth board
+// alike; the extra depth extends the board PAST them, which is what the front-overhang row records.
+//
+// The outline is still NOT a conformance claim. Matching two edge dimensions is not the same as
+// carrying the specification's hole grid, and populating that grid is not envelope conformance
+// either — extdeps.standards.micro_atx records why those are separate claims.
+// ---------------------------------------------------------------------------------------------
+fn asrock_altrad8ud_board_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 31) }
+
+// Micrometres, for the reason std.spatial_frame records and extdeps.printing.fdm repeats: the
+// quantum is chosen from the smallest distinction the frame must preserve, not from the largest
+// value it must hold. Whole millimetres are sufficient for these two extents and are NOT sufficient
+// for what will be drawn in this frame next — DIMM slot pitch and standoff positions — and a frame
+// whose quantum is retro-fitted after coordinates exist in it silently rescales every one of them.
+// x is ALONG THE REAR I/O EDGE, y is DEPTH FROM THAT EDGE. The axis assignment is stated here
+// because the frame carries no axis names and the numbers alone do not disclose which is which —
+// which is exactly how the transposition above survived review the first time.
+//
+// THE EXTENTS ARE THE INCH FIGURES CONVERTED EXACTLY, NOT THE ROUNDED MILLIMETRES, and an earlier
+// revision got this wrong in a way that produced a live contradiction inside this one module.
+//
+// The vendor states 9.6 x 10.5 in and presents 244 x 267 mm beside it. Those mm are rounded: the
+// exact conversions are 243.840 and 266.700. The earlier outline carried 244000 and 267000 µm while
+// asrock_altrad8ud_front_overhang below carried 29210 µm, which derives from 266700 − 237490. So the
+// module asserted a depth of 267000 and an overhang computed from 266700, disagreeing by 300 µm —
+// both spellings treated as exact in different rows, which is the same defect this session had
+// already fixed once in extdeps.standards.atx_2_2 and failed to sweep for here.
+//
+// One representation owns it, and it is the exact one: a micrometre frame can hold 243840 and
+// 266700 losslessly, so there is no reason to spend precision on a presentational rounding. The
+// overhang is now derivable from the rows above it rather than merely consistent with them, and
+// w_the_overhang_derives_from_the_outline asserts exactly that subtraction.
+fn asrock_altrad8ud_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
+  axis_aligned_rectangle2(
+    min: point2(frame: asrock_altrad8ud_board_frame(), x: 0, y: 0),
+    max: point2(frame: asrock_altrad8ud_board_frame(), x: 243840, y: 266700)
+  )
+}
+
+data asrock_altrad8ud_board_outline_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.boards.asrock_rack",
+    decl_name: "asrock_altrad8ud_board_outline",
+    field: WholeDeclaration
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+// THE MOUNTING-HOLE POSITION IS SUPPLIED, AND WHAT IS REFUSED IS NARROWER THAN IT ONCE WAS.
+//
+// This paragraph previously said "THE MOUNTING HOLES ARE NOT HERE, AND THEIR ABSENCE IS THE POINT",
+// that the module "refuses to hold them rather than deriving them from the micro-ATX pattern", and
+// that deriving them "would place standoffs against a 244 mm-wide pattern on a 267 mm-wide board".
+// By the time it was read, all three were false: the correspondence roster below supplies exactly
+// which standard locations this board populates, and the 267-mm-wide clause is the AXIS
+// TRANSPOSITION that was retracted in two other modules while surviving verbatim here. The board is
+// 244 mm along the rear I/O edge and 266.700 mm deep.
+//
+// IT WAS CITED BY A REVIEW AS EVIDENCE OF DISCIPLINE, which is the part worth recording. A stale
+// annotation does not merely rot quietly; it is read, and a refusal that no longer holds gets
+// counted as a wall. That is strictly worse than no annotation, because it earns credit for a
+// property the module does not have. This is the fourth stale-claim instance in this program and the
+// class is the same each time: the correction is applied where it was pointed out and the CLASS is
+// treated as closed. A retraction is not done until the retracted WORDING is swept for.
+//
+// WHAT IS ACTUALLY REFUSED, stated at the grain that is still true: the exact hole positions on THIS
+// PHYSICAL BOARD are not measured. Section 1.4 draws the standoffs as unlabelled circles and
+// dimensions none of them, so the manual establishes no coordinate. What the roster below carries is
+// a CORRESPONDENCE -- which named standard location each drawn hole is -- inferred from a to-scale
+// figure and discharged physically at FIT. The standard's coordinates are exact and are
+// extdeps.standards.micro_atx's; the claim that this board sits on them is an inference; and the
+// board's own hole diameter and underside keep-outs remain unmeasured, which is what
+// asrock_altrad8ud_open_mounting_unknowns enumerates.
+//
+// The absorbing fallback the old paragraph warned about is still a real hazard and is still refused:
+// substituting the nearby standard for a measurement nobody took. The difference is that the refusal
+// now sits on the product-specific facts that are genuinely absent, rather than on a grid that this
+// module does supply.
+
+data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/file/d/1z36tmUWAwOwXWy6ASmaPWJNzKoZggBs8/view"
+  }
+}
+
+// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
+// route, so the grade is readable from the constructor rather than from prose beside it.
+type BoardLocationStanding
+  = HoleCorrespondenceInferred
+  | HoleAbsenceExplicitlyDirected
+  | HoleNotObservedInDrawing
+  | HolePhysicallyConfirmedPresent
+  | HolePhysicallyConfirmedAbsent
+
+// WHY a location must stay empty. Distinct from the standing that established it.
+type StandoffProhibitionCause
+  = ProductSaysRemove
+  | NoAdmittedBoardHole
+
+// WHAT IS DONE at a standard location by a chassis built for this board.
+type StandoffPlacementDecision
+  = StandoffAdmitted
+  | StandoffProhibited { cause: StandoffProhibitionCause }
+
+// The join, and the reason the two types are worth separating: this is total, so a new standing arm
+// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
+// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
+fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
+  match standing {
+    HoleCorrespondenceInferred => StandoffAdmitted
+    HolePhysicallyConfirmedPresent => StandoffAdmitted
+    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
+    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
+  }
+}
+
+type BoardStandardLocationCorrespondence sole_constructor {
+  location: MountingLocationId
+  standing: BoardLocationStanding
+}
+
+fn board_location_correspondence(
+  location: MountingLocationId,
+  standing: BoardLocationStanding,
+) -> BoardStandardLocationCorrespondence {
+  BoardStandardLocationCorrespondence { location: location, standing: standing }
+}
+
+// Coordinates are deliberately ABSENT from these rows. A correspondence names a location; the
+// location owns its position. Copying the coordinates here would fork the grid — the exact defect
+// this session already paid for once, where the coupon's holes were computed a second time instead
+// of being read from the ladder that defined them.
+// HOW THE CORRESPONDENCE BELOW WAS ESTABLISHED, and its exact strength.
+//
+// A scale reading of the section 1.4 motherboard-layout figure over the operator-supplied grid
+// overlay cited above. The figure is to scale: its measured outline aspect ratio agrees with
+// 10.5/9.6 to within a thousandth, which is the check that makes reading positions off it legitimate
+// at all. Seven marked holes then land on micro-ATX grid values, J is marked on the figure as a
+// standoff to remove, and S is not drawn.
+//
+// What that establishes is WHICH standard locations this board populates. It does NOT establish the
+// coordinates — those are the standard's — and it is not a vendor statement of conformance. The
+// aspect-ratio agreement is deliberately not carried as a datum: it was a one-off sanity check with
+// no instrument behind it, and DESIGN section 6 says a number worth re-deriving is worth an entry
+// point while one that is not is not an instrument at all.
+data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
+  board_location_correspondence(location: LocF, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocM, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocC, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocH, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocL, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocB, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocR, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocJ, standing: HoleAbsenceExplicitlyDirected),
+  board_location_correspondence(location: LocS, standing: HoleNotObservedInDrawing),
+]
+
+
+// THE DEEP EXTENSION, and the cassette requirement that falls out of it.
+//
+// The front mounting row L/M sits at 9.350 in from the rear edge — the ORDINARY micro-ATX position,
+// not a moved one. An earlier revision of this file claimed the extra depth pushed that row outward
+// from a nominal 8.95; it does not. 8.950 is measured from Datum B, which is itself 0.400 in from
+// the board edge, so 0.400 + 8.950 = 9.350 on a standard-depth board and on this one alike.
+//
+// What the extra depth does is leave board hanging PAST the last mounting row: 10.500 - 9.350 =
+// 1.150 in, 29.21 mm, against 0.250 in on an ordinary micro-ATX board. Power and SlimSAS connectors
+// sit near that edge and take insertion force on unsupported PCB. A non-conductive front-edge
+// support is therefore a cassette candidate rather than a nicety — gated on an underside-component
+// keep-out measurement, since a support that fouls a solder joint is worse than none.
+// THE AXIS ASSIGNMENT IS A CONSTRUCTOR, NOT A COMMENT, and this program earned that the hard way.
+//
+// The extents of this board were transposed once and the error survived review, three separate
+// retractions, and an approving review that quoted the stale prose back as evidence of discipline.
+// Every one of those defences was a SENTENCE. The annotation above the outline said "x is along the
+// rear I/O edge, y is depth" and it was true and it prevented nothing, because no Accepted program
+// can read it -- DESIGN section 4c says exactly that about annotations, and a fact that only prose
+// carries is a fact the compiler cannot check.
+//
+// So the assignment moves into the type system. There are exactly two ways to lay a rectangular
+// board into a 2-D frame, and they are the two arms below. A transposition is then a DIFFERENT
+// CONSTRUCTOR rather than a different comment: it cannot be introduced by editing prose, and every
+// consumer that reads an extent must say which axis it means.
+//
+// Why a two-arm coproduct rather than a record of two roles: a record permits x and y to carry the
+// SAME role, which is not a transposition but a nonsense state, and DESIGN section 4b prefers the
+// invalid state to have no constructor over having a validator.
+type BoardPlaneOrientation
+  = XAlongRearIoYDepth
+  | XDepthYAlongRearIo
+
+// The readouts. These are the only sanctioned way to ask this module for an extent, and they are
+// named for the PHYSICAL EDGE rather than for an axis letter, so a caller cannot ask for "x" and
+// receive whatever x happens to mean today.
+fn board_extent_along_rear_io(orientation: BoardPlaneOrientation, x: Micrometer, y: Micrometer) -> Micrometer {
+  match orientation {
+    XAlongRearIoYDepth => x
+    XDepthYAlongRearIo => y
+  }
+}
+
+fn board_extent_depth(orientation: BoardPlaneOrientation, x: Micrometer, y: Micrometer) -> Micrometer {
+  match orientation {
+    XAlongRearIoYDepth => y
+    XDepthYAlongRearIo => x
+  }
+}
+
+// This board's orientation, declared once. The outline's max point is authored in this orientation
+// and the readouts below are the accessors every consumer should use.
+data asrock_altrad8ud_orientation: BoardPlaneOrientation = XAlongRearIoYDepth
+
+data asrock_altrad8ud_extent_along_rear_io: Micrometer = board_extent_along_rear_io(
+  orientation: asrock_altrad8ud_orientation,
+  x: micrometer(count: 243840),
+  y: micrometer(count: 266700)
+)
+
+data asrock_altrad8ud_extent_depth: Micrometer = board_extent_depth(
+  orientation: asrock_altrad8ud_orientation,
+  x: micrometer(count: 243840),
+  y: micrometer(count: 266700)
+)
+
+// NOMINAL, NOT AS-MANUFACTURED, and the distinction is the difference between arithmetic and
+// physics. 243840 x 266700 um is the EXACT CONVERSION of the vendor's published nominal 9.6 x 10.5
+// in. It is not the exact as-built extent of any board on the operator's desk: PCB routing carries a
+// real tolerance, and no board here has been measured. Naming these "exact" without qualification
+// invites the promotion that matters -- exact ARITHMETIC silently read as ZERO PHYSICAL TOLERANCE --
+// and a cassette clearance derived on that reading would be tight by an unknown amount.
+//
+// So: these are nominal-profile facts, admissible for layout and for deciding which standard grid
+// applies. Any clearance that depends on the board's real edge needs a product tolerance or an
+// as-held measurement, which asrock_altrad8ud_open_mounting_unknowns already tracks as unmeasured.
+data asrock_altrad8ud_board_depth_nominal_exact: Micrometer = micrometer(count: 266700)
+data asrock_altrad8ud_front_mounting_row_offset: Micrometer = micrometer(count: 237490)
+data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
+
+// THE OPEN MOUNTING UNKNOWNS, AS A CLOSED TYPE RATHER THAN A PARAGRAPH.
+//
+// An earlier revision carried these five as one NonEmptyStr. DESIGN section 4c names a dissolution
+// condition as something that belongs in a typed carrier specifically, and the reason is mechanical:
+// a paragraph cannot be counted, cannot be discharged one item at a time, and cannot refuse. This
+// can. Each arm names one product-specific fact that the standard does not supply, and the total
+// derivation beside it names what discharges it — so an arm added later cannot be left without a
+// route, and the roster going empty is a real, checkable event rather than someone editing prose.
+//
+// Note what is NOT in here: the standard LOCATIONS. Those are exact. Everything below is a fact
+// about this physical product that no specification can answer.
+type Altrad8udMountingUnknown
+  = HoleCorrespondencePhysicallyUnconfirmed
+  | ProductHoleDiameterUnmeasured
+  | UndersideKeepOutUnmeasured
+  | MountingHoleGroundBondUnknown
+  | StandoffHeightAndPadUnmeasured
+
+type MountingUnknownDischarge
+  = DischargedByMountingTheBoard
+  | DischargedByCalipers
+  | DischargedByContinuityMeter
+
+// Total by construction: a new unknown must be given a discharge route here or fail to compile.
+fn mounting_unknown_discharge(u: Altrad8udMountingUnknown) -> MountingUnknownDischarge {
+  match u {
+    HoleCorrespondencePhysicallyUnconfirmed => DischargedByMountingTheBoard
+    ProductHoleDiameterUnmeasured => DischargedByCalipers
+    UndersideKeepOutUnmeasured => DischargedByCalipers
+    StandoffHeightAndPadUnmeasured => DischargedByCalipers
+    MountingHoleGroundBondUnknown => DischargedByContinuityMeter
+  }
+}
+
+// MountingHoleGroundBondUnknown governs the FUNCTIONAL board-to-chassis bond only. Protective earth
+// is bolted to rack metal and must survive board, standoff and cassette removal, so no entry in this
+// roster sits on the safety path — see the grounding section of the printed-chassis program.
+data asrock_altrad8ud_open_mounting_unknowns: List<Altrad8udMountingUnknown> = [
+  HoleCorrespondencePhysicallyUnconfirmed,
+  ProductHoleDiameterUnmeasured,
+  UndersideKeepOutUnmeasured,
+  MountingHoleGroundBondUnknown,
+  StandoffHeightAndPadUnmeasured,
+]

@@ -1,3 +1,39 @@
+// CLIPPY ROSTER -- 121 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::clone_on_copy,  // 1
+    clippy::cloned_ref_to_slice_refs,  // 8
+    clippy::collapsible_if,  // 1
+    clippy::collapsible_match,  // 1
+    clippy::disallowed_macros,  // 15
+    clippy::doc_lazy_continuation,  // 2
+    clippy::double_parens,  // 21
+    clippy::explicit_auto_deref,  // 2
+    clippy::manual_clamp,  // 1
+    clippy::manual_div_ceil,  // 1
+    clippy::manual_is_multiple_of,  // 1
+    clippy::manual_repeat_n,  // 1
+    clippy::missing_const_for_thread_local,  // 1
+    clippy::needless_borrow,  // 9
+    clippy::needless_borrows_for_generic_args,  // 2
+    clippy::only_used_in_recursion,  // 1
+    clippy::single_match,  // 1
+    clippy::too_many_arguments,  // 1
+    clippy::type_complexity,  // 10
+    clippy::unnecessary_lazy_evaluations,  // 1
+    clippy::unnecessary_to_owned,  // 20
+    clippy::useless_format,  // 6
+    dead_code,  // 4
+    unused_imports,  // 2
+    unused_mut,  // 2
+    unused_parens,  // 6
+)]
+
 use crate::v1_rt::VecCompat;
 use im::HashMap;
 use std::cell::{Cell, RefCell};
@@ -543,7 +579,7 @@ pub struct CanonKey {
 
 impl CanonKey {
     fn new(key: Value) -> Option<CanonKey> {
-        if key == key {
+        if key.is_reflexive() {
             Some(CanonKey { key })
         } else {
             None
@@ -915,6 +951,24 @@ impl fmt::Display for Value {
             Value::Fn { node } => write!(f, "<fn {}>", node.name),
             Value::Unit => write!(f, "()"),
         }
+    }
+}
+
+impl Value {
+    /// A value may key a map only if it equals ITSELF, and `Value` has inhabitants that do not:
+    /// `Float(f64::NAN)` compares false to itself under IEEE semantics, and the variants this
+    /// `PartialEq` does not match (a `Closure`, say) fall to its `false` arm. Admitting either
+    /// would make `impl Eq for CanonKey` a lie and its `Hash` unreachable for its own key.
+    ///
+    /// The test is `self == self`, spelled ONCE and named, because that is the only expression
+    /// that stays correct as `PartialEq` above grows arms: a hand-written structural check would
+    /// be a second authority for reflexivity and would silently disagree the day a variant is
+    /// added. `clippy::eq_op` is deny-by-default and cannot see that a non-reflexive inhabitant
+    /// exists, so the lint is refused here, at the one site whose whole content is that test --
+    /// not at a crate root on behalf of everything under it.
+    #[allow(clippy::eq_op)]
+    fn is_reflexive(&self) -> bool {
+        self == self
     }
 }
 
@@ -1867,8 +1921,10 @@ thread_local! {
 struct CrossClaimFillFrame {
     producer: String,
     cpu_started: u128,
+    steps_started: u64,
     stored_children_cpu: u128,
     stored_children_wall: u128,
+    stored_children_steps: u64,
 }
 
 /// RAII scope for one admitted call that missed the cross-claim memo. Every path out of the
@@ -1877,6 +1933,7 @@ struct CrossClaimFillFrame {
 struct CrossClaimFillGuard {
     func_name: String,
     cpu_started: u128,
+    steps_started: u64,
     wall_started: Instant,
     stored: std::cell::Cell<bool>,
 }
@@ -1884,12 +1941,15 @@ struct CrossClaimFillGuard {
 impl CrossClaimFillGuard {
     fn enter(func_name: &str) -> CrossClaimFillGuard {
         let cpu_started = thread_cpu_nanos();
+        let steps_started = evaluator_steps();
         CROSS_CLAIM_FILL_FRAMES.with(|s| {
             s.borrow_mut().push(CrossClaimFillFrame {
                 producer: func_name.to_string(),
                 cpu_started,
+                steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
+                stored_children_steps: 0,
             })
         });
         CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -1900,6 +1960,7 @@ impl CrossClaimFillGuard {
         CrossClaimFillGuard {
             func_name: func_name.to_string(),
             cpu_started,
+            steps_started,
             wall_started: Instant::now(),
             stored: std::cell::Cell::new(false),
         }
@@ -1914,19 +1975,24 @@ impl Drop for CrossClaimFillGuard {
     fn drop(&mut self) {
         let inclusive_cpu = thread_cpu_nanos().saturating_sub(self.cpu_started);
         let inclusive_wall = self.wall_started.elapsed().as_nanos();
+        let inclusive_steps = evaluator_steps().wrapping_sub(self.steps_started);
         let frame = CROSS_CLAIM_FILL_FRAMES
             .with(|s| s.borrow_mut().pop())
             .unwrap_or(CrossClaimFillFrame {
                 producer: self.func_name.clone(),
                 cpu_started: self.cpu_started,
+                steps_started: self.steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
+                stored_children_steps: 0,
             });
         let children_cpu = frame.stored_children_cpu;
         let children_wall = frame.stored_children_wall;
+        let children_steps = frame.stored_children_steps;
         if self.stored.get() {
             // Net SELF time only: stored descendants already netted their own inclusive time.
             record_shared_artifact_fill_cpu_nanos(inclusive_cpu.saturating_sub(children_cpu));
+            record_shared_artifact_fill_eval_steps(inclusive_steps.saturating_sub(children_steps));
             let self_wall = inclusive_wall.saturating_sub(children_wall);
             CROSS_CLAIM_FILL_FRAMES.with(|s| {
                 if let Some(parent) = s.borrow_mut().last_mut() {
@@ -1934,6 +2000,8 @@ impl Drop for CrossClaimFillGuard {
                         parent.stored_children_cpu.saturating_add(inclusive_cpu);
                     parent.stored_children_wall =
                         parent.stored_children_wall.saturating_add(inclusive_wall);
+                    parent.stored_children_steps =
+                        parent.stored_children_steps.saturating_add(inclusive_steps);
                 }
             });
             CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -1950,6 +2018,8 @@ impl Drop for CrossClaimFillGuard {
                         parent.stored_children_cpu.saturating_add(children_cpu);
                     parent.stored_children_wall =
                         parent.stored_children_wall.saturating_add(children_wall);
+                    parent.stored_children_steps =
+                        parent.stored_children_steps.saturating_add(children_steps);
                 }
             });
             CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -5244,6 +5314,53 @@ thread_local! {
     static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
 }
 
+thread_local! {
+    /// EVALUATOR STEPS TAKEN ON THIS THREAD — one per `eval_expr` entry, counted
+    /// UNCONDITIONALLY. This is a WORK measure, not a time measure: its value is a property of
+    /// the program and the arguments it was evaluated on, and it carries no term for clock
+    /// frequency, cache state, co-tenant pressure or scheduler preemption. That is the whole
+    /// point — `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` names "a deterministic work
+    /// measure such as evaluator steps" as one of the three arms of its restoration trigger,
+    /// and a measure that is only available under a profiling flag is not available in the
+    /// envelopes the row is about. So this counter is NOT gated on `eval_profile_enabled`: the
+    /// per-variant `EVAL_COUNTS` array beside it is a profiling instrument that pays two
+    /// `Instant::now()` calls per node, while this is a single wrapping increment.
+    ///
+    /// IT IS A COUNT AND NOT YET A VERDICT. Nothing compares it against a line, and this
+    /// declaration deliberately does not introduce one: there is no calibrated step ceiling in
+    /// the tree, and inventing one would be the "looks principled and is not" threshold the
+    /// same row already refuses on the calibration arm.
+    static EVAL_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+
+    /// Evaluator steps taken inside STORED shared-artifact fills, netted by exactly the rule
+    /// `SHARED_ARTIFACT_FILL_CPU_NANOS` nets CPU by. Without this the measure would not be
+    /// envelope-invariant after all: a claim that happened to be the one to fill a shared memo
+    /// would count the fill's steps while every later claim reading the same artifact counted
+    /// none, so the value would be a function of EXECUTION ORDER — the same defect the
+    /// 2026-08-27 fill-attribution ruling closed on the CPU clock, at the same grain.
+    static SHARED_ARTIFACT_FILL_EVAL_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// One evaluator step. Called from `eval_expr` and from nowhere else, so the count has one
+/// producer and its unit is stated by that single call site rather than by convention.
+fn record_eval_step() {
+    EVAL_STEPS.with(|c| c.set(c.get().wrapping_add(1)));
+}
+
+/// The running evaluator-step total for this thread. Deltas across a claim, never the absolute.
+pub fn evaluator_steps() -> u64 {
+    EVAL_STEPS.with(|c| c.get())
+}
+
+/// The running total of steps taken inside stored shared-artifact fills on this thread.
+pub fn shared_artifact_fill_eval_steps() -> u64 {
+    SHARED_ARTIFACT_FILL_EVAL_STEPS.with(|c| c.get())
+}
+
+fn record_shared_artifact_fill_eval_steps(steps: u64) {
+    SHARED_ARTIFACT_FILL_EVAL_STEPS.with(|c| c.set(c.get().wrapping_add(steps)));
+}
+
 /// Accumulate CPU spent filling a shared memoized artifact. Called only from a memo MISS path.
 pub fn record_shared_artifact_fill_cpu_nanos(nanos: u128) {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
@@ -5426,6 +5543,10 @@ pub fn thread_cpu_nanos() -> u128 {
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+    // THE DETERMINISTIC WORK MEASURE, counted before anything below can return early: a step is
+    // an ENTRY to this function, so the count is the same whether the budget poll fires, whether
+    // a clock is armed at all, and whether profiling is on.
+    record_eval_step();
     // The stride poll runs when EITHER clock is armed. Gating on the CPU deadline alone was a
     // real defect, found by executing a wall-only serve process: with no CPU limit the poll was
     // unreachable, so a wall-only caller — the configuration that bounds a low-CPU stall — had
@@ -8126,7 +8247,7 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 //
 // IT IS AN OBSERVATION AND NEVER A GATE. Nothing refuses on these figures. Durations are
 // wall-of-the-calling-thread inclusive of callees and are as environment-sensitive as every
-// other cost reading on a shared runner (`gunbc.rung_drop floor_cost_contention_verdict`); the
+// other cost reading on a shared runner (`gunbc.rung_drop floor_cost_claim_qualification_unavailable`); the
 // CLAIM COUNT is the stable half, and it is a property of the corpus and the plan rather than
 // of the machine.
 //
@@ -17811,6 +17932,17 @@ pub struct PerformanceReceipt {
     /// wall reflects CPU at all — the ranking question the per-witness cost-envelope lane needs.
     pub cpu_nanos: u128,
     pub eval_self_nanos: u128,
+    /// THE THIRD BASIS, AND THE ONLY ONE THAT IS NOT A CLOCK: evaluator steps taken by this
+    /// witness, marginal of stored shared-artifact fills — the same netting rule `cpu_nanos`
+    /// carries, so the two quantities describe the same window.
+    ///
+    /// It is here BESIDE the clocks and replaces neither. A step count says how much evaluation
+    /// work the claim performed and says nothing about how long that took on this machine; the
+    /// clocks say the opposite. `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` is the row
+    /// this field answers to, and it is answered only in part: the field makes a deterministic
+    /// work measure EXIST and be RECORDED per claim. It is not yet compared against anything,
+    /// so no cost verdict rests on it and the row stays standing.
+    pub eval_steps: u64,
     pub sample_count: u64,
 }
 
@@ -17830,13 +17962,36 @@ TimedOut outcome so a crossing says which cap it crossed. Under that model a rec
 legitimately hold both a cpu and a wall observation, because neither is relying on its name \
 to say what it is. \
 \
-SEED DISPOSITION: the u128 fields below are seed instrumentation, and they are the ONLY \
-reason this note exists -- they carry their basis in a field name, which is exactly what the \
-ruled model replaces. They are retained because the enforced quantity had to stop being \
+SEED DISPOSITION: the two u128 fields below are seed instrumentation -- they carry their \
+basis in a field name, which is exactly what the ruled model replaces. They are retained because the enforced quantity had to stop being \
 dropped before the authority lands, and the seed is not where the authority belongs. \
 DISSOLVE-ON: ClockBasis lands in the std.observation authority and the declaration-grain \
 receipt projects cpu and wall through it; at that point these two bare fields are replaced \
-by basis-carrying measurements and this note is deleted with them.";
+by basis-carrying measurements and the clock half of this note is deleted with them. \
+\
+`eval_steps` IS SEED INSTRUMENTATION TOO AND ITS DISPOSITION IS NOT THAT ONE. This paragraph \
+exists because the sentence above once said the two u128 fields were the ONLY reason this \
+note exists, and that stopped being true the moment a third bare field landed in the same \
+struct (codex review 58626, which caught it). The distinction is not cosmetic: `eval_steps` \
+is a COUNT, not a duration. It has no clock basis, so ClockBasis landing neither replaces it \
+nor says anything about it -- and retiring this note on the DISSOLVE-ON above would delete \
+the only disposition the field has while the field itself survives, which is a trigger \
+discharging more than it covers. \
+\
+ITS OWN DISSOLVE-ON, named at a row a reader can evaluate rather than at a judgment about \
+how far v2 has got: the roadmap row `v1-zero-hand-maintained-rust`, the v1-exit lane's \
+finish line whose acceptance condition is that no hand-maintained Rust remains in the seed. \
+This counter counts THIS evaluator's steps, so it lives wherever that evaluator lives; when \
+the seed evaluator is gone the counter goes with it, and while that row is unaccepted this \
+surface is still owed. EARLIER REMOVAL IS PERMITTED AND EXPECTED -- v2 projecting the \
+per-claim work measure from a modeled receipt subsumes this -- but that is not the trigger, \
+because a scaffold may always dissolve early and what a trigger fixes is the point by which \
+it MUST be gone. \
+\
+WHAT DOES NOT DISSOLVE WITH IT: `evaluator_step_work_measure_tests`. Per DESIGN 4b(4) a \
+climb deletes the redundant lower-rung PRODUCTION handling and never the evidence -- the \
+envelope-invariance red, its size control and the fill-netting arm stay enrolled as the \
+executing proof that the measure is still invariant wherever it comes to be computed.";
 
 pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
     SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
@@ -17858,11 +18013,16 @@ pub fn eval_subject_timing_reset() {
 /// Both clocks are REQUIRED parameters. Defaulting `cpu_nanos` would reintroduce exactly
 /// the defect this field closes: a caller that forgot it would silently record zero for the
 /// enforced quantity, which reads as "measured, and free" rather than "not measured".
+///
+/// `eval_steps` is required for the same reason and one more: a defaulted zero on a work measure
+/// reads as "this claim evaluated nothing", which is a claim about the program rather than a
+/// gap in the instrument.
 pub fn performance_receipt_from_witness(
     subject_key: String,
     work_shape: &str,
     wall_nanos: u128,
     cpu_nanos: u128,
+    eval_steps: u64,
 ) -> PerformanceReceipt {
     let eval_self_nanos = SUBJECT_SELF_NANOS
         .with(|m| m.borrow().get(&subject_key).copied())
@@ -17873,6 +18033,7 @@ pub fn performance_receipt_from_witness(
         wall_nanos,
         cpu_nanos,
         eval_self_nanos,
+        eval_steps,
         sample_count: 1,
     }
 }
@@ -20365,6 +20526,198 @@ mod sorted_map_keys_order_tests {
         assert_eq!(
             format!("{interpreted_bools:?}"),
             format!("{emitted_bools:?}")
+        );
+    }
+}
+
+#[cfg(test)]
+mod evaluator_step_work_measure_tests {
+    use super::*;
+    use crate::v1_compiler_compile::SourceFile;
+    use std::sync::Arc;
+
+    /// One fixture, parameterised by the size of the list it builds, so a work CONTROL is
+    /// authorable: the same shape at a different size must produce a different count. Without
+    /// that control every assertion below is satisfied by a counter frozen at any constant --
+    /// including zero -- and a frozen counter is exactly the failure a work measure fails
+    /// toward.
+    fn list_fixture(
+        module: &str,
+        items: usize,
+    ) -> Rc<crate::v1_compiler_compile::ResolvedPipelineResult> {
+        let list = (0..items)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(SourceFile {
+            path: format!("workspace/src/{module}.dag"),
+            content: format!("module fixture.{module}\nfn total() -> List<Int> {{ [{list}] }}\n"),
+        }),]))
+    }
+
+    /// Evaluate `fixture.<module>.total` once in a fresh context and return the evaluator steps
+    /// it took. The delta is taken across the call, never the absolute, because the counter is
+    /// per-thread and cumulative and every other test in this file also evaluates.
+    fn steps_of(
+        result: &crate::v1_compiler_compile::ResolvedPipelineResult,
+        module: &str,
+        budget: Option<u64>,
+    ) -> u64 {
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        if let Some(ms) = budget {
+            ctx.arm_eval_deadline(ms);
+        }
+        let before = evaluator_steps();
+        let value = run_in_context(&ctx, &format!("fixture.{module}.total"), false)
+            .expect("fixture must evaluate");
+        std::hint::black_box(value);
+        evaluator_steps().wrapping_sub(before)
+    }
+
+    /// THE DISCRIMINATING RED FOR THE WHOLE MEASURE. `gunbc.rung_drop`
+    /// `floor_cost_claim_qualification_unavailable` says an attempt's CPU duration is not an invariant
+    /// property of the witness, and names a deterministic work measure as one of the three arms
+    /// that would restore a claim-owned cost basis. This is that arm's evidence, and it is
+    /// asserted as EXACT EQUALITY rather than as a tolerance: a work measure that needed a
+    /// tolerance across envelopes would be a slow clock, not a count.
+    ///
+    /// THE TWO ENVELOPES ARE REAL AND DIFFERENT, not two calls in a row. The second arm runs
+    /// with the CPU deadline ARMED -- which is a different code path through `eval_expr`, taking
+    /// the stride poll and the two clock reads the first arm never executes -- and with a
+    /// co-tenant thread spinning beside it for the whole evaluation, which is the contention the
+    /// row's subject names. Neither perturbation may move the count by one.
+    #[test]
+    fn the_step_count_is_identical_across_two_execution_envelopes() {
+        let result = list_fixture("step_envelope", 2_000);
+
+        let quiet = steps_of(&result, "step_envelope", None);
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let co_tenant = {
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                let mut spin = 0u64;
+                while !stop.load(Ordering::Relaxed) {
+                    for i in 0..10_000u64 {
+                        spin = spin.wrapping_add(i);
+                    }
+                }
+                std::hint::black_box(spin);
+            })
+        };
+        // A budget far above anything this fixture can spend: the point is that the deadline is
+        // ARMED, not that it fires. A fired deadline would end the evaluation early and the two
+        // arms would be measuring different amounts of work.
+        let contended = steps_of(&result, "step_envelope", Some(60_000));
+        stop.store(true, Ordering::Relaxed);
+        co_tenant.join().expect("co-tenant thread");
+
+        assert!(
+            quiet > 0,
+            "the step counter never advanced across a 2000-element list; every equality below \
+             would then be 0 == 0 and this file would assert nothing"
+        );
+        assert_eq!(
+            quiet, contended,
+            "evaluator steps must be identical across execution envelopes: quiet={quiet}, \
+             deadline-armed under co-tenant load={contended}"
+        );
+    }
+
+    /// THE WORK CONTROL, and the reason the equality above is readable. A counter frozen at a
+    /// constant satisfies every invariance assertion in this file; only a size change can tell
+    /// an invariant measure from a dead one. Asserted as strict growth rather than as a ratio,
+    /// because the per-element step cost is an implementation fact of the evaluator and not
+    /// something this test is entitled to pin.
+    #[test]
+    fn a_larger_workload_takes_strictly_more_steps() {
+        let small = list_fixture("step_control_small", 100);
+        let large = list_fixture("step_control_large", 1_000);
+        let small_steps = steps_of(&small, "step_control_small", None);
+        let large_steps = steps_of(&large, "step_control_large", None);
+        assert!(
+            large_steps > small_steps,
+            "a tenfold larger list must take strictly more evaluator steps: \
+             small={small_steps}, large={large_steps}"
+        );
+    }
+
+    /// THE ORDER-INVARIANCE HALF, WHICH IS A SEPARATE CLAIM FROM THE ENVELOPE HALF. A count
+    /// that included shared-artifact fills would be a function of WHICH claim ran first: the one
+    /// that filled the memo would carry the producer's steps and every later reader would carry
+    /// none. That is the same defect the 2026-08-27 fill-attribution ruling closed on the CPU
+    /// clock, and this asserts the work measure is netted by the same rule.
+    ///
+    /// THE RED IS THE RAW COUNT BESIDE THE NETTED ONE. The raw counts of the two runs are
+    /// asserted to differ by a wide margin -- proving the order dependence is real and large,
+    /// so the netted equality is not a vacuous comparison of two identical numbers.
+    #[test]
+    fn stored_shared_fills_are_netted_out_of_the_step_count() {
+        super::clear_cross_claim_pure_memos();
+        let items = (0..20_000)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/step_fill_fixture.dag".to_string(),
+                    content: format!(
+                        "module fixture.step_fill\nfn producer() -> List<Int> {{ [{items}] }}\n\
+                         fn use_producer() -> List<Int> {{ producer() }}\n"
+                    ),
+                }
+            ),]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let fresh = || {
+            InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            )
+        };
+        let enrolled = fresh();
+        let producer = enrolled
+            .lookup_fn_node("fixture.step_fill.producer")
+            .expect("fixture producer");
+        super::install_cross_claim_pure_share_roster([producer]);
+
+        // One measurement, exactly as `run_claim_measured` takes it: raw delta, fill delta,
+        // and the marginal figure that is the difference.
+        let measure = |ctx: &InterpContext| -> (u64, u64) {
+            let steps_before = evaluator_steps();
+            let fill_before = shared_artifact_fill_eval_steps();
+            let value = run_in_context(ctx, "fixture.step_fill.use_producer", false)
+                .expect("fixture must evaluate");
+            std::hint::black_box(value);
+            let raw = evaluator_steps().wrapping_sub(steps_before);
+            let fill = shared_artifact_fill_eval_steps().wrapping_sub(fill_before);
+            (raw, raw.saturating_sub(fill))
+        };
+
+        let filler = fresh();
+        let (raw_filler, marginal_filler) = measure(&filler);
+        let reader = fresh();
+        let (raw_reader, marginal_reader) = measure(&reader);
+        super::install_cross_claim_pure_share_roster(Vec::<Rc<Node>>::new());
+        super::clear_cross_claim_pure_memos();
+
+        assert!(
+            raw_filler > raw_reader.saturating_mul(10),
+            "the memo must actually make the second run's RAW work far smaller, or the netted \
+             equality below compares two numbers that were never going to differ: \
+             filler={raw_filler}, reader={raw_reader}"
+        );
+        assert_eq!(
+            marginal_filler, marginal_reader,
+            "the claim that PAID for a shared fill and the claim that read it warm must carry \
+             the same marginal step count, or the measure is a function of execution order: \
+             filler={marginal_filler}, reader={marginal_reader}"
         );
     }
 }
