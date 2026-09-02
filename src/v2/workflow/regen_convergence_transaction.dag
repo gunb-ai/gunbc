@@ -101,11 +101,9 @@ type RegenConvergenceRefusal
       observed_candidate_digest: String
     }
   | PreInstallDigestMismatch { surface: RegenSurfaceIdentity, expected: String, observed: String }
-  | InstalledDigestMismatch { surfaces: List<RegenSurfaceIdentity>, expected: String, observed: String }
-  | StagePlannedExecutedMismatch { planned: List<RegenSurfaceIdentity>, executed: List<RegenSurfaceIdentity> }
+  | StageExecutionRefused { refusal: RegenStageExecutionRefusal }
   | UnplannedPathMutated { path: String }
   | NoBuildableProducerCut { reason: String }
-  | StageSeedBuildRefused { ordinal: Int, reason: String }
   | StageOutputExecutableUnbound { ordinal: Int, reason: String }
   | GenerationMadeNoProgress { generation_id: String }
   | GenerationCycleDetected { seed_digest: String, candidate_tree_digest: String }
@@ -661,9 +659,21 @@ fn regen_candidate_generation_admission_label(admission: RegenCandidateGeneratio
   }
 }
 
+// THE REFUSAL TYPE IS THE PRODUCER'S RANGE, NOT THE TRANSACTION'S WHOLE VOCABULARY. This field
+// used to carry `RegenConvergenceRefusal`, ~25 variants wide, while `regen_admit_stage_execution`
+// can only ever return these three -- so both renderers below needed a `_` arm, and a `_` arm over
+// a coproduct that is free to grow is a silent-degradation surface: a new variant renders a fixed
+// string with no location and nothing refuses. Narrowing the type deletes the arm rather than
+// improving its default, so a fourth stage-execution refusal fails to compile in both renderers
+// until an author writes its name and its detail. §4b(4): unwritable rather than validated.
+type RegenStageExecutionRefusal
+  = StagePlannedExecutedMismatch { planned: List<RegenSurfaceIdentity>, executed: List<RegenSurfaceIdentity> }
+  | InstalledDigestMismatch { surfaces: List<RegenSurfaceIdentity>, expected: String, observed: String }
+  | StageSeedBuildRefused { ordinal: Int, reason: String }
+
 type RegenStageExecutionAdmission
   = RegenStageExecutionAdmitted
-  | RegenStageExecutionRefused { refusal: RegenConvergenceRefusal }
+  | RegenStageExecutionRefused { refusal: RegenStageExecutionRefusal }
 
 fn regen_identity_population_eq(a: List<RegenSurfaceIdentity>, b: List<RegenSurfaceIdentity>) -> Bool {
   count(a) == count(b)
@@ -697,11 +707,244 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
   }
 }
 
+// A LABEL IS A NAME, NOT A DIAGNOSTIC. The host binding used to render a refusal as its label
+// alone, so `StagePlannedExecutedMismatch` and every unlabelled arm collapsed to one word and the
+// populations that caused the refusal -- the whole content of a population verdict -- never
+// reached the caller. That is the `diagnostic_name_mechanism_silent` shape: a typed refusal whose
+// type is announced and whose located detail is discarded, leaving a reader unable to tell WHICH
+// surfaces disagreed or even which arm answered. §5 asks for a typed, LOCATED diagnostic; this
+// renders the located half.
+fn regen_surface_identity_path_list(rows: List<RegenSurfaceIdentity>) -> String {
+  fold(rows, init: "", f: fn(acc, row) {
+    if acc == "" {
+      row.projected_path
+    } else {
+      concat(acc, concat(" ", row.projected_path))
+    }
+  })
+}
+
+fn regen_stage_execution_admission_detail(admission: RegenStageExecutionAdmission) -> String {
+  match admission {
+    RegenStageExecutionAdmitted => ""
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      concat(
+        concat("planned=[", concat(regen_surface_identity_path_list(rows: planned), "] ")),
+        concat("executed=[", concat(regen_surface_identity_path_list(rows: executed), "]"))
+      )
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: expected, observed: observed } } =>
+      concat("expected=", concat(expected, concat(" observed=", observed)))
+    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: _, reason: reason } } =>
+      concat("build refused: ", reason)
+  }
+}
+
 fn regen_stage_execution_admission_label(admission: RegenStageExecutionAdmission) -> String {
   match admission {
     RegenStageExecutionAdmitted => "Admitted"
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: _, executed: _ } } => "StagePlannedExecutedMismatch"
     RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: _, observed: _ } } => "InstalledDigestMismatch"
-    RegenStageExecutionRefused { refusal: _ } => "Refused"
+    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: _, reason: _ } } => "StageSeedBuildRefused"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE INSTALL-BOUNDARY POPULATION JOIN.
+//
+// A stage receipt used to denominate in the population that reached it, so a surface admitted at
+// the boundary and then dropped BEFORE planning appeared in no receipt at all -- not planned, not
+// deferred, not refused. Transaction success therefore proved that the narrowed set was handled
+// and never that the admitted set survived: the denominator was lost before either receipt was
+// taken, and every join below it was self-consistent because both sides inherited one narrowing.
+//
+// EVERY JOIN HERE IS AN IDENTITY JOIN AND NEVER A COUNT. A count accepts a member missing from one
+// side standing against a phantom on the other -- the `compensating_errors_cancel_in_the_aggregate`
+// shape, which goes green exactly when a long-lived roster has accumulated one of each. So each
+// direction is named separately, refuses with its own residue, and neither can pay for the other.
+type RegenSurfaceDisposition
+  = SurfaceApplied { installed_digest: String }
+  | SurfaceDeferred { reason: RegenDeferredReason }
+  | SurfaceSuperseded { by_generation_id: String }
+  | SurfaceDispositionRefused { reason: String }
+
+// DEFERRED IS A PROMISE, NOT AN OUTCOME, and that is the whole reason this is a coproduct rather
+// than a status string. A generic `Excluded` merges "we decided not to, and here is the reason"
+// with "we never saw it", which is the state-space conflation that made the loss invisible: both
+// render as absence. Applied, Superseded and Refused each END a lineage; Deferred does not, so a
+// transaction whose lineage terminates in Deferred is UNFINISHED and refuses rather than reporting
+// a fixed point it never reached.
+type RegenDispositionTerminality
+  = DispositionTerminal
+  | DispositionNonTerminal
+
+fn regen_disposition_terminality(disposition: RegenSurfaceDisposition) -> RegenDispositionTerminality {
+  match disposition {
+    SurfaceApplied { installed_digest: _ } => DispositionTerminal
+    SurfaceSuperseded { by_generation_id: _ } => DispositionTerminal
+    SurfaceDispositionRefused { reason: _ } => DispositionTerminal
+    SurfaceDeferred { reason: _ } => DispositionNonTerminal
+  }
+}
+
+type RegenSurfaceLineage {
+  identity: RegenSurfaceIdentity
+  disposition: RegenSurfaceDisposition
+}
+
+type RegenInstallBoundaryObservation {
+  admitted: List<RegenSurfaceIdentity>
+  planned: List<RegenSurfaceIdentity>
+  deferred: List<RegenSurfaceIdentity>
+}
+
+// SAME NARROWING AS `RegenStageExecutionRefusal`, AND FOR THE SAME REASON -- these three are the
+// whole range of the two joins below, so carrying the transaction-wide vocabulary here would put a
+// `_` arm back in both renderers and rebuild the silent-degradation surface this change exists to
+// remove. A fourth population refusal fails to compile until an author writes its name and its
+// residues. The variants live HERE and nowhere else: no consumer outside these joins produces one,
+// so a copy in `RegenConvergenceRefusal` would be a second authority for one meaning.
+type RegenPopulationRefusal
+  = StagePartitionPopulationDisagrees {
+      admitted_without_partition: List<RegenSurfaceIdentity>
+      partition_without_admitted: List<RegenSurfaceIdentity>
+      planned_and_deferred: List<RegenSurfaceIdentity>
+    }
+  | TransactionLineagePopulationDisagrees {
+      admitted_without_lineage: List<RegenSurfaceIdentity>
+      lineage_without_admitted: List<RegenSurfaceIdentity>
+    }
+  | SurfaceLineageUnfinished { surfaces: List<RegenSurfaceIdentity> }
+
+type RegenPopulationAdmission
+  = RegenPopulationAdmitted
+  | RegenPopulationRefused { refusal: RegenPopulationRefusal }
+
+// The one directed-difference primitive both joins use. Returning the RESIDUE rather than a Bool
+// is what lets each direction refuse with its own members named; a predicate here would collapse
+// the two residues into one bit and reproduce the count.
+fn regen_identity_residue(
+  left: List<RegenSurfaceIdentity>,
+  right: List<RegenSurfaceIdentity>
+) -> List<RegenSurfaceIdentity> {
+  fold(left, init: [], f: fn(acc, one) {
+    match regen_identity_membership(identity: one, rows: right) {
+      IdentityPopulationMember => acc
+      IdentityPopulationAbsent => list_push(acc, one)
+    }
+  })
+}
+
+type RegenIdentityMembership
+  = IdentityPopulationMember
+  | IdentityPopulationAbsent
+
+fn regen_identity_membership(
+  identity: RegenSurfaceIdentity,
+  rows: List<RegenSurfaceIdentity>
+) -> RegenIdentityMembership {
+  if rows |> any(row => regen_surface_identity_eq(a: identity, b: row)) {
+    IdentityPopulationMember
+  } else {
+    IdentityPopulationAbsent
+  }
+}
+
+// JOIN 1 -- the admitted population equals planned UNION deferred, in BOTH directions, plus the
+// disjointness a union cannot see. A surface in both lists is not a harmless duplicate: it is one
+// surface claiming to be handled and postponed at once, and a union would silently absorb it.
+fn regen_admit_install_boundary_population(
+  observation: RegenInstallBoundaryObservation
+) -> RegenPopulationAdmission {
+  let partition = fold(observation.deferred, init: observation.planned, f: fn(acc, row) {
+    list_push(acc, row)
+  })
+  let admitted_without_partition =
+    regen_identity_residue(left: observation.admitted, right: partition)
+  let partition_without_admitted =
+    regen_identity_residue(left: partition, right: observation.admitted)
+  let both = fold(observation.planned, init: [], f: fn(acc, row) {
+    match regen_identity_membership(identity: row, rows: observation.deferred) {
+      IdentityPopulationMember => list_push(acc, row)
+      IdentityPopulationAbsent => acc
+    }
+  })
+  if count(admitted_without_partition) == 0
+    && count(partition_without_admitted) == 0
+    && count(both) == 0 {
+    RegenPopulationAdmitted
+  } else {
+    RegenPopulationRefused {
+      refusal: StagePartitionPopulationDisagrees {
+        admitted_without_partition: admitted_without_partition,
+        partition_without_admitted: partition_without_admitted,
+        planned_and_deferred: both
+      }
+    }
+  }
+}
+
+// JOIN 3 -- the initially admitted population equals the terminal lineage, checked in both
+// directions, and every lineage row must have REACHED a terminal disposition. The second half is
+// what a population equality alone cannot say: a lineage can name every admitted surface and still
+// leave one sitting in Deferred, which is an unfinished transaction wearing a complete receipt.
+fn regen_admit_transaction_lineage(
+  initial_admitted: List<RegenSurfaceIdentity>,
+  lineage: List<RegenSurfaceLineage>
+) -> RegenPopulationAdmission {
+  let named = lineage |> map(row => row.identity)
+  let admitted_without_lineage = regen_identity_residue(left: initial_admitted, right: named)
+  let lineage_without_admitted = regen_identity_residue(left: named, right: initial_admitted)
+  if count(admitted_without_lineage) > 0 || count(lineage_without_admitted) > 0 {
+    RegenPopulationRefused {
+      refusal: TransactionLineagePopulationDisagrees {
+        admitted_without_lineage: admitted_without_lineage,
+        lineage_without_admitted: lineage_without_admitted
+      }
+    }
+  } else {
+    let unfinished = fold(lineage, init: [], f: fn(acc, row) {
+      match regen_disposition_terminality(disposition: row.disposition) {
+        DispositionTerminal => acc
+        DispositionNonTerminal => list_push(acc, row.identity)
+      }
+    })
+    if count(unfinished) == 0 {
+      RegenPopulationAdmitted
+    } else {
+      RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: unfinished } }
+    }
+  }
+}
+
+fn regen_population_admission_label(admission: RegenPopulationAdmission) -> String {
+  match admission {
+    RegenPopulationAdmitted => "Admitted"
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees { admitted_without_partition: _, partition_without_admitted: _, planned_and_deferred: _ } } =>
+      "StagePartitionPopulationDisagrees"
+    RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees { admitted_without_lineage: _, lineage_without_admitted: _ } } =>
+      "TransactionLineagePopulationDisagrees"
+    RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: _ } } => "SurfaceLineageUnfinished"
+  }
+}
+
+fn regen_population_admission_detail(admission: RegenPopulationAdmission) -> String {
+  match admission {
+    RegenPopulationAdmitted => ""
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees { admitted_without_partition: a, partition_without_admitted: b, planned_and_deferred: c } } =>
+      concat(
+        concat("admitted_without_partition=[", concat(regen_surface_identity_path_list(rows: a), "] ")),
+        concat(
+          concat("partition_without_admitted=[", concat(regen_surface_identity_path_list(rows: b), "] ")),
+          concat("planned_and_deferred=[", concat(regen_surface_identity_path_list(rows: c), "]"))
+        )
+      )
+    RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees { admitted_without_lineage: a, lineage_without_admitted: b } } =>
+      concat(
+        concat("admitted_without_lineage=[", concat(regen_surface_identity_path_list(rows: a), "] ")),
+        concat("lineage_without_admitted=[", concat(regen_surface_identity_path_list(rows: b), "]"))
+      )
+    RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: surfaces } } =>
+      concat("unfinished=[", concat(regen_surface_identity_path_list(rows: surfaces), "]"))
   }
 }
 
@@ -755,7 +998,8 @@ fn regen_generation_progress_admission_label(admission: RegenGenerationProgressA
 fn regen_fixture_build_refusal(ordinal: Int, terminal: RegenStageBuildTerminal) -> List<RegenConvergenceRefusal> {
   match terminal {
     RegenStageBuildPassed => []
-    RegenStageBuildFailed { reason: reason } => [StageSeedBuildRefused { ordinal: ordinal, reason: reason }]
+    RegenStageBuildFailed { reason: reason } =>
+      [StageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: ordinal, reason: reason } }]
   }
 }
 

@@ -24,6 +24,18 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
     steps:
+      - name: Record runner filesystem at job start
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -52,17 +64,9 @@ jobs:
         run: |
           cargo build --release -p v1-compiler --bins
           cargo build --release -p v1-stage0-runtime -p v1-stage0-std-core -p v1-stage0-std-surface -p v1-stage0-extdeps-languages -p v1-stage0-v1-artifact -p v1-stage0-v1-infer -p v1-stage0-emit-core
-      - name: Record the toolchain environment
+      - name: Require isolated toolchain homes
         run: |
-          echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"
-          echo "PATH=$PATH"
-          which -a rustfmt || echo "which rustfmt: absent from PATH"
-          which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
-          ls -l "$CARGO_HOME/bin" || echo "cargo bin dir: absent"
-          rustup which rustfmt || echo "rustup which rustfmt: no answer"
-          rustup toolchain list || echo "rustup toolchain list: no answer"
-          rustup default || echo "rustup default: no answer"
         if: "!cancelled()"
       - name: "Required CI: build lane (phases named by the run, not by this label)"
         run: |
@@ -70,10 +74,34 @@ jobs:
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Record runner filesystem at job end
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
   required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
     steps:
+      - name: Record runner filesystem at job start
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -101,17 +129,9 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
-      - name: Record the toolchain environment
+      - name: Require isolated toolchain homes
         run: |
-          echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"
-          echo "PATH=$PATH"
-          which -a rustfmt || echo "which rustfmt: absent from PATH"
-          which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
-          ls -l "$CARGO_HOME/bin" || echo "cargo bin dir: absent"
-          rustup which rustfmt || echo "rustup which rustfmt: no answer"
-          rustup toolchain list || echo "rustup toolchain list: no answer"
-          rustup default || echo "rustup default: no answer"
         if: "!cancelled()"
       - name: "Required CI: witnesses lane (parse, witness floor)"
         run: |
@@ -151,10 +171,34 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Record runner filesystem at job end
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
   rust-unit-tests:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     steps:
+      - name: Record runner filesystem at job start
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -187,10 +231,34 @@ jobs:
         run: |
           # dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.
           cargo clippy --all-targets -- -D warnings
+      - name: Record runner filesystem at job end
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
   fabric-evidence:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 70
     steps:
+      - name: Record runner filesystem at job start
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -223,11 +291,35 @@ jobs:
           bash tools/fabric_ci_evidence_calibration.sh
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
         timeout-minutes: 55
+      - name: Record runner filesystem at job end
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
   emit-copy-qualification-battery:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     if: "false"
     steps:
+      - name: Record runner filesystem at job start
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -260,6 +352,18 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
           target/release/claim_batch --wet --source-root dag --source-root src/v2 --entry dag/gunbc/emit_copy_qualification_wet_battery.dag --functions ecq_wet_shard_copy_scalar_qualifies_holds,ecq_wet_shard_owned_string_qualifies_holds,ecq_wet_shard_shared_record_qualifies_holds,ecq_wet_shard_persistent_sequence_qualifies_holds,ecq_wet_shard_persistent_map_qualifies_holds,ecq_wet_shard_nested_record_qualifies_holds,ecq_calibration_redundant_share_clone_reds_static_only_holds,ecq_calibration_hidden_deep_copy_reds_runtime_only_holds,ecq_calibration_redundant_deep_clone_reds_holds,ecq_calibration_disconnected_counter_refuses_observation_holds,ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds,ecq_emitted_prelude_grounds_structural_sequence_holds
+      - name: Record runner filesystem at job end
+        run: |
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
+          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+        if: always()
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor]

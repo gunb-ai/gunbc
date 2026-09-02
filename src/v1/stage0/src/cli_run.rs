@@ -2423,6 +2423,14 @@ const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witne
 const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness/witness_deferral_freeze.dag";
 const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
+/// The roster of witness MODULE NAMESPACES the required fold cannot execute, read from the same
+/// `ci_layer_roots` authority as `witness_layer_roots`. Fail-closed by construction: the exemption
+/// it grants is keyed on MEMBERSHIP IN THIS ROSTER, never on the absence of a match in
+/// `witness_layer_roots` -- "not declared executing" and "declared non-executing" are different
+/// claims, and only the second carries the 4b(2) stall and its trigger
+/// (`non_executing_witness_module_prefixes_restoration`). An unreadable or empty roster exempts nothing.
+const NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME: &str =
+    "non_executing_witness_module_prefixes";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 /// The v2 entry roster the emission phase compiles — one `.dag` row, so re-deciding
@@ -2551,6 +2559,25 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
 /// authority.
 pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<String> {
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
+}
+
+/// Project the `non_executing_witness_module_prefixes` `List<String>` literal out of the ci_layer_roots
+/// authority.
+pub(crate) fn non_executing_witness_module_prefixes_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME,
+    )
+}
+
+/// The declared non-executing witness module namespaces, read once.
+pub fn non_executing_witness_module_prefixes() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            non_executing_witness_module_prefixes_from_source(ci_layer_roots_authority_content())
+        })
+        .clone()
 }
 
 /// One `witness_exclusion_frontier` row as the host reads it: the discovery-exclusion

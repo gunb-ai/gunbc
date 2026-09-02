@@ -4005,13 +4005,6 @@ pub fn provenance_reported_file(p: Rc<TypeDeclarationProvenance>) -> String {
     }
 }
 
-pub fn provenance_is_kernel_minted(p: Rc<TypeDeclarationProvenance>) -> bool {
-    match (*p.clone()).clone() {
-        TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
-        _ => false,
-    }
-}
-
 pub fn unit_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {

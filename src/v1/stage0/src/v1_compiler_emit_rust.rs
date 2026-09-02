@@ -280,13 +280,12 @@ pub use crate::v1_std_core::{
     lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
     make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, no_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr,
-    provenance_is_kernel_minted, qualified_last_segment, record_lit_named_field_value_optional,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
-    service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
-    transport_auth_header_name, transport_auth_token, transport_base_path, transport_base_url,
-    transport_env, transport_has_auth, transport_headers, transport_method,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
+    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
     with_required_cardinality,
@@ -30554,29 +30553,31 @@ pub fn rust_operand_realization_of_type(
             Some(i) => is_type_variable(i.clone()),
             std::option::Option::None => false,
         };
-        if crate::v1_std_core::provenance_is_kernel_minted(provenance.clone()) {
-            break Rc::new(OperandRealization::HostRealizedOperand {
-                reason: HostRealizationReason::KernelMintedType,
-            });
-        } else {
-            if rt_is_type_var.clone() {
+        match (*provenance.clone()).clone() {
+            TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => {
                 break Rc::new(OperandRealization::HostRealizedOperand {
-                    reason: HostRealizationReason::GenericTypeParameter,
+                    reason: HostRealizationReason::KernelMintedType,
                 });
-            } else {
-                if crate::std_types::is_container_type(crate::v1_std_core::qualified_last_segment(
-                    authored.clone(),
-                )) {
+            }
+            _ => {
+                if rt_is_type_var.clone() {
                     break Rc::new(OperandRealization::HostRealizedOperand {
-                        reason: HostRealizationReason::HostContainer,
+                        reason: HostRealizationReason::GenericTypeParameter,
                     });
                 } else {
-                    if (authored.clone() == "".to_string()) {
+                    if crate::std_types::is_container_type(
+                        crate::v1_std_core::qualified_last_segment(authored.clone()),
+                    ) {
                         break Rc::new(OperandRealization::HostRealizedOperand {
-                            reason: HostRealizationReason::UnnamedSynthesizedType,
+                            reason: HostRealizationReason::HostContainer,
                         });
                     } else {
-                        match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
+                        if (authored.clone() == "".to_string()) {
+                            break Rc::new(OperandRealization::HostRealizedOperand {
+                                reason: HostRealizationReason::UnnamedSynthesizedType,
+                            });
+                        } else {
+                            match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
     std::option::Option::None => { break Rc::new(OperandRealization::OperandIdentityUnavailable {
     facts: Rc::new(OperandShapeFacts {
     authored_name: authored.clone(),
@@ -30587,20 +30588,20 @@ pub fn rust_operand_realization_of_type(
 }),
 }); },
     Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_realization_decision(RenderTarget::Rust, d.decl_name.clone(), provenance.clone())) {
-                            break Rc::new(OperandRealization::HostNumericOperand);
+                        break Rc::new(OperandRealization::HostNumericOperand);
 } else {
-                            let decl = match rt.inferred.clone().as_deref().cloned() {
+                        let decl = match rt.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
     _ => rt.clone(),
 };
 if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.clone())) {
-                                match rt.children.clone().first().cloned() {
+                            match rt.children.clone().first().cloned() {
     Some(base) => { let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), base.clone()) {
     Some(r) => r.clone(),
     std::option::Option::None => base.clone(),
 };
 {
-                                    let __tco_0 = base_resolved.clone();
+                                let __tco_0 = base_resolved.clone();
 let __tco_1 = (fuel - 1);
 rt = __tco_0;
 fuel = __tco_1;
@@ -30611,22 +30612,23 @@ continue;
 }); },
 }
 } else {
-                                if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
-                                    {
-                                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
+                            if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
+                                {
+                                    let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
 let __tco_1 = (fuel - 1);
 rt = __tco_0;
 fuel = __tco_1;
 continue;
 }
 } else {
-                                    break Rc::new(OperandRealization::StructuralOperand {
+                                break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 });
 }
 }
 } },
 }
+                        }
                     }
                 }
             }

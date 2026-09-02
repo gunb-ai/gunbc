@@ -18,7 +18,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
-  declaration_provenance_of, type_reference_provenance, provenance_is_kernel_minted,
+  declaration_provenance_of, type_reference_provenance,
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
   param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
@@ -12955,13 +12955,22 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
 // never an alias item. The type renderer already realizes such a node as its base
 // (render_rust_alias_rhs_type hops is_where_refinement_type to the first child), so the operand
 // decision hops the same way, resolving the base through the env as where_refinement_chain does.
+// THE KERNEL-MINTED ARM READS THE CONSTRUCTOR, AND THAT IS THE WHOLE POINT OF THE COPRODUCT.
+// It briefly consulted a Bool-valued `provenance_is_kernel_minted` in v1.std.core, which was a
+// second representation of exactly this pattern: the split replaced a substring test with a
+// constructor, and rebuilding a Boolean view over that constructor preserved the parallel
+// representation the split exists to remove. DESIGN section 5 -- prefer a single authority from
+// which the realization is derived over a check that re-states it. The predicate had one caller,
+// this one, so dissolving it into the match here removed the view entirely rather than relocating
+// it (codex review 58658).
 fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
   let provenance = type_reference_provenance(n: rt)
   let authored = authored_name_at(source_indices: scope.type_env.source_indices, node: rt)
   let rt_is_type_var = match rt.inferred { Present { value: i } => is_type_variable(inferred: i)  Absent => false }
-  if provenance_is_kernel_minted(p: provenance) {
-    HostRealizedOperand { reason: KernelMintedType }
-  } else if rt_is_type_var {
+  match provenance {
+    KernelMinted { minted_name: _ } => HostRealizedOperand { reason: KernelMintedType }
+    _ =>
+  if rt_is_type_var {
     HostRealizedOperand { reason: GenericTypeParameter }
   } else if is_container_type(name: qualified_last_segment(name: authored)) {
     HostRealizedOperand { reason: HostContainer }
@@ -13000,6 +13009,7 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
           StructuralOperand { declaration: d }
         }
       }
+  }
   }
   }
 }

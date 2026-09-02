@@ -161,7 +161,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
   },
   {
     class_name: "kernel-minted provenance",
-    question: IsTheTypeKernelMinted { predicate: decl_ref(module_path: "v1.std.core", decl_name: "provenance_is_kernel_minted") },
+    question: IsTheTypeKernelMinted { predicate: decl_ref(module_path: "std.coercion", decl_name: "TypeDeclarationProvenance") },
     occurrences: 1,
     specimens: [
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_operand_realization_of_type"),
@@ -460,7 +460,10 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
 // The retired spelling on the left, the declaration that answers the same question now:
 //   v1.compiler.coercion type_reference_decl_file       -> v1.std.core type_reference_provenance
 //   v1.compiler.coercion decl_identity_file             -> v1.std.core declaration_provenance_of
-//   v1.compiler.coercion is_kernel_minted_file          -> v1.std.core provenance_is_kernel_minted
+//   v1.compiler.coercion is_kernel_minted_file          -> std.coercion TypeDeclarationProvenance
+//     (the CONSTRUCTOR answers it; the Bool view that briefly replaced the substring test was
+//      itself a second representation and was dissolved into a match at its one caller, codex
+//      review 58658)
 //   v1.compiler.coercion decl_file_realizes_natively    -> provenance_realizes_natively
 //   v1.compiler.coercion decl_file_declares_structurally-> provenance_declares_structurally
 //   v1.compiler.coercion rust_seed_host_numeric_alias   -> provenance_host_numeric_alias

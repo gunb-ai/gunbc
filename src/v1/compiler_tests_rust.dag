@@ -3145,6 +3145,18 @@ fn ct_shell_service_output_projection_test() -> String {
 // no modeled channel must REFUSE, typed and located, rather than being answered
 // with stdout. The refusal is minted at the BINDING, before a target is chosen,
 // so there is no renderer default arm left for it to fall through.
+//
+// THIS CONTROL PREVIOUSLY ASSERTED THE WRONG SHAPE and was red on main from the
+// commit that introduced it. It required src/probe.rs to BE EMITTED and then
+// grepped its bytes for the refusal text -- which is refusal_deferred_to_emitted
+// _runtime: it can only pass if the compiler emits a program carrying the refusal
+// into ITS runtime instead of stopping. The compiler does the stronger, correct
+// thing: it refuses AT EMIT with a structural diagnostic and writes no file, so
+// the `.expect("service module must emit src/probe.rs")` fired on the RIGHT
+// behaviour. The assertion is now over the diagnostic VARIANT rather than over
+// emitted text, and the stdout fall-through it used to check by substring is
+// subsumed by the no-file assertion: if the emitter ever falls through, a file
+// appears and the second assertion reds.
 fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
   concat(
     "    #[test]\n",
@@ -3160,23 +3172,22 @@ fn ct_shell_service_unmodeled_output_key_refusal_test() -> String {
     "                    std::rc::Rc::new(im::vector![source]),\n",
     "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
     "                );\n",
-    "                let emitted = r\n",
-    "                    .files\n",
-    "                    .iter()\n",
-    "                    .find(|f| f.path == \"src/probe.rs\")\n",
-    "                    .map(|f| f.content.clone())\n",
-    "                    .expect(\"service module must emit src/probe.rs\");\n",
+    "                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {\n",
+    "                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {\n",
+    "                        missing_realization_fact,\n",
+    "                        ..\n",
+    "                    } => missing_realization_fact.contains(\"not_a_channel\"),\n",
+    "                    _ => false,\n",
+    "                });\n",
     "                assert!(\n",
-    "                    emitted.contains(\"not_a_channel\")\n",
-    "                        && emitted.contains(\"has no modeled channel\"),\n",
-    "                    \"an unmodeled output key must refuse and name the key. Got:\\n{}\",\n",
-    "                    emitted\n",
+    "                    named,\n",
+    "                    \"an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}\",\n",
+    "                    r.diagnostics\n",
     "                );\n",
     "                assert!(\n",
-    "                    !emitted.contains(\"stdout.clone()\"),\n",
-    "                    \"a refused operation must not fall through to the stdout channel. \\\n",
-    "                     Got:\\n{}\",\n",
-    "                    emitted\n",
+    "                    !r.files.iter().any(|f| f.path == \"src/probe.rs\"),\n",
+    "                    \"a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}\",\n",
+    "                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()\n",
     "                );\n",
     "            })\n",
     "            .expect(\"failed to spawn thread\")\n",
