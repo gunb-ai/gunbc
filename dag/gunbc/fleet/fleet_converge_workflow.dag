@@ -860,7 +860,9 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
         FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
       JobTimeoutWithinCeiling { minutes: _ } =>
-        FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+        FleetConvergeYamlGenerated {
+          content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow))
+        }
     }
   } else {
     FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }
