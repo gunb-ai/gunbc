@@ -30,8 +30,8 @@ import gunbc.spark.serving_unit_observed {
   serving_unit_observed_shard_digests,
   ServingUnitShardDigest,
   serving_unit_shard_digest,
-  serving_unit_shards_are_the_whole_chain,
-  serving_unit_observation,
+  serving_unit_bound_artifact_identity,
+  serving_unit_observed_shard_count,
   serving_unit_observed_observation,
   serving_unit_observed_api_surface,
   serving_unit_artifact_is_bound,
@@ -221,23 +221,30 @@ test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
 }
 
 
-// THE ARTIFACT IDENTITY IS BOUND, established by hashing the shards in place and corroborated by the
-// digests the registration payload recorded independently. Both sources agree on all four.
+// THE ARTIFACT IDENTITY IS BOUND, established by hashing the four shards in place on the front-door
+// host. This is also the positive control for every refusal below: without it they could all be
+// satisfied by a constructor that refuses everything.
 test fn the_observed_artifact_identity_is_bound() -> Bool {
-  serving_unit_artifact_is_bound(a: serving_unit_observed_artifact)
-    && length(serving_unit_observed_shard_digests()) == 4
+  match serving_unit_observed_artifact() {
+    Absent => false
+    Present { value: a } =>
+      serving_unit_artifact_is_bound(a: a) && length(serving_unit_observed_shard_digests()) == 4
+  }
 }
 
-// A DISCRIMINATING RED, AND IT IS THE COUNT-VERSUS-COVERAGE CLASS. "Bound" previously meant the
-// digest list was non-empty, so an artifact of four shards carrying ONE digest answered true -- a
-// closure naming a quarter of the bytes, reported as a fully identified artifact. Binding must cover
-// every shard the artifact declares, so a short closure is refused.
-test fn an_artifact_whose_closure_misses_a_shard_is_not_bound() -> Bool {
-  !serving_unit_artifact_is_bound(a: serving_unit_artifact(
-    primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
-    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
-    identity: ArtifactIdentityBound { shards: fx_shard_chain(n: 1) },
-  ))
+// A DISCRIMINATING RED, AND IT IS THE COUNT-VERSUS-COVERAGE CLASS. "Bound" once meant the digest
+// list was non-empty, so an artifact of four shards carrying ONE digest answered true -- a closure
+// naming a quarter of the bytes, reported as a fully identified artifact.
+//
+// THE REFUSAL NOW HAPPENS AT CONSTRUCTION, which is what this claim actually asserts: there is no
+// inexact Bound value to hand to a predicate, because minting one from a short chain yields Absent.
+test fn a_short_chain_mints_no_bound_identity() -> Bool {
+  match serving_unit_bound_artifact_identity(
+    shards: fx_shard_chain(n: 1),
+    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 // One well-formed shard digest per ordinal 1..n, so a fixture can vary the CHAIN without varying
@@ -261,8 +268,13 @@ data fx_digest_hex: String = "11111111111111111111111111111111111111111111111111
 // whose ordinals are 1,1,2,3 name a shard set that does not exist, and a length check alone reports
 // them as a fully bound artifact. This is the claim that would go green if the ordinal walk were
 // removed and the count check left standing.
-test fn an_artifact_whose_shard_ordinals_repeat_is_not_bound() -> Bool {
-  !serving_unit_shards_are_the_whole_chain(shards: fx_repeated_chain(), expected: 4)
+test fn a_repeated_ordinal_chain_mints_no_bound_identity() -> Bool {
+  match serving_unit_bound_artifact_identity(
+    shards: fx_repeated_chain(),
+    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 fn fx_repeated_chain() -> List<ServingUnitShardDigest> {
@@ -285,10 +297,34 @@ test fn a_shard_digest_refuses_a_value_that_is_not_a_sha256_hex() -> Bool {
   }
 }
 
-// POSITIVE CONTROL FOR THE TWO REDS ABOVE: the well-formed four-shard chain IS bound, so the refusals
-// are discriminating rather than a predicate that answers false for everything.
-test fn a_well_formed_four_shard_chain_is_the_whole_chain() -> Bool {
-  serving_unit_shards_are_the_whole_chain(shards: fx_shard_chain(n: 4), expected: 4)
+// POSITIVE CONTROL FOR THE TWO REDS ABOVE: the well-formed four-shard chain DOES mint an identity,
+// so the refusals discriminate rather than being a constructor that refuses everything.
+test fn a_well_formed_four_shard_chain_mints_a_bound_identity() -> Bool {
+  match serving_unit_bound_artifact_identity(
+    shards: fx_shard_chain(n: 4),
+    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// AND THE ARTIFACT REFUSES A SHARD COUNT ITS OWN BOUND IDENTITY CONTRADICTS. Without this the record
+// could carry an exact four-shard identity beside a declared count of two, and the identity's
+// guarantee would be silently void while every part looked individually valid.
+test fn an_artifact_refuses_a_count_its_identity_contradicts() -> Bool {
+  match serving_unit_bound_artifact_identity(
+    shards: fx_shard_chain(n: 4),
+    shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
+    Absent => false
+    Present { value: bound } =>
+      match serving_unit_artifact(
+        primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
+        shard_count: positive_shard_count(count: positive_measure_count(predecessor: 1)),
+        identity: ArtifactIdentityBound { identity: bound }) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
 }
 
 // THE FRONT DOOR AND THE PEER MAY NOT BE THE SAME PORT ON THE SAME ADDRESS -- the fourth constructor
@@ -318,31 +354,13 @@ test fn a_unit_whose_ends_share_an_address_and_port_has_no_constructor() -> Bool
   }
 }
 
-// THE JOIN REFUSES A BAND MEASURED AT A DIFFERENT SLOT COUNT, which is the condition that makes
-// ServingUnitObservation more than a record. A twelve-slot band attached to the ten-slot unit would
-// report a measurement of a configuration that was not the one observed.
-test fn an_observation_refuses_a_band_from_a_different_slot_count() -> Bool {
-  match serving_unit_observed() {
-    Absent => false
-    Present { value: u } =>
-      match serving_unit_throughput_band(
-        slots: positive_slot_count(count: positive_measure_count(predecessor: 11)),
-        aggregate_low: tokens_per_second(count: 50),
-        aggregate_high: tokens_per_second(count: 59),
-        per_stream: tokens_per_second(count: 5)) {
-        Absent => false
-        Present { value: band } =>
-          match serving_unit_observation(
-            unit: u,
-            artifact: serving_unit_observed_artifact,
-            api_surface: serving_unit_observed_api_surface,
-            throughput: band) {
-            Present { value: _ } => false
-            Absent => true
-          }
-      }
-  }
-}
+// THE CLAIM THAT USED TO SIT HERE ASSERTED THE MIXER REFUSED A BAND FROM A DIFFERENT SLOT COUNT.
+// The mixer is gone -- it admitted observations drawn from different realizations, which is the
+// failure the type names, so a slot-count agreement was not the condition that closed it. With only
+// the module's own observation constructible, that RED has no authorable subject, and a claim whose
+// forbidden state cannot be written is decoration rather than a weak wall. It is removed rather than
+// left permanently green; the trigger that restores it is the realization identity the module's
+// annotation names, which needs a second realization to discriminate.
 
 // POSITIVE CONTROL FOR THE JOIN: the observation of 2026-09-02 constructs, so the refusal above is
 // discriminating and every claim reading the join is non-vacuous.
@@ -353,11 +371,15 @@ test fn the_observed_realization_joins_into_one_observation() -> Bool {
   }
 }
 
-// An unobserved identity is never bound, whatever else the record carries.
+// An unobserved identity is never bound, whatever else the record carries. The unobserved arm still
+// CONSTRUCTS -- observation standing permits an artifact whose bytes were never hashed; what it does
+// not permit is calling that artifact identified.
 test fn an_unobserved_artifact_identity_is_not_bound() -> Bool {
-  !serving_unit_artifact_is_bound(a: serving_unit_artifact(
+  match serving_unit_artifact(
     primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 0)),
-    identity: ArtifactIdentityUnobserved { cause: "fixture" as NonEmptyStr },
-  ))
+    identity: ArtifactIdentityUnobserved { cause: "fixture" as NonEmptyStr }) {
+    Absent => false
+    Present { value: a } => !serving_unit_artifact_is_bound(a: a)
+  }
 }

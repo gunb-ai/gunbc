@@ -5,6 +5,8 @@ import std.measure {
   TokenCount, token_count, token_count_value,
   PositiveSlotCount, positive_slot_count, positive_slot_count_value,
   PositiveMeasureCount, positive_measure_count, positive_measure_count_value,
+  TokensPerSecond, tokens_per_second, tokens_per_second_count,
+  PositiveShardCount, positive_shard_count, positive_shard_count_value,
 }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -400,7 +402,7 @@ fn serving_unit_throughput_meets(
 
 // ================= THE ARTIFACT THE UNIT ACTUALLY LOADED =================
 //
-// ITS IDENTITY IS BOUND, BY TWO INDEPENDENT SOURCES THAT AGREE.
+// ITS IDENTITY IS BOUND BY AN IN-PLACE MEASUREMENT OF THE BYTES.
 //
 // This carrier first shipped with the identity UNOBSERVED, and that was honest at the time: the
 // serving surface carries no digest -- GET /v1/models returns this model with `"digest": ""`, an
@@ -408,13 +410,18 @@ fn serving_unit_throughput_meets(
 // is written -- and the shard files were outside the convergence principal's reach. The operator
 // then granted access, and the gap closed with a MEASUREMENT rather than a promotion of the prose.
 //
-// THE TWO SOURCES, AND WHY BOTH ARE NEEDED. The four shards were hashed in place on the front-door
-// host with sha256sum, which is an observation of the bytes that are actually loaded. Independently,
-// the registration payload written when the model was created carries its own four digests. All four
-// agree exactly. Either alone would have been weaker in a specific way: the recorded payload is a
-// CLAIM IN A LOCAL FILE, and reading a recorded value as a measurement is the precise error that
-// once had an ollama blob on a different pair of hosts reported as this unit's artifact identity;
-// while a hash with nothing to check against establishes only that some bytes exist.
+// WHAT ESTABLISHES IT. The four shards were hashed in place on the front-door host with sha256sum,
+// which is an observation of the bytes that are actually loaded, and that measurement alone is what
+// the chain below carries.
+//
+// AN EARLIER VERSION OF THIS NOTE CLAIMED TWO INDEPENDENT CORROBORATING SOURCES, and the model does
+// not carry that. The registration payload written when the model was created does record its own
+// four digests, and they do agree -- but agreement is a RELATION between two observations, and this
+// module stores one canonical chain with no second reading and no relation to compare. Prose that
+// claims evidence the structure cannot distinguish is exactly the inflation §4b names, so the
+// sentence is withdrawn rather than left standing on a corroboration nothing here can check. The
+// direct measurement is sufficient to bind these bytes; modelling the corroboration is a separate
+// act, and it is not performed here.
 //
 // FOUR SHARDS, AND THE FIRST IS NOT THE MODEL. The front door reports shard 00001 as its model_path
 // and that file is about five megabytes -- the index that names the rest. A reader who bound
@@ -449,8 +456,41 @@ fn serving_unit_shard_digest(ordinal: PositiveMeasureCount, hex: String) -> Serv
   }
 }
 
+// EXACTNESS IS ESTABLISHED WHERE THE VALUE IS MINTED, NOT CHECKED AFTERWARDS.
+//
+// The bound arm previously carried a bare shard list and a SEPARATE predicate decided whether that
+// list was exact. That leaves the inexact value writable and makes correctness depend on every
+// consumer remembering to run the second rule -- validation standing exactly where construction was
+// available. A one-shard closure for a four-shard artifact, and a 1,1,2,3 chain, must fail while the
+// Bound value is being made, so that no inexact Bound value exists to be asked about.
+type ServingUnitBoundArtifactIdentity sole_constructor {
+  shards: List<ServingUnitShardDigest>
+  shard_count: PositiveShardCount
+}
+
+// The only way to mint one. It refuses unless the chain is exactly 1..N in order at the declared
+// count -- length alone is not enough, since 1,1,2,3 has the right cardinality and names a shard set
+// that does not exist. The fold walks the expected ordinal forward and sinks to 0 on the first
+// disagreement; 0 matches no ordinal, because an ordinal is a PositiveMeasureCount and cannot be
+// zero, so the sink is absorbing and a later coincidence cannot restore it.
+fn serving_unit_bound_artifact_identity(
+  shards: List<ServingUnitShardDigest>,
+  shard_count: PositiveShardCount,
+) -> ServingUnitBoundArtifactIdentity? {
+  if length(shards) != positive_shard_count_value(shards: shard_count) {
+    none
+  } else if fold(shards, init: 1, f: fn(next, s) {
+      if positive_measure_count_value(count: s.ordinal) == next { next + 1 } else { 0 }
+    }) != positive_shard_count_value(shards: shard_count) + 1 {
+    none
+  } else {
+    Present { value: ServingUnitBoundArtifactIdentity {
+      shards: shards, shard_count: shard_count } }
+  }
+}
+
 type ServingUnitArtifactIdentity
-  = ArtifactIdentityBound { shards: List<ServingUnitShardDigest> }
+  = ArtifactIdentityBound { identity: ServingUnitBoundArtifactIdentity }
   | ArtifactIdentityUnobserved { cause: NonEmptyStr }
 
 type ServingUnitArtifact sole_constructor {
@@ -462,15 +502,33 @@ type ServingUnitArtifact sole_constructor {
 // THE ORDER IS PART OF THE FACT. These are shards 00001 through 00004 in sequence, because a GGUF
 // shard set is an ordered chain the loader follows from the index; a closure holding the right four
 // digests in the wrong order names a different artifact than the one that loaded.
+// AND THE ARTIFACT REFUSES A COUNT ITS OWN IDENTITY CONTRADICTS. The bound identity was validated
+// against a shard count; if the artifact then declares a different one, the record carries two
+// answers to one question and the identity's guarantee is silently void. There is exactly one place
+// that could happen, so it refuses here rather than being asked about later.
 fn serving_unit_artifact(
   primary_shard_path: NonEmptyStr,
   shard_count: PositiveShardCount,
   identity: ServingUnitArtifactIdentity,
-) -> ServingUnitArtifact {
-  ServingUnitArtifact {
-    primary_shard_path: primary_shard_path,
-    shard_count: shard_count,
-    identity: identity,
+) -> ServingUnitArtifact? {
+  match identity {
+    ArtifactIdentityUnobserved { cause: _ } =>
+      Present { value: ServingUnitArtifact {
+        primary_shard_path: primary_shard_path,
+        shard_count: shard_count,
+        identity: identity,
+      } }
+    ArtifactIdentityBound { identity: bound } =>
+      if positive_shard_count_value(shards: bound.shard_count)
+        != positive_shard_count_value(shards: shard_count) {
+        none
+      } else {
+        Present { value: ServingUnitArtifact {
+          primary_shard_path: primary_shard_path,
+          shard_count: shard_count,
+          identity: identity,
+        } }
+      }
   }
 }
 
@@ -496,38 +554,35 @@ fn serving_unit_observed_shard_digests() -> List<ServingUnitShardDigest> {
     })
 }
 
-data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
-  primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
-  shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
-  identity: ArtifactIdentityBound { shards: serving_unit_observed_shard_digests() },
+data serving_unit_observed_shard_count: PositiveShardCount = positive_shard_count(count: positive_measure_count(predecessor: 3))
+
+// THIS ROW GOES THROUGH THE CONSTRUCTOR RATHER THAN AROUND IT. A direct record literal is writable
+// inside the defining module, and using one here would have bypassed both refusals above in the one
+// place that actually mints production's artifact -- the constructor would then guard only fixtures.
+fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
+  match serving_unit_bound_artifact_identity(
+    shards: serving_unit_observed_shard_digests(),
+    shard_count: serving_unit_observed_shard_count) {
+    Absent => none
+    Present { value: bound } =>
+      serving_unit_artifact(
+        primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
+        shard_count: serving_unit_observed_shard_count,
+        identity: ArtifactIdentityBound { identity: bound })
+  }
 }
 
 // A UNIT WHOSE ARTIFACT IDENTITY IS UNBOUND MAY BE OBSERVED AND MAY NOT BE CONVERGED, and that is
 // the whole reason to type the distinction. Convergence actuates bytes; a plan that cannot name
 // which bytes it is asserting is asserting a path and hoping. This is the predicate a publication
-// step must consult, and it answers false today.
+// step consults, and it is now a TRIVIAL ELIMINATOR: every exactness condition was moved into
+// serving_unit_bound_artifact_identity, so a Bound value is exact by construction and there is no
+// second rule for a consumer to forget. It answers true for the observed artifact.
 fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
   match a.identity {
-    ArtifactIdentityBound { shards: ds } =>
-      serving_unit_shards_are_the_whole_chain(
-        shards: ds, expected: positive_shard_count_value(shards: a.shard_count))
+    ArtifactIdentityBound { identity: _ } => true
     ArtifactIdentityUnobserved { cause: _ } => false
   }
-}
-
-// THE CHAIN IS 1..N IN ORDER, WHICH IS STRICTLY MORE THAN A COUNT. Four digests whose ordinals are
-// 1,1,2,3 have the right cardinality and name a shard set that does not exist, so the fold below
-// walks the expected ordinal forward and sinks to 0 on the first disagreement -- 0 matches no
-// ordinal, since an ordinal is a PositiveMeasureCount and cannot be zero, so the sink is absorbing
-// and a later coincidence cannot restore it.
-fn serving_unit_shards_are_the_whole_chain(
-  shards: List<ServingUnitShardDigest>,
-  expected: Int,
-) -> Bool {
-  length(shards) == expected &&
-    fold(shards, init: 1, f: fn(next, s) {
-      if positive_measure_count_value(count: s.ordinal) == next { next + 1 } else { 0 }
-    }) == expected + 1
 }
 
 // ================= WHAT THE FRONT DOOR ACTUALLY ANSWERS =================
@@ -567,46 +622,36 @@ fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyS
 // UNTIL THIS TYPE EXISTED, THE OBSERVATIONS WERE ADJACENCY RATHER THAN A JOINED FACT. The unit, its
 // artifact, its API surface and its throughput band sat as four separate module-scope values, and
 // with exactly one of each nothing went wrong -- which is the whole problem, because nothing
-// structural said they described the same executed realization either. The moment a second unit or
-// a re-measured realization appears, `unit A + artifact B + surface D + throughput C` is writable
-// and reads as one observation. That is the evidence-transport failure this lane has been removing
-// everywhere else, and the cheapest place to close it is before there is a second row.
+// structural said they described the same executed realization either.
 //
-// THE JOIN CARRIES A CONDITION, WHICH IS WHAT MAKES IT MORE THAN A RECORD. A throughput band was
-// measured AT a slot count; if that count disagrees with the unit's slot plan, the band describes a
-// different configuration of the same deployment and attaching it here would report a measurement
-// of something that was not run. So the mismatch has no constructor.
+// THERE IS DELIBERATELY NO GENERAL MIXER, AND THAT IS THE HONEST RUNG RATHER THAN THE TIDY ONE. A
+// public serving_unit_observation(unit, artifact, api_surface, throughput) was written first and
+// removed: whatever condition it checked, it still ADMITTED `unit A + artifact B + surface D +
+// throughput C` drawn from different realizations, which is precisely the failure this type claims
+// to close. A slot-count agreement does not fix that -- a band measured at ten slots on a DIFFERENT
+// ENGINE satisfies it -- and a constructor that admits the state it names is worse than no
+// constructor, because it will be cited as having closed the class.
+//
+// WHAT WOULD ACTUALLY CLOSE IT is a shared realization identity that the artifact, the API surface
+// and the throughput band are each keyed to, so that joining observations of two realizations has
+// no constructor. That is not authorable from one observation: with a single realization the
+// identity has nothing to discriminate, so its RED would be unwritable and the key would be
+// decoration. THE TRIGGER IS THEREFORE THE SECOND REALIZATION -- a re-measurement or a second unit
+// -- at which point the identity becomes both constructible and mandatory.
+//
+// Until then only the module's own 2026-09-02 observation can be built, below, and no caller can
+// assemble a different one. That is a narrower capability than a join, and it is the one the
+// evidence supports.
 //
 // THE UNIT STAYS IMPLEMENTATION-NEUTRAL AND THIS TYPE IS WHERE THAT IS PAID FOR. No llama.cpp, no
 // IQ3_S, no engine anywhere in ServingUnit: it is the stable structural subject -- a front door, a
 // weights peer, a fabric and a slot plan -- while ServingUnitObservation is ONE MEASURED
-// REALIZATION of that subject. The engine can be replaced without changing what a serving unit is,
-// and a later desired-state selector is a third thing again, selecting a realization rather than
-// re-describing the subject.
+// REALIZATION of that subject.
 type ServingUnitObservation sole_constructor {
   unit: ServingUnit
   artifact: ServingUnitArtifact
   api_surface: ServingUnitApiSurface
   throughput: ServingUnitThroughputBand
-}
-
-fn serving_unit_observation(
-  unit: ServingUnit,
-  artifact: ServingUnitArtifact,
-  api_surface: ServingUnitApiSurface,
-  throughput: ServingUnitThroughputBand,
-) -> ServingUnitObservation? {
-  if positive_slot_count_value(slots: throughput.slots)
-    != positive_slot_count_value(slots: unit.slot_plan.slots) {
-    none
-  } else {
-    Present { value: ServingUnitObservation {
-      unit: unit,
-      artifact: artifact,
-      api_surface: api_surface,
-      throughput: throughput,
-    } }
-  }
 }
 
 // The observation of 2026-09-02, or Absent when any part of it failed to construct. There is no arm
@@ -619,12 +664,16 @@ fn serving_unit_observed_observation() -> ServingUnitObservation? {
       match serving_unit_observed_throughput() {
         Absent => none
         Present { value: band } =>
-          serving_unit_observation(
-            unit: u,
-            artifact: serving_unit_observed_artifact,
-            api_surface: serving_unit_observed_api_surface,
-            throughput: band,
-          )
+          match serving_unit_observed_artifact() {
+            Absent => none
+            Present { value: art } =>
+              Present { value: ServingUnitObservation {
+                unit: u,
+                artifact: art,
+                api_surface: serving_unit_observed_api_surface,
+                throughput: band,
+              } }
+          }
       }
   }
 }
