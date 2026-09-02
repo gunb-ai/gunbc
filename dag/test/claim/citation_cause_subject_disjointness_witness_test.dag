@@ -1,0 +1,43 @@
+module test.claim.citation_cause_subject_disjointness_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED EVIDENCE FOR A RUNG-4 WALL, WHICH IS THE RUNG MOST LIKELY TO GO UNWATCHED.
+// extdeps.standards.rfc_8118 splits its refusal causes by subject, so a selector-construction
+// cause cannot be written into a URI-projection refusal. That wall is invisible while everything
+// is green: if the two cause types were merged back into one, no witness would notice. These two
+// fixtures are that witness. Both IMPORT the real module rather than restating its shape, so
+// re-merging the authority makes the negative go quiet and this file fail.
+//
+// The pair is what discriminates. The negative and the positive carry the SAME cause with the
+// SAME field; they differ only in which subject's refusal they are written into. A probe that
+// only showed the refusal would be satisfied by a cause that is unusable everywhere.
+
+data forbidden_cause_on_projection_source: String = "module citation_cause_disjoint_negative\nimport extdeps.standards.rfc_8118 { NavigableUriProjection, NavigableUriRefused, CitationSelectorConstructionRefused }\nimport std.citation { SelectorRefusalCause }\nfn f(c: SelectorRefusalCause) -> NavigableUriProjection {\n  NavigableUriRefused { cause: CitationSelectorConstructionRefused { cause: c } }\n}\n"
+
+data admitted_cause_on_selector_source: String = "module citation_cause_disjoint_positive\nimport extdeps.standards.rfc_8118 { PdfOpenFragmentSelectorConstruction, PdfOpenFragmentSelectorRefused, CitationSelectorConstructionRefused }\nimport std.citation { SelectorRefusalCause }\nfn f(c: SelectorRefusalCause) -> PdfOpenFragmentSelectorConstruction {\n  PdfOpenFragmentSelectorRefused { cause: CitationSelectorConstructionRefused { cause: c } }\n}\n"
+
+fn type_mismatch_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_selector_cause_on_a_uri_projection_refusal_is_refused() -> Bool {
+  type_mismatch_blocking_count(source: forbidden_cause_on_projection_source) == 1
+}
+
+test fn w_the_same_cause_on_its_own_subject_is_admitted() -> Bool {
+  type_mismatch_blocking_count(source: admitted_cause_on_selector_source) == 0
+}
