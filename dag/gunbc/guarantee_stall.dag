@@ -520,7 +520,7 @@ data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
       "gunbc.rung_drop fabric_evidence_gating",
       "gunbc.rung_drop emitted_bytes_witness_required_lane",
       "gunbc.rung_drop direct_call_arg_seam_v2_exemption",
-      "gunbc.rung_drop floor_cost_contention_verdict",
+      "gunbc.rung_drop floor_cost_claim_qualification_unavailable",
       "gunbc.rung_drop spark_role_scoped_retirement_production_root",
       "gunbc.rung_drop floor_cut_heal",
       "gunbc.rung_drop floor_cut_effect_gates",
