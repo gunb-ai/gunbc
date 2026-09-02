@@ -1,6 +1,7 @@
 module test.claim.run_disposition_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import product.placement_supply { HostIdentity }
 import std.measure { hardware_thread_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
@@ -582,13 +583,13 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
 
 // ── The drop retires by construction, and only on observed convergence ─────────────────────────
 
-fn two_host_fleet() -> List<NonEmptyStr> {
-  ["srv1" as NonEmptyStr, "srv2" as NonEmptyStr]
+fn two_host_fleet() -> List<HostIdentity> {
+  ["srv1" as HostIdentity, "srv2" as HostIdentity]
 }
 
 fn safe_host(name: String) -> HostCompileCancellationStanding {
   HostCancellationObserved {
-    host: name as NonEmptyStr,
+    host: name as HostIdentity,
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   }
 }
@@ -615,7 +616,7 @@ test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
     standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       safe_host(name: "srv1"),
       HostCancellationUnobserved {
-        host: "srv2" as NonEmptyStr,
+        host: "srv2" as HostIdentity,
         cause: "no active unit readback" as NonEmptyStr,
       },
     ]),
@@ -630,7 +631,7 @@ test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
     standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       safe_host(name: "srv1"),
       HostCancellationUnreadable {
-        host: "srv2" as NonEmptyStr,
+        host: "srv2" as HostIdentity,
         cause: "systemctl show returned no Environment property" as NonEmptyStr,
       },
     ]),
@@ -646,7 +647,7 @@ test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool 
   match running_supersession_for_fleet_standing(
     standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       HostCancellationObserved {
-        host: "srv1" as NonEmptyStr,
+        host: "srv1" as HostIdentity,
         realization: BorrowerHeldCooperativeHostFifo {
           fifo_path: "/var/lib/ctrl/jobserver/host.fifo" as NonEmptyStr,
           daemon_service: "ctrl-jobserver.service" as NonEmptyStr,

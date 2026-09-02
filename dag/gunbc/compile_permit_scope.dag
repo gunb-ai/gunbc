@@ -2,6 +2,8 @@ module gunbc.compile_permit_scope
 
 import std.types { String, NonEmptyStr, List, Bool, list_length }
 import std.materialization_ladder { string_list_contains }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_runner_connectivity { fleet_hosts }
 import std.measure { HardwareThreadCount }
 
 // WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
@@ -68,18 +70,18 @@ fn borrower_death_capacity_disposition(
 // So the safe arm carries its READBACK rather than asserting itself: what the active unit says, not
 // what the model wishes it said.
 type HostCompileCancellationStanding
-  = HostCancellationObserved { host: NonEmptyStr, realization: CompileParallelismRealization }
-  | HostCancellationUnreadable { host: NonEmptyStr, cause: NonEmptyStr }
-  | HostCancellationUnobserved { host: NonEmptyStr, cause: NonEmptyStr }
+  = HostCancellationObserved { host: HostIdentity, realization: CompileParallelismRealization }
+  | HostCancellationUnreadable { host: HostIdentity, cause: NonEmptyStr }
+  | HostCancellationUnobserved { host: HostIdentity, cause: NonEmptyStr }
 
 type FleetCompileCancellationStanding
-  = FleetCancellationSafe { hosts: List<NonEmptyStr> }
-  | FleetCancellationNotSafe { unsafe_hosts: List<NonEmptyStr>, unobserved_hosts: List<NonEmptyStr> }
+  = FleetCancellationSafe { hosts: List<HostIdentity> }
+  | FleetCancellationNotSafe { unsafe_hosts: List<HostIdentity>, unobserved_hosts: List<HostIdentity> }
 
 type FleetCancellationFoldAcc {
-  unsafe_hosts: List<NonEmptyStr>
-  unobserved_hosts: List<NonEmptyStr>
-  safe_hosts: List<NonEmptyStr>
+  unsafe_hosts: List<HostIdentity>
+  unobserved_hosts: List<HostIdentity>
+  safe_hosts: List<HostIdentity>
 }
 
 // ONE UNSAFE, MIXED OR UNREAD HOST KEEPS THE CONTAINMENT IN FORCE, and an EMPTY observation set is
@@ -109,7 +111,7 @@ type FleetCancellationFoldAcc {
 // trigger; the fold matches the three arms directly, and a fourth disposition would refuse to
 // compile here rather than silently falling to one side.
 fn fleet_cancellation_standing(
-  eligible_hosts: List<NonEmptyStr>,
+  eligible_hosts: List<HostIdentity>,
   observations: List<HostCompileCancellationStanding>,
 ) -> FleetCompileCancellationStanding {
   let acc = fold(
@@ -172,19 +174,16 @@ fn fleet_cancellation_standing(
   }
 }
 
-// THE HOSTS THE REQUIRED FLOOR CAN ROUTE TO, which is the denominator the join above ranges over.
-// Every one of them must be observed safe before a kill stops costing capacity, because a single
-// unconverged host still leaks a permit for every superseded build that lands on it.
-data fleet_cancellation_eligible_hosts: List<NonEmptyStr> = [
-  "srv1" as NonEmptyStr,
-  "srv2" as NonEmptyStr,
-  "srv3" as NonEmptyStr,
-  "srv4" as NonEmptyStr,
-]
-
+// THE DENOMINATOR IS THE FLEET'S OWN ROSTER, read from gunbc.fleet_runner_connectivity fleet_hosts
+// rather than re-minted here. Review 58495 caught the second authoring, and its concrete
+// consequence is that this construction would have defeated itself: a fifth host joining the fleet
+// leaves a hand-written four-name list answering SAFE on a 4/4 observation set while the new host
+// leaks a permit per kill -- the exact denominator failure the parameter was added to prevent,
+// reintroduced one layer up.
+//
 // THE FLEET AS OBSERVED TODAY: nothing. No host readback exists yet, so the standing is NotSafe with
 // an empty roster on both sides, and the policy below stays NeverSupersedeRunning BY REFUSAL rather
 // than by a literal someone has to remember to keep. Publishing real observations is what moves it,
 // and that is the second stage of the cutover -- deploy and restart the safe realization on every
 // eligible host, read the active units back, bind the receipts, and only then does the policy move.
-data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_cancellation_standing(eligible_hosts: fleet_cancellation_eligible_hosts, observations: [])
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_cancellation_standing(eligible_hosts: fleet_hosts(), observations: [])
