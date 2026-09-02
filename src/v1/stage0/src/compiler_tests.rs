@@ -499,6 +499,56 @@ mod compiler_tests {
         );
     }
 
+    /// THE FUNCTION-VALUE ADAPTER, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_call_arg_function_value_adapt`: the call-position
+    /// transform that lets an arrow value carried as `Rc<dyn Fn(..) -> ..>` satisfy a parameter
+    /// rendered as `impl Fn(..) -> .. + Clone`. That claim is a TRAIT OBLIGATION, and a trait
+    /// obligation is not a spelling: a substring oracle can see `__adapt_f` in the emitted bytes and
+    /// still say nothing about whether the wrapper satisfies the bound. rustc is the oracle that can.
+    ///
+    /// THE TWO ARMS DIFFER IN ONE AUTHORED SPELLING. Same producer, same consumer, same call: the
+    /// control passes the producer result AS A CALL EXPRESSION (the shape the adapter keys on), the
+    /// red binds it to a `let` first and passes the binding (which the adapter does not touch). So
+    /// the only variable across the pair is whether the adapter fired.
+    ///
+    /// THE RED IS A KNOWN HOLE AND NOT A WALL WORKING. gunbc accepts the red fixture with zero
+    /// blocking diagnostics and emits a crate rustc refuses --
+    /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at the
+    /// function-value seam. When that hole closes the arm FLIPS and is kept as a permanent
+    /// regression control (DESIGN 4b(4)); this pair's expectation is what changes, not the fixture.
+    ///
+    /// #[ignore] AND ITS LANE MEMBERSHIP, STATED RATHER THAN LEFT TO BE DISCOVERED, on the same
+    /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
+    /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
+    /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
+    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
+    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
+    /// executes on the merge path or as a rung for the adapter.
+    #[test]
+    #[ignore]
+    fn function_value_adapter_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_function_value_adapter_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("function-value-adapter {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the adapted call-position control must compile and the unadapted let-bound arm must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask

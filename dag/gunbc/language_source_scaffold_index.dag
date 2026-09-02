@@ -424,6 +424,11 @@ data ct_row_ct_function_value_field_method_known_hole_probe_test: LanguageSource
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_function_value_adapter_fixture_closure_discrimination_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_function_value_adapter_fixture_closure_discrimination_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_profile_self_compile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_self_compile_test",
   disposition: compiler_tests_profile_trigger
@@ -491,6 +496,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_call_deficit_red_witness_test,
   ct_row_ct_function_value_named_application_controls_witness_test,
   ct_row_ct_function_value_field_method_known_hole_probe_test,
+  ct_row_ct_function_value_adapter_fixture_closure_discrimination_test,
   ct_row_ct_profile_self_compile_test,
   ct_row_ct_profile_full_pipeline_test,
   ct_row_ct_profile_reconcile_test,

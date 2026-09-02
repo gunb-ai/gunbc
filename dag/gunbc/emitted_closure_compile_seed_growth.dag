@@ -226,6 +226,77 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // fail-closed repair review 58120 required). Re-derive it rather than trusting it; the paragraph above
 // records what happens when nobody does.
 
+// THE FUNCTION-VALUE ADAPTER POSED THROUGH THAT ROUTE (2026-09-02), AND WHAT IT IS NOT.
+//
+// The route above is a CAPABILITY -- a fixture reaching rustc. This lane spends it on a second
+// subject: v1.compiler.emit_rust rust_call_arg_function_value_adapt, the call-position transform
+// that lets an arrow value carried as Rc<dyn Fn(..) -> ..> (callable_type_template) satisfy a
+// parameter rendered as `impl Fn(..) -> .. + Clone` (emit_rust_param_type). WHY THIS SUBJECT
+// CANNOT BE POSED TO A TEXT ORACLE: the adapter's claim is a TRAIT OBLIGATION, and a trait
+// obligation is not a spelling. compile_dag_rust_emit_check can assert that `__adapt_f` appears in
+// the emitted bytes; it cannot assert that the wrapper those bytes spell satisfies the bound,
+// which is the only thing the transform exists to do.
+//
+// THE PAIR IS MINIMAL-DIFFERENCE BY CONSTRUCTION, which is what makes it discriminate the ADAPTER
+// rather than the tree. Both arms declare the same producer, consumer and call, with ONE authored
+// difference: the control passes the producer result AS A CALL EXPRESSION, the shape the adapter
+// keys on; the red binds that identical result to a local first and passes the binding, which the
+// adapter deliberately does not touch.
+//
+// THE RED ARM IS A KNOWN HOLE AND NOT A WALL WORKING, and it is labelled as one so its red is not
+// read as the emitter refusing something. gunbc ACCEPTS the red fixture with zero blocking
+// diagnostics and emits a crate rustc refuses -- gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target, at the function-value seam rather than at that row's
+// coproduct-variant construction, and committed here as a runnable file, which that row records
+// its own specimen never was. When the hole closes -- the emitter adapting a let-bound arrow
+// value, or the front end refusing the construction -- the arm FLIPS and is KEPT as a permanent
+// regression control (DESIGN 4b(4)); what changes is this pair's expectation, not the fixture.
+//
+// WHERE IT EXECUTES, ON THE SAME HONEST TERMS AS THE PAIR BESIDE IT AND WITH NOTHING ADDED. The
+// consumer is v1.compiler.compiler_tests_rust
+// ct_function_value_adapter_fixture_closure_discrimination_test, emitted into compiler_tests.rs,
+// and it is #[ignore]d: ENROLLED AND AVAILABLE via `cargo test --release -p v1-compiler --lib
+// function_value_adapter_fixture_closure_discrimination -- --ignored`, DOES NOT EXECUTE BY DEFAULT
+// on push or pull request, and `rust-unit-tests` is not a `needs` of the required aggregate, so
+// even un-ignored a red would be visible and would not block through the required context.
+// CANDIDATE EVIDENCE, NO WALL. An #[ignore] is a cost decision and NOT a rung, so this establishes
+// NO rung for the adapter and discharges NO next-rung trigger naming it: the evidence exists and
+// does not execute on the acceptance path. The reversal condition is the one that row already
+// carries and is not re-minted here -- `rust-unit-tests` promoted into the required aggregate.
+//
+// THE LEDGER ROW IS NOT UPDATED IN THIS DIFF, AND THE REASON IS AN INSTRUMENT THAT WOULD NOT RUN,
+// stated rather than left as a silent omission. gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target is PROJECTED into docs/design-ledgers.md, so appending
+// this instance to it requires re-running the projection actuator -- `gunbc run --source-root dag
+// --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function
+// main_wet` -- or the drift gate reads the carrier and its projection as disagreeing. Measured on
+// the runner available to this lane: with no cgroup limit it refuses HostBudgetUnreadable, and
+// under a cgroup of 12 GiB and again of 30 GiB it refuses MemoryStallRefusedPageThrash during the
+// whole-corpus resolve. Landing the carrier edit without its projection would have been the drift
+// the gate exists to catch, so the instance is recorded HERE and in the two fixture files, and the
+// ledger append is left as follow-up work for a lane that can execute that actuator.
+//
+// EXECUTED, BOTH DIRECTIONS, ON ONE BuildBuddy RUNNER (2026-09-02). Cited by naming the producer
+// that re-derives it -- `cargo test --release -p v1-compiler --lib
+// function_value_adapter_fixture_closure_discrimination -- --ignored --nocapture` -- with the two
+// arms' verdicts, which are the discrimination itself and not a number about it: the control
+// Measured files=6 cargo=Completed status=0; the red Measured files=6 cargo=Completed status=101,
+// `error[E0277]: expected a Fn(i64) closure, found Rc<dyn Fn(i64) -> i64>` at
+// `src/fixture_closure_rustc_function_value_let_probe.rs:22:11` on `let_apply(staged.clone(), 41)`,
+// against `required by this bound in let_apply` -- attributed to the fixture's own emitted module,
+// pair PASSED, `test result: ok` in 173.84s. The red is the ONE-SPELLING difference reaching rustc:
+// same producer, same consumer, no adapter, no blanket impl.
+//
+// HAND-ITEM DELTA FOR THIS LANE: three declarations, enumerated rather than counted --
+// FIXTURE_ADAPTER_GREEN_PATH, FIXTURE_ADAPTER_RED_PATH, run_function_value_adapter_discrimination.
+// Everything else the pair needs already exists and is REUSED rather than re-authored:
+// fixture_arm_verdict runs each arm, fixture_discrimination_passed adjudicates it, and
+// fixture_discrimination_report prints it -- a second discrimination, not a second harness, for
+// the same reason the route shares the required phase's crate writer and run_cargo. The cli_run
+// re-export list is ExistingSeedItemModified. THE ROSTER IS EXACT AGAINST THE FILE AS OF THIS
+// LANE: 78 declarations, 78 rows, zero stale, zero unaccounted. Re-derive it rather than trusting
+// it.
+
 // HAND-RUST RECEIPT FOR THE REQUIRED-PATH ROOT CORRECTION. Additions: PROBE_ROOT_DIR_NAME,
 // required_ci_probe_root_from_runner_temp, required_ci_emit_compile_probe_root,
 // local_emit_compile_probe_root, and the_probe_root_does_not_exist_without_runner_temp -- five
@@ -290,6 +361,9 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "run_fixture_closure_discrimination", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_discrimination_passed", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_discrimination_report", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_ADAPTER_GREEN_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_ADAPTER_RED_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "run_function_value_adapter_discrimination", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "closure_modules", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "mutation_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "establish_discriminating_red", field: WholeDeclaration },
@@ -322,5 +396,5 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
   reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap. The subject is a required CI phase: it must run inside claim_executor, which is the only witness-executing consumer in the tree, and its stages are host effects -- writing an emitted tree to disk and spawning cargo over it. The required floor's hermetic envelope REFUSES host effects during preparation, so a .dag witness whose subject is a subprocess exit status is counted executed while its assertion never runs; DESIGN's Building-&-checks section records that boundary in as many words, and records that mocking the refusal would pass the witness against a fabricated exit status. So the phase has to live where the effects do, exactly as required_regen_host and partition_crate_boundary_host do.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE, ON PRECEDENT RATHER THAN ANALOGY. gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE -- does it serve the v2 self-host program -- and the purpose test reaches the INSTRUMENT that measures that program, not only the program. This is that instrument in the most direct available sense: the self-host claim IS that the emitted tree compiles and behaves, and until now nothing on the merge path compiled an emitted tree at all. gunbc.floor_non_verdict_enrollment and gunbc.declaration_index_seed_growth are both admitted on that same footing. Classified against the five refused classes: NewLanguageBehavior -- no, the compile pipeline is byte-untouched, no diagnostic is added, moved or removed. NewCompatibilityObligation -- no, nothing is kept working for an old caller. NewEscapeHatchOrAdmissionRow -- no, and the direction is opposite: this adds a wall and adds no flag, env var or mode that skips it. SeedFeatureCompletion -- no, the seed compiler gains no capability; it compiles exactly what it compiled before. PublicSurfaceGrowth -- the nearest, and the test is a diff over THE EMITTED SEED'S EXPORTED DECLARATIONS: the file is wired by #[path] mod inside cli_run.rs exactly as declaration_index.rs, phase_profile.rs and partition_crate_boundary_host.rs are, so it contributes no pub mod line to the emitted lib.rs and its SeedRetainedIntrinsicRegistration carries has_pub_mod: false.\n\nWHAT IS NOT CLAIMED. This phase is not a compile of the corpus and must not be read as one: gunbc.whole_corpus_compile_admission refuses a whole-bundle compile on the default runner and records two EXIT=137 kills behind that refusal, so the subject is a bounded roster of entries in gunbc.ci_layer_roots required_emit_compile_entries. It carries no diagnostic count, no baseline and no ratchet -- a merge-blocking comparison against a population measured on the current tree is the tree-copied oracle DESIGN 5 rejects.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete this host when the phase's two host effects are modeled and a modeled actuator can perform them: writing an emitted file set to a directory, and invoking cargo over a manifest with a typed outcome. extdeps.cargo already models the manifest, the dependency rows and the target kinds, and extdeps.filesystem.filesystem_io models the write, so what is missing is the ACTUATION -- a modeled operation the required run can execute without the hermetic envelope refusing it. When that exists, run_emit_compile_entry becomes a .dag fold over those two operations and every item here is deleted, not re-homed. A PARTIAL migration is admissible and is the expected shape: the moment the cargo invocation is a modeled transport, run_cargo and the CargoVerdict vocabulary go first and the emission-to-disk half stays behind. What does NOT dissolve these items is the phase merely changing its roster, and what does NOT dissolve them is a hermetic witness asserting a fabricated exit status -- that would retire the evidence while retiring nothing it guards.",
-  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs; src/v1/stage0/src/cli_run.rs (the #[path] mod line and the re-export); src/v1/stage0/src/bin/claim_executor.rs (RequiredCiPhase::EmitCompile and its phase body); src/v1/compiler_tests_rust.dag ct_fixture_closure_rustc_discrimination_test and its emitted form in src/v1/stage0/src/compiler_tests.rs, the route's only consumer; fixtures/fixture_closure_rustc/ (the pair's two arms, which are files rather than string constants so that the arm this pair adjudicates is the arm any caller runs); dag/gunbc/ci/ci_layer_roots.dag required_emit_compile_entries; src/v2/compiler/self_host/stage0_crate_layout.dag; dag/gunbc/emitted_closure_compile_seed_growth.dag"
+  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs; src/v1/stage0/src/cli_run.rs (the #[path] mod line and the re-export); src/v1/stage0/src/bin/claim_executor.rs (RequiredCiPhase::EmitCompile and its phase body); src/v1/compiler_tests_rust.dag ct_fixture_closure_rustc_discrimination_test and ct_function_value_adapter_fixture_closure_discrimination_test and their emitted forms in src/v1/stage0/src/compiler_tests.rs, the route's only consumers; fixtures/fixture_closure_rustc/ (the pair's two arms, which are files rather than string constants so that the arm this pair adjudicates is the arm any caller runs); dag/gunbc/ci/ci_layer_roots.dag required_emit_compile_entries; src/v2/compiler/self_host/stage0_crate_layout.dag; dag/gunbc/emitted_closure_compile_seed_growth.dag"
 }
