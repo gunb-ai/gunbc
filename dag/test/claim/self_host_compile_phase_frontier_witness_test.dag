@@ -64,6 +64,7 @@ import gunbc.self_host_compile_phase_frontier {
   EmissionOrderedV1,
   census_identity_domain_separator,
   census_population_is_duplicate_free,
+  deduplicate_identities,
   render_phase_board
 }
 import extdeps.cargo_diagnostic {
@@ -502,6 +503,32 @@ test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
 // The refused-file population had no duplicate wall at all until this predicate was wired into
 // receipt_population_coherent: rustfmt refusing one path twice would double-count the Parse row and
 // carry the repeat into the digest. This is the discriminating pair for that wall.
+// FIRST-OCCURRENCE ORDER IS A CONTRACT OF THIS FUNCTION, AND THE SET-ORDERED MUTANT IS WHY THIS
+// ARM EXISTS. deduplicate_identities decides membership with a Set, and a set-backed dedup that
+// returns the SET's own ordering produces the same members in a different order -- semantically
+// identical for a caller that counts, byte-drifting for a caller that renders. The subject
+// population is chosen so those two answers cannot coincide: first-occurrence order here is
+// ["b", "a", "c"] and any sorted or set-ordered spelling answers ["a", "b", "c"], so replacing the
+// ordered accumulator with the set's iteration turns this arm RED. A population that happened to
+// arrive already sorted would have made the assertion pass while discriminating nothing, which is
+// the whole reason the fixture is authored rather than read off the live series.
+//
+// WHERE THE ORDER CAN AND CANNOT ESCAPE, stated so the arm is read as a contract rather than as a
+// belt on a caller that does not need one: the function has exactly two consumers in the corpus,
+// canonical_identity_set (which sorts the result, so order is erased) and
+// census_population_is_duplicate_free (which counts it). The projection consumers downstream --
+// gunbc.design_ledgers compile_phase_frontier_blocks renders committed bytes -- reach it only
+// through the sorting one, and that order-independence is separately executed by
+// the_census_digest_is_invariant_under_reordering_of_either_population and
+// phase_boards_are_invariant_under_population_reordering. This arm holds the contract for the next
+// consumer, which is the one that would not survive a silent reordering.
+test fn deduplication_keeps_first_occurrence_order_and_not_set_order() -> Bool {
+  deduplicate_identities(identities: ["b", "a", "b", "c", "a"]) == ["b", "a", "c"]
+    && deduplicate_identities(identities: []) == []
+    && deduplicate_identities(identities: ["a", "a", "a"]) == ["a"]
+    && deduplicate_identities(identities: ["b", "a", "c"]) == ["b", "a", "c"]
+}
+
 test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
   !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
     && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
