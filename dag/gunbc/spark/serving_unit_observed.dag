@@ -1,6 +1,6 @@
 module gunbc.spark.serving_unit_observed
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.types { String, Bool, List, Int, NonEmptyStr, Port }
 import std.measure {
   TokenCount, token_count, token_count_value,
   PositiveSlotCount, positive_slot_count, positive_slot_count_value, positive_measure_count,
@@ -42,7 +42,7 @@ import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoi
 type ServingUnitFrontDoor sole_constructor {
   host: HostIdentity
   bind_address: NonEmptyStr
-  port: Int
+  port: Port
 }
 
 // THE WEIGHTS PEER HAS NO API AND MUST NEVER RECEIVE CLIENT TRAFFIC, and on this pair that is not a
@@ -65,14 +65,14 @@ type ServingUnitFrontDoor sole_constructor {
 type ServingUnitWeightsPeer sole_constructor {
   host: HostIdentity
   fabric_address: Ipv4Address
-  port: Int
+  port: Port
 }
 
-fn serving_unit_front_door(host: HostIdentity, bind_address: NonEmptyStr, port: Int) -> ServingUnitFrontDoor {
+fn serving_unit_front_door(host: HostIdentity, bind_address: NonEmptyStr, port: Port) -> ServingUnitFrontDoor {
   ServingUnitFrontDoor { host: host, bind_address: bind_address, port: port }
 }
 
-fn serving_unit_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Int) -> ServingUnitWeightsPeer {
+fn serving_unit_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Port) -> ServingUnitWeightsPeer {
   ServingUnitWeightsPeer { host: host, fabric_address: fabric_address, port: port }
 }
 
@@ -111,8 +111,9 @@ type ServingUnitSlotPlan sole_constructor {
 // number and the served reality are different quantities, and comparing the wrong one is how the
 // silent shrink stays invisible. This exists to RENDER the unit, and serving_unit_slot_plan_per_slot below
 // is what a readback is compared against.
-fn serving_unit_slot_plan_total_kv(plan: ServingUnitSlotPlan) -> Int {
-  token_count_value(t: plan.per_slot_context) * positive_slot_count_value(slots: plan.slots)
+fn serving_unit_slot_plan_total_kv(plan: ServingUnitSlotPlan) -> TokenCount {
+  token_count(
+    count: token_count_value(t: plan.per_slot_context) * positive_slot_count_value(slots: plan.slots))
 }
 
 fn serving_unit_slot_plan_per_slot(plan: ServingUnitSlotPlan) -> TokenCount {
@@ -317,25 +318,25 @@ fn serving_unit_observed_units() -> List<ServingUnit> {
 // instrument rather than this row.
 type ServingUnitThroughputBand sole_constructor {
   slots: PositiveSlotCount
-  aggregate_low_tok_s: Int
-  aggregate_high_tok_s: Int
-  per_stream_tok_s: Int
+  aggregate_low: TokensPerSecond
+  aggregate_high: TokensPerSecond
+  per_stream: TokensPerSecond
 }
 
 fn serving_unit_throughput_band(
   slots: PositiveSlotCount,
-  aggregate_low_tok_s: Int,
-  aggregate_high_tok_s: Int,
-  per_stream_tok_s: Int,
+  aggregate_low: TokensPerSecond,
+  aggregate_high: TokensPerSecond,
+  per_stream: TokensPerSecond,
 ) -> ServingUnitThroughputBand? {
-  if aggregate_low_tok_s > aggregate_high_tok_s {
+  if tokens_per_second_count(r: aggregate_low) > tokens_per_second_count(r: aggregate_high) {
     none
   } else {
     Present { value: ServingUnitThroughputBand {
       slots: slots,
-      aggregate_low_tok_s: aggregate_low_tok_s,
-      aggregate_high_tok_s: aggregate_high_tok_s,
-      per_stream_tok_s: per_stream_tok_s,
+      aggregate_low: aggregate_low,
+      aggregate_high: aggregate_high,
+      per_stream: per_stream,
     } }
   }
 }
@@ -345,17 +346,20 @@ fn serving_unit_throughput_band(
 fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
   serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
-    aggregate_low_tok_s: 50,
-    aggregate_high_tok_s: 59,
-    per_stream_tok_s: 6,
+    aggregate_low: tokens_per_second(count: 50),
+    aggregate_high: tokens_per_second(count: 59),
+    per_stream: tokens_per_second(count: 6),
   )
 }
 
 // THE CLAIM A THRESHOLD MAY BE COMPARED AGAINST, and it reads the LOW end deliberately. An operator
 // threshold set against the high end would be met by one of the two observed runs and missed by the
 // other, so the unit would pass or fail on which run was quoted.
-fn serving_unit_throughput_meets(band: ServingUnitThroughputBand, threshold_tok_s: Int) -> Bool {
-  band.aggregate_low_tok_s >= threshold_tok_s
+fn serving_unit_throughput_meets(
+  band: ServingUnitThroughputBand,
+  threshold: TokensPerSecond,
+) -> Bool {
+  tokens_per_second_count(r: band.aggregate_low) >= tokens_per_second_count(r: threshold)
 }
 
 // ================= THE ARTIFACT THE UNIT ACTUALLY LOADED =================
@@ -388,13 +392,13 @@ type ServingUnitArtifactIdentity
 
 type ServingUnitArtifact sole_constructor {
   primary_shard_path: NonEmptyStr
-  shard_count: Int
+  shard_count: PositiveShardCount
   identity: ServingUnitArtifactIdentity
 }
 
 data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
   primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
-  shard_count: 4,
+  shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
   identity: ArtifactIdentityUnobserved {
     cause: "GET /v1/models on the front door reports this model with an empty digest, and the shard files are outside the convergence principal's access on the experimentation pair" as NonEmptyStr,
   },

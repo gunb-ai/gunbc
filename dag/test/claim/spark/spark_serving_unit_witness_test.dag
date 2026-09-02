@@ -2,7 +2,7 @@ module test.claim.spark_serving_unit_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.measure {
-  token_count, token_count_value,
+  token_count, token_count_value, tokens_per_second,
   PositiveSlotCount, positive_slot_count, positive_measure_count,
 }
 import extdeps.network.ipv4 { ipv4_address }
@@ -66,7 +66,7 @@ test fn the_rpc_peer_is_addressed_on_the_fabric() -> Bool {
 // each get 1048576 -- not because someone typed 10485760 next to a 10. The operator's table records
 // what the authored-pair version costs: -c 6291456 with --parallel 16 silently yields 2048 per slot.
 test fn the_total_kv_budget_is_derived_from_per_slot_and_slot_count() -> Bool {
-  serving_unit_slot_plan_total_kv(plan: serving_unit_observed_slot_plan) == 10485760
+  token_count_value(t: serving_unit_slot_plan_total_kv(plan: serving_unit_observed_slot_plan)) == 10485760
     && token_count_value(t: serving_unit_slot_plan_per_slot(plan: serving_unit_observed_slot_plan)) == 1048576
 }
 
@@ -78,7 +78,7 @@ test fn raising_the_slot_count_cannot_shrink_the_per_slot_window() -> Bool {
     per_slot_context: token_count(count: 1048576),
     slots: positive_slot_count(count: positive_measure_count(predecessor: 15)))
   token_count_value(t: serving_unit_slot_plan_per_slot(plan: wider)) == 1048576
-    && serving_unit_slot_plan_total_kv(plan: wider) == 16777216
+    && token_count_value(t: serving_unit_slot_plan_total_kv(plan: wider)) == 16777216
 }
 
 // ================= DISCRIMINATING REDS ON THE CONSTRUCTOR =================
@@ -152,8 +152,8 @@ test fn a_threshold_is_met_only_when_the_low_end_meets_it() -> Bool {
   match serving_unit_observed_throughput() {
     Absent => false
     Present { value: b } =>
-      serving_unit_throughput_meets(band: b, threshold_tok_s: 45)
-        && !serving_unit_throughput_meets(band: b, threshold_tok_s: 55)
+      serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 45))
+        && !serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 55))
   }
 }
 
@@ -162,9 +162,9 @@ test fn a_threshold_is_met_only_when_the_low_end_meets_it() -> Bool {
 test fn an_inverted_throughput_band_refuses() -> Bool {
   match serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
-    aggregate_low_tok_s: 59,
-    aggregate_high_tok_s: 50,
-    per_stream_tok_s: 6,
+    aggregate_low: tokens_per_second(count: 59),
+    aggregate_high: tokens_per_second(count: 50),
+    per_stream: tokens_per_second(count: 6),
   ) {
     Absent => true
     Present { value: _ } => false
