@@ -237,9 +237,15 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `one_refusal_two_destinations`
 - `join_answers_with_one_arm_others_unjudged`
 - `liveness_probe_read_as_currency`
+- `non_verdict_disposition_surfaces_as_refusal`
+- `empty_capture_read_as_clean_result`
+- `salience_instrument_blind_to_the_record_it_sizes`
 - `ambient_process_state_read_by_a_concurrent_reader`
 - `predicate_vacuously_true_on_an_empty_domain`
 - `check_subject_narrower_than_its_declared_claim`
+- `recurrence_ledger_scoped_below_the_recurrence`
+- `hedged_benefit_leaves_the_harm_axis_unexamined`
+- `receipt_names_a_property_not_the_tree_it_holds_of`
 
 ## Building & checks
 

@@ -3154,6 +3154,14 @@ const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witne
 const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness/witness_deferral_freeze.dag";
 const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
+/// The roster of witness MODULE NAMESPACES the required fold cannot execute, read from the same
+/// `ci_layer_roots` authority as `witness_layer_roots`. Fail-closed by construction: the exemption
+/// it grants is keyed on MEMBERSHIP IN THIS ROSTER, never on the absence of a match in
+/// `witness_layer_roots` -- "not declared executing" and "declared non-executing" are different
+/// claims, and only the second carries the 4b(2) stall and its trigger
+/// (`non_executing_witness_module_prefixes_restoration`). An unreadable or empty roster exempts nothing.
+const NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME: &str =
+    "non_executing_witness_module_prefixes";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 /// The v2 entry roster the emission phase compiles — one `.dag` row, so re-deciding
@@ -3282,6 +3290,25 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
 /// authority.
 pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<String> {
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
+}
+
+/// Project the `non_executing_witness_module_prefixes` `List<String>` literal out of the ci_layer_roots
+/// authority.
+pub(crate) fn non_executing_witness_module_prefixes_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME,
+    )
+}
+
+/// The declared non-executing witness module namespaces, read once.
+pub fn non_executing_witness_module_prefixes() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            non_executing_witness_module_prefixes_from_source(ci_layer_roots_authority_content())
+        })
+        .clone()
 }
 
 /// One `witness_exclusion_frontier` row as the host reads it: the discovery-exclusion
@@ -9883,6 +9910,90 @@ impl SafetyInterruptTrigger {
     }
 }
 
+/// BOTH CLOCKS AT THE INTERRUPT POINT, AND BOTH LIMITS — the reading `ClaimTerminality`
+/// already takes and the floor's interrupted rows were not carrying.
+///
+/// WHY A SINGLE FIGURE IS NOT ENOUGH, which is the whole reason this is a pair. The floor's
+/// interrupted rows render through `budget_figure_phrase`, which reads `ClaimOutcome` and
+/// therefore sees ONE clock: whichever limit was checked when the stop was raised. That surface
+/// says `cost=UNMEASURED`, correctly — the row's cost is a lower bound with no upper bound. Read
+/// as the system's silence rather than as one surface's, it says the fact does not exist. It
+/// does: `claim_terminality` samples BOTH clocks around the same call regardless of how the
+/// claim ends, and threads both limits in from the `WitnessSafetyPolicy` that armed them.
+///
+/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A reading at or above its own limit PROVES
+/// real in-process computation: a thread-cpu observation cannot reach `cpu_safety_limit_ms` on a
+/// claim that burned no CPU. That direction is sound and it is the one a reader may use.
+///
+/// THE CONVERSE IS NOT SOUND, and the reason is not that these are bounds. Both readings are
+/// genuine observations at interrupt time — `run_claim_measured` samples both clocks around the
+/// same call regardless of how the claim ends — so cpu-consumed-up-to-the-stop is not silently
+/// under-reported. The reason is that `BudgetKind::Cpu` is THREAD cpu time, as its own
+/// declaration says, while wall is what counts "emit + cargo subprocess I/O". A claim that
+/// SHELLS OUT burns its cpu in a child process, which never enters this thread's `cpu_nanos`. So
+/// a small `elapsed_cpu_at_least_ms` beside a large wall reading has at least two producers this
+/// pair cannot separate: a claim that blocked and burned nothing, and a claim that burned a
+/// great deal of cpu in a subprocess. A reader may admit a row to "did real work" on a large cpu
+/// reading; a reader may NOT conclude "was blocked" from a small one.
+///
+/// THE PAIR DOES EXCLUDE THE SUBPROCESS CASE IN ONE SHAPE, and the correction is recorded rather
+/// than quietly applied because the paragraph above previously read as though it never could.
+/// When `elapsed_wall_at_least_ms` is CLOSE TO `elapsed_cpu_at_least_ms`, there was no material
+/// interval in which the thread was not burning cpu — so there was no room for a child process
+/// or a blocked call, both of which accrue wall while this thread's cpu stands still. The
+/// ambiguity is real only in the OTHER shape: small cpu beside large wall, where blocked and
+/// subprocess-heavy remain indistinguishable. Observed on the required floor at head 932d90c8,
+/// where all five interrupted rows read cpu 502-518ms against a 500ms limit with wall 3-50ms
+/// above cpu against an 8000ms limit — over its own cpu ceiling and nowhere near its wall one,
+/// which is a clean in-process cost population and not a runner casualty.
+///
+/// So the deficit is narrower than "the negative direction is unavailable": it is a deficit of
+/// THIS CLOCK in the wall-dominated shape, and it names its own repair — a process-tree cpu
+/// reading rather than a thread one. Stated at this grain because an earlier draft stated the
+/// blocked case as though the pair identified it, and the correction of that overshot in the
+/// other direction; both would have been cited later as coverage.
+///
+/// STILL LOWER BOUNDS, AND THE FIELD NAMES SAY SO. `at_least` is not decoration: the deadline
+/// preempted the witness, so the true cost is above these readings by an unbounded amount. They
+/// support "this claim had burned at least N ms of CPU when it was stopped" and no statement
+/// with an upper bound in it. The limits are carried beside them because the comparison a reader
+/// wants is reading-against-its-own-ceiling, and reconstructing a limit from the outcome would
+/// get the OTHER clock's limit wrong — `ClaimOutcome`'s `budget_ms` names only the one that was
+/// checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SafetyInterruptReading {
+    /// Which mechanism raised THIS occurrence. Read `SafetyInterruptTrigger`'s own note: it is
+    /// not a claim about which clock was crossed, still less which was crossed first.
+    pub raised_by: SafetyInterruptTrigger,
+    pub elapsed_cpu_at_least_ms: u64,
+    pub elapsed_wall_at_least_ms: u64,
+    pub cpu_safety_limit_ms: u64,
+    pub wall_safety_limit_ms: u64,
+}
+
+/// The reading, for a terminality that has one. `None` for every other arm, and the caller is
+/// expected to REFUSE on `None` rather than substitute a figure — see the `interrupted_before_
+/// verdict` push sites, where a `None` means two derivations over one claim disagree about
+/// whether it was interrupted, which is a defect and not a row to render.
+pub fn safety_interrupt_reading(terminality: &ClaimTerminality) -> Option<SafetyInterruptReading> {
+    match terminality {
+        ClaimTerminality::SafetyInterrupted {
+            raised_by,
+            elapsed_cpu_at_least_ms,
+            elapsed_wall_at_least_ms,
+            cpu_safety_limit_ms,
+            wall_safety_limit_ms,
+        } => Some(SafetyInterruptReading {
+            raised_by: *raised_by,
+            elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
+            elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
+            cpu_safety_limit_ms: *cpu_safety_limit_ms,
+            wall_safety_limit_ms: *wall_safety_limit_ms,
+        }),
+        ClaimTerminality::VerdictReached { .. } | ClaimTerminality::Unwound { .. } => None,
+    }
+}
+
 /// ONE INTERRUPTED CLAIM, WITH THE CAUSE STILL TYPED.
 ///
 /// `RequiredFloorOutcome::interrupted_before_verdict` was a `Vec<String>`: one bucket whose
@@ -9909,9 +10020,13 @@ impl SafetyInterruptTrigger {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterruptedBeforeVerdict {
     pub qualified: String,
-    /// WHICH MECHANISM RAISED THIS OCCURRENCE. Read `SafetyInterruptTrigger`'s own note before
-    /// treating it as a statement about which clock is responsible for the cost: it is not one.
-    pub raised_by: SafetyInterruptTrigger,
+    /// THE WHOLE READING, NOT JUST THE TRIGGER. This was `raised_by: SafetyInterruptTrigger`
+    /// alone, and the trigger is a NECESSARY condition for "this claim was doing real work" and
+    /// never a sufficient one: a claim that computes hard and then hangs on a vanished path
+    /// crosses both limits, and which one raises is a race between polls. The two elapsed
+    /// readings are what settle it. Taken from `ClaimTerminality`, which is the one producer of
+    /// them, rather than re-derived here.
+    pub interrupt: SafetyInterruptReading,
     /// Whether the identity was enrolled as expected-red when it was interrupted. The enrolled
     /// and unenrolled populations have the same terminal state and different remedies, and the
     /// bucket fused them too: `known_red_budget_refused` counted the enrolled half separately
@@ -9934,7 +10049,7 @@ pub struct InterruptedCauseCensus {
 pub fn interrupted_cause_census(rows: &[InterruptedBeforeVerdict]) -> InterruptedCauseCensus {
     let mut census = InterruptedCauseCensus::default();
     for row in rows {
-        match row.raised_by {
+        match row.interrupt.raised_by {
             SafetyInterruptTrigger::CpuDeadlineRaised => census.cpu_deadline += 1,
             SafetyInterruptTrigger::WallDeadlineRaised => census.wall_deadline += 1,
         }
@@ -9945,17 +10060,84 @@ pub fn interrupted_cause_census(rows: &[InterruptedBeforeVerdict]) -> Interrupte
 #[cfg(test)]
 mod interrupted_before_verdict_tests {
     use super::{
-        interrupted_cause_census, InterruptedBeforeVerdict, InterruptedCauseCensus,
+        interrupted_cause_census, safety_interrupt_reading, ClaimTerminality,
+        InterruptedBeforeVerdict, InterruptedCauseCensus, SafetyInterruptReading,
         SafetyInterruptTrigger,
     };
+
+    fn reading(raised_by: SafetyInterruptTrigger) -> SafetyInterruptReading {
+        SafetyInterruptReading {
+            raised_by,
+            elapsed_cpu_at_least_ms: 0,
+            elapsed_wall_at_least_ms: 0,
+            cpu_safety_limit_ms: 500,
+            wall_safety_limit_ms: 5_000,
+        }
+    }
 
     fn row(raised_by: SafetyInterruptTrigger) -> InterruptedBeforeVerdict {
         InterruptedBeforeVerdict {
             qualified: "m.w".to_string(),
-            raised_by,
+            interrupt: reading(raised_by),
             enrolled_expected_red: false,
             detail: String::new(),
         }
+    }
+
+    /// THE DISCRIMINATING CASE FOR THE PAIR, and the one the trigger alone cannot decide. Both
+    /// rows are `CpuDeadlineRaised` — identical on every fact the row carried before this
+    /// change — and they differ on the readings. If the readings ever stop travelling, these two
+    /// become the same row again.
+    ///
+    /// WHAT THIS FIXTURE DOES NOT LICENSE: reading the second shape as "blocked" in a live log.
+    /// These are constructed values, so here the populations are known by construction. In the
+    /// wild, small-cpu-beside-large-wall is a blocked claim OR a claim that shelled out — see
+    /// `SafetyInterruptReading`. The test proves the carrier transports the pair, which is the
+    /// only claim it makes.
+    #[test]
+    fn two_cpu_raised_rows_separate_on_the_elapsed_pair() {
+        let computed = SafetyInterruptReading {
+            raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
+            elapsed_cpu_at_least_ms: 501,
+            elapsed_wall_at_least_ms: 520,
+            cpu_safety_limit_ms: 500,
+            wall_safety_limit_ms: 5_000,
+        };
+        let blocked = SafetyInterruptReading {
+            raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
+            elapsed_cpu_at_least_ms: 3,
+            elapsed_wall_at_least_ms: 5_001,
+            cpu_safety_limit_ms: 500,
+            wall_safety_limit_ms: 5_000,
+        };
+        assert_eq!(
+            computed.raised_by, blocked.raised_by,
+            "the trigger alone cannot tell these apart — that is the point"
+        );
+        assert_ne!(computed, blocked);
+        assert!(computed.elapsed_cpu_at_least_ms >= computed.cpu_safety_limit_ms);
+        assert!(blocked.elapsed_cpu_at_least_ms < blocked.cpu_safety_limit_ms);
+    }
+
+    /// A TERMINALITY THAT IS NOT AN INTERRUPT HAS NO READING, so a caller cannot obtain one for
+    /// a claim that reached a verdict or unwound and render it as an interrupt.
+    #[test]
+    fn only_an_interrupted_terminality_yields_a_reading() {
+        assert!(
+            safety_interrupt_reading(&ClaimTerminality::SafetyInterrupted {
+                raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
+                elapsed_cpu_at_least_ms: 501,
+                elapsed_wall_at_least_ms: 520,
+                cpu_safety_limit_ms: 500,
+                wall_safety_limit_ms: 5_000,
+            })
+            .is_some()
+        );
+        assert!(safety_interrupt_reading(&ClaimTerminality::Unwound {
+            observed_cpu_ms: 1,
+            observed_wall_ms: 2,
+        })
+        .is_none());
     }
 
     /// THE DISCRIMINATING CASE: two populations of the SAME SIZE that the old `Vec<String>`
@@ -17417,12 +17599,12 @@ enum ExpectedRedArm {
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
     ///
-    /// CARRIES THE TRIGGER, because the arm is the caller's ONLY view of the outcome on this
-    /// path and the caller has to record which mechanism raised the stop. Reconstructing it by
-    /// re-matching `ClaimOutcome` at the call site would be a second dispatch over one value,
-    /// which the caller's own comment argues against; taking it as a field means the classifier
-    /// answers once and the axis survives the projection instead of being dropped by it.
-    BudgetRefused { raised_by: SafetyInterruptTrigger },
+    /// CARRIES NOTHING, and it briefly carried the trigger. That payload was the right repair
+    /// while the row's only interrupt fact WAS the trigger; now the row carries the whole
+    /// `SafetyInterruptReading`, whose sole producer is `claim_terminality`, and a trigger
+    /// travelling separately on this arm would be a second authority over one field of it —
+    /// consolidated later at someone else's cost (DESIGN §3). The caller reads the reading.
+    BudgetRefused,
     /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
     /// claim was never decided, so there is no expected failure for the enrollment to hold.
     RuntimeErrored,
@@ -17802,7 +17984,20 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::BudgetInterrupted { .. } => "budget-refused",
         ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
-        ClaimOutcome::HostEffectRefused { .. } => "route-gap",
+        // THE TAG DESCENDS INTO THE GROUND, mirroring `render_route_gap_ground_tag` in
+        // `v2.workflow.floor_terminal_ledger_wire`. One tag over three grounds published an
+        // unpublished mock case and a filesystem removal as the same fact, and their remedies
+        // differ: record the case, versus give the operation a hermetic arm. The detail below
+        // already carried `operation`, so this is the half of the pair that was still fused.
+        ClaimOutcome::HostEffectRefused { ground, .. } => match ground {
+            v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+                "route-gap-unpublished-mock-case"
+            }
+            v1_interpreter::HermeticEffectGround::NoMockResponse => "route-gap-no-mock-response",
+            v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+                "route-gap-filesystem-removal"
+            }
+        },
         ClaimOutcome::Panicked { .. } => "panicked",
         ClaimOutcome::NotAttempted { .. } => "not-attempted",
     }
@@ -17867,9 +18062,7 @@ pub fn seed_ledger_row(
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::BudgetInterrupted { kind, .. } => ExpectedRedArm::BudgetRefused {
-            raised_by: SafetyInterruptTrigger::from(*kind),
-        },
+        ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
         ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
         // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
@@ -19048,6 +19241,519 @@ pub fn classify_exit(
         other => ExitClass::NotProcessExit {
             type_name: ctx.format_value(other),
         },
+    }
+}
+
+/// The SINGLE AUTHORITY for reading a `.dag` `CliWireResponse` value, sitting beside
+/// `classify_exit` for the same §3 reason: the driver seam in `main.rs` must turn that value
+/// into bytes on stdout and a process exit code, and reimplementing the match there would
+/// fork the one place that knows the variant shape.
+///
+/// `gunbc.cli_wire` declares
+/// `CliWireResponse = CliWirePrintable { bytes: String, exit: ProcessExit }
+///                  | CliWireUnprintable { cause: NonEmptyStr }`.
+///
+/// Why a host reader is needed at all: `gunbc.scm.render` already produces this value
+/// (`scm_log_cli_response`, `scm_status_cli_response`), and outside its witness test NOTHING
+/// consumes it -- the answer is computed and discarded, which is the unwired-renderer state
+/// `gunbc.cli_dispatch_surface` records. The idiomatic instrument shape cannot stand in for
+/// this: `fn check(..) -> ProcessExit` can only emit text through `exit_failure`'s reason, so
+/// it cannot print a log or a status on SUCCESS.
+pub enum CliWireClass {
+    /// Bytes to write, and the exit the same response carries.
+    Printable { bytes: String, exit: ExitClass },
+    /// The renderer refused to produce bytes; `cause` is `NonEmptyStr` in the model.
+    Unprintable { cause: String },
+    /// Not a `CliWireResponse` at all — reported with what it actually was.
+    NotCliWire { type_name: String },
+    /// Nominally a `CliWireResponse`, but its payload does not match the declared shape.
+    ///
+    /// This is a SEPARATE arm from `NotCliWire` because the two send the caller to different
+    /// remedies, and folding them together mis-reported the defect. `NotCliWire` means "ask the
+    /// other classifier" — the value is some other type and `ProcessExit` may well accept it. A
+    /// malformed wire response has already ANSWERED the type question: the value says it is a
+    /// `CliWireResponse`, so falling through to `classify_exit` produces the diagnosis "this is
+    /// not a ProcessExit", which is true and useless — it names the type the value never claimed
+    /// to be, and hides that the value claimed a type it does not inhabit. Review 5085479276 on
+    /// gunbc#9864 found this; the five original tests all constructed an already-classified
+    /// `CliWireClass`, so none of them executed this boundary at all.
+    MalformedCliWire { detail: String },
+}
+
+pub fn classify_cli_wire(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> CliWireClass {
+    match val {
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
+            if !ctx.sym_eq(*type_name, "CliWireResponse") {
+                return CliWireClass::NotCliWire {
+                    type_name: ctx.resolve(*type_name),
+                };
+            }
+            if ctx.sym_eq(*variant_name, "CliWirePrintable") {
+                // A MISSING FIELD IS NOT AN EMPTY ANSWER. Defaulting `bytes` to "" here would
+                // print nothing and exit 0 — a fabricated plausible output (§5) — so both
+                // fields must be present and of the declared shape or this is not a printable
+                // response at all.
+                let bytes = match ctx.field(fields, "bytes") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    _ => {
+                        return CliWireClass::MalformedCliWire {
+                            detail: "CliWirePrintable{bytes: <absent or not a String>}".to_string(),
+                        }
+                    }
+                };
+                // PRESENT IS NOT THE SAME AS VALID, and accepting the field merely because it
+                // exists was the remaining hole. `classify_exit` answers `NotProcessExit` for a
+                // value that is not an exit at all, and routing that into `Printable` meant
+                // `cli_wire_outcome` set `stdout: Some(bytes)` and then exited 2 -- so the host
+                // PRINTED bytes carried by a value that does not inhabit the declared wire shape,
+                // and a consumer reading stdout got partial output from a refused response. That is
+                // the fabricated plausible output DESIGN section 5 forbids, reached by a value
+                // claiming a type it does not inhabit. Found by review 58518 on gunbc#9864.
+                //
+                // Only a real exit keeps the response printable; anything else is a malformed
+                // payload and refuses with nothing on stdout.
+                let exit = match ctx.field(fields, "exit") {
+                    Some(v) => match classify_exit(v, ctx) {
+                        ExitClass::NotProcessExit { type_name } => {
+                            return CliWireClass::MalformedCliWire {
+                                detail: format!(
+                                    "CliWirePrintable{{exit: `{type_name}` is not a ProcessExit}}"
+                                ),
+                            }
+                        }
+                        valid => valid,
+                    },
+                    None => {
+                        return CliWireClass::MalformedCliWire {
+                            detail: "CliWirePrintable{exit: <absent>}".to_string(),
+                        }
+                    }
+                };
+                CliWireClass::Printable { bytes, exit }
+            } else if ctx.sym_eq(*variant_name, "CliWireUnprintable") {
+                match ctx.field(fields, "cause") {
+                    Some(Value::Str(s)) if !s.is_empty() => CliWireClass::Unprintable {
+                        cause: s.to_string(),
+                    },
+                    // `cause` is declared NonEmptyStr, so an empty or absent one means the
+                    // value did not come from the modeled constructor.
+                    _ => CliWireClass::MalformedCliWire {
+                        detail: "CliWireUnprintable{cause: <empty or absent>}".to_string(),
+                    },
+                }
+            } else {
+                CliWireClass::MalformedCliWire {
+                    detail: format!("unknown variant {}", ctx.resolve(*variant_name)),
+                }
+            }
+        }
+        other => CliWireClass::NotCliWire {
+            type_name: ctx.format_value(other),
+        },
+    }
+}
+
+/// What the host must DO about a `CliWireResponse`: bytes to write, a status to exit with, and
+/// the message that explains a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliWireOutcome {
+    pub status: i32,
+    pub message: Option<String>,
+    /// Bytes to write to stdout verbatim. `None` means write nothing — never "write an empty
+    /// string and call it an answer".
+    pub stdout: Option<String>,
+}
+
+/// TOTAL map from a `CliWireClass` to what the host does, pure for the same reason
+/// `exit_status_for` is pure: the impure version of this decision drops cases. It lives in the
+/// lib rather than beside the driver in `main.rs` because `main.rs` is a BIN target -- the
+/// `rust-unit-tests` job runs `cargo test -p v1-compiler --lib`, so a test written next to the
+/// driver would be compiled by clippy and executed by nobody.
+///
+/// `NotCliWire` deliberately yields no outcome (`None`): that is not a failure, it is "this
+/// value is not a wire response", and the caller must fall through to `classify_exit` so every
+/// pre-existing `ProcessExit` entry keeps behaving exactly as before. `MalformedCliWire` is the
+/// opposite and must NOT fall through: the value already claimed the wire type, so the fall-through
+/// would answer a question nobody asked ("it is not a ProcessExit") while the real defect — a value
+/// claiming a type it does not inhabit — went unreported.
+pub fn cli_wire_outcome(class: CliWireClass, function: &str) -> Option<CliWireOutcome> {
+    match class {
+        CliWireClass::Printable { bytes, exit } => {
+            let (status, message) = exit_status_for_class(exit, function);
+            Some(CliWireOutcome {
+                status,
+                message,
+                // An empty render is written as nothing rather than suppressed as an error:
+                // a document with no lines is a legitimate answer (an empty log), and the
+                // exit the same response carries is what says whether it succeeded.
+                stdout: if bytes.is_empty() { None } else { Some(bytes) },
+            })
+        }
+        CliWireClass::Unprintable { cause } => Some(CliWireOutcome {
+            status: 1,
+            message: Some(format!(
+                "error: `{function}` produced CliWireUnprintable — the renderer refused to \
+                 produce bytes.\n  cause: {cause}\n  status: refused — exiting 1 rather than \
+                 printing nothing and reporting success."
+            )),
+            stdout: None,
+        }),
+        // A malformed wire response REFUSES here rather than falling through. Returning `None`
+        // would send the caller to `classify_exit`, which reports "not a ProcessExit" — a true
+        // statement about a type the value never claimed, in place of the actual defect. Exit 2
+        // matches the other shape refusal (`NotProcessExit`): the program is wrong, not the run.
+        CliWireClass::MalformedCliWire { detail } => Some(CliWireOutcome {
+            status: 2,
+            message: Some(format!(
+                "error: function `{function}` returned a `CliWireResponse` that does not match \
+                 its declared shape: {detail}.\n  cause: the value names the wire type, so it is \
+                 not judged as some other return; it claims a type it does not inhabit. \
+                 status: refused — printing nothing rather than guessing the missing half."
+            )),
+            stdout: None,
+        }),
+        CliWireClass::NotCliWire { .. } => None,
+    }
+}
+
+/// The `ExitClass` half of the map, shared by the wire path and the driver's plain
+/// `ProcessExit` path so the two cannot disagree about what a verdict means.
+///
+/// This IS the driver's `exit_status_for` — `main.rs` delegates to it and holds no match of its
+/// own — so the two paths cannot disagree about what a verdict means, including the refusal of
+/// `ExitFailure { code: 0 }`, a variant that claims failure while reporting success. That is a
+/// property of there being one implementation, not a discipline anyone has to maintain.
+///
+/// THE COMMENT USED TO CLAIM SOMETHING WEAKER AND FALSER: "kept byte-for-byte equivalent",
+/// asserting an equivalence held by care. It was not held. The relocation dropped the
+/// `status: refused — printing the value and exiting 0 would report success for a run whose
+/// outcome is unknown.` sentence from the `NotProcessExit` message, so the doc asserted byte
+/// equivalence against a message that had lost a line — the doc lied, not the code. Found by
+/// review 58567 on gunbc#9864. The sentence is restored rather than the claim weakened, because
+/// it carries the operator-facing reason the refusal exists: an unknown outcome reported as
+/// success is the fabricated plausible output §5 forbids.
+pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<String>) {
+    match class {
+        ExitClass::Success => (0, None),
+        ExitClass::Failure { code: 0, reason } => (
+            1,
+            Some(format!(
+                "error: `{function}` returned ExitFailure with code 0, which claims failure \
+                 and reports success.\n  status: refused — exiting 1 rather than honoring a \
+                 status that contradicts its own variant.{}",
+                reason
+                    .map(|r| format!("\n  reason: {r}"))
+                    .unwrap_or_default()
+            )),
+        ),
+        ExitClass::Failure { code, reason } => (code, reason),
+        ExitClass::NotProcessExit { type_name } => (
+            2,
+            Some(format!(
+                "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
+                 cause: the host maps a run's verdict to an exit code, and only ProcessExit \
+                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
+                 status: refused — printing the value and exiting 0 would report success for \
+                 a run whose outcome is unknown."
+            )),
+        ),
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE CLASSIFIER BOUNDARY, WHICH NOTHING PREVIOUSLY EXECUTED. Every test in the module above starts
+// from an ALREADY-CLASSIFIED `CliWireClass`, so classify_cli_wire itself — the step that decides
+// whether a returned value is a wire response, some other type, or a wire response that lies about
+// its shape — had no coverage at all. Review 5085479276 on gunbc#9864 found that, and it is the
+// reason a malformed response was reported as "not a ProcessExit".
+//
+// These build real interpreter values, so the discriminating fact is the classification and not a
+// constructor call.
+// ------------------------------------------------------------------------------------------------
+#[cfg(test)]
+mod cli_wire_classify_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
+
+    use super::{classify_cli_wire, CliWireClass};
+
+    fn ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn variant(ctx: &InterpContext, ty: &str, va: &str, fields: Vec<(&str, Value)>) -> Value {
+        let mut fs: Vec<_> = fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect();
+        fs.sort_by_key(|(k, _)| *k);
+        Value::Variant {
+            type_name: ctx.sym(ty),
+            variant_name: ctx.sym(va),
+            fields: Rc::new(fs),
+        }
+    }
+
+    fn exit_success(ctx: &InterpContext) -> Value {
+        variant(ctx, "ProcessExit", "ExitSuccess", vec![])
+    }
+
+    fn is_malformed(c: &CliWireClass) -> bool {
+        matches!(c, CliWireClass::MalformedCliWire { .. })
+    }
+
+    fn is_not_wire(c: &CliWireClass) -> bool {
+        matches!(c, CliWireClass::NotCliWire { .. })
+    }
+
+    // THE POSITIVE CONTROL. Without it every refusal assertion below is satisfied by a classifier
+    // that refuses unconditionally.
+    #[test]
+    fn a_well_formed_printable_response_classifies_as_printable() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![
+                ("bytes", str_value("commit 1\n")),
+                ("exit", exit_success(&c)),
+            ],
+        );
+        match classify_cli_wire(&v, &c) {
+            CliWireClass::Printable { bytes, .. } => assert_eq!(bytes, "commit 1\n"),
+            _ => panic!("expected Printable"),
+        }
+    }
+
+    // A DIFFERENT TYPE IS STILL A FALL-THROUGH, and this is the case that must NOT become
+    // malformed: a plain ProcessExit return is how every pre-existing entry point behaves, and
+    // classifying it as a broken wire response would break all of them.
+    #[test]
+    fn a_process_exit_is_not_a_wire_response_and_falls_through() {
+        let c = ctx();
+        assert!(is_not_wire(&classify_cli_wire(&exit_success(&c), &c)));
+        assert!(is_not_wire(&classify_cli_wire(
+            &str_value("just a string"),
+            &c
+        )));
+    }
+
+    // THE FOUR MALFORMED SHAPES. Each names the wire type and then fails to inhabit it, so each
+    // must refuse HERE rather than be handed to the ProcessExit classifier.
+    #[test]
+    fn a_printable_response_missing_its_bytes_is_malformed_not_foreign() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![("exit", exit_success(&c))],
+        );
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    #[test]
+    fn a_printable_response_whose_bytes_are_not_a_string_is_malformed() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![("bytes", Value::Int(7)), ("exit", exit_success(&c))],
+        );
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    #[test]
+    fn a_printable_response_missing_its_exit_is_malformed() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![("bytes", str_value("x"))],
+        );
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    // A PRESENT-BUT-INVALID EXIT IS MALFORMED, NOT PRINTABLE. This is the case review 58518 found:
+    // the field exists, so the earlier version accepted it and let the host print `bytes` before
+    // exiting 2 on the shape error. The assertion that nothing reaches stdout is the one that
+    // matters -- a classification that stayed `Printable` would still refuse, but only AFTER
+    // emitting untrusted partial output.
+    #[test]
+    fn a_printable_response_whose_exit_is_not_a_process_exit_is_malformed_and_prints_nothing() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![
+                ("bytes", str_value("half an answer\n")),
+                ("exit", str_value("not an exit at all")),
+            ],
+        );
+        let class = classify_cli_wire(&v, &c);
+        assert!(
+            is_malformed(&class),
+            "a present but invalid exit must be malformed, not printable"
+        );
+        let out = super::cli_wire_outcome(class, "scm_log_cli_response")
+            .expect("a malformed wire response produces an outcome");
+        assert_eq!(out.status, 2);
+        assert!(
+            out.stdout.is_none(),
+            "bytes carried by a value that does not inhabit the wire shape must never be printed"
+        );
+    }
+
+    #[test]
+    fn an_unprintable_response_with_an_empty_or_absent_cause_is_malformed() {
+        let c = ctx();
+        let empty = variant(
+            &c,
+            "CliWireResponse",
+            "CliWireUnprintable",
+            vec![("cause", str_value(""))],
+        );
+        let absent = variant(&c, "CliWireResponse", "CliWireUnprintable", vec![]);
+        assert!(is_malformed(&classify_cli_wire(&empty, &c)));
+        assert!(is_malformed(&classify_cli_wire(&absent, &c)));
+    }
+
+    #[test]
+    fn an_unknown_wire_variant_is_malformed() {
+        let c = ctx();
+        let v = variant(&c, "CliWireResponse", "CliWireSomethingElse", vec![]);
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    // AND THE REFUSAL REACHES THE HOST. A malformed class that still yielded `None` would leave the
+    // fall-through in place and this whole arm decorative.
+    #[test]
+    fn a_malformed_wire_response_refuses_rather_than_falling_through() {
+        let c = ctx();
+        let v = variant(&c, "CliWireResponse", "CliWireSomethingElse", vec![]);
+        let out = super::cli_wire_outcome(classify_cli_wire(&v, &c), "scm_log_cli_response")
+            .expect("a malformed wire response must produce an outcome, not fall through");
+        assert_eq!(out.status, 2);
+        assert!(
+            out.stdout.is_none(),
+            "nothing may be printed for a shape refusal"
+        );
+        assert!(
+            out.message
+                .expect("a refusal names itself")
+                .contains("does not match"),
+            "the message must name the shape defect, not a ProcessExit mismatch"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cli_wire_outcome_tests {
+    use super::{cli_wire_outcome, CliWireClass, ExitClass};
+
+    #[test]
+    fn a_printable_response_writes_its_bytes_and_honors_its_own_exit() {
+        let out = cli_wire_outcome(
+            CliWireClass::Printable {
+                bytes: "commit 1\n".to_string(),
+                exit: ExitClass::Success,
+            },
+            "scm_log_cli_response",
+        )
+        .expect("a printable response is a wire outcome");
+        assert_eq!(out.stdout.as_deref(), Some("commit 1\n"));
+        assert_eq!(out.status, 0);
+        assert_eq!(out.message, None);
+    }
+
+    /// The response carries its own exit, so a rendered answer can still fail — a log of a
+    /// repository that could not be loaded prints its refusal lines AND exits nonzero.
+    #[test]
+    fn a_printable_response_can_carry_a_failing_exit() {
+        let out = cli_wire_outcome(
+            CliWireClass::Printable {
+                bytes: "repository unavailable\n".to_string(),
+                exit: ExitClass::Failure {
+                    code: 1,
+                    reason: Some("repository unavailable".to_string()),
+                },
+            },
+            "scm_log_cli_response",
+        )
+        .expect("still a wire outcome");
+        assert_eq!(out.stdout.as_deref(), Some("repository unavailable\n"));
+        assert_eq!(out.status, 1, "the bytes printed, and the run still failed");
+    }
+
+    /// The §5 arm: a renderer that refused must not read as an empty successful answer.
+    #[test]
+    fn an_unprintable_response_refuses_rather_than_printing_nothing() {
+        let out = cli_wire_outcome(
+            CliWireClass::Unprintable {
+                cause: "cursor addressing unavailable".to_string(),
+            },
+            "scm_status_cli_response",
+        )
+        .expect("a refusal is a wire outcome");
+        assert_eq!(out.status, 1);
+        assert_eq!(out.stdout, None);
+        let msg = out.message.expect("a refusal explains itself");
+        assert!(
+            msg.contains("cursor addressing unavailable"),
+            "the modeled cause reaches the operator: {msg}"
+        );
+    }
+
+    /// A non-wire value yields NO outcome, so the driver falls through to classify_exit and
+    /// every pre-existing ProcessExit entry behaves exactly as it did before this binding.
+    #[test]
+    fn a_non_wire_value_yields_no_outcome_so_the_process_exit_path_is_untouched() {
+        assert_eq!(
+            cli_wire_outcome(
+                CliWireClass::NotCliWire {
+                    type_name: "ProcessExit".to_string(),
+                },
+                "check",
+            ),
+            None
+        );
+    }
+
+    /// Inherited from the driver's own refusal: a variant that claims failure while reporting
+    /// success is refused rather than honored.
+    #[test]
+    fn an_exit_failure_with_code_zero_is_refused_on_the_wire_path_too() {
+        let out = cli_wire_outcome(
+            CliWireClass::Printable {
+                bytes: "x".to_string(),
+                exit: ExitClass::Failure {
+                    code: 0,
+                    reason: None,
+                },
+            },
+            "f",
+        )
+        .expect("a wire outcome");
+        assert_eq!(out.status, 1, "code 0 on a Failure must not become success");
     }
 }
 
@@ -38800,6 +39506,26 @@ pub enum RequiredFloorDisposition {
     /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
     /// this is the identity grain the population join is keyed on.
     DeclinedDiscoveryExcluded { matched_substring: String },
+    /// Selected by the changed-witness sublane and NOT PRESENT IN THE DECLARED POPULATION at all,
+    /// because the module that declares it is outside the run's discovery roots.
+    ///
+    /// TWO RANGES OVER ONE POPULATION, which is what this variant exists to make sayable.
+    /// `changed_witness_set` is derived from the run's git diff and is ROOT-AGNOSTIC; the declared
+    /// population is enumerated from the discovered index, which is scoped to the run's
+    /// `--source-root`s. The selector's range is therefore strictly wider than the enumerator's,
+    /// so a witness homed outside those roots is SELECTABLE AND UNDECLARABLE by construction, and
+    /// every PR touching one used to refuse with `ChangedWitnessSublaneJoinInexact` naming
+    /// identities no in-diff edit could ever satisfy.
+    ///
+    /// It is a DECLINE and not a filter, deliberately. Dropping the selection before the join
+    /// would have greened the floor by making the over-selection invisible — the absorbing arm,
+    /// where the selector keeps over-selecting and nobody ever learns. This row is counted,
+    /// named, and carries the module, so the mismatch is visible in the disposition receipt.
+    ///
+    /// THIS DOES NOT RETIRE THE MISMATCH. The repair is that selection and disposition consume
+    /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
+    /// denominators have been reconciled.
+    DeclinedChangedWitnessOutsideDiscovery { module_path: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -39522,6 +40248,60 @@ fn write_required_floor_claim_cost_tsv(
     Ok(())
 }
 
+/// The cross-claim demand receipt: one row per RETAINED producer identity, whether or not more
+/// than one claim demanded it. The single-claim rows are kept deliberately — they are the
+/// control population that makes `claims > 1` mean something, and dropping them would leave an
+/// artifact in which every row looks shared.
+///
+/// The header line carries the census's own disclosure: how many claims were folded in, and what
+/// the retention floor and the key cap did NOT retain. An artifact that truncates without saying
+/// so is read as a population, which is the failure this instrument exists to stop making.
+fn write_required_floor_cross_claim_demand_tsv(
+    path: &str,
+    rows: &[v1_interpreter::CrossClaimDemandRow],
+    disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
+    claim_cpu_total_ms: u128,
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
+    writeln!(
+        file,
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
+        disclosure.claims_absorbed,
+        rows.len(),
+        disclosure.omitted_keys,
+        disclosure.omitted_ns / 1_000_000,
+        disclosure.overflow_keys,
+        disclosure.absorb_ns_total / 1_000_000,
+        disclosure.absorb_ns_max / 1_000_000,
+        claim_cpu_total_ms
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    writeln!(
+        file,
+        "producer\targ_shape\tclaims\tevals\ttotal_ms\tcross_claim_ms\tmodules\tmodule_sample\tdecl_site"
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            row.producer.replace(['\t', '\n'], " "),
+            row.arg_shape,
+            row.claims,
+            row.evals,
+            row.total_ns / 1_000_000,
+            row.cross_claim_wasted_ns() / 1_000_000,
+            row.modules,
+            row.module_sample.join(",").replace(['\t', '\n'], " "),
+            row.decl_site.replace(['\t', '\n'], " ")
+        )
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
 fn write_required_floor_disposition_tsv(
     path: &str,
     rows: &[RequiredFloorDispositionRow],
@@ -39552,6 +40332,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_outside_gate = 0usize;
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
+    let mut declined_changed_witness_outside_discovery = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -39564,13 +40345,17 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
                 declined_discovery_excluded += 1
             }
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                declined_changed_witness_outside_discovery += 1
+            }
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
-         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
+         \tdeclined_changed_witness_outside_discovery={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -39579,7 +40364,8 @@ fn write_required_floor_disposition_tsv(
         declined_outside_gate,
         declined_gate_closure,
         declined_discovery_excluded,
-        declined_cost_debt
+        declined_cost_debt,
+        declined_changed_witness_outside_discovery
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
@@ -40306,10 +41092,11 @@ pub use emitted_closure_compile_host::{
 /// public surface merely because Rust needs a path to it.
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
-    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, FixtureClosureOutcome,
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
+    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
