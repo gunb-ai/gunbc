@@ -4,6 +4,19 @@
 //! inferred `Node` stamps and owning type-item nodes — never lossy name strings re-looked up
 //! through first-pick authority helpers (`resolved_initializer_decl_ref`, etc.).
 
+// CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::unnecessary_to_owned,  // 3
+    unused_imports,  // 2
+    unused_variables,  // 2
+)]
+
 use std::rc::Rc;
 
 use im::HashMap;

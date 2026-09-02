@@ -15,6 +15,17 @@
 //! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B decodes
 //! worker A's snapshot against its own intern table without a cross-representation straddle.
 
+// CLIPPY ROSTER -- 1 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::new_without_default,  // 1
+)]
+
 use std::collections::HashMap as StdHashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};

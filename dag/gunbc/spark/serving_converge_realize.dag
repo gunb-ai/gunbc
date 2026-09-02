@@ -27,7 +27,7 @@ import gunbc.spark.serving_realization {
   ReloadUserManagerAfterRemoval,
 }
 import gunbc.spark.serving_desired { spark_serving_automation_principal_login, spark_serving_desired_manifest, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
-import extdeps.ollama.api { ollama_model_ref_wire }
+import extdeps.ollama.api { ollama_model_ref_wire, OllamaModelRef }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv, PlannedRemoteStep }
 import gunbc.typed_remote_file_write {
@@ -39,8 +39,12 @@ import gunbc.typed_remote_file_write {
 import gunbc.file_access { FileTreeScope }
 import gunbc.ollama_model_resolution {
   OllamaBlobDigest,
+  OllamaResolvedManifest,
   ollama_resolved_manifest_closure,
+  ollama_resolved_manifest_reference,
   ollama_resolved_manifest_sha256_digest,
+  UpstreamPublished,
+  LocallyMaterialized,
 }
 import gunbc.spark.serving_install_paths {
   spark_serving_desired_model_blobs_dir,
@@ -52,6 +56,10 @@ import gunbc.spark.serving_install_paths {
   spark_serving_blob_checksum_path,
   spark_serving_published_blob_path,
   spark_serving_registry_manifest_url,
+  spark_serving_registry_manifest_url_for,
+  spark_serving_registry_blob_url_for,
+  spark_serving_model_manifest_path_for,
+  spark_serving_model_manifest_dir_for,
   spark_serving_registry_blob_url,
   spark_serving_user_unit_path,
   spark_serving_user_unit_dir,
@@ -275,8 +283,58 @@ fn spark_serving_api_readiness_connect_timeout_word() -> String {
 // the 120b manifest by reference while declaring the 20b digest as its expected checksum and
 // installing the 20b blob closure. Reading the selection instead of restating it is what makes that
 // state unwritable rather than merely caught.
+// MATERIALIZATION IS A FETCH, AND A FETCH NEEDS SOMETHING TO FETCH FROM.
+//
+// Every step below -- fetch-manifest-by-reference, the per-blob pulls, the checksum declarations --
+// dials registry.ollama.ai. That is correct for an upstream-published library tag and IMPOSSIBLE for
+// a locally materialized one: deepseek-v4-gguf:no-h3-stop was produced by POST /api/create on the
+// cells themselves and has no upstream at all, so `curl` against its registry URL would 404 against
+// a path that never existed.
+//
+// THIS IS THE BRANCH THAT MAKES THE PROVENANCE SPLIT LOAD-BEARING RATHER THAN VOCABULARY. Without
+// it, pointing desired state at the locally materialized artifact would emit a plan whose first
+// remote command fails on a real host, at apply time, with a transport error that reads as a network
+// fault rather than as the category error it is. The refusal is typed, located, and names the
+// producer -- so the operator is told the artifact must be present because nothing can go and get
+// it, which is a fact about the artifact and not a failure of the run.
+//
+// WHAT IT DELIBERATELY DOES NOT DO is silently substitute a verify-only plan. An install plan that
+// quietly downgraded to "check what is already there" when it could not fetch would be DESIGN §5's
+// absorbing fallback -- widening on failure instead of refusing, and destroying the only signal that
+// this cell has no modeled way to reproduce its own serving artifact. Reproducing it is real missing
+// work; the refusal is what keeps it ranked.
 fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
-  match ollama_resolved_manifest_sha256_digest(m: spark_serving_desired_manifest) {
+  spark_serving_materialize_model_artifact_steps_for(manifest: spark_serving_desired_manifest)
+}
+
+// PARAMETERIZED SO BOTH ARMS STAY EXECUTABLE EVIDENCE. The nullary form above is what production
+// uses and it reads the one selecting row, which is the property the note on that row protects. But
+// with desired state now naming a locally materialized artifact, a check that could only ever see
+// the desired manifest would have exactly one reachable arm -- the refusal -- and the entire
+// fetch-and-verify sequence, which is the more dangerous half, would become unobservable the moment
+// it stopped being selected. The upstream arm is not dead code; it is one operator decision away.
+fn spark_serving_materialize_model_artifact_steps_for(
+  manifest: OllamaResolvedManifest,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match manifest.provenance {
+    LocallyMaterialized { producer: p, derived_from: _ } =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: join([
+          "the desired model manifest is locally materialized (",
+          p as String,
+          "), so it has no registry to fetch from and cannot be materialized by this plan",
+        ], ""),
+      }
+    UpstreamPublished { registry_authority: _ } =>
+      spark_serving_materialize_upstream_model_artifact_steps(manifest: manifest)
+  }
+}
+
+fn spark_serving_materialize_upstream_model_artifact_steps(
+  manifest: OllamaResolvedManifest,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  let model = ollama_resolved_manifest_reference(m: manifest)
+  match ollama_resolved_manifest_sha256_digest(m: manifest) {
     Absent =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "desired manifest identity is not a sha256 digest, so no sha256sum check line can be written for it",
@@ -298,7 +356,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
           raws: [
             "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
             "-o", spark_serving_staged_manifest_path() as String,
-            spark_serving_registry_manifest_url(),
+            spark_serving_registry_manifest_url_for(model: model),
           ],
         ),
         spark_serving_admit_typed_file_step(
@@ -317,7 +375,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
           ],
         ),
       ],
-      flat_map(ollama_resolved_manifest_closure(m: spark_serving_desired_manifest), b => spark_serving_materialize_blob_steps(blob: b)),
+      flat_map(ollama_resolved_manifest_closure(m: manifest), b => spark_serving_materialize_blob_steps(model: model, blob: b)),
     ),
     [
       spark_serving_admit_portable_remote_argv(
@@ -329,7 +387,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
         raws: [
           "mv", "-f",
           spark_serving_staged_manifest_path() as String,
-          spark_serving_desired_model_manifest_path() as String,
+          spark_serving_model_manifest_path_for(model: model) as String,
         ],
       ),
     ],
@@ -343,14 +401,14 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
 // checking afterwards would leave a corrupt file at the name the store reads, and the observe side
 // answers presence by filename. Staged, verified, then moved -- so a blob that exists under its
 // digest name is a blob that hashed to it.
-fn spark_serving_materialize_blob_steps(blob: OllamaBlobDigest) -> List<SparkServingInstallRemoteCommandsVerdict> {
+fn spark_serving_materialize_blob_steps(model: OllamaModelRef, blob: OllamaBlobDigest) -> List<SparkServingInstallRemoteCommandsVerdict> {
   [
     spark_serving_admit_portable_remote_argv(
       identity: concat("fetch-blob-", blob.hex as String) as NonEmptyStr,
       raws: [
         "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
         "-o", spark_serving_staged_blob_path(hex: blob.hex) as String,
-        spark_serving_registry_blob_url(hex: blob.hex),
+        spark_serving_registry_blob_url_for(model: model, hex: blob.hex),
       ],
     ),
     spark_serving_admit_typed_file_step(
