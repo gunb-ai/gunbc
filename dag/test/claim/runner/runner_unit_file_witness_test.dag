@@ -12,6 +12,14 @@ import gunbc.runner_unit {
 }
 import gunbc.runner_host_deploy { srv1_runner_host_deploy }
 import gunbc.host_converge { gunbc_runner_jobserver_default_fifo }
+import gunbc.compile_permit_scope {
+  CompilePermitScope,
+  HostPersistentPermitPool,
+  InvocationLocalParallelism,
+  fleet_compile_permit_scope,
+  permit_outlives_borrower
+}
+import std.measure { hardware_thread_count }
 import gunbc.runner_unit_file {
   RunnerUnitFileRendered,
   RunnerUnitFileRefused,
@@ -40,7 +48,7 @@ fn rendered_text(intent: RunnerUnitLifecycleIntent) -> String {
     rendering: runner_unit_file(
       deploy: srv1_runner_host_deploy,
       spec: srv1_spec(),
-      jobserver_fifo: gunbc_runner_jobserver_default_fifo,
+      permit_scope: fleet_compile_permit_scope,
       intent: intent,
     ),
   ) {
@@ -178,7 +186,7 @@ fn refusal_reason(spec: RunnerSpec) -> String {
   match gunbc_runner_unit_file(
     deploy: srv1_runner_host_deploy,
     spec: spec,
-    jobserver_fifo: gunbc_runner_jobserver_default_fifo,
+    permit_scope: fleet_compile_permit_scope,
   ) {
     RunnerUnitFileRefused { reason: r } => r as String
     RunnerUnitFileRendered { file: _ } => ""
@@ -196,4 +204,52 @@ test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> B
   string_contains(s: reason, pattern: "unknown rather than empty")
     && string_contains(s: reason, pattern: "matrix.runner")
     && reason != refusal_reason(spec: HostedRunner { label: UbuntuLatest })
+}
+
+
+// ── The permit scope, which is the fact both the unit and the required floor now read ───────────
+
+// THE CUTOVER ARM RENDERS A DIFFERENT UNIT, and this is the discriminating red for the whole
+// construction: if runner_unit_jobserver_environment ignored its scope and kept emitting the FIFO
+// pair, every witness above would stay green because they all render the live arm.
+fn invocation_local_text() -> String {
+  match runner_unit_text(
+    rendering: runner_unit_file(
+      deploy: srv1_runner_host_deploy,
+      spec: srv1_spec(),
+      permit_scope: InvocationLocalParallelism { jobs_per_slot: hardware_thread_count(count: 8) },
+      intent: gunbc_runner_lifecycle_intent,
+    ),
+  ) {
+    RunnerUnitText { text: t } => t
+    RunnerUnitTextRefused { reason: _ } => ""
+  }
+}
+
+test fn w_the_live_scope_lets_a_permit_outlive_its_borrower() -> Bool {
+  permit_outlives_borrower(scope: fleet_compile_permit_scope) == true
+}
+
+test fn w_invocation_local_parallelism_cannot_leak_a_permit() -> Bool {
+  permit_outlives_borrower(
+    scope: InvocationLocalParallelism { jobs_per_slot: hardware_thread_count(count: 8) },
+  ) == false
+}
+
+// THE MAKEFLAGS CLAUSE IS GONE UNDER THE CUTOVER ARM, not merely repointed. Handing cargo an auth
+// clause for a FIFO nobody serves is the silent-misconfig boundary extdeps.jobserver warns about:
+// cargo does not refuse an unrecognised clause, it builds unbounded.
+test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
+  let text = invocation_local_text()
+  !string_contains(s: text, pattern: "MAKEFLAGS")
+    && !string_contains(s: text, pattern: "CTRL_JOBSERVER_FIFO")
+    && string_contains(s: text, pattern: "\nEnvironment=CARGO_BUILD_JOBS=8\n")
+}
+
+// AND THE ORDERING DEPENDENCY LEAVES WITH IT. A unit ordering itself After a service the cutover
+// deleted is a fresh failure introduced by the fix, so the pair departs with the environment that
+// needed it -- while the live arm above still asserts both lines are present.
+test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool {
+  let text = invocation_local_text()
+  !string_contains(s: text, pattern: "ctrl-jobserver.service")
 }

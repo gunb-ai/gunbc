@@ -1,0 +1,49 @@
+module gunbc.compile_permit_scope
+
+import std.types { String, NonEmptyStr, Bool }
+import std.measure { HardwareThreadCount }
+import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
+
+// WHETHER A COMPILE PERMIT OUTLIVES THE PROCESS THAT BORROWED IT. That single fact is what makes
+// killing a running build either cheap or permanently expensive, and until now it was not written
+// down anywhere -- it was implied by the runner unit always rendering a shared FIFO, which made the
+// alternative unrepresentable rather than merely unchosen.
+//
+// The fleet's builds are bounded by a host-persistent GNU jobserver whose permits are returned
+// COOPERATIVELY. A SIGKILLed cargo returns nothing, so every permit that process held is lost for
+// the lifetime of the daemon; there is no reaper, and a host at zero permits still accepts jobs,
+// which is why the symptom is a slow queue rather than a failure. gunbc#9789 contained the CAUSE by
+// declaring NeverSupersedeRunning, and declared a DESIGN 4b(3) drop whose dissolve-on is this
+// capability: no client of the required floor holds a host-persistent cooperative permit -- either
+// the host FIFO is gone and compile parallelism is invocation-local to cargo, or the pool is
+// server-owned with admission that survives client death.
+//
+// This module makes that capability a MODELLED FACT rather than a sentence in an annotation, so the
+// containment retires by construction when the fleet changes rather than by someone remembering the
+// row exists. The two arms below are the two the trigger names as sufficient; a third arm belongs
+// here the day someone builds a server-owned pool, and not before -- an arm with no realization is
+// vocabulary invented ahead of its consumer.
+type CompilePermitScope
+  = HostPersistentPermitPool { fifo_path: String, daemon_service: NonEmptyStr }
+  | InvocationLocalParallelism { jobs_per_slot: HardwareThreadCount }
+
+// THE DECIDABLE QUESTION THE DISSOLVE-ON ASKS, answered by construction rather than by inspection.
+// A borrower that cannot outlive its own permit cannot leak one, so the invalid state has no
+// constructor under the second arm -- DESIGN 4b rung 4 for this class, reached by deleting the
+// shared resource rather than by watching it.
+fn permit_outlives_borrower(scope: CompilePermitScope) -> Bool {
+  match scope {
+    HostPersistentPermitPool { fifo_path: _, daemon_service: _ } => true
+    InvocationLocalParallelism { jobs_per_slot: _ } => false
+  }
+}
+
+// WHAT THE FLEET RUNS TODAY. Flipping this row is the cutover, and because both the runner unit's
+// environment and the required floor's supersession policy are DERIVED from it, the flip cannot
+// move one without the other -- which is the disagreement DESIGN section 3 forbids and the specific
+// way this containment could have gone stale: the fleet retires the FIFO, and CI keeps refusing to
+// supersede for a reason that stopped being true.
+data fleet_compile_permit_scope: CompilePermitScope = HostPersistentPermitPool {
+  fifo_path: gunbc_runner_jobserver_default_fifo,
+  daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+}

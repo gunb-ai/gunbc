@@ -30,6 +30,12 @@ import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
+import gunbc.compile_permit_scope {
+  CompilePermitScope,
+  HostPersistentPermitPool,
+  InvocationLocalParallelism,
+  fleet_compile_permit_scope
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -273,9 +279,29 @@ type WitnessFloorConcurrencyPolicy {
   running: RunningSupersessionPolicy
 }
 
+// THE RUNNING AXIS IS DERIVED FROM THE PERMIT SCOPE, not authored beside it.
+//
+// gunbc#9789 declared NeverSupersedeRunning and a DESIGN 4b(3) drop whose dissolve-on is a
+// capability: no client of the required floor holds a host-persistent cooperative permit. Written as
+// a literal, that row survives its own reason -- the fleet retires the FIFO and CI goes on refusing
+// to supersede, the drop stays standing, and nothing refuses because nothing joins the two facts.
+// DESIGN section 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is
+// the whole check; making it a function of gunbc.compile_permit_scope is what turns that sentence
+// into something the compiler evaluates rather than something a reviewer remembers.
+//
+// Restoring supersession while a permit still outlives its borrower restores the leak, which is why
+// this reads the scope rather than a date, a flag, or a hand-flipped row.
+fn running_supersession_for_permit_scope(scope: CompilePermitScope) -> RunningSupersessionPolicy {
+  match scope {
+    HostPersistentPermitPool { fifo_path: _, daemon_service: _ } => NeverSupersedeRunning
+    InvocationLocalParallelism { jobs_per_slot: _ } =>
+      SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
 data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
   pending: ReplaceExistingPending,
-  running: NeverSupersedeRunning
+  running: running_supersession_for_permit_scope(scope: fleet_compile_permit_scope)
 }
 
 data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running

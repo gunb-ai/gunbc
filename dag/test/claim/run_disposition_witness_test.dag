@@ -1,6 +1,7 @@
 module test.claim.run_disposition_witness_test
 
 import std.types { Bool }
+import std.measure { hardware_thread_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -9,7 +10,14 @@ import extdeps.github.actions_runs {
   run_conclusion_wire,
   run_settled
 }
+import gunbc.compile_permit_scope {
+  CompilePermitScope,
+  HostPersistentPermitPool,
+  InvocationLocalParallelism,
+  fleet_compile_permit_scope
+}
 import gunbc.witness_floor_workflow {
+  running_supersession_for_permit_scope,
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
   ReplaceExistingPending,
@@ -562,4 +570,45 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
     ConcurrencyScalar { group: _ } => false
   }
   live_holds && retaining_holds && superseding_holds
+}
+
+
+// ── The drop retires by construction, not by remembering ────────────────────────────────────────
+
+// THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON. gunbc#9789's declared DESIGN 4b(3) drop names a
+// capability as its dissolve-on -- no client of the required floor holds a host-persistent
+// cooperative permit. Authored as a literal, NeverSupersedeRunning would outlive that condition
+// silently: the fleet retires the FIFO, the leak stops, and CI keeps paying the latency of not
+// superseding because nothing joins the two facts. These two arms are that join executing.
+test fn w_a_leaking_permit_scope_refuses_to_supersede_a_running_run() -> Bool {
+  match running_supersession_for_permit_scope(
+    scope: HostPersistentPermitPool {
+      fifo_path: "/var/lib/ctrl/jobserver/host.fifo",
+      daemon_service: "ctrl-jobserver.service" as NonEmptyStr,
+    },
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// AND THE CUTOVER RESTORES SUPERSESSION WITHOUT ANYONE EDITING THIS POLICY. This is the arm that
+// makes the pair discriminating: a derivation that ignored its argument and answered
+// NeverSupersedeRunning for everything would pass the witness above and fail here.
+test fn w_a_non_leaking_permit_scope_restores_supersession() -> Bool {
+  match running_supersession_for_permit_scope(
+    scope: InvocationLocalParallelism { jobs_per_slot: hardware_thread_count(count: 8) },
+  ) {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    NeverSupersedeRunning => false
+  }
+}
+
+// THE LIVE ROW STILL PROJECTS WHAT CI ACTUALLY RUNS, so the derivation cannot quietly change the
+// emitted workflow while the two arms above stay green on fixtures.
+test fn w_the_live_policy_still_refuses_running_supersession() -> Bool {
+  match running_supersession_for_permit_scope(scope: fleet_compile_permit_scope) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
 }
