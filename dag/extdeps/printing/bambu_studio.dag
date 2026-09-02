@@ -1,0 +1,126 @@
+module extdeps.printing.bambu_studio
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.os.types { OperatingSystemProduct, UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts, Windows1124H2Build26100, Sequoia15 }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// Bambu Studio, the vendor's own slicer, as its OWN subject — not a field on the printer. DESIGN §3
+// external decomposition: the slicer is independently versioned from the machine it slices for, and
+// OrcaSlicer, its fork, is a third subject again. A printer module that enumerated its slicers would
+// be the generic-hub violation that rule names.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/bambulab/BambuStudio"
+  }
+}
+
+data bambu_studio_product_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "bambulab.com/en/download/studio"
+  }
+}
+
+data bambu_studio_release_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "api.github.com/repos/bambulab/BambuStudio/releases/latest"
+  }
+}
+
+data bambu_studio_flathub_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "flathub.org/apps/com.bambulab.BambuStudio"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.bambu_studio",
+      decl_name: "bambu_studio_platform_support",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [bambu_studio_release_api_authority, bambu_studio_flathub_authority],
+}
+
+// TWO AUTHORITIES FROM ONE VENDOR DISAGREE, AND THE MODEL CARRIES BOTH RATHER THAN PICKING.
+//
+// The A1 mini specification table, relayed by the operator from the product page, states the slicer's
+// supported operating systems as "MacOS, Windows". The vendor's own release feed, fetched
+// first-party from this environment, publishes BambuStudio_ubuntu22.04-*.AppImage and
+// BambuStudio_ubuntu24.04-*.AppImage as release assets, and Flathub serves the application. Both are
+// the vendor speaking. They do not agree.
+//
+// WHY NOT JUST RECORD "LINUX IS SUPPORTED". Because that resolves a disagreement this repository
+// has no authority to resolve, and it discards the fact that is actually load-bearing for an
+// operator: the SPEC SHEET does not promise Linux, so a Linux regression is not a warranty claim,
+// while the RELEASE FEED demonstrably ships Linux binaries, so the toolchain can be Linux-native
+// today. A consumer planning a Linux workstation needs the second; a consumer deciding what the
+// vendor is contractually committed to needs the first. Collapsing to one erases the other, and the
+// collapse would be invisible — the surviving row looks equally authoritative either way.
+//
+// This is the shape DESIGN §3 calls a MEANING FORK if it were left implicit: one spelling
+// ("supported OS") carrying two materially different obligations. Naming the two claims separately,
+// each with its own authority, is what keeps it from being one.
+type PlatformSupportClaimKind
+  = SpecificationSheetClaim
+  | PublishedReleaseArtifact
+
+type PlatformSupportClaim sole_constructor {
+  kind: PlatformSupportClaimKind
+  platform: OperatingSystemProduct
+  authority: ExternalAuthority
+  note: NonEmptyStr
+}
+
+data bambu_studio_spec_sheet_platforms: List<PlatformSupportClaim> = [
+  PlatformSupportClaim {
+    kind: SpecificationSheetClaim,
+    platform: MacosOs { distro: Sequoia15 },
+    authority: bambu_studio_product_page_authority,
+    note: "A1 mini specification table, 'Slicer Supported OS: MacOS, Windows', relayed by the operator 2026-09-01. The table names the OS family without an edition; Sequoia15 is this corpus's macOS surface row and is NOT part of the vendor's claim.",
+  },
+  PlatformSupportClaim {
+    kind: SpecificationSheetClaim,
+    platform: WindowsOs { distro: Windows1124H2Build26100 },
+    authority: bambu_studio_product_page_authority,
+    note: "Same table, same relay. Edition is this corpus's Windows surface row and is not stated by the vendor table.",
+  },
+]
+
+// Fetched first-party: api.github.com answers 200 from this environment, so these asset names were
+// READ, not relayed. The release carrying them is v02.08.02.61. Ubuntu 22.04 is also published; only
+// the 24.04 asset is modelled here because NobleNumbat2404Lts is the surface row this corpus carries,
+// and inventing a 22.04 row to be complete would mint an OS product for a claim nothing consumes.
+data bambu_studio_release_artifact_platforms: List<PlatformSupportClaim> = [
+  PlatformSupportClaim {
+    kind: PublishedReleaseArtifact,
+    platform: UbuntuOs { distro: NobleNumbat2404Lts },
+    authority: bambu_studio_release_api_authority,
+    note: "Release asset BambuStudio_ubuntu24.04-v02.08.02.61-*.AppImage, read first-party from the release API 2026-09-01. Flathub additionally serves com.bambulab.BambuStudio.",
+  },
+]
+
+// THE JOIN IS A CONCATENATION, NOT AN ADJUDICATION, and reading it requires knowing that.
+//
+// The two rosters disagree about Linux: the specification table lists macOS and Windows only, while
+// the release feed publishes Ubuntu AppImages. Every claim below therefore carries its own kind and
+// its own authority, and nothing in this module says which wins — a Linux toolchain is demonstrably
+// available and is not promised by the spec sheet, and those are both true at once.
+//
+// The disagreement is not restated as a datum here. An earlier revision carried it as a standalone
+// NonEmptyStr, which is the unclassified prose DESIGN section 4c forbids: every fact in that
+// sentence is already in a typed row above (the kinds, the platforms, the authorities, the asset
+// names), so the row duplicated modelled data in a form no program can read. What is left is the
+// rationale for the shape, which is what an annotation is for.
+data bambu_studio_platform_support: List<PlatformSupportClaim> = concat(
+  bambu_studio_spec_sheet_platforms,
+  bambu_studio_release_artifact_platforms
+)

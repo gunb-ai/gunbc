@@ -1,0 +1,69 @@
+module test.claim.printed_chassis_admitted_realization_seal_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The seal on product.printed_chassis.realization_contract.DecodedRealizationV0 is what makes
+// judge_realization the ONLY route from wire bytes to a judged realization: a foreign module that
+// could write the record literal could hand a downstream consumer an admitted value that never
+// passed decode. A probe run before the seal landed proved the arm WAS forgeable, and that probe
+// measured nothing until a must-fail control distinguished "forgery permitted" from "the file was
+// never compiled" -- so the evidence here is a DIFFERENTIAL between two sources that differ on one
+// axis, plus a class-and-subject scoped count, which are the two exact forms
+// gunbc.compile_diagnostic_census names. Asserting a total-count zero would be wrong: the imported
+// closure carries its own diagnostics into both censuses, and it is precisely their cancellation
+// under the differential that leaves the forged literal as the only difference.
+
+data forged_source: String = "module probe_chassis_forged_admitted\nimport product.printed_chassis.realization_contract { DecodedRealizationV0 }\nimport product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation }\nimport std.measure { micrometer }\nimport std.types { List }\nfn forged() -> DecodedRealizationV0 {\n  DecodedRealizationV0 {\n    plate: plate_dimensions(size_x: micrometer(count: 1), size_y: micrometer(count: 1), size_z: micrometer(count: 1)),\n    features: [],\n  }\n}\n"
+
+data lawful_source: String = "module probe_chassis_lawful_admitted\nimport product.printed_chassis.realization_contract { DecodedRealizationV0 }\nimport product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation }\nimport std.measure { micrometer }\nimport std.types { List }\nfn lawful(value: DecodedRealizationV0) -> DecodedRealizationV0 {\n  value\n}\n"
+
+fn rows_of_subject(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => r.subject_name == wanted)
+}
+
+// -1 on the NotRunnable arm, so a harness that never ran can satisfy no witness below: every
+// assertion here compares against a non-negative quantity.
+fn seal_violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(
+      rows: rows_of_subject(
+        rows: census_rows_of_class(
+          rows: census_blocking_rows(rows: rows),
+          wanted: "SoleConstructorViolation"
+        ),
+        wanted: "DecodedRealizationV0"
+      )
+    )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn w_foreign_record_literal_of_admitted_realization_refuses() -> Bool {
+  seal_violation_count(source: forged_source) >= 1
+}
+
+// The positive control. Same imports, same closure, no record literal: it proves the type is
+// resolvable and legally nameable from a foreign module, so the red above is the literal being
+// refused and not the import failing to resolve.
+test fn w_lawful_foreign_use_of_admitted_realization_is_unsealed() -> Bool {
+  seal_violation_count(source: lawful_source) == 0
+}
+
+// The differential. Written as its own witness rather than left implicit in the pair, because the
+// two counts above could both be satisfied by a census whose rows were dominated by the shared
+// closure; the subtraction is what states that the forged literal is the whole difference.
+test fn w_the_seal_is_the_only_difference_between_the_two_sources() -> Bool {
+  seal_violation_count(source: forged_source) - seal_violation_count(source: lawful_source) >= 1
+}

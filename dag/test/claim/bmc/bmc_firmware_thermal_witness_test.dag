@@ -118,7 +118,8 @@ import gunbc.bmc_fan_alignment_standing {
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
   BmcFanPolicyDurabilityQualified,
-  BmcFanPolicyDurabilityVerdictRefused,
+  BmcFanPolicyDurabilityRefused,
+  BmcFanPolicyDurabilityEvidenceConstructionRefused,
   bmc_fan_durability_refusal_reason,
   bmc_fan_policy_classification,
   bmc_fan_policy_durability_gate,
@@ -692,11 +693,9 @@ test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
 
 test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool {
   let reason = bmc_fan_durability_refusal_reason(
-    verdict: StateDurabilityRefused {
-      cause: DurabilityPerturbationGenerationMismatch {
-        expected: 1,
-        observed: 2,
-      },
+    cause: DurabilityPerturbationGenerationMismatch {
+      expected: 1,
+      observed: 2,
     },
   )
   string_contains(s: reason, pattern: "perturbation generation mismatch")
@@ -719,38 +718,60 @@ test fn srv4_durability_gate_preserves_typed_linkage_refusal_verdict() -> Bool {
     },
     durability_evidence: [],
   ) {
-    BmcFanPolicyDurabilityVerdictRefused {
-      verdict: StateDurabilityRefused {
-        cause: DurabilityDefinitionLinkageUnavailable {
-          count: count,
-          assertions: assertions,
-          realization: _,
-          capability: _,
-        },
+    BmcFanPolicyDurabilityRefused {
+      cause: DurabilityDefinitionLinkageUnavailable {
+        count: count,
+        assertions: assertions,
+        realization: _,
+        capability: _,
       },
     } => count == 6 && list_length(items: assertions) == 6
+    BmcFanPolicyDurabilityRefused { cause: _ } => false
     BmcFanPolicyDurabilityQualified { qualification: _ } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityQualified { qualification: _ } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityIntentUnspecified } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityRequirementDuplicate { boundary: _, count: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityCapabilityMissing } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityCapabilityAdmissionMismatch { expected_realization: _, observed_realization: _, expected_capability_version: _, observed_capability_version: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityCommitBarrierMissing { realization: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityBoundaryUnsupported { realization: _, boundary: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityEvidenceMissing { admission: _, boundary: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityEvidenceAmbiguous { admission: _, boundary: _, count: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityPerturbationTargetMismatch { expected: _, observed: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityPerturbationBoundaryMismatch { expected: _, observed: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityPerturbationGenerationMismatch { expected: _, observed: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityReadbackReceiptLinkMismatch { position: _, expected_receipt_id: _, observed_receipt_id: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityReadbackTargetMismatch { position: _, expected: _, observed: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityReadbackSubjectMismatch { position: _, expected: _, observed: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityDesiredStateMismatch { desired: _, before: _, after: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityActivationReceiptLinkMismatch { expected_receipt_id: _, observed_receipt_id: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityActivationScopeMismatch { expected: _, observed: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityActivationUnverified { reason: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityStateLost { before: _, after: _, reason: _ } } } => false
-    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityObservationRefused { reason: _ } } } => false
+    BmcFanPolicyDurabilityEvidenceConstructionRefused { cause: _ } => false
+  }
+}
+
+// THE PAIR IS WHAT MAKES THE GATE'S THIRD STANDING REAL. Before it, a construction refusal
+// reached the same arm as `Absent` and the qualification simply ran over a shorter evidence
+// list, so the durability question could still be answered -- from evidence that was never
+// built. The negative shows the refusal now stops the gate; the control shows a genuine
+// absence still does not, which is what separates "no evidence" from "evidence refused".
+
+test fn a_refused_evidence_construction_stops_the_durability_gate() -> Bool {
+  match bmc_fan_policy_durability_gate(
+    intent: fleet_bmc_valid_state,
+    host: srv4_host.identity,
+    projection: srv4_bmc_fan_projection_capability,
+    durability_generation: srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present {
+      value: BmcFanDurabilityEvidenceConstructionRefused {
+        cause: DurabilityReceiptDigestMismatch,
+      },
+    },
+    durability_evidence: [],
+  ) {
+    BmcFanPolicyDurabilityEvidenceConstructionRefused {
+      cause: DurabilityReceiptDigestMismatch,
+    } => true
+    BmcFanPolicyDurabilityEvidenceConstructionRefused { cause: _ } => false
+    BmcFanPolicyDurabilityRefused { cause: _ } => false
+    BmcFanPolicyDurabilityQualified { qualification: _ } => false
+  }
+}
+
+test fn an_absent_evidence_construction_is_not_read_as_a_refusal() -> Bool {
+  match bmc_fan_policy_durability_gate(
+    intent: fleet_bmc_valid_state,
+    host: srv4_host.identity,
+    projection: srv4_bmc_fan_projection_capability,
+    durability_generation: srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Absent,
+    durability_evidence: [],
+  ) {
+    BmcFanPolicyDurabilityEvidenceConstructionRefused { cause: _ } => false
+    BmcFanPolicyDurabilityRefused { cause: _ } => true
+    BmcFanPolicyDurabilityQualified { qualification: _ } => true
   }
 }
 
@@ -1148,8 +1169,7 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
       cause: DurabilityReceiptDigestMismatch,
     } => true
     BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
-    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptBoundaryMismatch { reset_type: _ } } => false
-    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptNonPositiveInterval { cause: _ } } => false
+    BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
   }
 }
 
@@ -1397,7 +1417,6 @@ test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
       },
     } => true
     BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
-    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptDigestMismatch } => false
-    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptBoundaryMismatch { reset_type: _ } } => false
+    BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
   }
 }

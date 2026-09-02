@@ -12,6 +12,7 @@ import v2.std.diagnostic {
   sequence_outcome,
   invariant_port_locus,
   Diagnostic,
+  Some,
   ExternalContractUnknown,
   Unavailable,
 }
@@ -42,6 +43,7 @@ fn diagnostic_b() -> Diagnostic {
 test fn witness_sequence_outcome_empty_accepts() -> Bool {
   match sequence_outcome(xs: [], policy: short_circuit_policy) {
     Accepted { value: vs, diagnostics: None } => vs.length() == 0
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
     Rejected { diagnostics: _ } => false
   }
 }
@@ -53,6 +55,7 @@ test fn witness_sequence_outcome_collects_values() -> Bool {
   ) {
     Accepted { value: vs, diagnostics: None } =>
       (vs.length() == 2) && (vs.first() == 1) && (vs.skip(n: 1).first() == 2)
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
     Rejected { diagnostics: _ } => false
   }
 }
@@ -78,6 +81,7 @@ test fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool {
   ) {
     Accepted { value: vs, diagnostics: None } =>
       (vs.length() == 2) && (vs.first() == 1) && (vs.skip(n: 1).first() == 2)
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
     Rejected { diagnostics: _ } => false
   }
 }
@@ -101,4 +105,3 @@ test fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() ->
     Rejected { diagnostics: d } => d.tail.length() == 0
   }
 }
-
