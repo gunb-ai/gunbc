@@ -566,7 +566,43 @@ data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = Guaran
   next_rung_trigger: "associativity of a declared operation is expressible and checkable -- SUFFICIENT FOR n-ary application of a binary operation declared associative to fold to nested binary application, which is what gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding waits on. Magma<T> is { op: fn(T, T) -> T } and Semigroup<T> is { op: fn(T, T) -> T }: structurally identical, differing by a blank line where the law would sit, so the type whose ENTIRE content is the associativity law carries no law. This is a DESIGN section 5 wall-after-grounding rather than a ratchet -- associativity of a DECLARED operation is a modeled fact, not an undecidable property of an arbitrary function."
 }
 
+
+// THE MICROVM GUEST SIZE, filed by the change that removed the wrong derivation rather than by a
+// later reviewer. This is AwaitsOneGrounding and not ClimbableButUnbuilt: the obstacle is not
+// unwritten code, it is that the quantity to subtract may not exist as a constant at all -- a
+// VMM's resident footprint scales with guest size through page tables, with the device model, and
+// with host page size, so what upstream documents is typically a MEASURED overhead for one stated
+// configuration, which is an observation about one boot rather than a property of the realization.
+// A trigger reading "model the overhead" would presume that number exists and would be
+// unsatisfiable in exactly the way this carrier's own rows warn about.
+//
+// THE TRIGGER CARRIES TWO CLAUSES AND BOTH ARE REQUIRED, because satisfying the first alone would
+// take the admission's accept arm live having never executed. Retargeting the microVM witnesses
+// onto the refusal path left the success path with NO executed coverage: RunnerMicroVmAdmitted is
+// unreachable while sizing refuses, so every witness now proves a gate is passed on the way to a
+// refusal and none proves an admissible VM is admitted. A gate whose accept arm has never run is
+// not a gate that has been tested.
+data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.runner_microvm guest RAM is not derivable from the bounded cell's resource envelope, because the Firecracker VMM process shares that cell and its own resident footprint is the subtrahend",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "what quantity, if any, relates a cell's MemoryMax to an admissible guest RAM -- which may be a cited footprint, or may be the finding that guest RAM is an operator-declared input BOUNDED BY the envelope rather than derived from it, with the envelope as the ceiling the admission checks against instead of the value it hands over",
+  },
+  population: BoundedPopulation {
+    members: [
+      "gunbc.runner_microvm runner_microvm_sizing_of_cores",
+      "gunbc.runner_microvm runner_microvm_size_from_cell_envelope",
+      "gunbc.runner_microvm runner_microvm_admission_after_credential",
+      "gunbc.runner_microvm gunbc_runner_microvm_vm_config",
+      "test.claim.runner.runner_microvm_witness_test",
+    ],
+  },
+  next_rung_trigger: "BOTH of: (1) a quantity in extdeps.virtualization.firecracker SUFFICIENT TO DERIVE an admissible guest RAM from a cell resource envelope, or a decision that guest RAM is a declared input bounded by that envelope -- either answer discharges the grounding, an unanswered citation does not; AND (2) an executing witness that an ADMISSIBLE VM IS ADMITTED, restoring coverage of RunnerMicroVmAdmitted, which is unreachable today and would otherwise go live unexercised. Clause 1 alone leaves the accept arm shipped without ever having run"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
   heterogeneous_child_list_stall,

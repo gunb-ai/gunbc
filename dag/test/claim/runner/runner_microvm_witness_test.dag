@@ -31,7 +31,7 @@ import gunbc.runner_microvm {
   RunnerMicroVmSizing,
   MicroVmSized,
   MicroVmSizeUnresolved,
-  runner_microvm_size_from_cell_envelope,
+  runner_microvm_sizing_of_cores,
   gunbc_runner_microvm_vm_config,
   JitCredentialTransport,
   JitConfigOnReadOnlyDrive,
@@ -45,8 +45,8 @@ import gunbc.runner_microvm {
   gunbc_runner_guest_image,
 }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
-import std.measure { mebibyte_count, hardware_thread_count_value, byte_size_count, mebibyte_to_byte_size }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
+import std.measure { mebibyte_count, hardware_thread_count_value }
+import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
 
 // THE SPECIMEN CONFIGURATION IS THE FLEET'S OWN VM, BUILT THROUGH THE CONSTRUCTOR THAT HAS NO SIZE
 // ARGUMENT, so the configuration every admission witness below is judged against carries the
@@ -96,17 +96,6 @@ fn mvp_sized_config() -> FirecrackerVmConfig {
   )
 }
 
-fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
-  match a {
-    RunnerMicroVmAdmitted => true
-    RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
-    RunnerMicroVmRefusedSharedCredential { reason: _ } => false
-    RunnerMicroVmRefusedMalformedVm { reason: _ } => false
-    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
-    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
-  }
-}
-
 fn admission_is_orphan_refusal(a: RunnerMicroVmAdmission) -> Bool {
   match a {
     RunnerMicroVmRefusedOrphanableUnit { reason: _ } => true
@@ -137,6 +126,17 @@ fn admission_is_envelope_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+  }
+}
+
+fn admission_is_envelope_unresolved_refusal(a: RunnerMicroVmAdmission) -> Bool {
+  match a {
+    RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => true
+    RunnerMicroVmAdmitted => false
+    RunnerMicroVmRefusedOrphanableUnit { reason: _ } => false
+    RunnerMicroVmRefusedSharedCredential { reason: _ } => false
+    RunnerMicroVmRefusedMalformedVm { reason: _ } => false
+    RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
   }
 }
 
@@ -188,7 +188,7 @@ test fn cgroup_teardown_admits_the_same_microvm() -> Bool {
   match specimen_resolution() {
     MicroVmConfigUnresolved { cause: _ } => false
     MicroVmConfigResolved { config: c } =>
-    admission_is_admitted(
+    admission_is_envelope_unresolved_refusal(
       a: runner_microvm_admission(
         topology: VmmUnderLifecycleController,
         intent: repaired_lifecycle_intent,
@@ -274,7 +274,7 @@ test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
   match specimen_resolution() {
     MicroVmConfigUnresolved { cause: _ } => false
     MicroVmConfigResolved { config: c } =>
-    admission_is_admitted(
+    admission_is_envelope_unresolved_refusal(
       a: runner_microvm_admission(
         topology: VmmIsMainProcess,
         intent: deployed_lifecycle_intent,
@@ -293,7 +293,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
   match specimen_resolution() {
     MicroVmConfigUnresolved { cause: _ } => false
     MicroVmConfigResolved { config: c } =>
-    admission_is_admitted(
+    admission_is_envelope_unresolved_refusal(
       a: runner_microvm_admission(
         topology: VmmIsMainProcess,
         intent: deployed_lifecycle_intent,
@@ -338,82 +338,75 @@ test fn guest_image_runner_is_the_cited_fleet_release() -> Bool {
 
 // THE FCI-1 RECONCILIATION, STATED AS EXECUTED WITNESSES RATHER THAN AS A PARAGRAPH IN THE MODULE.
 
-// THE CELL'S ENVELOPE RESOLVES AT ALL. Every admission witness above is judged against a
-// configuration built from this resolution, so if it stopped resolving those witnesses would be
-// measuring a substituted fixture instead of the fleet's VM. This is the guard that makes their
-// green mean what it says, and it is asserted rather than assumed for exactly that reason.
-test fn the_bounded_cell_envelope_resolves() -> Bool {
-  match runner_microvm_size_from_cell_envelope() {
-    MicroVmSized { size: _ } => true
-    MicroVmSizeUnresolved { cause: _ } => false
+// Local one-liner over the builtin rather than an import: several test files already declare their
+// own string-containment helper, so a shared bare name would be ambiguous corpus-wide. This is a
+// witness's incidental helper, not a shared authority, and it is named for what it reads.
+fn cause_mentions(cause: String, needle: String) -> Bool {
+  cause.contains(needle)
+}
+
+// WHAT THIS BLOCK NO LONGER CLAIMS, STATED BEFORE WHAT IT DOES. Until this change these witnesses
+// asserted that the fleet's VM carries the cell's resource envelope on both axes, and that the
+// admission admits it. That claim was FALSE, and false in the direction that looks correct: the
+// derived guest RAM was the cell's entire MemoryMax, leaving nothing inside the same cell for the
+// Firecracker VMM process itself. The witnesses were green over a guest that would OOM the slice
+// it was supposed to be bounded by. They are replaced, not repaired, because the thing they
+// demonstrated is not true.
+//
+// WHAT IS DEMONSTRATED NOW IS SMALLER AND IT IS TRUE: that an underivable guest size REFUSES, and
+// that the refusal names WHICH fact is missing rather than refusing uniformly. That distinction is
+// invisible from outside unless both arms execute, which is what the pair below is for.
+
+// ARM ONE OF THE PAIR: an unresolved core count refuses on the CORE axis, carrying the upstream
+// cause forward rather than replacing it.
+test fn an_unresolved_core_count_refuses_naming_the_core_count() -> Bool {
+  match runner_microvm_sizing_of_cores(
+    cores: CoresPerSlotUnresolved { cause: "no surveyed memory-per-core figure" },
+  ) {
+    MicroVmSized { size: _ } => false
+    MicroVmSizeUnresolved { cause: c } => cause_mentions(cause: c, needle: "core count is unresolved")
   }
 }
 
-// THE DERIVED SIZE IS THE CELL'S OWN ENVELOPE ON BOTH AXES, READ BACK FROM THE AUTHORITIES THE
-// CGROUP BOUNDARY READS. This is the join FCI-1 freezes as `cell-resource-envelope`: the guest's
-// machine configuration and gunbc.fabric_cell_effect's slice directives are two projections of
-// gunbc_runner_slot_desired, and this witness is what makes "two projections" a measured claim
-// rather than an assertion. It compares against the ceiling and the core resolution DIRECTLY --
-// not against a literal copied out of them, which would be a change detector (DESIGN 5).
-test fn the_derived_vm_size_is_the_cell_resource_envelope() -> Bool {
-  match runner_microvm_size_from_cell_envelope() {
-    MicroVmSizeUnresolved { cause: _ } => false
-    MicroVmSized { size: s } =>
-      match gunbc_runner_cores_per_slot() {
-        CoresPerSlotUnresolved { cause: _ } => false
-        CoresPerSlotResolved { threads: want_threads } =>
-          hardware_thread_count_value(t: s.vcpu_count) == hardware_thread_count_value(t: want_threads)
-            && byte_size_count(b: mebibyte_to_byte_size(m: s.memory))
-              == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
-      }
+// ARM TWO, AND THE ONE THAT MAKES THE PAIR DISCRIMINATING: a RESOLVED core count reaches a
+// DIFFERENT cause -- the missing Firecracker footprint. Both arms refuse; a uniform refusal and a
+// reporting one are indistinguishable without this comparison, so the two causes are asserted to
+// differ rather than merely to exist.
+test fn a_resolved_core_count_refuses_naming_the_missing_vmm_footprint() -> Bool {
+  match runner_microvm_sizing_of_cores(cores: gunbc_runner_cores_per_slot()) {
+    MicroVmSized { size: _ } => false
+    MicroVmSizeUnresolved { cause: c } =>
+      cause_mentions(cause: c, needle: "extdeps.virtualization.firecracker")
+        && !cause_mentions(cause: c, needle: "core count is unresolved")
   }
 }
 
-// THE DISCRIMINATING RED FOR THE ENVELOPE WALL. The srv4 MVP VM -- 4 vCPU, 4 GiB -- is a real
-// configuration that really booted, and it is exactly the shape the wall exists to refuse: a guest
-// sized under the bounded cell's ceiling makes the same work die inside a slice that still had
-// room. Refused, and refused with THAT cause rather than a generic no.
-test fn the_mvp_sized_vm_is_refused_against_the_cell_envelope() -> Bool {
-  admission_is_envelope_refusal(
-    a: runner_microvm_admission(
-      topology: VmmUnderLifecycleController,
-      intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: mvp_sized_config(),
-    ),
-  )
-}
-
-// THE MVP ROW IS NOT THIS FLEET'S SIZING, ASSERTED SO THAT NOBODY MAY QUIETLY START CONSUMING IT AS
-// ONE. If the MVP row ever equalled the cell envelope, the witness above would be green by
-// coincidence rather than by the wall, and this is the arm that says so out loud.
-test fn the_mvp_size_is_not_the_cell_envelope() -> Bool {
-  match runner_microvm_size_from_cell_envelope() {
-    MicroVmSizeUnresolved { cause: _ } => false
-    MicroVmSized { size: want } =>
-      !(hardware_thread_count_value(t: runner_microvm_mvp_size.vcpu_count)
-          == hardware_thread_count_value(t: want.vcpu_count)
-        && mebibyte_count(m: runner_microvm_mvp_size.memory) == mebibyte_count(m: want.memory))
+// THE vCPU AXIS IS NOT WHAT IS BLOCKED, AND THE FLEET'S REAL CELL PROVES IT. If this ever went red
+// the refusal above would have become a blanket "nothing is sizable", which is a different and
+// weaker claim than the one the cause text makes.
+test fn the_cell_core_count_still_resolves() -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) > 0
   }
 }
 
-// THE FLEET CONSTRUCTOR HAS NO SIZE AXIS TO GET WRONG, AND ITS OUTPUT PASSES THE WALL IT IS NOT
-// CHECKED BY. This is the positive control for construction-over-validation: the same admission
-// that refuses the MVP configuration admits the derived one, so the wall is discriminating rather
-// than constant, and the constructed path needs no fixing up to clear it.
-test fn the_fleet_constructed_vm_carries_the_cell_envelope() -> Bool {
+// NO GUEST IS ADMISSIBLE WHILE THE MEMORY AXIS REFUSES, INCLUDING THE FLEET-CONSTRUCTED ONE. This
+// is the honest replacement for the old positive control: the constructed configuration reaches
+// the envelope arm rather than being admitted by it, so nothing downstream may treat a
+// fleet-constructed VM as cleared.
+test fn no_fleet_constructed_vm_is_admissible_while_the_footprint_is_unmodeled() -> Bool {
   match specimen_resolution() {
-    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigUnresolved { cause: _ } => true
     MicroVmConfigResolved { config: c } =>
-    admission_is_admitted(
-      a: runner_microvm_admission(
-        topology: VmmUnderLifecycleController,
-        intent: repaired_lifecycle_intent,
-        listener_is_main_process: false,
-        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-        config: c,
-      ),
-    )
+      admission_is_envelope_unresolved_refusal(
+        a: runner_microvm_admission(
+          topology: VmmUnderLifecycleController,
+          intent: repaired_lifecycle_intent,
+          listener_is_main_process: false,
+          transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+          config: c,
+        ),
+      )
   }
 }

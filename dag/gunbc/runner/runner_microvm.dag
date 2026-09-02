@@ -6,10 +6,8 @@ import std.measure {
   HardwareThreadCount,
   mebibyte,
   mebibyte_count,
-  mebibyte_scale_factor_bytes,
   hardware_thread_count,
   hardware_thread_count_value,
-  byte_size_count,
 }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
@@ -20,8 +18,8 @@ import product.fabric.isolation {
   isolation_profile_satisfies,
 }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
   gunbc_runner_cores_per_slot,
+  RunnerCoresPerSlotResolution,
   CoresPerSlotResolved,
   CoresPerSlotUnresolved,
 }
@@ -135,36 +133,65 @@ data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
 // cgroup ledger the fleet reads would show the slice well under its limit while the job died.
 // Nothing here validates the two into agreement, because there is only one of them.
 //
-// BOTH AXES REFUSE RATHER THAN DEFAULTING. gunbc_runner_cores_per_slot is already a typed
-// resolution with an Unresolved arm, and it is consumed as one; a memory ceiling that is not a
-// whole number of mebibytes cannot be stated to Firecracker at all, whose machine_config is
-// denominated in MiB, so rounding it would silently hand the guest a different ceiling than the
-// slice enforces. That is the absorbing fallback DESIGN 5 names, one field wide.
+// THE MEMORY AXIS DOES NOT RESOLVE, AND THAT IS THE HONEST ANSWER TODAY.
+//
+// Deriving the guest's RAM as the cell's whole MemoryMax was WRONG, and wrong in the direction that
+// looks most like right. `machine_config.mem_size_mib` is GUEST RAM; the Firecracker VMM process
+// that owns the guest lives inside the SAME cell. Guest RAM equal to the ceiling therefore leaves
+// nothing for the VMM's own resident footprint, so the slice OOM-kills the VM it exists to hold.
+//
+// It is the same class as the authored 4 GiB this module used to carry, inverted. Undersized, the
+// work dies inside a guest whose slice had room. Sized at exactly the ceiling, the guest believes
+// it has an envelope the cell cannot honour. Deriving the number fixed the AUTHORITY question --
+// there is still only one envelope -- and left the ARITHMETIC one: the safety property is not that
+// the guest EQUALS the envelope, it is that the guest PLUS its realization FITS INSIDE it.
+// Equality is the specific wrong answer that most resembles the right one, which is why it
+// survived both authoring and review.
+//
+// SO THE SUBTRAHEND IS THE MISSING FACT. Guest RAM is the cell envelope minus the Firecracker
+// realization's own footprint, and extdeps.virtualization.firecracker cites no such quantity -- it
+// models the config SHAPES and the single-root rule, and nothing about what the VMM itself costs.
+// Inventing a figure here would be a fabricated plausible output (DESIGN 5) wearing a derivation's
+// clothes. The memory axis therefore refuses with a cause naming the missing fact.
+//
+// THE vCPU AXIS IS UNAFFECTED, and saying so is the point. The core count IS derivable from the
+// cell. The claim is not "no guest is sizable", it is "no guest RAM is sizable", and the two
+// refusal arms below keep that difference visible instead of collapsing both axes into one
+// silence: an unresolved core count and an unmodeled VMM footprint reach DIFFERENT typed causes.
+// A refusal that reports which fact is missing and one that refuses uniformly are
+// indistinguishable from outside unless something executes both.
+//
+// WHAT WAS DELETED WITH THE DERIVATION, so it is not read as an oversight: the whole-mebibyte
+// check. It asked whether a byte count divides evenly into MiB so it can be stated to
+// machine_config. There is now no such byte count -- the quantity whose wholeness mattered was the
+// GUEST size, and that is exactly what no longer resolves. Asking it of the ENVELOPE instead would
+// test an operand the code no longer states to Firecracker: a check whose red cannot be authored,
+// which DESIGN 4b calls a decoration and which would be worse than absent because it would be
+// cited as coverage.
 type RunnerMicroVmSizing
   = MicroVmSized { size: RunnerMicroVmSize }
   | MicroVmSizeUnresolved { cause: String }
 
-fn runner_microvm_size_from_cell_envelope() -> RunnerMicroVmSizing {
-  match gunbc_runner_cores_per_slot() {
+// THE CORE RESOLUTION IS A PARAMETER SO BOTH ARMS ARE AUTHORABLE. gunbc_runner_cores_per_slot is
+// nullary and resolves from surveyed host facts, so at the fleet call site its unresolved arm
+// cannot be reached by any input a witness can supply. Taking the resolution as an argument is
+// what makes the two causes discriminable by execution rather than by reading; the fleet entry
+// point below still supplies the real one, so there is no second authority for the envelope.
+fn runner_microvm_sizing_of_cores(cores: RunnerCoresPerSlotResolution) -> RunnerMicroVmSizing {
+  match cores {
     CoresPerSlotUnresolved { cause: c } =>
       MicroVmSizeUnresolved {
         cause: concat("the cell's core count is unresolved, so no guest vCPU count is derivable from it: ", c),
       }
-    CoresPerSlotResolved { threads: t } => {
-      let ceiling_bytes = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
-      let mib = mebibyte_scale_factor_bytes()
-      let whole = ceiling_bytes / mib
-      if whole * mib == ceiling_bytes {
-        MicroVmSized {
-          size: RunnerMicroVmSize { vcpu_count: t, memory: mebibyte(count: whole) },
-        }
-      } else {
-        MicroVmSizeUnresolved {
-          cause: "the cell's MemoryMax is not a whole number of mebibytes, so it cannot be stated to a guest machine configuration without changing the ceiling the slice enforces",
-        }
+    CoresPerSlotResolved { threads: _ } =>
+      MicroVmSizeUnresolved {
+        cause: "the guest's memory is not derivable from the cell envelope: guest RAM is the cell's MemoryMax MINUS the Firecracker VMM's own resident footprint, because that process runs inside the same cell, and no such footprint is a cited quantity in extdeps.virtualization.firecracker. The cell's core count did resolve, so the vCPU axis is not what is blocked",
       }
-    }
   }
+}
+
+fn runner_microvm_size_from_cell_envelope() -> RunnerMicroVmSizing {
+  runner_microvm_sizing_of_cores(cores: gunbc_runner_cores_per_slot())
 }
 
 // THERE IS NO `size_matches_cell_envelope(..) -> Bool` HERE EITHER, FOR THE SAME REASON. The
@@ -302,7 +329,7 @@ fn runner_microvm_admission_after_credential(config: FirecrackerVmConfig) -> Run
           RunnerMicroVmAdmitted
         } else {
           RunnerMicroVmRefusedEnvelopeDisagreement {
-            reason: "the guest machine configuration does not carry the bounded cell's own resource envelope, so this VM would realize a different execution context than the one FCI-1 admitted -- a guest sized under the cell's ceiling makes the same work die inside a slice that still had room, and one sized above it escapes the boundary the slice exists to hold. Derive the size from gunbc.runner_slot_allocation gunbc_runner_slot_desired rather than authoring it",
+            reason: "the guest machine configuration does not carry the bounded cell's own resource envelope, so this VM would realize a different execution context than the one FCI-1 admitted -- a guest sized under the cell's ceiling makes the same work die inside a slice that still had room, and one sized at or above the ceiling escapes the boundary the slice exists to hold, because the Firecracker VMM process is itself inside that cell. This arm is unreachable while the memory axis refuses, and it is retained because the sizing coproduct is total, not as a live check",
           }
         }
     }
