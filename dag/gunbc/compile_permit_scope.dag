@@ -1,6 +1,6 @@
 module gunbc.compile_permit_scope
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, list_length }
 import std.measure { HardwareThreadCount }
 
 // WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
@@ -135,17 +135,17 @@ fn fleet_cancellation_standing(
       }
     },
   )
-  match acc.safe_hosts {
-    [] => FleetCancellationNotSafe {
+  // SAFE REQUIRES BOTH a non-empty safe roster AND an empty not-safe one. The first conjunct is what
+  // keeps an empty observation set on the refusing side: a fleet nobody looked at has no unsafe and
+  // no unobserved host either, so testing only the second would report SAFE for silence.
+  let blocking = list_length(items: concat(acc.unsafe_hosts, acc.unobserved_hosts))
+  let observed_safe = list_length(items: acc.safe_hosts)
+  let fleet_is_safe = (blocking == 0) && (observed_safe > 0)
+  match fleet_is_safe {
+    true => FleetCancellationSafe { hosts: acc.safe_hosts }
+    false => FleetCancellationNotSafe {
       unsafe_hosts: acc.unsafe_hosts,
       unobserved_hosts: acc.unobserved_hosts,
-    }
-    _ => match concat(acc.unsafe_hosts, acc.unobserved_hosts) {
-      [] => FleetCancellationSafe { hosts: acc.safe_hosts }
-      _ => FleetCancellationNotSafe {
-        unsafe_hosts: acc.unsafe_hosts,
-        unobserved_hosts: acc.unobserved_hosts,
-      }
     }
   }
 }
