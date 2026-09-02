@@ -379,10 +379,33 @@ type SparkServingRealizationPolicy {
 // supported one. What is bought is that first install on a clean Spark requires no administrator
 // credential at all. Both effects stay in the coproduct because a host that genuinely wants the
 // packaged runtime is still expressible; the realization chooses, and the grant follows.
+// ENABLE AND START ARE TWO EFFECTS ON BOTH PATHS NOW, AND RESTART IS NEITHER.
+//
+// `EnableSystemUnit` used to actuate three commands -- enable, start and restart -- under one
+// identity. Three consequences, and only the first is about tidiness. Nothing could match on a
+// restart, because no arm of any match ever saw one, so a guard, a fence or a refusal aimed at
+// restarts specifically had no value to be written against. The restart was UNCONDITIONAL: every
+// realization of the effect issued it, so converging a unit whose definition had not changed still
+// killed whatever it was serving. And the ranking fold counted the fused effect once while the host
+// paid for three operations, so the privilege count that decides which realization wins was reading
+// a number the argv did not support.
+//
+// The user path already had the right shape -- `EnableUserUnit` and `StartUserUnit` are separate --
+// so the split is the system path being brought to the model the user path already carried, not a
+// new decomposition invented here.
+//
+// Restart does not become a fourth arm of this sum, and that is the load-bearing half. Every
+// constructor here is the price of STANDING A SERVICE UP, which is the property
+// `realization_install_effects` and `realization_privileged_effect_count` both presume; a restart is
+// what a service that is ALREADY UP needs when the definition underneath it moved. Adding it here
+// would put an arm in the sum that no realization can select -- exactly the state-space conflation
+// the retirement vocabulary below was minted to avoid. It gets its own sibling sum, for the same
+// reason and by the same move.
 type ServingInstallEffect
   = WriteSystemUnitFile
   | ReloadSystemManager
   | EnableSystemUnit
+  | StartSystemUnit
   | WriteUserUnitFile
   | ReloadUserManager
   | EnableUserUnit
@@ -457,7 +480,228 @@ fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) ->
   }
 }
 
-// THE ONE PLACE THE TWO VOCABULARIES MEET, AND IT IS A SUM RATHER THAN A UNION.
+// REACTIVATION: THE THIRD VOCABULARY, AND THE SMALLEST ONE.
+//
+// Install stands a service up. Retirement takes it down. Neither answers the state in between: the
+// unit is running, it is meant to be running, and the definition it was started from is no longer
+// the definition we want it to hold. Nothing installs (the bytes are already written, the manager
+// has already reloaded them) and nothing retires (the service is meant to survive). The remedy is a
+// restart, and it is a restart of a specific unit for a specific stated reason.
+//
+// So restart is named for what it is FOR rather than for the command it runs. `RestartSystemUnit`
+// would be the argv wearing a type; the question a plan asks is not "run systemctl restart" but
+// "this unit is serving a definition it was not started from" -- and the answer to the second is
+// derivable while the first is only ever an instruction.
+//
+// NO ARM OF THIS TYPE HAS A REACHABLE GREEN PATH TODAY, and that is a property of the corpus, not
+// of the type. `spark_serving_reactivation_remedy` can only return `ReactivationRequired` when it is
+// handed a `RunningDefinitionObserved`, and nothing in this repository mints one against a real
+// host: the probe that would is not written. A fixture can construct it -- which is why the
+// selector's behaviour is checked by execution rather than asserted -- but no Spark convergence has
+// ever emitted a restart through this vocabulary, and none can until the observation lands.
+//
+// This is written here, on the carrier, so that "we model restart" cannot be cited as coverage for a
+// capability that has never once executed. The rung this class stands at is the refusal; the green
+// path is unbuilt and named.
+//
+// THE CAPABILITY THAT UNBLOCKS IT: an observation that joins a unit's RUNNING INVOCATION to the
+// definition it was started from, sufficient to mint RunningDefinitionObserved for a live Spark.
+// Nothing smaller retires this note -- a probe that reads the file, the manager's loaded definition,
+// or is-active answers a different subject and would leave the capability dead while looking like
+// its trigger.
+//
+// AND THE DERIVATION THAT LOOKS AVAILABLE AND IS NOT: selecting a restart when the REGISTRATION
+// member changes. That reads "the file on disk is now what we want" as "the process is stale", which
+// is the observed importing the desired -- the error gunbc.spark.serving_observed_members records
+// against its own earlier revision -- and it would restart a converged host whose file was merely
+// rewritten.
+//
+// AND IT IS NOT A MEMBER OF THE EXECUTABLE EFFECT DOMAIN, which is a stronger statement than the
+// one above and is made where it is enforced: see SparkServingExecutablePlannedEffect. Unreachability
+// is a fact about today's producers; non-membership is a fact about what can be written at all.
+//
+// There is no container arm. A rootless container's reactivation is a different operation on a
+// different subject, and minting an arm for it here would be a constructor whose actuation nobody
+// has modeled. `spark_serving_reactivation_remedy` refuses for that realization instead.
+type ServingReactivationEffect
+  = RestartSystemUnitForChangedDefinition
+  | RestartUserUnitForChangedDefinition
+
+fn serving_reactivation_effect_wire(effect: ServingReactivationEffect) -> String {
+  match effect {
+    RestartSystemUnitForChangedDefinition => "restart-system-unit-for-changed-definition"
+    RestartUserUnitForChangedDefinition => "restart-user-unit-for-changed-definition"
+  }
+}
+
+// WHAT THE RUNNING PROCESS WAS STARTED FROM, WHICH IS NOT WHAT ANY PROBE ANSWERS TODAY.
+//
+// gunbc.spark.serving_observed_members reads `systemctl --user is-active`, whose four states are
+// running, stopped, no-such-unit and unobserved. None of them names a definition. The registration
+// member is richer and answers a DIFFERENT subject: its digest is the content on disk, so a manager
+// reload converges it while the process keeps serving the bytes it started with. `is-active` says
+// active for both worlds.
+//
+// This type is therefore the observation the remedy needs, declared at the grain that decides the
+// question, with its own unobserved arm carrying a cause. It is constructible by a fixture today and
+// mintable by a probe when one is written; what it is NOT is derivable from the members we already
+// have, and deriving it from the registration digest would read "the file on disk is what we want"
+// as "the process is stale" -- the observed-imports-the-desired error serving_observed_members
+// records against itself.
+//
+// THE TWO SIDES MUST BE ONE IDENTITY DOMAIN, AND THE DOMAIN IS THE SPEC, NOT THE RENDERED BYTES.
+//
+// Equality here decides whether a host restarts, so a desired identity taken in one domain and an
+// observed identity taken in another is not an imprecision -- it is a permanent restart loop on a
+// converged host, which is the exact failure the fused unconditional restart already caused.
+//
+// The obvious domain is the rendered unit content, since that is what the registration member uses.
+// It is unavailable to THIS question and the reason is structural: the running invocation can only
+// report an identity that was embedded in the unit it was started from, so an identity over the
+// rendered bytes would be a hash of bytes containing itself. The well-founded domain is the typed
+// SparkServingUserUnitSpec the render is a function OF, which no such fixed point can reach.
+//
+// The field is therefore named for the identity rather than for a digest of content, and any
+// producer of RunningDefinitionObserved owes the same domain the desired side is taken in.
+//
+// NEXT-RUNG TRIGGER for the reactivation class: a host readback that reports the definition identity
+// of the RUNNING invocation, sufficient to mint RunningDefinitionObserved for a real Spark. Until it
+// exists the remedy is undecidable rather than absent, and undecidable REFUSES.
+// FOUR STATES, BECAUSE THE PROBE CAN DISTINGUISH FOUR AND FOLDING ANY PAIR LOSES A REMEDY.
+//
+// `RunningDefinitionUnstamped` is a POSITIVE READING, not a failure to read: the process is running
+// and carries no definition identity at all. Folding it into `Unobserved` would spend real evidence
+// as ignorance and leave exactly the stale process this vocabulary exists to catch permanently
+// undecidable -- and on the two hosts this lane cares about, that is the state they are most likely
+// actually in.
+//
+// WHAT IT ESTABLISHES IS NOT CHRONOLOGY, and the earlier wording here claimed it was. This arm used
+// to say an unstamped process PREDATES the desired definition. That is stronger than the reading
+// supports: a foreign process, or one started by hand, carries no stamp either and may have been
+// started LATER. Nothing here measures when anything started. What the reading establishes is that
+// the running process carries no definition identity, so it CANNOT BE ESTABLISHED as having been
+// started from the current desired stamped definition -- and the remedy is unchanged, because
+// unestablished is precisely what a restart is the remedy for.
+//
+// FOUR PRECONDITIONS CARRY THAT NARROWED CLAIM, and each is owned somewhere other than this
+// function, which is why they are named rather than assumed:
+//
+//   1. The environment read COMPLETED. An arm minted from a read that did not finish is an
+//      unobserved state wearing a positive one.
+//   2. ABSENCE IS DISTINGUISHED FROM FAILURE TO SEE. Permission denied, a parse that did not
+//      recognise the stamp, a truncated read, and an observation that never ran are four ways to
+//      find no stamp WITHOUT establishing that none is there; every one of them belongs in
+//      `RunningDefinitionUnobserved` with its cause, never here. This arm means the read succeeded
+//      and the stamp was genuinely absent.
+//   3. The desired specification STAMPS UNCONDITIONALLY. If a desired spec is ever admitted that
+//      does not stamp, an unstamped process could be the desired one and this arm would restart a
+//      converged host. That premise belongs to whatever renders the unit.
+//   4. The stamp identity COVERS EVERY PROCESS-START INPUT whose change requires reactivation. A
+//      stamp over a proper subset answers a narrower question than the one this arm is read as
+//      answering, so a process differing only in an uncovered input reads as current.
+//
+// `RunningDefinitionNotRunning` is the absence of the subject. A unit that is not running has no
+// definition it was started from, so the question this type asks does not apply -- which is neither
+// staleness nor ignorance, and is a third thing again from both. Its remedy belongs to the activity
+// address, which already owns start.
+type SparkServingRunningDefinition
+  = RunningDefinitionObserved { definition_identity: NonEmptyStr }
+  | RunningDefinitionUnstamped
+  | RunningDefinitionNotRunning
+  | RunningDefinitionUnobserved { cause: NonEmptyStr }
+
+// THE VERDICT HAS THREE ARMS BECAUSE THERE ARE THREE ANSWERS, and the third is the one that keeps a
+// missing observation from being spent as a restart.
+//
+// `ReactivationNotRequired` is a positive finding: the running definition was read and it is the one
+// we want. `ReactivationUndecidable` is the absence of that reading. Collapsing the two would make
+// an unobserved host look converged, and collapsing undecidable into required would restart every
+// host on every converge -- which is what the fused effect did, and the reason this function exists.
+// AND THE FOURTH VERDICT IS NOT-APPLICABLE, WHICH IS NOT A POLITE NO.
+//
+// A stopped unit needs no restart, and reporting that as `ReactivationNotRequired` would put this
+// question's answer and another question's answer under one symbol -- the not-applicable-rendered-as-
+// a-verdict form of the state-space conflation the design ledger rosters. They have different
+// owners: not-required means this host is converged on the definition it is serving, while
+// not-applicable means the activity address has a start to plan and nothing here is about it. A
+// consumer reading the first for the second concludes a stopped host is fine.
+type SparkServingReactivationVerdict
+  = ReactivationRequired { effect: ServingReactivationEffect }
+  | ReactivationNotRequired
+  | ReactivationNotApplicable { cause: NonEmptyStr }
+  | ReactivationUndecidable { cause: NonEmptyStr }
+
+fn serving_realization_reactivation_effect(
+  realization: SparkServingRealization,
+) -> ServingReactivationEffect? {
+  match realization {
+    UserUnitRealization => Present { value: RestartUserUnitForChangedDefinition }
+    SystemUnitRealization => Present { value: RestartSystemUnitForChangedDefinition }
+    RootlessContainerRealization => none
+  }
+}
+
+// THE CONDITION IS AN EQUALITY BETWEEN TWO OBSERVATIONS' IDENTITY DOMAIN, not a flag anybody sets.
+// A restart is emitted exactly when a definition was read off the running process and it differs
+// from the one desired. Every other input refuses with a located cause.
+fn spark_serving_reactivation_remedy(
+  realization: SparkServingRealization,
+  running: SparkServingRunningDefinition,
+  desired_definition_identity: NonEmptyStr,
+) -> SparkServingReactivationVerdict {
+  match running {
+    RunningDefinitionNotRunning =>
+      ReactivationNotApplicable {
+        cause: "spark_serving_reactivation_remedy: the unit is not running, so it was started from no definition — the activity address owns this" as NonEmptyStr,
+      }
+    RunningDefinitionUnstamped =>
+      spark_serving_reactivation_required(
+        realization: realization,
+        cause: "spark_serving_reactivation_remedy: the running process carries no definition identity, so it cannot be established as having been started from the current desired stamped definition" as NonEmptyStr,
+      )
+    RunningDefinitionUnobserved { cause: why } =>
+      ReactivationUndecidable {
+        cause: join([
+          "spark_serving_reactivation_remedy: the running definition was not observed — ",
+          why as String,
+        ], "") as NonEmptyStr,
+      }
+    RunningDefinitionObserved { definition_identity: d } =>
+      if (d as String) == (desired_definition_identity as String) {
+        ReactivationNotRequired
+      } else {
+        spark_serving_reactivation_required(
+          realization: realization,
+          cause: "spark_serving_reactivation_remedy: the running process was started from a definition that is not the desired one" as NonEmptyStr,
+        )
+      }
+  }
+}
+
+// ONE PLACE DECIDES WHETHER A REALIZATION HAS A RESTART TO EMIT, so the two arms that establish
+// staleness -- a differing identity and an unstamped process -- cannot drift into disagreeing about
+// which realizations can be reactivated. The cause travels in, because the two arms know different
+// things about WHY the process is stale and a caller reading the refusal should get the one that
+// held.
+fn spark_serving_reactivation_required(
+  realization: SparkServingRealization,
+  cause: NonEmptyStr,
+) -> SparkServingReactivationVerdict {
+  match serving_realization_reactivation_effect(realization: realization) {
+    Present { value: e } => ReactivationRequired { effect: e }
+    Absent =>
+      ReactivationUndecidable {
+        cause: join([
+          cause as String,
+          " — and ",
+          realization_label(realization: realization),
+          " has no modeled reactivation remedy",
+        ], "") as NonEmptyStr,
+      }
+  }
+}
+
+// THE ONE PLACE THE VOCABULARIES MEET, AND IT IS A SUM RATHER THAN A UNION.
 //
 // A planned row carries effects, and after this change a row's effects are either all installs or
 // all retirements -- never mixed, because the member ACTION that produced them was either an add /
@@ -465,7 +709,29 @@ fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) ->
 // vocabulary having to grow arms for the other, and so the wire rendering of a plan says which kind
 // each effect was rather than flattening both into one namespace of strings where `start-user-unit`
 // and `stop-user-unit` look like members of the same closed set.
-type SparkServingPlannedEffect
+//
+// MEMBERSHIP HERE IS A CLAIM OF EXECUTABILITY, WHICH IS WHY REACTIVATION IS NOT A MEMBER.
+//
+// The carrier that consumes this sum, gunbc.fleet_converge_plan PlannedEffectExecution, holds the
+// effect and the steps as INDEPENDENT fields, and apply consumes the steps without ever checking
+// that they realize the effect beside them. So a member of this sum is not merely renderable: it is
+// admitted as the LABEL beside commands whose authority is independent of that label. Adding
+// ServingReactivationEffect here would not have produced a restart command -- it would have made
+// `effect: <a restart>, first_step: <any step at all>` a writable, apply-accepted value, which is a
+// worse defect than an unreachable arm: it legitimates arbitrary steps under a restart's name.
+// Zero producers would have established only that no CURRENT site constructs that value, never that
+// it cannot reach apply.
+//
+// The exclusion is therefore structural rather than a promise: reactivation has no constructor into
+// the executable domain, so no pairing of a restart label with unrelated steps can be written. It
+// is enforced by execution in test.claim.spark_serving_reactivation_not_executable_witness_test, whose
+// RED is exactly that pairing and which greens again the moment this sum is re-widened.
+//
+// It is admitted properly one gate later, by DCH-0r-c, and the shape is already settled: not
+// membership in this sum but PlannedBoundReactivationExecution { plan, steps }, whose steps are
+// DERIVED from the bound plan rather than authored independently beside it -- the same defect this
+// exclusion holds shut, closed at its root for reactivation instead of inherited from installs.
+type SparkServingExecutablePlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
 
@@ -482,7 +748,7 @@ fn realization_install_effects(realization: SparkServingRealization) -> List<Ser
     UserUnitRealization =>
       [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, MaterializeModelArtifact]
     SystemUnitRealization =>
-      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, MaterializeModelArtifact]
+      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, StartSystemUnit, MaterializeModelArtifact]
     RootlessContainerRealization =>
       [GrantContainerRuntimeAccess, RunContainerAsOwnUser, MaterializeModelArtifact]
   }
@@ -843,6 +1109,7 @@ fn effect_mutation_subject(
     WriteSystemUnitFile => SystemUnitRegistry
     ReloadSystemManager => SystemUnitRegistry
     EnableSystemUnit => SystemUnitRegistry
+    StartSystemUnit => SystemUnitRegistry
     InstallRuntimePackage => PackageDatabase
     InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
     GrantContainerRuntimeAccess => GroupMembership
@@ -912,8 +1179,9 @@ fn effect_actuation(
     ReloadSystemManager => ActuatedByEscalation { commands: ["/usr/bin/systemctl daemon-reload" as NonEmptyStr] }
     EnableSystemUnit => ActuatedByEscalation { commands: [
       join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as NonEmptyStr,
+    ] }
+    StartSystemUnit => ActuatedByEscalation { commands: [
       join(["/usr/bin/systemctl start ", target.unit_name as String], "") as NonEmptyStr,
-      join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as NonEmptyStr,
     ] }
     InstallRuntimePackage => ActuatedByEscalation { commands: [
       join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as NonEmptyStr,
