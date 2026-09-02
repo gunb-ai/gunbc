@@ -16,8 +16,7 @@ import product.printed_chassis.realization_contract {
   compare_operations, compare_plate, admit_realized_specimen,
   RawRealizationEnvelope, raw_realization_envelope,
   RawOperationRow, raw_operation_row,
-  EnvelopeAdmission, EnvelopeAdmitted, EnvelopeSchemaUnsupported,
-  EnvelopeOperationUnknown, EnvelopeCarriesNoOperations,
+  EnvelopeSchemaUnsupported, EnvelopeOperationUnknown, EnvelopeCarriesNoOperations,
   admit_envelope, contract_schema_version,
   RealizationVerdict, RealizationRefusedAtWire, RealizationJudged,
   judge_realization,
@@ -127,7 +126,7 @@ test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
           ContractOperationCountDiverges { modeled: _, realized: _ } => false
           ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -157,7 +156,7 @@ test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
           ContractOperationCountDiverges { modeled: _, realized: _ } => false
           ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -188,7 +187,7 @@ test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
           ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
           ContractOperationCountDiverges { modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -217,7 +216,7 @@ test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
           ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
           ContractOperationCountDiverges { modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -241,7 +240,7 @@ test fn w_a_dropped_operation_diverges_on_count() -> Bool {
           ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
           ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -271,7 +270,7 @@ test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
           ContractOperationCountDiverges { modeled: _, realized: _ } => false
           ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -294,10 +293,9 @@ test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
         operations: [raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationRefusedAtWire { admission: a } =>
+        RealizationRefusedAtWire { refusal: a } =>
           match a {
             EnvelopeSchemaUnsupported { received: rv, supported: sv } => rv == "v999" && sv == contract_schema_version
-            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeOperationUnknown { received: _ } => false
             EnvelopeCarriesNoOperations => false
           }
@@ -322,10 +320,9 @@ test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
         operations: [raw_operation_row(kind: "chamfer", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationRefusedAtWire { admission: a } =>
+        RealizationRefusedAtWire { refusal: a } =>
           match a {
             EnvelopeOperationUnknown { received: r } => r == "chamfer"
-            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeCarriesNoOperations => false
           }
@@ -352,10 +349,9 @@ test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
         operations: [],
       )
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationRefusedAtWire { admission: a } =>
+        RealizationRefusedAtWire { refusal: a } =>
           match a {
             EnvelopeCarriesNoOperations => true
-            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeOperationUnknown { received: _ } => false
           }
@@ -388,10 +384,9 @@ test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
         operations: [raw_operation_row(kind: "datum_mark", diameter_um: 0, center_x_um: 3000, center_y_um: 2000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationRefusedAtWire { admission: a } =>
+        RealizationRefusedAtWire { refusal: a } =>
           match a {
             EnvelopeOperationUnknown { received: r } => r == "datum_mark"
-            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeCarriesNoOperations => false
           }
@@ -455,7 +450,7 @@ test fn w_an_unauthorised_operation_order_refuses() -> Bool {
           ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
           ContractOperationCountDiverges { modeled: _, realized: _ } => false
         }
-        RealizationRefusedAtWire { admission: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
       }
     }
     LadderStepIsZero => false

@@ -201,11 +201,45 @@ not choose it.
   `AdmittedRealization` is now `sole_constructor`, so only `admit_envelope` can mint one; a foreign
   module may name the arm and cannot obtain a value to put in it.
 
-  **That wall's evidence is the COMPILER, not a witness**, and the gap is named rather than papered
-  over: the RED is a compile failure, so a witness asserting it cannot be enrolled in a corpus that
-  must compile. The missing capability is an expect-compile-refusal harness. `sole_constructor` is
-  nonetheless checked on every build, so an accidental foreign construction reds the gate where it is
-  written.
+  **That wall now has an executing witness, and the claim that it could not have one was false.**
+  An earlier revision of this plan said the RED was a compile failure and so could not be enrolled in
+  a corpus that must compile, and named an expect-compile-refusal harness as the missing capability.
+  That was DESIGN §4b's own distinction misapplied: a state unauthorable in the ACCEPTED CORPUS may
+  still be perfectly authorable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and only the second
+  boundary decides whether a check's RED exists. The harness was already here —
+  `gunbc.compile_diagnostic_census`, whose `compile_dag_diagnostic_census` takes source as data and
+  returns either an observed diagnostic population or a typed `CensusNotRunnable`; the seven-form
+  precedent against a sealed fixture type is `test.claim.sole_constructor_completeness_audit_probe_test`.
+  The finding was routed by the side chat, which cited the precedent rather than the claim.
+
+  The witness is `test.claim.printed_chassis_admitted_realization_seal_witness_test`, built on the two
+  forms that module's own annotation names as exact: a count scoped to diagnostic class AND
+  `subject_name`, and a differential between two sources differing on one axis. It carries a red
+  source writing the `AdmittedRealization` record literal from a foreign module, a green source with
+  identical imports and no literal, and the red-minus-green subtraction as a third witness so the
+  shared imported closure cancels rather than being asserted away. The `CensusNotRunnable` arm answers
+  `-1`, so every assertion compares against a non-negative quantity and a harness that never ran
+  satisfies nothing — which is exactly the vacancy that produced the near-false-finding below.
+
+  **The refusal payload could carry a success, and the witnesses were where it showed.**
+  `RealizationVerdict`'s refusal arm was typed `RealizationRefusedAtWire { admission: EnvelopeAdmission }`,
+  and `EnvelopeAdmission` includes `EnvelopeAdmitted`. No route produces that state —
+  `judge_realization` builds the refusal arm only on the three refusing branches — but reachability is
+  not occupancy, and the state was writable. The tell was not in the contract at all: four witnesses
+  carried a dead `EnvelopeAdmitted { admitted: _ } => false` arm purely to satisfy exhaustiveness over
+  a case the route cannot produce, which is what a coproduct too wide for its position looks like from
+  the consumer side. The refusal reasons are now their own closed coproduct `EnvelopeRefusal`, and
+  `EnvelopeAdmission = EnvelopeAdmitted | EnvelopeRefused { refusal: EnvelopeRefusal }`. The class
+  climbs from mechanically preventable to structurally impossible, and the four dead arms are deleted
+  with it — §4b(4) retires the redundant production handling while every discriminating witness stays
+  enrolled.
+
+  **Still open, routed by the side chat and not yet answered:** `AdmittedRealization` is minted before
+  semantic conformance runs, so the trusted-type boundary may sit one step too early. Two candidate
+  cuts: a second sealed type downstream of `judge_realization` carrying admitted-and-conformant, or
+  `AdmittedRealization` not existing until conformance has run. Decode-admitted and contract-conformant
+  are genuinely different facts, so the first reading is not obviously wrong — but no consumer today
+  distinguishes them, which is exactly the condition under which one of the two is redundant.
 
   **Probe discipline learned here, recorded because it nearly produced a false finding.** The first
   forgery probe returned exactly the baseline error count — consistent with "forgery permitted" — from

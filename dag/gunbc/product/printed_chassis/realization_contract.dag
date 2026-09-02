@@ -132,22 +132,38 @@ fn raw_realization_envelope(
 // module may still name the EnvelopeAdmitted arm; it cannot obtain an AdmittedRealization to put in
 // it. That moves the class from "no caller happens to do this" to "no caller can express this".
 //
-// THE EVIDENCE IS THE COMPILER, NOT A WITNESS, and that is the honest form here. sole_constructor is
-// checked on every build of the whole corpus, so an accidental foreign construction REDS THE GATE at
-// the point it is written. A witness asserting the refusal cannot be enrolled in a corpus that must
-// compile -- its RED is a COMPILE failure, so the check and the corpus cannot both be green. The
-// missing capability is an expect-compile-refusal harness; until one exists the probe above is
-// recorded in this annotation and in the commit that introduced it rather than standing as a file.
+// THE EVIDENCE IS AN EXECUTING WITNESS. An earlier cut of this annotation said the evidence could
+// only ever be the compiler, on the reasoning that the RED is a compile failure and so cannot be
+// enrolled in a corpus that must compile. That reasoning skipped the distinction DESIGN 4b draws
+// exactly here: a state unauthorable in the ACCEPTED CORPUS may still be authorable as SOURCE HANDED
+// TO THE COMPILER BY A FIXTURE, and only the second boundary decides whether the check has a RED.
+// It does. test.claim.printed_chassis_admitted_realization_seal_witness_test hands the forged record
+// literal to gunbc.compile_diagnostic_census as data and asserts a SoleConstructorViolation scoped to
+// subject_name AdmittedRealization, against a green source with identical imports and no literal, and
+// asserts the difference between them -- the two forms that module's own annotation names as exact.
 type AdmittedRealization sole_constructor {
   plate: PlateDimensions
   features: List<CouponOperation>
 }
 
-type EnvelopeAdmission
-  = EnvelopeAdmitted { admitted: AdmittedRealization }
-  | EnvelopeSchemaUnsupported { received: NonEmptyStr, supported: NonEmptyStr }
+// The refusal reasons are their own closed coproduct, SEPARATE from the admission outcome, because
+// the refusal payload must not be able to carry a success. An earlier cut typed
+// RealizationRefusedAtWire { admission: EnvelopeAdmission }, so the refusal arm's payload included
+// EnvelopeAdmitted -- unreachable in practice, since judge_realization only builds that arm on the
+// three refusing branches, but perfectly writable, and reachability is not occupancy. The tell was
+// visible in the witnesses rather than in this file: four of them carried a dead
+// EnvelopeAdmitted { admitted: _ } => false arm to satisfy exhaustiveness over a case the route
+// cannot produce. Splitting the coproduct climbs that class from mechanically preventable to
+// structurally impossible and deletes those four arms with it -- DESIGN 4b(4) dissolution on climb,
+// which retires the redundant PRODUCTION handling while the discriminating witnesses stay enrolled.
+type EnvelopeRefusal
+  = EnvelopeSchemaUnsupported { received: NonEmptyStr, supported: NonEmptyStr }
   | EnvelopeOperationUnknown { received: NonEmptyStr }
   | EnvelopeCarriesNoOperations
+
+type EnvelopeAdmission
+  = EnvelopeAdmitted { admitted: AdmittedRealization }
+  | EnvelopeRefused { refusal: EnvelopeRefusal }
 
 // The closed operation vocabulary AS SPELLED ON THE WIRE, and this roster is HAND-SYNCED to the
 // CouponOperation arms rather than derived from them. That is a known weakness, stated here rather
@@ -199,9 +215,11 @@ fn decode_operation_row(row: RawOperationRow) -> CouponOperation {
 
 fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
   if envelope.schema_version != contract_schema_version {
-    EnvelopeSchemaUnsupported {
-      received: envelope.schema_version,
-      supported: contract_schema_version,
+    EnvelopeRefused {
+      refusal: EnvelopeSchemaUnsupported {
+        received: envelope.schema_version,
+        supported: contract_schema_version,
+      },
     }
   } else {
     let scan = fold(envelope.operations, init: OperationScan { unknown: [] }, f: fn(acc, row) {
@@ -212,9 +230,9 @@ fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
       }
     })
     if scan.unknown.length() != 0 {
-      EnvelopeOperationUnknown { received: scan.unknown.first() }
+      EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: scan.unknown.first() } }
     } else if envelope.operations.length() == 0 {
-      EnvelopeCarriesNoOperations
+      EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
     } else {
       EnvelopeAdmitted {
         admitted: AdmittedRealization {
@@ -472,7 +490,7 @@ fn admit_realized_specimen(
 // no plate and no features to hand on. That is the construction DESIGN section 5 asks for in place of
 // a validation step a caller could forget to run.
 type RealizationVerdict
-  = RealizationRefusedAtWire { admission: EnvelopeAdmission }
+  = RealizationRefusedAtWire { refusal: EnvelopeRefusal }
   | RealizationJudged { conformance: ContractConformance }
 
 fn judge_realization(
@@ -485,10 +503,6 @@ fn judge_realization(
       RealizationJudged {
         conformance: admit_realized_specimen(contract: contract, plate: a.plate, features: a.features),
       }
-    EnvelopeSchemaUnsupported { received: _, supported: _ } =>
-      RealizationRefusedAtWire { admission: admission }
-    EnvelopeOperationUnknown { received: _ } =>
-      RealizationRefusedAtWire { admission: admission }
-    EnvelopeCarriesNoOperations => RealizationRefusedAtWire { admission: admission }
+    EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
   }
 }
