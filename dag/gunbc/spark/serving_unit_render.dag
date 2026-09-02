@@ -65,6 +65,30 @@ fn spark_serving_exec_start_command(spec: SparkServingUserUnitSpec) -> NonEmptyS
   ], "") as NonEmptyStr
 }
 
+// THE DEFINITION IDENTITY CARRIED BY THE INVOCATION IT STARTS.
+//
+// systemd's loaded unit and the file on disk can both advance while an already-running process
+// keeps the environment and command line from its earlier start.  The process therefore carries
+// the identity of the typed definition that created it.  This is derived before rendering (and so
+// is not a self-hash of a file containing its own hash), while still covering every typed unit-spec
+// field.  A later observer reads this value from /proc/<MainPID>/environ; it never substitutes the
+// file's current identity for the invocation's.
+fn spark_serving_user_unit_definition_identity(spec: SparkServingUserUnitSpec) -> NonEmptyStr {
+  serialize_content_hash(hash: content_hash_of_value(value: spec)) as NonEmptyStr
+}
+
+data spark_serving_definition_identity_environment_name: NonEmptyStr = "GUNBC_SPARK_SERVING_DEFINITION_IDENTITY" as NonEmptyStr
+
+fn spark_serving_definition_identity_environment_assignment(
+  spec: SparkServingUserUnitSpec,
+) -> NonEmptyStr {
+  join([
+    spark_serving_definition_identity_environment_name as String,
+    "=",
+    spark_serving_user_unit_definition_identity(spec: spec) as String,
+  ], "") as NonEmptyStr
+}
+
 // The runtime and model roots come from the install-paths authority rather than from the spec's
 // relative strings, so the unit and the installer cannot disagree about where the runtime lives.
 fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFile {
@@ -85,6 +109,7 @@ fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFi
       Environment {
         assignment: ollama_num_parallel_env_assignment(slots: spec.serving_slots),
       },
+      Environment { assignment: spark_serving_definition_identity_environment_assignment(spec: spec) },
       WorkingDirectory { path: spark_serving_required_runtime_root() as NonEmptyStr },
       ExecStart { command: spark_serving_exec_start_command(spec: spec) },
       Restart { policy: spec.restart },
@@ -102,6 +127,16 @@ fn spark_serving_user_unit_text(spec: SparkServingUserUnitSpec) -> String {
 
 fn spark_serving_desired_user_unit_text() -> String {
   spark_serving_user_unit_text(
+    spec: spark_serving_user_unit_spec(
+      bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
+      default_context: spark_serving_desired_default_context(),
+      serving_slots: spark_serving_desired_serving_slots(),
+    ),
+  )
+}
+
+fn spark_serving_desired_user_unit_definition_identity() -> NonEmptyStr {
+  spark_serving_user_unit_definition_identity(
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
       default_context: spark_serving_desired_default_context(),

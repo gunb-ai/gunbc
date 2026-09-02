@@ -475,7 +475,7 @@ test fn the_receipt_line_says_which_provenance_arm_it_is() -> Bool {
     && !string_contains(s: hermetic, pattern: "observation-attempt=")
 }
 
-// The transaction receipt reports coverage and the per-outcome shape, not a single total: 23
+// The transaction receipt reports coverage and the per-outcome shape, not a single total: 24
 // captures is equally true of a transaction whose every leg the transport refused.
 test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
   match txn_of(captures: complete_captures()) {
@@ -486,7 +486,7 @@ test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
       )
       string_contains(s: line, pattern: "missing=0")
         && string_contains(s: line, pattern: "duplicated=0")
-        && string_contains(s: line, pattern: "executed=23")
+        && string_contains(s: line, pattern: "executed=24")
         && string_contains(s: line, pattern: "transport-refused=0")
         && string_contains(s: line, pattern: "prerequisite-refused=0")
         && string_contains(s: line, pattern: concat("observation-attempt=", concat(hermetic_fleet_attempt_raw, "/srv5/plan")))
@@ -536,7 +536,7 @@ test fn a_transport_refused_leg_moves_the_receipt_counts() -> Bool {
       let line = spark_serving_provenance_receipt_line(
         p: spark_serving_transaction_provenance(txn: t),
       )
-      string_contains(s: line, pattern: "executed=22")
+      string_contains(s: line, pattern: "executed=23")
         && string_contains(s: line, pattern: "transport-refused=1")
         && string_contains(s: line, pattern: "missing=0")
     }
@@ -581,7 +581,7 @@ test fn the_report_body_carries_the_acquisition_receipt_for_an_acquired_host() -
     Absent => false
     Present { value: body } =>
       string_contains(s: body, pattern: "spark-serving-provenance host=srv5 acquired")
-        && string_contains(s: body, pattern: "executed=23")
+        && string_contains(s: body, pattern: "executed=24")
         && string_contains(s: body, pattern: "missing=0")
         && string_contains(s: body, pattern: "duplicated=0")
   }
@@ -613,9 +613,9 @@ test fn changed_capture_outcomes_move_the_line_the_report_emits() -> Bool {
   match acquired_observation_body(captures: swap_is_active(with: refused)) {
     Absent => false
     Present { value: body } =>
-      string_contains(s: body, pattern: "executed=22")
+      string_contains(s: body, pattern: "executed=23")
         && string_contains(s: body, pattern: "transport-refused=1")
-        && !string_contains(s: body, pattern: "executed=23")
+        && !string_contains(s: body, pattern: "executed=24")
   }
 }
 

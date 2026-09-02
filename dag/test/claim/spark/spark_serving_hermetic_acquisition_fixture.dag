@@ -74,6 +74,7 @@ import gunbc.spark.serving_observation_transaction {
   ModelBlobDigestsRequest,
   UserUnitReadRequest,
   UserUnitIsEnabledRequest,
+  RunningDefinitionRequest,
   RuntimeRootRequest,
   RuntimeExecutableRequest,
   RuntimeExecutableBitRequest,
@@ -194,7 +195,7 @@ fn hermetic_capture(request: SparkServingProbeRequest, out: String) -> SparkServ
 // THE COMPLETE POPULATION, BECAUSE A TRANSACTION MISSING ONE OF THEM IS NOT A TRANSACTION.
 //
 // Coverage is checked at identity grain against the required roster rather than by counting, so this
-// enumerates the requests: a count would be satisfied by twenty-three copies of the wrong one.
+// enumerates the requests: a count would be satisfied by twenty-four copies of the wrong one.
 fn hermetic_every_request() -> List<SparkServingProbeRequest>
   admit_callers: [
     decl_ref(module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture", decl_name: "hermetic_complete_captures"),
@@ -206,7 +207,7 @@ fn hermetic_every_request() -> List<SparkServingProbeRequest>
     GrantsRequest, PasswdRequest, AuthorizedKeysRequest, LingerRequest,
     ModelManifestRequest, ModelBlobsListingRequest, ModelManifestDigestRequest,
     ModelBlobDigestsRequest { digests: ["deadbeef" as NonEmptyStr] },
-    UserUnitReadRequest, UserUnitIsEnabledRequest,
+    UserUnitReadRequest, UserUnitIsEnabledRequest, RunningDefinitionRequest,
     RuntimeRootRequest, RuntimeExecutableRequest, RuntimeExecutableBitRequest,
     RuntimeRootListingRequest,
   ]

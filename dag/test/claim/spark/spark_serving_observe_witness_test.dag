@@ -74,7 +74,15 @@ import gunbc.spark.serving_observe {
   spark_serving_boot_provenance_from_probes,
   SparkServingHostObservation,
   spark_serving_observation_report_text,
+  spark_serving_running_definition_from_probe_results,
 }
+import gunbc.spark.serving_realization {
+  RunningDefinitionObserved,
+  RunningDefinitionUnstamped,
+  RunningDefinitionNotRunning,
+  RunningDefinitionUnobserved,
+}
+
 import gunbc.spark.serving_runtime_receipt {
   spark_serving_parse_runtime_receipt_json,
   spark_serving_runtime_receipt_field_from_probe,
@@ -83,6 +91,69 @@ import gunbc.spark.serving_runtime_receipt {
 }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
   hermetic_host_observation,
+}
+
+fn running_definition_exec(
+  success: Bool,
+  exit_code: Int,
+  stdout: String,
+  stderr: String,
+) -> SshSessionExecResult {
+  SshSessionExecResult {
+    success: success, exit_code: exit_code, stdout: stdout, stderr: stderr,
+  }
+}
+
+test fn running_definition_identity_is_observed_from_the_invocation() -> Bool {
+  match spark_serving_running_definition_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") },
+    running_definition: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "present:definition-a\n", stderr: "") },
+  ) {
+    RunningDefinitionObserved { definition_identity: identity } =>
+      identity == ("definition-a" as NonEmptyStr)
+    RunningDefinitionUnstamped => false
+    RunningDefinitionNotRunning => false
+    RunningDefinitionUnobserved { cause: _ } => false
+  }
+}
+
+// The RED is authorable: changing the successful `absent` arm to Unobserved makes this fail, and
+// would leave both currently-running legacy hosts indistinguishable from a permission failure.
+test fn absent_identity_marker_is_positive_earlier_definition_evidence() -> Bool {
+  match spark_serving_running_definition_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") },
+    running_definition: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "absent\n", stderr: "") },
+  ) {
+    RunningDefinitionUnstamped => true
+    RunningDefinitionObserved { definition_identity: _ } => false
+    RunningDefinitionNotRunning => false
+    RunningDefinitionUnobserved { cause: _ } => false
+  }
+}
+
+test fn unreadable_running_environment_is_located_unobservable() -> Bool {
+  match spark_serving_running_definition_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") },
+    running_definition: Present { value: running_definition_exec(success: false, exit_code: 1, stdout: "", stderr: "Permission denied") },
+  ) {
+    RunningDefinitionUnobserved { cause: cause } =>
+      string_contains(s: cause as String, pattern: "Permission denied")
+    RunningDefinitionObserved { definition_identity: _ } => false
+    RunningDefinitionUnstamped => false
+    RunningDefinitionNotRunning => false
+  }
+}
+
+test fn inactive_unit_has_no_running_definition() -> Bool {
+  match spark_serving_running_definition_from_probe_results(
+    is_active: Present { value: running_definition_exec(success: false, exit_code: 3, stdout: "inactive\n", stderr: "") },
+    running_definition: none,
+  ) {
+    RunningDefinitionNotRunning => true
+    RunningDefinitionObserved { definition_identity: _ } => false
+    RunningDefinitionUnstamped => false
+    RunningDefinitionUnobserved { cause: _ } => false
+  }
 }
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"

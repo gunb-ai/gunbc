@@ -33,6 +33,13 @@ import gunbc.spark.serving_terminal_health {
   spark_serving_served_proof,
   spark_serving_residency_from_capture,
 }
+import gunbc.spark.serving_realization {
+  SparkServingRunningDefinition,
+  RunningDefinitionObserved,
+  RunningDefinitionUnstamped,
+  RunningDefinitionNotRunning,
+  RunningDefinitionUnobserved,
+}
 import gunbc.ollama_runtime_bundle {
   ModelStoreObservation,
   ModelStoreAbsent,
@@ -147,7 +154,7 @@ import gunbc.spark.serving_observation_transaction {
   ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
   ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
   ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
-  ProbeUserUnitRead, ProbeUserUnitIsEnabled,
+  ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition,
   ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
   SparkServingProbeRequest,
   SparkServingProbeOutcome,
@@ -159,7 +166,7 @@ import gunbc.spark.serving_observation_transaction {
   RuntimeReceiptRequest, ActiveEnterRequest, DefaultTargetEnterRequest, UptimeRequest,
   GrantsRequest, PasswdRequest, AuthorizedKeysRequest, LingerRequest,
   ModelManifestRequest, ModelBlobsListingRequest, ModelManifestDigestRequest, ModelBlobDigestsRequest,
-  UserUnitReadRequest, UserUnitIsEnabledRequest,
+  UserUnitReadRequest, UserUnitIsEnabledRequest, RunningDefinitionRequest,
   RuntimeRootRequest, RuntimeExecutableRequest, RuntimeExecutableBitRequest, RuntimeRootListingRequest,
 }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused, spark_managed_executor_login, spark_managed_principal_home }
@@ -246,6 +253,37 @@ fn spark_serving_load_state_probe_words() -> List<String> {
 fn spark_serving_active_probe_words() -> List<String> {
   [
     "systemctl", "--user", "is-active", spark_serving_unit_name,
+  ]
+}
+
+// READ THE DEFINITION IDENTITY FROM THE PROCESS SYSTEMD IS ACTUALLY SUPERVISING.
+//
+// Neither the unit file nor `systemctl show ExecStart` answers this question after daemon-reload:
+// both describe the new definition while the old process can remain alive. MainPID selects the
+// running invocation and /proc/<pid>/environ retains the identity stamped into that invocation at
+// exec. The PID AND Linux process start time are read around the environment so a concurrent
+// restart refuses instead of joining bytes from one invocation to the manager state of another;
+// the start-time bracket also catches the rarer case where the numeric PID is reused inside the
+// window.
+//
+// A SUCCESSFUL read with no marker prints `absent`: that is positive evidence that this invocation
+// came from the earlier, unstamped definition deployed before this capability existed. It is not
+// unobservable. Only inability to read procfs or a malformed/moving MainPID refuses.
+fn spark_serving_running_definition_probe_argv() -> List<String> {
+  [
+    "bash", "-lc",
+    join([
+      "pid_before=$(systemctl --user show ", spark_serving_unit_name,
+      " --property=MainPID --value) || exit $?; ",
+      "case \"$pid_before\" in ''|*[!0-9]*|0) echo 'running-definition: MainPID did not name a running process' >&2; exit 65;; esac; ",
+      "start_before=$(awk '{print $22}' /proc/$pid_before/stat) || exit $?; ",
+      "identity=$(awk -v 'RS=\\0' -F= '$1 == \"GUNBC_SPARK_SERVING_DEFINITION_IDENTITY\" { print \"present:\" substr($0, index($0, \"=\") + 1); found=1 } END { if (!found) print \"absent\" }' /proc/$pid_before/environ) || exit $?; ",
+      "pid_after=$(systemctl --user show ", spark_serving_unit_name,
+      " --property=MainPID --value) || exit $?; ",
+      "start_after=$(awk '{print $22}' /proc/$pid_after/stat) || exit $?; ",
+      "test \"$pid_before:$start_before\" = \"$pid_after:$start_after\" || { echo 'running-definition: MainPID or process start time moved during observation' >&2; exit 67; }; ",
+      "printf '%s\\n' \"$identity\"",
+    ], ""),
   ]
 }
 
@@ -849,6 +887,7 @@ fn spark_serving_acquire_observation_transaction(
         spark_serving_captured_leg(context: context, host: host, request: ModelManifestDigestRequest),
         spark_serving_captured_leg(context: context, host: host, request: UserUnitReadRequest),
         spark_serving_captured_leg(context: context, host: host, request: UserUnitIsEnabledRequest),
+        spark_serving_captured_leg(context: context, host: host, request: RunningDefinitionRequest),
         spark_serving_captured_leg(context: context, host: host, request: RuntimeRootRequest),
         spark_serving_captured_leg(context: context, host: host, request: RuntimeExecutableRequest),
         spark_serving_captured_leg(context: context, host: host, request: RuntimeExecutableBitRequest),
@@ -901,6 +940,7 @@ fn spark_serving_probe_request_argv(request: SparkServingProbeRequest) -> List<S
       spark_serving_model_blob_digest_argv(digest_hexes: hexes)
     UserUnitReadRequest => spark_serving_user_unit_read_argv()
     UserUnitIsEnabledRequest => spark_serving_user_unit_is_enabled_argv()
+    RunningDefinitionRequest => spark_serving_running_definition_probe_argv()
     RuntimeRootRequest => spark_serving_runtime_root_probe_argv()
     RuntimeExecutableRequest => spark_serving_runtime_executable_probe_argv()
     RuntimeExecutableBitRequest => spark_serving_runtime_executable_bit_probe_argv()
@@ -969,6 +1009,7 @@ fn spark_serving_request_prerequisite_refusal(
     ModelManifestDigestRequest => none
     UserUnitReadRequest => none
     UserUnitIsEnabledRequest => none
+    RunningDefinitionRequest => none
     RuntimeRootRequest => none
     RuntimeExecutableRequest => none
     RuntimeExecutableBitRequest => none
@@ -1950,6 +1991,69 @@ fn classify_is_active_result(result: SshSessionExecResult) -> SparkServingObserv
   } else {
     UnitActivityUnobserved
   }
+}
+
+// WHICH DEFINITION THE RUNNING INVOCATION WAS STARTED FROM is a separate observation from unit
+// activity. `is-active` establishes only running/not-running; this carrier joins that answer to the
+// identity read from the process selected by MainPID. Keeping the subjects separate prevents an
+// active process from becoming "current" merely because its file or the manager's loaded definition
+// advanced after exec.
+fn spark_serving_running_definition_from_probe_results(
+  is_active: SshSessionExecResult?,
+  running_definition: SshSessionExecResult?,
+) -> SparkServingRunningDefinition {
+  match is_active {
+    Absent => RunningDefinitionUnobserved {
+      cause: "unit activity probe did not run, so no running invocation can be selected" as NonEmptyStr,
+    }
+    Present { value: active } =>
+      if active.success && trim(s: active.stdout) == "active" {
+        match running_definition {
+          Absent => RunningDefinitionUnobserved {
+            cause: "unit is active but the running-definition probe did not run" as NonEmptyStr,
+          }
+          Present { value: definition } =>
+            if definition.success && trim(s: definition.stdout) == "absent" {
+              RunningDefinitionUnstamped
+            } else if definition.success && starts_with(s: trim(s: definition.stdout), prefix: "present:") {
+              let wire = trim(s: definition.stdout)
+              let identity = substring(s: wire, start: 8, end: length(wire))
+              if identity == "" {
+                RunningDefinitionUnobserved {
+                  cause: "running process carried an empty definition identity" as NonEmptyStr,
+                }
+              } else {
+                RunningDefinitionObserved { definition_identity: identity as NonEmptyStr }
+              }
+            } else {
+              RunningDefinitionUnobserved {
+                cause: join([
+                  "running-definition probe refused exit=", to_string(definition.exit_code),
+                  " stderr=", definition.stderr,
+                ], "") as NonEmptyStr,
+              }
+            }
+        }
+      } else if active.exit_code == 3 || active.exit_code == 4 || active.success {
+        RunningDefinitionNotRunning
+      } else {
+        RunningDefinitionUnobserved {
+          cause: join([
+            "unit activity probe refused exit=", to_string(active.exit_code),
+            " stderr=", active.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn spark_serving_running_definition_from_transaction(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingRunningDefinition {
+  spark_serving_running_definition_from_probe_results(
+    is_active: spark_serving_transaction_result(txn: txn, leg: ProbeIsActive),
+    running_definition: spark_serving_transaction_result(txn: txn, leg: ProbeRunningDefinition),
+  )
 }
 
 // THE MODEL STORE PRODUCER -- the evidence behind the model-slot member.
