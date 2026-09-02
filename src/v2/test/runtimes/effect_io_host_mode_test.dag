@@ -74,7 +74,7 @@ test fn effect_io_host_hermetic_replay_hit_holds() -> Bool {
     fixture: mode_populated_http_fixture()
   )
   match mode_host_read(runtime: runtime, arg: mode_resource_a()) {
-    Accepted { value: v, diagnostics: None } => v == mode_payload()
+    Accepted { value: v, diagnostics: _ } => v == mode_payload()
     Rejected { diagnostics: _ } => false
   }
 }

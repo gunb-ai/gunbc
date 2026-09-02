@@ -1,0 +1,492 @@
+module gunbc.spark.oobe_screen_observation
+
+import std.types { NonEmptyStr, Bool, List, HttpStatus }
+import extdeps.uri { Uri, Http }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
+import extdeps.automation.playwright {
+  PlaywrightBuild,
+  PlaywrightBrowserBinaryProvenance,
+  PlaywrightManagedChromiumDownload,
+  playwright_1_62_1,
+}
+import extdeps.systems.nvidia_dgx_spark_setup {
+  OobeSetupField,
+  OobeLanguage,
+  OobeTimeZone,
+  OobeKeyboardLayout,
+  OobeTermsAndConditions,
+  OobeUserAccount,
+  OobeAnalytics,
+  OobeWirelessNetwork,
+  OobeHostnameAssignment,
+  dgx_spark_oobe_offers_field,
+}
+
+// SPARK-OOBE-OBSERVE-0 (2026-09-02). WHAT THIS REPOSITORY ACTUALLY WATCHED THE FIRST-BOOT
+// WIZARD DO, as opposed to what NVIDIA's documentation says it does.
+//
+// THE LAYER BOUNDARY IS THE WHOLE REASON THIS MODULE EXISTS SEPARATELY FROM
+// extdeps.systems.nvidia_dgx_spark_setup. That module owns the vendor's DOCUMENTED setup
+// surface and is cited to docs.nvidia.com. Everything here is a RECEIPT PRODUCED BY US by
+// driving one physical unit, and DESIGN section 3 (external upstream decomposition) is
+// explicit that observations produced by this repository are receipts in the observing
+// layer, never facts authored into the observed upstream's module. Writing an observed
+// screen into the extdeps module would make our measurement masquerade as vendor
+// documentation, and the next reader could not tell which claims NVIDIA stands behind.
+//
+// THE OBSERVED SUBJECT IS ONE UNIT AT ONE MOMENT, and every row below is scoped to that.
+// A second unit, a firmware revision, or a different regional image may present a
+// different wizard; this module claims nothing about them.
+
+// ------------------------------------------------------------------------------------------
+// THE ELEMENT ADDRESS.
+//
+// The wizard is an NVIDIA design-system SPA and every control it renders carries a
+// data-testid. That is the ADDRESS WE OBSERVED, so it is what this model names -- a CSS path
+// or an nth-child index would be a second, positional naming scheme for something the
+// document already names, and it decays the moment NVIDIA reflows the layout (the same
+// objection DESIGN section 3's standing rule makes against file:line citations).
+//
+// TestIdAddress is NOT a claim that the testid is a stable NVIDIA contract. It is a claim
+// about what we saw. If a future image renames these, the witness that reads this model goes
+// red at the address, which is the loud failure we want, rather than a silent mis-click.
+// ------------------------------------------------------------------------------------------
+
+type TestId = NonEmptyStr where brand("TestId")
+type PlaceholderText = NonEmptyStr where brand("PlaceholderText")
+type FormFieldName = NonEmptyStr where brand("FormFieldName")
+type ControlLabel = NonEmptyStr where brand("ControlLabel")
+
+// ------------------------------------------------------------------------------------------
+// THE CONTROLS ON A SCREEN.
+//
+// Decomposed rather than carried as one "control: String" leaf (DESIGN section 2, deep
+// direction): a submit button, a combobox over a hidden field, and a bare hidden field are
+// three different things to an automation that has to DRIVE them, and collapsing them into a
+// tag name would push that distinction back onto the driver as a guess.
+//
+// HiddenBackingField is modeled because it is the thing that actually carries the answer.
+// The screen-02 comboboxes are presentation over hidden inputs named language / timezone /
+// locale; a driver that types into the visible box without the hidden field updating has
+// filled in nothing, and that failure is silent. Naming both halves is what lets a witness
+// assert the committed value rather than the typed one.
+// ------------------------------------------------------------------------------------------
+
+// THE ADDRESS IS NOT THE IDENTITY, and conflating them was a real defect in the first
+// revision of this module. Every forward control on every screen carries the SAME observed
+// data-testid, "nv-button": it is a component address issued by NVIDIA's design system, scoped
+// by route and label, and it is emphatically not the identity of "Get Started" versus
+// "Continue" versus "Accept". A model that treated the testid as the identity would name three
+// different actions with one word -- the §3 meaning fork, where one spelling carries materially
+// different obligations.
+//
+// So identity is declared here and the observed address is carried BESIDE it. An actuator
+// resolves an identity to a route-scoped address; it never resolves a bare testid, because a
+// bare testid does not distinguish the three.
+//
+// NOTHING HERE CLAIMS NVIDIA PUBLISHES A SELECTOR CONTRACT. These are addresses this repository
+// OBSERVED on one image. If a later image renames them the model goes red at the address, which
+// is the loud failure wanted, rather than a silent mis-click on whatever else answers.
+// WHAT THE FORM ACTUALLY SUBMITS, and the finding that most changes what an actuator may do.
+//
+// The hidden fields were read directly on the live portal: language carries "25", timezone
+// carries "593", and locale carries "en-US". The first two are OPAQUE VENDOR INDICES -- ordinal
+// positions in NVIDIA's own list -- not identifiers. The wizard does not accept
+// "America/New_York"; there is no field in which that string could be written.
+//
+// The consequence is structural and an earlier revision of this module implied the opposite. An
+// actuator CANNOT set a zone by writing its identifier: it must drive the visible combobox by
+// its displayed label and let the application compute the index. And because the index is an
+// ordinal into a vendor-controlled list, it is not stable across images the way an IANA
+// identifier is -- recording 593 as though it meant a zone would be recording a position as a
+// name, which is the positional-citation failure §3 names, in data rather than in a comment.
+//
+// VendorOpaqueOrdinal therefore deliberately carries NO value. Nothing downstream should be
+// able to read one and believe it has learned a zone.
+type SubmittedValueRepresentation
+  = VendorOpaqueOrdinal
+  | Bcp47LanguageTagValue
+
+type OobeControlIdentity
+  = WelcomeGetStartedAction
+  | SettingsContinueAction
+  | EulaAcceptAction
+
+type OobeControl
+  = AdvanceButton {
+      identity: OobeControlIdentity,
+      address: TestId,
+      label: ControlLabel,
+    }
+  | SubmitButton {
+      identity: OobeControlIdentity,
+      address: TestId,
+      label: ControlLabel,
+    }
+  | ComboBoxOverHiddenField {
+      placeholder: PlaceholderText,
+      backing_field: FormFieldName,
+      submitted_representation: SubmittedValueRepresentation,
+    }
+  | HiddenBackingField {
+      field: FormFieldName,
+      submitted_representation: SubmittedValueRepresentation,
+    }
+
+// ------------------------------------------------------------------------------------------
+// THE ADVANCE GATE -- the finding that most justifies having driven a real device.
+//
+// A screen's forward control is not always live when the screen arrives. On the EULA screen
+// the single Accept button is rendered disabled, and it becomes enabled only after the terms
+// pane is scrolled to its end. We did not infer this from the markup: we measured the button
+// disabled on arrival, scrolled the one scrollable container on the page, and measured it
+// enabled afterwards.
+//
+// THIS IS MODELED AS A PRECONDITION ON THE SCREEN RATHER THAN AS A STEP IN THE DRIVER because
+// it is a fact about the screen, not a preference of whoever automates it. A driver that
+// clicks a disabled button observes nothing and moves nowhere, and Playwright's auto-waiting
+// would sit on that button until it timed out -- a hang whose cause is nowhere in the log.
+// Carrying the gate structurally means an author cannot write a screen transition that skips
+// it; the constructor demands the container.
+type OobeAdvanceGate
+  = ForwardControlEnabledOnArrival
+  | ForwardControlEnabledAfterScrollToEnd {
+      scroll_container: TestId,
+    }
+
+// ------------------------------------------------------------------------------------------
+// WHAT A SCREEN COMMITS.
+//
+// Separated from the screen's controls because "what you can type here" and "what leaves this
+// machine changed when you press the button" are different questions, and only the second one
+// decides whether re-running the workflow is safe. AcceptsLegalAgreement is its own arm and
+// not a flavor of PersistsDeviceSetting deliberately: agreeing to a license on an operator's
+// behalf is a legal act, it is the one step in this flow a machine should not take on its own
+// initiative, and an automation that cannot SEE that distinction cannot be built to respect
+// it.
+// EFFECT NAMES WHAT WAS OBSERVED, NOT WHAT WAS PERSISTED. The first revision used
+// PresentsOnlyNoCommit and PersistsDeviceSetting, and both outran the measurement: reaching the
+// next route establishes that a submission was ACCEPTED and the app advanced, and it says
+// nothing about whether the value survives a refresh, a reboot, or the end of the wizard --
+// nor, for the "no commit" arm, that nothing at all was written.
+//
+// The measurement that settles this is now in hand and it cuts against the durable reading:
+// after the agreement was accepted, navigating to the portal root STILL resolves to /welcome
+// (initial_navigation_observation below). The wizard does not resume where it stopped, so at
+// least that far, acceptance did not persist as resumable progress.
+//
+// AcceptsLegalAgreement survives as its own arm, and not because its durability is established
+// either. It is distinct because the LEGAL BOUNDARY is what the automation must be able to see
+// in order to refuse to cross it unauthorized -- a different question from what the device
+// stored.
+type OobeScreenEffect
+  = PresentsNoConfigurableField
+  | SubmitsSelections { fields: List<OobeSetupField> }
+  | AcceptsLegalAgreement
+
+type OobeScreenRoute = NonEmptyStr where brand("OobeScreenRoute")
+type OobeScreenHeading = NonEmptyStr where brand("OobeScreenHeading")
+
+// presented_subjects IS THE COVERAGE AUTHORITY, and it exists because the first revision of
+// this module got the derivation wrong in a way the PR text then advertised as correct. That
+// revision carried a hand-written match over every OobeSetupField beside the screen list, so
+// appending a screen retired NOTHING: an author had to remember to edit a second table, and the
+// claim that coverage was "derived, not asserted" was simply false. Two structures answering one
+// question is the parallel authority §3 forbids, and the failure mode is silent -- both tables
+// stay type-correct while they disagree.
+//
+// The subject a screen PRESENTS is deliberately not the same field as the effect of ADVANCING
+// past it. The EULA screen presents the terms-and-conditions subject whether or not anyone
+// accepts; the settings screen presents language and timezone and, separately, submits them.
+// Folding the prefix over presented_subjects is now the only account of what has been observed.
+type ObservedOobeScreen {
+  route: OobeScreenRoute
+  heading: OobeScreenHeading
+  controls: List<OobeControl>
+  advance_gate: OobeAdvanceGate
+  effect: OobeScreenEffect
+  presented_subjects: List<OobeSetupField>
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 01 -- /welcome
+//
+// The landing screen. One button, nothing to fill, nothing committed. Modeled even though it
+// carries no settings because the ROUTE SEQUENCE is itself the finding: the portal's root
+// redirects to /welcome, so a driver that navigates to "/" and immediately looks for a
+// language selector is one screen early. That off-by-one is exactly the kind of defect a
+// guessed flow produces and a measured one cannot.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_welcome: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome" as OobeScreenRoute,
+  heading: "Welcome To DGX Spark" as OobeScreenHeading,
+  controls: [
+    AdvanceButton {
+      identity: WelcomeGetStartedAction,
+      address: "nv-button" as TestId,
+      label: "Get Started" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledOnArrival,
+  effect: PresentsNoConfigurableField,
+  presented_subjects: [],
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 02 -- /welcome/settings
+//
+// Language and timezone TOGETHER ON ONE SCREEN, which is the first place the observed flow
+// departs from the shape the vendor page implies. dgx_spark_oobe_fields lists language,
+// timezone and keyboard layout as separate prompted subjects in order; this screen prompts
+// two of them at once and does not prompt keyboard layout at all up to the point we reached.
+// That divergence is recorded structurally below (observed_screen_covers_field) rather than
+// in prose, so a consumer asks the model rather than trusting a comment.
+//
+// THE THIRD HIDDEN FIELD IS NOT A THIRD PROMPT. The screen carries hidden inputs named
+// language, timezone AND locale, but only two comboboxes, so locale is not operator-chosen. It
+// is carried because a driver that hunts for a control will not find one and a model that
+// omitted it would leave an unexplained field in the submitted form.
+//
+// AN EARLIER REVISION SAID locale WAS "evidently derived" FROM THE LANGUAGE CHOICE. That was an
+// inference, and it is withdrawn: what is observed is that the field carries "en-US" while
+// nothing was selected. Establishing derivation needs one language changed and the locale
+// watched to move, which has not been done. The representation IS now established, which is the
+// part that matters -- it is a BCP 47 language tag, not a POSIX locale, and the two are not
+// interchangeable.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_settings: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome/settings" as OobeScreenRoute,
+  heading: "Set Up Your NVIDIA DGX Spark" as OobeScreenHeading,
+  controls: [
+    ComboBoxOverHiddenField {
+      placeholder: "US - English" as PlaceholderText,
+      backing_field: "language" as FormFieldName,
+      submitted_representation: VendorOpaqueOrdinal,
+    },
+    ComboBoxOverHiddenField {
+      placeholder: "UTC" as PlaceholderText,
+      backing_field: "timezone" as FormFieldName,
+      submitted_representation: VendorOpaqueOrdinal,
+    },
+    HiddenBackingField {
+      field: "locale" as FormFieldName,
+      submitted_representation: Bcp47LanguageTagValue,
+    },
+    SubmitButton {
+      identity: SettingsContinueAction,
+      address: "nv-button" as TestId,
+      label: "Continue" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledOnArrival,
+  effect: SubmitsSelections { fields: [OobeLanguage, OobeTimeZone] },
+  presented_subjects: [OobeLanguage, OobeTimeZone],
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 03 -- /welcome/eula
+//
+// NVIDIA's Terms Of Use, and the screen that carries the advance gate. The forward control is
+// a single button labelled Accept, rendered disabled, inside a page whose only scrollable
+// element is the terms pane at data-testid nv-modal-main. Scrolling that pane to its end
+// enables the button.
+//
+// THE SCROLL TARGET IS NAMED, NOT DISCOVERED. The measurement that found it enumerated every
+// element whose scrollHeight exceeded its clientHeight and found exactly one. A driver could
+// repeat that search at run time, but then the automation's behavior would depend on a page
+// property that a layout change can make ambiguous -- two scrollable panes and the heuristic
+// silently picks the wrong one. Naming the container makes a layout change a loud address
+// failure instead (DESIGN section 4: in a closed system a heuristic is never necessary).
+//
+// THE EFFECT ARM IS AcceptsLegalAgreement AND THAT IS LOAD-BEARING. This is the step this
+// session declined to take without the operator's explicit instruction. The model exists so
+// that refusal is expressible: a workflow can be asked whether any screen it is about to
+// drive accepts an agreement, and answer without a human reading the screen.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome/eula" as OobeScreenRoute,
+  heading: "Terms Of Use" as OobeScreenHeading,
+  controls: [
+    AdvanceButton {
+      identity: EulaAcceptAction,
+      address: "nv-button" as TestId,
+      label: "Accept" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledAfterScrollToEnd {
+    scroll_container: "nv-modal-main" as TestId,
+  },
+  effect: AcceptsLegalAgreement,
+  presented_subjects: [OobeTermsAndConditions],
+}
+
+// ------------------------------------------------------------------------------------------
+// THE WALK, AND ITS HONEST END.
+//
+// THIS LIST IS A PREFIX OF THE WIZARD, NOT THE WIZARD. The walk stopped at the EULA because
+// advancing past it means accepting a license on the operator's behalf. Every screen NVIDIA's
+// page says comes later -- user account, analytics, wireless network -- is therefore
+// UNOBSERVED BY US, and this module must not be read as saying they do not exist or that the
+// flow ends here.
+//
+// The distinction is the one DESIGN section 4b keeps off the ladder: a screen we have not
+// watched is outside the modeled guarantee, not a screen we have proven absent. Recording the
+// prefix as if it were the population is the failure mode this repository already names
+// (selection_view_read_as_population), and it would be especially cheap to commit here
+// because the observed rows are real and the missing ones leave no trace.
+// ------------------------------------------------------------------------------------------
+data observed_oobe_screen_prefix: List<ObservedOobeScreen> = [
+  gunbc.spark.oobe_screen_observation.oobe_screen_welcome,
+  gunbc.spark.oobe_screen_observation.oobe_screen_settings,
+  gunbc.spark.oobe_screen_observation.oobe_screen_eula,
+]
+
+// ------------------------------------------------------------------------------------------
+// THE INITIAL NAVIGATION, which the first revision asserted in prose and never modeled.
+//
+// The PR text claimed "the root redirects to /welcome", and a list whose first element is
+// /welcome does not establish that. Worse, the word was wrong in kind: the measurement says the
+// root answers HTTP 200 with NO HTTP REDIRECT, and /welcome is reached by a CLIENT-SIDE route
+// inside the SPA. An actuator that expected a 3xx, or that waited for a redirect chain, would
+// wait forever on a page that already arrived.
+//
+// This is carried structurally because an actuator depends on it: it decides what "navigate to
+// the portal" is allowed to assume about where it lands.
+type InitialRouteResolution
+  = ResolvedByHttpRedirect
+  | ResolvedByClientSideRoute
+
+type ObservedInitialNavigation {
+  requested_path: OobeScreenRoute
+  http_status: HttpStatus
+  resolution: InitialRouteResolution
+  resulting_route: OobeScreenRoute
+}
+
+data initial_navigation_observation: ObservedInitialNavigation = ObservedInitialNavigation {
+  requested_path: "/" as OobeScreenRoute,
+  http_status: 200,
+  resolution: ResolvedByClientSideRoute,
+  resulting_route: "/welcome" as OobeScreenRoute,
+}
+
+type OobeWalkTermination
+  = WalkReachedFlowCompletion
+  | WalkHaltedAwaitingOperatorAuthority { at_route: OobeScreenRoute }
+
+data observed_walk_termination: OobeWalkTermination = WalkHaltedAwaitingOperatorAuthority {
+  at_route: "/welcome/eula" as OobeScreenRoute,
+}
+
+// ------------------------------------------------------------------------------------------
+// DOCUMENTED VERSUS OBSERVED.
+//
+// The coverage half is now folded from the observed prefix (screen_presents_field), so the two
+// structures that used to answer "was this field observed" have become one.
+//
+// Both halves are now modeled -- the vendor's prompted-field list in the extdeps module, and
+// our prefix here -- so the divergence is DERIVABLE rather than asserted. This function is the
+// join: it answers, for one field, whether the screens we actually watched prompted for it.
+//
+// It deliberately does NOT compare itself against dgx_spark_oobe_offers_field and report a
+// verdict, because the two predicates answer different questions over different populations:
+// the vendor's covers the whole wizard, ours covers a prefix that stops at the EULA. A
+// difference between them is only evidence of vendor error where our walk was complete, and
+// observed_walk_termination says it is not. Presenting the difference as a defect list would
+// be the undecided fraction read as a denominator.
+fn screen_presents_field(screen: ObservedOobeScreen, field: OobeSetupField) -> Bool {
+  fold(
+    screen.presented_subjects,
+    init: false,
+    f: (acc, presented) => acc || presented == field
+  )
+}
+
+// DERIVED, and this time the word is true. The fold ranges over the observed prefix itself, so
+// appending a screen with its presented_subjects retires that screen's pending fields with no
+// second edit anywhere. The predicate this replaced was a hand-maintained match over every
+// OobeSetupField; it is deleted rather than kept beside this one, because leaving both would
+// preserve the exact fork the repair exists to remove.
+fn observed_screen_covers_field(field: OobeSetupField) -> Bool {
+  fold(
+    observed_oobe_screen_prefix,
+    init: false,
+    f: (acc, screen) => acc || screen_presents_field(screen: screen, field: field)
+  )
+}
+
+// A field the vendor page says is prompted and our prefix has not reached. This is the
+// COVERAGE OBLIGATION -- the list of things still to watch -- and it is computed from the two
+// models rather than hand-listed, so finishing the walk retires rows here by construction.
+fn field_is_pending_observation(field: OobeSetupField) -> Bool {
+  dgx_spark_oobe_offers_field(field: field) && !observed_screen_covers_field(field: field)
+}
+
+// ------------------------------------------------------------------------------------------
+// THE RECEIPT: what produced the rows above.
+//
+// A screen model with no provenance is an assertion. This records the browser that rendered
+// the SPA, the unit whose access point served it, and when -- so a future reader can decide
+// whether the observation still applies rather than assuming it does.
+//
+// THE ACCESS POINT IS NAMED AND THE CREDENTIAL IS NOT. The SSID is a per-unit vendor-derived
+// label and is safe to record; the passphrase arrives on a printed sticker and is a per-unit
+// secret, which is precisely why extdeps.systems.nvidia_dgx_spark_setup models the carrier as
+// PrintedQuickStartGuideSticker and holds no password. No field here can carry one.
+//
+// THE RENDERING HOST IS NOT THE RADIO HOST, and the honest reason is narrower than the one
+// this comment first gave. It said the Pi's memory was "far below what Chromium needs", which
+// asserts a CAUSE that was never measured: the attempt on the Pi timed out at rc=124 with no
+// stderr, on the portal AND on an example.com control, with roughly 550MB shown available at
+// one sampled moment. No RSS, swap-pressure, PSI or OOM observation was taken, so memory is a
+// hypothesis and not a finding, and nothing here establishes that a Pi 3B+ cannot run a
+// browser.
+//
+// What the evidence DOES establish is target-independent: that attempted realization, on that
+// host, failed regardless of what it was pointed at -- which is enough to select a different
+// rendering host and nothing more. The topology below therefore records a host that was tried
+// and a host that worked; it does not license a capability rule about the hardware.
+//
+// The half that IS established structurally is the portal: it is a client-rendered SPA, so a
+// plain HTTP fetch cannot drive it and a browser is required somewhere.
+// ------------------------------------------------------------------------------------------
+
+type ObservedUnitAccessPointSsid = NonEmptyStr where brand("ObservedUnitAccessPointSsid")
+type RadioRelayHost = NonEmptyStr where brand("RadioRelayHost")
+type RenderingHost = NonEmptyStr where brand("RenderingHost")
+
+type OobePortalObservationEnvironment {
+  chromium_build: ChromiumBuild
+  playwright_build: PlaywrightBuild
+  browser_binary_provenance: PlaywrightBrowserBinaryProvenance
+  rendering_host: RenderingHost
+  radio_relay_host: RadioRelayHost
+  unit_access_point: ObservedUnitAccessPointSsid
+  portal_origin: Uri
+}
+
+type OobeScreenObservationRun {
+  environment: OobePortalObservationEnvironment
+  observed_on: Rfc3339Timestamp
+  screens: List<ObservedOobeScreen>
+  termination: OobeWalkTermination
+}
+
+data dgx_spark_0c75_oobe_prefix_run: OobeScreenObservationRun = OobeScreenObservationRun {
+  environment: OobePortalObservationEnvironment {
+    chromium_build: chromium_151_0_7922_34,
+    playwright_build: playwright_1_62_1,
+    browser_binary_provenance: PlaywrightManagedChromiumDownload,
+    rendering_host: "srv4" as RenderingHost,
+    radio_relay_host: "pi1" as RadioRelayHost,
+    unit_access_point: "spark-0c75" as ObservedUnitAccessPointSsid,
+    portal_origin: Uri {
+      scheme: Http,
+      locator: "10.92.7.127",
+    },
+  },
+  observed_on: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
+  screens: gunbc.spark.oobe_screen_observation.observed_oobe_screen_prefix,
+  termination: gunbc.spark.oobe_screen_observation.observed_walk_termination,
+}

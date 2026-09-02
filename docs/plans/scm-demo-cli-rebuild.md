@@ -1,8 +1,13 @@
 # SCM demo CLI — rebuild plan and API inventory
 
 A working `gunbc scm` CLI existed and was lost with an uncommitted `/tmp` worktree. This doc is
-the durable record so the rebuild does not start from a survey again. It is a plan, not a
-receipt: nothing here claims to be built.
+the durable record so the rebuild does not start from a survey again.
+
+It is a PLAN AND A HISTORICAL LEDGER, and the two are separated by section. Everything above
+`## LANDED` is the plan and the baseline survey, written BEFORE this work and describing main as
+it stood then; it claims nothing is built. `## LANDED` onward is the ledger, and it carries
+execution receipts for what has actually shipped. Read a present-tense statement in the plan half
+as a statement about the BASELINE, not about the tree today.
 
 ## What already exists on main (verified by reading the modules)
 
@@ -28,10 +33,11 @@ The read side is modelled and already reaches `CliWireResponse`:
 
 ## The gap, stated precisely
 
-`scm_log_cli_response` and `scm_status_cli_response` have NO consumer outside
-`dag/test/claim/scm/scm_render_witness_test.dag`. That is the unwired-renderer state
-`gunbc.cli_dispatch_surface` already records: the answer is computed and discarded because no
-host binds it.
+**This was the baseline gap, and this change closes it.** As of the survey above,
+`scm_log_cli_response` and `scm_status_cli_response` had NO consumer outside
+`dag/test/claim/scm/scm_render_witness_test.dag` — the unwired-renderer state
+`gunbc.cli_dispatch_surface` recorded: the answer computed and discarded because no host bound it.
+`gunbc.scm.cli` is that consumer, and the `LANDED` section below carries its receipts.
 
 `dag/gunbc/cli_dispatch_surface.dag` declares an `scm` verb with an operand and `--path`, marked
 `AbsentFromEmitMainRs`.
@@ -53,10 +59,14 @@ So the host binding is REQUIRED, and it is the piece to rebuild:
    `load_repository` -> verb -> render, with a `RenderCapability { color: false, tier: Ascii,
    cursor_addressable: false }` for a plain terminal. Write verbs (`init`, `add`, `commit`,
    `checkout`) need their own `Document` builders; only log/status have them today.
-2. Host side in `src/v1/stage0/src/main.rs`: a `Commands::Scm` variant and a `scm_verb` that
-   evaluates the entry and writes the `CliWirePrintable { bytes, exit }` bytes to stdout,
-   refusing on `CliWireUnprintable { cause }`. `serve_wire_fields` / `classify_exit` in
-   `cli_run.rs` are the precedent for reading wire values out of an evaluated `Value`.
+2. Host side. **NOT the shape that landed, and deliberately so — this bullet is a FUTURE
+   ERGONOMIC SURFACE, not unfinished work required by the binding that shipped.** The original
+   plan was a `Commands::Scm` variant in `src/v1/stage0/src/main.rs` plus a `scm_verb` evaluating
+   the entry and writing `CliWirePrintable { bytes, exit }` to stdout. What landed instead binds
+   `CliWireResponse` ONCE in the generic `run_verb` outcome seam, so EVERY wire-returning entry
+   becomes reachable rather than only the scm family — one binding instead of one per verb. A
+   dedicated `gunbc scm` subcommand would be a nicer surface over the same answer; it is not
+   needed for the answer to reach an operator, and it is not part of this change.
 
 ## LANDED — the read side reaches an operator
 
@@ -81,7 +91,26 @@ Receipts, by execution against `dag/test/fixture/scm_repository_load/empty_repos
 The third is the load-bearing one: bytes printed AND a nonzero exit, the case an absorbing
 implementation turns into silence or a spurious 0.
 
-### `init` — the write verb, and the four observations it distinguishes
+### `init` — LANDED separately, via the create-only write (#10026)
+
+**init was CUT from the log/status change and landed on its own, as gunbc#10026.** The receipts
+below were taken against the ORIGINAL prototype and are kept as its historical record; the shape
+that actually landed differs, and the differences are the point.
+
+Why it could not ride along: the prototype observed an absence and then called `save_repository`,
+which writes UNCONDITIONALLY. A racing actor between the observation and the write makes it
+truncate the very bytes it claims to refuse — a TOCTOU the four-arm fold does not close, because
+the fold decides on a fact that can stop being true before the write happens. Closing it needed an
+atomic create-only write (`O_CREAT|O_EXCL`) as a new modeled file-transport verb, which is why it
+became its own change with its own review.
+
+What #10026 landed, and what review then found still open in it: `Filesystem.WriteCreateNew` makes
+the existence test and the creation one syscall, and `create_repository` routes through it. Review
+`5089156132` then found six further defects in the init MODEL — among them that `ScmInitialized`
+could contain a FAILED save, and that the `FilesystemEstablishedAbsence` authorizing the write was
+matched as `_` and discarded while the actuation used an independently supplied path. Those are
+being repaired in the follow-up on the same branch; do not read this subsection as describing a
+finished init.
 
 `scm_init` takes a DIRECTORY and a NAME rather than a path, because presence is a fact about a
 directory listing and recovering the directory by splitting a string would be a second, positional
@@ -117,9 +146,11 @@ directory=<d> --arg name=repo.json`:
 The fourth is the load-bearing one: an observation that could not be made refuses rather than
 widening to "nothing is there", which is the absorbing fallback DESIGN §5 names.
 
-Hermetically enrolled beside them, in `test.claim.scm.scm_cli_witness`: no init refusal renders as a
-success exit, the three refusals render differently, and the unobserved arm carries the host's cause
-through. The absent arm itself takes a listing and a read, so it stays on the manual receipt above.
+Those init claims were hermetically enrolled in `test.claim.scm.scm_cli_witness` at the time — no
+init refusal rendering as a success exit, the three refusals rendering differently, the unobserved
+arm carrying the host's cause through. **They left with init and are NOT in this PR's witness**;
+they travel with `scm-init-create-only`. Verified: `scm_cli_witness` on this branch contains no
+init claim at all.
 
 ### Evidence boundary, stated rather than implied
 
@@ -137,19 +168,42 @@ CI step that runs an integration target, not another test file.
 
 ## Next increment: `add` and `commit`, and the one design step they need
 
-Settled by execution, so not open questions any more:
+Still settled, because it is a fact about the HOST rather than about any object model:
 
-- **A host WRITE is permitted from `gunbc run`** — `scm_init` created a file. The remaining write
-  verbs are a modeling question, not a permissions one.
-- **Content goes in via `store_node(store, n: Node) -> StoreOutcome`** (`gunbc.scm.object_store`).
-- **A Node is built with `node_synthetic`** (`v2.std.node`):
-  `node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])`. The `atom`
-  helpers in the test modules are LOCAL helpers, not a shared authority — do not import one.
-- **A runtime name becomes a Symbol** with `symbol_intern_lexeme(lexeme: name)`
-  (`v2.std.compilers.lexing`). `name as Symbol` refuses.
-- **`mint_repository_commit(repository, root: ObjectId, message, parent: RepositoryCommitRef?)`**
-  requires `store_contains(root)` — so `add` must precede `commit`, and because identity is derived
-  from content, `commit` can re-derive an added object's `ObjectId` by rebuilding the same node.
+- **A host WRITE is permitted from `gunbc run`** — established by the init prototype above, which
+  created a file, and since confirmed by #10026 landing the create-only write. It is not a claim
+  that init's model is finished. The remaining write verbs are a modeling question, not a
+  permissions one.
+
+### SUPERSEDED BY #9891 — the recipe below is historical reasoning, not the current model
+
+**This section previously listed the following as "settled by execution". #9891 replaced the
+identity model underneath it, so the recipe is now WRONG at exactly the boundary add/commit needs,
+and it is kept only as the reasoning that led to the replacement.** It survived on main because a
+plan that says "settled" is read as an instruction; that is the failure this heading exists to
+stop.
+
+The superseded recipe said: content goes in via `store_node(store, n: Node) -> StoreOutcome`; a
+file is built as a synthetic semantic `Node` via `node_synthetic`; a runtime name becomes a
+`Symbol` with `symbol_intern_lexeme`; and
+`mint_repository_commit(repository, root: ObjectId, ...)` requires `store_contains(root)`, so `add`
+precedes `commit` and `commit` re-derives an added object's `ObjectId` by rebuilding the same node.
+
+**What #9891 changed, and why the recipe cannot survive it:**
+
+- Authored source is its OWN object arm, not a semantic node wearing a node costume. A file has
+  somewhere to live that is not a synthetic `Node`, which is the whole point of that change.
+- A semantic-node reference and an authored-source reference are DISTINCT, so "rebuild the same
+  node and re-derive its `ObjectId`" no longer identifies one thing.
+- `mint_repository_commit` takes a `SemanticNodeTarget`, not a bare `ObjectId`. Handing it an
+  authored-source identity is not a runtime refusal to be checked for — it does not typecheck.
+
+**The current boundary, stated so the next reader does not follow the dead recipe:** production
+`add` and `commit` remain blocked on a `CorpusManifestObject`
+(path → semantic_root → authored_source_identity) plus a staging authority. Immediate object-store
+insertion is NOT the add model; `add` has nowhere to persist what is staged until that authority
+exists. `ScmWriteOutcome` below is still the right SHAPE for the verb's result and is not what
+blocks the verbs.
 
 ### The design step, stated so it is not improvised
 
