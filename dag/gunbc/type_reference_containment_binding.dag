@@ -73,6 +73,53 @@ data type_reference_containment_binding_newly_exposed_string_identities: List<Ne
   NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.source_authority" as NonEmptyStr, decl_name: "module_storage_binding_from_read_prepared" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 }
 ]
 
+type StringRootCutPerturbation
+  = TokenizeUseLine
+  | TokenizeOccurrenceQualification
+  | TargetModelUseLine
+  | TargetModelOccurrenceQualification
+
+type StringRootCutProbeReading {
+  perturbation: StringRootCutPerturbation
+  vanished_count: Int
+  persisted_count: Int
+  newly_appeared_count: Int
+}
+
+data type_reference_containment_binding_string_root_cut_probes: List<StringRootCutProbeReading> = [
+  StringRootCutProbeReading { perturbation: TokenizeUseLine, vanished_count: 41, persisted_count: 0, newly_appeared_count: 12 },
+  StringRootCutProbeReading { perturbation: TokenizeOccurrenceQualification, vanished_count: 41, persisted_count: 0, newly_appeared_count: 11 },
+  StringRootCutProbeReading { perturbation: TargetModelUseLine, vanished_count: 6, persisted_count: 1, newly_appeared_count: 17 },
+  StringRootCutProbeReading { perturbation: TargetModelOccurrenceQualification, vanished_count: 6, persisted_count: 1, newly_appeared_count: 28 }
+]
+
+type OccurrenceBindingReplacementPartition
+  = OldAndNewAgree
+  | OldAndNewDisagree
+  | OldBindsNewUnresolved
+  | OldBindsNewAmbiguous
+  | OldUnresolvedNewBinds
+
+type CodelessRepairAuthority = DirectCallDeclarationBoundFormalCarrier {}
+
+type CodelessEmissionConsumerReceipt {
+  declaration: DeclarationRef
+  diagnostic_message: NonEmptyStr
+  substituted_formal_producer: DeclarationRef
+  transient_formal_holder: DeclarationRef
+  downstream_consumer: DeclarationRef
+  repair_authority: CodelessRepairAuthority
+}
+
+data type_reference_containment_binding_codeless_emission_consumer: CodelessEmissionConsumerReceipt = CodelessEmissionConsumerReceipt {
+  declaration: decl_ref(module_path: "v2.compiler.compile" as NonEmptyStr, decl_name: "apply_compile_lens_introspect" as NonEmptyStr),
+  diagnostic_message: "witness carrier type arg unresolved for variant Violates" as NonEmptyStr,
+  substituted_formal_producer: decl_ref(module_path: "v1.compiler.infer" as NonEmptyStr, decl_name: "infer_call_arguments_generic_pass" as NonEmptyStr),
+  transient_formal_holder: decl_ref(module_path: "v1.compiler.emit_rust" as NonEmptyStr, decl_name: "build_call_application_plan" as NonEmptyStr),
+  downstream_consumer: decl_ref(module_path: "v1.compiler.emit_rust" as NonEmptyStr, decl_name: "rust_witness_type_arg_for_variant" as NonEmptyStr),
+  repair_authority: DirectCallDeclarationBoundFormalCarrier {}
+}
+
 // ROOT-CUT RECEIPT, attached to this authority rather than minted as a second migration ledger.
 // The four perturbations were made only in copies of one preserved emitted artifact; none is a
 // proposed per-module repair. Their successor identities show that changing one consumer merely
@@ -80,24 +127,38 @@ data type_reference_containment_binding_newly_exposed_string_identities: List<Ne
 // TypeEnv binding (import union -> kernel overlay -> direct-selected overlay with kernel names
 // skipped). The replacement Y is the authority above: one exact declaration binding per
 // TypeOccurrence, derived from containment/qualification and carried through typecheck and emit.
-data type_reference_containment_binding_string_root_cut_receipt: String = "MEASURED with gunbc.instruments.emission_entry_instrument over src/v2/compiler/00_compile.dag. The run identity, producer digests, refusal, split replay, and coded/codeless counts are carried together by type_reference_containment_binding_emitted_rust_split_census; the combined instrument produced no cargo population after 15 EAGAIN failures, so its output is not the source of the count. String is the only v2.std top-level declaration colliding with the Rust prelude; 18 closure modules import v2.std.text.String and all 18 emit zero exact v2_std_text::String use-lines with nonzero bare String spellings. Throwaway-copy identity deltas over one preserved emitted tree, with no netting: tokenize use-line vanished 41 incumbent E0308, persisted zero of those identities, and newly appeared 12 NewlyExposedByRootCut identities; tokenize occurrence qualification vanished the same 41, persisted zero, and newly appeared 11, including the same six downstream identities; target_model use-line vanished six of seven incumbent identities (E0277, E0282, E0599, three E0308), persisted one E0308, and newly appeared 17; target_model occurrence qualification vanished the same six, persisted the same one E0308, and newly appeared a different population of 28. The target_model four-code spectrum moved together under one carrier-binding decision. No local import-line, emitted-qualification, or per-consumer respelling establishes one representation through the dependency chain. Production X being retired is #9813's module-wide flat TypeEnv precedence; replacement Y is one exact declaration binding per TypeOccurrence through resolve_type_reference_containment_binding, consumed by typecheck and emission without re-resolution through X."
+// MEASURED with gunbc.instruments.emission_entry_instrument over
+// src/v2/compiler/00_compile.dag. The run identity, producer digests, refusal, split replay, and
+// coded/codeless counts are carried together above; the combined instrument produced no cargo
+// population after its EAGAIN failures, so its output is not the source of the count. String is the
+// only v2.std top-level declaration colliding with the Rust prelude; 18 closure modules import it,
+// and all 18 emit zero exact v2_std_text::String use-lines with nonzero bare String spellings.
+// The typed probe readings keep vanished, persisted, and newly appeared populations separate.
+// Both tokenize perturbations expose the same six downstream identities; both target_model
+// perturbations move E0277, E0282, E0599, and three E0308 identities together, but expose different
+// successor populations. No local repair establishes one representation through the dependency
+// chain. Production X being retired is #9813's module-wide flat TypeEnv precedence; replacement Y
+// is one exact declaration binding per TypeOccurrence through resolve_type_reference_containment_binding.
 
 // Positive evidence, not the missing-guarantee denominator. These occurrences already spell the
 // intended Y identity explicitly; counting them as residue would read a selection view as the
 // population authority. The future denominator is every production TypeOccurrence currently
-// bound through X, partitioned by old/new occurrence-binding result.
-data type_reference_containment_binding_structural_text_positive_subset_receipt: String = "AlreadyOccurrenceBoundStructuralText is the typed type_reference_containment_binding_structural_text_positive_subset: 30 hand-authored v2.std.text.String occurrences across src/v2, 29 inside the measured compiler closure and one outside it. All 30 positions require the structural carrier, but the set is an independently-derived positive subset, never a drop population or denominator. The unmeasured denominator is every production TypeOccurrence whose declaration identity currently comes through the flat TypeEnv/precedence path; this instrument did not enumerate that population. Replacement-census partitions: OldAndNewAgree, OldAndNewDisagree, OldBinds_NewUnresolved, OldBinds_NewAmbiguous, OldUnresolved_NewBinds."
+// bound through X, partitioned by OccurrenceBindingReplacementPartition. This instrument did not
+// enumerate that denominator. The typed subset has 30 hand-authored occurrences: 29 inside the
+// measured compiler closure and one outside it.
 
 // The tokenizer root-cut probe's twelve successors remain named so the migration cannot net them
 // off against the 41 incumbents. Multiplicity is part of identity where one source symbol contains
-// more than one distinct failing occurrence; emitted line numbers are deliberately absent.
-data type_reference_containment_binding_newly_exposed_string_identities_receipt: String = "NewlyExposedByRootCut after structuralizing tokenizer is carried by type_reference_containment_binding_newly_exposed_string_identities: ten declaration-and-code identities whose typed multiplicities total 12. They are fix-forward population behind the root cut, not regressions and not a count to net against incumbents. DeclarationRef deliberately replaces emitted line positions, which decay on regeneration; multiplicity remains part of each identity."
+// more than one distinct failing occurrence; emitted line numbers are deliberately absent because
+// they decay on regeneration. These are fix-forward population behind the root cut, not regressions.
 
 // CODELESS IS A FIRST-CLASS PARTITION. A code-keyed census reports 64 and silently loses this
-// row; the explicit reconciliation is the receipt. Its repair belongs to the declaration-bound
-// formal carrier transaction, where emission is the third consumer beside compatibility and
-// inhabitance, not to a witness-specific parallel carrier.
-data type_reference_containment_binding_codeless_emission_consumer_receipt: String = "The typed split-census reconciliation is coded 64 + codeless 1 = total 65. The codeless identity is v2.compiler.compile::apply_compile_lens_introspect — witness carrier type arg unresolved for variant Violates. infer_call_arguments_generic_pass computes the substituted formal and build_call_application_plan retains formal_subst transiently, but the emitted argument carries neither; rust_witness_type_arg_for_variant therefore cannot recover Witness<Node>. Emission is the third consumer of the single declaration-bound formal authority and requires its substitution basis. The direct-call formal-carrier lane owns that repair; this containment-binding authority retains only its downstream receipt and must not mint a parallel carrier."
+// row. infer_call_arguments_generic_pass computes the substituted formal and
+// build_call_application_plan retains formal_subst transiently, but the emitted argument carries
+// neither; rust_witness_type_arg_for_variant cannot recover Witness<Node>. Emission is the third
+// consumer of the single declaration-bound formal authority and requires its substitution basis.
+// The direct-call formal-carrier lane owns that repair; this authority retains only the typed
+// downstream receipt and must not mint a parallel carrier.
 
 data type_reference_containment_binding_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
