@@ -3,8 +3,12 @@ module v2.test.claim.spark_observation_scope
 import std.types { Bool, List }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
-import gunbc.spark.serving_desired { spark_serving_desired_hosts }
-import gunbc.spark.cell_role { spark_serving_cell_hosts, spark_training_cell_hosts }
+import gunbc.spark.cell_role {
+  spark_hosts_with_role_in,
+  SparkCellRoleAssignment,
+  SparkServingCell,
+  SparkTrainingCell,
+}
 import gunbc.spark.serving_observation_scope {
   spark_serving_observation_scope,
   spark_observation_coverage,
@@ -27,8 +31,32 @@ fn w_covered(expected: List<HostIdentity>, observed: List<HostIdentity>) -> Bool
 // reds if anyone reinstates it. It is not a restatement of the scope claim below: that one says the
 // scope CONTAINS srv6, this one says the DESIRED roster does not, so the two rosters are different
 // facts and cannot be substituted for one another.
+// THE FIXTURE ROSTER. Every claim below about a ROLE POPULATION reads this and not production.
+//
+// These four claims previously read the production assignments and asserted the live counts --
+// `length(training) == 1`, `length(spark_serving_cell_hosts()) == 1`. That made the evidence for a
+// MODELLED CAPABILITY contingent on which machines happened to hold which role, and when the
+// operator withdrew srv6's training dedication (SPARK-PAIR-0, 2026-09-02) all four went red without
+// any behaviour changing. The arm they describe still exists and still decides desired state.
+//
+// The scope/roster partition is the subject; the production roster was only ever one instance of it.
+data w_fixture_roster: List<SparkCellRoleAssignment> = [
+  SparkCellRoleAssignment { host: operator_host_srv5, role: SparkServingCell },
+  SparkCellRoleAssignment { host: operator_host_srv6, role: SparkTrainingCell },
+]
+
+fn w_fixture_serving() -> List<HostIdentity> {
+  spark_hosts_with_role_in(assignments: w_fixture_roster, role: SparkServingCell)
+}
+
+fn w_fixture_training() -> List<HostIdentity> {
+  spark_hosts_with_role_in(assignments: w_fixture_roster, role: SparkTrainingCell)
+}
+
+// THE DEFECT'S OWN CONTROL, now stated over the fixture: a ROLE-SCOPED roster is not the
+// observation scope, so scoping observation by it loses whatever the other role holds.
 test fn w_scoping_observation_by_desired_state_loses_the_training_cell() -> Bool {
-  !w_covered(expected: spark_serving_observation_scope(), observed: spark_serving_desired_hosts)
+  !w_covered(expected: spark_serving_observation_scope(), observed: w_fixture_serving())
 }
 
 test fn w_the_observation_scope_carries_both_spark_units() -> Bool {
@@ -39,14 +67,14 @@ test fn w_the_observation_scope_carries_both_spark_units() -> Bool {
 
 // THE SCOPE IS WIDER THAN EITHER ROLE ROSTER, WHICH IS THE PARTITION THE RETIREMENT NEEDS.
 test fn w_the_scope_is_not_the_serving_roster() -> Bool {
-  length(spark_serving_cell_hosts()) == 1
+  length(w_fixture_serving()) == 1
     && length(spark_serving_observation_scope()) == 2
 }
 
 test fn w_the_scope_covers_the_training_cell_the_serving_roster_omits() -> Bool {
-  let training = spark_training_cell_hosts()
+  let training = w_fixture_training()
   length(training) == 1
-    && w_covered(expected: spark_serving_observation_scope(), observed: concat(spark_serving_cell_hosts(), training))
+    && w_covered(expected: spark_serving_observation_scope(), observed: concat(w_fixture_serving(), training))
 }
 
 // COVERAGE CONTROLS: each defect is a distinct arm, so each gets its own red.
@@ -85,6 +113,6 @@ test fn w_a_duplicated_host_refuses() -> Bool {
 
 // A NON-EMPTY ROSTER IS NOT A COVERED ONE, WHICH IS THE GUARD THE OLD CHECK COULD NOT EXPRESS.
 test fn w_a_non_empty_but_narrowed_observation_is_still_refused() -> Bool {
-  let narrowed = spark_serving_desired_hosts
+  let narrowed = w_fixture_serving()
   length(narrowed) > 0 && !w_covered(expected: spark_serving_observation_scope(), observed: narrowed)
 }
