@@ -495,6 +495,28 @@ test fn an_honest_gap_does_not_mask_a_contradiction_on_the_other_side() -> Bool 
   hole_as_challenger && hole_as_subject
 }
 
+// THE PAIR PATH MUST REFUSE A MALFORMED AXIS ROSTER TOO, and until review 5092638535 it did not.
+// witness_duplicate_axis_identity_refuses exercises only entry_standing, so it stayed green with no
+// pair-layer guard existing at all -- the control was real but its subject was narrower than the
+// claim it appeared to make. With duplicated_axes, compare_pair used to return an ordinary
+// PairNoDominance: the first cost row said Better, the same cost identity repeated under the
+// opposite goal said Worse, the power row said Better, and nothing recorded a refusal.
+//
+// KILLING MUTATION: delete the axis_roster_contradiction gate from compare_pair. This control goes
+// red while witness_duplicate_axis_identity_refuses stays green -- which is the whole point, and the
+// reason the pre-existing control could not have caught it.
+test fn a_duplicated_axis_roster_refuses_the_pair_too() -> Bool {
+  let refused = match compare_pair(a: entry_cheap_strong, b: entry_dear_weak, axes: duplicated_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairNoDominance => false
+    PairDominates { winning_axes } => false
+    PairEvidenceIncomplete { missing } => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  let standing_agrees = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: clean_field, axes: duplicated_axes, sensitivities: spine_sensitivities))
+  refused && standing_agrees
+}
+
 fn pareto_witness_report() -> NonEmptyStr {
   join([
     "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
@@ -511,6 +533,7 @@ fn pareto_witness_report() -> NonEmptyStr {
     " pair_and_standing_agree=", flag(b: the_pair_api_and_the_standing_path_agree_about_a_gap()),
     " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
     " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
+    " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
   ], "")
 }
 
@@ -527,6 +550,7 @@ fn pareto_witness_main() -> ProcessExit {
     && the_pair_api_and_the_standing_path_agree_about_a_gap()
     && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
     && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
+    && a_duplicated_axis_roster_refuses_the_pair_too()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()

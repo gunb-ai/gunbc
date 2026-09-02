@@ -631,33 +631,42 @@ pub fn compare_pair(
     axes: Rc<Vec<Rc<SelectionAxis>>>,
 ) -> Rc<PairStanding> {
     {
-        let malformed = v1_rt::concat(
-            entry_contradicts_its_declaration(a.clone(), axes.clone()),
-            entry_contradicts_its_declaration(b.clone(), axes.clone()),
-        );
-        if ((malformed.clone().len() as i64) > 0) {
+        let axis_defects = axis_roster_contradiction(axes.clone());
+        if ((axis_defects.clone().len() as i64) > 0) {
             Rc::new(PairStanding::PairRefused {
-                cause: malformed.clone().join(&" ; ".to_string()),
+                cause: axis_defects.clone().join(&" ; ".to_string()),
             })
         } else {
             {
-                let gaps = declared_gap_cause(a.clone(), b.clone());
-                if ((gaps.clone().len() as i64) > 0) {
-                    Rc::new(PairStanding::PairEvidenceIncomplete {
-                        missing: gaps.clone().join(&" ; ".to_string()),
+                let malformed = v1_rt::concat(
+                    entry_contradicts_its_declaration(a.clone(), axes.clone()),
+                    entry_contradicts_its_declaration(b.clone(), axes.clone()),
+                );
+                if ((malformed.clone().len() as i64) > 0) {
+                    Rc::new(PairStanding::PairRefused {
+                        cause: malformed.clone().join(&" ; ".to_string()),
                     })
                 } else {
-                    pair_from_accum(axes.iter().cloned().fold(
-                        Rc::new(PairAccum {
-                            refusal_causes: no_names(),
-                            a_worse_somewhere: false,
-                            winning_axes: no_axis_ids(),
-                            undecided_axes: no_axis_ids(),
-                        }),
-                        |acc: _, axis: Rc<SelectionAxis>| {
-                            axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
-                        },
-                    ))
+                    {
+                        let gaps = declared_gap_cause(a.clone(), b.clone());
+                        if ((gaps.clone().len() as i64) > 0) {
+                            Rc::new(PairStanding::PairEvidenceIncomplete {
+                                missing: gaps.clone().join(&" ; ".to_string()),
+                            })
+                        } else {
+                            pair_from_accum(axes.iter().cloned().fold(
+                                Rc::new(PairAccum {
+                                    refusal_causes: no_names(),
+                                    a_worse_somewhere: false,
+                                    winning_axes: no_axis_ids(),
+                                    undecided_axes: no_axis_ids(),
+                                }),
+                                |acc: _, axis: Rc<SelectionAxis>| {
+                                    axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
+                                },
+                            ))
+                        }
+                    }
                 }
             }
         }
@@ -676,13 +685,12 @@ pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationR
         })
 }
 
-pub fn axes_have_duplicate_identity(axes: Rc<Vec<Rc<SelectionAxis>>>) -> bool {
-    axes.clone()
-        .iter()
-        .cloned()
-        .fold(false, |acc: bool, ax: Rc<SelectionAxis>| {
-            (acc || (count_axis_identity(axes.clone(), ax.identity.clone()) > 1))
-        })
+pub fn axis_roster_contradiction(axes: Rc<Vec<Rc<SelectionAxis>>>) -> Rc<Vec<String>> {
+    axes.clone().iter().cloned().fold(no_names(), |acc: Rc<Vec<String>>, ax: Rc<SelectionAxis>| if (count_axis_identity(axes.clone(), ax.identity.clone()) > 1) {
+        v1_rt::concat(acc.clone(), one_name(Rc::new(vec!["two selection axes share one identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(ax.identity.clone()), " - a duplicate axis would resolve first-one-wins, so the selection refuses".to_string()]).join(&"".to_string())))
+    } else {
+        acc.clone()
+    })
 }
 
 pub fn count_entry_identity(field: Rc<Vec<Rc<ParetoEntry>>>, id: Rc<DeclarationRef>) -> i64 {
@@ -834,44 +842,52 @@ pub fn entry_standing(
     axes: Rc<Vec<Rc<SelectionAxis>>>,
     sensitivities: Rc<Vec<String>>,
 ) -> Rc<ParetoStanding> {
-    if axes_have_duplicate_identity(axes.clone()) {
-        Rc::new(ParetoStanding::SelectionRefused {
-    cause: "two selection axes share one identity - a duplicate axis would resolve first-one-wins, so the selection refuses".to_string(),
-})
-    } else {
-        if field_has_duplicate_identity(field.clone()) {
+    {
+        let axis_defects = axis_roster_contradiction(axes.clone());
+        if ((axis_defects.clone().len() as i64) > 0) {
             Rc::new(ParetoStanding::SelectionRefused {
+                cause: axis_defects.clone().join(&" ; ".to_string()),
+            })
+        } else {
+            if field_has_duplicate_identity(field.clone()) {
+                Rc::new(ParetoStanding::SelectionRefused {
     cause: "two field entries share one candidate identity - a duplicate would be skipped as self-comparison, so the selection refuses".to_string(),
 })
-        } else {
-            {
-                let contradictions = field_contradictions(
-                    scanned_population(subject.clone(), field.clone()),
-                    axes.clone(),
-                );
-                if ((contradictions.clone().len() as i64) > 0) {
-                    Rc::new(ParetoStanding::SelectionRefused {
-                        cause: contradictions.clone().join(&" ; ".to_string()),
-                    })
-                } else {
-                    if ((subject.missing_inputs.clone().len() as i64) > 0) {
-                        Rc::new(ParetoStanding::NotComputable {
-                            missing: subject.missing_inputs.clone().join(&" ; ".to_string()),
+            } else {
+                {
+                    let contradictions = field_contradictions(
+                        scanned_population(subject.clone(), field.clone()),
+                        axes.clone(),
+                    );
+                    if ((contradictions.clone().len() as i64) > 0) {
+                        Rc::new(ParetoStanding::SelectionRefused {
+                            cause: contradictions.clone().join(&" ; ".to_string()),
                         })
                     } else {
-                        standing_from_accum(
-                            field.iter().cloned().fold(
-                                Rc::new(FieldAccum {
-                                    refusal_causes: no_names(),
-                                    dominators: no_dominators(),
-                                    pending_causes: no_names(),
-                                }),
-                                |acc: Rc<FieldAccum>, other: Rc<ParetoEntry>| {
-                                    field_step(subject.clone(), other.clone(), axes.clone(), acc)
-                                },
-                            ),
-                            sensitivities.clone(),
-                        )
+                        if ((subject.missing_inputs.clone().len() as i64) > 0) {
+                            Rc::new(ParetoStanding::NotComputable {
+                                missing: subject.missing_inputs.clone().join(&" ; ".to_string()),
+                            })
+                        } else {
+                            standing_from_accum(
+                                field.iter().cloned().fold(
+                                    Rc::new(FieldAccum {
+                                        refusal_causes: no_names(),
+                                        dominators: no_dominators(),
+                                        pending_causes: no_names(),
+                                    }),
+                                    |acc: Rc<FieldAccum>, other: Rc<ParetoEntry>| {
+                                        field_step(
+                                            subject.clone(),
+                                            other.clone(),
+                                            axes.clone(),
+                                            acc,
+                                        )
+                                    },
+                                ),
+                                sensitivities.clone(),
+                            )
+                        }
                     }
                 }
             }

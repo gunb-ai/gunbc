@@ -494,17 +494,22 @@ fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
 // contradiction (duplicate anywhere, or absent-while-declaring-complete) > honest declared
 // incompleteness > ordinary axis comparison.
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
-  let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
-  if count(malformed) > 0 {
-    PairRefused { cause: join(malformed, " ; ") }
+  let axis_defects = axis_roster_contradiction(axes: axes)
+  if count(axis_defects) > 0 {
+    PairRefused { cause: join(axis_defects, " ; ") }
   } else {
-    let gaps = declared_gap_cause(a: a, b: b)
-    if count(gaps) > 0 {
-      PairEvidenceIncomplete { missing: join(gaps, " ; ") }
+    let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
+    if count(malformed) > 0 {
+      PairRefused { cause: join(malformed, " ; ") }
     } else {
-      pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
-        axis_pair_step(acc: acc, axis: axis, a: a, b: b)
-      }))
+      let gaps = declared_gap_cause(a: a, b: b)
+      if count(gaps) > 0 {
+        PairEvidenceIncomplete { missing: join(gaps, " ; ") }
+      } else {
+        pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
+          axis_pair_step(acc: acc, axis: axis, a: a, b: b)
+        }))
+      }
     }
   }
 }
@@ -525,8 +530,29 @@ fn count_axis_identity(axes: List<SelectionAxis>, id: DeclarationRef) -> Int {
   fold(axes, init: 0, f: fn(acc, ax) { if declaration_ref_eq(a: ax.identity, b: id) { acc + 1 } else { acc } })
 }
 
-fn axes_have_duplicate_identity(axes: List<SelectionAxis>) -> Bool {
-  fold(axes, init: false, f: fn(acc, ax) { acc || count_axis_identity(axes: axes, id: ax.identity) > 1 })
+// THE AXIS ROSTER IS EVIDENCE TOO, AND ITS CONTRADICTION HAS ONE AUTHORITY. This replaces the Bool
+// predicate that used to stand here, a THIRD instance of the split this PR exists to close:
+// entry_standing consulted it and refused, exported compare_pair never looked at the roster at all,
+// so the two paths answered differently about the same malformed selection input -- a duplicated
+// cost identity reads Better on its first row and Worse on its second under the opposite goal, and
+// compare_pair returned an ordinary PairNoDominance where entry_standing returned SelectionRefused.
+//
+// A Bool could not have been shared honestly: both paths must report the same CAUSE and a Bool
+// carries none, so the old spelling kept its refusal text inline in entry_standing and sharing the
+// predicate would still have forked the message. Returning causes is what makes this ONE authority
+// rather than two callers of one predicate.
+//
+// Reported on review 5092638535, which was right that the earlier repair closed the reading-level
+// split and left the axis-level one standing.
+fn axis_roster_contradiction(axes: List<SelectionAxis>) -> List<NonEmptyStr> {
+  fold(axes, init: no_names, f: fn(acc, ax) {
+    if count_axis_identity(axes: axes, id: ax.identity) > 1 {
+      concat(acc, one_name(name: join([
+        "two selection axes share one identity ",
+        declaration_ref_display_key(ref: ax.identity),
+        " - a duplicate axis would resolve first-one-wins, so the selection refuses"], "")))
+    } else { acc }
+  })
 }
 
 fn count_entry_identity(field: List<ParetoEntry>, id: DeclarationRef) -> Int {
@@ -676,8 +702,9 @@ fn scanned_population(subject: ParetoEntry, field: List<ParetoEntry>) -> List<Pa
 // lies about its completeness invalidates every standing derived in it -- including the honest
 // report that this particular subject is short an input.
 fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<SelectionAxis>, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
-  if axes_have_duplicate_identity(axes: axes) {
-    SelectionRefused { cause: "two selection axes share one identity - a duplicate axis would resolve first-one-wins, so the selection refuses" }
+  let axis_defects = axis_roster_contradiction(axes: axes)
+  if count(axis_defects) > 0 {
+    SelectionRefused { cause: join(axis_defects, " ; ") }
   } else {
     if field_has_duplicate_identity(field: field) {
       SelectionRefused { cause: "two field entries share one candidate identity - a duplicate would be skipped as self-comparison, so the selection refuses" }
