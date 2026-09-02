@@ -127,39 +127,44 @@ import v2.std.collection { List }
 // is the property the hand-over rests on, and it was established before this change rather
 // than by it.
 //
-// ONE RUST TARGET MODEL RE-ENROLS AND THE OTHER TWO CANDIDATES ARE REFUSED, BY THE SAME
-// MEASUREMENT. The zero-walk serve made re-enrolment TESTABLE; it did not decide it, and the
-// difference is the whole of why this note exists. Admission here is a measured
-// present-vs-absent floor receipt and never an inference from "the serve is cheaper now" --
-// that inference is the specification-without-execution DESIGN section 5 names, and it would
-// have been wrong: `rust_target_model` was enrolled on exactly that expectation and MEASURED A
-// REGRESSION.
+// EVERY RUST TARGET MODEL STAYS OUT, AND THE REASON IS NOW A MEASUREMENT AGAINST THE CURRENT
+// SERVE RATHER THAN AGAINST THE OLD ONE. The zero-walk serve made re-enrolment TESTABLE; it did
+// not decide it, and that difference is the whole of why this note exists. Admission here is a
+// measured present-vs-absent floor receipt and never an inference from "the serve is cheaper
+// now" -- that inference is the specification-without-execution DESIGN section 5 names, and it
+// would have been wrong three times over, because all three candidates were enrolled on exactly
+// that expectation and all three were withdrawn on measurement.
 //
-// WHAT WAS TRIED AND WHAT SURVIVED. Three candidates were enrolled together and measured
-// against the same run pair: `rust_target_model_staging` (kept), `rust_target_model` and
-// `rust_target_model_core_edges` (both withdrawn before this merged).
+// WHAT WAS TRIED, ACROSS FOUR RUNS, NORMALISED AGAINST THE ROWS IN NO CONSUMER MODULE OF ANY
+// ENROLLED KEY -- the population the change cannot reach, which is the only sound control when
+// the runner moves 17% between runs of one tree:
 //
-//   - `rust_target_model_staging` is the row: its consumer modules improve about an eighth
-//     beyond the corpus-wide runner movement, in the same direction on both present runs.
-//   - `rust_target_model_core_edges` shows NO improvement over four consumer modules. A row
+//   - `rust_target_model` regressed the `v2.test.emit.produced_decl_two_target` /
+//     `v2.test.emit.rust_produced_decl_emit` cluster by about 20% normalised, on both present
+//     runs, and refused a floor run at cost=502ms EXACT.
+//   - `rust_target_model_core_edges` showed NO effect at all over four consumer modules. A row
 //     that neither costs nor saves is cache population, which this file already refuses.
-//   - `rust_target_model` is worse than that, and it is the interesting one. Its consumers as
-//     a set do not improve, and the `v2.test.emit.produced_decl_two_target` /
-//     `v2.test.emit.rust_produced_decl_emit` cluster REGRESSES by about 30% normalised,
-//     consistently across two present runs -- and that cluster is where the rows nearest the
-//     500ms ceiling live, so an aggregate win that pushes the top rows over the line is a loss
-//     on the subject this roster serves. That is #9721's finding standing up again on the
-//     other side of its own re-enrol trigger: THE WALK WAS NOT THE WHOLE COST OF SERVING THIS
-//     VALUE. What remains unidentified, and this file does not guess at it: a serve now hands
-//     over an `Rc` every consumer shares, so any path that would have mutated the recomputed
-//     value in place (`Rc::make_mut` with a strong count of one) copies instead. That is a
-//     candidate and not a finding.
+//   - `rust_target_model_staging` LOOKED like the survivor -- its 17 consumer modules improved
+//     about an eighth -- and it is out for the same reason as the first, discovered only after
+//     the first was withdrawn: with `rust_target_model` gone, staging inherited that row's
+//     consumer set (58 claims across 17 modules became 133 across 44, the produced-decl cluster
+//     among them) and the cluster's regression came with it, smaller but in the same direction.
+//     Its consumer set as a whole still improves. THAT IS THE TRADE THIS ROSTER MUST NOT MAKE:
+//     the ceiling is PER CLAIM, so a family total that improves while the rows nearest the line
+//     get worse is a loss on the subject, and those six rows sit within one runner-swing of 500.
 //
-// SO THE RE-ENROL TRIGGER ABOVE IS DISCHARGED AS A CAPABILITY AND NOT AS A VERDICT ON THESE
-// TWO. The zero-walk serve exists and is executed; `rust_target_model` and
-// `rust_target_model_core_edges` stay out, now on a MEASURED refusal against the current serve
-// rather than on the older one. Their next trigger is a measured serve-below-recompute on the
-// produced-decl consumers specifically, which needs the cause named first.
+// SO THE COMMON FINDING, WHICH IS THE USEFUL PART OF A NEGATIVE RESULT: serving a rust
+// `TargetModel` across claim frames costs its produced-decl consumers MORE than recomputing it,
+// and the per-frame WALK WAS NOT THE CAUSE -- #9721's conclusion survives its own re-enrol
+// trigger being discharged. What remains unidentified, and this file does not guess at it: a
+// serve hands over an `Rc` every consumer shares, so any path that would have mutated a freshly
+// recomputed value in place (`Rc::make_mut` at a strong count of one) copies instead. That is a
+// candidate, not a finding.
+//
+// NEXT TRIGGER FOR ALL THREE, naming what must be true rather than what must be built: the
+// remaining cost identified, and a measured serve-below-recompute ON THE PRODUCED-DECL
+// CONSUMERS SPECIFICALLY -- not on their family total, which has already been observed pointing
+// the wrong way.
 //
 // THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: the zero-walk serve, these rows not
 // enrolled) AND 33661252708 (PRESENT: the same tree plus these rows), and the comparison is
@@ -181,23 +186,16 @@ import v2.std.collection { List }
 // half, which is what admits the rows. A raw comparison would have credited the runner with
 // most of it.
 //
-// WHAT THE SAME LEDGER SAYS ABOUT SHARING, the other half of the admission criterion: the
-// present run reports `rust_target_model_staging` served to 58 consumer claims across 17
-// modules and `compile_phase_frontier_standing` to 22 across 3. Measured sharing was never the
-// question for the withdrawn two -- `rust_target_model` served 75 claims across 29 modules,
-// the widest of the four, and was still withdrawn. A row earns its place by measured recompute
-// AND measured sharing AND a serve below that recompute, and the third conjunct is the one that
-// refused it.
-//
-// THE WARM ROWS LAND `paid_by=<outside-fold>` -- billed to preparation, charged to no claim.
-// In the run where all three rust rows were enrolled the two later warms reported
-// `AlreadyPresent` because `rust_target_model` reaches them; with that row withdrawn,
-// `rust_target_model_staging` publishes its own entry, so a `Stored` disposition there is the
-// expected reading and not a change of behaviour.
+// MEASURED SHARING WAS NEVER THE QUESTION FOR THE THREE WITHDRAWN ROWS, and saying so guards
+// against the next reader re-proposing them on that evidence: the ledger reports
+// `rust_target_model` served to 75 consumer claims across 29 modules and
+// `rust_target_model_staging` to 133 across 44 once it inherited them -- the widest sharing on
+// the roster, and withdrawn anyway. A row earns its place by measured recompute AND measured
+// sharing AND a serve below that recompute, and it is the third conjunct that refused all
+// three.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
-  "v2.extdeps.languages.rust.rust_target_model_staging"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
 ]
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
