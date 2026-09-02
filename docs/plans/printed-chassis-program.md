@@ -307,6 +307,36 @@ not choose it.
   and vacancy produce the same number. Only a deliberate must-fail control in the same file
   distinguished them.
 
+### PRINT-5 — the handler, and the one thing it does not yet do
+
+The pairing discharge and the CadQuery handler both land: `AdmittedRealizationV0` is sealed and
+minted only inside `judge_realization` from the **canonical** specimen, and `realize_admitted` takes
+that capability and nothing else. Five witnesses green by execution — per-feature trace with the
+datum as a distinct subject, uncentred plate, whole-program equality against a model-rebuilt
+expectation, exact millimetre rendering on odd micrometres, and overtravel moving no measured
+dimension.
+
+**What is missing is actuation: nothing writes the emitted program to disk.** The modeled route is
+`gunbc.generated_artifact` — one variant plus two dispatch arms, auto-gated, which is exactly the
+shape this needs and which would make the committed file unable to drift from the model. It is not
+done because it raises one real modeling question on a load-bearing roster: `CommitPolicy`'s
+`CommitRequired { consumer }` enumerates `GitProtocol`, `GithubActionsWorkflow` and
+`ProjectDocumentation`, and a manufacturing program consumed by a CAD kernel is none of those.
+Inventing a fourth consumer arm at speed is how a meaning-fork gets baked into a roster every other
+artifact reads.
+
+The alternative considered and rejected was a `ShellCommand` host effect writing the file, which is
+§6's unmodeled-realization tell — raw shell implementing semantics the substrate already models —
+and noticing the reach for it is the line-stop signal §5 names.
+
+**Toolchain boundary, declared rather than discovered tomorrow.** This container has no CAD kernel:
+no `cadquery`, no `numpy`, no `pip`, no `ensurepip` (PyPI is reachable, so this is a missing
+bootstrap rather than a network wall). Walls 1–3 — geometry-taint, completeness, trace — are about
+the model→source map and execute here. Wall 4, re-reading the produced **solid** for plate
+dimensions, datum location and the eleven ladder holes, is **not authorable here** and is a §4b
+boundary obligation, not a rung: its trigger is a runner with `cadquery` importable. Running the
+emitted program needs `pip install cadquery` wherever it is run.
+
 ## The two-day cut (printers arrive 2026-09-03)
 
 **Ruling: a CAL-driven vertical slice, not a general framework and not hand-authored coupon CAD.**
