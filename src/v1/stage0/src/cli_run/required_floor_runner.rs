@@ -933,6 +933,22 @@ pub(crate) fn changed_witness_identities_from_edited_test_fns(
     Ok(identities)
 }
 
+/// Is this identity's declared home under a root the tree declares NON-EXECUTING?
+///
+/// The authority is `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes`, read through the same
+/// front-end projection as `witness_layer_roots`. Membership is the grant; everything else blocks.
+/// The roster is grained in the MODULE NAMESPACE because this population is undiscovered by
+/// definition -- no file was enumerated, so no path exists here to compare against a directory.
+fn identity_home_is_declared_non_executing(module_path: &str) -> bool {
+    non_executing_witness_module_prefixes()
+        .iter()
+        .any(|prefix| {
+            !prefix.is_empty()
+                && (module_path == prefix.as_str()
+                    || module_path.starts_with(&format!("{prefix}.")))
+        })
+}
+
 /// The host realization of `v2.workflow.floor_changed_witness`
 /// `changed_witness_execution_standing`, one row per changed identity, joined against the two
 /// receipt populations the run already holds: the disposition rows (the admission authority)
@@ -1041,6 +1057,45 @@ pub(crate) fn changed_witness_projection_rows(
                         .unwrap_or("not_executed")
                         .to_string(),
                     blocks: !green,
+                }
+            }
+            // A DECLINE BLOCKS UNLESS THE TREE GRANTS AN EXEMPTION, and the grant is membership in
+            // a roster, never the absence of a match anywhere else.
+            //
+            // Blocking every decline is right for the silence the 2026-08-30 ruling closes: a PR
+            // adds witnesses, they never run, the floor greens. `DeclinedOutsideGateClosure` is
+            // that case. A root the fold structurally CANNOT reach is a different subject --
+            // `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` declares it, and
+            // `non_executing_witness_module_prefixes_restoration` carries its 4b(2) trigger (bare references
+            // binding by containment; vehicle, the namespace cut). Blocking there surfaces no new
+            // silence: it forbids TOUCHING debt the tree has already declared, including by the
+            // program whose trigger retires it. A rule that forbids the work its own trigger
+            // requires is not enforcement.
+            //
+            // FAIL-CLOSED: the exemption requires the identity's declared home to BE in that
+            // roster. An unreadable roster, an empty one, or a home nobody rostered all block. This
+            // is deliberately not `!witness_layer_roots().contains(home)` -- that grants the
+            // exemption by absence, so an unrostered tree or a typo'd path would go silently
+            // non-blocking, and it substitutes "not declared executing" for "declared
+            // non-executing", which are different claims.
+            //
+            // The exemption evaporates with the row: when `v1` leaves the roster, this arm stops
+            // matching and needs no deletion.
+            Some(RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                module_path,
+            }) if identity_home_is_declared_non_executing(module_path) => {
+                ChangedWitnessProjectionRow {
+                    identity: identity.clone(),
+                    cost: None,
+                    standing: "declined-in-declared-non-executing-root",
+                    disposition: required_floor_disposition_label(
+                        &RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                            module_path: module_path.clone(),
+                        },
+                    )
+                    .to_string(),
+                    outcome: "not_executed".to_string(),
+                    blocks: false,
                 }
             }
             Some(declined) => ChangedWitnessProjectionRow {
@@ -1567,10 +1622,19 @@ pub(crate) fn emit_changed_witness_projection(
         );
     }
     let blocking = rows.iter().filter(|r| r.blocks).count();
+    // THE EXEMPTED POPULATION IS PRINTED BESIDE THE TWO IT SITS BETWEEN, because a non-blocking
+    // decline that nobody counts is the silence the 2026-08-30 ruling forbids, merely relocated.
+    // Countable and named is what separates a declared exemption from a hole.
+    let declared_non_executing = rows
+        .iter()
+        .filter(|r| r.standing == "declined-in-declared-non-executing-root")
+        .count();
     eprintln!(
-        "required-floor: changed_witnesses={} changed_witness_blocking={}",
+        "required-floor: changed_witnesses={} changed_witness_blocking={} \
+         changed_witness_declined_in_declared_nonexecuting_root={}",
         rows.len(),
-        blocking
+        blocking,
+        declared_non_executing
     );
     if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
         if !rows.is_empty() {
@@ -4452,6 +4516,69 @@ pub fn run_required_floor(
             sample(&disposition_duplicated),
         ));
     }
+    // TWO RANGES OVER ONE POPULATION, HANDLED HERE AND NOT REPAIRED HERE.
+    //
+    // `changed_witness_set` is derived from the run's git diff and is ROOT-AGNOSTIC.
+    // `declared_identity_set` is enumerated from the discovered index, which is scoped to this
+    // run's `--source-root`s (`dag` and `src/v2`). The selector's range is therefore strictly
+    // WIDER than the enumerator's, so a witness homed anywhere else — `src/v1/tests/claim/...`
+    // is the live population — is SELECTABLE AND UNDECLARABLE by construction. Such an identity
+    // reached neither side of the join above (it is in `declared_identity_set` for neither the
+    // declared nor the dispositioned side, so `FloorDispositionJoinInexact` stayed silent about
+    // it) and then failed the sublane join below naming identities that NO EDIT INSIDE THE
+    // OFFENDING PR COULD EVER SATISFY.
+    //
+    // The guard that would have named it, `ChangedWitnessOutsidePreparedSubject`, cannot fire:
+    // it sits inside the per-DISCOVERED-file loop, and these modules never enter that loop.
+    //
+    // SO THE UNHANDLED CASE BECOMES A TYPED DECLINE, and nothing else changes. Every identity
+    // the enumerator DID declare keeps exactly the disposition it had, so the dispositioned
+    // population over discovered files is unchanged; only selections that were previously
+    // unrepresentable acquire a row. It is a decline rather than a filter on purpose: silently
+    // dropping the selection would green the floor by making the over-selection invisible, which
+    // is the absorbing arm — the selector keeps over-selecting and nobody ever learns.
+    //
+    // THIS HANDLES THE MISMATCH AND DOES NOT RETIRE IT. NEXT-RUNG TRIGGER, named as the
+    // capability: SELECTION AND DISPOSITION CONSUME ONE RANGE. A green floor over these rows
+    // means the mismatch is represented, never that the two denominators have been reconciled.
+    let undeclarable_changed: Vec<String> = {
+        let mut v: Vec<String> = changed_witness_set
+            .difference(&declared_identity_set)
+            .cloned()
+            .collect();
+        v.sort();
+        v
+    };
+    for identity in &undeclarable_changed {
+        let module_path = identity
+            .rsplit_once('.')
+            .map(|(module, _)| module.to_string())
+            .unwrap_or_else(|| identity.clone());
+        disposition_rows.push(RequiredFloorDispositionRow {
+            identity: identity.clone(),
+            disposition: RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                module_path,
+            },
+        });
+    }
+    // The set the sublane join is entitled to expect: everything the selector chose MINUS the
+    // selections the enumerator could never declare, each of which now carries its own row.
+    let changed_witness_expected: HashSet<String> = changed_witness_set
+        .iter()
+        .filter(|identity| !undeclarable_changed.contains(identity))
+        .cloned()
+        .collect();
+    if !undeclarable_changed.is_empty() {
+        println!(
+            "required-ci: floor changed-witness selections outside discovery: {} identity(ies) \
+             declined — the changed-witness selector ranges over the whole diff and the declared \
+             population ranges over the discovery roots, so these are selectable and \
+             undeclarable; they are represented, NOT reconciled: {}",
+            undeclarable_changed.len(),
+            undeclarable_changed.join(", ")
+        );
+    }
+
     // EXACTNESS OF THE SUBLANE, as an identity join rather than a count. The left side is the
     // single #9717 diff derivation captured before preparation; the right side is what this site
     // projection actually marked for changed execution. A missing, foreign, or duplicated row
@@ -4466,13 +4593,13 @@ pub fn run_required_floor(
         })
         .map(|row| row.identity.clone())
         .collect();
-    if changed_disposition_set != changed_witness_set {
-        let mut selected_without_disposition: Vec<&str> = changed_witness_set
+    if changed_disposition_set != changed_witness_expected {
+        let mut selected_without_disposition: Vec<&str> = changed_witness_expected
             .difference(&changed_disposition_set)
             .map(String::as_str)
             .collect();
         let mut disposition_without_selection: Vec<&str> = changed_disposition_set
-            .difference(&changed_witness_set)
+            .difference(&changed_witness_expected)
             .map(String::as_str)
             .collect();
         selected_without_disposition.sort();
@@ -5039,6 +5166,7 @@ pub fn run_required_floor(
     let required_floor_disposition_path = std::env::var("GUNBC_REQUIRED_FLOOR_DISPOSITION").ok();
     let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let claim_cost_path = std::env::var("GUNBC_REQUIRED_FLOOR_CLAIM_COST").ok();
+    let cross_claim_demand_path = std::env::var("GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND").ok();
     let mut roster_join_report = if roster_join_active {
         // THE DENOMINATOR IS THE ENROLLED ROSTER, NOT THE SURVIVORS. Until 2026-09-01 this took
         // the post-suppression roster, so the report described only identities the fold could
@@ -5378,6 +5506,13 @@ pub fn run_required_floor(
         let (result, receipt) =
             run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
         final_symbol_retention = Some(frame.interner_stats_snapshot());
+        // FOLD THIS CLAIM'S RECOMPUTE LEDGER INTO THE CROSS-CLAIM CENSUS BEFORE THE FRAME DIES.
+        // The ledger is per-frame and reports only keys re-hit WITHIN one claim, so a producer
+        // this closure re-derives exactly once per claim is invisible to it in every claim
+        // separately — which is the population `v2.workflow.floor_pure_producer_share` is
+        // enrolled from. Absorbed here, one line after the measurement and before the next
+        // frame is built, so the census's claim grain is the loop's own.
+        v1_interpreter::absorb_claim_recompute_demand(&frame, &claim.qualified, &claim.module_path);
         let claim_rss_after = current_rss_bytes().unwrap_or(0) / 1024;
         let claim_rss_kb = claim_rss_after.saturating_sub(claim_rss_before);
         if claim_rss_kb > claim_rss_kb_max {
@@ -6665,6 +6800,93 @@ pub fn run_required_floor(
     if let Some(path) = claim_cost_path {
         write_required_floor_claim_cost_tsv(&path, &outcome.claim_cost, cost_basis)?;
     }
+    // THE CROSS-CLAIM DEMAND CENSUS. The per-claim cost receipt above says WHAT each claim was
+    // charged; this says WHICH PRODUCER IDENTITY the run re-derived across claims, which is the
+    // question the charge cannot answer and the one `v2.workflow.floor_pure_producer_share`
+    // enrolls from. It gates nothing and it enrols nothing: a row here is a candidate whose
+    // serve cost is still unmeasured, and that roster's own header records the case where the
+    // serve lost to the recompute.
+    {
+        let rows = v1_interpreter::cross_claim_demand_rows();
+        let disclosure = v1_interpreter::cross_claim_demand_disclosure();
+        // THE CEILING ANY TRUE TOTAL MUST SIT UNDER, carried beside the rows because the cost
+        // column is inclusive of callees and therefore NOT additive. Without it the first thing a
+        // reader does is sum the column, which on the first artifact gave ~14x the run's entire
+        // claim-side CPU.
+        let claim_cpu_total_ms: u128 = outcome
+            .claim_cost
+            .iter()
+            .map(|row| row.cpu_nanos / 1_000_000)
+            .sum();
+        // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
+        // orders by cross-claim recomputation and says so in band, so no consumer can read a
+        // log head as the census's own ranking or as a candidate roster.
+        let mut shared: Vec<&v1_interpreter::CrossClaimDemandRow> =
+            rows.iter().filter(|row| row.claims > 1).collect();
+        shared.sort_by_key(|row| std::cmp::Reverse(row.cross_claim_wasted_ns()));
+        eprintln!(
+            "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
+             omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
+             absorb_ms={} absorb_max_ms={} claim_cpu_total_ms={} (observation only; nothing \
+             refuses on these figures. The absorb runs AFTER each claim's measurement returns, so \
+             it is outside every claim's charged window and cannot trip the deadline; absorb_ms \
+             is what this instrument cost the run in total. DO NOT SUM THE COST COLUMN: durations \
+             are inclusive of callees, so a producer and its callees overlap and the sum counts \
+             the same nanoseconds once per level of nesting -- claim_cpu_total_ms is the ceiling \
+             any true total must sit under.)",
+            disclosure.claims_absorbed,
+            rows.len(),
+            shared.len(),
+            disclosure.omitted_keys,
+            disclosure.omitted_ns / 1_000_000,
+            disclosure.overflow_keys,
+            disclosure.absorb_ns_total / 1_000_000,
+            disclosure.absorb_ns_max / 1_000_000,
+            claim_cpu_total_ms
+        );
+        const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
+        eprintln!(
+            "[cross-claim-demand] the {} lines below are a PREVIEW ordered by cross-claim \
+             recomputation, not a candidate roster and not the artifact's order: a row is a \
+             producer whose SERVE cost is unmeasured, and enrolment is decided only by \
+             v2.workflow.floor_pure_producer_share, which has removed a top-ranking pair before \
+             on a measured serve-versus-recompute experiment.",
+            CROSS_CLAIM_DEMAND_PRINT_LIMIT.min(shared.len())
+        );
+        for row in shared.iter().take(CROSS_CLAIM_DEMAND_PRINT_LIMIT) {
+            eprintln!(
+                "[cross-claim-demand] producer={} args={} claims={} evals={} total_ms={} \
+                 cross_claim_ms={} modules={} sample={} @{}",
+                row.producer,
+                row.arg_shape,
+                row.claims,
+                row.evals,
+                row.total_ns / 1_000_000,
+                row.cross_claim_wasted_ns() / 1_000_000,
+                row.modules,
+                row.module_sample.join(","),
+                row.decl_site
+            );
+        }
+        if shared.len() > CROSS_CLAIM_DEMAND_PRINT_LIMIT {
+            eprintln!(
+                "[cross-claim-demand] ... and {} further shared producer identit(ies), not \
+                 printed. This list is the {} largest by cross-claim recomputation; the complete \
+                 retained population is in the cross-claim demand TSV this run uploads, and the \
+                 omitted-under-floor counters above bound what no artifact retains.",
+                shared.len() - CROSS_CLAIM_DEMAND_PRINT_LIMIT,
+                CROSS_CLAIM_DEMAND_PRINT_LIMIT
+            );
+        }
+        if let Some(path) = cross_claim_demand_path {
+            write_required_floor_cross_claim_demand_tsv(
+                &path,
+                &rows,
+                &disclosure,
+                claim_cpu_total_ms,
+            )?;
+        }
+    }
     if let Some(path) = required_floor_disposition_path {
         write_required_floor_disposition_tsv(
             &path,
@@ -6759,6 +6981,9 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
         RequiredFloorDisposition::DeclinedOutsideGateClosure => "declined_outside_gate_closure",
         RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => "declined_discovery_excluded",
+        RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+            "declined_changed_witness_outside_discovery"
+        }
     }
 }
 
@@ -6775,6 +7000,12 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         // name, and the label column keeps them apart for any reader joining on it.
         RequiredFloorDisposition::DeclinedDiscoveryExcluded { matched_substring } => {
             matched_substring
+        }
+        // The module that declares the identity, which is the whole content of this row: the
+        // reader needs to know WHERE the undeclarable selection is homed to see that it is
+        // outside the run's roots.
+        RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { module_path } => {
+            module_path
         }
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness

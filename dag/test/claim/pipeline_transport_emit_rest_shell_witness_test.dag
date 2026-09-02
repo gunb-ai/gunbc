@@ -269,6 +269,15 @@ fn w_shell_exit_error_arm_is_boxed() -> Bool {
   )
 }
 
+fn w_rest_error_arms_are_boxed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4h\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "src/re4h.rs",
+    ["Err(format!(\"HTTP {}: {}\", status, err_body).into())", "Err(format!(\"unexpected status code: {}\", status).into())"],
+    []
+  )
+}
+
 test fn shell_emit_multi_field_answers_each_declared_channel() -> Bool { w_shell_multi_field_answers_each_declared_channel() }
 test fn shell_emit_single_named_field_answers_its_channel() -> Bool { w_shell_single_named_field_answers_its_channel() }
 test fn shell_emit_single_unkeyed_field_keeps_whole_stdout() -> Bool { w_shell_single_unkeyed_field_keeps_whole_stdout() }
@@ -277,3 +286,4 @@ test fn shell_emit_single_field_authored_known_key_binds() -> Bool { w_shell_sin
 test fn shell_emit_unkeyed_field_emits_no_diagnostic() -> Bool { w_shell_unkeyed_field_emits_no_diagnostic() }
 test fn shell_emit_unmodeled_output_key_refuses() -> Bool { w_shell_unmodeled_output_key_refuses() }
 test fn shell_emit_exit_error_arm_is_boxed() -> Bool { w_shell_exit_error_arm_is_boxed() }
+test fn rest_emit_error_arms_are_boxed() -> Bool { w_rest_error_arms_are_boxed() }

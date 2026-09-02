@@ -77,7 +77,7 @@ pub use crate::std_types::{
     container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
-pub use crate::v1_compiler_coercion::{decl_file_realizes_natively, type_reference_decl_file};
+pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -95,8 +95,8 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    declaration_file_of, effective_visible_binding, empty_symbol_index, empty_type_env_cache,
-    env_with_type_variable_bindings, global_bare_is_ambiguous,
+    declaration_provenance_of_ref, effective_visible_binding, empty_symbol_index,
+    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -274,8 +274,8 @@ pub use crate::v1_std_core::{
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -3652,8 +3652,8 @@ pub fn equality_leaf_admission(
 ) -> Option<Rc<EqualityAdmissionRefusal>> {
     {
         let source_indices = scope.type_env.clone().source_indices.clone();
-        if crate::v1_compiler_coercion::decl_file_realizes_natively(
-            crate::v1_compiler_coercion::type_reference_decl_file(peeled.clone()),
+        if crate::v1_compiler_coercion::provenance_realizes_natively(
+            crate::v1_std_core::type_reference_provenance(peeled.clone()),
         ) {
             return std::option::Option::None;
         }
@@ -4694,8 +4694,8 @@ pub fn declared_realizes_as_kernel_numeric(
         if (produced_is_kernel_numeric.clone() == false) {
             false
         } else {
-            crate::v1_compiler_coercion::decl_file_realizes_natively(
-                crate::v1_compiler_coercion::type_reference_decl_file(declared.clone()),
+            crate::v1_compiler_coercion::provenance_realizes_natively(
+                crate::v1_std_core::type_reference_provenance(declared.clone()),
             )
         }
     }
@@ -8521,8 +8521,8 @@ pub fn literal_boundary_elaboration(
                         } else {
                             std::option::Option::None
                         };
-                        let natively = crate::v1_compiler_coercion::decl_file_realizes_natively(
-                            crate::v1_compiler_infer_env::declaration_file_of(
+                        let natively = crate::v1_compiler_coercion::provenance_realizes_natively(
+                            crate::v1_compiler_infer_env::declaration_provenance_of_ref(
                                 destination.clone(),
                                 scope.type_env.clone(),
                             ),
