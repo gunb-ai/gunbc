@@ -13,7 +13,9 @@ on, or cite `ctrl` as authority.** Stated at that grain deliberately: the wider 
 of the repository today, because `extdeps.ctrl.gunbc_pin` already declares an `ExternalAuthority`
 pointing into `gunb-ai/ctrl` and compares the host pin against the ctrl pin. That row is out of this
 lane's scope and is not to be touched here. Spark parity is to be handled by fleet convergence
-rather than by hand. RLM closes first; this lane starts after it.
+rather than by hand. **Operator direction 2026-09-02 withdrew the RLM-first start barrier**: DCH-0
+through DCH-2 proceed CONCURRENTLY with RLM, and the two lanes meet at DCH-3 rather than queueing.
+DCH-3 is a join, not a start barrier.
 
 ## 0. What is measured, and what is assumed
 
@@ -303,16 +305,46 @@ enablement and from initial start, on both paths.
 **The admitted restart sequence.** A bare `active == 0` reading is insufficient, because a turn may
 enter immediately after the read: **the admission fence and the drain are one protocol.**
 
-1. Bind a maintenance intent to the exact host, desired unit identity, and observed service
-   incarnation.
-2. Atomically move service admission from open to draining, keyed by that maintenance and
-   incarnation.
-3. Draining refuses every new turn lease for that incarnation.
-4. Drain the exact active lease identities to zero, or terminate each through a typed cancellation.
-5. Re-observe zero active leases **while the same fence is still held**.
+**THREE IDENTITIES, NOT ONE.** The 2026-09-02 ruling corrected an earlier conflation in this
+protocol, and the correction is the load-bearing part of the gate:
+
+| Identity | Stability | Answers |
+|---|---|---|
+| **Service locus** | stable across restarts | which service is fenced — host plus unit slot |
+| **Service invocation identity** | changes on every activation | is this still the exact process generation observed before? |
+| **Running-definition identity** | stable for equal restart-relevant specs | which definition produced this invocation? |
+
+The `/proc/<MainPID>/environ` stamp answers the **third**. It is invocation-BOUND evidence but it is
+not an invocation IDENTITY: two successive restarts from one definition carry the same stamp, so it
+cannot prove the old process was replaced. DCH-0r still needs the second, read from observation
+rather than desired state, and it must change whenever the process is replaced, stay stable within
+one observation transaction, never repeat merely because a PID was reused, and bind to the process
+whose environment and health were read. `MainPID` alone satisfies none of the last two.
+
+**The fence is keyed by the LOCUS, not by the incarnation.** An earlier wording said draining refuses
+leases "for that incarnation"; that is too narrow, and it fails exactly when it matters — if the
+backend restarts unexpectedly mid-drain, an incarnation-scoped fence stops blocking admissions at the
+moment an unvalidated new incarnation appears. The pre-restart invocation is a compare-and-swap
+condition and an evidence anchor, never the scope of the refusal. Each running lease separately binds
+the invocation it uses, which is what lets an unexpected replacement produce a typed interruption
+against the right turns.
+
+1. Observe one transactional pre-state: locus, invocation `J0`, running definition `D0`, desired `D*`.
+2. Atomically move `Open` to `Draining`, keyed by locus and maintenance, with `J0` as the expected
+   pre-invocation.
+3. Refuse **every** new turn admission at the locus, whatever invocation is present.
+4. Drain the complete active lease population at the locus to zero; each lease identifies its
+   invocation.
+5. While the same fence is held, re-observe zero leases **and** that the invocation is still `J0`.
+   If it changed, the drain did not succeed: settle the affected turns as interrupted, reconcile the
+   pre-state, and restart the protocol.
 6. Execute the independently typed restart.
-7. Read back a new incarnation, readiness, desired unit identity, and endpoint health.
-8. Reopen admission only when every readback agrees.
+7. Read one transactionally joined post-state and require ALL of: `J1 != J0`; `D1 == D*`; the
+   registered definition equals the render of `D*`; readiness and health belong to `J1`; and an
+   empty replan.
+8. Reopen admission bound to the pair `(J1, D1)`, and have every later admission recheck that the
+   observed pair still equals the admitted one — so an out-of-band restart refuses immediately
+   rather than silently granting a turn against an unvalidated backend.
 
 `std.temporal_effect` already carries the general direction — held leases, refusal on foreign
 ownership, `DrainThenStart` as a distinct plan — but the service-level population and admission
@@ -325,6 +357,24 @@ or the service exposes a complete active-request observation including external 
 external occupancy is **outside the modeled guarantee** — and then an automated destructive restart
 must refuse, or the guarantee is stated narrowly as DCH-managed-turn continuity. It may not be
 stated broadly and held narrowly.
+
+**THE UNSTAMPED READING, NARROWED.** A complete successful environment read that finds no stamp is
+positive evidence and is not "unobservable" — but its honest conclusion is that **this invocation
+cannot be established as having been started from the current desired definition**, whose render
+stamps unconditionally. It is NOT that the process temporally predates that definition: a foreign or
+manually started process could have been launched later and would carry no stamp either. It still
+requires reactivation; chronology is simply not what was established. The arm holds only while four
+conditions do: the environment read completed, absence is distinguished from permission, parse,
+truncation and observation failure, the desired unit specification stamps unconditionally, and the
+stamp identity covers every process-start input whose change requires reactivation.
+
+**THE SUBORDER.** DCH-0r-a deletes the fused unconditional restart, separates enable from start, and
+defines the reactivation vocabulary with its refusing selector. DCH-0r-b observes the
+running-definition identity AND the service-invocation identity, and proves the process/environment
+read is transactionally joined. DCH-0r-c builds the locus admission fence, the exact lease drain, the
+guarded production reactivation, the two-identity readback and the validated reopening. Joining the
+reactivation arm into the production planned-effect sum belongs with DCH-0r-c's guarded producer, not
+with DCH-0r-a — no production consumer can use the arm before then.
 
 **Receipt:** a restart executed against a held fence, with the drain observed to zero under that
 same fence, and a post-restart incarnation readback. An exit status of zero from the invoking
@@ -451,7 +501,13 @@ surface goes with them — it exists to solve a problem that a self-hosted endpo
 ## 4. What this lane must not do
 
 - Import, vendor, or cite `ctrl`.
-- Start before RLM's terminal receipt is accepted.
+- Become the default production harness before DCH-2's qualification receipts and the RLM terminal
+  are BOTH ready for the DCH-3 join. Concurrent authoring and qualification are authorized; an early
+  cutover is not, and "only" raises that bar rather than licensing it.
+- Land a change to an authority already inside another lane's frozen approved delta without
+  serializing it. Concurrency is authorized for authoring, testing and review; it is not authorized
+  for landing on a shared file, because a clean textual composition still yields a blob nobody
+  approved. `dag/gunbc/fleet/fleet_converge_plan.dag` is the live instance, shared with #9832.
 - Enrol the Sparks as a side effect of harness work — DCH-0 is a separate gate with a separate owner.
 - Bump `fleet_intent_network_witness_test`'s endpoint-count literal to absorb enrolment. Repair the
   oracle or leave it red; a count copied from the tree it measures is not one.
