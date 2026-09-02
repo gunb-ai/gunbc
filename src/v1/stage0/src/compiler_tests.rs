@@ -1037,23 +1037,56 @@ mod compiler_tests {
                     std::rc::Rc::new(im::vector![source]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                let emitted = r
-                    .files
+                let refusal = r
+                    .diagnostics
                     .iter()
-                    .find(|f| f.path == "src/probe.rs")
-                    .map(|f| f.content.clone())
-                    .expect("service module must emit src/probe.rs");
+                    .find_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                            transport_kind,
+                            service,
+                            operation,
+                            missing_realization_fact,
+                            span,
+                            ..
+                        } => Some((
+                            transport_kind.clone(),
+                            service.clone(),
+                            operation.clone(),
+                            missing_realization_fact.clone(),
+                            span.clone(),
+                        )),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "an unmodeled output key must refuse the COMPILE with a typed \
+                             TransportEmissionNotModeled diagnostic. Got diagnostics: {:?}",
+                            r.diagnostics
+                        )
+                    });
+                let (transport_kind, service, operation, missing_realization_fact, span) = refusal;
                 assert!(
-                    emitted.contains("not_a_channel")
-                        && emitted.contains("has no modeled channel"),
-                    "an unmodeled output key must refuse and name the key. Got:\n{}",
-                    emitted
+                    missing_realization_fact.contains("not_a_channel")
+                        && missing_realization_fact.contains("has no modeled channel"),
+                    "the refusal must NAME the unmodeled key. Got:\n{}",
+                    missing_realization_fact
+                );
+                assert_eq!(
+                    (transport_kind.as_str(), service.as_str(), operation.as_str()),
+                    ("shell", "Probe", "Version"),
+                    "the refusal must name the operation it refused"
+                );
+                assert_eq!(
+                    (span.file.as_str(), span.start, span.end),
+                    ("probe.dag", 83, 88),
+                    "the refusal must stay LOCATED at the offending key, not merely typed"
                 );
                 assert!(
-                    !emitted.contains("stdout.clone()"),
-                    "a refused operation must not fall through to the stdout channel. \
-                     Got:\n{}",
-                    emitted
+                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    "a refused operation must emit NOTHING for the module -- not a module \
+                     whose text happens to avoid one spelling of the stdout fallthrough. \
+                     Got files: {:?}",
+                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
                 );
             })
             .expect("failed to spawn thread")
