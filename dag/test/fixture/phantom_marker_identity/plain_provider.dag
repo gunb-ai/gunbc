@@ -1,0 +1,9 @@
+module test.fixture.phantom_marker_identity.plain_provider
+
+type Time {
+  value: Int
+}
+
+type PlainBox<T> {
+  value: Int
+}

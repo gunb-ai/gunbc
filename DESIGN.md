@@ -116,11 +116,11 @@ At a service boundary, rung honesty has a commercial consequence: a dimension ma
 
 Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-ledgers.md](docs/design-ledgers.md), authority `gunbc.rung_drop`. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The ones standing today:
 
+- **Stable per-claim cost qualification under a shared execution envelope** — declared 2026-09-01
 - **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
 - **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
-- **Regen candidate-tree producer** — declared 2026-08-20
 - **Blocking emit-stage diagnostics on main** — declared 2026-08-25
 - **Corpus-wide lens enforcement censuses** — declared 2026-08-11
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
@@ -184,6 +184,9 @@ The payoff is that **language design itself opens up.** It is normally locked by
 
 One row per class, each carrying its recognition rule and its receipts, in [docs/design-ledgers.md](docs/design-ledgers.md) — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one, so the section grows without bound while this document's sections are fixed by §1. The index below is the classes; the ledger is the content.
 
+- `censored_estimator_drops_its_own_tail`
+- `selection_view_read_as_population`
+- `unlanded_citation_indistinguishable_at_the_citing_end`
 - `hollow_alias`
 - `state_space_conflation`
 - `absorbing_fallback`
@@ -217,8 +220,16 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `mitigation_injected_where_judgment_declined`
 - `merge_region_excludes_shared_tail`
 - `sealing_property_erases_structure`
+- `disagreement_census_blind_to_agreed_wrong`
+- `undecided_fraction_read_as_denominator`
 - `restoration_promise_names_a_route_that_does_not_exist`
 - `alias_resolution_collides_with_kernel_spelling`
+- `restored_bytes_reviewed_as_authorship`
+- `review_summary_inverts_roles_and_affirms_the_join`
+- `accepted_source_emits_uncompilable_target`
+- `incidental_denominator_as_wall`
+- `compensating_errors_cancel_in_the_aggregate`
+- `one_refusal_two_destinations`
 
 ## Building & checks
 
