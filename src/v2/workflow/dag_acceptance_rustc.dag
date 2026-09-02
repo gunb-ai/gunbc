@@ -39,7 +39,7 @@ fn rustc_target_compile_observation(source: String) -> TargetCompileObservation 
     TargetCompileDecided { verdict: TargetCompileAccepted }
   } else if result.exit_code == rustc_missing_exit_code {
     TargetCompilerUnavailable { cause: "rustc is not executable on this host" }
-  } else if string_contains(s: result.stderr, needle: "error") {
+  } else if string_contains(s: result.stderr, pattern: "error") {
     TargetCompileDecided {
       verdict: TargetCompileRejected { diagnostic_code: ^rustc_diagnostic_stream_error_marker }
     }

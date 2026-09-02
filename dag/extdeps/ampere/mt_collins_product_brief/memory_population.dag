@@ -4,13 +4,23 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
-// Tables 10-13 of the Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.05,
-// fetched via the Customer Connect technical-documents listing. The anchor names the product
-// page because the download URL is a signed per-request API locator, not a stable document
-// address; the document is identified by title, issue and content digest below.
+// Tables 10-13 of the Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.05.
+// The anchor names the product page as the durable entry point; the direct download locator and
+// this document's publication status are declared once in the subject module and imported, so one
+// document has one status rather than one per citing module.
+//
+// AN EARLIER REVISION OF THIS COMMENT SAID THE GUIDE WAS FETCHED VIA THE CUSTOMER CONNECT LISTING
+// AND READ AS ACCESS-GATED. That reading was wrong and is retracted rather than quietly edited: it
+// conflated how one author happened to obtain the file with whether the file is public, and the
+// two are different facts. Fetching mt_collins_gsg_authority with no credentials returns the
+// document, and its digest equals the one recorded below. Public availability is the axis
+// gunbc.upstream_document_carriage turns on, so these facts are carriable here; the proprietary
+// and confidential footer is recorded by mt_collins_gsg_publication_status and decides nothing.
+// The barred population remains the reference-board DESIGN PACKAGE, which this module never read.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
@@ -18,7 +28,36 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data memory_population_source_document: NonEmptyStr = "Ampere Altra Platform Series Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.05 (2026-07-20), file Mt_Collins_DVT_PVT_MP_GSG_v1_05_20260720, sha256 1c41b4f088fa9c8b760d21d57ae93b0d1a68ee67a740d4eb7ac893753fc580b3: Table 10 (supported channel configurations, page 10), Table 11 (DDR4 memory population, page 11), Tables 12-13 (per-socket MCU and DIMM slot configurations, page 12)."
+// WHICH TABLES THIS MODULE READ, pointing at the canonical document rather than re-spelling it.
+// The string this replaces re-authored the guide's title, issue, date, filename and digest beside
+// the module that owns them, which is a second identity for one document: it could drift from the
+// canonical subject while every consumer still typechecked, and nothing read it. What was NOT
+// redundant is the coverage - which tables were read and where they sit - so that survives, as
+// rows rather than prose. The fetch observation the string also carried is a gunbc receipt, not an
+// upstream fact, and does not belong in extdeps at all.
+type MtCollinsSourceTable {
+  label: NonEmptyStr
+  page: Nat
+  content: NonEmptyStr
+}
+
+type MtCollinsMemoryPopulationCoverage {
+  document: DeclarationRef
+  tables: List<MtCollinsSourceTable>
+}
+
+data memory_population_coverage: MtCollinsMemoryPopulationCoverage = MtCollinsMemoryPopulationCoverage {
+  document: DeclarationRef {
+    module_path: "extdeps.ampere.mt_collins_getting_started_guide.subject",
+    decl_name: "mt_collins_getting_started_guide",
+    field: WholeDeclaration,
+  },
+  tables: [
+    MtCollinsSourceTable { label: "Table 10", page: 10, content: "supported channel configurations" },
+    MtCollinsSourceTable { label: "Table 11", page: 11, content: "DDR4 memory population" },
+    MtCollinsSourceTable { label: "Tables 12-13", page: 12, content: "per-socket MCU and DIMM slot configurations" },
+  ],
+}
 
 // WHY THE CITED ISSUE ADVANCED FROM 1.00 TO 1.05. The population rows below were first
 // transcribed from Issue 1.00. The rows were re-read against Issue 1.05 and are unchanged,
@@ -29,6 +68,7 @@ data memory_population_source_document: NonEmptyStr = "Ampere Altra Platform Ser
 data memory_population_revision_basis: NonEmptyStr = "Issue 1.00 was the first cited revision. Every Table 11 sequence was re-read against Issue 1.05 and matches exactly at connector-list grain, J32 omission included (the established fact is equality of the normalized connector sequences, not a comparison of the two source artifacts' bytes); Tables 10 and 12-13 are read from Issue 1.05 only. A single issue is cited so no row answers from a revision the module does not name."
 
 data memory_population_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
+
 
 // DIMM connectors are named J1..J32 on the board: J1..J16 serve socket 0 and J17..J32
 // serve socket 1. The supported 1DPC population uses the odd-numbered member of every channel
@@ -331,7 +371,7 @@ data mt_collins_memory_population_model_scope: ExternalModelScope = ExternalMode
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
+  further_citations: [mt_collins_gsg_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_collins_memory_population_model_scope
