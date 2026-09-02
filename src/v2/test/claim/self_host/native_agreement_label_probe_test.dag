@@ -1,4 +1,4 @@
-module v2.test.claim.self_host.native_agreement_label_probe
+module v2.test.claim.self_host.native_agreement_label_probe_test
 
 import v2.std.native_agreement { runtime_value_octet_label }
 import v2.std.node { Node, TypeNode, Atom, OccurrenceSynthetic }
