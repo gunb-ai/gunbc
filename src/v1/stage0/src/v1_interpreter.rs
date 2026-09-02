@@ -1108,6 +1108,17 @@ pub enum InterpError {
         elapsed_nanos: u128,
         limit_ms: u64,
     },
+    /// The CPU safety ceiling fired while an admitted cross-claim fill was in flight. The
+    /// computation has not published, so it is not a shared artifact; naming the producer keeps
+    /// the refusal on the prospective fill instead of silently presenting first-touch order as
+    /// intrinsic claim cost.
+    FillBudgetExceeded {
+        entry: String,
+        producer: String,
+        fill_cpu_nanos: u128,
+        marginal_cpu_nanos: u128,
+        limit_ms: u64,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
     /// wall-clock budget below are different quantities of one occurrence, and a shared
@@ -1226,6 +1237,18 @@ impl fmt::Display for InterpError {
                     limit_ms
                 )
             }
+            InterpError::FillBudgetExceeded {
+                entry,
+                producer,
+                fill_cpu_nanos,
+                marginal_cpu_nanos,
+                limit_ms,
+            } => write!(
+                f,
+                "in-flight shared fill exceeded CPU safety budget: entry={} producer={} \
+                 fill_cpu_ns={} marginal_cpu_ns={} limit_ms={}",
+                entry, producer, fill_cpu_nanos, marginal_cpu_nanos, limit_ms
+            ),
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -1838,7 +1861,14 @@ thread_local! {
     /// of STORED fills completed inside it. Enrolled producers compose (a full target model
     /// reads its staging core), and netting outer and inner inclusive CPU from the paying claim
     /// would net the inner twice — the shared-fill ledger's child stack, at this tier's grain.
-    static CROSS_CLAIM_FILL_CHILDREN: RefCell<Vec<(u128, u128)>> = const { RefCell::new(Vec::new()) };
+    static CROSS_CLAIM_FILL_FRAMES: RefCell<Vec<CrossClaimFillFrame>> = const { RefCell::new(Vec::new()) };
+}
+
+struct CrossClaimFillFrame {
+    producer: String,
+    cpu_started: u128,
+    stored_children_cpu: u128,
+    stored_children_wall: u128,
 }
 
 /// RAII scope for one admitted call that missed the cross-claim memo. Every path out of the
@@ -1853,7 +1883,15 @@ struct CrossClaimFillGuard {
 
 impl CrossClaimFillGuard {
     fn enter(func_name: &str) -> CrossClaimFillGuard {
-        CROSS_CLAIM_FILL_CHILDREN.with(|s| s.borrow_mut().push((0, 0)));
+        let cpu_started = thread_cpu_nanos();
+        CROSS_CLAIM_FILL_FRAMES.with(|s| {
+            s.borrow_mut().push(CrossClaimFillFrame {
+                producer: func_name.to_string(),
+                cpu_started,
+                stored_children_cpu: 0,
+                stored_children_wall: 0,
+            })
+        });
         CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
             if let Some(obs) = o.borrow().as_ref() {
                 (obs.on_fill_begin)();
@@ -1861,7 +1899,7 @@ impl CrossClaimFillGuard {
         });
         CrossClaimFillGuard {
             func_name: func_name.to_string(),
-            cpu_started: thread_cpu_nanos(),
+            cpu_started,
             wall_started: Instant::now(),
             stored: std::cell::Cell::new(false),
         }
@@ -1876,17 +1914,26 @@ impl Drop for CrossClaimFillGuard {
     fn drop(&mut self) {
         let inclusive_cpu = thread_cpu_nanos().saturating_sub(self.cpu_started);
         let inclusive_wall = self.wall_started.elapsed().as_nanos();
-        let (children_cpu, children_wall) = CROSS_CLAIM_FILL_CHILDREN
+        let frame = CROSS_CLAIM_FILL_FRAMES
             .with(|s| s.borrow_mut().pop())
-            .unwrap_or((0, 0));
+            .unwrap_or(CrossClaimFillFrame {
+                producer: self.func_name.clone(),
+                cpu_started: self.cpu_started,
+                stored_children_cpu: 0,
+                stored_children_wall: 0,
+            });
+        let children_cpu = frame.stored_children_cpu;
+        let children_wall = frame.stored_children_wall;
         if self.stored.get() {
             // Net SELF time only: stored descendants already netted their own inclusive time.
             record_shared_artifact_fill_cpu_nanos(inclusive_cpu.saturating_sub(children_cpu));
             let self_wall = inclusive_wall.saturating_sub(children_wall);
-            CROSS_CLAIM_FILL_CHILDREN.with(|s| {
+            CROSS_CLAIM_FILL_FRAMES.with(|s| {
                 if let Some(parent) = s.borrow_mut().last_mut() {
-                    parent.0 = parent.0.saturating_add(inclusive_cpu);
-                    parent.1 = parent.1.saturating_add(inclusive_wall);
+                    parent.stored_children_cpu =
+                        parent.stored_children_cpu.saturating_add(inclusive_cpu);
+                    parent.stored_children_wall =
+                        parent.stored_children_wall.saturating_add(inclusive_wall);
                 }
             });
             CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -1897,10 +1944,12 @@ impl Drop for CrossClaimFillGuard {
         } else {
             // Not stored: this frame's own cost stays the caller's, but its STORED
             // descendants were netted, so their total rolls up for the parent to subtract.
-            CROSS_CLAIM_FILL_CHILDREN.with(|s| {
+            CROSS_CLAIM_FILL_FRAMES.with(|s| {
                 if let Some(parent) = s.borrow_mut().last_mut() {
-                    parent.0 = parent.0.saturating_add(children_cpu);
-                    parent.1 = parent.1.saturating_add(children_wall);
+                    parent.stored_children_cpu =
+                        parent.stored_children_cpu.saturating_add(children_cpu);
+                    parent.stored_children_wall =
+                        parent.stored_children_wall.saturating_add(children_wall);
                 }
             });
             CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
@@ -3036,6 +3085,68 @@ mod cross_claim_memo_tests {
                 .expect("Cons/Empty chain must resolve under a held immutable interner borrow");
             assert_eq!(items, vec![Value::Int(7)]);
         });
+    }
+
+    /// The real-path discriminating pair for the in-flight boundary. Both arms evaluate the
+    /// same compiled producer through `eval_pure_named_call` and cross the same 5ms CPU
+    /// ceiling. Resolved-identity admission is the only changed fact: without it the ordinary
+    /// entry budget fires; with it the refusal names the prospective shared-fill producer.
+    #[test]
+    fn admitted_in_flight_fill_crossing_is_typed_and_unadmitted_control_is_ordinary() {
+        use super::InterpError;
+        use crate::v1_compiler_compile::SourceFile;
+
+        super::clear_cross_claim_pure_memos();
+        let items = std::iter::repeat("0")
+            .take(200_000)
+            .collect::<Vec<_>>()
+            .join(",");
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/fill_budget_fixture.dag".to_string(),
+                    content: format!(
+                        "module fixture.fill_budget\nfn producer() -> List<Int> {{ [{items}] }}\n\
+                     fn use_producer() -> List<Int> {{ producer() }}\n"
+                    ),
+                }
+            ),]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let fresh = || {
+            InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            )
+        };
+
+        let control = fresh();
+        control.arm_eval_deadline(5);
+        match super::run_in_context(&control, "fixture.fill_budget.use_producer", false) {
+            Err(InterpError::EvaluationBudgetExceeded { .. }) => {}
+            other => panic!("unadmitted control must keep the ordinary refusal: {other:?}"),
+        }
+
+        let admitted = fresh();
+        let producer = admitted
+            .lookup_fn_node("fixture.fill_budget.producer")
+            .expect("fixture producer");
+        super::install_cross_claim_pure_share_roster([producer]);
+        admitted.arm_eval_deadline(5);
+        match super::run_in_context(&admitted, "fixture.fill_budget.use_producer", false) {
+            Err(InterpError::FillBudgetExceeded {
+                producer,
+                fill_cpu_nanos,
+                limit_ms,
+                ..
+            }) => {
+                assert_eq!(producer, "producer");
+                assert!(fill_cpu_nanos >= 5_000_000, "fill CPU must cross 5ms");
+                assert_eq!(limit_ms, 5);
+            }
+            other => panic!("admitted specimen must name its in-flight fill: {other:?}"),
+        }
+        super::clear_cross_claim_pure_memos();
     }
 }
 
@@ -4940,6 +5051,19 @@ pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
 }
 
+fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
+    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
+        frames.borrow().first().map(|outermost| {
+            (
+                outermost.producer.clone(),
+                raw_cpu_nanos
+                    .saturating_sub(outermost.cpu_started)
+                    .saturating_sub(outermost.stored_children_cpu),
+            )
+        })
+    })
+}
+
 /// THE CLOCK EVERY CPU BUDGET IS MEASURED ON: thread CPU, less what this thread spent filling
 /// shared artifacts that every later claim naming the same source reads free.
 ///
@@ -5114,8 +5238,25 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
             if let Some((cpu_baseline_nanos, budget_ms)) = cpu_armed {
-                let elapsed_nanos = budgeted_cpu_nanos().saturating_sub(cpu_baseline_nanos);
+                let raw_cpu_nanos = thread_cpu_nanos();
+                let elapsed_nanos = raw_cpu_nanos
+                    .saturating_sub(shared_artifact_fill_cpu_nanos())
+                    .saturating_sub(cpu_baseline_nanos);
                 if (elapsed_nanos / 1_000_000) as u64 > budget_ms {
+                    if let Some((producer, fill_cpu_nanos)) =
+                        in_flight_cross_claim_fill(raw_cpu_nanos)
+                    {
+                        let marginal_cpu_nanos = elapsed_nanos.saturating_sub(fill_cpu_nanos);
+                        if (marginal_cpu_nanos / 1_000_000) as u64 <= budget_ms {
+                            return Err(InterpError::FillBudgetExceeded {
+                                entry: ctx.budget_entry_or_unnamed(),
+                                producer,
+                                fill_cpu_nanos,
+                                marginal_cpu_nanos,
+                                limit_ms: budget_ms,
+                            });
+                        }
+                    }
                     return Err(InterpError::EvaluationBudgetExceeded {
                         entry: ctx.budget_entry_or_unnamed(),
                         clock: EvaluationClock::ThreadCpu,

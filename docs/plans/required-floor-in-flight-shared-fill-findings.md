@@ -84,6 +84,7 @@ Under the model implemented here, an in-progress first touch is not yet a shared
 attributable to the triggering row until its terminal disposition is known. This is not merely an
 accounting convenience: publication can refuse because arguments are not hashable or portable,
 the value is not portable, the producer is not admitted, or a capacity or byte bound is reached.
+`AlreadyPresent` is servable and is not one of those refusal arms.
 An abandoned computation never becomes available to another claim.
 
 Successful store retroactively classifies the admitted computation as shared fill; abandonment
