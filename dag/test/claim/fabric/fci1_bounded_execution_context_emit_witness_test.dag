@@ -1,6 +1,7 @@
 module test.claim.fabric.fci1_bounded_execution_context_emit_witness_test
 
-import std.types { Bool, list_length, filter }
+import std.types { Bool, list_length }
+import v2.std.algebra { filter }
 import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 import gunbc.fci1_bounded_execution_context_emit {
   expected_fci1_bounded_execution_context_env,
