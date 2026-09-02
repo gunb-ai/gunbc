@@ -1479,29 +1479,41 @@ fn witness_floor_job() -> Job {
 // -- regen's receipt is consumed by nothing outside its own process, and the floor's three TSVs
 // are written and uploaded inside the witnesses job -- so there is nothing an ordering edge could
 // protect.
-// THE RUST UNIT TESTS, IN THEIR OWN JOB AND NOT IN EITHER REQUIRED LANE (operator ruling
-// 2026-08-29: "add the rust unit tests but keep them in a separate job for now"). The 774
-// `#[test]`s under src/v1/stage0 ran on no CI path before this job existed. It is not a `needs` of
-// the aggregate, so it does not gate a merge yet; it is a third context beside the two lanes.
+// THE RUST UNIT TESTS, NOW A REQUIRED LANE. The 774 `#[test]`s under src/v1/stage0 ran on no CI
+// path at all before this job existed, then ran on every push and pull request while GATING
+// NOTHING -- and that gap produced exactly the harm it predicts: #9886 landed two failing tests on
+// main with every required check green. This job is a member of `required_lanes_roster`, so its
+// result is read by the aggregate's verdict and a failure here blocks.
 //
-// PROMOTING IT IS NOW ACTUALLY ONE ROW, WHICH IT WAS NOT WHEN THIS SENTENCE WAS FIRST WRITTEN.
-// The claim was true of the aggregate's shape then and had gone stale: the lane axis was a
-// hardcoded pair spelled 28 times across four functions in `gunbc.required_lanes_gate`, so
-// promotion was a signature change in four places, and -- worse -- a `needs`-only edit would have
-// added the wait while granting no authority to block, because the gate reads named variables and
-// a lane whose result it does not read cannot fail it. The axis is now one `RequiredLane` roster
-// from which the gate's verdict, the receipt, both refusal messages, the step's `env` block and
-// the job's `needs` edge are all derived, so adding this job is one row in
-// `required_lanes_roster` and nothing else.
+// PROMOTED UNDER THE 2026-08-29 OPERATOR RULING'S OWN TERMS -- "add the rust unit tests but keep
+// them in a separate job FOR NOW", conditioned on its wall clock being measured on the fleet
+// runner. It is still a separate JOB; what changed is that the aggregate now reads it.
 //
-// WHAT STILL GATES THE PROMOTION IS NOT THE EDIT SIZE. Two conditions, and neither is discharged
-// by this file: main must be green, and the fleet's toolchain-install fault must be fixed. The
-// second is the load-bearing one -- measured over 120 witnesses runs on 2026-09-02, this job's
-// wall clock is BELOW `required-witnesses-floor` at every quantile (p50 21.9 vs 25.9 minutes, p90
-// 32.1 vs 36.2, max 41.5 vs 47.0), so promotion costs nothing on the critical path, but a host
-// fault that evicts the toolchain would become a merge block on every pull request in the
-// repository the moment this lane gates. Re-derive that measurement from
-// `actions/runs/<id>/jobs` rather than trusting these numbers.
+// THE COST IS ZERO ON THE CRITICAL PATH, and the reason is a comparison rather than a bound. The
+// lanes run in PARALLEL with the aggregate only waiting, so promotion adds nothing unless this
+// becomes the SLOWEST lane -- and measured across 120 witnesses runs it sits BELOW
+// `required-witnesses-floor` at every quantile. Re-derive with
+// `gh api repos/OWNER/REPO/actions/runs/<id>/jobs` over a stated window rather than trusting a
+// remembered figure: the numbers move, the comparison is the claim, and a timeout-headroom
+// argument would have been the wrong one -- headroom says nothing about what the aggregate waits
+// for.
+//
+// WHAT THE PROMOTION WAITED ON WAS NEVER THE EDIT SIZE, and all three conditions were discharged
+// before this landed rather than argued away. Main had to be GREEN, because a promotion whose
+// first act blocks every open pull request on a defect already fixed elsewhere is a self-inflicted
+// outage -- and that was not hypothetical: while this was held, #10036 was blocked by
+// `shell_service_unmodeled_output_key_refuses`, main's own defect, whose fix its author had
+// already landed under another number. The FLEET had to be healthy, because a lane that cannot be
+// delivered its admitted memory or toolchain produces reds carrying no information about the diff,
+// and gating on it converts an uninformative signal into repository-wide blocking authority. And
+// the required floor's per-claim COST ACCOUNTING had to be understood, for the same reason one
+// layer down -- `gunbc.recurring_failure_mode` `recurrence_ledger_scoped_below_the_recurrence`.
+//
+// THAT LAST CONDITION IS THE ONE A LATER READER WILL BE TEMPTED TO DROP, so it is stated as the
+// rule and not as history: A LANE MAY BE PROMOTED ONLY WHEN A RED IN IT DISCRIMINATES. Wall clock
+// is the cheap question; whether the lane's failures are ABOUT THE DIFF is the load-bearing one,
+// and a lane that reds for shared or host reasons is worse promoted than unpromoted, because it
+// converts a known-uninformative signal into a merge block nobody can act on.
 data rust_unit_tests_job_id: String = "rust-unit-tests"
 
 fn rust_unit_tests_step() -> Step {
@@ -1995,6 +2007,7 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_unit_var: String = "UNIT"
 
 // THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
 //
@@ -2019,6 +2032,11 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
         job_id: floor_lane_job_id,
         label: "floor",
         var_name: required_lanes_gate_floor_var
+      },
+      RequiredLane {
+        job_id: rust_unit_tests_job_id,
+        label: "unit",
+        var_name: required_lanes_gate_unit_var
       }
     ]
   }
@@ -2105,7 +2123,7 @@ fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
 
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
-    name: Present { value: "Both required lanes must have succeeded" },
+    name: Present { value: "Every required lane must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
