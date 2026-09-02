@@ -45,6 +45,11 @@ pub use crate::gunbc_structural_realization_bindings::{
 };
 pub use crate::std_algebra::trim;
 pub use crate::std_coercion::TypeCheckpoint;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
+use crate::std_coercion::TypeRealizationDecision::*;
+pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
@@ -99,12 +104,14 @@ pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::{
-    coerce_primitive_type, decl_identity_file, declaration_realizes_natively_on_rust, is_copy,
-    is_kernel_minted_file, lookup_checkpoint, rust_lookup_exact_binding,
-    rust_seed_host_numeric_alias, target_callable, type_reference_decl_file,
+    coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
+    realization_host_numeric_spelling, realization_is_host_numeric, realized_checkpoint,
+    rust_lookup_exact_binding, target_callable, type_realization_decision,
+    type_reference_realization,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
+pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -113,7 +120,12 @@ use crate::v1_compiler_emit::FileResultChannel::{
     FileChanByteCount, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
-    FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly,
+    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
+};
+use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
+use crate::v1_compiler_emit::ShellResultChannel::{
+    ShellChanExitCode, ShellChanExitSuccess, ShellChanStderr, ShellChanStderrRetainedBytes,
+    ShellChanStderrTotalBytes, ShellChanStderrTruncated, ShellChanStdout, ShellChanStdoutLines,
 };
 pub use crate::v1_compiler_emit::{
     bind_operation_transport, child_from_key, compute_service_fields,
@@ -128,11 +140,13 @@ pub use crate::v1_compiler_emit::{
     keyed_container_has_target_inhabitant, lookup_item, module_emit_scope, order_typed_call_args,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    tco_reassign_core, transport_binding_refusal_fact, unwrap_single_field_product,
+    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
+    transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
-    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    InterpPart, ServiceFieldSet, ShellEmissionRefusal, ShellResultChannel, ShellResultField,
+    TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -173,6 +187,10 @@ pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
+pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
+use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup::{
+    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
+};
 pub use crate::v1_compiler_infer_resolve::{
     is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
 };
@@ -251,14 +269,15 @@ use crate::v1_std_core::VarBindingKind::{
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
-    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
-    find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
-    generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    binop_right, cast_expr, cast_target, declaration_provenance_of, empty_intern_table,
+    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at,
+    expr_var_name_at, field_access_base, field_access_field_at, field_binding_name_at,
+    field_binding_pattern, field_from_key_property_name, field_init_node_name_at,
+    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
+    find_property, foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
     make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, no_span,
     param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
@@ -268,7 +287,8 @@ pub use crate::v1_std_core::{
     transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
     transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
-    transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
+    transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
@@ -618,11 +638,12 @@ pub fn render_rust_type_without_applied_binding(
                                     key_str.clone(),
                                     val_str.clone(),
                                     crate::v1_compiler_coercion::coerce_primitive_type(
-                                        RenderTarget::Rust,
-                                        tn.clone(),
-                                        crate::v1_compiler_coercion::type_reference_decl_file(
+                                        crate::v1_compiler_coercion::type_reference_realization(
                                             n.clone(),
+                                            tn.clone(),
+                                            RenderTarget::Rust,
                                         ),
+                                        tn.clone(),
                                     ),
                                     RenderTarget::Rust,
                                 );
@@ -705,7 +726,7 @@ pub fn render_rust_type_without_applied_binding(
                                             render_rust_text_carrier(shared_types.clone()),
                                         )
                                     } else {
-                                        match crate::v1_compiler_coercion::rust_seed_host_numeric_alias(crate::v1_std_core::qualified_last_segment(tn.clone()), type_reference_decl_file_in_env(n.clone(), emit_info.fn_type_env.clone(), source_indices.clone())) {
+                                        match crate::v1_compiler_coercion::realization_host_numeric_spelling(type_reference_realization_in_env(n.clone(), crate::v1_std_core::qualified_last_segment(tn.clone()), emit_info.fn_type_env.clone(), source_indices.clone())) {
     Some(host) => rust_carrier_optional_wrap(n.clone(), host.clone()),
     std::option::Option::None => crate::v1_compiler_emit::render_node_type(n.clone(), RenderTarget::Rust, shared_types.clone(), source_indices.clone()),
 }
@@ -912,9 +933,12 @@ pub fn rust_opaque_kernel_alias_type_eligible(name: String) -> bool {
 pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
     if rust_opaque_kernel_alias_type_eligible(name.clone()) {
         Some(crate::v1_compiler_coercion::coerce_primitive_type(
-            RenderTarget::Rust,
+            crate::v1_compiler_coercion::type_realization_decision(
+                RenderTarget::Rust,
+                name.clone(),
+                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+            ),
             name.clone(),
-            "".to_string(),
         ))
     } else {
         std::option::Option::None
@@ -932,9 +956,12 @@ pub fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> 
         ) {
             Some(exact) => exact.clone(),
             std::option::Option::None => crate::v1_compiler_coercion::coerce_primitive_type(
-                RenderTarget::Rust,
+                crate::v1_compiler_coercion::type_realization_decision(
+                    RenderTarget::Rust,
+                    name.clone(),
+                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+                ),
                 name.clone(),
-                "".to_string(),
             ),
         };
         v1_rt::concat(
@@ -985,43 +1012,28 @@ pub fn checkpoint_table_bypasses_identity_note() -> String {
 }
 
 pub fn rust_scalar_checkpoint_reference_base(
-    dag_name: String,
-    decl_file: String,
+    decision: Rc<TypeRealizationDecision>,
 ) -> Option<String> {
-    rust_scalar_checkpoint_spelling(dag_name.clone(), decl_file.clone(), false)
+    rust_scalar_checkpoint_spelling(decision.clone(), false)
 }
 
 pub fn rust_scalar_checkpoint_grounding_base(
-    dag_name: String,
-    decl_file: String,
+    decision: Rc<TypeRealizationDecision>,
 ) -> Option<String> {
-    rust_scalar_checkpoint_spelling(dag_name.clone(), decl_file.clone(), true)
+    rust_scalar_checkpoint_spelling(decision.clone(), true)
 }
 
 pub fn rust_scalar_checkpoint_spelling(
-    dag_name: String,
-    decl_file: String,
+    decision: Rc<TypeRealizationDecision>,
     grounding: bool,
 ) -> Option<String> {
-    match crate::v1_compiler_coercion::lookup_checkpoint(
-        RenderTarget::Rust,
-        dag_name.clone(),
-        decl_file.clone(),
-    ) {
+    match crate::v1_compiler_coercion::realized_checkpoint(decision.clone()) {
         Some(cp) => Some(if grounding.clone() {
             cp.grounding_type.clone()
         } else {
             cp.target_type.clone()
         }),
-        std::option::Option::None => {
-            match crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                dag_name.clone(),
-                decl_file.clone(),
-            ) {
-                Some(host) => Some(host.clone()),
-                std::option::Option::None => std::option::Option::None,
-            }
-        }
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1034,19 +1046,19 @@ pub fn rust_checkpoint_scalar_phantom_params_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn type_reference_decl_file_in_env(
+pub fn type_reference_provenance_in_env(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<TypeDeclarationProvenance> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: _, .. }) => {
-            crate::v1_compiler_coercion::type_reference_decl_file(n.clone())
+            crate::v1_std_core::type_reference_provenance(n.clone())
         }
         _ => {
             let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
             if (leaf.clone() == "".to_string()) {
-                crate::v1_compiler_coercion::type_reference_decl_file(n.clone())
+                crate::v1_std_core::type_reference_provenance(n.clone())
             } else {
                 match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), leaf.clone()) {
                     Some(decl) => {
@@ -1055,18 +1067,31 @@ pub fn type_reference_decl_file_in_env(
                             decl.clone(),
                         ) == leaf.clone())
                         {
-                            crate::v1_compiler_coercion::decl_identity_file(decl.clone())
+                            crate::v1_std_core::declaration_provenance_of(decl.clone())
                         } else {
-                            crate::v1_compiler_coercion::type_reference_decl_file(n.clone())
+                            crate::v1_std_core::type_reference_provenance(n.clone())
                         }
                     }
                     std::option::Option::None => {
-                        crate::v1_compiler_coercion::type_reference_decl_file(n.clone())
+                        crate::v1_std_core::type_reference_provenance(n.clone())
                     }
                 }
             }
         }
     }
+}
+
+pub fn type_reference_realization_in_env(
+    n: Rc<Node>,
+    dag_name: String,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeRealizationDecision> {
+    crate::v1_compiler_coercion::type_realization_decision(
+        RenderTarget::Rust,
+        dag_name.clone(),
+        type_reference_provenance_in_env(n.clone(), env.clone(), source_indices.clone()),
+    )
 }
 
 pub fn rust_render_checkpoint_scalar_bare(
@@ -1083,34 +1108,36 @@ pub fn rust_render_checkpoint_scalar_bare(
             if crate::std_types::is_container_type(leaf.clone()) {
                 return std::option::Option::None;
             }
-            let decl_file =
-                type_reference_decl_file_in_env(n.clone(), env.clone(), source_indices.clone());
+            let decision = type_reference_realization_in_env(
+                n.clone(),
+                leaf.clone(),
+                env.clone(),
+                source_indices.clone(),
+            );
             match rust_exact_reference_spelling(n.clone(), source_indices.clone(), env.clone()) {
                 Some(exact) => Some(exact.clone()),
                 std::option::Option::None => {
-                    match crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                        leaf.clone(),
-                        decl_file.clone(),
+                    match crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                        decision.clone(),
                     ) {
                         Some(numeric) => Some(numeric.clone()),
-                        std::option::Option::None => match rust_scalar_checkpoint_reference_base(
-                            leaf.clone(),
-                            decl_file.clone(),
-                        ) {
-                            Some(scalar) => {
-                                if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                    && !rust_type_is_rc_wrapped(scalar.clone()))
-                                {
-                                    Some(crate::v1_compiler_languages::wrap_shared_type(
-                                        RenderTarget::Rust,
-                                        scalar.clone(),
-                                    ))
-                                } else {
-                                    Some(scalar.clone())
+                        std::option::Option::None => {
+                            match rust_scalar_checkpoint_reference_base(decision.clone()) {
+                                Some(scalar) => {
+                                    if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                        && !rust_type_is_rc_wrapped(scalar.clone()))
+                                    {
+                                        Some(crate::v1_compiler_languages::wrap_shared_type(
+                                            RenderTarget::Rust,
+                                            scalar.clone(),
+                                        ))
+                                    } else {
+                                        Some(scalar.clone())
+                                    }
                                 }
+                                std::option::Option::None => std::option::Option::None,
                             }
-                            std::option::Option::None => std::option::Option::None,
-                        },
+                        }
                     }
                 }
             }
@@ -1179,17 +1206,21 @@ pub fn rust_reference_checkpoint_spelling_at(
 ) -> Option<String> {
     match rust_exact_reference_spelling(n.clone(), source_indices.clone(), env.clone()) {
         Some(exact) => Some(exact.clone()),
-        std::option::Option::None => rust_scalar_checkpoint_reference_base(
-            rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
-            type_reference_decl_file_in_env(n.clone(), env.clone(), source_indices.clone()),
-        ),
+        std::option::Option::None => {
+            rust_scalar_checkpoint_reference_base(type_reference_realization_in_env(
+                n.clone(),
+                rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+                env.clone(),
+                source_indices.clone(),
+            ))
+        }
     }
 }
 
 pub fn rust_declaration_checkpoint_grounding_at(
     module_path: String,
     decl_name: String,
-    decl_file: String,
+    decision: Rc<TypeRealizationDecision>,
 ) -> Option<String> {
     match rust_exact_binding_spelling(
         Some(crate::std_decl_ref::decl_ref(
@@ -1199,9 +1230,7 @@ pub fn rust_declaration_checkpoint_grounding_at(
         true,
     ) {
         Some(exact) => Some(exact.clone()),
-        std::option::Option::None => {
-            rust_scalar_checkpoint_grounding_base(decl_name.clone(), decl_file.clone())
-        }
+        std::option::Option::None => rust_scalar_checkpoint_grounding_base(decision.clone()),
     }
 }
 
@@ -1264,20 +1293,16 @@ pub fn rust_seed_host_freemonoid_empty(carrier_name: String) -> Option<String> {
     }
 }
 
-pub fn rust_named_type_base(name: String, decl_file: String) -> String {
+pub fn rust_named_type_base(name: String, decision: Rc<TypeRealizationDecision>) -> String {
     if ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string())) {
         "Witness".to_string()
     } else {
-        crate::v1_compiler_coercion::coerce_primitive_type(
-            RenderTarget::Rust,
-            name.clone(),
-            decl_file.clone(),
-        )
+        crate::v1_compiler_coercion::coerce_primitive_type(decision.clone(), name.clone())
     }
 }
 
-pub fn rust_applied_type_base(name: String, decl_file: String) -> String {
-    rust_named_type_base(name.clone(), decl_file.clone())
+pub fn rust_applied_type_base(name: String, decision: Rc<TypeRealizationDecision>) -> String {
+    rust_named_type_base(name.clone(), decision.clone())
 }
 
 pub fn rust_witness_parent_leaf(parent: String) -> bool {
@@ -1870,12 +1895,16 @@ pub fn rust_type_arg_identity_spelling(
         } {
             std::option::Option::None
         } else {
-            match crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+            match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
                 env.clone(),
                 name.clone(),
-            ) {
-                Some(_) => Some(name.clone()),
-                std::option::Option::None => {
+            ))
+            .clone()
+            {
+                UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => {
+                    Some(name.clone())
+                }
+                UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
                     if (crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone())
                         || is_machine_width_phantom_token(name.clone()))
                     {
@@ -1883,6 +1912,27 @@ pub fn rust_type_arg_identity_spelling(
                     } else {
                         std::option::Option::None
                     }
+                }
+                UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+                    Some(emit_rust_compile_error_expr(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "unit-variant marker identity evidence unavailable for "
+                                            .to_string(),
+                                        name.clone(),
+                                    ),
+                                    " at ".to_string(),
+                                ),
+                                n.span.clone().file.clone(),
+                            ),
+                            ":".to_string(),
+                        ),
+                        crate::v1_compiler_emit_core_support::to_string(
+                            n.span.clone().start.clone(),
+                        ),
+                    )))
                 }
             }
         }
@@ -2113,7 +2163,11 @@ pub fn render_rust_applied_type(
                 Some(host) => host.clone(),
                 std::option::Option::None => rust_named_type_base(
                     base_name.clone(),
-                    crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                    crate::v1_compiler_coercion::type_reference_realization(
+                        n.clone(),
+                        base_name.clone(),
+                        RenderTarget::Rust,
+                    ),
                 ),
             }
         } else {
@@ -2130,8 +2184,10 @@ pub fn render_rust_applied_type(
                                 Some(host) => host.clone(),
                                 std::option::Option::None => rust_applied_type_base(
                                     base_name.clone(),
-                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                    crate::v1_compiler_coercion::type_reference_realization(
                                         n.clone(),
+                                        base_name.clone(),
+                                        RenderTarget::Rust,
                                     ),
                                 ),
                             };
@@ -2146,8 +2202,10 @@ pub fn render_rust_applied_type(
                                 Some(host) => host.clone(),
                                 std::option::Option::None => rust_applied_type_base(
                                     base_name.clone(),
-                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                    crate::v1_compiler_coercion::type_reference_realization(
                                         n.clone(),
+                                        base_name.clone(),
+                                        RenderTarget::Rust,
                                     ),
                                 ),
                             };
@@ -2192,8 +2250,10 @@ pub fn render_rust_applied_type(
                                 Some(host) => host.clone(),
                                 std::option::Option::None => rust_applied_type_base(
                                     base_name.clone(),
-                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                    crate::v1_compiler_coercion::type_reference_realization(
                                         n.clone(),
+                                        base_name.clone(),
+                                        RenderTarget::Rust,
                                     ),
                                 ),
                             };
@@ -2255,9 +2315,12 @@ pub fn render_rust_shared_type_if_needed(
 }
 
 pub fn rust_carrier_realizes_as_machine_scalar(n: Rc<Node>, type_name: String) -> bool {
-    match crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-        type_name.clone(),
-        crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+    match crate::v1_compiler_coercion::realization_host_numeric_spelling(
+        crate::v1_compiler_coercion::type_reference_realization(
+            n.clone(),
+            type_name.clone(),
+            RenderTarget::Rust,
+        ),
     ) {
         Some(_) => true,
         std::option::Option::None => false,
@@ -2389,7 +2452,11 @@ pub fn render_rust_decl_type(
                         ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
                             if rust_fn_sig_preserves_authored_alias_leaf(
                                 outer_name.clone(),
-                                crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                                crate::v1_compiler_coercion::type_reference_realization(
+                                    n.clone(),
+                                    outer_name.clone(),
+                                    RenderTarget::Rust,
+                                ),
                             ) {
                                 render_rust_shared_type_with_optional(
                                     n.clone(),
@@ -2470,10 +2537,10 @@ pub fn render_rust_decl_type(
                         }
                         __found
                     }) {
-                    crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                        name.clone(),
-                        type_reference_decl_file_in_env(
+                    crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                        type_reference_realization_in_env(
                             n.clone(),
+                            name.clone(),
                             env.clone(),
                             source_indices.clone(),
                         ),
@@ -2568,7 +2635,7 @@ pub fn render_rust_decl_type(
                                                         )
                                                     } else {
                                                         {
-                                                            let base = rust_applied_type_base(name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(n.clone()));
+                                                            let base = rust_applied_type_base(name.clone(), crate::v1_compiler_coercion::type_reference_realization(n.clone(), name.clone(), RenderTarget::Rust));
                                                             let peel =
                                                                 is_parametric_opaque_type_by_name(
                                                                     env.clone(),
@@ -2662,7 +2729,10 @@ if peel.clone() {
     })
 }
 
-pub fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decl_file: String) -> bool {
+pub fn rust_fn_sig_preserves_authored_alias_leaf(
+    name: String,
+    decision: Rc<TypeRealizationDecision>,
+) -> bool {
     if crate::std_types::is_kernel_type(name.clone()) {
         false
     } else {
@@ -2672,10 +2742,7 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decl_file: String
             if (name.clone() == "Nat".to_string()) {
                 true
             } else {
-                (crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                    name.clone(),
-                    decl_file.clone(),
-                ) == std::option::Option::None)
+                !crate::v1_compiler_coercion::realization_is_host_numeric(decision.clone())
             }
         }
     }
@@ -2772,7 +2839,11 @@ pub fn render_rust_fn_sig_type(
                         && closed_alias_peels_zero_param(env.clone(), n.clone()))
                         && rust_fn_sig_preserves_authored_alias_leaf(
                             name.clone(),
-                            crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                            crate::v1_compiler_coercion::type_reference_realization(
+                                n.clone(),
+                                name.clone(),
+                                RenderTarget::Rust,
+                            ),
                         ))
                     {
                         render_rust_shared_type_with_optional(
@@ -2844,8 +2915,10 @@ pub fn render_rust_fn_sig_type_applied_binding(
                             ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
                                 if rust_fn_sig_preserves_authored_alias_leaf(
                                     outer_name.clone(),
-                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                    crate::v1_compiler_coercion::type_reference_realization(
                                         n.clone(),
+                                        outer_name.clone(),
+                                        RenderTarget::Rust,
                                     ),
                                 ) {
                                     render_rust_shared_type_with_optional(
@@ -3172,9 +3245,12 @@ pub fn render_rust_alias_rhs_type(
                         break exact.clone();
                     }
                     std::option::Option::None => {
-                        match crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                            name.clone(),
-                            crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                        match crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                            crate::v1_compiler_coercion::type_reference_realization(
+                                n.clone(),
+                                name.clone(),
+                                RenderTarget::Rust,
+                            ),
                         ) {
                             Some(host) => {
                                 break host.clone();
@@ -3189,9 +3265,10 @@ pub fn render_rust_alias_rhs_type(
                                             name.clone(),
                                         );
                                         match rust_scalar_checkpoint_reference_base(
-                                            leaf.clone(),
-                                            crate::v1_compiler_coercion::type_reference_decl_file(
+                                            crate::v1_compiler_coercion::type_reference_realization(
                                                 n.clone(),
+                                                leaf.clone(),
+                                                RenderTarget::Rust,
                                             ),
                                         ) {
                                             Some(scalar) => {
@@ -3227,9 +3304,12 @@ pub fn render_rust_alias_rhs_type(
                     ) {
                         Some(scalar) => Some(scalar.clone()),
                         std::option::Option::None => {
-                            crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                                leaf.clone(),
-                                crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
+                            crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                                crate::v1_compiler_coercion::type_reference_realization(
+                                    n.clone(),
+                                    leaf.clone(),
+                                    RenderTarget::Rust,
+                                ),
                             )
                         }
                     };
@@ -3827,9 +3907,11 @@ pub fn is_rust_value_type(
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
         match crate::v1_compiler_coercion::is_copy(
-            RenderTarget::Rust,
-            crate::v1_std_core::authored_name_at(source_indices.clone(), normed.clone()),
-            crate::v1_compiler_coercion::type_reference_decl_file(normed.clone()),
+            crate::v1_compiler_coercion::type_reference_realization(
+                normed.clone(),
+                crate::v1_std_core::authored_name_at(source_indices.clone(), normed.clone()),
+                RenderTarget::Rust,
+            ),
         ) {
             Some(v) => v.clone(),
             std::option::Option::None => false,
@@ -5544,7 +5626,13 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
 }
 
 pub fn is_dag_value_type_name(name: String) -> bool {
-    match crate::v1_compiler_coercion::is_copy(RenderTarget::Rust, name.clone(), "".to_string()) {
+    match crate::v1_compiler_coercion::is_copy(
+        crate::v1_compiler_coercion::type_realization_decision(
+            RenderTarget::Rust,
+            name.clone(),
+            Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+        ),
+    ) {
         Some(v) => v.clone(),
         std::option::Option::None => false,
     }
@@ -6756,6 +6844,33 @@ pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
+pub fn generated_rust_lint_relaxations() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn generated_rust_lint_arguments() -> String {
+    generated_rust_lint_relaxations().join(&", ".to_string())
+}
+
+pub fn generated_rust_crate_allow_block() -> String {
+    v1_rt::concat(
+        v1_rt::concat("#![allow(".to_string(), generated_rust_lint_arguments()),
+        ")]".to_string(),
+    )
+}
+
+pub fn generated_rust_item_allow_attr() -> String {
+    v1_rt::concat(
+        v1_rt::concat("#[allow(".to_string(), generated_rust_lint_arguments()),
+        ")]\n".to_string(),
+    )
+}
+
 pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
     {
         let declaration = v1_rt::concat(
@@ -6832,7 +6947,7 @@ pub fn stage0_package_name_to_crate_ident(package_name: String) -> String {
     v1_rt::replace(package_name.clone(), "-".to_string(), "_".to_string())
 }
 
-pub fn stage0_host_shell_partition_reexport_block() -> String {
+pub fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for pkg in generated_host_shell_partition_dependencies()
@@ -6841,7 +6956,7 @@ pub fn stage0_host_shell_partition_reexport_block() -> String {
         {
             __result.push(v1_rt::concat(
                 v1_rt::concat(
-                    "pub use ".to_string(),
+                    v1_rt::concat(item_attr.clone(), "pub use ".to_string()),
                     stage0_package_name_to_crate_ident(pkg.clone()),
                 ),
                 "::*;".to_string(),
@@ -6882,33 +6997,53 @@ pub fn emit_lib_rs_from_paths(
         } else {
             order_partial_lib_rs_mod_names(shell_names.clone())
         };
-        let mod_decls = Rc::new(
-            mod_names
-                .iter()
-                .cloned()
-                .map(emit_lib_rs_mod_decl)
-                .collect::<Vec<_>>(),
-        );
+        let root_is_mixed_authorship = has_compiler_tests.clone();
+        let generated_item_attr = if root_is_mixed_authorship.clone() {
+            generated_rust_item_allow_attr()
+        } else {
+            "".to_string()
+        };
+        let root_allow_block = if root_is_mixed_authorship.clone() {
+            "".to_string()
+        } else {
+            v1_rt::concat(generated_rust_crate_allow_block(), "\n".to_string())
+        };
+        let mod_decls = Rc::new({
+            let mut __result = Vec::new();
+            for n in mod_names.iter().cloned() {
+                __result.push(v1_rt::concat(
+                    generated_item_attr.clone(),
+                    emit_lib_rs_mod_decl(n.clone()),
+                ));
+            }
+            __result
+        });
         let hand_maintained_mods = if has_compiler_tests.clone() {
             generated_pub_mod_block()
         } else {
             "".to_string()
         };
         let test_mod = if has_compiler_tests.clone() {
-            "\n\n#[cfg(test)]\nmod compiler_tests;".to_string()
+            v1_rt::concat(
+                v1_rt::concat(
+                    "\n\n#[cfg(test)]\n".to_string(),
+                    generated_item_attr.clone(),
+                ),
+                "mod compiler_tests;".to_string(),
+            )
         } else {
             "".to_string()
         };
         let partition_reexports = if has_compiler_tests.clone() {
             v1_rt::concat(
-                stage0_host_shell_partition_reexport_block(),
+                stage0_host_shell_partition_reexport_block(generated_item_attr.clone()),
                 "\n\n".to_string(),
             )
         } else {
             "".to_string()
         };
         let shared_types = emit_non_empty_wrappers();
-        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n#![deny(unreachable_patterns)]\n".to_string()), "#![recursion_limit = \"256\"]\n\n".to_string()), "use im::{OrdSet as BTreeSet, Vector as Vec};\n\n".to_string()), partition_reexports.clone()), mod_decls.clone().join(&"\n".to_string())), hand_maintained_mods.clone()), "\n\n".to_string()), shared_types.clone()), test_mod.clone());
+        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), root_allow_block.clone()), "#![deny(unreachable_patterns)]\n".to_string()), "#![recursion_limit = \"256\"]\n\n".to_string()), generated_item_attr.clone()), "use im::{OrdSet as BTreeSet, Vector as Vec};\n\n".to_string()), partition_reexports.clone()), mod_decls.clone().join(&"\n".to_string())), hand_maintained_mods.clone()), "\n\n".to_string()), shared_types.clone()), test_mod.clone());
         Rc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "lib".to_string()),
@@ -9753,6 +9888,28 @@ pub fn emit_module_full(
     {
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
+        let emit_info = Rc::new(EmitGraphInfo {
+            type_summaries: emit_info.type_summaries.clone(),
+            type_decl_items: emit_info.type_decl_items.clone(),
+            fn_decl_items: emit_info.fn_decl_items.clone(),
+            recursive_type_set: emit_info.recursive_type_set.clone(),
+            fielded_variants: emit_info.fielded_variants.clone(),
+            positional_payload_variants: emit_info.positional_payload_variants.clone(),
+            shared_types: emit_info.shared_types.clone(),
+            ownership_index: emit_info.ownership_index.clone(),
+            movable: emit_info.movable.clone(),
+            variant_to_enum: emit_info.variant_to_enum.clone(),
+            owned_bindings: emit_info.owned_bindings.clone(),
+            read_only_params_index: emit_info.read_only_params_index.clone(),
+            read_only_params: emit_info.read_only_params.clone(),
+            clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
+            map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
+            clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
+            fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
+            fn_type_env: scope.type_env.clone(),
+            fn_return_type: emit_info.fn_return_type.clone(),
+            expected_type: emit_info.expected_type.clone(),
+        });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
             build_scoped_data_item_index(typed_module.clone(), data_items.clone()),
             contracts_imports_for_module(
@@ -11744,12 +11901,15 @@ pub fn type_item_has_rust_nominal_shell_authority(
 }
 
 pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
-    match crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+    match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
         env.clone(),
         variant_name.clone(),
-    ) {
-        Some(_) => true,
-        std::option::Option::None => false,
+    ))
+    .clone()
+    {
+        UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => true,
+        UnitVariantPhantomLookup::UnitVariantPhantomAbsent => false,
+        UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => false,
     }
 }
 
@@ -14345,7 +14505,11 @@ pub fn emit_typed_item(
                         match rust_declaration_checkpoint_grounding_at(
                             module_name.clone(),
                             item_text.clone(),
-                            crate::v1_compiler_coercion::decl_identity_file(item.clone()),
+                            crate::v1_compiler_coercion::declaration_realization(
+                                item.clone(),
+                                item_text.clone(),
+                                RenderTarget::Rust,
+                            ),
                         ) {
                             Some(host) => v1_rt::concat(
                                 v1_rt::concat(
@@ -14730,9 +14894,12 @@ pub fn needs_box_wrapping(
             } else {
                 if ((n.children.clone().len() as i64) == 0) {
                     if (crate::v1_compiler_coercion::coerce_primitive_type(
-                        RenderTarget::Rust,
+                        crate::v1_compiler_coercion::type_reference_realization(
+                            n.clone(),
+                            name.clone(),
+                            RenderTarget::Rust,
+                        ),
                         name.clone(),
-                        crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
                     ) != name.clone())
                     {
                         break false;
@@ -15880,9 +16047,13 @@ pub fn rust_field_carrier_final_type(
     env: Rc<TypeEnv>,
 ) -> String {
     {
-        let native_scalar = crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-            rust_fn_sig_leaf_name(source_indices.clone(), rt_field.clone()),
-            type_reference_decl_file_in_env(rt_field.clone(), env.clone(), source_indices.clone()),
+        let native_scalar = crate::v1_compiler_coercion::realization_host_numeric_spelling(
+            type_reference_realization_in_env(
+                rt_field.clone(),
+                rust_fn_sig_leaf_name(source_indices.clone(), rt_field.clone()),
+                env.clone(),
+                source_indices.clone(),
+            ),
         );
         if needs_box_wrapping(
             rt_field.clone(),
@@ -15991,7 +16162,7 @@ pub fn emit_struct_field_from_child(
                                     Some(resolved) => {
                                         if ((resolved.params.clone().len() as i64) > 0) {
                                             {
-                                                let base = crate::v1_compiler_coercion::coerce_primitive_type(RenderTarget::Rust, rt_child_name.clone(), crate::v1_compiler_coercion::type_reference_decl_file(rt_child.clone()));
+                                                let base = crate::v1_compiler_coercion::coerce_primitive_type(crate::v1_compiler_coercion::type_reference_realization(rt_child.clone(), rt_child_name.clone(), RenderTarget::Rust), rt_child_name.clone());
                                                 let param_names = Rc::new({
                                                     let mut __result = Vec::new();
                                                     for p in resolved.params.clone().iter().cloned()
@@ -16063,7 +16234,7 @@ pub fn emit_struct_field_from_child(
                     if (crate::v1_std_core::field_init_node_name_at(
                         p.clone(),
                         env.source_indices.clone(),
-                    ) == "from_key".to_string())
+                    ) == field_from_key_property_name())
                     {
                         __result.push(p);
                     }
@@ -16859,9 +17030,12 @@ pub fn render_variant_payload_type(
                 v1_rt::concat(
                     v1_rt::concat(
                         crate::v1_compiler_coercion::coerce_primitive_type(
-                            RenderTarget::Rust,
+                            crate::v1_compiler_coercion::type_reference_realization(
+                                n.clone(),
+                                tn.clone(),
+                                RenderTarget::Rust,
+                            ),
                             tn.clone(),
-                            crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
                         ),
                         spec.type_arg_open.clone(),
                     ),
@@ -21297,9 +21471,12 @@ pub fn field_access_field_is_boxed(
                     field_ty.clone(),
                 );
                 let grounds_to_host_scalar =
-                    (crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
-                        field_ty_name.clone(),
-                        crate::v1_compiler_coercion::type_reference_decl_file(field_ty.clone()),
+                    (crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                        crate::v1_compiler_coercion::type_reference_realization(
+                            field_ty.clone(),
+                            field_ty_name.clone(),
+                            RenderTarget::Rust,
+                        ),
                     ) != std::option::Option::None);
                 if grounds_to_host_scalar.clone() {
                     false
@@ -26418,12 +26595,16 @@ pub fn emit_typed_method_call(
                             let mut __result = Vec::new();
                             for p in op_params.iter().cloned() {
                                 if (crate::v1_compiler_coercion::coerce_primitive_type(
-                                    RenderTarget::Rust,
+                                    crate::v1_compiler_coercion::type_reference_realization(
+                                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                                        crate::v1_std_core::authored_name_at(
+                                            si.clone(),
+                                            crate::v1_std_core::param_node_type_expr(p.clone()),
+                                        ),
+                                        RenderTarget::Rust,
+                                    ),
                                     crate::v1_std_core::authored_name_at(
                                         si.clone(),
-                                        crate::v1_std_core::param_node_type_expr(p.clone()),
-                                    ),
-                                    crate::v1_compiler_coercion::type_reference_decl_file(
                                         crate::v1_std_core::param_node_type_expr(p.clone()),
                                     ),
                                 ) == "serde_json::Value".to_string())
@@ -30410,7 +30591,7 @@ pub fn rust_operand_realization_of_type(
     mut fuel: i64,
 ) -> Rc<OperandRealization> {
     loop {
-        let decl_file = crate::v1_compiler_coercion::type_reference_decl_file(rt.clone());
+        let provenance = crate::v1_std_core::type_reference_provenance(rt.clone());
         let authored = crate::v1_std_core::authored_name_at(
             scope.type_env.clone().source_indices.clone(),
             rt.clone(),
@@ -30419,53 +30600,55 @@ pub fn rust_operand_realization_of_type(
             Some(i) => is_type_variable(i.clone()),
             std::option::Option::None => false,
         };
-        if crate::v1_compiler_coercion::is_kernel_minted_file(decl_file.clone()) {
-            break Rc::new(OperandRealization::HostRealizedOperand {
-                reason: HostRealizationReason::KernelMintedType,
-            });
-        } else {
-            if rt_is_type_var.clone() {
+        match (*provenance.clone()).clone() {
+            TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => {
                 break Rc::new(OperandRealization::HostRealizedOperand {
-                    reason: HostRealizationReason::GenericTypeParameter,
+                    reason: HostRealizationReason::KernelMintedType,
                 });
-            } else {
-                if crate::std_types::is_container_type(crate::v1_std_core::qualified_last_segment(
-                    authored.clone(),
-                )) {
+            }
+            _ => {
+                if rt_is_type_var.clone() {
                     break Rc::new(OperandRealization::HostRealizedOperand {
-                        reason: HostRealizationReason::HostContainer,
+                        reason: HostRealizationReason::GenericTypeParameter,
                     });
                 } else {
-                    if (authored.clone() == "".to_string()) {
+                    if crate::std_types::is_container_type(
+                        crate::v1_std_core::qualified_last_segment(authored.clone()),
+                    ) {
                         break Rc::new(OperandRealization::HostRealizedOperand {
-                            reason: HostRealizationReason::UnnamedSynthesizedType,
+                            reason: HostRealizationReason::HostContainer,
                         });
                     } else {
-                        match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
+                        if (authored.clone() == "".to_string()) {
+                            break Rc::new(OperandRealization::HostRealizedOperand {
+                                reason: HostRealizationReason::UnnamedSynthesizedType,
+                            });
+                        } else {
+                            match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
     std::option::Option::None => { break Rc::new(OperandRealization::OperandIdentityUnavailable {
     facts: Rc::new(OperandShapeFacts {
     authored_name: authored.clone(),
     connective: crate::v1_compiler_dag_collect_support::connective_name(rt.connective.clone()),
     child_count: (rt.children.clone().len() as i64),
     resolved: (rt.inferred.clone() != std::option::Option::None),
-    decl_file: decl_file.clone(),
+    provenance: provenance.clone(),
 }),
 }); },
-    Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_reference_decl_file(rt.clone())) {
-                            break Rc::new(OperandRealization::HostNumericOperand);
+    Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_realization_decision(RenderTarget::Rust, d.decl_name.clone(), provenance.clone())) {
+                        break Rc::new(OperandRealization::HostNumericOperand);
 } else {
-                            let decl = match rt.inferred.clone().as_deref().cloned() {
+                        let decl = match rt.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
     _ => rt.clone(),
 };
 if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.clone())) {
-                                match rt.children.clone().first().cloned() {
+                            match rt.children.clone().first().cloned() {
     Some(base) => { let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), base.clone()) {
     Some(r) => r.clone(),
     std::option::Option::None => base.clone(),
 };
 {
-                                    let __tco_0 = base_resolved.clone();
+                                let __tco_0 = base_resolved.clone();
 let __tco_1 = (fuel - 1);
 rt = __tco_0;
 fuel = __tco_1;
@@ -30476,22 +30659,23 @@ continue;
 }); },
 }
 } else {
-                                if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
-                                    {
-                                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
+                            if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
+                                {
+                                    let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
 let __tco_1 = (fuel - 1);
 rt = __tco_0;
 fuel = __tco_1;
 continue;
 }
 } else {
-                                    break Rc::new(OperandRealization::StructuralOperand {
+                                break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 });
 }
 }
 } },
 }
+                        }
                     }
                 }
             }
@@ -30510,7 +30694,11 @@ pub fn binop_operator_realization(
             Some(od) => {
                 if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
                     od.declaration.clone(),
-                    od.decl_file.clone(),
+                    crate::v1_compiler_coercion::type_realization_decision(
+                        RenderTarget::Rust,
+                        od.declaration.clone().decl_name.clone(),
+                        od.provenance.clone(),
+                    ),
                 ) {
                     Rc::new(OperandRealization::HostNumericOperand)
                 } else {
@@ -32659,7 +32847,6 @@ pub fn emit_operation_method(
             op_node.clone(),
             transport.clone(),
         );
-        let op_inferred = crate::v1_compiler_infer_types::resolved_type(op_node.clone());
         let bound = crate::v1_compiler_emit::bind_operation_transport(
             eff_transport.clone(),
             op_node.clone(),
@@ -32670,7 +32857,6 @@ pub fn emit_operation_method(
             op_text.clone(),
             registry.clone(),
             (depth.clone() + 2),
-            op_inferred.clone(),
             service_item.clone(),
             op_node.clone(),
             env.source_indices.clone(),
@@ -32886,7 +33072,6 @@ pub fn emit_transport_call(
     op_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    inferred: Rc<Node>,
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -32905,12 +33090,16 @@ pub fn emit_transport_call(
             shared_types.clone(),
             env.clone(),
         ),
-        BoundOperation::ShellBound { transport: t, .. } => emit_shell_call(
+        BoundOperation::ShellBound {
+            transport: t,
+            result_fields: rsf,
+            ..
+        } => emit_shell_call(
             op_name.clone(),
             t.clone(),
             registry.clone(),
             depth.clone(),
-            inferred.clone(),
+            rsf.clone(),
             op_node.clone(),
             source_indices.clone(),
         ),
@@ -33894,9 +34083,12 @@ pub fn emit_json_value_extract(
         .join(&"/".to_string());
         let pointer = v1_rt::concat("/".to_string(), escaped_path.clone());
         let rust_type = crate::v1_compiler_coercion::coerce_primitive_type(
-            RenderTarget::Rust,
+            crate::v1_compiler_coercion::type_realization_decision(
+                RenderTarget::Rust,
+                dag_type_name.clone(),
+                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+            ),
             dag_type_name.clone(),
-            "".to_string(),
         );
         let accessor = if (dag_type_name.clone() == "String".to_string()) {
             v1_rt::concat(
@@ -34104,6 +34296,13 @@ pub fn emit_plain_response_body(
     }
 }
 
+pub fn emit_rust_boxed_error_return(message_expr: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("Err(".to_string(), message_expr.clone()),
+        ".into())".to_string(),
+    )
+}
+
 pub fn emit_response_code_handling(
     op_node: Rc<Node>,
     transport: Rc<Node>,
@@ -34157,13 +34356,20 @@ pub fn emit_response_code_handling(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                "let status = response.status().as_u16();\n".to_string(),
-                                "match status {\n".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "let status = response.status().as_u16();\n".to_string(),
+                                        "match status {\n".to_string(),
+                                    ),
+                                    arms.clone().join(&"\n".to_string()),
+                                ),
+                                "\n    _ => ".to_string(),
                             ),
-                            arms.clone().join(&"\n".to_string()),
+                            emit_rust_boxed_error_return(
+                                "format!(\"unexpected status code: {}\", status)".to_string(),
+                            ),
                         ),
-                        "\n    _ => Err(format!(\"unexpected status code: {}\", status).into())\n"
-                            .to_string(),
+                        "\n".to_string(),
                     ),
                     "}".to_string(),
                 )
@@ -34244,7 +34450,19 @@ pub fn emit_response_arm(
                 )
             }
         } else {
-            v1_rt::concat(v1_rt::concat("    ".to_string(), pattern.clone()), " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("    ".to_string(), pattern.clone()),
+                        " => { let err_body = response.text().await.unwrap_or_default(); "
+                            .to_string(),
+                    ),
+                    emit_rust_boxed_error_return(
+                        "format!(\"HTTP {}: {}\", status, err_body)".to_string(),
+                    ),
+                ),
+                " },".to_string(),
+            )
         }
     }
 }
@@ -34259,7 +34477,7 @@ pub fn has_exit_prefix(name: String) -> bool {
 
 pub fn emit_exit_code_handling(
     op_node: Rc<Node>,
-    inferred: Rc<Node>,
+    result_fields: Rc<Vec<Rc<ShellResultField>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -34276,7 +34494,7 @@ pub fn emit_exit_code_handling(
             __result
         });
         if ((exit_props.clone().len() as i64) == 0) {
-            emit_shell_return(inferred.clone(), source_indices.clone())
+            emit_shell_return(result_fields.clone())
         } else {
             {
                 let has_nonzero = {
@@ -34298,7 +34516,7 @@ pub fn emit_exit_code_handling(
                     for p in exit_props.iter().cloned() {
                         __result.push(emit_exit_arm(
                             p.clone(),
-                            inferred.clone(),
+                            result_fields.clone(),
                             source_indices.clone(),
                         ));
                     }
@@ -34307,7 +34525,19 @@ pub fn emit_exit_code_handling(
                 let default_arm = if has_nonzero.clone() {
                     "".to_string()
                 } else {
-                    v1_rt::concat(v1_rt::concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string(), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ") },".to_string())
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "\n    _ => { ".to_string(),
+                                    shell_stderr_binding_line(),
+                                ),
+                                " ".to_string(),
+                            ),
+                            emit_rust_boxed_error_return("stderr".to_string()),
+                        ),
+                        " },".to_string(),
+                    )
                 };
                 v1_rt::concat(
                     v1_rt::concat(
@@ -34329,7 +34559,7 @@ pub fn emit_exit_code_handling(
 
 pub fn emit_exit_arm(
     prop: Rc<Node>,
-    inferred: Rc<Node>,
+    result_fields: Rc<Vec<Rc<ShellResultField>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -34349,12 +34579,27 @@ pub fn emit_exit_arm(
                         v1_rt::concat("    ".to_string(), pattern.clone()),
                         " => { ".to_string(),
                     ),
-                    emit_shell_return(inferred.clone(), source_indices.clone()),
+                    emit_shell_return(result_fields.clone()),
                 ),
                 " },".to_string(),
             )
         } else {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), pattern.clone()), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string()), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ") },".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("    ".to_string(), pattern.clone()),
+                                " => { ".to_string(),
+                            ),
+                            shell_stderr_binding_line(),
+                        ),
+                        " ".to_string(),
+                    ),
+                    emit_rust_boxed_error_return("stderr".to_string()),
+                ),
+                " },".to_string(),
+            )
         }
     }
 }
@@ -34364,7 +34609,7 @@ pub fn emit_shell_call(
     transport: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    inferred: Rc<Node>,
+    result_fields: Rc<Vec<Rc<ShellResultField>>>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -34530,7 +34775,7 @@ pub fn emit_shell_call(
                     "let stdout = String::from_utf8_lossy(&output.stdout).to_string();".to_string();
                 let return_line = emit_exit_code_handling(
                     op_node.clone(),
-                    inferred.clone(),
+                    result_fields.clone(),
                     source_indices.clone(),
                 );
                 let all_lines = v1_rt::concat(
@@ -34557,7 +34802,7 @@ pub fn emit_shell_call(
                     "let stdout = String::from_utf8_lossy(&output.stdout).to_string();".to_string();
                 let return_line = emit_exit_code_handling(
                     op_node.clone(),
-                    inferred.clone(),
+                    result_fields.clone(),
                     source_indices.clone(),
                 );
                 let all_lines = v1_rt::concat(
@@ -34708,111 +34953,103 @@ pub fn emit_shell_argv_element(
     }
 }
 
-pub fn emit_shell_return(
-    inferred: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn shell_stderr_binding_line() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let stderr = String::from_utf8_lossy(&output.stderr).to_string();".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_shell_return(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
     {
-        let effective = crate::v1_compiler_emit::unwrap_single_field_product(inferred.clone());
-        let is_product = crate::v1_compiler_infer_types::is_product_type(effective.clone());
-        let single_from =
-            if (is_product.clone() && ((effective.children.clone().len() as i64) == 1)) {
-                match effective.children.clone().first().cloned() {
-                    Some(ch) => {
-                        crate::v1_compiler_emit::child_from_key(ch.clone(), source_indices.clone())
+        let n = (result_fields.clone().len() as i64);
+        if (n.clone() == 0) {
+            emit_shell_channel_expr(ShellResultChannel::ShellChanStdout, false)
+        } else {
+            if (n.clone() == 1) {
+                match result_fields.clone().first().cloned() {
+                    Some(f) => v1_rt::concat(
+                        shell_stderr_prelude(result_fields.clone()),
+                        emit_shell_channel_expr(f.channel.clone(), f.optional.clone()),
+                    ),
+                    std::option::Option::None => {
+                        emit_shell_channel_expr(ShellResultChannel::ShellChanStdout, false)
                     }
-                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
-                std::option::Option::None
-            };
-        match single_from.clone() {
-            Some(channel) => {
-                let is_optional =
-                    (effective.return_cardinality.clone() == Cardinality::CardOptional);
-                emit_shell_channel_expr(channel.clone(), is_optional.clone())
-            }
-            std::option::Option::None => {
-                if (is_product.clone() && ((effective.children.clone().len() as i64) > 1)) {
-                    {
-                        let needs_stderr = {
-                            let mut __found = false;
-                            for ch in effective.children.clone().iter().cloned() {
-                                if match crate::v1_compiler_emit::child_from_key(
-                                    ch.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    Some(ref __some_val) if __some_val == "stderr" => true,
-                                    _ => false,
-                                } {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        };
-                        let stderr_line = if needs_stderr.clone() {
-                            "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
-                                .to_string()
-                        } else {
-                            "".to_string()
-                        };
-                        let field_exprs = Rc::new({
-                            let mut __result = Vec::new();
-                            for ch in effective.children.clone().iter().cloned() {
-                                __result.push({
-                                    let is_optional = (ch.return_cardinality.clone()
-                                        == Cardinality::CardOptional);
-                                    let channel = match crate::v1_compiler_emit::child_from_key(
-                                        ch.clone(),
-                                        source_indices.clone(),
-                                    ) {
-                                        Some(c) => c.clone(),
-                                        std::option::Option::None => "stdout".to_string(),
-                                    };
-                                    emit_shell_channel_expr(channel.clone(), is_optional.clone())
-                                });
-                            }
-                            __result
-                        });
-                        let lines = if (stderr_line.clone() != "".to_string()) {
-                            v1_rt::concat(stderr_line.clone(), "\n".to_string())
-                        } else {
-                            "".to_string()
-                        };
+                {
+                    let field_exprs = Rc::new({
+                        let mut __result = Vec::new();
+                        for f in result_fields.iter().cloned() {
+                            __result.push(emit_shell_channel_expr(
+                                f.channel.clone(),
+                                f.optional.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(lines.clone(), "Ok((".to_string()),
-                                field_exprs.clone().join(&", ".to_string()),
+                                shell_stderr_prelude(result_fields.clone()),
+                                "Ok((".to_string(),
                             ),
-                            "))".to_string(),
-                        )
-                    }
-                } else {
-                    {
-                        let is_optional =
-                            (effective.return_cardinality.clone() == Cardinality::CardOptional);
-                        emit_shell_channel_expr("stdout".to_string(), is_optional.clone())
-                    }
+                            field_exprs.clone().join(&", ".to_string()),
+                        ),
+                        "))".to_string(),
+                    )
                 }
             }
         }
     }
 }
 
-pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
+pub fn shell_stderr_prelude(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
     {
-        let base = if (channel.clone() == "exit_success".to_string()) {
-            "output.status.success()".to_string()
-        } else {
-            if (channel.clone() == "stderr".to_string()) {
-                "stderr.clone()".to_string()
-            } else {
-                if (channel.clone() == "stdout_lines".to_string()) {
-                    rust_shared_wrap_ctor("stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()".to_string())
-                } else {
-                    "stdout.clone()".to_string()
+        let needs_stderr = {
+            let mut __found = false;
+            for f in result_fields.iter().cloned() {
+                if match f.channel.clone() {
+                    ShellResultChannel::ShellChanStderr => true,
+                    _ => false,
+                } {
+                    __found = true;
+                    break;
                 }
+            }
+            __found
+        };
+        if needs_stderr.clone() {
+            v1_rt::concat(shell_stderr_binding_line(), "\n".to_string())
+        } else {
+            "".to_string()
+        }
+    }
+}
+
+pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -> String {
+    {
+        let base = match channel.clone() {
+            ShellResultChannel::ShellChanStdout => "stdout.clone()".to_string(),
+            ShellResultChannel::ShellChanStderr => "stderr.clone()".to_string(),
+            ShellResultChannel::ShellChanExitSuccess => "output.status.success()".to_string(),
+            ShellResultChannel::ShellChanExitCode => {
+                "(output.status.code().unwrap_or(-1) as i64)".to_string()
+            }
+            ShellResultChannel::ShellChanStdoutLines => rust_shared_wrap_ctor(
+                "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()"
+                    .to_string(),
+            ),
+            ShellResultChannel::ShellChanStderrTruncated => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
+            ShellResultChannel::ShellChanStderrTotalBytes => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
+            ShellResultChannel::ShellChanStderrRetainedBytes => {
+                emit_unrealizable_shell_channel(channel.clone())
             }
         };
         if is_optional.clone() {
@@ -34824,6 +35061,18 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
             base.clone()
         }
     }
+}
+
+pub fn emit_unrealizable_shell_channel(channel: ShellResultChannel) -> String {
+    crate::v1_compiler_emit::emit_error_expr(
+        crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: crate::v1_compiler_emit::shell_result_channel_key(channel.clone()),
+                target_name: render_target_name(RenderTarget::Rust),
+            },
+        )),
+        RenderTarget::Rust,
+    )
 }
 
 pub fn emit_file_call(
@@ -34854,6 +35103,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
         FileVerb::FileRead => file_read_match_expr(),
         FileVerb::FileWrite => file_write_expr(),
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
+        FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
         FileVerb::FileDelete => file_delete_match_expr(),
         FileVerb::FileList => file_list_match_expr(),
     }
@@ -35032,6 +35282,15 @@ pub fn file_write_expr() -> String {
     thread_local! {
         static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_create_new_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let mut create_new_file = std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path)?;\n        create_new_file.write_all(content.as_bytes())?;\n        Ok(())\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -35336,12 +35595,16 @@ pub fn emit_data_def(
                 scope.type_env.clone().source_indices.clone(),
             ) {
                 crate::v1_compiler_coercion::coerce_primitive_type(
-                    RenderTarget::Rust,
+                    crate::v1_compiler_coercion::type_reference_realization(
+                        annotation_type_node.clone(),
+                        crate::v1_std_core::authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            annotation_type_node.clone(),
+                        ),
+                        RenderTarget::Rust,
+                    ),
                     crate::v1_std_core::authored_name_at(
                         scope.type_env.clone().source_indices.clone(),
-                        annotation_type_node.clone(),
-                    ),
-                    crate::v1_compiler_coercion::type_reference_decl_file(
                         annotation_type_node.clone(),
                     ),
                 )
@@ -35981,11 +36244,11 @@ pub fn emit_rust_default_value(
             source_indices.clone(),
             crate::v1_std_core::param_node_type_expr(param.clone()),
         );
-        match crate::v1_compiler_coercion::lookup_checkpoint(
-            RenderTarget::Rust,
-            type_name.clone(),
-            crate::v1_compiler_coercion::type_reference_decl_file(
+        match crate::v1_compiler_coercion::realized_checkpoint(
+            crate::v1_compiler_coercion::type_reference_realization(
                 crate::v1_std_core::param_node_type_expr(param.clone()),
+                type_name.clone(),
+                RenderTarget::Rust,
             ),
         ) {
             Some(cp) => match cp.default_expr.clone() {
@@ -37779,11 +38042,12 @@ pub fn emit_cli_param_type_node(
                         } else {
                             {
                                 let mapped = crate::v1_compiler_coercion::coerce_primitive_type(
-                                    RenderTarget::Rust,
-                                    nname.clone(),
-                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                    crate::v1_compiler_coercion::type_reference_realization(
                                         n.clone(),
+                                        nname.clone(),
+                                        RenderTarget::Rust,
                                     ),
+                                    nname.clone(),
                                 );
                                 if (mapped.clone() != nname.clone()) {
                                     mapped.clone()

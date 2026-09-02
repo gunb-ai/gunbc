@@ -6,6 +6,7 @@ import extdeps.publication {
   DocumentPublicationStatus,
   PubliclyPublishedUnderOpenLicense,
   PubliclyPublishedWithRestrictiveMarking,
+  PubliclyPublishedWithoutStatedTerms,
 }
 
 // WHETHER THIS REPOSITORY MAY CARRY AN UPSTREAM DOCUMENT'S FACTS IS OUR POLICY, NOT AN UPSTREAM
@@ -21,12 +22,14 @@ import extdeps.publication {
 // it is not public. The prior repository position, that transcription from a proprietary-marked
 // document was an open licensing question, is SUPERSEDED by this ruling.
 
-// TWO STATUSES MAP TO ONE DISPOSITION TODAY AND ARE STILL NOT THE SAME THING. An OCP contribution
+// THREE STATUSES MAP TO ONE DISPOSITION TODAY AND ARE STILL NOT THE SAME THING. An OCP contribution
 // carries an explicit open licence its publisher wrote down (OWFa 1.0 plus the contribution
 // agreement); an Ampere specification is reachable by anyone while carrying a marking that grants
 // nothing. Same permission, arrived at differently. They stay distinct status values so that the
 // day the mapping diverges, one row changes here rather than a distinction being reconstructed from
-// prose.
+// prose. The third public arm - a document that is reachable and states no terms at all - joins
+// them for the same reason: same permission, arrived at differently, and the day the mapping
+// diverges one row changes here.
 
 // The disposition is DERIVED from status, never stored beside it. There is no
 // arm by which a marking, a vendor, or an author's judgement reaches this
@@ -39,6 +42,7 @@ fn upstream_fact_carriage(status: DocumentPublicationStatus) -> UpstreamFactCarr
   match status {
     PubliclyPublishedUnderOpenLicense { license } => FactsMayBeCarried
     PubliclyPublishedWithRestrictiveMarking { marking } => FactsMayBeCarried
+    PubliclyPublishedWithoutStatedTerms { absence_basis } => FactsMayBeCarried
     AccessGatedNotPubliclyPublished { gate } => FactsBarredDocumentNotPublic { gate: gate }
   }
 }

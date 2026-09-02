@@ -94,6 +94,18 @@
 //! main with four hard errors because NO CLOSURE REACHES IT. An orphan module's import claims
 //! are checked here and nowhere else.
 
+// CLIPPY ROSTER -- 2 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::empty_line_after_doc_comments,  // 1
+    clippy::items_after_test_module,  // 1
+)]
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
@@ -1591,7 +1603,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     (
         "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
         "redundancy_region1_real_successor_present",
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "AnthropicTextBlock",
         "cache_control",
     ),
@@ -1661,38 +1673,45 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "PublicationTransport",
         "",
     ),
+    // RE-KEYED, NOT GROWN (DCH-1). These five rows are the same debt they were: the shape they
+    // cite moved WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, so
+    // the citing and cited module names changed and the debt did not. Row count, subject and
+    // dissolution are identical; deleting them instead would have left five CITED-FIELD-ABSENT
+    // refusals, and paying them here would have folded an unrelated modeling climb into a
+    // replacement migration. They still retire the one way this roster allows — when the cited
+    // optional fields are modeled on the specification's blocks.
     (
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "AnthropicImageBlock",
         "cache_control",
     ),
     (
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "AnthropicTextBlock",
         "cache_control",
     ),
     (
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "AnthropicTextBlock",
         "citations",
     ),
     (
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "AnthropicToolReferenceBlock",
         "cache_control",
     ),
     (
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic_messages_api",
         "CacheControl",
         "ttl",
     ),

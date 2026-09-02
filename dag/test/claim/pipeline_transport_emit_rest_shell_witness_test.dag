@@ -1,6 +1,9 @@
 module test.claim.pipeline_transport_emit_rest_shell_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import std.types { Bool, Int, String }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -134,8 +137,8 @@ fn w_shell_captures_stdout() -> Bool {
   compile_dag_rust_emit_check(
     "module re3c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool, stdout: String, stderr: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n",
     "src/re3c.rs",
-    ["from_utf8_lossy", "stdout"],
-    []
+    ["output.status.success()", "stdout.clone()", "stderr.clone()"],
+    ["Ok((stdout.clone(), stdout.clone(), stdout.clone()))"]
   )
 }
 
@@ -164,3 +167,123 @@ test fn rest_emit_uses_header_auth() -> Bool { w_rest_uses_header_auth() }
 test fn rest_emit_post_with_auth_source() -> Bool { w_rest_post_with_auth_source() }
 test fn shell_emit_captures_stdout() -> Bool { w_shell_captures_stdout() }
 test fn shell_emit_cron_upsert_script() -> Bool { w_shell_cron_upsert_script() }
+
+fn w_shell_multi_field_answers_each_declared_channel() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4a\n\nservice test.Shell {\n  config {}\n  operation Probe {\n    input { cmd: String }\n    output { code: Int from \"exit_code\", ok: Bool from \"exit_success\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4a.rs",
+    ["output.status.code().unwrap_or(-1) as i64", "output.status.success()"],
+    ["stdout.clone()"]
+  )
+}
+
+fn w_shell_single_named_field_answers_its_channel() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4b\n\nservice test.Shell {\n  config {}\n  operation Check {\n    input { cmd: String }\n    output { success: Bool }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4b.rs",
+    ["output.status.success()"],
+    ["stdout.clone()"]
+  )
+}
+
+fn w_shell_single_unkeyed_field_keeps_whole_stdout() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4c.rs",
+    ["stdout.clone()"],
+    []
+  )
+}
+
+// RE-AIMED AT THE COMPILE REPORT, NOT THE EMITTED BYTES (review 58144). This
+// asserted that the emitted file CONTAINED the refusal text -- which the defective
+// shape satisfied perfectly: the emitter wrote `panic!("transport binding
+// refused ... not_a_channel ...")` into a file it then reported as a successful
+// compile. Every include matched, the exclude did not appear, and the witness went
+// green over "7 files emitted, 0 diagnostics". An assertion satisfied by the defect
+// it names discriminates nothing.
+//
+// A refusal is now a BLOCKING DIAGNOSTIC and ZERO files, so there is no file left to
+// grep and the census is the only reader that can see it.
+fn w_shell_unmodeled_output_key_refuses() -> Bool {
+  shell_blocking_count_for(
+    source: "module re4d\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\", out: String from \"stdout\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n"
+  ) == 1
+}
+
+// NOT-RUNNABLE IS NOT ZERO. A census that could not run has observed nothing, and
+// reporting that as "no diagnostics" would let a broken harness satisfy the
+// zero-expecting control while making the refusal-expecting ones unsatisfiable.
+// 0 - 1 is neither, so a harness that stops working fails in BOTH directions.
+fn shell_blocking_count_for(source: String) -> Int {
+  match census_blocking_count_for_class(
+    census: compile_dag_diagnostic_census(source),
+    wanted: "TransportEmissionNotModeled"
+  ) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+// THE DISCRIMINATING CASE FOR AUTHORSHIP-VS-ARITY (review 58091). re4d below
+// carries the same bad key but TWO fields, so it cannot tell a refusal keyed on
+// the authored key from one keyed on having several fields -- both rules refuse
+// it. ONE field with an authored key the roster cannot answer separates them: the
+// arity rule binds whole-stdout in silence, the authorship rule refuses. The
+// negative expectation is the whole point -- `stdout.clone()` is exactly the
+// fabricated byte the old branch emitted here.
+fn w_shell_single_field_authored_unknown_key_refuses() -> Bool {
+  shell_blocking_count_for(
+    source: "module re4f\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n"
+  ) == 1
+}
+
+// THE LINE-STOP CONTROL, and it is the one the previous shape could not express:
+// a valid single UNKEYED field must still emit. If the diagnostic over-fired it
+// would refuse `output { result: String }`, which the corpus is built on, and the
+// pair above could not tell an over-firing wall from a correct one.
+fn w_shell_unkeyed_field_emits_no_diagnostic() -> Bool {
+  shell_blocking_count_for(
+    source: "module re4h\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n"
+  ) == 0
+}
+
+// POSITIVE CONTROL FOR THE SAME EDIT, so the refusal above cannot be satisfied by
+// refusing every single-field operation: one field, an authored key the roster DOES
+// answer, must still bind that channel rather than refuse.
+fn w_shell_single_field_authored_known_key_binds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4g\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { code: Int from \"exit_code\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4g.rs",
+    ["output.status.code().unwrap_or(-1) as i64"],
+    ["transport binding refused"]
+  )
+}
+
+fn w_shell_exit_error_arm_is_boxed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4e\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n    exit { 0 => Unit  nonzero => String }\n  }\n}\n",
+    "src/re4e.rs",
+    ["Err(stderr.into())"],
+    ["Err(stderr)"]
+  )
+}
+
+fn w_rest_error_arms_are_boxed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4h\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "src/re4h.rs",
+    ["Err(format!(\"HTTP {}: {}\", status, err_body).into())", "Err(format!(\"unexpected status code: {}\", status).into())"],
+    []
+  )
+}
+
+test fn shell_emit_multi_field_answers_each_declared_channel() -> Bool { w_shell_multi_field_answers_each_declared_channel() }
+test fn shell_emit_single_named_field_answers_its_channel() -> Bool { w_shell_single_named_field_answers_its_channel() }
+test fn shell_emit_single_unkeyed_field_keeps_whole_stdout() -> Bool { w_shell_single_unkeyed_field_keeps_whole_stdout() }
+test fn shell_emit_single_field_authored_unknown_key_refuses() -> Bool { w_shell_single_field_authored_unknown_key_refuses() }
+test fn shell_emit_single_field_authored_known_key_binds() -> Bool { w_shell_single_field_authored_known_key_binds() }
+test fn shell_emit_unkeyed_field_emits_no_diagnostic() -> Bool { w_shell_unkeyed_field_emits_no_diagnostic() }
+test fn shell_emit_unmodeled_output_key_refuses() -> Bool { w_shell_unmodeled_output_key_refuses() }
+test fn shell_emit_exit_error_arm_is_boxed() -> Bool { w_shell_exit_error_arm_is_boxed() }
+test fn rest_emit_error_arms_are_boxed() -> Bool { w_rest_error_arms_are_boxed() }

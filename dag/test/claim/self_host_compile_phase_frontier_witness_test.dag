@@ -9,6 +9,8 @@ import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
 import gunbc.self_host_compile_phase_frontier {
+  TargetDefaultedToHost,
+  TargetPinnedOnInvocation,
   PhaseCount,
   PhaseNotYetReached,
   Observed,
@@ -64,6 +66,7 @@ import gunbc.self_host_compile_phase_frontier {
   EmissionOrderedV1,
   census_identity_domain_separator,
   census_population_is_duplicate_free,
+  deduplicate_identities,
   render_phase_board
 }
 import extdeps.cargo_diagnostic {
@@ -502,6 +505,33 @@ test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
 // The refused-file population had no duplicate wall at all until this predicate was wired into
 // receipt_population_coherent: rustfmt refusing one path twice would double-count the Parse row and
 // carry the repeat into the digest. This is the discriminating pair for that wall.
+// THE SORT IS LOAD-BEARING FOR CORRECTNESS, NOT FOR TIDINESS, AND NOTHING PINNED THAT.
+//
+// `deduplicate_identities` decides membership by comparing against the LAST KEPT element only. That
+// is sound exactly because the input was sorted first, which puts equal identities adjacent -- so the
+// sort is not a presentation choice that happens to precede the fold, it is the precondition the
+// one-element comparison depends on. Delete `|> sort_by(identity => identity)` and the fold silently
+// stops collapsing duplicates that are separated by any other identity, while continuing to collapse
+// adjacent ones: a dedup that works on the easy inputs and quietly fails on the real ones.
+//
+// THE SUBJECT IS CHOSEN SO THE MUTANT CANNOT PASS. ["b", "a", "b"] holds a duplicate that is NOT
+// adjacent in encounter order; the sorted fold answers ["a", "b"], and the same fold without its sort
+// answers ["b", "a", "b"] -- three elements, both `b`s surviving. The all-adjacent case is asserted
+// beside it as the positive control that the mutant still passes, which is what makes the first arm
+// the discriminating one rather than the pair merely being two examples.
+//
+// WHY THIS AND NOT AN ORDER ASSERTION: encounter order is unobservable through either consumer --
+// `canonical_identity_set` sorts the result and `census_population_is_duplicate_free` reads only the
+// count -- so pinning the output ORDER would assert a property no caller can distinguish. What IS
+// observable through both is whether a duplicate survives, and that is what this holds.
+test fn deduplication_collapses_a_non_adjacent_duplicate_and_not_only_an_adjacent_one() -> Bool {
+  count(deduplicate_identities(identities: ["b", "a", "b"])) == 2
+    && count(deduplicate_identities(identities: ["b", "b", "a"])) == 2
+    && count(deduplicate_identities(identities: ["a", "a", "a"])) == 1
+    && count(deduplicate_identities(identities: [])) == 0
+    && count(deduplicate_identities(identities: ["b", "a", "c"])) == 3
+}
+
 test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
   !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
     && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
@@ -612,7 +642,7 @@ fn duplicated_refusal_receipt() -> CompilePhaseFrontierReceipt {
       assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
       cargo_identity: "cargo fixture" as NonEmptyStr,
       rustc_identity: "rustc fixture" as NonEmptyStr,
-      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      invocation: CompilePhaseInvocation { target: "fixture-target", target_selection: TargetDefaultedToHost, profile: "check/dev", features: [] },
       classification_policy_digest: rustc_phase_classification_policy_digest,
       comparison_epoch: "fixture-epoch" as NonEmptyStr
     },
@@ -660,7 +690,7 @@ fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
       assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
       cargo_identity: "cargo fixture" as NonEmptyStr,
       rustc_identity: "rustc fixture" as NonEmptyStr,
-      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      invocation: CompilePhaseInvocation { target: "fixture-target", target_selection: TargetDefaultedToHost, profile: "check/dev", features: [] },
       classification_policy_digest: rustc_phase_classification_policy_digest,
       comparison_epoch: "fixture-epoch" as NonEmptyStr
     },

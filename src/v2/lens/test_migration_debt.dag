@@ -84,7 +84,7 @@ fn retained_module_identity_prefix(source_file: String) -> String {
 
 fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
   discovered_legacy_behavior_ids()
-    |> any(id => string_contains(s: id, needle: retained_module_identity_prefix(source_file: source_file)))
+    |> any(id => string_contains(s: id, pattern: retained_module_identity_prefix(source_file: source_file)))
 }
 
 fn every_retained_module_has_a_test() -> Bool {
