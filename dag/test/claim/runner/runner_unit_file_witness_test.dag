@@ -11,6 +11,7 @@ import gunbc.runner_unit {
   lifecycle_intent_cannot_orphan,
 }
 import gunbc.runner_host_deploy { srv1_runner_host_deploy }
+import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
   BorrowerHeldCooperativeHostFifo,
@@ -297,4 +298,51 @@ test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
 // deleted is a fresh failure introduced by the fix.
 test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool {
   !string_contains(s: invocation_local_text(), pattern: "fixture-other.service")
+}
+
+
+// ── The complete [Unit] section, pinned header to header ────────────────────────────────────────
+
+// A CONTIGUOUS FRAGMENT IS NOT A COMPLETE SECTION. The two witnesses above assert that an expected
+// run of directives occurs, which proves order WITHIN that run and nothing about what surrounds it:
+// a duplicated After=, an extra Wants=, or a stray blank line outside the fragment leaves them
+// green. Since sections are emitted header-first and separated by one empty line, pinning from
+// "[Unit]" through to "[Service]" is the whole section -- nothing can hide inside it.
+//
+// AND IT RENDERS THE PRODUCTION VALUES, beside the distinct-value fixture rather than instead of it.
+// They answer different questions: the fixture proves the renderer consumes its argument's payload,
+// this proves the live arm's serialization is exactly what the fleet's own realization produces.
+fn production_realization() -> CompileParallelismRealization {
+  BorrowerHeldCooperativeHostFifo {
+    fifo_path: gunbc_runner_jobserver_default_fifo as NonEmptyStr,
+    daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+  }
+}
+
+fn production_unit_text() -> String {
+  match runner_unit_text(
+    rendering: runner_unit_file(
+      deploy: srv1_runner_host_deploy,
+      spec: srv1_spec(),
+      permit_scope: production_realization(),
+      intent: gunbc_runner_lifecycle_intent,
+    ),
+  ) {
+    RunnerUnitText { text: t } => t
+    RunnerUnitTextRefused { reason: _ } => ""
+  }
+}
+
+test fn w_the_production_arm_unit_section_is_complete_and_exact() -> Bool {
+  string_contains(
+    s: production_unit_text(),
+    pattern: "[Unit]\nDescription=Ephemeral GitHub Actions Runner (%i)\nAfter=network-online.target\nAfter=ctrl-jobserver.service\nWants=network-online.target\nWants=ctrl-jobserver.service\nStartLimitIntervalSec=0\n\n[Service]",
+  )
+}
+
+test fn w_the_cutover_arm_unit_section_is_complete_and_exact() -> Bool {
+  string_contains(
+    s: invocation_local_text(),
+    pattern: "[Unit]\nDescription=Ephemeral GitHub Actions Runner (%i)\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n\n[Service]",
+  )
 }
