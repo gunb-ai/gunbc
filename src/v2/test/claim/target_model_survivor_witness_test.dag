@@ -1,0 +1,102 @@
+module v2.test.claim.target_model_survivor_witness
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.compilers.target_model {
+  SourceAtomChar,
+  TargetValueTemplate,
+  TargetUseSiteOwnershipRealization,
+  TargetUseSiteOwnershipCatalogInvalid,
+  TargetUseSiteOwnershipCatalogMissing,
+  TargetUseSiteOwnershipCatalogUnique,
+  UseSiteOwnershipExactCarrier,
+  OwnershipAtFunctionReturn,
+  ReferenceLayerRc,
+  ValueCharUnicodeScalar,
+  target_model_type_atom_node,
+  target_use_site_ownership_catalog_lookup_step_for_row,
+  target_use_site_ownership_realization_to_node,
+  target_value_template_apply
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Named, Node, Positional, TypeNode }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The Char value is a code point while Atom.identity is a Symbol. The target expression carries
+// the one-character lexeme's interned identity; placing the numeric code point in that field is the
+// model mismatch this witness keeps RED under a revert.
+test fn char_unicode_scalar_expression_carries_a_symbol_identity() -> Bool {
+  match target_value_template_apply(
+    template: TargetValueTemplate {
+      kind: ValueCharUnicodeScalar,
+      node: target_model_type_atom_node(identity: ^char_witness_template)
+    },
+    value: SourceAtomChar { codepoint: code_point(s: "A") },
+    source_carrier: target_model_type_atom_node(identity: ^char_witness_carrier)
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: expression, diagnostics: _ } =>
+      fold(
+        expression.node.children,
+        init: false,
+        f: fn(acc, edge) {
+          match edge.label {
+            Positional => acc
+            Named { name: name } =>
+              acc || (name == ^target_value_expression_field_codepoint
+                && match edge.target.kind {
+                  TypeNode { connective: Atom { identity: identity } } =>
+                    identity == symbol_intern_lexeme(lexeme: "A")
+                  _ => false
+                })
+          }
+        }
+      )
+  }
+}
+
+fn ownership_witness_carrier() -> Node {
+  target_model_type_atom_node(identity: ^ownership_witness_carrier)
+}
+
+fn ownership_witness_row() -> TargetUseSiteOwnershipRealization {
+  TargetUseSiteOwnershipRealization {
+    source_carrier: ownership_witness_carrier(),
+    source_projection: UseSiteOwnershipExactCarrier,
+    use_site: OwnershipAtFunctionReturn,
+    reference_layer: ReferenceLayerRc,
+    display_name: ^ownership_witness_row
+  }
+}
+
+// Invalid is absorbing at the catalog layer. It has no constructor in the inner lookup coproduct,
+// so the step must return before converting the accumulator rather than fabricating an inner arm.
+test fn invalid_ownership_catalog_accumulator_remains_invalid() -> Bool {
+  match target_use_site_ownership_catalog_lookup_step_for_row(
+    acc: TargetUseSiteOwnershipCatalogInvalid,
+    row_node: target_use_site_ownership_realization_to_node(row: ownership_witness_row()),
+    display_name: ^ownership_witness_row,
+    source_carrier: ownership_witness_carrier(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    TargetUseSiteOwnershipCatalogInvalid => true
+    _ => false
+  }
+}
+
+// Positive control: the same decoded row and lookup inputs, starting from Missing, must still
+// advance to Unique. This prevents the absorbing repair from returning Invalid for every input.
+test fn valid_ownership_catalog_row_advances_missing_to_unique() -> Bool {
+  match target_use_site_ownership_catalog_lookup_step_for_row(
+    acc: TargetUseSiteOwnershipCatalogMissing,
+    row_node: target_use_site_ownership_realization_to_node(row: ownership_witness_row()),
+    display_name: ^ownership_witness_row,
+    source_carrier: ownership_witness_carrier(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    TargetUseSiteOwnershipCatalogUnique { row: _ } => true
+    _ => false
+  }
+}

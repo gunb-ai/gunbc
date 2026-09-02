@@ -15,6 +15,7 @@ import std.measure {
   money_once_micros,
   watt_count,
 }
+import std.interval { degenerate_interval }
 import std.pareto {
   AxisReading,
   HigherIsBetter,
@@ -51,7 +52,7 @@ import product.build_fulfillment {
 // what survives into a comparable field.
 //
 // WHY THE MAGNITUDES ARE DOMAIN-TYPED AND THE SPINE'S ARE NOT. std.pareto's
-// AxisReading carries a bare scalar, and that is correct FOR THE SPINE: a fold
+// AxisReading carries a bare scalar interval, and that is correct FOR THE SPINE: a fold
 // that compared std.measure carriers would have to enumerate them, which is a
 // universal framework naming its domains. But a projector that reached for the
 // bare scalar directly would lose the unit at exactly the seam where a
@@ -81,8 +82,14 @@ fn magnitude_scalar(m: BuildAxisMagnitude) -> Int {
   }
 }
 
+// THESE MAGNITUDES ARE SHARP, so the reading is the degenerate interval. A wattage read off a
+// declared part, a byte count and a money figure are exact facts about the build as configured, not
+// estimates with a tolerance -- and saying so through degenerate_interval is a CLAIM the spine acts
+// on, since only a degenerate pair can compare Same. A projector whose magnitude were genuinely
+// uncertain would mint a width here through the refusing constructor instead, and its axis would
+// then read as undecided rather than equal.
 fn to_axis_reading(r: BuildAxisReading) -> AxisReading {
-  AxisReading { axis: r.axis, value_micro: magnitude_scalar(m: r.magnitude) }
+  AxisReading { axis: r.axis, interval_micro: degenerate_interval(point: magnitude_scalar(m: r.magnitude)) }
 }
 
 // THE FUNDED AXES, each named by the declaration it projects rather than by a

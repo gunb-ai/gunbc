@@ -415,6 +415,91 @@ mod compiler_tests {
     }
 
     #[test]
+    fn emit_import_lines_follow_resolved_binding_identity() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let textlike = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_textlike.dag".to_string(),
+                    content: "module probe.textlike\ntype String = StringLeaf | StringNode { next: String }\ntype Carrier = CarrierOne | CarrierTwo\n".to_string(),
+                });
+                let logiclike = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_logiclike.dag".to_string(),
+                    content: "module probe.logiclike\ntype Bool = ProbeTrue | ProbeFalse\n".to_string(),
+                });
+                let victim = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_victim.dag".to_string(),
+                    content: "module probe.victim\nimport probe.textlike { String, Carrier }\nimport probe.logiclike { Bool }\ntype Holder { tag: String, load: Carrier, flag: Bool }\nfn keep(h: Holder) -> String { h.tag }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![textlike, logiclike, victim]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let victim_out = result.files.iter().find(|f| f.path.contains("probe_victim")).expect("victim module must emit");
+                assert!(
+                    !victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("String")),
+                    "a name the resolver answers with the structureless kernel scalar must not emit a structural use-line shadow (the 139-row std::string::String vs Rc<im::Vector<i64>> family); emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("Carrier")),
+                    "a non-kernel imported type must keep its use-line -- positive control that the drop is keyed on the resolved kernel identity, not on the import list; emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("Bool")),
+                    "a kernel-SPELLED name whose kernel binding is structural (Bool = True | False) must keep its use-line -- the control that stops a blanket kernel-name drop; emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.contains("pub tag:") && victim_out.content.contains("pub load:"),
+                    "the probe fields must still emit at all; emitted:\n{}",
+                    victim_out.content
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
+    }
+
+    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.
+    ///
+    /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the
+    /// emitted text and asserts on substrings. A meaning-level emitter defect is invisible to
+    /// that whenever the wrong bytes still contain the right substring -- and it is exactly
+    /// what rustc's type checker refuses. This arm is the one that asks rustc.
+    ///
+    /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below
+    /// proves only that something in the tree is broken. The red must be refused BY RUSTC and
+    /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the
+    /// hundreds of modules in its closure would pass for the fixture's own defect.
+    ///
+    /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds, and
+    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It
+    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and
+    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn fixture_closure_rustc_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("{}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the control must compile and the meaning-level red must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+        );
+    }
+
+    #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
         // (resolve_node_bounded masked boundary). module_b references `Widget`
@@ -853,6 +938,211 @@ mod compiler_tests {
                 crate::v1_std_core::CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
             )),
             "this path is ExprMethodCall — CallNamedArgOnFunctionValue must not fire here"
+        );
+    }
+
+    // KNOWN-HOLE PROBE (not a desired-behavior control), DESIGN section 4b(4).
+    //
+    // The shell service-emission path FABRICATES rather than refuses: every declared
+    // output field is bound to `stdout`, whatever source the declaration named, and the
+    // error arm returns a bare String against a declared Box<dyn std::error::Error>.
+    // Both produce Rust that does not compile, with ZERO diagnostics -- section 5's
+    // fabricated-plausible-output arm, in the emitter.
+    //
+    // The three-output fixture is load-bearing. The two-field case this was first seen
+    // on (an operation declaring `success: Bool from "exit_success"` beside
+    // `stdout: String from "stdout"`) cannot distinguish "wrong tuple index" from "the
+    // declared source never arrived": with two fields, "always the first output" and
+    // "always stdout" produce the same bytes. Three fields separate them, and the
+    // ABSENCE of the `let stderr = ...` prelude line is the positive evidence -- that
+    // line is emitted only when some field claims the stderr channel, so its absence
+    // proves the `from "stderr"` field was invisible to the renderer rather than
+    // mis-ordered. child_from_key returns Absent for all three.
+    //
+    // WHEN THE WALL LANDS THIS PROBE MUST FLIP and become a permanent regression
+    // control: the emitted body must bind each field to its named source, box the error
+    // arm, and REFUSE -- typed and located, naming the field and the unresolvable
+    // source -- for any source it cannot realize.
+    #[test]
+    fn shell_service_output_projection_fabricates_stdout_known_hole_probe() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      success: Bool from \"exit_success\"\n      out: String from \"stdout\"\n      err: String from \"stderr\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let errors: Vec<_> = r
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "KNOWN HOLE today: the emitter does not refuse; it fabricates silently. \
+                     When the wall lands this becomes the refusal assertion. Got: {:?}",
+                    errors
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("service module must emit src/probe.rs");
+
+                // The signature reads the declaration correctly...
+                assert!(
+                    emitted.contains(
+                        "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
+                    ),
+                    "signature must project the three declared output types, got:\n{}",
+                    emitted
+                );
+                // ...and the body then ignores every declared source.
+                assert!(
+                    emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
+                    "KNOWN HOLE: every output field is bound to stdout regardless of its \
+                     declared source. If this assertion fails the wall may have landed -- \
+                     flip this probe to assert the correct per-channel binding. Got:\n{}",
+                    emitted
+                );
+                // The stderr prelude is the absence that proves the source was never read.
+                assert!(
+                    !emitted.contains("String::from_utf8_lossy(&output.stderr)"),
+                    "KNOWN HOLE: the `from \"stderr\"` field is invisible to the renderer, \
+                     so no stderr prelude line is emitted. Got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result
+            .expect("shell_service_output_projection_fabricates_stdout_known_hole_probe panicked");
+    }
+
+    // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing
+    // else would notice losing. DESIGN section 4b(4): the evidence stays enrolled.
+    //
+    // A function-VALUE realizes as `Rc<dyn Fn(..)>`; a function-typed PARAMETER realizes as an
+    // `impl Fn(..) + Clone` bound, and `Rc<F>` carries no blanket `impl Fn`, so passing the first
+    // into the second is an E0277 seam. rust_call_arg_function_value_adapt closes it by wrapping
+    // the argument in a forwarding closure, and it decides on
+    // `param_node_type_expr(n: param).params |> count > 0`.
+    //
+    // THAT IS THE SAME EXPRESSION ON THE SAME NODE that emit_param/emit_rust_param_type use to
+    // decide whether to emit the `impl Fn` bound at all. So the adapter fires exactly where the
+    // seam exists, and cannot fire where it does not -- the two predicates cannot disagree while
+    // they remain one expression. This control is what notices if they are ever forked.
+    //
+    // WHAT THIS ESTABLISHES, AT ITS DECLARED GRAIN. Emission SUCCEEDS on this fixture -- zero
+    // error diagnostics, asserted FIRST, so a refusal fails here rather than being matched past
+    // -- and the emitted bytes carry, for this fixture, all six of:
+    //   the function-valued producer emitted as `Rc<dyn Fn(..)>`;
+    //   the declared-arrow formal emitted as `impl Fn(..) + Clone`;
+    //   a forwarding closure emitted AT that formal;
+    //   the bare type-variable formal carrying NO Fn bound;
+    //   NO forwarding closure at that formal;
+    //   and hence the two emitter decisions staying aligned on this fixture.
+    // Those are structural facts about the emitter, and substring matching can decide them.
+    // That list is the WHOLE claim.
+    //
+    // IT DOES NOT ESTABLISH THAT THE E0277 SEAM IS CLOSED, AND NOTHING EXECUTING TODAY DOES.
+    // Whether these bytes compile is a RUSTC verdict, and no amount of exact rendering is
+    // evidence about one; a substring assertion could not decide it at any lane membership.
+    //
+    // NO ENROLLED FAIL-CLOSED RUSTC CONSUMER COVERS THIS SYNTHETIC FIXTURE. That is a statement
+    // about the whole tree as it stands, not a pointer at some other test that would do it --
+    // deliberately, because naming a candidate invites the next reader to read 'not yet' as
+    // 'once someone schedules it', and a candidate cited that way becomes coverage in the telling.
+    //
+    // NO PER-FIXTURE RUSTC CONSUMER IS BUILT HERE EITHER. probe.rs references the crate runtime
+    // (im::vector, v1_std_core, the artifact types) and does not stand alone, and a second
+    // per-fixture compile path is the parallel authority section 6 warns about. The standing
+    // execution half would be a real COMMITTED occurrence of this adapter shape joined BY
+    // IDENTITY to a rustc consumer that runs and REFUSES. That join does not exist today.
+    //
+    // WHY THE BARE TYPE VARIABLE IS THE DISCRIMINATING HALF. It was reported (by me, wrongly) as a
+    // silent defect: a parameter declared `T` has arity 0, so no adapter is emitted, and nothing
+    // refuses. The bytes below are the refutation -- `T` renders as a plain generic with NO Fn
+    // bound, so there is no seam to close, and adapting there would be a fabricated repair.
+    // Arity is invariant under substitution anyway: instantiation changes an arrow's type
+    // ARGUMENTS, never its parameter count.
+    #[test]
+    fn function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nfn add_one(x: Int) -> Int { x + 1 }\nfn make_adder() -> fn(Int) -> Int { fn(n) { add_one(x: n) } }\nfn hold_tv<T>(value: T) -> T { value }\nfn apply_arrow(f: fn(Int) -> Int, v: Int) -> Int { f(v) }\nfn through_type_variable() -> Int { apply_arrow(f: hold_tv(value: make_adder()), v: 1) }\nfn through_declared_arrow() -> Int { apply_arrow(f: make_adder(), v: 1) }\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let errors: Vec<_> = r
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "the fixture is ordinary admissible source; a refusal here is a compiler \
+                     defect rather than a defect in the fixture. Got: {:?}",
+                    errors
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("probe module must emit src/probe.rs");
+
+                // (1) the producer side of the seam: a function VALUE is the Rc carrier.
+                assert!(
+                    emitted.contains("pub fn make_adder() -> Rc<dyn Fn(i64) -> i64>"),
+                    "a function-valued return must realize as the Rc carrier, got:\n{}",
+                    emitted
+                );
+                // (2) a DECLARED-ARROW parameter carries the impl Fn bound -- the seam exists here.
+                assert!(
+                    emitted.contains("pub fn apply_arrow(f: impl Fn(i64) -> i64 + Clone, v: i64)"),
+                    "a declared-arrow parameter must carry the impl Fn bound, got:\n{}",
+                    emitted
+                );
+                // (3) a BARE TYPE VARIABLE parameter carries NO Fn bound -- no seam exists here.
+                assert!(
+                    emitted.contains("pub fn hold_tv<T: Clone>(value: T) -> T"),
+                    "a bare type-variable parameter must render as a plain generic with no Fn \
+                     bound -- if this ever gains one, the adapter predicate must move with it, \
+                     got:\n{}",
+                    emitted
+                );
+                // (4) THE ALIGNMENT, both directions. The adapter wraps the argument at the
+                // impl-Fn-bound parameter, and does NOT wrap it at the type-variable parameter --
+                // whose argument is equally a call result, so shape alone does not explain it.
+                assert!(
+                    emitted.contains(
+                        "apply_arrow({ let __adapt_f = hold_tv(make_adder()); move |__adapt_a0| __adapt_f(__adapt_a0) }, 1)"
+                    ),
+                    "the forwarding adapter must be emitted at the impl Fn parameter, got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("hold_tv({ let __adapt_f"),
+                    "no adapter may be injected at a parameter that carries no Fn bound -- that \
+                     would be a fabricated repair of a seam that does not exist, got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted panicked",
         );
     }
 
@@ -2344,6 +2634,142 @@ mod compiler_tests {
             "applied-type base must not emit namespace dots in generic position"
         );
         assert_eq!(rendered, "Vec<i64>");
+    }
+
+    fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let optional_type = shaped_type_node("Node", Vec::new());
+        let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
+            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
+            ..(*optional_type).clone()
+        });
+        let arg = named_type_node("child");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::Resolved {
+                    node: optional_type,
+                },
+            )),
+            ..(*arg).clone()
+        })
+    }
+
+    fn callee_with_one_param(
+        param_type_name: &str,
+    ) -> Option<std::rc::Rc<crate::v1_compiler_infer_items::ItemInfo>> {
+        let param = shaped_type_node("value", vec![named_type_node(param_type_name)]);
+        Some(std::rc::Rc::new(crate::v1_compiler_infer_items::ItemInfo {
+            name: "outcome_accepted".to_string(),
+            module_name: "v2.std.diagnostic".to_string(),
+            kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
+            service_names: std::rc::Rc::new(im::Vector::new()),
+            resource_names: std::rc::Rc::new(im::Vector::new()),
+            params: std::rc::Rc::new(vec![param].into()),
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+        }))
+    }
+
+    #[test]
+    fn generic_parameter_declines_the_fail_closed_unwrap() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let arg = optional_typed_arg_node();
+        let generic = crate::v1_compiler_emit_rust::rust_call_arg_fail_closed_unwrap(
+            "child.clone()".to_string(),
+            arg.clone(),
+            callee_with_one_param("T"),
+            0,
+            "outcome_accepted".to_string(),
+            source_indices.clone(),
+        );
+        assert_eq!(
+            generic, "child.clone()",
+            "a type-variable parameter cannot say the instantiation is non-optional, so no unwrap may be injected"
+        );
+        let concrete = crate::v1_compiler_emit_rust::rust_call_arg_fail_closed_unwrap(
+            "child.clone()".to_string(),
+            arg,
+            callee_with_one_param("Node"),
+            0,
+            "node_locus".to_string(),
+            source_indices,
+        );
+        assert!(
+            concrete.contains(".expect("),
+            "a concrete non-optional parameter must still take the unwrap: {}",
+            concrete
+        );
+    }
+
+    #[test]
+    fn witness_carrier_declines_a_non_witness_expected_type() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let shared = std::rc::Rc::new(im::OrdSet::new());
+        let shared2 = shared.clone();
+        let source_indices2 = source_indices.clone();
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let witness_of_node = shaped_type_node("Witness", vec![named_type_node("Node")]);
+        let outcome_of_witness = shaped_type_node("Outcome", vec![witness_of_node.clone()]);
+        let emit_with_outcome =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                expected_type: Some(outcome_of_witness),
+                ..(*empty_emit).clone()
+            });
+        assert!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_from_expected_type(
+                emit_with_outcome,
+                shared.clone(),
+                source_indices.clone()
+            )
+            .is_none(),
+            "an expected type whose head is not Witness is not evidence about a witness carrier"
+        );
+        let emit_with_witness =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                expected_type: Some(witness_of_node),
+                ..(*empty_emit).clone()
+            });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_from_expected_type(
+                emit_with_witness,
+                shared,
+                source_indices
+            ),
+            Some("Node".to_string()),
+            "a Witness-headed expected type still answers with its carrier"
+        );
+        let no_fields: Vec<std::rc::Rc<crate::v1_std_core::Node>> = Vec::new();
+        let mut variants = HashMap::new();
+        variants.insert("Holds".to_string(), "Witness".to_string());
+        variants.insert("Violates".to_string(), "Witness".to_string());
+        let emit_with_variants =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                variant_to_enum: std::rc::Rc::new(variants),
+                ..(*empty_emit).clone()
+            });
+        assert!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
+                "Violates".to_string(),
+                shaped_type_node("Witness", vec![named_type_node("Holds")]),
+                std::rc::Rc::new(no_fields.clone().into()),
+                shared2.clone(),
+                emit_with_variants.clone(),
+                source_indices2.clone()
+            )
+            .is_none(),
+            "the Violates fallback must decline a non-Witness resolved type too, or the fabrication only moves one frame down"
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
+                "Violates".to_string(),
+                shaped_type_node("Witness", vec![named_type_node("Node")]),
+                std::rc::Rc::new(no_fields.into()),
+                shared2,
+                empty_emit,
+                source_indices2
+            ),
+            Some("Node".to_string()),
+            "a Witness-headed resolved type still answers the Violates fallback"
+        );
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).

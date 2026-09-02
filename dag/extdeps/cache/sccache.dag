@@ -43,7 +43,6 @@ import std.types { NonEmptyStr, String, List }
 import extdeps.toolchain.types {
   ToolchainCapability,
   SharedHomeAcrossJobs,
-  CtrlBuild,
   Architecture,
   Aarch64,
   X86_64,
@@ -161,7 +160,6 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
   name: "sccache",
   version: "0.15.0",
   env_isolation: SharedHomeAcrossJobs,
-  build_wrapper: Present { value: CtrlBuild },
   linked_cache_interface: Present { value: sccache_local_id },
 }
 

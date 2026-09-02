@@ -9,7 +9,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.language_source_scaffold_index {
   LanguageSourceScaffoldRow,
   language_source_scaffold_roster,
-  language_source_scaffold_roster_size,
   language_source_scaffold_roster_all_dispositioned,
   language_source_scaffold_row_is_dispositioned,
   rust_pair_completion_spelling_scaffold_trigger
@@ -29,9 +28,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // language_source_scaffold_row_is_dispositioned. (2) COVERAGE: the roster must actually cover its
 // carriers. Asserting hardcoded census counts alone would let a new rt_/ct_ blob land unmarked and
 // stay green until someone bumped the number by hand (review 43161), so coverage is read from the
-// LIVE TREE: the rt_ and ct_ declaration counts in the carrier sources are compared against the
-// roster, and a newly added blob reds this witness instead of sitting unrostered. The comparison is
-// EXACT equality with no offset: an earlier version used declared == rostered + 1 to absorb
+// LIVE TREE: both populations — the rt_/ct_ declarations in the carrier sources and the roster rows
+// naming that carrier — are derived on every run, and neither side is a literal.
+//
+// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN §5). The earlier form compared
+// declared COUNT to rostered COUNT, and main proved that weaker: the roster carried
+// ct_caret_parse_smoke_native_witness_tests, a blob #8532 had deleted from the carrier, while five
+// live blobs sat unrostered. A count comparison cannot tell "44 declared, 44 rostered, same names"
+// from "44 declared, 44 rostered, one stale row standing in for one unrostered blob" — the stale
+// row would have MASKED an unrostered blob and this witness would have gone green on a roster that
+// covered nothing of the sort. So the assertion now names the two residues: declared-not-rostered
+// (a blob landed unmarked) and rostered-not-declared (a row outlived its blob). Both must be empty,
+// and each reds with a distinct meaning. The residual count conjunct is not a change detector —
+// with both containments holding it can only fail on a DUPLICATE name within one population, which
+// is the one defect identity containment alone cannot see.
+//
+// The comparison carries no offset: an earlier version used declared == rostered + 1 to absorb
 // ct_coercion_tests, which was itself an absorbing fallback (review 43177) — that blob is a hybrid
 // (row-driven core via extract_coercion_tests, but it still emits a hand-authored header and
 // aggregates three hand blobs), so it is rostered like any other and the fudge is gone.
@@ -45,13 +57,66 @@ data legitimate_terminal_control_row: LanguageSourceScaffoldRow = LanguageSource
   disposition: Terminal { reason: "named irreducible intrinsic kernel" }
 }
 
-fn rostered_count_for(carrier: String) -> Int {
-  language_source_scaffold_roster |> filter(r => r.carrier_module == carrier) |> count
+fn rostered_names_for(carrier: String) -> List<String> {
+  language_source_scaffold_roster |> filter(r => r.carrier_module == carrier) |> map(r => r.blob_decl)
 }
 
-fn declared_fn_count(path: String, prefix: String) -> Int {
+// The head of a declaration segment, up to its parameter list. `split` on a present delimiter
+// always yields at least one element, so Absent is unreachable here — but the arm may not fabricate
+// a plausible name (DESIGN §5), so it yields a spelling no roster row can carry and the join reds.
+// The failure arm refuses; it does not widen.
+fn head_before(s: String, delimiter: String) -> String {
+  match s |> split(delimiter: delimiter) |> first {
+    Present { value: v } => v
+    Absent => "<unsplittable declaration head>"
+  }
+}
+
+fn declared_blob_names(path: String, decl_prefix: String) -> List<String> {
   let src = filesystem_read(path: path)
-  (src.content |> split(delimiter: prefix) |> count) - 1
+  src.content
+    |> split(delimiter: concat("\nfn ", decl_prefix))
+    |> skip(1)
+    |> map(seg => concat(decl_prefix, head_before(s: seg, delimiter: "(")))
+}
+
+fn names_absent_from(xs: List<String>, ys: List<String>) -> List<String> {
+  xs |> filter(x => (ys |> filter(y => y == x) |> count) == 0)
+}
+
+fn identity_join_holds(declared: List<String>, rostered: List<String>) -> Bool {
+  (names_absent_from(xs: declared, ys: rostered) |> count) == 0
+    && (names_absent_from(xs: rostered, ys: declared) |> count) == 0
+    && (declared |> count) == (rostered |> count)
+}
+
+// THE DISCRIMINATING CONTROL FOR THE JOIN ITSELF, over authored fixtures rather than the live tree
+// (DESIGN §4b(1): a rung is established by an executed RED plus an accepted positive control, and
+// the live-tree arms cannot supply the RED once the tree is repaired). The middle case is the one
+// main actually shipped: EQUAL COUNTS, one stale row standing in for one unrostered blob. A count
+// comparison accepts it; this join refuses it, and refuses it from BOTH directions separately, so a
+// repair that checked only one containment would go red here.
+
+data control_declared: List<String> = ["ct_a", "ct_b", "ct_c"]
+
+test fn the_join_refuses_equal_counts_with_different_identities() -> Bool {
+  !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_b", "ct_stale"])
+}
+
+test fn the_join_refuses_an_unrostered_blob() -> Bool {
+  !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_b"])
+}
+
+test fn the_join_refuses_a_row_that_outlived_its_blob() -> Bool {
+  !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_b", "ct_c", "ct_stale"])
+}
+
+test fn the_join_refuses_a_duplicate_row_masking_an_unrostered_blob() -> Bool {
+  !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_a", "ct_b", "ct_c"])
+}
+
+test fn the_join_accepts_the_same_population_in_any_order() -> Bool {
+  identity_join_holds(declared: control_declared, rostered: ["ct_c", "ct_a", "ct_b"])
 }
 
 test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
@@ -59,15 +124,15 @@ test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
 }
 
 test fn runtime_rust_blobs_are_all_rostered() -> Bool {
-  let declared = declared_fn_count(path: runtime_rust_source_path, prefix: "\nfn rt_")
-  let rostered = rostered_count_for(carrier: "v1.compiler.runtime_rust")
-  declared == rostered
+  let declared = declared_blob_names(path: runtime_rust_source_path, decl_prefix: "rt_")
+  let rostered = rostered_names_for(carrier: "v1.compiler.runtime_rust")
+  identity_join_holds(declared: declared, rostered: rostered)
 }
 
 test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
-  let declared = declared_fn_count(path: compiler_tests_rust_source_path, prefix: "\nfn ct_")
-  let rostered = rostered_count_for(carrier: "v1.compiler.compiler_tests_rust")
-  declared == rostered
+  let declared = declared_blob_names(path: compiler_tests_rust_source_path, decl_prefix: "ct_")
+  let rostered = rostered_names_for(carrier: "v1.compiler.compiler_tests_rust")
+  identity_join_holds(declared: declared, rostered: rostered)
 }
 
 test fn reasoned_terminal_is_accepted() -> Bool {
@@ -86,4 +151,4 @@ test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
   }
 }
 
-data coverage_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_fn_count below. It counts declarations by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")
+data coverage_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_blob_names below. It reads declaration IDENTITIES by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")

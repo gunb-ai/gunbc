@@ -1,7 +1,10 @@
 module test.claim.self_host_compile_phase_frontier_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
-import std.content_hash { content_hash_atom }
+import std.content_hash { content_hash_atom, Sha1Digest }
+import extdeps.git.object_store { GitSha1ObjectId }
+import extdeps.crypto.hash { sha256_digest }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
 import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
@@ -18,6 +21,8 @@ import gunbc.self_host_compile_phase_frontier {
   phase_ratchet_with_dispositions,
   phase_board_error_population_reconciles,
   NewlyExposedDiagnostic,
+  newly_exposed_identity_admitted,
+  ExposedByNewEmittedModule,
   OpenUnadmittedRegression,
   ClosedUnadmittedRegression,
   RegressionTransitionHeld,
@@ -34,9 +39,23 @@ import gunbc.self_host_compile_phase_frontier {
   self_host_compile_phase_frontier_receipts,
   PersistedPhaseBoardFold,
   phase_board_from_census_identities,
+  receipt_population_coherent,
+  CompilePhaseFrontierReceipt,
+  seal_compile_phase_receipt,
+  CompilePhaseReceiptSubject,
+  CompilePhaseInvocation,
+  PhaseBoardProducer,
+  PhaseBoardBaseline,
+  ParseReached,
+  rustc_phase_classification_policy_digest,
   board_row,
   CompilePhaseFrontierValidated,
   compile_phase_frontier_standing,
+  CompilePhaseFrontierCoverage,
+  FrontierCoversSubjectTree,
+  FrontierReceiptTreeStale,
+  FrontierCoverageRefused,
+  compile_phase_frontier_coverage,
   genesis_5006ddc6_parse_observation,
   genesis_5006ddc6_raw_error_diagnostic_identities,
   phase_census_digest,
@@ -523,4 +542,218 @@ test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool
   let b = census_probe_row(code: "E0599", message: "beta")
   let substituted = census_probe_row(code: "E0308", message: "substituted")
   census_fold(raw: [a, b]).board != census_fold(raw: [substituted, b]).board
+}
+
+// A module that enters the emitted closure between receipts carries diagnostics that are neither
+// relocations nor regressions. The cause is admitted only when the predecessor board holds NO
+// identity in that file: the claim is checkable against the persisted census, not taken on faith.
+test fn a_new_emitted_module_disposition_is_admitted_only_for_a_file_the_predecessor_never_saw() -> Bool {
+  let previous = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:1:1\tE0308\tmismatch"])
+  let current = fixture_board(resolve_ids: [], typeck_ids: ["src/new_module.rs:4:7\tE0308\tmismatch"])
+  newly_exposed_identity_admitted(
+    previous: previous,
+    current: current,
+    dispositions: [
+      NewlyExposedDiagnostic {
+        identity: "src/new_module.rs:4:7\tE0308\tmismatch",
+        cause: ExposedByNewEmittedModule { module: "src/new_module.rs" }
+      }
+    ],
+    identity: "src/new_module.rs:4:7\tE0308\tmismatch"
+  )
+}
+
+// The RED control on the same plant: claiming new-module exposure for a file the predecessor
+// already had an identity in must refuse -- otherwise the cause would launder ordinary
+// regressions in existing modules as corpus growth.
+test fn a_new_emitted_module_disposition_refuses_a_file_the_predecessor_already_reported() -> Bool {
+  let previous = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:1:1\tE0308\tmismatch"])
+  let current = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:9:9\tE0599\tno method"])
+  !newly_exposed_identity_admitted(
+    previous: previous,
+    current: current,
+    dispositions: [
+      NewlyExposedDiagnostic {
+        identity: "src/old.rs:9:9\tE0599\tno method",
+        cause: ExposedByNewEmittedModule { module: "src/old.rs" }
+      }
+    ],
+    identity: "src/old.rs:9:9\tE0599\tno method"
+  )
+}
+
+// PINS THE WIRING, NOT THE PREDICATE. census_population_is_duplicate_free already has a direct
+// probe, but nothing drove receipt_population_coherent with a duplicated population, so DELETING
+// the conjunct outright left every witness green -- the wall executed as a predicate and unexecuted
+// as a wall, failing in the direction of simply not being there.
+//
+// The subject is a duplicated refused_files list, and that choice is load-bearing. A duplicated
+// raw_error_diagnostic_identities would also break the separate
+// total_error_diagnostics == count(raw_error_diagnostic_identities) conjunct, so the probe would
+// stay red with the duplicate conjunct deleted and would pin nothing. Duplicated refused_files
+// breaks ONLY the duplicate wall: the board rows derive from the same list on both sides so they
+// still agree, and the error totals concern identities rather than refused paths. So this witness
+// goes red exactly when the wall is removed.
+fn duplicated_refusal_receipt() -> CompilePhaseFrontierReceipt {
+  let parse = RustfmtParseObservation {
+    producer: "fixture-rustfmt",
+    files_observed: 2,
+    refused_files: ["src/a.rs", "src/a.rs"]
+  }
+  let fold = phase_board_from_census_identities(parse_observation: parse, raw_identities: [])
+  seal_compile_phase_receipt(
+    sequence: 0,
+    observed_at: "2026-08-31T00:00:00Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "1111111111111111111111111111111111111111" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" } }),
+      emitted_artifact_identity: sha256_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
+      cargo_identity: "cargo fixture" as NonEmptyStr,
+      rustc_identity: "rustc fixture" as NonEmptyStr,
+      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "fixture-epoch" as NonEmptyStr
+    },
+    invocation: "fixture-invocation" as NonEmptyStr,
+    position: PhaseBoardBaseline,
+    previous_prefix_digest: none,
+    parse_evidence: ParseReached { evidence: parse },
+    board: fold.board,
+    raw_error_diagnostic_identities: [],
+    unplaced_identities: fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "test.claim.self_host_compile_phase_frontier_witness",
+      function: "duplicated_refusal_receipt",
+      entry: "fixture"
+    }
+  )
+}
+
+test fn a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence() -> Bool {
+  !receipt_population_coherent(receipt: duplicated_refusal_receipt())
+}
+
+// Positive control for the probe above: the SAME receipt shape with the repeat removed must be
+// coherent. Without it, a receipt that failed for any unrelated reason would satisfy the refusal
+// assertion and the probe would pin nothing.
+fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
+  let parse = RustfmtParseObservation {
+    producer: "fixture-rustfmt",
+    files_observed: 2,
+    refused_files: ["src/a.rs", "src/b.rs"]
+  }
+  let fold = phase_board_from_census_identities(parse_observation: parse, raw_identities: [])
+  seal_compile_phase_receipt(
+    sequence: 0,
+    observed_at: "2026-08-31T00:00:00Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "1111111111111111111111111111111111111111" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" } }),
+      emitted_artifact_identity: sha256_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
+      cargo_identity: "cargo fixture" as NonEmptyStr,
+      rustc_identity: "rustc fixture" as NonEmptyStr,
+      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "fixture-epoch" as NonEmptyStr
+    },
+    invocation: "fixture-invocation" as NonEmptyStr,
+    position: PhaseBoardBaseline,
+    previous_prefix_digest: none,
+    parse_evidence: ParseReached { evidence: parse },
+    board: fold.board,
+    raw_error_diagnostic_identities: [],
+    unplaced_identities: fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "test.claim.self_host_compile_phase_frontier_witness",
+      function: "clean_refusal_receipt",
+      entry: "fixture"
+    }
+  )
+}
+
+test fn the_same_receipt_without_the_repeat_is_coherent() -> Bool {
+  receipt_population_coherent(receipt: clean_refusal_receipt())
+}
+
+// THE LIVE-COVERAGE JOIN, AND THESE FOUR PROBES ARE ITS ENROLLED EVIDENCE. The judgment gates
+// nothing today -- see the module annotation on compile_phase_frontier_coverage for why an
+// actuated arm would refuse every merge -- so these fixtures are the only thing that executes it,
+// and they stay enrolled when the measurement surface that actuates it arrives.
+fn fixture_tree_at(hex: String) -> FloorDiscoveryTreeId {
+  floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: hex } })
+}
+
+// The tree clean_refusal_receipt names. Written once so the covered and stale probes cannot drift
+// apart into agreeing for a reason other than the one under test.
+fn fixture_receipt_tree_hex() -> String { "2222222222222222222222222222222222222222" }
+
+test fn a_receipt_naming_the_tree_under_judgment_covers_it() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [clean_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoversSubjectTree { latest: _ } => true
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED. Same validated series, a different tree under judgment -- which is the
+// ordinary state of every merge, since the live tree moves and receipts are authored rarely. If
+// this answered Covered the judgment would be a decoration that reports coverage it never checked.
+test fn a_receipt_naming_a_different_tree_is_stale_against_the_tree_under_judgment() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [clean_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: "7777777777777777777777777777777777777777") }
+  ) {
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      r == concat("sha1:", fixture_receipt_tree_hex())
+        && s == "sha1:7777777777777777777777777777777777777777"
+    _ => false
+  }
+}
+
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller with no tree identity gets a typed
+// refusal; answering Covered there is the absorbing fallback, and answering Stale would be a
+// fabricated comparison against a subject nobody observed.
+test fn an_unobserved_tree_under_judgment_refuses_rather_than_covering() -> Bool {
+  match compile_phase_frontier_coverage(series: [clean_refusal_receipt()], subject_tree: none) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+// AN INVALID SERIES MAY NOT COVER ANYTHING, EVEN WHEN THE TREES MATCH. duplicated_refusal_receipt
+// names the SAME tree as the clean one and is refused by receipt_population_coherent, so a
+// coverage judgment that compared tree identities before validating the series would answer
+// Covered here. This is the probe that pins the ordering.
+test fn an_incoherent_series_refuses_coverage_of_the_tree_it_names() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [duplicated_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
 }

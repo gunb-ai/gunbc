@@ -26,7 +26,8 @@ import gunbc.spark.serving_install_paths {
 import gunbc.spark.serving_desired {
   spark_serving_desired_bind_host_port,
   spark_serving_automation_principal_login,
-  spark_serving_desired_configured_context,
+  spark_serving_desired_default_context,
+  spark_serving_desired_serving_slots,
 }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.spark.serving_unit_render { spark_serving_desired_user_unit_content_identity }
@@ -310,7 +311,8 @@ fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteInten
     path: spark_serving_user_unit_path(),
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-      configured_context: spark_serving_desired_configured_context(),
+      default_context: spark_serving_desired_default_context(),
+      serving_slots: spark_serving_desired_serving_slots(),
     ),
   }
 }

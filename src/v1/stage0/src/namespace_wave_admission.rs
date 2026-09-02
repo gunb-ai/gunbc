@@ -65,6 +65,14 @@ use crate::cli_run::declaration_index::{
 };
 use crate::v1_std_core::qualified_last_segment;
 
+/// The declaration identity of an ambient kernel type in binding rows.
+///
+/// Kernel types have no declaring module, but that does not make them unresolved:
+/// `v1.compiler.resolve` appends `std.types.kernel_type_set` to every visible-name set. Keeping
+/// this identity distinct from every module path prevents an empty candidate set from conflating
+/// "resolved by the kernel" with "denotes nothing".
+const KERNEL_DECLARATION_IDENTITY: &str = "<kernel>";
+
 /// The nine dispositions of `gunbc.compiler_frontend_program_interlock`
 /// `NamespaceDeltaDisposition`, realized for the host reader.
 ///
@@ -222,9 +230,15 @@ pub struct NamespaceDelta {
     /// The two sides, rendered. Never a summary: a refusal a reader cannot act on withholds the
     /// analysis.
     pub detail: String,
-    /// Modules whose transitive closure moves because of THIS delta. Measured, never
-    /// separately adjudicated — see the module header.
-    pub closure_blast_radius: usize,
+    /// Modules whose transitive closure moves because of THIS delta, when that question was
+    /// ASKED. Closure is a pure function of membership, so only a membership delta generates
+    /// closure motion and only a membership row can answer. `None` is the binding row saying the
+    /// question does not apply to it — it is NOT a measured zero, and the renderer omits the
+    /// clause entirely rather than printing one. The field was a bare `usize` until 2026-09-01,
+    /// which gave those two states one spelling: every binding row carried a literal `0` and
+    /// rendered identically to a membership row whose closure genuinely moved nothing, so a
+    /// reader could not tell an unasked question from a measured answer.
+    pub closure_blast_radius: Option<usize>,
     /// Set when a transition admission covers this exact subject and disposition.
     pub admitted_by: Option<String>,
 }
@@ -460,7 +474,210 @@ pub struct TransitionAdmission {
 /// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
 /// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
 /// empty and remains fail-closed for any new namespace delta.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// NINTH, AND THIS ONE WAS AN ADDITION RATHER THAN A SHRINK (2026-08-31). The two rows were
+/// the SPARK-PAIR-0 P0-C3a consolidation's own adjudication, carried across main's eighth
+/// dissolution, which emptied the roster. They are NOT stale: the required run that reported the
+/// five BootArtifact rows stale reported `0 unadjudicated delta(s)` on the same line, and that
+/// zero is these two rows doing their job.
+/// TENTH DISSOLUTION (2026-09-01). SPARK-PAIR-0 P0-C3a merged, and the required run for
+/// gunbc#9896 proved both rows consumed at the base. This change touches the roster to teach the
+/// wall that ambient kernel identities are resolved, so the roster's own next-touch obligation
+/// deletes both receipts. The roster is empty and remains fail-closed for new namespace motion.
+/// ELEVENTH TRANSITION, AND THE FIRST WHOSE SUBJECT IS A REQUALIFICATION RATHER THAN A MOVE
+/// (2026-09-01, XL-0T, gunbc#9907). `v2.compiler.tokenize` and `v2.std.compilers.lexing` name the
+/// structural text carrier EXPLICITLY where they previously wrote the bare spelling: `String` in
+/// those positions resolved to the kernel identity and now resolves to `v2.std.text`, whose
+/// `String` is `FreeMonoid<Char>`. No declaration moved and no name was minted -- the destination
+/// is written where the module already meant it -- so every one of the seventeen arrives as
+/// `TargetChanged binding`, base `{<kernel>}` -> head `{v2.std.text}`.
+///
+/// THE POPULATION IS EXACTLY SEVENTEEN AND THE RUN SAYS SO. On run 33501228511 the phase reported
+/// `modules_compared=4475 modules_added=1 modules_removed=0 closure_rows_moved=0 deltas=17`: one
+/// module added (the ingress witness this change enrolls), nothing removed, and no closure motion
+/// at all. That is what makes seventeen a population rather than a count -- the denominators are
+/// beside it, and a delta this roster does not name still refuses.
+///
+/// EVERY ROW NAMES ONE EXACT (module, declaration, spelling) TRIPLE. No wildcard, no prefix rule,
+/// no row admitting a module or a spelling in general: an unintended requalification of `String`
+/// anywhere else in either module -- or anywhere in the corpus -- still refuses as UNADJUDICATED.
+/// The fifteen `v2.compiler.tokenize` rows and the two `v2.std.compilers.lexing` rows are the
+/// whole change to this spelling.
+///
+/// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
+/// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
+/// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "DelimitedState",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexMatchResult",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexMatchThunk",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexRuleApply",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexWalkAcc",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "RepeatState",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_match_char_pred",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_match_prefix",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_strip_prefix",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_try_compiled",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_try_rule",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_try_rules",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_walk",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_walk_artifact",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_walk_init",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.lexing",
+            in_declaration: "LexPattern",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.lexing",
+            in_declaration: "LexPatternFold",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -557,8 +774,9 @@ fn module_prefix_of(index: &DeclarationIndex, spelling: &str) -> Option<(String,
     None
 }
 
-/// The declaring modules a spelling admits inside one module — the candidate POPULATION, not
-/// a winner. An empty set is unresolved-at-this-grain; two or more is ambiguity.
+/// The declaring identities a spelling admits inside one module — module paths for authored
+/// declarations and `<kernel>` for an ambient kernel type. An empty set is
+/// unresolved-at-this-grain; two or more is ambiguity.
 fn declaring_candidates(
     index: &DeclarationIndex,
     record: &ModuleDeclarationRecord,
@@ -576,8 +794,17 @@ fn declaring_candidates(
     if spelling.contains('.') {
         return out;
     }
-    if record.declared.contains(spelling) || record.variants.contains(spelling) {
+    let locally_declared = record.declared.contains(spelling) || record.variants.contains(spelling);
+    if locally_declared {
         out.insert(record.module_path.clone());
+    }
+    // Locals precede kernel names, and kernel names precede imports in the compiler's one
+    // precedence authority. A structural `String` import therefore never makes bare `String`
+    // denote that module: both with and without the import it denotes the ambient kernel type.
+    // The early return is the discriminator the previous module-only set lacked.
+    if !locally_declared && crate::std_types::kernel_type_set().contains_key(spelling) {
+        out.insert(KERNEL_DECLARATION_IDENTITY.to_string());
+        return out;
     }
     for claim in &record.imports {
         let Some(target) = index_get(index, &claim.target) else {
@@ -809,7 +1036,7 @@ pub fn adjudicate(
                     base_set.iter().cloned().collect::<Vec<_>>().join(", "),
                     head_set.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
-                closure_blast_radius: 0,
+                closure_blast_radius: None,
                 admitted_by: None,
             });
         }
@@ -837,7 +1064,7 @@ pub fn adjudicate(
                 } else {
                     format!("added; NO name in this module resolves into it")
                 },
-                closure_blast_radius: blast_radius(&closure_moved_for, target),
+                closure_blast_radius: Some(blast_radius(&closure_moved_for, target)),
                 admitted_by: None,
             });
         }
@@ -865,7 +1092,7 @@ pub fn adjudicate(
                          (a binding that did not would be refused on its own row)"
                     )
                 },
-                closure_blast_radius: blast_radius(&closure_moved_for, target),
+                closure_blast_radius: Some(blast_radius(&closure_moved_for, target)),
                 admitted_by: None,
             });
         }
@@ -1124,13 +1351,20 @@ pub fn render_delta(delta: &NamespaceDelta) -> String {
         Some(label) => format!(" ADMITTED-BY {label}"),
         None => String::new(),
     };
+    // The clause is printed ONLY where the question was asked. A row that did not ask it says
+    // nothing, rather than saying zero: a measurement-shaped output on a row that measured
+    // nothing is fabricated plausible output, and it was read as evidence of containment.
+    let radius = match delta.closure_blast_radius {
+        Some(n) => format!(" [closure blast radius: {n} module(s)]"),
+        None => String::new(),
+    };
     format!(
-        "{} {} — {}{} [closure blast radius: {} module(s)]",
+        "{} {} — {}{}{}",
         disposition_label(delta.disposition),
         delta_subject_render(&delta.subject),
         delta.detail,
         admitted,
-        delta.closure_blast_radius
+        radius
     )
 }
 

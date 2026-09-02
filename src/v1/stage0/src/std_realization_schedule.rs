@@ -27,12 +27,11 @@ pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
 use crate::std_measure::ClockBasis::{CpuClock, WallClock};
-use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{
     byte_size, byte_size_count, clock_basis_eq, measure_count, millisecond_count, second_count,
-    time_measure, watt,
+    time_measure, watt, Time,
 };
-pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantity, Second, Watt};
+pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
@@ -62,7 +61,7 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, i64>>,
+    pub time: Rc<Measure<Time, S, i64>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
@@ -79,7 +78,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<Time, S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: crate::std_measure::byte_size(0),
