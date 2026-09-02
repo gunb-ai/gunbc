@@ -14,9 +14,9 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, base_records, diff_sides, disposition_label, report_unadjudicated,
-    AdmissionSubject, DeltaSubject, NamespaceDeltaDisposition, TransitionAdmission,
-    WaveAdmissionReport,
+    adjudicate, base_records, diff_sides, disposition_label, in_sweep_scope, report_unadjudicated,
+    wave_admission_refusal, AdmissionSubject, DeltaSubject, NamespaceDeltaDisposition,
+    TransitionAdmission, WaveAdmissionOutcome, WaveAdmissionReport, ADMISSION_ROSTER_REL_PATH,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -841,10 +841,143 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
         "an ordinary modification is the one status whose two sides ARE the same path"
     );
 
+    // THIS ASSERTION MOVED RATHER THAN DIED, AND WHERE IT MOVED TO IS THE POINT. It used to read
+    // "a non-`.dag` path enters neither side", because `diff_sides` applied the parser's scope
+    // itself -- which is exactly what made `roster_touched` unreachable, since the roster is a
+    // `.rs` file. `diff_sides` now reports what the diff touched, unfiltered, and the parser's
+    // question is asked by `in_sweep_scope` at the point of use. Both halves are asserted here:
+    // the diff carries the paths, and the parser's scope still refuses them.
     let (head, base) = diff_sides("M\0src/v1/stage0/src/lib.rs\0R100\0README.md\0LICENSE\0");
+    assert_eq!(
+        head,
+        vec![
+            "src/v1/stage0/src/lib.rs".to_string(),
+            "LICENSE".to_string()
+        ],
+        "the head side reports what the diff touched, unfiltered -- the modification contributes \
+         to both sides and the rename contributes its destination"
+    );
+    assert_eq!(
+        base,
+        vec![
+            "src/v1/stage0/src/lib.rs".to_string(),
+            "README.md".to_string()
+        ],
+        "the base side reports what the diff touched, unfiltered, still split rename-aware"
+    );
     assert!(
-        head.is_empty() && base.is_empty(),
-        "scope is applied per side: a non-`.dag` path enters neither"
+        !in_sweep_scope("src/v1/stage0/src/lib.rs")
+            && !in_sweep_scope("README.md")
+            && !in_sweep_scope("LICENSE"),
+        "the parser's scope still admits none of them: the filter moved, it did not weaken"
+    );
+}
+
+/// THE PRODUCER RED FOR THE DEAD ARM. `roster_touched` asks whether this run's diff touches the
+/// admission roster's own source file, and the roster is a `.rs` file. While `diff_sides` filtered
+/// its own answer to the parser's `.dag` question, this path could not appear in the list the
+/// predicate reads, so the predicate was FALSE ON EVERY PRODUCTION RUN and the consumed-row
+/// deletion obligation it gates could never come due.
+///
+/// This is the discriminating RED: against the previous implementation the returned head side is
+/// empty and this assertion fails. It is authored on the production path -- `diff_sides` is the
+/// one producer `run_required_wave_admission` calls -- and not over a hand-built value.
+#[test]
+fn the_roster_path_reaches_the_side_the_roster_touched_predicate_reads() {
+    let (head, base) = diff_sides(&format!("M\0{ADMISSION_ROSTER_REL_PATH}\0"));
+    assert!(
+        head.iter().any(|p| p == ADMISSION_ROSTER_REL_PATH),
+        "the head side must carry the roster path, or `roster_touched` is false by construction: \
+         head={head:?}"
+    );
+    assert!(
+        base.iter().any(|p| p == ADMISSION_ROSTER_REL_PATH),
+        "an ordinary modification reports the same path on both sides: base={base:?}"
+    );
+    assert!(
+        !in_sweep_scope(ADMISSION_ROSTER_REL_PATH),
+        "and the parser must still not read it: this is the second question, asked separately"
+    );
+}
+
+/// The two sides of one scenario that really does leave a consumed row standing, wrapped as the
+/// outcome the executor judges. Only `roster_touched` and the two revision strings are supplied;
+/// the report itself is produced by `adjudicate` over authored trees, so what is being judged is a
+/// real consumed admission rather than a shape.
+fn adjudicated_with_a_consumed_row(name: &str, roster_touched: bool) -> WaveAdmissionOutcome {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let report = compare_with(name, &sides, &sides, AUTHORED_LIKE_PRODUCTION);
+    assert!(
+        !report.consumed_admissions.is_empty() && report.stale_admissions.is_empty(),
+        "fixture precondition: exactly a consumed row and no refusal -- consumed={:?} stale={:?}",
+        report.consumed_admissions,
+        report.stale_admissions
+    );
+    WaveAdmissionOutcome::Adjudicated {
+        base: "base".to_string(),
+        head: "head".to_string(),
+        report,
+        roster_touched,
+    }
+}
+
+/// THE DECIDER RED, AND IT DISCRIMINATES ON THE ARM RATHER THAN ON THE ROW. One consumed row, two
+/// runs: the run that touches the roster must refuse and name the obligation, and the run that does
+/// not must be admitted. An implementation that refuses on the presence of a consumed row alone
+/// reds the second assertion; one that never refuses -- which is what the `.dag` filter produced --
+/// reds the first.
+///
+/// The verdict is asked of `wave_admission_refusal`, which is the function the executor now calls,
+/// so this runs on the acceptance path rather than restating it.
+#[test]
+fn a_consumed_row_comes_due_on_the_roster_touching_run_and_on_no_other() {
+    let due = wave_admission_refusal(&adjudicated_with_a_consumed_row("consumed_due", true));
+    let refusal = due.expect(
+        "a consumed row standing on a change that touches the roster file must refuse: this is \
+         the whole deletion obligation, and it was unreachable while `diff_sides` filtered the \
+         roster path out of the side `roster_touched` reads",
+    );
+    assert!(
+        refusal.contains("due for deletion on this roster-touching change"),
+        "the refusal must name the obligation rather than a count alone: {refusal}"
+    );
+
+    let bystander =
+        wave_admission_refusal(&adjudicated_with_a_consumed_row("consumed_inert", false));
+    assert_eq!(
+        bystander, None,
+        "and a run that does not touch the roster must still be ADMITTED -- billing the cleanup \
+         to bystanders is the externalized degradation gunbc#9824 removed and this arm must not \
+         reintroduce it"
+    );
+}
+
+/// The positive control for the surrounding machinery: with no admissions at all, a run that
+/// touches the roster file is admitted. Without this, the test above could pass because the
+/// roster-touched arm refuses unconditionally.
+#[test]
+fn touching_the_roster_with_no_consumed_row_is_admitted() {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let report = compare_with("roster_touched_empty_roster", &sides, &sides, &[]);
+    let outcome = WaveAdmissionOutcome::Adjudicated {
+        base: "base".to_string(),
+        head: "head".to_string(),
+        report,
+        roster_touched: true,
+    };
+    assert_eq!(
+        wave_admission_refusal(&outcome),
+        None,
+        "an empty roster is not permissive, but it is also not a refusal: touching the file with \
+         nothing due must pass"
     );
 }
 
