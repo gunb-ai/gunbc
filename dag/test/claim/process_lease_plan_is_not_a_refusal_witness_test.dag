@@ -27,18 +27,45 @@ data refusal_as_a_plan_source: String = "module process_lease_plan_negative\nimp
 
 data start_as_a_plan_source: String = "module process_lease_plan_positive\nimport gunbc.session_lease { ProcessLeasePlan, Start }\nimport std.upsert_decision { UpsertDecision, Apply }\nfn f() -> UpsertDecision<ProcessLeasePlan> {\n  Apply { plan: Start }\n}\n"
 
-fn blocking_count(source: String) -> Int {
+// THE COUNT IS SCOPED TO A CLASS AND A SUBJECT, WHICH IS WHAT THIS INSTRUMENT CAN SAY.
+// compile_dag_diagnostic_census reports the rows of the WHOLE compilation the fixture is handed
+// to, its imported closure included -- its own carrier note says so -- so a total count is a
+// claim about the corpus rather than about the fixture. Measured here: the two sources carry 3
+// and 2 rows and differ at exactly one key. Scoping to it is what makes the remaining row
+// attributable to the plan these two fixtures differ by.
+data target_class: String = "InternalError"
+
+data target_subject: String = "variable:RefuseForeignOwner"
+
+// Absent, not zero, on the NotRunnable arm: a census that could not run is not a census that
+// saw nothing, and collapsing them would be the fail-open the census module deleted from its
+// own API.
+fn census_rows(source: String) -> List<CompileDiagnosticCensusRow>? {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => Present { value: rows }
+    CensusNotRunnable { cause: _ } => Absent
+  }
+}
+
+fn target_key_count_of(source: String) -> Int {
+  match census_rows(source: source) {
+    Present { value: rows } =>
+      census_total_count(
+        rows: rows
+          |> filter(r =>
+            (r.diagnostic_class as String) == target_class
+              && r.subject_name == target_subject
+              && r.blocking
+          )
+      )
+    Absent => -1
   }
 }
 
 test fn w_a_refusal_cannot_be_written_as_a_lease_plan() -> Bool {
-  blocking_count(source: refusal_as_a_plan_source) > 0
+  target_key_count_of(source: refusal_as_a_plan_source) == 1
 }
 
 test fn w_a_real_plan_on_the_same_arm_is_admitted() -> Bool {
-  blocking_count(source: start_as_a_plan_source) == 0
+  target_key_count_of(source: start_as_a_plan_source) == 0
 }
