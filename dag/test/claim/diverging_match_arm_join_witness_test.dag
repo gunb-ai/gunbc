@@ -136,15 +136,33 @@ test fn the_let_hidden_diverging_arm_still_returns_early() -> Bool {
 // `all_arms_diverge` is that case: every arm returns, so the match's own type must
 // still be the arms' join (ProbeResult), never the scrutinee's (ProbeFlag).
 //
-// THIS FIXTURE DOES NOT DISCRIMINATE THE REPAIR, MEASURED. The pre-repair code
-// (unconditional filter) was rebuilt -- binary hash 8c7e053c1bbc, rebuild confirmed
-// by hash change -- and both witnesses below PASS against it too. Hypothesis, not a
-// finding: when every arm diverges there is no value to consume, so the wrongly
-// computed match type is never compared against anything and the declared return is
-// satisfied by the `return` statements. If that holds, the invalid state is
-// unobservable from .dag surface and the repair is correctness with no authorable
-// RED -- a DESIGN 4b ceiling question, not a missing test. Not asserted: "I could
-// not find a red" is not "no red exists". These two are behaviour controls.
+// THIS FIXTURE DOES NOT DISCRIMINATE THE REPAIR, MEASURED, AND THE REASON IS
+// STRUCTURAL RATHER THAN A FAILURE OF IMAGINATION. The pre-repair code
+// (unconditional filter) was rebuilt -- binary hash 8c7e053c1bbc, confirmed by hash
+// change -- and both witnesses below PASS against it. A second instantiation with a
+// `Bool` scrutinee is NOT AUTHORABLE at all: Bool literals do not parse as patterns.
+//
+// WHY NO FIXTURE CAN WORK TODAY. `v1.compiler.infer` `DeclaredTypePosition` declares
+// TWELVE positions; `DeclaredTypeObligation` is constructed at TWO, carrying
+// `PositionDirectCallArgument` and `PositionListElement`. `PositionDeclaredReturn`
+// occurs three times in that module -- the comment listing unwired positions, the
+// variant declaration, and a display string -- and has NO PRODUCER. The declared
+// return seam is not checked, so a terminal-position match's own type is consulted
+// by nothing, whatever it is computed to be.
+//
+// DESIGN 4b ROW, stated at the grain the ladder asks for:
+//   invalid state      a match typed as the value it CONSUMES (the scrutinee) rather
+//                      than the value it produces, when every arm diverges
+//   rung found at      unguarded on the source-acceptance path: no obligation
+//                      producer observes the declared-return position
+//   ceiling            mechanically preventable once that position is wired; the
+//                      state is decidable, so this is a wall after grounding
+//   next-rung trigger  THE CAPABILITY, not an artifact: an obligation producer for
+//                      `PositionDeclaredReturn`, sufficient to make a terminal
+//                      expression's inferred type a checked contract against the
+//                      declaration. Ten of the twelve positions are unwired; this is
+//                      one of them, and no fixture in this file can retire the row.
+// These two witnesses are behaviour controls and nothing more.
 
 type ProbeFlag = ProbeYes | ProbeNo
 
