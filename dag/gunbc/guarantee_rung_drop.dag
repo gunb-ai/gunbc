@@ -582,12 +582,27 @@ data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = Guaran
 // unreachable while sizing refuses, so every witness now proves a gate is passed on the way to a
 // refusal and none proves an admissible VM is admitted. A gate whose accept arm has never run is
 // not a gate that has been tested.
+//
+// THE CPU AXIS IS NOT A SECOND COPY OF THE MEMORY ONE, WHICH IS WHY THE TRIGGER SPLITS THEM. On
+// memory the quantity may exist and be uncited. On CPU the cell realizes no absolute entitlement at
+// all: fabric_cell_slice_desired_directives emits CPUWeight, a relative share that guarantees no
+// amount of anything under contention. The absolute ceiling this fleet does declare is written by
+// host_converge onto the RUNNER UNIT, a different systemd object from the cell slice -- so a guest
+// vCPU count derived from the cell would equal a number the cell never enforces. That is the
+// failure gunbc.ci.ci_runner_placement already records once: "the arithmetic said six threads per
+// slot and the host was never told."
+//
+// AND THE CONTROLS MUST COME BACK AS FIT CONTROLS. The pair this row replaced asserted EQUALITY to
+// the envelope in both directions -- it admitted a guest sized at the whole ceiling and refused a
+// 4 GiB guest against a 16 GiB cell. Under containment the smaller guest FITS, so both arms were
+// wrong in opposite directions while the pair looked discriminating. A nonconstant predicate with
+// both polarities observed can still be answering a question nobody asked.
 data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall {
-  subject: "gunbc.runner_microvm guest RAM is not derivable from the bounded cell's resource envelope, because the Firecracker VMM process shares that cell and its own resident footprint is the subtrahend",
+  subject: "gunbc.runner_microvm cannot derive a guest's resource envelope from the bounded cell on EITHER axis: memory needs a subtrahend for the Firecracker VMM's own footprint that is not cited anywhere, and CPU needs an absolute entitlement the cell does not carry",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "what quantity, if any, relates a cell's MemoryMax to an admissible guest RAM -- which may be a cited footprint, or may be the finding that guest RAM is an operator-declared input BOUNDED BY the envelope rather than derived from it, with the envelope as the ceiling the admission checks against instead of the value it hands over",
+    grounding: "what quantities, if any, relate a cell's declared envelope to an admissible guest. On MEMORY that may be a cited VMM footprint, or the finding that guest RAM is an operator-declared input BOUNDED BY the envelope rather than derived from it. On CPU it is prior: gunbc.fabric.fabric_cell_effect emits CPUWeight, a RELATIVE share that guarantees no amount of anything, so there is no absolute cell entitlement for a guest vCPU count to be derived from -- the absolute ceiling this fleet does declare, gunbc.host.host_converge runner_cpu_boundary_knobs writing CapacityQuota as a CPUQuota drop-in, lands on the RUNNER UNIT and not on the cell slice. One bounded execution context, two realizations, different axes enforced",
   },
   population: BoundedPopulation {
     members: [
@@ -595,10 +610,11 @@ data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall
       "gunbc.runner_microvm runner_microvm_size_from_cell_envelope",
       "gunbc.runner_microvm runner_microvm_admission_after_credential",
       "gunbc.runner_microvm gunbc_runner_microvm_vm_config",
+      "gunbc.fabric.fabric_cell_effect fabric_cell_slice_desired_directives",
       "test.claim.runner.runner_microvm_witness_test",
     ],
   },
-  next_rung_trigger: "BOTH of: (1) a quantity in extdeps.virtualization.firecracker SUFFICIENT TO DERIVE an admissible guest RAM from a cell resource envelope, or a decision that guest RAM is a declared input bounded by that envelope -- either answer discharges the grounding, an unanswered citation does not; AND (2) an executing witness that an ADMISSIBLE VM IS ADMITTED, restoring coverage of RunnerMicroVmAdmitted, which is unreachable today and would otherwise go live unexercised. Clause 1 alone leaves the accept arm shipped without ever having run"
+  next_rung_trigger: "ALL THREE of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from, or guest topology renamed as a separately declared product decision that is NOT derived from the cell -- the CPU clause is separate because a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded; AND (3) an executing witness that an ADMISSIBLE VM IS ADMITTED, restoring coverage of RunnerMicroVmAdmitted, which is unreachable today and would otherwise go live unexercised. And the controls that come back must be FIT controls, not equality controls: a guest SMALLER than the envelope must PASS, since containment and not equality is the safety property"
 }
 
 data all_guarantee_stalls: List<GuaranteeStall> = [
