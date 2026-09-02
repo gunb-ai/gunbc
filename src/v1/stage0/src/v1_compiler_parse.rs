@@ -10,6 +10,10 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_import::ParsedImportStatements::{
+    ImportStatementParseRefused, ImportStatementsParsed,
+};
+pub use crate::std_import::{ParsedImportStatement, ParsedImportStatements};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -3330,6 +3334,147 @@ pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<Occu
     })
 }
 
+/// The opening parse context for one token vector. Extracted so the import-extent reading enters
+/// the grammar under the SAME context the full reading does rather than assembling a second one
+/// beside it.
+pub fn parse_context_for_tokens(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
+    heads_only: bool,
+) -> Rc<ParseContext> {
+    Rc::new(ParseContext {
+        source_indices: source_indices.clone(),
+        intern_table: crate::v1_std_core::pre_intern_tokens(tokens.clone(), intern_table.clone()),
+        occurrence_allocator: crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+            occurrence_base.allocator.clone(),
+            intern_table.authored_token_ordinals.clone(),
+        ),
+        occurrence_index: Some(Rc::new(OccurrenceIndex {
+            entries: Rc::new(vec![]),
+        })),
+        declaration_occurrences: Some(Rc::new(vec![])),
+        reference_occurrences: Some(Rc::new(vec![])),
+        heads_only,
+    })
+}
+
+/// The last non-newline token in a consumed window. `parse_import` consumes the newlines that
+/// FOLLOW a statement and they are not part of it: ending the extent at them would make removing a
+/// statement also remove the blank line after it, which is a second and unstated edit.
+pub fn last_consumed_token_end(
+    all: Rc<Vec<Rc<Token>>>,
+    from: i64,
+    until: i64,
+    end: Option<i64>,
+) -> Option<i64> {
+    let mut end = end;
+    let mut i = from;
+    while i < until {
+        if let Some(token) = all.get(i as usize) {
+            if !is_newline_shape(token.shape) {
+                end = Some(token.span.end);
+            }
+        }
+        i += 1;
+    }
+    end
+}
+
+pub fn parse_import_statement_extents_acc(
+    mut tokens: Rc<TokenStream>,
+    mut ctx: Rc<ParseContext>,
+    mut acc: Rc<Vec<Rc<ParsedImportStatement>>>,
+) -> Rc<ParsedImportStatements> {
+    loop {
+        tokens = skip_newlines(tokens.clone());
+        if !tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
+            return Rc::new(ImportStatementsParsed {
+                statements: acc.clone(),
+            });
+        }
+        let before = tokens.pos;
+        let r = parse_import(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ImportStatementParseRefused {
+                cause: "an import statement did not parse".to_string(),
+            });
+        }
+        let first = match token_stream_first(tokens.clone()) {
+            Some(first) => first,
+            std::option::Option::None => {
+                return Rc::new(ImportStatementParseRefused {
+                    cause: "an import statement parsed from no token".to_string(),
+                })
+            }
+        };
+        let end = match last_consumed_token_end(
+            tokens.all.clone(),
+            before,
+            r.tokens.pos,
+            std::option::Option::None,
+        ) {
+            Some(end) => end,
+            std::option::Option::None => {
+                return Rc::new(ImportStatementParseRefused {
+                    cause: "an import statement parsed without consuming a token".to_string(),
+                })
+            }
+        };
+        acc = v1_rt::rc_list_push(
+            acc,
+            Rc::new(ParsedImportStatement {
+                span: Rc::new(SourceSpan {
+                    file: first.span.file.clone(),
+                    start: first.span.start,
+                    end,
+                }),
+                imported_module: r.import.name.clone(),
+            }),
+        );
+        ctx = parse_context_after_node(r.ctx.clone(), r.import.clone());
+        tokens = r.tokens.clone();
+    }
+}
+
+/// The reading is entered at the module declaration because that is where the grammar admits
+/// imports; reaching them costs one `expect` and one `parse_dotted_ident`, both parser primitives
+/// and neither a production of its own. A source that does not open with a module declaration has
+/// no import statements to delimit, and says so rather than reporting none.
+pub fn parse_import_statement_extents(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParsedImportStatements> {
+    let ctx = parse_context_for_tokens(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        intern_table.authored_token_ordinals.clone(),
+        false,
+    );
+    let stream = skip_newlines(token_stream_new(tokens.clone()));
+    let r = expect(
+        stream,
+        Rc::new(ExpectedToken::ExpectKeyword {
+            text: "module".to_string(),
+        }),
+    );
+    if has_err(r.err.clone()) {
+        return Rc::new(ImportStatementParseRefused {
+            cause: "source does not open with a module declaration".to_string(),
+        });
+    }
+    let r = parse_dotted_ident(r.tokens.clone());
+    if has_err(r.err.clone()) {
+        return Rc::new(ImportStatementParseRefused {
+            cause: "module declaration does not name a dotted module path".to_string(),
+        });
+    }
+    parse_import_statement_extents_acc(skip_newlines(r.tokens.clone()), ctx, Rc::new(vec![]))
+}
+
 pub fn parse_with_table_at(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3343,19 +3488,13 @@ pub fn parse_with_table_at(
                 occurrence_base.allocator.clone(),
                 intern_table.authored_token_ordinals.clone(),
             );
-        let pre_interned =
-            crate::v1_std_core::pre_intern_tokens(tokens.clone(), intern_table.clone());
-        let ctx = Rc::new(ParseContext {
-            source_indices: source_indices.clone(),
-            intern_table: pre_interned.clone(),
-            occurrence_allocator: occurrence_allocator.clone(),
-            occurrence_index: Some(Rc::new(OccurrenceIndex {
-                entries: Rc::new(vec![]),
-            })),
-            declaration_occurrences: Some(Rc::new(vec![])),
-            reference_occurrences: Some(Rc::new(vec![])),
-            heads_only: heads_only.clone(),
-        });
+        let ctx = parse_context_for_tokens(
+            tokens.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            occurrence_base.clone(),
+            heads_only.clone(),
+        );
         let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             {
