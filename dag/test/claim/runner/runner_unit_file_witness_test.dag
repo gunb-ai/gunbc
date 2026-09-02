@@ -358,11 +358,11 @@ fn expected_live_unit_file(fifo_path: String, daemon_service: NonEmptyStr) -> Sy
 }
 
 fn expected_labels_json() -> String {
-  serialize_json(value: json_array(items: [
-    json_string(value: "self-hosted"),
-    json_string(value: "linux"),
-    json_string(value: "arm64"),
-    json_string(value: "srv1"),
+  serialize_json(v: json_array(elements: [
+    json_string(s: "self-hosted"),
+    json_string(s: "linux"),
+    json_string(s: "arm64"),
+    json_string(s: "srv1"),
   ]))
 }
 
