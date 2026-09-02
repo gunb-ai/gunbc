@@ -10,6 +10,32 @@ data type_reference_containment_binding_authority_note: String = "N2 slice 1 (qu
 
 data type_reference_containment_binding_slice1_scope_note: String = "Slice 1 scope: substrate authority + executing fixture witnesses for TypeOccurrence through the structural kernel. IN: hand-built OccurrenceTransport fixtures proving cross-module bare containment bind, module-sibling visibility, unbound when not exposed, and category inadmissibility. OUT OF SLICE: v1 production lookup_type_by_name changeover (slice 2+), qualified namespace-segment projection (std.types.ContentHash terminal path), N1a measure-arm removal, resolution_divergence_census type-site generalization — each carries its own dissolution trigger and must not be smuggled in here."
 
+// ROOT-CUT RECEIPT, attached to this authority rather than minted as a second migration ledger.
+// The four perturbations were made only in copies of one preserved emitted artifact; none is a
+// proposed per-module repair. Their successor identities show that changing one consumer merely
+// moves the carrier boundary. The production X named here is therefore #9813's module-wide flat
+// TypeEnv binding (import union -> kernel overlay -> direct-selected overlay with kernel names
+// skipped). The replacement Y is the authority above: one exact declaration binding per
+// TypeOccurrence, derived from containment/qualification and carried through typecheck and emit.
+data type_reference_containment_binding_string_root_cut_receipt: String = "MEASURED on source revision cd3cf69bda0 with gunbc.instruments.emission_entry_instrument over src/v2/compiler/00_compile.dag: 166 emitted modules; baseline 65 unique Rust error identities = 64 coded + 1 codeless. String is the only v2.std top-level declaration colliding with the Rust prelude; 18 closure modules import v2.std.text.String and all 18 emit zero exact v2_std_text::String use-lines with nonzero bare String spellings. Throwaway emitted-byte perturbations, identity deltas rather than net counts: tokenize use-line removed 41 incumbent E0308 and added 12 NewlyExposedByRootCut identities; tokenize occurrence qualification removed the same 41 and added 11, including the same six downstream identities; target_model use-line removed six of seven incumbent identities (E0277, E0282, E0599, three E0308) and added 17; target_model occurrence qualification removed the same six and added a different population of 28. The target_model four-code spectrum moved together under one carrier-binding decision. No local import-line, emitted-qualification, or per-consumer respelling establishes one representation through the dependency chain. Production X being retired is #9813's module-wide flat TypeEnv precedence; replacement Y is one exact declaration binding per TypeOccurrence through resolve_type_reference_containment_binding, consumed by typecheck and emission without re-resolution through X."
+
+// Positive evidence, not the missing-guarantee denominator. These occurrences already spell the
+// intended Y identity explicitly; counting them as residue would read a selection view as the
+// population authority. The future denominator is every production TypeOccurrence currently
+// bound through X, partitioned by old/new occurrence-binding result.
+data type_reference_containment_binding_structural_text_positive_subset_receipt: String = "AlreadyOccurrenceBoundStructuralText: 30 hand-authored v2.std.text.String occurrences across src/v2. Breakdown: v2.compiler.tokenize 25, v2.std.compilers.lexing 4, v2.test.tokenize.source_text_ingress 1. The measured 166-module compiler closure contains the first 29 across two modules; the test occurrence is outside it. All 30 positions require the structural carrier, but the set is an independently-derived positive subset, never a drop population or denominator. Replacement-census partitions: OldAndNewAgree, OldAndNewDisagree, OldBinds_NewUnresolved, OldBinds_NewAmbiguous, OldUnresolved_NewBinds."
+
+// The tokenizer root-cut probe's twelve successors remain named so the migration cannot net them
+// off against the 41 incumbents. Multiplicity is part of identity where one source symbol contains
+// more than one distinct failing occurrence; emitted line numbers are deliberately absent.
+data type_reference_containment_binding_newly_exposed_string_identities_receipt: String = "NewlyExposedByRootCut after structuralizing tokenizer: v2.compiler.tokenize::lex_rule_thunk E0308 x2; v2.compiler.tokenize::lex_walk_step E0308 x2; v2.compiler.tokenize::tokenize E0599 x1; v2.compiler.tokenize::tokenize_module_authority_note E0308 x1; v2.compiler.compile::compile_ingest_with_admission E0308 x1; v2.compiler.compile::stage_tokenize E0308 x1; v2.compiler.program_assembly::program_assembly_read_to_normalized_root_prepared E0308 x1; v2.compiler.source_authority::parse_dag_source_ast_with_model E0308 x1; v2.compiler.source_authority::source_ir_artifact_provenance_from_model E0308 x1; v2.compiler.source_authority::module_storage_binding_from_read_prepared E0308 x1. Total 12 identities; they are fix-forward population behind the root cut, not regressions and not a count to net against incumbents."
+
+// CODELESS IS A FIRST-CLASS PARTITION. A code-keyed census reports 64 and silently loses this
+// row; the explicit reconciliation is the receipt. Its repair belongs to the declaration-bound
+// formal carrier transaction, where emission is the third consumer beside compatibility and
+// inhabitance, not to a witness-specific parallel carrier.
+data type_reference_containment_binding_codeless_emission_consumer_receipt: String = "Fresh emitted-Rust census reconciliation: coded 64 + codeless 1 = total 65. The codeless identity is v2.compiler.compile::apply_compile_lens_introspect — witness carrier type arg unresolved for variant Violates. infer_call_arguments_generic_pass computes the substituted formal and build_call_application_plan retains formal_subst transiently, but the emitted argument carries neither; rust_witness_type_arg_for_variant therefore cannot recover Witness<Node>. Emission is the third consumer of the single declaration-bound formal authority, and requires its substitution basis."
+
 data type_reference_containment_binding_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

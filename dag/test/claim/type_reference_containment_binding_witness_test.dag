@@ -31,6 +31,10 @@ import std.occurrence_binding_candidates {
 import gunbc.type_reference_containment_binding {
   type_reference_containment_binding_authority_note,
   type_reference_containment_binding_slice1_scope_note,
+  type_reference_containment_binding_string_root_cut_receipt,
+  type_reference_containment_binding_structural_text_positive_subset_receipt,
+  type_reference_containment_binding_newly_exposed_string_identities_receipt,
+  type_reference_containment_binding_codeless_emission_consumer_receipt,
 }
 
 // N2 slice 1 — THREE discriminating controls modeled on the N1a import-strip section 14.1 matrix at fixture grain, plus one API-boundary control for category inadmissibility. The kernel is resolve_type_reference_containment_binding → P2a candidate population → resolve_reference_occurrence_binding → occurrence_binding_from_candidates (OccurrenceBindingResult). No parallel fold, no production lookup_type_by_name changeover, N1a discriminator untouched. Matrix controls: (1) binds when containment exposes the type; (2) refuses when no declaration exists (row 3); (3) pool-coincidence must not bind (row 4). API control: non-TypeOccurrence reference → ReferenceBindingProjectionWrongCategory before candidate enumeration.
@@ -304,4 +308,18 @@ test fn authority_note_names_single_kernel_fold() -> Bool {
   string_contains(s: type_reference_containment_binding_authority_note, pattern: "occurrence_binding_from_candidates")
     && string_contains(s: type_reference_containment_binding_authority_note, pattern: "lookup_type_by_name are NOT binding")
     && string_contains(s: type_reference_containment_binding_slice1_scope_note, pattern: "OUT OF SLICE")
+}
+
+test fn string_root_cut_evidence_stays_attached_to_occurrence_binding_authority() -> Bool {
+  string_contains(s: type_reference_containment_binding_string_root_cut_receipt, pattern: "64 coded + 1 codeless")
+    && string_contains(s: type_reference_containment_binding_string_root_cut_receipt, pattern: "NewlyExposedByRootCut")
+    && string_contains(s: type_reference_containment_binding_string_root_cut_receipt, pattern: "#9813")
+    && string_contains(s: type_reference_containment_binding_string_root_cut_receipt, pattern: "resolve_type_reference_containment_binding")
+    && string_contains(s: type_reference_containment_binding_structural_text_positive_subset_receipt, pattern: "AlreadyOccurrenceBoundStructuralText: 30")
+    && string_contains(s: type_reference_containment_binding_structural_text_positive_subset_receipt, pattern: "independently-derived positive subset")
+    && string_contains(s: type_reference_containment_binding_newly_exposed_string_identities_receipt, pattern: "Total 12 identities")
+    && string_contains(s: type_reference_containment_binding_newly_exposed_string_identities_receipt, pattern: "module_storage_binding_from_read_prepared")
+    && string_contains(s: type_reference_containment_binding_codeless_emission_consumer_receipt, pattern: "coded 64 + codeless 1 = total 65")
+    && string_contains(s: type_reference_containment_binding_codeless_emission_consumer_receipt, pattern: "witness carrier type arg unresolved for variant Violates")
+    && string_contains(s: type_reference_containment_binding_codeless_emission_consumer_receipt, pattern: "third consumer")
 }
