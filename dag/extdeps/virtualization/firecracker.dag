@@ -1,7 +1,7 @@
 module extdeps.virtualization.firecracker
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { Disposition, Terminal }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -11,7 +11,7 @@ import extdeps.uri { Uri, Https }
 // and the field names are the ones its API accepts. A generic "vm config" hub that enumerated
 // Firecracker beside another VMM would be the external-decomposition violation: two independently
 // governed products under one authority.
-data firecracker_authority_disposition: Disposition = SingleAuthority {
+data firecracker_authority_disposition: Disposition = Terminal {
   reason: "Single authority for the Firecracker VMM's configuration surface and its host requirements. It models what the upstream API accepts; it does NOT decide what a runner VM should contain, which is a product fact owned downstream."
 }
 

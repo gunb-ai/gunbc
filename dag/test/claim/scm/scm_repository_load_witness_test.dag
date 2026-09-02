@@ -30,6 +30,12 @@ import gunbc.scm.repository_load {
 import gunbc.scm.repository_envelope {
   RepositoryDecodeRefusal,
   RepositoryFormatUnrecognized,
+  repository_envelope_load_standing,
+}
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadUnsupportedProtocol,
+  LoadDocumentMalformed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,6 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data scm_rl_empty_repository_path: String = "dag/test/fixture/scm_repository_load/empty_repository.json"
 data scm_rl_malformed_document_path: String = "dag/test/fixture/scm_repository_load/malformed_document.json"
 data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/unknown_format.json"
+data scm_rl_frozen_v1_path: String = "dag/test/fixture/scm_repository_load/frozen_repository_v1.json"
 
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
@@ -79,9 +86,58 @@ test fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
   }
 }
 
+// A REAL FROZEN PREDECESSOR DOCUMENT, NOT AN INVENTED TAG.
+//
+// The claim above uses "gunbc-scm-repository-v99", a version that never existed. That proves the
+// dispatch refuses a tag it does not know; it does NOT prove this build handles the format it
+// actually superseded. Those are different questions, and only the second one has a document in the
+// world -- this branch changed the tag from gunbc-scm-repository-v1 to -v2, so every repository
+// written before it is a real artifact that a real caller can hand to this build today.
+//
+// The fixture is the v1 document verbatim from origin/main, carrying both v1 axes: the schema tag
+// and the fnv1a64-structural-canonical-v1 identity rule this branch also replaced.
+//
+// THE ASSERTION IS THE STANDING, NOT MERELY THE REFUSAL, and that is the whole point. Refusing is
+// easy and the wrong refusal is worse than none: "these bytes are damaged" sends a reader to look
+// for corruption in a file that is perfectly intact, while "I do not speak this protocol" names a
+// version gap with a real remedy. A refusal-only assertion cannot tell those apart, because both
+// arms refuse.
+test fn scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() -> Bool {
+  match load_repository(path: scm_rl_frozen_v1_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
+      p == scm_rl_frozen_v1_path
+        && match c {
+          RepositoryFormatUnrecognized { found: f } => f == "gunbc-scm-repository-v1"
+          _ => false
+        }
+        && match repository_envelope_load_standing(cause: c) {
+          LoadUnsupportedProtocol => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// THE CONTROL THE CLAIM ABOVE NEEDS. Without it, a classifier that answered LoadUnsupportedProtocol
+// for everything would satisfy it. A genuinely damaged document must still classify as malformed.
+test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
+  match load_repository(path: scm_rl_malformed_document_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: p, gap: _ } } =>
+      p == scm_rl_malformed_document_path
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: _, cause: c } } =>
+      match repository_envelope_load_standing(cause: c) {
+        LoadDocumentMalformed => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn scm_repository_load_keystone_holds() -> Bool {
   scm_rl_a_well_formed_document_loads() &&
     scm_rl_an_absent_file_is_unreadable_not_empty() &&
     scm_rl_a_truncated_document_is_unparseable() &&
-    scm_rl_a_parseable_non_repository_is_refused_by_schema()
+    scm_rl_a_parseable_non_repository_is_refused_by_schema() &&
+    scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() &&
+    scm_rl_a_damaged_document_is_not_a_protocol_gap()
 }

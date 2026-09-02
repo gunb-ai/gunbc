@@ -12,14 +12,16 @@ module test.claim.scm_commit_closure_witness
 // the returned identity is THE MISSING OBJECT'S OWN, which is what makes it fetchable rather than
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
-import std.types { Bool, Int, List, list_length }
-import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
+import std.types { Bool, Int, String, List, list_length }
+import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
   StoreOutcome,
   Stored,
   LocatorCollision,
+  SemanticNodeTarget,
+  node_target_locator,
   CopyOutcome,
   Copied,
   CopySourceAbsent,
@@ -29,6 +31,12 @@ import gunbc.scm.object_store {
   store_node,
   object_id_eq,
   store_object_count,
+  store_authored_source,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
+  insert_from_structure,
+  StoredEdge,
 }
 import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue, JsonObject }
@@ -37,8 +45,16 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed,
   JsonDocumentUnreadable,
 }
-import gunbc.scm.json_member { MemberReadDuplicated, MemberReadWrongShape }
+import gunbc.scm.json_member {
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+  MemberRead,
+  MemberArray,
+  MemberObject,
+  read_member,
+}
 import gunbc.scm.target_reference {
+  TargetReference,
   TargetContainedAt,
   TargetUncontained,
   TargetReferenceRefused,
@@ -49,6 +65,7 @@ import gunbc.scm.target_reference {
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
+  ClosureDocRequiresNodeAtAuthoredSource,
   ClosureDocEncodeRefusal,
   ClosureDocMemberReadRefused,
   ClosureDocEncodeOutcome,
@@ -71,6 +88,7 @@ import gunbc.scm.commit_closure {
   PartialClosureAdmissionOutcome,
   PartialClosureAdmitted,
   ClosureCompleteSoNothingToAdmit,
+  ClosureRequiresNodeAtAuthoredSource,
   admitted_reason,
   admitted_unresolved,
   unresolved_identities,
@@ -89,18 +107,33 @@ fn parent_node() -> Node {
 }
 
 // A store holding the parent AND its child, with the parent's identity.
-type BuiltStore { store: ObjectStore, root: ObjectId, child: ObjectId }
+// THE ROOT IS A SemanticNodeTarget AND THE CHILD IS A LOCATOR, which is the two questions this fixture is
+// actually asked. The root is handed to CommitClosure, a node-requiring position; the child is only
+// ever compared against the identities a completeness fold reports, which are addresses.
+type BuiltStore { store: ObjectStore, root: SemanticNodeTarget, child: ObjectId }
 
 fn build_full_store() -> BuiltStore {
   match store_node(store: empty_store(), n: child_node()) {
     LocatorCollision { identity: _, existing: _, incoming: _ } =>
-      BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
-    Stored { store: s1, identity: child_id } =>
+      BuiltStore {
+        store: empty_store(),
+        root: SemanticNodeTarget { locator: fallback_id() },
+        child: fallback_id(),
+      }
+    Stored { store: s1, node: child_node_ref } =>
       match store_node(store: s1, n: parent_node()) {
         LocatorCollision { identity: _, existing: _, incoming: _ } =>
-          BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
-        Stored { store: s2, identity: parent_id } =>
-          BuiltStore { store: s2, root: parent_id, child: child_id }
+          BuiltStore {
+            store: empty_store(),
+            root: SemanticNodeTarget { locator: fallback_id() },
+            child: fallback_id(),
+          }
+        Stored { store: s2, node: parent_ref } =>
+          BuiltStore {
+            store: s2,
+            root: node_target_of(reference: parent_ref),
+            child: child_node_ref.locator,
+          }
       }
   }
 }
@@ -109,7 +142,7 @@ fn build_full_store() -> BuiltStore {
 // structural fact that this value cannot satisfy, so a build failure cannot pass as a green.
 fn fallback_id() -> ObjectId {
   match store_node(store: empty_store(), n: child_node()) {
-    Stored { store: _, identity: i } => i
+    Stored { store: _, node: n } => n.locator
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
@@ -119,8 +152,12 @@ fn fallback_id() -> ObjectId {
 // completeness.
 fn build_grafted_store() -> ObjectStore {
   let full = build_full_store()
-  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
-    Copied { store: s, identity: _ } => s
+  match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.root),
+  ) {
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -131,7 +168,7 @@ fn build_grafted_store() -> ObjectStore {
 // ONE missing identity -- and a one-element list reversed is itself. So the unresolved list could
 // have been emitted in any order and nothing here would have noticed.
 //
-// That was not hypothetical. uncontained_targets accumulates by prepend and reverses once (the cost
+// That was not hypothetical. the census fold accumulates by prepend and reverses once (the cost
 // shape DESIGN section 6 requires); dropping that reverse was measured to leave every claim in this
 // file GREEN. A comment asserting the reverse was load-bearing would have been describing a wall
 // that nothing held up, which is the failure this stack has now produced three times.
@@ -156,23 +193,33 @@ fn closure_two_child_parent_node() -> Node {
   )
 }
 
-type TwoChildStore { store: ObjectStore, root: ObjectId, first: ObjectId, second: ObjectId }
+type TwoChildStore { store: ObjectStore, root: SemanticNodeTarget, first: ObjectId, second: ObjectId }
 
 fn two_child_fallback() -> TwoChildStore {
-  TwoChildStore { store: empty_store(), root: fallback_id(), first: fallback_id(), second: fallback_id() }
+  TwoChildStore {
+    store: empty_store(),
+    root: SemanticNodeTarget { locator: fallback_id() },
+    first: fallback_id(),
+    second: fallback_id(),
+  }
 }
 
 fn build_two_child_store() -> TwoChildStore {
   match store_node(store: empty_store(), n: closure_alpha_child_node()) {
     LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-    Stored { store: s1, identity: alpha_id } =>
+    Stored { store: s1, node: alpha_ref } =>
       match store_node(store: s1, n: closure_beta_child_node()) {
         LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-        Stored { store: s2, identity: beta_id } =>
+        Stored { store: s2, node: beta_ref } =>
           match store_node(store: s2, n: closure_two_child_parent_node()) {
             LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-            Stored { store: s3, identity: parent_id } =>
-              TwoChildStore { store: s3, root: parent_id, first: alpha_id, second: beta_id }
+            Stored { store: s3, node: parent_ref } =>
+              TwoChildStore {
+                store: s3,
+                root: node_target_of(reference: parent_ref),
+                first: alpha_ref.locator,
+                second: beta_ref.locator,
+              }
           }
       }
   }
@@ -192,8 +239,12 @@ fn first_missing_is(missing: List<ObjectId>, expected: ObjectId) -> Bool {
 
 test fn two_uncontained_children_are_named_in_order() -> Bool {
   let built = build_two_child_store()
-  let grafted = match copy_object(from: built.store, to: empty_store(), identity: built.root) {
-    Copied { store: s, identity: _ } => s
+  let grafted = match copy_object(
+    from: built.store,
+    to: empty_store(),
+    identity: node_target_locator(target: built.root),
+  ) {
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -243,7 +294,7 @@ test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
   let closure = CommitClosure { store: empty_store(), root: full.root }
   let missing = unresolved_identities(closure: closure)
   (list_length(items: missing) == 1)
-    && names_exactly(missing: missing, expected: full.root)
+    && names_exactly(missing: missing, expected: node_target_locator(target: full.root))
     && !closure_is_complete(closure: closure)
 }
 
@@ -259,9 +310,11 @@ test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
   let closure = CommitClosure { store: grafted, root: full.root }
   match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
     ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
     PartialClosureAdmitted { admitted: transfer } =>
       match admit_partial_commit_closure(closure: closure, reason: ClosureGraftedWithoutChildren) {
         ClosureCompleteSoNothingToAdmit => false
+        ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
         PartialClosureAdmitted { admitted: graft } =>
           reason_is_transfer(r: admitted_reason(admitted: transfer))
             && !reason_is_transfer(r: admitted_reason(admitted: graft))
@@ -277,6 +330,7 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       (list_length(items: admitted_unresolved(admitted: a)) == 1)
         && names_exactly(missing: admitted_unresolved(admitted: a), expected: full.child)
@@ -294,13 +348,14 @@ test fn the_mint_refuses_a_complete_closure() -> Bool {
   match admitted_for(store: full.store, root: full.root) {
     PartialClosureAdmitted { admitted: _ } => false
     ClosureCompleteSoNothingToAdmit => true
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
   }
 }
 
 
 // Mints an admission for the closure under test, or reports the refusal. Every claim below routes
 // through this, so none of them can accidentally encode a closure the mint never admitted.
-fn admitted_for(store: ObjectStore, root: ObjectId) -> PartialClosureAdmissionOutcome {
+fn admitted_for(store: ObjectStore, root: SemanticNodeTarget) -> PartialClosureAdmissionOutcome {
   admit_partial_commit_closure(
     closure: CommitClosure { store: store, root: root },
     reason: ClosureTrimmedForTransfer
@@ -346,6 +401,7 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
   }
   let admitted = match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       json_is_object(v: encode_admitted_partial_closure_document(admitted: a))
   }
@@ -368,6 +424,7 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
 fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool {
   match cause {
     ClosureDocIncompleteWithoutAdmission { identity: _ } => true
+    ClosureDocRequiresNodeAtAuthoredSource { identities: _ } => false
   }
 }
 
@@ -382,6 +439,7 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       match parse_json_document(
         s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
@@ -493,5 +551,523 @@ test fn a_non_string_at_is_refused_against_at() -> Bool {
       }
     TargetContainedAt { reference: _ } => false
     TargetUncontained { digest: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// A NODE REQUIREMENT WHOSE LOCATOR IS OCCUPIED BY A FILE IS NOT A FETCHABLE ABSENCE.
+//
+// The three cells below differ by ONE FACT -- what, if anything, sits at the child's locator -- and
+// they exist because the branch's own carrier cannot tell two of them apart. store_contains_node_target
+// resolved through find_node_record, which asks for a SEMANTIC NODE, so a file at L is not a node;
+// uncontained_in_record reads every false as a fetchable missing locator and has no wrong-kind arm.
+//
+// THE ASSERTION IS A PROHIBITION, NOT A DESCRIPTION, and that distinction is the whole design of this
+// test. The tempting claim -- "the encoder emits a document this build then refuses" -- is TRUE on the
+// defect, so it would be green on the bug it is meant to catch. What must be forbidden is the state
+// itself: a locator occupied by the wrong kind may not inhabit the unresolved population, because
+// every consumer of that population treats membership as "absent, therefore fetchable" and fetching
+// cannot repair an occupied locator.
+//
+// Each control blocks a repair that would satisfy the others while still being wrong:
+//   - source_occupied alone is satisfied by refusing EVERY unresolved target, which would destroy the
+//     partial closure the format exists to carry. absent_child forbids that.
+//   - absent_child alone is satisfied by treating ANY object at L as sufficient regardless of kind,
+//     which is the defect restated. source_occupied forbids that.
+//   - both are satisfied by encoding every target as uncontained, dodging the self-refusal by never
+//     emitting the contained spelling. present_child forbids that: it requires "at" to round-trip to
+//     a complete closure.
+
+fn closure_occupied_file_text() -> String {
+  "not a program\n"
+}
+
+// The parent is built through insert_from_structure rather than by hand: ObjectRecord is
+// sole_constructor, so the fixture chooses the STRUCTURE and the store derives the identity. The
+// child target is therefore incomplete-by-construction and this fixture never forges a reference.
+type OccupiedFixture { store: ObjectStore, root: SemanticNodeTarget, child: ObjectId, ok: Bool }
+
+fn closure_over_an_occupied_locator() -> OccupiedFixture {
+  match store_authored_source(store: empty_store(), text: closure_occupied_file_text()) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      OccupiedFixture {
+        store: empty_store(),
+        root: SemanticNodeTarget { locator: fallback_id() },
+        child: fallback_id(),
+        ok: false,
+      }
+    SourceStored { store: with_file, source: file } =>
+      match insert_from_structure(
+        store: with_file,
+        kind: TypeNode { connective: Conj },
+        children: [
+          StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
+        ],
+      ) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } =>
+          OccupiedFixture {
+            store: empty_store(),
+            root: SemanticNodeTarget { locator: fallback_id() },
+            child: fallback_id(),
+            ok: false,
+          }
+        Stored { store: assembled, node: root } =>
+          OccupiedFixture {
+            store: assembled,
+            root: node_target_of(reference: root),
+            child: file.locator,
+            ok: true,
+          }
+      }
+  }
+}
+
+fn names_none_of(missing: List<ObjectId>, forbidden: ObjectId) -> Bool {
+  fold(
+    missing,
+    init: true,
+    f: fn(acc, m) { acc && !object_id_eq(left: m, right: forbidden) }
+  )
+}
+
+// CELL A -- the discriminating red. A file occupies the child's locator, so the requirement is
+// UNSATISFIED but not ABSENT: it is wrong-kind, and no fetch can repair it. It must not appear in the
+// population every consumer reads as fetchable.
+test fn a_node_requirement_over_a_file_is_not_a_fetchable_absence() -> Bool {
+  let fx = closure_over_an_occupied_locator()
+  fx.ok
+    && names_none_of(
+      missing: unresolved_identities(closure: CommitClosure { store: fx.store, root: fx.root }),
+      forbidden: fx.child
+    )
+}
+
+// CELL B -- the absent control, one fact from cell A. Nothing occupies the locator, so the
+// requirement IS a genuine absence: it stays in the unresolved population, admits as partial, and
+// survives encode, TEXT, and decode still naming the object it could not carry.
+test fn an_absent_child_is_still_a_fetchable_absence() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    PartialClosureAdmitted { admitted: a } =>
+      match parse_json_document(
+        s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
+      ) {
+        JsonDocumentUnreadable { gap: _ } => false
+        JsonDocumentParsed { value: reparsed } =>
+          match decode_closure_document(v: reparsed) {
+            ClosureDocRefused { cause: _ } => false
+            ClosureDocLoaded { store: store, root: root } =>
+              names_exactly(
+                missing: unresolved_identities(closure: CommitClosure { store: store, root: root }),
+                expected: full.child
+              )
+          }
+      }
+  }
+}
+
+// CELL C -- the present control, the other fact from cell A. A real semantic node occupies the
+// locator, so the closure is COMPLETE: it encodes the contained spelling and round-trips through text
+// to a closure that names nothing missing. This is what forbids the repair that encodes every target
+// as uncontained to dodge the contradiction.
+test fn a_present_child_round_trips_as_a_complete_closure() -> Bool {
+  let full = build_full_store()
+  match encode_complete_closure_document(
+    closure: CommitClosure { store: full.store, root: full.root }
+  ) {
+    ClosureDocEncodeRefused { cause: _ } => false
+    
+    ClosureDocEncoded { value: encoded } =>
+      match parse_json_document(s: serialize_json(v: encoded)) {
+        JsonDocumentUnreadable { gap: _ } => false
+        JsonDocumentParsed { value: reparsed } =>
+          match decode_closure_document(v: reparsed) {
+            ClosureDocRefused { cause: _ } => false
+            ClosureDocLoaded { store: store, root: root } =>
+              closure_is_complete(closure: CommitClosure { store: store, root: root })
+          }
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// TWO AUTHORED ORDERS OF THE SAME NAMED BINDINGS ARE ONE OBJECT, AND RE-WRITING ONE IS IDEMPOTENT.
+//
+// content_hash_of_children canonicalizes -- canonicalize_node_for_content_hash SORTS named edges --
+// so [alpha, beta] and [beta, alpha] over the same targets derive ONE locator. object_store already
+// records this for store_node, which canonicalizes before persisting so that the stored record is the
+// canonical one rather than an arbitrary first-observed representative.
+//
+// insert_from_structure is the OTHER public route to a record and it does not do that: it derives the
+// locator from the canonicalized children and then persists the children AS SUPPLIED. So the second
+// write finds a record under the same locator, records_equal compares the labeled children in
+// supplied order, they differ, and insert_admission reports a LocatorCollision -- for a store being
+// asked to do something perfectly ordinary. The refusal is fabricated: nothing collided.
+//
+// This is the same class the note above store_node describes, surviving on the sibling route, and it
+// is a fabricated refusal rather than a missed one -- the store refuses a write it should accept.
+fn permutation_alpha_child() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^permutation_alpha } }, children: [])
+}
+
+fn permutation_beta_child() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^permutation_beta } }, children: [])
+}
+
+type PermutationFixture { store: ObjectStore  alpha: SemanticNodeTarget  beta: SemanticNodeTarget  ok: Bool }
+
+fn permutation_fixture() -> PermutationFixture {
+  let unusable = SemanticNodeTarget { locator: fallback_id() }
+  match store_node(store: empty_store(), n: permutation_alpha_child()) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      PermutationFixture { store: empty_store(), alpha: unusable, beta: unusable, ok: false }
+    Stored { store: s1, node: alpha } =>
+      match store_node(store: s1, n: permutation_beta_child()) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } =>
+          PermutationFixture { store: empty_store(), alpha: unusable, beta: unusable, ok: false }
+        Stored { store: s2, node: beta } =>
+          PermutationFixture {
+            store: s2,
+            alpha: node_target_of(reference: alpha),
+            beta: node_target_of(reference: beta),
+            ok: true,
+          }
+      }
+  }
+}
+
+fn insert_two_named(store: ObjectStore, first_label: Symbol, first: SemanticNodeTarget, second_label: Symbol, second: SemanticNodeTarget) -> StoreOutcome {
+  insert_from_structure(
+    store: store,
+    kind: TypeNode { connective: Conj },
+    children: [
+      StoredEdge { label: Named { name: first_label }, target: first },
+      StoredEdge { label: Named { name: second_label }, target: second },
+    ],
+  )
+}
+
+// THE DISCRIMINATING RED. One store, two authored orders, one canonical object. The second write must
+// be idempotent, not a collision.
+test fn re_writing_the_same_bindings_in_another_order_is_idempotent() -> Bool {
+  let fx = permutation_fixture()
+  fx.ok
+    && match insert_two_named(
+      store: fx.store,
+      first_label: ^alpha,
+      first: fx.alpha,
+      second_label: ^beta,
+      second: fx.beta,
+    ) {
+      LocatorCollision { identity: _, existing: _, incoming: _ } => false
+      Stored { store: once, node: first_ref } =>
+        match insert_two_named(
+          store: once,
+          first_label: ^beta,
+          first: fx.beta,
+          second_label: ^alpha,
+          second: fx.alpha,
+        ) {
+          LocatorCollision { identity: _, existing: _, incoming: _ } => false
+          Stored { store: _, node: second_ref } =>
+            object_id_eq(left: first_ref.locator, right: second_ref.locator)
+        }
+    }
+}
+
+// THE CONTROL, without which the claim above is satisfied by a store that never refuses. Different
+// label-to-target ASSOCIATIONS are a genuinely different object, so they derive a different locator
+// and both records stand -- this is not a permutation and must not be collapsed into one.
+test fn swapping_which_target_each_label_names_is_a_different_object() -> Bool {
+  let fx = permutation_fixture()
+  fx.ok
+    && match insert_two_named(
+      store: fx.store,
+      first_label: ^alpha,
+      first: fx.alpha,
+      second_label: ^beta,
+      second: fx.beta,
+    ) {
+      LocatorCollision { identity: _, existing: _, incoming: _ } => false
+      Stored { store: once, node: first_ref } =>
+        match insert_two_named(
+          store: once,
+          first_label: ^alpha,
+          first: fx.beta,
+          second_label: ^beta,
+          second: fx.alpha,
+        ) {
+          LocatorCollision { identity: _, existing: _, incoming: _ } => false
+          Stored { store: _, node: second_ref } =>
+            !object_id_eq(left: first_ref.locator, right: second_ref.locator)
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// A LATE GRAFT COMPLETES THE CLOSURE, AND THE DOCUMENT MUST SAY SO.
+//
+// store_records_in_dependency_order returns insertion order, and object_store's note beside it argues
+// that order is dependency order because store_node recurses into a target before appending its
+// parent. That is true for store_node and FALSE for the graft route: copy_object appends one record
+// without its children, so copying the parent and then the child leaves the parent EARLIER than the
+// child it references.
+//
+// Completeness does not care -- both objects are present, so the closure is complete. The encoder
+// does: it assigns positions in that order, so when it encodes the parent the child has no position
+// yet and the target is emitted as UNCONTAINED, naming a digest the document goes on to carry a few
+// entries later. That contradicts the declared wire meaning of uncontained -- "this document does NOT
+// carry it" -- and lets a complete closure emit a partial spelling.
+//
+// The pair is the claim: parent alone must encode uncontained, and parent-then-child must encode
+// contained. Without the first cell the second is satisfied by an encoder that never emits
+// uncontained at all, which would break the partial-closure format this branch exists to add.
+fn build_grafted_then_completed_store() -> ObjectStore {
+  let full = build_full_store()
+  match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.root),
+  ) {
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+    Copied { store: with_parent, reference: _ } =>
+      match copy_object(from: full.store, to: with_parent, identity: full.child) {
+        CopySourceAbsent { identity: _ } => empty_store()
+        CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+        Copied { store: with_both, reference: _ } => with_both
+      }
+  }
+}
+
+// THE DISCRIMINATING RED, AND THE FIRST VERSION OF IT WAS NOT.
+//
+// The obvious assertion -- encode, round-trip through text, and require the reloaded closure to be
+// complete -- PASSES ON THE DEFECT, and finding that out is why this comment exists rather than a
+// claim that merely looked thorough. Decode re-stores every object in the table, so the child arrives
+// either way and the reloaded closure is complete whichever spelling its parent used. The defect is
+// in the BYTES and an assertion that only reads the rebuilt store cannot see it.
+//
+// So the claim compares IMAGES. The grafted-then-completed store and the naturally-built store are
+// the SAME closure -- same objects, same root, same identities -- so they must serialize to the same
+// document. Under the insertion-order encoder they do not: one spells the child target contained and
+// the other spells it uncontained, and the byte comparison is what refuses that.
+//
+// THE NAME IS SCOPED TO THE TWO HISTORIES THE FIXTURE ACTUALLY BUILDS. It was
+// `one_closure_has_one_image_however_its_store_was_assembled`, which claims GLOBAL image invariance
+// across every assembly history -- more than this fixture establishes and more than the repository
+// authority grants, since insertion history still decides tie order among INDEPENDENT components.
+// External review named the overreach. A claim whose name promises more than its body executes is the
+// same inflation as a rung reported above its evidence.
+test fn a_completed_parent_first_graft_has_the_naturally_built_image() -> Bool {
+  let full = build_full_store()
+  let completed = build_grafted_then_completed_store()
+  let closure = CommitClosure { store: completed, root: full.root }
+  closure_is_complete(closure: closure)
+    && match encode_complete_closure_document(closure: closure) {
+      ClosureDocEncodeRefused { cause: _ } => false
+      
+      ClosureDocEncoded { value: grafted_image } =>
+        match encode_complete_closure_document(
+          closure: CommitClosure { store: full.store, root: full.root }
+        ) {
+          ClosureDocEncodeRefused { cause: _ } => false
+          
+          ClosureDocEncoded { value: natural_image } =>
+            serialize_json(v: grafted_image) == serialize_json(v: natural_image)
+        }
+    }
+}
+
+// THE CONTROL. Without it the claim above is satisfied by an encoder that never spells a target
+// uncontained at all -- which would delete the partial-closure format this branch exists to add. The
+// parent alone genuinely does not carry its child, so its image must differ from the complete one.
+test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    PartialClosureAdmitted { admitted: a } =>
+      match encode_complete_closure_document(
+        closure: CommitClosure { store: full.store, root: full.root }
+      ) {
+        ClosureDocEncodeRefused { cause: _ } => false
+        
+        ClosureDocEncoded { value: natural_image } =>
+          serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
+            != serialize_json(v: natural_image)
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SPELLING ITSELF, BECAUSE BYTE EQUALITY DOES NOT PIN IT.
+//
+// a_completed_parent_first_graft_has_the_naturally_built_image compares two serializations and requires
+// them equal. That catches a DISAGREEMENT between the two assembly routes, which is what the graft
+// defect produced -- and external review named the hole it leaves: if the encoder spelled EVERY
+// target uncontained, both images would still agree and the claim would still pass. Agreement is not
+// correctness; it is only consistency.
+//
+// So this reads the arm out of the document. The closure is complete, so the parent's child target
+// must carry "at" -- and decode_target_reference is the module's own reader, not a second parser
+// written here to grade the first one.
+fn target_arm_of_first_child(objects: List<JsonValue>) -> TargetReference? {
+  fold(objects, init: none, f: fn(found, entry) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match read_member(v: entry, key: "children") {
+          MemberArray { elements: edges } =>
+            fold(edges, init: none, f: fn(inner, edge) {
+              match inner {
+                Present { value: _ } => inner
+                Absent =>
+                  match read_member(v: edge, key: "target") {
+                    MemberObject { value: t } =>
+                      Present { value: decode_target_reference(target_value: t) }
+                    _ => none
+                  }
+              }
+            })
+          _ => none
+        }
+    }
+  })
+}
+
+fn document_objects(v: JsonValue) -> List<JsonValue> {
+  match read_member(v: v, key: "objects") {
+    MemberArray { elements: e } => e
+    _ => []
+  }
+}
+
+// A COMPLETE CLOSURE SPELLS ITS CHILD CONTAINED, whichever order its store was assembled in.
+test fn a_complete_closure_spells_its_child_contained() -> Bool {
+  let full = build_full_store()
+  let completed = build_grafted_then_completed_store()
+  match encode_complete_closure_document(
+    closure: CommitClosure { store: completed, root: full.root }
+  ) {
+    ClosureDocEncodeRefused { cause: _ } => false
+    
+    ClosureDocEncoded { value: image } =>
+      match target_arm_of_first_child(objects: document_objects(v: image)) {
+        Absent => false
+        Present { value: arm } =>
+          match arm {
+            TargetContainedAt { reference: _ } => true
+            TargetUncontained { digest: _ } => false
+            TargetReferenceRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+// THE CONTROL. A genuinely partial closure must still spell its missing child UNCONTAINED -- without
+// this, the claim above is satisfied by an encoder that never emits the uncontained arm, which would
+// delete the partial-closure format outright.
+test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    PartialClosureAdmitted { admitted: a } =>
+      match target_arm_of_first_child(
+        objects: document_objects(v: encode_admitted_partial_closure_document(admitted: a))
+      ) {
+        Absent => false
+        Present { value: arm } =>
+          match arm {
+            TargetUncontained { digest: _ } => true
+            TargetContainedAt { reference: _ } => false
+            TargetReferenceRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+// THE POSITIONAL CONTROL FOR THE CANONICALIZATION, and it is the half that says the sort is a RULE
+// rather than a habit.
+//
+// insert_from_structure now canonicalizes its children, and re_writing_the_same_bindings_in_another_
+// order_is_idempotent says two authored orders of the same NAMED bindings are one object. On its own
+// that claim is satisfied by sorting every child list unconditionally -- which would be wrong, and
+// silently so: under Cardinality and Instantiation the discipline is PositionalEdges, where position
+// IS the meaning and reordering names a different program. External review named this gap.
+//
+// The canonicalizer already answers correctly, because it dispatches on kind_edge_discipline and
+// returns positional items untouched. Nothing here executed that, so the rule was true and unwitnessed
+// -- and an unwitnessed rule is one a later local sort can quietly replace.
+test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
+  let fx = permutation_fixture()
+  fx.ok
+    && match insert_from_structure(
+      store: fx.store,
+      kind: TypeNode { connective: Cardinality },
+      children: [
+        StoredEdge { label: Positional, target: fx.alpha },
+        StoredEdge { label: Positional, target: fx.beta },
+      ],
+    ) {
+      LocatorCollision { identity: _, existing: _, incoming: _ } => false
+      Stored { store: once, node: first_ref } =>
+        match insert_from_structure(
+          store: once,
+          kind: TypeNode { connective: Cardinality },
+          children: [
+            StoredEdge { label: Positional, target: fx.beta },
+            StoredEdge { label: Positional, target: fx.alpha },
+          ],
+        ) {
+          LocatorCollision { identity: _, existing: _, incoming: _ } => false
+          Stored { store: _, node: second_ref } =>
+            !object_id_eq(left: first_ref.locator, right: second_ref.locator)
+        }
+    }
+}
+
+// THE COMPLETE WRITER PRODUCES NO BYTES FOR A WRONG-KIND CLOSURE, and it names the population.
+//
+// This is the front door the side door already refused. encode_complete_closure_document asked
+// unresolved_identities, which projects the ABSENT population -- and for a requirement whose locator
+// is occupied by an authored source that population is EMPTY. So the writer saw nothing missing and
+// returned bytes, while partial admission refused the identical state. External review found it.
+//
+// The raw writer beneath it needs no claim of its own any more, and that is the stronger outcome:
+// encode_closure_document now takes a WellKindedClosure, which is sole_constructor and mintable only
+// through admit_well_kinded_closure. There is no argument a caller can build that carries this state,
+// so the refusal is by construction rather than by a judgment the front door happens to run.
+test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool {
+  let fx = closure_over_an_occupied_locator()
+  fx.ok
+    && match encode_complete_closure_document(
+      closure: CommitClosure { store: fx.store, root: fx.root }
+    ) {
+      ClosureDocEncoded { value: _ } => false
+      ClosureDocEncodeRefused { cause: c } =>
+        match c {
+          ClosureDocRequiresNodeAtAuthoredSource { identities: ids } =>
+            (list_length(items: ids) == 1) && names_exactly(missing: ids, expected: fx.child)
+          ClosureDocIncompleteWithoutAdmission { identity: _ } => false
+        }
+    }
+}
+
+// THE CONTROL. Without it the claim above is satisfied by a writer that refuses everything, which
+// would delete the format. A genuinely complete closure still encodes.
+test fn the_complete_writer_still_encodes_a_complete_closure() -> Bool {
+  let full = build_full_store()
+  match encode_complete_closure_document(
+    closure: CommitClosure { store: full.store, root: full.root }
+  ) {
+    ClosureDocEncoded { value: v } => json_is_object(v: v)
+    ClosureDocEncodeRefused { cause: _ } => false
   }
 }

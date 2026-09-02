@@ -12058,6 +12058,67 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
     }
 }
 
+/// Create-only write: the existence test and the creation are ONE syscall (O_CREAT|O_EXCL), so a
+/// path that appears between an observation and this call refuses instead of being truncated.
+///
+/// Deliberately NOT `write_file_owner_only` with a different name. That function sets mode 0600 at
+/// creation and uses `create_new` because a creation-time mode is meaningless on an existing path --
+/// its O_EXCL is incidental to owner-only mode, not a contract. Owner-only MODE and create-only
+/// EXISTENCE are independent facts; a caller that obtained create-only from it would silently also
+/// get 0600, and would break if owner-only ever stopped needing O_EXCL. This is portable and sets no
+/// mode, because setting one would be the same conflation in reverse.
+fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(content)?;
+    Ok(())
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PRIMITIVE'S OWN EVIDENCE. gunbc.scm.init's witnesses cover the DECISION -- which observation
+// arms may write -- and cannot reach this, because the decision is pure and the race lives in the
+// write. These two cells are the write's half: an existing path refuses AND KEEPS ITS BYTES, and an
+// absent one is created. Without the second, the first is satisfied by a function that never writes.
+// ------------------------------------------------------------------------------------------------
+#[cfg(test)]
+mod write_file_create_new_tests {
+    #[test]
+    fn create_new_refuses_a_path_that_already_exists_and_leaves_its_bytes() {
+        let dir = std::env::temp_dir().join(format!("gunbc-create-new-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        std::fs::write(&path, b"SOMEONE ELSE'S BYTES").expect("seed the path");
+
+        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+            .expect_err("a path that exists must refuse, not be truncated");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+
+        // THE ASSERTION THAT CARRIES THE FINDING. A refusal that had already truncated would still
+        // return an error; what makes this a fix rather than a report is that the bytes survive.
+        let after = std::fs::read(&path).expect("the file is still there");
+        assert_eq!(
+            after, b"SOMEONE ELSE'S BYTES",
+            "the existing bytes must be untouched by a refused create"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn create_new_writes_when_nothing_is_there() {
+        let dir = std::env::temp_dir().join(format!("gunbc-create-new-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+            .expect("an absent path is created");
+        assert_eq!(
+            std::fs::read(&path).expect("written"),
+            b"a fresh repository"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
 struct FileResult {
     success: bool,
     byte_count: i64,
@@ -12191,10 +12252,48 @@ fn dispatch_file(
                     }),
                 };
             }
+            "write_create_new" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                );
+                return match write_file_create_new(&path, content.as_bytes()) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        content: String::new(),
+                    }),
+                    // The refusal carries the host's message verbatim and does NOT classify itself.
+                    // Deciding "already existed" from the error TEXT would be a heuristic standing in
+                    // for an observation; the caller learns the create did not happen and why the
+                    // host said so, which is what it needs to refuse.
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new)"
                     ),
                 })
             }

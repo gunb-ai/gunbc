@@ -1200,6 +1200,67 @@ pub(crate) fn run_fixture_closure_discrimination(probe_root: &Path) -> FixtureDi
     }
 }
 
+/// THE FUNCTION-VALUE ADAPTER'S OWN PAIR, POSED THROUGH THE ROUTE ABOVE.
+///
+/// THE SUBJECT IS ONE EMITTER TRANSFORM: `v1.compiler.emit_rust`
+/// `rust_call_arg_function_value_adapt`. An arrow type has TWO Rust renderings in this emitter,
+/// and both are correct for what they carry -- a function VALUE is `Rc<dyn Fn(..) -> ..>`
+/// (`callable_type_template`), a function-typed PARAMETER is an opaque
+/// `impl Fn(..) -> .. + Clone` bound (`emit_rust_param_type`, chosen so a literal closure argument
+/// costs no allocation). The gap is at the SEAM between them: `Rc<F>` has no blanket `impl Fn` in
+/// std the way `Box<F>` does, so a value carried in the first rendering does not satisfy the
+/// second bound. The adapter closes that seam at the call position by wrapping the argument in a
+/// forwarding closure.
+///
+/// WHY THIS SUBJECT NEEDS RUSTC AND NOT A SUBSTRING. The adapter's whole claim is about a TRAIT
+/// OBLIGATION, and a trait obligation is not a spelling. A text oracle can assert that
+/// `__adapt_f` appears in the emitted bytes; it cannot assert that the wrapper it appears in
+/// actually satisfies `impl Fn(..) -> .. + Clone`, which is the only thing the transform exists to
+/// do. Both directions of this pair are E0277-shaped facts about the emitted crate's type
+/// checking, so rustc is the oracle and the fixture-closure route above is how a fixture reaches
+/// it.
+///
+/// THE PAIR IS DELIBERATELY MINIMAL-DIFFERENCE, and that is what makes it discriminate. The two
+/// arms declare the same producer, the same consumer and the same call. They differ in ONE
+/// authored spelling: the green arm passes the producer's result AS A CALL EXPRESSION
+/// (`adapter_apply(f: adapter_add(k: 1), x: 41)`), which is the shape the adapter keys on; the red
+/// arm binds that identical result to a `let` first and passes the BINDING, which the adapter
+/// deliberately does not touch. So a green here is not "some crate compiled" and a red there is
+/// not "something in the tree is broken": the only variable between them is whether the adapter
+/// fired.
+#[cfg(test)]
+const FIXTURE_ADAPTER_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/function_value_adapter_probe.dag";
+
+/// THE RED ARM IS A KNOWN HOLE, NOT A DESIRED BEHAVIOUR, and it is named as one so nobody reads
+/// its red as the wall working.
+///
+/// What it measures is `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target`
+/// at a construction that row has not recorded: gunbc accepts this fixture with zero blocking
+/// diagnostics and emits a crate rustc refuses. That row's own instances are coproduct
+/// variant-in-type-position; this one is the function-value seam, and it is committed HERE as a
+/// runnable file, which is the thing that row records it never had.
+///
+/// SO WHEN THE ADAPTER'S COVERAGE CLIMBS -- either the emitter adapts a let-bound arrow value too,
+/// or the front end refuses the construction -- THIS ARM FLIPS AND MUST BE KEPT, per DESIGN
+/// §4b(4): the probe becomes a permanent regression control on the direction it established, and
+/// what changes is this pair's expectation, not the fixture's existence.
+#[cfg(test)]
+const FIXTURE_ADAPTER_RED_PATH: &str =
+    "fixtures/fixture_closure_rustc/function_value_let_probe.dag";
+
+/// The adapter pair, assembled from the SAME arm runner and adjudicated by the SAME predicate the
+/// route's own pair uses -- a second discrimination, not a second harness.
+#[cfg(test)]
+pub(crate) fn run_function_value_adapter_discrimination(
+    probe_root: &Path,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_ADAPTER_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_ADAPTER_RED_PATH, probe_root),
+    }
+}
+
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
 /// fixture was refused BY RUSTC with a diagnostic naming its own emitted module.
 ///
