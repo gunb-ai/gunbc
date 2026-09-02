@@ -234,12 +234,28 @@ not choose it.
   with it — §4b(4) retires the redundant production handling while every discriminating witness stays
   enrolled.
 
-  **Still open, routed by the side chat and not yet answered:** `DecodedRealizationV0` is minted before
-  semantic conformance runs, so the trusted-type boundary may sit one step too early. Two candidate
-  cuts: a second sealed type downstream of `judge_realization` carrying admitted-and-conformant, or
-  `DecodedRealizationV0` not existing until conformance has run. Decode-admitted and contract-conformant
-  are genuinely different facts, so the first reading is not obviously wrong — but no consumer today
-  distinguishes them, which is exactly the condition under which one of the two is redundant.
+  **The trusted-type boundary sat one step early, and the fix turned out to be the name.** The routed
+  review's objection was that the admitted carrier is minted before conformance runs. I pushed back
+  that decode-admitted and contract-conformant are two genuinely different facts and so the *stage*
+  was not wrong. That was true and beside the point: the defect was that an unqualified capability
+  name — "admitted" — was attached to the earlier fact, while it was also the only geometry-bearing
+  value a handler could obtain. Renamed `DecodedRealizationV0`. The stage stayed.
+
+  **What the pushback did surface is a second, real defect, deferred deliberately.** `judge_realization`
+  returns a verdict and no geometry, so a handler must obtain geometry elsewhere and associate it with
+  the verdict itself. That association is unbound: judge envelope A, retain envelope B's decoded
+  geometry, hand B to the handler under A's conforming verdict. Every honest caller passes the same
+  envelope twice and the invalid pairing stays writable — the same class as the refusal payload above,
+  one level out. The close is a second sealed type returned *from* the judgment that established
+  conformance, minted from the contract's own canonical specimen rather than from the transported
+  values that happened to compare equal, so what a handler cuts is the model's geometry and the wire is
+  reduced to an assertion that was checked. `AdmittedRealizationV0` is reserved for it and unspent.
+
+  It is not built in this revision because nothing actuates geometry yet: with no handler the pairing
+  has no site at which to go wrong, and minting a sealed carrier with zero consumers to hold a symbol
+  is what §2 prices as redundant. So it is declared as `realization_v0_open_obligations` — a typed
+  carrier and not an annotation, because PRINT-5 must not be able to reach a handler without answering
+  it, and no `Accepted` program can read a comment.
 
   **Probe discipline learned here, recorded because it nearly produced a false finding.** The first
   forgery probe returned exactly the baseline error count — consistent with "forgery permitted" — from

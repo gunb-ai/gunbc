@@ -525,3 +525,41 @@ fn judge_realization(
     EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
   }
 }
+
+// THE ACTUATOR PAIRING IS UNBOUND, AND THAT IS AN OBLIGATION ON PRINT-5 RATHER THAN A DEFECT HERE.
+//
+// judge_realization returns a VERDICT and no geometry. So a handler that wants to cut something must
+// obtain geometry from somewhere else -- today only decode_envelope -- and then associate that value
+// with this verdict itself. That association is unbound: judge envelope A, retain the decoded
+// geometry of envelope B, hand B to the handler under A's conforming verdict. Every honest caller
+// passes the same envelope twice, and the invalid pairing stays writable regardless. It is the same
+// class as the refusal payload that could carry a success, one level out: a state no route produces
+// and nothing prevents (routed review, 2026-09-02).
+//
+// The close is a second sealed type returned FROM the judgment that established conformance, so
+// there is no pair left to mis-associate -- and minted from the CONTRACT'S OWN canonical specimen
+// rather than from the transported values that happened to compare equal, so what the handler cuts
+// is the model's geometry and the wire is reduced to an assertion that was checked. The name
+// AdmittedRealizationV0 is reserved for it above and deliberately unspent.
+//
+// WHY IT IS NOT BUILT IN THIS REVISION. Nothing actuates geometry yet: there is no handler, so the
+// pairing has no site at which to go wrong, and the invariant "the decoded carrier never actuates"
+// holds vacuously today. Minting a sealed carrier with zero consumers to hold a symbol is the
+// speculative move DESIGN section 2 prices as redundant, and the same review that named this
+// obligation also warned against establishing a public capability merely because the state
+// conceptually exists. So the obligation is DECLARED rather than discharged, in a typed carrier
+// rather than an annotation, because PRINT-5 must not be able to reach a handler without answering
+// it -- and an annotation is a thing no Accepted program can read.
+type RealizationV0Obligation = ActuatorGeometryPairingUnbound {}
+
+type RealizationV0Route = MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
+
+// Total by construction: a second obligation reds this match until it is routed. The route is not a
+// promise that the work is done, only that the open need names its close.
+fn realization_v0_route(o: RealizationV0Obligation) -> RealizationV0Route {
+  match o {
+    ActuatorGeometryPairingUnbound {} => MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
+  }
+}
+
+data realization_v0_open_obligations: List<RealizationV0Obligation> = [ActuatorGeometryPairingUnbound {}]
