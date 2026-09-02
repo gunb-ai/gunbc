@@ -49,6 +49,24 @@ import std.render {
 }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
 import gunbc.scm.repository_load { repository_load_refusal_lines }
+import gunbc.scm.init {
+  ScmInitOutcome,
+  ScmInitialized,
+  ScmInitWriteRefused,
+  ScmInitRefused,
+  ScmInitRefusal,
+  ScmInitRepositoryPresent,
+  ScmInitForeignFilePresent,
+  ScmInitPathUnobserved,
+  ScmInitNameNotAnEntry
+}
+import gunbc.scm.repository_save {
+  RepositorySave,
+  RepositorySaved,
+  RepositorySaveRefusedByCodec,
+  RepositoryFileUnwritable,
+  RepositoryWriteByteCountUnrepresentable
+}
 import gunbc.scm.log {
   CommitLog,
   NoCommitsYet,
@@ -56,6 +74,7 @@ import gunbc.scm.log {
   CommitLogRow,
   LoggedCommitStanding,
   LoggedCommitRootHeld,
+  LoggedCommitRootIsAuthoredSource,
   LoggedCommitRootMissingFromStore,
 }
 import gunbc.scm.status {
@@ -93,6 +112,7 @@ fn log_standing_suffix(standing: LoggedCommitStanding) -> String {
   match standing {
     LoggedCommitRootHeld => ""
     LoggedCommitRootMissingFromStore => "  (program not held -- cannot be checked out)"
+    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a program -- cannot be checked out)"
   }
 }
 
@@ -182,5 +202,138 @@ fn scm_status_cli_response(
     target: target,
     capability: capability,
     exit: scm_read_exit(result: result),
+  )
+}
+
+// A WRITE VERB'S ANSWER. The read verbs answer with a document the repository already contains;
+// a write verb answers with what the write DID, and its four outcomes are not one line with a
+// flag -- each names a different thing that went wrong and a different next action.
+//
+// WHAT THESE LINES DELIBERATELY DO NOT SAY. The codec refusal carries a typed
+// `RepositoryEncodeRefusal` (uncontained target, root not in store, checkout not in commits,
+// duplicated reference, reference outside allocator, parent not in commits) and this renderer
+// does not decompose it, so the operator learns THAT encoding refused and not WHICH invariant
+// failed. That is a real loss and it is named here rather than hidden: rendering it needs a
+// per-arm function over ObjectId and RepositoryCommitRef, which is its own change. The byte
+// count on the success arm is likewise omitted rather than approximated.
+fn repository_save_lines(save: RepositorySave) -> List<String> {
+  match save {
+    RepositorySaved { path: p, written: _ } =>
+      [concat("initialized repository at ", p)]
+    RepositorySaveRefusedByCodec { path: p, cause: _ } =>
+      [
+        concat("cannot encode repository for ", p),
+        "  the envelope did not satisfy its own containment invariants"
+      ]
+    RepositoryFileUnwritable { path: p, error: e } =>
+      [concat("cannot write repository at ", p), concat("  ", e)]
+    RepositoryWriteByteCountUnrepresentable { path: p, reported: _ } =>
+      [
+        concat("wrote repository at ", p),
+        "  but the host reported a byte count that is not a magnitude"
+      ]
+  }
+}
+
+// THE WRITE SUCCEEDED OR IT DID NOT, and the unrepresentable-count arm FAILS even though bytes
+// reached the disk: a write whose reported size is not a magnitude has not been confirmed, and
+// reporting success for it would be the fabricated-plausible-output §5 forbids.
+fn scm_save_exit(save: RepositorySave) -> ProcessExit {
+  match save {
+    RepositorySaved { path: _, written: _ } => ExitSuccess
+    RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+      exit_failure(reason: "repository not encodable")
+    RepositoryFileUnwritable { path: _, error: _ } =>
+      exit_failure(reason: "repository not writable")
+    RepositoryWriteByteCountUnrepresentable { path: _, reported: _ } =>
+      exit_failure(reason: "repository write unconfirmed")
+  }
+}
+
+fn scm_save_document(save: RepositorySave) -> Document {
+  text_lines_document(lines: repository_save_lines(save: save))
+}
+
+fn scm_save_cli_response(
+  save: RepositorySave,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: scm_save_document(save: save),
+    target: target,
+    capability: capability,
+    exit: scm_save_exit(save: save),
+  )
+}
+
+// A REFUSED INIT PRINTS WHY AND EXITS FAILURE. The two refusals render differently because the
+// operator's next action differs: an existing repository is not a mistake to correct, while a
+// foreign file at that path is a choice about someone else's bytes.
+fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
+  match outcome {
+    ScmInitialized { path: p, written: _ } =>
+      [concat("initialized repository at ", p)]
+    ScmInitWriteRefused { save: save } => repository_save_lines(save: save)
+    ScmInitRefused { cause: cause } => scm_init_refusal_lines(cause: cause)
+  }
+}
+
+fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
+  match cause {
+    ScmInitRepositoryPresent { path: p } =>
+      [
+        concat("refusing to initialize ", p),
+        "  a repository is already there, and init would replace its whole history"
+      ]
+    ScmInitForeignFilePresent { path: p } =>
+      [
+        concat("refusing to initialize ", p),
+        "  a file is already there that is not a repository, and init would destroy it"
+      ]
+    ScmInitPathUnobserved { path: p, cause: c } =>
+      [
+        concat("refusing to initialize ", p),
+        concat("  the path could not be observed, so nothing about it is established -- ", c)
+      ]
+    ScmInitNameNotAnEntry { name: n, cause: c } =>
+      [
+        concat("refusing to initialize ", n),
+        concat("  that is not one entry of the directory, so no path was built from it -- ", c)
+      ]
+  }
+}
+
+fn scm_init_exit(outcome: ScmInitOutcome) -> ProcessExit {
+  match outcome {
+    ScmInitialized { path: _, written: _ } => ExitSuccess
+    ScmInitWriteRefused { save: save } => scm_save_exit(save: save)
+    ScmInitRefused { cause: cause } => scm_init_refusal_exit(cause: cause)
+  }
+}
+
+fn scm_init_refusal_exit(cause: ScmInitRefusal) -> ProcessExit {
+  match cause {
+    ScmInitRepositoryPresent { path: _ } =>
+      exit_failure(reason: "repository already present")
+    ScmInitForeignFilePresent { path: _ } =>
+      exit_failure(reason: "path occupied by a non-repository file")
+    ScmInitPathUnobserved { path: _, cause: _ } =>
+      exit_failure(reason: "path could not be observed")
+    ScmInitNameNotAnEntry { name: _, cause: _ } =>
+      exit_failure(reason: "name is not one entry of the directory")
+  }
+}
+
+fn scm_init_cli_response(
+  outcome: ScmInitOutcome,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: text_lines_document(lines: scm_init_lines(outcome: outcome)),
+    target: target,
+    capability: capability,
+    exit: scm_init_exit(outcome: outcome),
   )
 }

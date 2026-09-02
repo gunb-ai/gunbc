@@ -8,6 +8,10 @@ use self::OperatorRealizationRefusal::*;
 use self::OrderingTest::*;
 use self::StructuralConnectiveLookup::*;
 use self::StructuralOrderingLookup::*;
+pub use crate::std_coercion::TypeDeclarationProvenance;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_syntax::BinOp;
@@ -26,7 +30,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperandDeclaration {
     pub declaration: Rc<DeclarationRef>,
-    pub decl_file: String,
+    pub provenance: Rc<TypeDeclarationProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -49,13 +53,31 @@ pub enum HostRealizationReason {
     UnnamedSynthesizedType,
 }
 
+pub fn provenance_label(p: Rc<TypeDeclarationProvenance>) -> String {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => v1_rt::concat(
+            v1_rt::concat("declared in `".to_string(), f.clone()),
+            "`".to_string(),
+        ),
+        TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm, ..
+        } => v1_rt::concat(
+            v1_rt::concat("kernel-minted `".to_string(), nm.clone()),
+            "`".to_string(),
+        ),
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => {
+            "no declaration identity".to_string()
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperandShapeFacts {
     pub authored_name: String,
     pub connective: String,
     pub child_count: i64,
     pub resolved: bool,
-    pub decl_file: String,
+    pub provenance: Rc<TypeDeclarationProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -270,7 +292,7 @@ pub fn operator_realization_refusal_message(cause: Rc<OperatorRealizationRefusal
         "yes".to_string()
     } else {
         "no".to_string()
-    }), ", decl_file `".to_string()), f.decl_file.clone()), "`)".to_string()),
+    }), ", provenance ".to_string()), provenance_label(f.provenance.clone())), ")".to_string()),
 }
 }
 

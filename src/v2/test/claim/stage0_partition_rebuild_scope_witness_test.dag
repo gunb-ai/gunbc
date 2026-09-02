@@ -163,6 +163,27 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
   }
 }
 
+// The live flip for the ownership hole exposed by the one-run #10027 regen: this generated
+// mirror imports v1.compiler.artifact and v1.compiler.coercion, so the v1-infer partition is its
+// one physical owner. Keep the package identity in the assertion -- merely changing the refusal
+// into any derived scope would not establish that the mirror landed in the dependency layer its
+// imports require. Controls 4 and 5 above/below keep the zero-owner and two-owner opposites
+// authorable after the live row is repaired.
+test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(
+    changed_mirrors: ["v1_compiler_compiler_tests_rust.rs"],
+    unlocatable: []
+  ) {
+    PartitionRebuildScopeDerived { changed_mirrors: ms, owning_packages: owners, package_closure: closure, executable_assembly: _ } =>
+      (count(ms) == 1)
+        && (count(owners) == 1)
+        && witness_has(items: owners, item: "v1-stage0-v1-infer")
+        && witness_has(items: closure, item: "v1-compiler")
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
 // CONTROL 5 -- two owners for one mirror refuses with its own cause. Fixture rows, because the
 // live roster must never contain this state; a foundation kind is used so both rows' manifests
 // resolve without a crate-dir lookup and the refusal under test is the ownership one.
