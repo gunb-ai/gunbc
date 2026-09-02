@@ -381,7 +381,7 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     permissions:
       contents: write
-      actions: write
+      actions: none
     steps:
       - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
         uses: actions/checkout@v5
@@ -441,7 +441,8 @@ jobs:
           if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
           if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
           if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
-          if [ -e "docs/design-ledgers.md" ]; then git add "docs/design-ledgers.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-ledgers.md"; fi
+          if [ -e "docs/design-failure-modes.md" ]; then git add "docs/design-failure-modes.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-failure-modes.md"; fi
+          if [ -e "docs/design-rung-drops.md" ]; then git add "docs/design-rung-drops.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-rung-drops.md"; fi
           if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
           if [ -e ".githooks/pre-commit" ]; then git add ".githooks/pre-commit"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-commit"; fi
           if [ -e ".githooks/generated-artifact-merge" ]; then git add ".githooks/generated-artifact-merge"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/generated-artifact-merge"; fi
