@@ -1,0 +1,145 @@
+module test.claim.spark.spark_fabric_link_witness_test
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 {
+  Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
+  PrefixLength, ipv4_same_network, ipv4_address_eq,
+}
+import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.fabric_link_desired {
+  FabricEndpoint, FabricLink, fabric_endpoint, fabric_link, fabric_endpoint_on,
+  spark_fabric_links, spark_fabric_endpoints_on, fabric_prefix, fabric_mtu_bytes,
+}
+
+data w_mtu: Int = 9000
+
+fn w_end(host: HostIdentity, iface: NonEmptyStr, o3: Int, o4: Int) -> FabricEndpoint {
+  fabric_endpoint(
+    host: host, interface: iface,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: o3, octet4: o4),
+    prefix: 24, mtu: w_mtu)
+}
+
+fn w_built(a: FabricEndpoint, b: FabricEndpoint) -> Bool {
+  match fabric_link(name: "w-link" as NonEmptyStr, endpoint_a: a, endpoint_b: b) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL. A well-formed rail -- two hosts, one interface name, one subnet.
+test fn w_a_wellformed_rail_constructs() -> Bool {
+  w_built(
+    a: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10),
+    b: w_end(host: operator_host_srv8, iface: "ifa" as NonEmptyStr, o3: 100, o4: 11))
+}
+
+// AND THE FIVE WAYS TO GET IT WRONG BY HAND, each of which produced a plausible-looking
+// configuration rather than an error when this was done with `ip` and `nmcli` on these two hosts.
+//
+// The CROSSED-INTERFACE arm is the one that matters most and the one this repository actually got
+// wrong: the fabric was first configured with enP2p1s0f0np0 on one host paired to enp1s0f0np0 on the
+// other. It passed a jumbo ping. It is still wrong, because NCCL selects a rail by matching
+// interface to subnet -- so this is a failure that TESTS GREEN, which is why it is a constructor
+// condition rather than a diagnostic.
+test fn w_a_rail_that_could_not_carry_collective_traffic_has_no_constructor() -> Bool {
+  !w_built(
+    a: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10),
+    b: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 11))
+    && !w_built(
+      a: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10),
+      b: w_end(host: operator_host_srv8, iface: "ifb" as NonEmptyStr, o3: 100, o4: 11))
+    && !w_built(
+      a: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10),
+      b: w_end(host: operator_host_srv8, iface: "ifa" as NonEmptyStr, o3: 101, o4: 11))
+    && !w_built(
+      a: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10),
+      b: w_end(host: operator_host_srv8, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10))
+    && !w_built(
+      a: w_end(host: operator_host_srv7, iface: "ifa" as NonEmptyStr, o3: 100, o4: 10),
+      b: fabric_endpoint(
+        host: operator_host_srv8, interface: "ifa" as NonEmptyStr,
+        address: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 11),
+        prefix: 24, mtu: 1500))
+}
+
+// THE SUBNET BOUNDARY IS WHERE ADJACENCY STOPS. The two rails are 192.168.100.0/24 and
+// 192.168.101.0/24 -- one octet apart and easy to conflate by eye, and on DIFFERENT networks. This
+// is the discriminating case for the octet comparison rather than for the type.
+test fn w_the_two_rails_are_not_one_network() -> Bool {
+  match ipv4_same_network(
+    a: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 10),
+    b: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 11), prefix: 24) {
+    Absent => false
+    Present { value: same_rail } =>
+      same_rail && match ipv4_same_network(
+        a: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 10),
+        b: ipv4_address(octet1: 192, octet2: 168, octet3: 101, octet4: 10), prefix: 24) {
+        Absent => false
+        Present { value: cross_rail } => !cross_rail
+      }
+  }
+}
+
+// AN UNANSWERABLE PREFIX REFUSES RATHER THAN ASSUMING A MATCH. "I could not check" is not "it is
+// fine", and a link built on an unchecked prefix is the absorbing fallback in its network form.
+test fn w_a_prefix_the_comparison_cannot_answer_refuses() -> Bool {
+  match ipv4_same_network(
+    a: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 10),
+    b: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 11), prefix: 27) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE SHIPPED ROWS CARRY ONE INTERFACE NAME PER RAIL, ASSERTED OVER THE ROSTER.
+//
+// This claim replaces one that asserted the opposite. It was written from a peer session's report
+// that the interface names were CROSSED between the hosts, and reading the durable /etc/netplan on
+// both machines showed they are not -- the crossed state existed, had been applied by hand, and was
+// a defect rather than the convention. The witness that encoded it would have locked the defect in.
+// Two rails, each naming one interface at both ends, and the two rails naming different ones.
+test fn w_each_rail_names_one_interface_at_both_ends() -> Bool {
+  length(spark_fabric_links()) == 2
+    && all(spark_fabric_links(), l =>
+      (l.endpoint_a.interface as String) == (l.endpoint_b.interface as String))
+    && !any(spark_fabric_links(), x =>
+      any(spark_fabric_links(), y =>
+        (x.name as String) != (y.name as String)
+          && (x.endpoint_a.interface as String) == (y.endpoint_a.interface as String)))
+}
+
+// AND EACH HOST OWNS ONE ENDPOINT ON EACH LINK -- two apiece, on different interfaces. A host that
+// is not an end of a link gets nothing from it rather than a default.
+test fn w_each_fabric_host_owns_one_endpoint_per_link() -> Bool {
+  length(spark_fabric_endpoints_on(host: operator_host_srv7)) == 2
+    && length(spark_fabric_endpoints_on(host: operator_host_srv8)) == 2
+    && length(spark_fabric_endpoints_on(host: "srv1" as HostIdentity)) == 0
+    && all(spark_fabric_links(), l =>
+      match fabric_endpoint_on(link: l, host: "srv1" as HostIdentity) {
+        Present { value: _ } => false
+        Absent => true
+      })
+}
+
+// THE CIDR RENDERING IS WHAT /etc/netplan CARRIES, so it is asserted against the exact spelling read
+// back off the durable file on spark-c2b1 rather than against a re-derivation of itself.
+test fn w_the_cidr_rendering_matches_the_durable_netplan_spelling() -> Bool {
+  (render_ipv4_cidr(
+    addr: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 10),
+    prefix: 24) as String) == "192.168.100.10/24"
+    && (render_ipv4_cidr(
+      addr: ipv4_address(octet1: 192, octet2: 168, octet3: 101, octet4: 11),
+      prefix: 24) as String) == "192.168.101.11/24"
+}
+
+test fn w_all_spark_fabric_claims_hold() -> Bool {
+  w_a_wellformed_rail_constructs()
+    && w_a_rail_that_could_not_carry_collective_traffic_has_no_constructor()
+    && w_the_two_rails_are_not_one_network()
+    && w_a_prefix_the_comparison_cannot_answer_refuses()
+    && w_each_rail_names_one_interface_at_both_ends()
+    && w_each_fabric_host_owns_one_endpoint_per_link()
+    && w_the_cidr_rendering_matches_the_durable_netplan_spelling()
+}

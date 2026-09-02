@@ -15,6 +15,7 @@ import gunbc.spark.cell_role {
   spark_cell_role_eq,
   spark_serving_cell_hosts,
   spark_training_cell_hosts,
+  SparkCellRoleAssignment,
 }
 import gunbc.spark.serving_desired {
   SparkServingDesiredAdmitted,
@@ -35,6 +36,7 @@ import gunbc.spark.serving_converge_plan {
   SparkServingRoleScopedDesiredReady,
   SparkServingRoleScopedDesiredRefused,
   spark_serving_role_scoped_desired_members,
+  spark_serving_role_scoped_desired_members_in,
   spark_serving_axis_for_observation,
   fleet_converge_spark_serving_action_at,
 }
@@ -159,18 +161,21 @@ fn w_retirement_effects(address: SparkServingResourceAddress) -> List<SparkServi
   }
 }
 
-// THE ROLES ARE DISJOINT AND TOTAL OVER THE TWO SPARKS.
+// THE ROLES ARE DISJOINT, ASSERTED AS AN IDENTITY JOIN RATHER THAN A ROSTER TRANSCRIPT.
 //
 // A cell holding both roles has no constructor, so this claim cannot be about that -- it is about
-// the ASSIGNMENT, where the same host appearing in both rosters is still writable. It is the
-// assignment, not the type, that this checks.
+// the ASSIGNMENT, where the same host appearing in both rosters is still writable.
+//
+// WHAT THIS USED TO SAY, AND WHY IT WAS WRONG. It read `length(serving) == 1 && length(training) == 1
+// && srv5 serves && srv6 trains` -- a copy of the current roster checked against itself. DESIGN §5:
+// completeness is an identity join, not a count equality, and a literal copied from the same tree is
+// not an oracle. It was also a change detector in the worst place: the operator reversing srv6's
+// dedication is a DECISION, and this claim turned that decision into a red test rather than a
+// roster the model simply projects. The invariant it was reaching for is disjointness, which does not
+// mention any host at all.
 test fn w_spark_roles_are_disjoint_over_the_assignment() -> Bool {
-  length(spark_serving_cell_hosts()) == 1
-    && length(spark_training_cell_hosts()) == 1
-    && any(spark_serving_cell_hosts(), h => h as String == operator_host_srv5 as String)
-    && any(spark_training_cell_hosts(), h => h as String == operator_host_srv6 as String)
-    && !any(spark_serving_cell_hosts(), h => h as String == operator_host_srv6 as String)
-    && !any(spark_training_cell_hosts(), h => h as String == operator_host_srv5 as String)
+  !any(spark_serving_cell_hosts(), h =>
+    any(spark_training_cell_hosts(), t => h as String == t as String))
 }
 
 // A HOST NOBODY ASSIGNED HAS NO ROLE, WHICH IS NOT A ROLE.
@@ -185,29 +190,27 @@ test fn w_unassigned_host_has_no_spark_role() -> Bool {
   }
 }
 
-// SERVING DESIRED STATE IS SRV5 ALONE, AND IT GOT THERE BY PROJECTION.
+// SERVING DESIRED STATE IS EXACTLY THE SERVING CELLS, IN BOTH DIRECTIONS.
 //
-// This is the claim that goes red the moment srv6's role is reverted to SparkServingCell -- which is
-// the point. Nothing here names srv6 as excluded; the roster simply is what the role authority says,
-// so a role change moves it without this file being touched.
+// The projection claim, stated as the bijection it is rather than as the roster it currently
+// produces. Every serving cell reaches desired state and nothing else does, so a role change moves
+// the roster without this file being touched -- which is what the predecessor claimed to do and did
+// not, because it named srv5 and srv6 directly.
 test fn w_serving_desired_hosts_are_the_serving_cells() -> Bool {
-  length(spark_serving_desired_hosts) == 1
-    && any(spark_serving_desired_hosts, h => h as String == operator_host_srv5 as String)
-    && !any(spark_serving_desired_hosts, h => h as String == operator_host_srv6 as String)
+  all(spark_serving_cell_hosts(), c =>
+    any(spark_serving_desired_hosts, h => h as String == c as String))
+    && all(spark_serving_desired_hosts, h =>
+      any(spark_serving_cell_hosts(), c => c as String == h as String))
 }
 
-// THE OFFER ROSTER EXCLUDES THE SERVING CELL, ASSERTED OVER THE ROSTER ITSELF.
+// THE OFFER ROSTER EXCLUDES EVERY SERVING CELL, AND AN UNASSIGNED HOST IS IN NEITHER.
 //
-// This asked a `spark_host_offerable_for_training` predicate, which existed only to be asked by this
-// claim -- a claim whose whole subject is a function nothing else calls measures its own fixture. The
-// subject that matters is the roster P3's supply module will consume, so the claim reads that: srv5
-// is absent from it because it serves, srv6 is present because it trains, and an unassigned host is
-// in neither roster because it is not a Spark cell.
+// The subject is the roster the training-supply module will consume. A serving cell must never
+// appear in it -- that is the contention this role authority exists to prevent -- and a machine
+// nobody assigned is in neither roster because it is not a Spark cell.
 test fn w_serving_cell_is_not_offerable_to_the_training_fabric() -> Bool {
   let trainable = spark_training_cell_hosts()
-  length(trainable) == 1
-    && any(trainable, h => h as String == operator_host_srv6 as String)
-    && !any(trainable, h => h as String == operator_host_srv5 as String)
+  !any(trainable, t => any(spark_serving_cell_hosts(), c => c as String == t as String))
     && !any(trainable, h => h as String == "srv1")
     && !any(spark_serving_cell_hosts(), h => h as String == "srv1")
 }
@@ -498,8 +501,24 @@ fn w_occurrence(host: HostIdentity) -> SparkServingOccurrence {
   }
 }
 
+// THE ROSTER IS A FIXTURE, NOT THE PRODUCTION ASSIGNMENT.
+//
+// These claims are about the role-SCOPING arms, and an arm's evidence must not depend on which
+// machines are currently assigned what. Reading the production roster is exactly how the training
+// arm nearly lost its only witness when the operator withdrew srv6's dedication on 2026-09-02: the
+// arm still decides desired state and nothing would have exercised it. So the roster below is
+// authored here and names two hosts that hold one role each.
+data w_serving_cell_host: HostIdentity = "w-serving-cell" as HostIdentity
+data w_training_cell_host: HostIdentity = "w-training-cell" as HostIdentity
+
+data w_fixture_roster: List<SparkCellRoleAssignment> = [
+  SparkCellRoleAssignment { host: w_serving_cell_host, role: SparkServingCell },
+  SparkCellRoleAssignment { host: w_training_cell_host, role: SparkTrainingCell },
+]
+
 fn w_role_scoped_count(host: HostIdentity) -> Int {
-  match spark_serving_role_scoped_desired_members(
+  match spark_serving_role_scoped_desired_members_in(
+    assignments: w_fixture_roster,
     occurrence: w_occurrence(host: host),
     serving_release: w_release(),
   ) {
@@ -512,10 +531,24 @@ fn w_role_scoped_count(host: HostIdentity) -> Int {
 //
 // Seven for the serving cell, three for the training cell, and the difference is the four service
 // members whose removal the teardown schedule orders. Both counts are asserted because a planner that
-// returned baseline for EVERY host would satisfy a claim that only checked srv6.
+// returned baseline for EVERY host would satisfy a claim that only checked the training cell.
 test fn w_the_planner_scopes_desired_state_by_role() -> Bool {
-  w_role_scoped_count(host: operator_host_srv5) == 7
-    && w_role_scoped_count(host: operator_host_srv6) == 3
+  w_role_scoped_count(host: w_serving_cell_host) == 7
+    && w_role_scoped_count(host: w_training_cell_host) == 3
+}
+
+// AND THE PRODUCTION ROSTER AGREES WITH THE ARM IT SELECTS. Without this the fixture above could
+// drift from what production actually asks: every production serving cell must reach the seven-member
+// desired state through the real entry point.
+test fn w_the_production_roster_reaches_the_serving_arm() -> Bool {
+  all(spark_serving_cell_hosts(), h =>
+    match spark_serving_role_scoped_desired_members(
+      occurrence: w_occurrence(host: h),
+      serving_release: w_release(),
+    ) {
+      SparkServingRoleScopedDesiredReady { members: ms } => length(ms) == 7
+      SparkServingRoleScopedDesiredRefused { cause: _ } => false
+    })
 }
 
 // A HOST NOBODY ASSIGNED REFUSES RATHER THAN DEFAULTING TO SERVING. This planner is reachable with
@@ -577,34 +610,39 @@ fn w_row_is_retirement(row: FleetConvergeSparkServingTypedAction) -> Bool {
       })
 }
 
-// A FULLY SERVING TRAINING CELL PLANS FOUR RETIREMENTS THROUGH THE PRODUCTION ROOT.
+// ── DECLARED §4b(3) RUNG DROP: PRODUCTION-ROOT RETIREMENT EVIDENCE ──────────────────────────────
 //
-// The observation handed in is a host serving perfectly: runtime materialized, model held, unit
-// present and enabled and RUNNING, linger on. Under the pre-role planner this input produced zero
-// rows -- it is exactly the desired seven-member serving state -- so this claim is red on the old
-// production path for the right reason, rather than red because the fixture was rebuilt.
-test fn w_the_production_artifact_plans_four_retirements_for_the_training_cell() -> Bool {
-  let rows = w_artifact_rows(host: operator_host_srv6)
-  length(rows) == 4 && all(rows, r => w_row_is_retirement(row: r))
-}
-
-// AND THE SERVING CELL IN THE SAME STATE PLANS NOTHING. Without this, "four rows" could be true of a
-// planner that retires every host it is handed.
-test fn w_the_production_artifact_plans_no_rows_for_the_converged_serving_cell() -> Bool {
-  length(w_artifact_rows(host: operator_host_srv5)) == 0
-}
-
-// THE RETAINED CACHE IS ABSENT FROM THE PRODUCTION ROWS, not merely from the fixture reconcile.
-test fn w_the_production_retirement_touches_no_baseline_address() -> Bool {
-  let rows = w_artifact_rows(host: operator_host_srv6)
-  length(rows) == 4
-    && !any(rows, r => string_contains(
-        fleet_converge_spark_serving_action_at(action: r.action),
-        spark_serving_resource_address_wire(address: SparkServingRuntimeRootAddress)))
-    && !any(rows, r => string_contains(
-        fleet_converge_spark_serving_action_at(action: r.action),
-        spark_serving_resource_address_wire(address: SparkServingLingerAddress)))
-}
+// Three claims stood here and are removed rather than left silently red:
+// w_the_production_artifact_plans_four_retirements_for_the_training_cell,
+// w_the_production_artifact_plans_no_rows_for_the_converged_serving_cell, and
+// w_the_production_retirement_touches_no_baseline_address. Each entered through
+// `fleet_converge_plan_artifact` -- the root the converge actuator itself walks -- and each needed a
+// PRODUCTION host holding SparkTrainingCell to have a subject. After the operator's 2026-09-02
+// withdrawal of srv6's training dedication the roster holds none, so their subject no longer exists.
+//
+//   previous rung:      mechanically preventable -- the training arm's four retirement rows and the
+//                       serving arm's zero rows were both exercised through the production root
+//   temporary rung:     mitigatable -- the arms are still exercised, but only at
+//                       spark_serving_role_scoped_desired_members_in over a fixture roster
+//                       (w_the_planner_scopes_desired_state_by_role), which is not the path the
+//                       converge actuator calls
+//   reason:             operator decision, recorded at gunbc.spark.cell_role
+//                       spark_cell_role_assignment_basis -- role is converged desired state, not a
+//                       node dedication, so no host is reserved for training
+//   population:         the training arm of Spark serving role scoping, and the retirement rows it
+//                       produces, as reached through fleet_converge_plan_artifact. The serving arm,
+//                       the no-role refusal, the reconcile, the freeze and the apply are unaffected
+//                       and their production-root claims remain enrolled below.
+//   restoration trigger: a roster-parameterized plan artifact -- the assignment roster threaded from
+//                       fleet_converge_plan_artifact down to spark_serving_role_scoped_desired_members_in,
+//                       SUFFICIENT FOR a witness to drive the production root over an authored roster
+//                       and read back the four retirement rows without any production host holding
+//                       SparkTrainingCell. Half of that capability exists: cell_role
+//                       spark_cell_role_in and the `_in` planner variant take the roster already;
+//                       what is missing is the threading through the generic artifact entry point.
+//                       Restoring a training cell to the production roster does NOT retire this drop
+//                       -- that would make the evidence depend on the assignment again, which is the
+//                       defect the drop exists to record.
 
 // A HOST WITH NO ROLE REFUSES AT THE PRODUCTION ROOT.
 //

@@ -23,10 +23,30 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 // that is not assigned here is not a Spark cell, which the assignment lookup answers as Absent rather
 // than as a third role.
 //
-// DYNAMIC ROLE SWITCHING IS DELIBERATELY NOT MODELLED. Nothing here represents a cell in transition,
-// and that is scope rather than omission: SPARK-PAIR-0 excludes serve/train switching, so the only
-// transition this project performs is the one-way retirement of serving from srv6, carried by the
-// retirement plan and its readiness proof rather than by a role value that means "mid-flight".
+// A ROLE IS CONVERGED DESIRED STATE, NOT A DEDICATION.
+//
+// CORRECTED 2026-09-02 BY OPERATOR DECISION, and the correction is to the FRAME rather than to one
+// row. The predecessor note said dynamic role switching was deliberately not modelled and that the
+// only transition this project performs is a ONE-WAY retirement of serving from srv6. The operator's
+// instruction is the opposite of both halves: "i wouldn't dedicate a whole node for any task - just
+// have it converge and serve whatever task we converge it to." Training remains a modelled
+// capability -- gunbc.spark.training_ready still carries retirement, its readiness proof and its
+// remedies -- but it stops being a NODE RESERVATION, and the reservation was the premature part.
+//
+// So a row here is desired state that convergence actuates, and editing one is the ordinary way a
+// cell changes what it is for. What survives unchanged is everything that made the sum the right
+// shape: a cell still holds exactly ONE role at a time, because the contention that motivated it is
+// physical and did not go away -- two roles on one unified memory pool have no arbiter. The closed
+// sum is what makes that a construction fact rather than a checked one, and there is still no
+// `SparkDualRoleCell` and no absent arm.
+//
+// WHAT IS STILL NOT MODELLED, stated as a gap rather than as scope: a cell IN TRANSITION. Nothing
+// here represents mid-flight, so a role edit is a discrete change of desired state and the
+// convergence that follows it is what makes it real on the host. A bounded temporary-role
+// authority -- a probe that borrows a cell and whose teardown restores the prior role -- is the
+// next rung and does not exist yet. Until it does, a serving deployment that wants a training cell
+// must change the assignment, not run beside it.
+
 type SparkCellRole
   = SparkServingCell
   | SparkTrainingCell
@@ -46,7 +66,7 @@ type SparkCellRoleAssignment {
 // The basis is that srv5 already carries the live serving occurrence. Assigning serving to the host
 // that already serves makes the serving half of this project a model upgrade on a converged host,
 // and confines the retirement -- the part with no existing vocabulary -- to one machine.
-data spark_cell_role_assignment_basis: NonEmptyStr = "OPERATOR DECISION (SPARK-PAIR-0, 2026-08-29): srv5 serves, srv6 trains. The units are identical, so the assignment is a tie-break rather than a measurement. Basis: srv5 already holds the live serving occurrence, so serving stays where it converged and the retirement -- the operation this corpus had no vocabulary for -- is confined to srv6." as NonEmptyStr
+data spark_cell_role_assignment_basis: NonEmptyStr = "OPERATOR DECISION (SPARK-PAIR-0, 2026-09-02): srv5 and srv6 both serve. This SUPERSEDES the 2026-08-29 decision that assigned srv6 to training; the operator withdrew it as premature -- 'i wouldn't dedicate a whole node for any task - just have it converge and serve whatever task we converge it to' -- and moved training to its own lane. The units are identical, so neither assignment was ever a measurement. Consequence in gunbc.spark.serving_converge_plan: srv6 now receives full serving desired members rather than the baseline-only members a training cell receives." as NonEmptyStr
 
 data srv5_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
   host: operator_host_srv5,
@@ -55,7 +75,7 @@ data srv5_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
 
 data srv6_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
   host: operator_host_srv6,
-  role: SparkTrainingCell,
+  role: SparkServingCell,
 }
 
 data spark_cell_role_assignments: List<SparkCellRoleAssignment> = [
@@ -103,13 +123,28 @@ type SparkCellRoleLookup
   | SparkCellRoleUnique { role: SparkCellRole }
   | SparkCellRoleAmbiguous { assignments: List<SparkCellRoleAssignment> }
 
-fn spark_cell_role_of(host: HostIdentity) -> SparkCellRoleLookup {
-  let matched = filter(spark_cell_role_assignments, a => host_identity_eq(a: a.host, b: host))
+// THE LOOKUP IS OVER A ROSTER, AND THE PRODUCTION ROSTER IS ONE APPLICATION OF IT.
+//
+// Split out 2026-09-02 for a reason the roster change exposed: every claim about role SCOPING read
+// the production assignments, so the evidence for the training arm existed only while a production
+// host happened to hold that role. The operator withdrawing srv6's dedication would then have
+// silently retired a behaviour's only witness -- the arm still exists and still decides desired
+// state, and nothing would have exercised it. A capability's evidence must not depend on which
+// machines are currently assigned what.
+fn spark_cell_role_in(
+  assignments: List<SparkCellRoleAssignment>,
+  host: HostIdentity,
+) -> SparkCellRoleLookup {
+  let matched = filter(assignments, a => host_identity_eq(a: a.host, b: host))
   if length(matched) > 1 {
     SparkCellRoleAmbiguous { assignments: matched }
   } else {
     fold(matched, init: SparkCellRoleAbsent, f: fn(acc, a) { SparkCellRoleUnique { role: a.role } })
   }
+}
+
+fn spark_cell_role_of(host: HostIdentity) -> SparkCellRoleLookup {
+  spark_cell_role_in(assignments: spark_cell_role_assignments, host: host)
 }
 
 fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
