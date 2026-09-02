@@ -117,8 +117,34 @@ fn raw_realization_envelope(
 // because a raw envelope that has been checked is still a raw envelope, and the next reader has no
 // way to tell it apart from an unchecked one. Decoding into PlateDimensions and CouponOperation is
 // what makes the downstream total: there is no arm in which an unadmitted value reaches geometry.
+// THE ADMITTED VALUE IS UNFORGEABLE, AND AN EARLIER REVISION ONLY CLAIMED IT WAS.
+//
+// That revision put the geometry directly on the accepted arm -- EnvelopeAdmitted { plate, features }
+// -- and argued that conformance was unreachable without admission "because the refusal arms have no
+// plate and no features to hand on". That reasoning is necessary and INSUFFICIENT, and a probe
+// settled it: a foreign module compiled `EnvelopeAdmitted { plate: p, features: [] }` directly, with
+// a deliberate must-fail control in the same file proving the compiler had actually read it. The raw
+// envelope could not bypass the judge; a CALLER could bypass the raw envelope entirely and mint the
+// trusted result. The accepted arm was itself a geometry mint.
+//
+// AdmittedRealization is sole_constructor, so it can only be built inside THIS module, and the only
+// function here that builds one is admit_envelope after every wire check has passed. A foreign
+// module may still name the EnvelopeAdmitted arm; it cannot obtain an AdmittedRealization to put in
+// it. That moves the class from "no caller happens to do this" to "no caller can express this".
+//
+// THE EVIDENCE IS THE COMPILER, NOT A WITNESS, and that is the honest form here. sole_constructor is
+// checked on every build of the whole corpus, so an accidental foreign construction REDS THE GATE at
+// the point it is written. A witness asserting the refusal cannot be enrolled in a corpus that must
+// compile -- its RED is a COMPILE failure, so the check and the corpus cannot both be green. The
+// missing capability is an expect-compile-refusal harness; until one exists the probe above is
+// recorded in this annotation and in the commit that introduced it rather than standing as a file.
+type AdmittedRealization sole_constructor {
+  plate: PlateDimensions
+  features: List<CouponOperation>
+}
+
 type EnvelopeAdmission
-  = EnvelopeAdmitted { plate: PlateDimensions, features: List<CouponOperation> }
+  = EnvelopeAdmitted { admitted: AdmittedRealization }
   | EnvelopeSchemaUnsupported { received: NonEmptyStr, supported: NonEmptyStr }
   | EnvelopeOperationUnknown { received: NonEmptyStr }
   | EnvelopeCarriesNoOperations
@@ -191,14 +217,16 @@ fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
       EnvelopeCarriesNoOperations
     } else {
       EnvelopeAdmitted {
-        plate: plate_dimensions(
-          size_x: micrometer(count: envelope.plate_x_um),
-          size_y: micrometer(count: envelope.plate_y_um),
-          size_z: micrometer(count: envelope.plate_z_um),
-        ),
-        features: fold(envelope.operations, init: [], f: fn(acc, row) {
-          concat(acc, [decode_operation_row(row: row)])
-        }),
+        admitted: AdmittedRealization {
+          plate: plate_dimensions(
+            size_x: micrometer(count: envelope.plate_x_um),
+            size_y: micrometer(count: envelope.plate_y_um),
+            size_z: micrometer(count: envelope.plate_z_um),
+          ),
+          features: fold(envelope.operations, init: [], f: fn(acc, row) {
+            concat(acc, [decode_operation_row(row: row)])
+          }),
+        },
       }
     }
   }
@@ -406,10 +434,25 @@ fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> Contrac
 // CENTRES sat outside the wall entirely, so a handler cutting correct diameters at wrong positions,
 // or on a plate of the wrong thickness, conformed. The same fault one level out.
 //
-// It now compares the whole specimen: plate on three axes, then operation count, then every
-// operation field by field. The generalisation to write down is that a wall must compare the subject
-// a consumer will actually receive, and every projection of that subject is a place the two can
-// disagree while the check stays green.
+// It now compares plate on three axes, then operation count, then every operation field by field.
+// The generalisation to write down is that a wall must compare the subject a consumer will actually
+// receive, and every projection of that subject is a place the two can disagree while the check
+// stays green.
+//
+// AND THIS IS WHOLE-GEOMETRY CONFORMANCE, NOT WHOLE-SPECIMEN CONFORMANCE. An earlier revision of
+// this annotation said "the whole specimen", which is the same over-read one level up from the two
+// it just corrected. What is compared is the normalized GEOMETRY PAYLOAD. What is NOT compared:
+//
+//   specimen identity    carried, single-armed, not compared
+//   revision             not modeled as a compared subject at all
+//   feature identity     POSITIONAL -- operation i is "the i-th rung" by list position, not by an
+//                        identity the operation carries
+//
+// The distinction matters downstream rather than here: PRINT-5 will read a conforming verdict and
+// must not take it as proof that identity and canonical ordering were adjudicated. A permutation is
+// REFUSED (see w_an_unauthorised_operation_order_refuses) because position is compared -- which is
+// not the same as features HAVING identities, and the difference reappears the moment two features
+// share a geometry.
 fn admit_realized_specimen(
   contract: RealizationContract,
   plate: PlateDimensions,
@@ -438,9 +481,9 @@ fn judge_realization(
 ) -> RealizationVerdict {
   let admission = admit_envelope(envelope: envelope)
   match admission {
-    EnvelopeAdmitted { plate: p, features: f } =>
+    EnvelopeAdmitted { admitted: a } =>
       RealizationJudged {
-        conformance: admit_realized_specimen(contract: contract, plate: p, features: f),
+        conformance: admit_realized_specimen(contract: contract, plate: a.plate, features: a.features),
       }
     EnvelopeSchemaUnsupported { received: _, supported: _ } =>
       RealizationRefusedAtWire { admission: admission }

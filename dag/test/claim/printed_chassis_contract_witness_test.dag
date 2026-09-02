@@ -297,7 +297,7 @@ test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
         RealizationRefusedAtWire { admission: a } =>
           match a {
             EnvelopeSchemaUnsupported { received: rv, supported: sv } => rv == "v999" && sv == contract_schema_version
-            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeOperationUnknown { received: _ } => false
             EnvelopeCarriesNoOperations => false
           }
@@ -325,7 +325,7 @@ test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
         RealizationRefusedAtWire { admission: a } =>
           match a {
             EnvelopeOperationUnknown { received: r } => r == "chamfer"
-            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeCarriesNoOperations => false
           }
@@ -355,7 +355,7 @@ test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
         RealizationRefusedAtWire { admission: a } =>
           match a {
             EnvelopeCarriesNoOperations => true
-            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeOperationUnknown { received: _ } => false
           }
@@ -391,7 +391,7 @@ test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
         RealizationRefusedAtWire { admission: a } =>
           match a {
             EnvelopeOperationUnknown { received: r } => r == "datum_mark"
-            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeAdmitted { admitted: _ } => false
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeCarriesNoOperations => false
           }

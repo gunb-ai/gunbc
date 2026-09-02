@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Micrometer, micrometer, Millimeter, millimeter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.climbing_holds.types { DimensionEvidence, OperatorRelayedDocument }
 
 // MICROATX IS ITS OWN SPECIFICATION, NOT A SECTION OF ATX 2.2, and an earlier revision of this
 // corpus got that wrong by putting the microATX envelope, location population and coordinates inside
@@ -56,7 +57,40 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on them exactly, which
 // is not a coincidence available to invented numbers. Corroboration of a board correspondence is not
 // a provenance upgrade for the standard reading, and this row does not claim otherwise.
-data micro_atx_coordinate_provenance: NonEmptyStr = "cited-via-relay: routed review reporting the microATX Motherboard Interface Specification location population and coordinates; no first-party figure read in this session; revision not established"
+// THIS WAS A STRING AND THAT WAS A SECOND NAME FOR AN EXISTING CONCEPT. It read
+// "cited-via-relay: ..." as an ordinary NonEmptyStr, which is §4c misplaced data -- a CITATION
+// STATUS is exactly the kind of fact that belongs in a typed carrier -- and §3 nicknaming, because
+// `DimensionEvidence` already closes this vocabulary and `OperatorRelayedDocument` is already the
+// arm for a document read by someone other than the authoring session. Nothing could consume the
+// string; the grade was invisible to every lens that reads the tree.
+//
+// ON THE CARRIER'S HOME: it lives in `extdeps.climbing_holds.types`, which is a misleading address
+// for a general concept, and the type's OWN annotation says so without meaning to -- it records that
+// the arm exists because "a board's power-header inventory was asserted from memory", a failure with
+// no climbing hold anywhere in it. Provenance grade is domain-agnostic and §3 says a fact's home is
+// its LAYER rather than its file, so importing across is correct and re-minting a parallel grade
+// here would be the nicknaming this row just stopped doing. RELOCATION TRIGGER: a third consumer
+// outside climbing_holds, at which point the carrier moves to a neutral extdeps home and both
+// consumers follow it.
+data micro_atx_coordinate_provenance: DimensionEvidence = OperatorRelayedDocument {
+  authority: extdeps_external_authority_anchor,
+  relay_note: "Routed review reporting the microATX Motherboard Interface Specification location population and coordinates. No first-party figure read in this session; the revision is not established. Corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on these values exactly.",
+}
+
+// A RESIDUAL DEFECT, RECORDED RATHER THAN HALF-FIXED. `extdeps_model_scope` above names
+// `micro_atx_mounting_locations` as the subject and cites the archived ATX 2.2 PDF as its
+// first_citation -- a STRUCTURAL claim that these coordinates came from that document, which the
+// provenance row directly above denies. This session's extraction of that PDF recovered Figure 7's
+// text layer and NOT the mounting-location artwork.
+//
+// It is left standing because the honest repair is not obvious and guessing would be worse: there is
+// no microATX document in hand to cite, so the choices are to cite the ATX PDF (what it does now,
+// and wrong about which document supplied the numbers), to cite nothing (losing the only anchor we
+// have), or to model a citation whose authority is a RELAY rather than a document -- which is a
+// change to `extdeps.external_authority`, not to this file. TRIGGER: either a first-party read of a
+// microATX revision, or an ExternalAuthority arm that can carry a relayed-with-no-document chain.
+// Until one of those lands, the structural citation over-claims and this row says so out loud rather
+// than letting a reader take first_citation at face value.
 
 // THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
 // and because this session got it BACKWARDS once and shipped the error.
