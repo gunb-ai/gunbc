@@ -1592,9 +1592,21 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // would put the evidence on a surface disjoint from the one anyone reads for that identity.
     for refused in &outcome.interrupted_before_verdict {
         eprintln!(
-            "required-floor: INTERRUPTED-BEFORE-VERDICT {} raised_by={} enrolled_expected_red={} {}",
+            "required-floor: INTERRUPTED-BEFORE-VERDICT {} raised_by={} \
+             cpu_at_least={}ms/{}ms wall_at_least={}ms/{}ms enrolled_expected_red={} {}",
             refused.qualified,
-            refused.raised_by.label(),
+            refused.interrupt.raised_by.label(),
+            // BOTH CLOCKS, EACH AGAINST ITS OWN LIMIT. These are LOWER BOUNDS, which is what
+            // `at_least` says: the deadline preempted the witness, so the true cost is above
+            // them by an unbounded amount. They are printed anyway because the PAIR is what a
+            // reader needs — a row blocked on I/O that went away shows a small cpu figure beside
+            // a wall figure at its ceiling, and a row that genuinely computed shows cpu at or
+            // above the cpu limit. `cost=UNMEASURED` in the sentence that follows stays true of
+            // both and is what stops either figure being read as this row's cost.
+            refused.interrupt.elapsed_cpu_at_least_ms,
+            refused.interrupt.cpu_safety_limit_ms,
+            refused.interrupt.elapsed_wall_at_least_ms,
+            refused.interrupt.wall_safety_limit_ms,
             refused.enrolled_expected_red,
             refused.detail
         );
