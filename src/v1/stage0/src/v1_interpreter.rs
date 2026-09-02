@@ -17135,13 +17135,36 @@ TimedOut outcome so a crossing says which cap it crossed. Under that model a rec
 legitimately hold both a cpu and a wall observation, because neither is relying on its name \
 to say what it is. \
 \
-SEED DISPOSITION: the u128 fields below are seed instrumentation, and they are the ONLY \
-reason this note exists -- they carry their basis in a field name, which is exactly what the \
-ruled model replaces. They are retained because the enforced quantity had to stop being \
+SEED DISPOSITION: the two u128 fields below are seed instrumentation -- they carry their \
+basis in a field name, which is exactly what the ruled model replaces. They are retained because the enforced quantity had to stop being \
 dropped before the authority lands, and the seed is not where the authority belongs. \
 DISSOLVE-ON: ClockBasis lands in the std.observation authority and the declaration-grain \
 receipt projects cpu and wall through it; at that point these two bare fields are replaced \
-by basis-carrying measurements and this note is deleted with them.";
+by basis-carrying measurements and the clock half of this note is deleted with them. \
+\
+`eval_steps` IS SEED INSTRUMENTATION TOO AND ITS DISPOSITION IS NOT THAT ONE. This paragraph \
+exists because the sentence above once said the two u128 fields were the ONLY reason this \
+note exists, and that stopped being true the moment a third bare field landed in the same \
+struct (codex review 58626, which caught it). The distinction is not cosmetic: `eval_steps` \
+is a COUNT, not a duration. It has no clock basis, so ClockBasis landing neither replaces it \
+nor says anything about it -- and retiring this note on the DISSOLVE-ON above would delete \
+the only disposition the field has while the field itself survives, which is a trigger \
+discharging more than it covers. \
+\
+ITS OWN DISSOLVE-ON, named at a row a reader can evaluate rather than at a judgment about \
+how far v2 has got: the roadmap row `v1-zero-hand-maintained-rust`, the v1-exit lane's \
+finish line whose acceptance condition is that no hand-maintained Rust remains in the seed. \
+This counter counts THIS evaluator's steps, so it lives wherever that evaluator lives; when \
+the seed evaluator is gone the counter goes with it, and while that row is unaccepted this \
+surface is still owed. EARLIER REMOVAL IS PERMITTED AND EXPECTED -- v2 projecting the \
+per-claim work measure from a modeled receipt subsumes this -- but that is not the trigger, \
+because a scaffold may always dissolve early and what a trigger fixes is the point by which \
+it MUST be gone. \
+\
+WHAT DOES NOT DISSOLVE WITH IT: `evaluator_step_work_measure_tests`. Per DESIGN 4b(4) a \
+climb deletes the redundant lower-rung PRODUCTION handling and never the evidence -- the \
+envelope-invariance red, its size control and the fill-netting arm stay enrolled as the \
+executing proof that the measure is still invariant wherever it comes to be computed.";
 
 pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
     SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
