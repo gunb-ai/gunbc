@@ -5166,6 +5166,7 @@ pub fn run_required_floor(
     let required_floor_disposition_path = std::env::var("GUNBC_REQUIRED_FLOOR_DISPOSITION").ok();
     let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let claim_cost_path = std::env::var("GUNBC_REQUIRED_FLOOR_CLAIM_COST").ok();
+    let cross_claim_demand_path = std::env::var("GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND").ok();
     let mut roster_join_report = if roster_join_active {
         // THE DENOMINATOR IS THE ENROLLED ROSTER, NOT THE SURVIVORS. Until 2026-09-01 this took
         // the post-suppression roster, so the report described only identities the fold could
@@ -5505,6 +5506,13 @@ pub fn run_required_floor(
         let (result, receipt) =
             run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
         final_symbol_retention = Some(frame.interner_stats_snapshot());
+        // FOLD THIS CLAIM'S RECOMPUTE LEDGER INTO THE CROSS-CLAIM CENSUS BEFORE THE FRAME DIES.
+        // The ledger is per-frame and reports only keys re-hit WITHIN one claim, so a producer
+        // this closure re-derives exactly once per claim is invisible to it in every claim
+        // separately — which is the population `v2.workflow.floor_pure_producer_share` is
+        // enrolled from. Absorbed here, one line after the measurement and before the next
+        // frame is built, so the census's claim grain is the loop's own.
+        v1_interpreter::absorb_claim_recompute_demand(&frame, &claim.qualified, &claim.module_path);
         let claim_rss_after = current_rss_bytes().unwrap_or(0) / 1024;
         let claim_rss_kb = claim_rss_after.saturating_sub(claim_rss_before);
         if claim_rss_kb > claim_rss_kb_max {
@@ -6791,6 +6799,93 @@ pub fn run_required_floor(
     }
     if let Some(path) = claim_cost_path {
         write_required_floor_claim_cost_tsv(&path, &outcome.claim_cost, cost_basis)?;
+    }
+    // THE CROSS-CLAIM DEMAND CENSUS. The per-claim cost receipt above says WHAT each claim was
+    // charged; this says WHICH PRODUCER IDENTITY the run re-derived across claims, which is the
+    // question the charge cannot answer and the one `v2.workflow.floor_pure_producer_share`
+    // enrolls from. It gates nothing and it enrols nothing: a row here is a candidate whose
+    // serve cost is still unmeasured, and that roster's own header records the case where the
+    // serve lost to the recompute.
+    {
+        let rows = v1_interpreter::cross_claim_demand_rows();
+        let disclosure = v1_interpreter::cross_claim_demand_disclosure();
+        // THE CEILING ANY TRUE TOTAL MUST SIT UNDER, carried beside the rows because the cost
+        // column is inclusive of callees and therefore NOT additive. Without it the first thing a
+        // reader does is sum the column, which on the first artifact gave ~14x the run's entire
+        // claim-side CPU.
+        let claim_cpu_total_ms: u128 = outcome
+            .claim_cost
+            .iter()
+            .map(|row| row.cpu_nanos / 1_000_000)
+            .sum();
+        // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
+        // orders by cross-claim recomputation and says so in band, so no consumer can read a
+        // log head as the census's own ranking or as a candidate roster.
+        let mut shared: Vec<&v1_interpreter::CrossClaimDemandRow> =
+            rows.iter().filter(|row| row.claims > 1).collect();
+        shared.sort_by_key(|row| std::cmp::Reverse(row.cross_claim_wasted_ns()));
+        eprintln!(
+            "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
+             omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
+             absorb_ms={} absorb_max_ms={} claim_cpu_total_ms={} (observation only; nothing \
+             refuses on these figures. The absorb runs AFTER each claim's measurement returns, so \
+             it is outside every claim's charged window and cannot trip the deadline; absorb_ms \
+             is what this instrument cost the run in total. DO NOT SUM THE COST COLUMN: durations \
+             are inclusive of callees, so a producer and its callees overlap and the sum counts \
+             the same nanoseconds once per level of nesting -- claim_cpu_total_ms is the ceiling \
+             any true total must sit under.)",
+            disclosure.claims_absorbed,
+            rows.len(),
+            shared.len(),
+            disclosure.omitted_keys,
+            disclosure.omitted_ns / 1_000_000,
+            disclosure.overflow_keys,
+            disclosure.absorb_ns_total / 1_000_000,
+            disclosure.absorb_ns_max / 1_000_000,
+            claim_cpu_total_ms
+        );
+        const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
+        eprintln!(
+            "[cross-claim-demand] the {} lines below are a PREVIEW ordered by cross-claim \
+             recomputation, not a candidate roster and not the artifact's order: a row is a \
+             producer whose SERVE cost is unmeasured, and enrolment is decided only by \
+             v2.workflow.floor_pure_producer_share, which has removed a top-ranking pair before \
+             on a measured serve-versus-recompute experiment.",
+            CROSS_CLAIM_DEMAND_PRINT_LIMIT.min(shared.len())
+        );
+        for row in shared.iter().take(CROSS_CLAIM_DEMAND_PRINT_LIMIT) {
+            eprintln!(
+                "[cross-claim-demand] producer={} args={} claims={} evals={} total_ms={} \
+                 cross_claim_ms={} modules={} sample={} @{}",
+                row.producer,
+                row.arg_shape,
+                row.claims,
+                row.evals,
+                row.total_ns / 1_000_000,
+                row.cross_claim_wasted_ns() / 1_000_000,
+                row.modules,
+                row.module_sample.join(","),
+                row.decl_site
+            );
+        }
+        if shared.len() > CROSS_CLAIM_DEMAND_PRINT_LIMIT {
+            eprintln!(
+                "[cross-claim-demand] ... and {} further shared producer identit(ies), not \
+                 printed. This list is the {} largest by cross-claim recomputation; the complete \
+                 retained population is in the cross-claim demand TSV this run uploads, and the \
+                 omitted-under-floor counters above bound what no artifact retains.",
+                shared.len() - CROSS_CLAIM_DEMAND_PRINT_LIMIT,
+                CROSS_CLAIM_DEMAND_PRINT_LIMIT
+            );
+        }
+        if let Some(path) = cross_claim_demand_path {
+            write_required_floor_cross_claim_demand_tsv(
+                &path,
+                &rows,
+                &disclosure,
+                claim_cpu_total_ms,
+            )?;
+        }
     }
     if let Some(path) = required_floor_disposition_path {
         write_required_floor_disposition_tsv(

@@ -4375,7 +4375,15 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // deliberately quotes NO number. emit_rust_reference_derived_census is the projection, but
 // reaching it needs a resolved graph, and the only .dag route to one is a nested compile that the
 // interpreter refuses -- compile_to_resolved over an authored source vector errors with
-// NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. That
+// NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. THAT
+// REFUSAL'S CAUSE IS CORRECTED 2026-09-02 (quick-crab-396) AND THE SENTENCE ABOVE NAMES A SYMPTOM:
+// nested compiles are one population that constructs Nodes through helpers omitting v1.std.core
+// Node's `ident` and then reads it, and the class is that the interpreter has no default for an
+// OMITTED OPTIONAL FIELD and refuses on read, general to any record type -- established on a fresh
+// type unrelated to Node, filed as the fourth form of gunbc.recurring_failure_mode
+// state_space_conflation. The consequence for THIS row is that the third trigger below is not the
+// only route: a nested-compile builtin would route around the refusal, while construction supplying
+// every declared field would remove it. That
 // is why the two nested-compile instruments the corpus already has
 // (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host
 // builtin. A CLI or builtin surface that hands the census a graph is capability growth in a

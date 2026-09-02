@@ -3189,6 +3189,97 @@ mod compiler_tests {
         );
     }
 
+    #[test]
+    fn renderer_hop_decides_realization_from_declaration_identity_without_an_env() {
+        // A type-expression renderer that is handed a Node and source_indices and NO env still
+        // DECIDES realization from the declaration identity it reads off that node: it computes
+        // dag_name at runtime with authored_name_at and hands it to the structural and numeric
+        // gates in v1.compiler.coercion. Each pair below holds the authored NAME constant and
+        // varies ONLY the declaring file, so no rule keyed on the name, and no disabled gate,
+        // satisfies both halves.
+        fn reference_at(name: &str, decl_file: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let span = std::rc::Rc::new(crate::std_types::SourceSpan {
+                file: decl_file.to_string(),
+                start: 0,
+                end: 0,
+            });
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                occurrence_identity: std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                name: name.to_string(),
+                ident: None,
+                span: span.clone(),
+                ident_span: Some(span),
+                children: std::rc::Rc::new(im::Vector::new()),
+                connective: crate::v1_std_core::Connective::NoConnective,
+                params: std::rc::Rc::new(im::Vector::new()),
+                inferred: None,
+                return_cardinality: crate::v1_std_core::Cardinality::Required,
+                uses: std::rc::Rc::new(im::Vector::new()),
+                body: None,
+                transport: None,
+                properties: std::rc::Rc::new(im::Vector::new()),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
+            })
+        }
+        // No inference is bound, which is the position a record FIELD type expression occupies in
+        // production, and the empty source_indices map means authored_name_at answers node.name.
+        // The fixture therefore supplies a NAME and a DECLARING FILE and nothing else.
+        fn base(name: &str, decl_file: &str) -> String {
+            crate::v1_compiler_emit::render_named_type_base(
+                reference_at(name, decl_file),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+                std::rc::Rc::new(HashMap::new()),
+            )
+        }
+        // PAIR 1 -- the structural roster (structural_declaration_modules_for).
+        assert_eq!(
+            base("Bool", "src/v2/std/logic.dag"),
+            "Bool",
+            "a structurally-declared Bool must render its dag spelling through the renderer hop"
+        );
+        assert_eq!(
+            base("Bool", "dag/std/types.dag"),
+            "bool",
+            "the prelude Bool must still reach the checkpoint row through the same renderer"
+        );
+        // PAIR 2 -- the numeric roster (numeric_realization_declaring_modules). Nat has no
+        // checkpoint row, so this pair reaches provenance_realizes_natively rather than
+        // provenance_declares_structurally: both deciding arms are witnessed at this hop.
+        assert_eq!(
+            base("Nat", "dag/std/nat.dag"),
+            "i64",
+            "the grounded numeric declaration must realize as the host numeric"
+        );
+        assert_eq!(
+            base("Nat", "src/v2/std/nat.dag"),
+            "Nat",
+            "the Peano declaration of the same spelling must NOT realize as a machine integer"
+        );
+        // POSITIVE CONTROL. Without it every row above is satisfied by a renderer that had simply
+        // stopped consulting identity and echoed the authored name, which is half of each pair.
+        assert_eq!(
+            base("Int", "src/v2/std/integer.dag"),
+            "i64",
+            "a table-present name bypasses identity and must still render the host spelling"
+        );
+        // MEASURED VACUITY, asserted rather than omitted. String is the obvious subject and
+        // cannot witness this hop: the structural arm renders qualified_last_segment(dag_name)
+        // and the checkpoint arm renders that row target_type, and for String both are "String".
+        // This row goes red if either spelling ever diverges, at which point String becomes an
+        // eligible subject and gets a pair like the two above.
+        assert_eq!(
+            base("String", "dag/std/string_type.dag"),
+            base("String", "dag/std/types.dag"),
+            "String is indistinguishable in rendered bytes across the structural gate"
+        );
+    }
+
     fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
         let optional_type = shaped_type_node("Node", Vec::new());
         let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
