@@ -13,11 +13,13 @@ import extdeps.tools.jq {
   JqInvocation,
   JqJsonBinding,
   JqBindingName,
+  JqTextBinding,
   JqLastResultExit,
   JqProgram,
   JqProgramExit,
   JqRawOutput,
-  JqBindingLoweringUnwired,
+  JqBindingNameDuplicate,
+  JqTextBindingUnwired,
   JqFileInputLoweringUnwired,
   JqLowered,
   JqLoweringRefused,
@@ -73,6 +75,22 @@ fn argv_of(invocation: JqInvocation) -> List<String> {
   }
 }
 
+// Compares the lowered argument vector to an expected one, element for element. A Rejected
+// lowering is never equal to a spelled vector -- it is the explicit refusal, not a guessed argv.
+fn argv_equals(invocation: JqInvocation, expected: List<String>) -> Bool {
+  match jq_invocation_cli_arguments(invocation: invocation) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: surface, diagnostics: _ } => {
+      let actual = fold_list(
+        xs: cli_surface_arguments(surface: surface),
+        empty: Empty,
+        cons: fn(acc, a) { list_snoc_item(xs: acc, item: cli_argument_text(argument: a)) }
+      )
+      actual == expected
+    }
+  }
+}
+
 // JqRawOutput selects the raw-output option and it renders in its CANONICAL long form, not -r.
 // JqProgramExit selects NO exit-status option. The program is exactly ONE argument even though it
 // contains spaces, quotes and parentheses.
@@ -122,17 +140,61 @@ test fn exit_policy_perturbation_adds_the_exit_status_option() -> Bool {
   }
 }
 
-// The unlowered axes REFUSE rather than emitting a plausible guess.
-test fn unlowered_bindings_refuse() -> Bool {
-  match jq_invocation_cli_arguments(invocation: JqInvocation {
+// WAVE 1A: a JSON binding now LOWERS instead of refusing. The caller names a typed binding --
+// a name and a JSON value -- and --argjson, the name and the value become three argv words,
+// derived from the semantic row. The caller never spells --argjson. Order is options first
+// (--raw-output, --exit-status), then the binding triplet, then the program operand.
+test fn json_binding_lowers_to_exact_argv() -> Bool {
+  argv_equals(
+    invocation: JqInvocation {
+      program: JqProgram { source: sensor_program },
+      bindings: [JqJsonBinding { name: JqBindingName { name: "index" }, value: "3" }],
+      input: JqInputStdin { content: "{}" },
+      output_encoding: JqRawOutput,
+      exit_policy: JqLastResultExit,
+    },
+    expected: ["--raw-output", "--exit-status", "--argjson", "index", "3", sensor_program],
+  )
+}
+
+// A repeated binding name REFUSES rather than handing the collision to jq's last-wins behaviour.
+test fn duplicate_binding_names_refuse() -> Bool {
+  match jq_invocation_lower(invocation: JqInvocation {
     program: JqProgram { source: sensor_program },
-    bindings: [JqJsonBinding { name: JqBindingName { name: "index" }, value: "3" }],
+    bindings: [
+      JqJsonBinding { name: JqBindingName { name: "index" }, value: "3" },
+      JqJsonBinding { name: JqBindingName { name: "index" }, value: "5" },
+    ],
     input: JqInputStdin { content: "{}" },
     output_encoding: JqRawOutput,
     exit_policy: JqProgramExit,
   }) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    JqLowered { plan: _ } => false
+    JqLoweringRefused { cause: cause } =>
+      match cause {
+        JqBindingNameDuplicate => true
+        JqTextBindingUnwired => false
+        JqFileInputLoweringUnwired => false
+      }
+  }
+}
+
+// JqTextBinding has no lowering this wave and REFUSES rather than emitting a plausible guess.
+test fn text_binding_refuses() -> Bool {
+  match jq_invocation_lower(invocation: JqInvocation {
+    program: JqProgram { source: sensor_program },
+    bindings: [JqTextBinding { name: JqBindingName { name: "label" }, value: "hello" }],
+    input: JqInputStdin { content: "{}" },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }) {
+    JqLowered { plan: _ } => false
+    JqLoweringRefused { cause: cause } =>
+      match cause {
+        JqBindingNameDuplicate => false
+        JqTextBindingUnwired => true
+        JqFileInputLoweringUnwired => false
+      }
   }
 }
 
@@ -180,29 +242,16 @@ test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
   }
 }
 
-// THE TWO UNLOWERED AXES ARE DISTINGUISHABLE. The refusal witnesses above assert only a generic
+// THE THREE REFUSAL CAUSES ARE DISTINGUISHABLE. The refusal witnesses above assert only a generic
 // Rejected, which one shared diagnostic identity would satisfy -- and did, while the cause was
-// prose the diagnostic never read.
-test fn the_two_unlowered_causes_carry_distinct_identities() -> Bool {
-  jq_lowering_refusal_identity(cause: JqBindingLoweringUnwired)
+// prose the diagnostic never read. Each pair of causes must carry a distinct identity.
+test fn the_refusal_causes_carry_distinct_identities() -> Bool {
+  jq_lowering_refusal_identity(cause: JqBindingNameDuplicate)
+    != jq_lowering_refusal_identity(cause: JqTextBindingUnwired)
+  && jq_lowering_refusal_identity(cause: JqTextBindingUnwired)
     != jq_lowering_refusal_identity(cause: JqFileInputLoweringUnwired)
-}
-
-test fn unlowered_bindings_refuse_with_the_binding_cause() -> Bool {
-  match jq_invocation_lower(invocation: JqInvocation {
-    program: JqProgram { source: sensor_program },
-    bindings: [JqJsonBinding { name: JqBindingName { name: "index" }, value: "3" }],
-    input: JqInputStdin { content: "{}" },
-    output_encoding: JqRawOutput,
-    exit_policy: JqProgramExit,
-  }) {
-    JqLowered { plan: _ } => false
-    JqLoweringRefused { cause: cause } =>
-      match cause {
-        JqBindingLoweringUnwired => true
-        JqFileInputLoweringUnwired => false
-      }
-  }
+  && jq_lowering_refusal_identity(cause: JqFileInputLoweringUnwired)
+    != jq_lowering_refusal_identity(cause: JqBindingNameDuplicate)
 }
 
 test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
@@ -216,7 +265,8 @@ test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
     JqLowered { plan: _ } => false
     JqLoweringRefused { cause: cause } =>
       match cause {
-        JqBindingLoweringUnwired => false
+        JqBindingNameDuplicate => false
+        JqTextBindingUnwired => false
         JqFileInputLoweringUnwired => true
       }
   }
