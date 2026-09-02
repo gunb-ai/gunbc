@@ -169,7 +169,7 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
 // into any derived scope would not establish that the mirror landed in the dependency layer its
 // imports require. Controls 4 and 5 above/below keep the zero-owner and two-owner opposites
 // authorable after the live row is repaired.
-test fn witness_compiler_tests_rust_mirror_has_one_v1_infer_owner_holds() -> Bool {
+test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool {
   match stage0_partition_rebuild_decision_today(
     changed_mirrors: ["v1_compiler_compiler_tests_rust.rs"],
     unlocatable: []
