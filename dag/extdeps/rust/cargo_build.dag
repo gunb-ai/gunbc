@@ -1,6 +1,6 @@
 module extdeps.cargo_build
 
-import std.types { FilePath, NonEmptyStr }
+import std.types { Bool, FilePath, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -242,6 +242,28 @@ service cargo.Build {
       0 => Unit
       101 => String "Run failed"
       nonzero => String "Binary exited with error"
+    }
+  }
+}
+
+// `cargo --version` prints ONE line naming the release, the short commit hash and the commit date.
+// It lives HERE rather than in extdeps.cargo because this module is where cargo's COMMAND
+// INVOCATIONS are modelled -- cargo.Build binds argv and shell transports -- while extdeps.cargo
+// owns the manifest vocabulary. A self-report is an invocation, not a manifest fact.
+//
+// It is bound separately from the rustc reading beside it in extdeps.rustc: the two binaries are
+// separately versioned, and a toolchain can carry a cargo that a rustc release line does not name.
+service cargo.Identity {
+  operation Version {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+    }
+    transport shell { argv: ["cargo", "--version"] }
+    exit {
+      0 => Unit
+      nonzero => String "cargo did not report its version"
     }
   }
 }

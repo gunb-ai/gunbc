@@ -59,6 +59,7 @@
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
+// src/std_interval.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
 // src/std_literal_elaboration.rs

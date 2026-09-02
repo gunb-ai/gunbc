@@ -197,7 +197,7 @@ import gunbc.spark.serving_membership {
 }
 import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
-  SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+  SparkServingExecutablePlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
   spark_serving_retirement_effect_wire,
 }
 import gunbc.remote_operation {
@@ -229,22 +229,135 @@ type TimerRetirementMemberAt = NonEmptyStr
 // never selected. Rendering the unselected families as refusals would make every fabric-only plan
 // operationally red for reasons no operator can act on.
 //
-// SO NEITHER STATE IS REPRESENTED: the fabric-only arm carries NO POSITION for timers, caps, spark
-// or slots. There is no field to pass empty and no field to pass refused. That is the section 5
-// construction move: the bad state has no spelling rather than being checked for.
+// SO NEITHER STATE IS DECLARED: the fabric-only arm carries NO AUTHORITATIVE POSITION for timers,
+// caps, spark or slots. There is no declared field to pass empty and none to pass refused, so no
+// production constructor and no request-driven fold can supply or project one.
 //
-// WHAT THIS DOES NOT YET DO, STATED BECAUSE AN EARLIER REVISION OF THIS ANNOTATION CLAIMED IT DID.
-// It said "the fabric-only CLI branch cannot invoke those observers and then cannot reach them at
-// all", which describes the construction this type makes POSSIBLE and not any code that exists.
-// There is no fabric-only CLI branch today: the wet plan path observes timers, caps, slots and
-// fabric unconditionally and builds a FullHostConverge, and the wet apply path still routes through
-// the loose-family matchers below. So what this type currently buys is that the fabric-only request
-// CANNOT BE MISEXPRESSED once something constructs one -- not that anything constructs one yet. The
-// annotation is corrected rather than deleted because the overclaim is the point: a type that makes
-// a wall possible is not the wall, and describing the intended construction in the present tense is
-// how a reader concludes coverage exists that does not.
+// AND THE COMPILER DOES NOT MAKE THAT UNWRITABLE, WHICH THIS ANNOTATION HAS NOW BEEN WRONG ABOUT
+// TWICE, IN TWO DIFFERENT WAYS.
+//
+// The first overclaim was about CODE: an earlier revision said "the fabric-only CLI branch cannot
+// invoke those observers and then cannot reach them at all", describing the construction this type
+// makes POSSIBLE rather than anything that existed.
+//
+// The second overclaim was about the COMPILER, and it is this sentence's own former ending -- "the
+// bad state has no spelling rather than being checked for". That is FALSE, and it is false for
+// every payload-carrying arm in this file, not only for this one. Measured through
+// compile_dag_diagnostic_census on the acceptance path: a payload-carrying coproduct arm literal
+// receives NO EXCESS-FIELD JUDGMENT AT ALL, so `FabricExecutionCellsConverge { host, ...,
+// observed_slots: [] }` compiles, and so does the same literal carrying a field name declared on no
+// type anywhere in the corpus. The arm is not projected to its arm record, the record-literal
+// construction roster comes back absent, and the unknown-field path declines to judge in silence.
+// The mechanism and its repair belong to the compiler-floor lane adhoc-0f99c6bc-193.
+//
+// SO STATE THE PROPERTY THAT IS TRUE. The arm declares no authoritative position for the excluded
+// axes, and the exact production constructors and request-driven folds do not supply or project
+// them; the current compiler does not prevent excess-field spelling. Both overclaims are corrected
+// in place rather than deleted, because the pattern is the lesson: a type that makes a wall possible
+// is not the wall, and neither is a declaration the compiler never checks. Reading a declaration
+// establishes intent, not acceptance.
+// THE LAUNCH-ENVIRONMENT SCOPE IS A NARROWER OBLIGATION, NOT A FILTERED FULL HOST. RLM-2 asks
+// whether the production instance can EXECUTE at an exact revision. CI runner capacity -- the
+// GitHub runner slot family and the runner service activation that follows it -- answers a
+// different question: how much work the host can accept, on which ladder its own plan
+// (docs/plans/runner-service-capacity-convergence.md) is the authority.
+//
+// THE ARM CARRIES TIMER RETIREMENT AND NOTHING ELSE, AND TWO AXES WERE REMOVED FROM AN EARLIER CUT
+// OF IT AFTER REVIEW MEASURED THEM AS FOREIGN. Recording both, because the mistake is instructive
+// and a reader will otherwise wonder why the narrowest scope is this narrow:
+//
+//   THE CAP AXIS IS CI CAPACITY WEARING A HOST-SHAPED NAME. fleet_converge_desired_caps builds
+//   CapMembers at gunbc_runner_per_slot_dropin_path, and gunbc.runner_unit resolves that to
+//   /etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf. Those are drop-ins ON THE
+//   ACTIONS-RUNNER UNIT TEMPLATE -- the same family the slot and activation axes act on, reached by
+//   a different name. Selecting caps here excluded runner capacity through the front door and
+//   readmitted it through the side.
+//
+//   AND THE CAP AXIS COULD NOT HAVE PERFORMED ANYWAY, which is the independent half. Cap
+//   MemberAdded/Changed/Removed arms are rendered into plan.txt for review and are deliberately NOT
+//   emitted into apply.sh (fleet_converge_cap_apply_shell_note: drop-in writes are live_deploy
+//   deploy-principal authority). So a launch terminal that COUNTED cap refusals was counting an
+//   axis whose work this script never performs: an actionable cap mutation would sit unapplied
+//   while the terminal reported FullyApplied. That is the fabricated plausible output at the
+//   actuation seam, admitted by an axis nobody could act on.
+//
+//   FABRIC EXECUTION CELLS ARE RULED OFF THIS PROOF'S PATH BY THE PLAN ITSELF.
+//   docs/plans/roadmap-launch-mvp-plan.md: "Do not couple the first roadmap-launch proof to Fabric
+//   CI." An axis the governing plan excludes is not this scope's obligation to carry.
+//
+// WHY THE REMAINDER IS NOT A CEREMONIAL EMPTY SCOPE. Timer retirement is a real observed obligation
+// with a real membership reconcile, a real baseline the apply compare-and-swaps against, and real
+// emitted teardown work in apply.sh. The scope answers a question that can fail.
+//
+// THE TWO WERE FUSED IN ONE SCOPE AND THE FUSION WAS LOAD-BEARING IN THE WRONG DIRECTION. A
+// full-host plan for srv1 lands PartiallyApplied on runner-slot ownership and activation readiness
+// -- both declared, both owned elsewhere, neither an RLM obligation -- and the RLM deployment fold
+// accepts only FullyApplied, so the launch environment could not be proven converged for reasons
+// that say nothing about the launch environment. That is not a threshold to relax: the terminal was
+// answering over a resource set wider than the question, so the fix is to make the question's
+// resource set nameable.
+//
+// IT OMITS THE AXES RATHER THAN EXCUSING THEM. Selecting the slot family and then ignoring its
+// refusals would leave the invalid state writable and put a policy in front of it; passing empty
+// slot and readiness populations would be the empty-observation narrow this file already refuses one
+// layer down, since an empty list is a positive claim that the host HAS no slots and licenses
+// removals. So LaunchEnvironmentConverge DECLARES no runner-slot position and no activation
+// position, and its terminal folds over the single axis it selects -- timer retirement.
+//
+// WHAT THAT DOES AND DOES NOT BUY, STATED EXACTLY, BECAUSE THIS SENTENCE PREVIOUSLY CLAIMED THE TOP
+// RUNG AND WAS WRONG. It said a launch-environment plan carrying a foreign axis "has no
+// constructor". The compiler admits one: see the excess-field measurement in the annotation above
+// the scope type. What holds instead, separated by WHETHER THE GATE EXECUTES IT:
+//
+//   NOT COVERED AT ALL, AND THAT IS A LOSS THIS PR TOOK RATHER THAN A GAP IT INHERITED. The arm
+//   declares only host and observed_timers, and WHERE launch requests are constructed is covered by
+//   NOTHING EXECUTING and by nothing enrolled. A site census over the production corpus stood here
+//   and is REMOVED, not deferred and not re-homed. It answered on no run: on every required-floor
+//   run of every head that carried it, in either of the two fold shapes it was written in, its three
+//   rows stood planned-without-terminal-verdict and were budget-refused before verdict. An enrolled
+//   witness that can never answer is counted as coverage while carrying none.
+//   THE COST REDUCTION WAS ATTEMPTED BEFORE THE DELETION WAS MADE FINAL, and that attempt is why
+//   this paragraph no longer argues from the subject's size. The census had been reaching for the
+//   whole atom population of every declaration when it reads only construction spellings; it was
+//   rebuilt to carry one Int per node instead, subject untouched, and the floor refused it again.
+//   Its worst row also grew the run's resident set by two gigabytes, the largest of any claim in
+//   that run, so the walk is not only over the CPU line. What the floor's remedy sentence offers
+//   besides reducing the cost is a lane declaring its own ceiling, and no such lane exists that
+//   executes anything -- relocation into a non-executing home is the bare de-enrollment the
+//   admission ruling forbids, and it deletes coverage while retaining the source.
+//   Re-filed at node://adhoc-cfdf3366-bc3, and it cannot start until BOTH hold: a lane with a dated
+//   ceiling that actually executes the exact enrolled witness identity and returns a candidate-bound
+//   terminal verdict, AFFORDING THIS ROW'S MEASURED RESOURCE COST AND NOT MERELY A LOOSER CPU
+//   NUMBER; and a substrate-readable per-field record-literal label sufficient for a witness to
+//   assert the exact field-name set of a named construction site.
+//   THE FIRST CLAUSE CARRIES A MEMORY TERM ON PURPOSE, because a trigger has to be satisfiable in
+//   fact and not only in form. A lane could be stood up with a generous dated CPU ceiling and would
+//   then die exactly as the off-gate probe host did -- at which point the trigger would read as
+//   fired while the witness still reached no verdict. The measured facts a candidate lane must
+//   clear, both re-derivable by naming the producer rather than by trusting this line: the required
+//   floor's own run (the reduced-shape head's run, which its floor artifact and the
+//   [floor-claim-memory] lines identify) reports this identity's CPU as UNMEASURED and above the
+//   per-claim ceiling with no upper bound, and reports its worst row as the LARGEST single claim in
+//   that run by resident-set growth, in gigabytes rather than megabytes. Until both clauses hold the
+//   only thing standing over WHERE construction happens is review of the two named declarations;
+//   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
+//   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or
+//   bundle identity -- executed as difference over production-shaped payloads by
+//   test.claim.fleet_converge_launch_scope_non_interference, each pair carrying an owning-scope
+//   control so the equality cannot be a dead fixture;
+//
+//   excess-field initializers are semantically analysed and are not runtime-evaluated.
+//
+// That is mechanically excluded from the authoritative launch-environment projection on this exact
+// tree. It is NOT structural impossibility, and with the site census removed nothing sees a new
+// construction site either -- and even with it, a field added INSIDE one of the two reviewed
+// constructors was invisible to it, because the field-NAME set of a record literal is not readable
+// from the substrate today. NEXT-RUNG TRIGGER, named as the capability: either the variant-local
+// excess-field compiler wall lands, or reflection exposes substrate-readable per-field record-literal
+// labels SUFFICIENT FOR a witness to assert the exact field-name set of a named construction site.
 type FleetConvergeScope
   = FullHost
+  | LaunchEnvironment
   | FabricExecutionCellsOnly
   | FabricAllocationStoreOnly
 
@@ -256,6 +369,11 @@ type FleetConvergeRequest
       observed_spark: List<SparkServingMember>
       observed_slots: List<RunnerSlotMember>
       observed_fabric_cells: FabricCellObservationDecision
+      observed_activation_readiness: RunnerActivationReadiness
+    }
+  | LaunchEnvironmentConverge {
+      host: NonEmptyStr
+      observed_timers: List<TimerRetirementMember>
     }
   | FabricExecutionCellsConverge {
       host: NonEmptyStr
@@ -268,7 +386,8 @@ type FleetConvergeRequest
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => FullHost
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => FullHost
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
   }
@@ -276,7 +395,8 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
 
 fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
-    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => h
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => h
+    LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
   }
@@ -289,6 +409,7 @@ fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
 fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
   match scope {
     FullHost => "scope:full-host"
+    LaunchEnvironment => "scope:launch-environment"
     FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
     FabricAllocationStoreOnly => "scope:fabric-allocation-store-only"
   }
@@ -427,7 +548,8 @@ fn fleet_converge_apply_artifact_admits(
                 store_path: fabric_allocation_store_substrate_spec().path,
                 observed: allocation_store_substrate_prestate_wire(prestate: prestate),
               }
-            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => ApplyMemberSetMismatch
+            LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
           }
         } else {
@@ -456,6 +578,8 @@ fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
     }
   } else if w == fleet_converge_scope_wire(scope: FullHost) {
     ScopeDecoded { scope: FullHost }
+  } else if w == fleet_converge_scope_wire(scope: LaunchEnvironment) {
+    ScopeDecoded { scope: LaunchEnvironment }
   } else if w == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly) {
     ScopeDecoded { scope: FabricExecutionCellsOnly }
   } else if w == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly) {
@@ -485,30 +609,26 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
   }
 }
 
-// A SCOPE COMPARISON THAT IS TOTAL IN BOTH ARGUMENTS. Written as a match rather than as equality
-// so that a third scope cannot silently join the admitted set: adding an arm to FleetConvergeScope
-// makes this fail to compile, where a derived == would quietly answer false and route nothing.
+// SCOPE EQUALITY IS ASKED OF THE WIRE FOLD, WHICH IS THIS TYPE'S CANONICAL TOTAL SURFACE.
+//
+// This was a nested match over both arguments -- one arm per ORDERED PAIR, so it grew
+// quadratically and a fourth scope would have taken it to sixteen arms. Its annotation defended the
+// shape on the ground that a derived `==` would let a new scope join the admitted set silently, and
+// that concern is correct and is PRESERVED here rather than traded away: fleet_converge_scope_wire
+// is itself an exhaustive match, so a new scope still fails to compile until it is given a wire,
+// and the comparison still cannot answer for a scope nobody spelled.
+//
+// WHAT THE WIRE FORM ADDS is a single authority. The wire already decides scope identity everywhere
+// that matters -- it is what the plan artifact persists, what apply decodes, and what
+// fleet_converge_scope_of_wire inverts -- so comparing two scopes by any OTHER rule would have been
+// a second answer to a question the wire already answers, and the two could disagree.
+//
+// THE ONE PROPERTY THE PAIRWISE FORM HAD FOR FREE AND THIS ONE MUST STATE: two scopes sharing a
+// wire spelling would compare equal. That is not left to inspection --
+// every_scope_wire_is_distinct pins the wires pairwise distinct, which is the same fact
+// fleet_converge_scope_of_wire's decode already depends on.
 fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConvergeScope) -> Bool {
-  match planned {
-    FullHost =>
-      match observed {
-        FullHost => true
-        FabricExecutionCellsOnly => false
-        FabricAllocationStoreOnly => false
-      }
-    FabricExecutionCellsOnly =>
-      match observed {
-        FabricExecutionCellsOnly => true
-        FullHost => false
-        FabricAllocationStoreOnly => false
-      }
-    FabricAllocationStoreOnly =>
-      match observed {
-        FabricAllocationStoreOnly => true
-        FullHost => false
-        FabricExecutionCellsOnly => false
-      }
-  }
+  fleet_converge_scope_wire(scope: planned) == fleet_converge_scope_wire(scope: observed)
 }
 
 fn fleet_converge_plan_held_lease(
@@ -1082,37 +1202,162 @@ type FleetConvergeApplyTerminal
   = FullyApplied
   | PartiallyApplied { refused_axis_count: Int, detail: String }
 
-fn fleet_converge_apply_terminal(
-  host: NonEmptyStr,
-  observed_slots: List<RunnerSlotMember>,
-  observed_caps: List<CapMember>,
-  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
-  cap_plan: MembershipPlan<CapMember, CapMemberAt>,
-  observed_fabric_cells: FabricCellObservationDecision,
-  observed_activation_readiness: RunnerActivationReadiness,
-) -> FleetConvergeApplyTerminal {
-  let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
-  let cap_refused = membership_refusal_count(plan: cap_plan)
-  let timer_refused = membership_refusal_count(plan: timer_plan)
-  let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
-  let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: observed_activation_readiness)
-  let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
-  if total == 0 {
-    FullyApplied
-  } else {
-    PartiallyApplied {
-      refused_axis_count: total,
-      detail: join(
-        [
-          "slot=", to_string(slot_refused),
-          " cap=", to_string(cap_refused),
-          " timer=", to_string(timer_refused),
-          " fabric-cell=", to_string(fabric_refused),
-          " activation=", to_string(activation_refused),
-        ],
-        "",
-      ),
+// THE TERMINAL FOLDS OVER THE REQUEST, SO ITS AXIS SET IS THE SCOPE'S AXIS SET AND NOT A WIDER ONE.
+// It used to take the families as loose parameters, which made the axis set a property of the CALL
+// rather than of the plan: every caller had to pass a slot population and an activation readiness,
+// so a narrower scope could only be expressed by passing something for axes it had not selected --
+// an empty list (a positive claim the host has none) or a stalled readiness (a refusal for an
+// obligation nobody took on). Both spellings put a value where the honest answer was that the
+// question was never asked, and the second is what made a launch-environment plan unable to reach
+// FullyApplied for CI-capacity reasons.
+//
+// Taking the request removes the choice rather than documenting it: each arm reads exactly the
+// populations that arm carries, and an axis the arm has no field for cannot be counted, excused, or
+// defaulted, because there is nothing to read. Adding a scope makes this match non-exhaustive.
+//
+// THE ALLOCATION-STORE ARM IS FullyApplied BY THE SHAPE OF ITS ARM AND NOT BY A COUNT. That
+// transaction plans two idempotent ensure-directory effects and models no refusal axis at all, so a
+// count there could only ever be zero and would read as a measurement nobody took. This is where
+// fleet_converge_allocation_store_plan_artifact used to write the literal; it now asks here, so
+// there is one authority for what a terminal means.
+fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConvergeApplyTerminal {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } => {
+      let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
+      let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
+      let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
+      let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
+      let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness)
+      let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
+      if total == 0 {
+        FullyApplied
+      } else {
+        PartiallyApplied {
+          refused_axis_count: total,
+          detail: join(
+            [
+              "slot=", to_string(slot_refused),
+              " cap=", to_string(cap_refused),
+              " timer=", to_string(timer_refused),
+              " fabric-cell=", to_string(fabric_refused),
+              " activation=", to_string(activation_refused),
+            ],
+            "",
+          ),
+        }
+      }
     }
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } => {
+      let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
+      if timer_refused == 0 {
+        FullyApplied
+      } else {
+        PartiallyApplied {
+          refused_axis_count: timer_refused,
+          detail: join(["timer=", to_string(timer_refused)], ""),
+        }
+      }
+    }
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } => {
+      let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
+      if fabric_refused == 0 {
+        FullyApplied
+      } else {
+        PartiallyApplied {
+          refused_axis_count: fabric_refused,
+          detail: join(["fabric-cell=", to_string(fabric_refused)], ""),
+        }
+      }
+    }
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FullyApplied
+  }
+}
+
+// THE REVIEWED BODY AND THE EXECUTED SCRIPT READ THE SAME REQUEST, so a scope cannot render one
+// axis set for a human and actuate another. These two are the plan.txt halves that were inlined in
+// the full-host fold; lifting them out is what lets the launch-environment fold be a second SUBJECT
+// rather than a second authority for how a plan is written.
+fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } =>
+      concat(
+        concat(
+          concat(
+            concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers))),
+            concat(["# cap-axis"], membership_plan_lines_cap(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))),
+          ),
+          concat(["# runner-slot"], fleet_converge_slot_lines(host: host, observed_slots: observed_slots)),
+        ),
+        concat(
+          concat(
+            concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness)),
+            fleet_converge_activation_declaration_lines(),
+          ),
+          concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers)))
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
+}
+
+// ONE COUNTER ROW PER SELECTED AXIS AND NO ROW FOR AN UNSELECTED ONE. A `# slot-refusals=0` line
+// under a scope that never observed slots is the empty-observation narrow in its reporting form:
+// zero reads as "nothing was refused on this axis", which is a claim about the host, where the
+// truth is that the axis was not this plan's obligation. The absent row says the second.
+fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
+        concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
+        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness))),
+        concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
+        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
+        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
+      ]
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: LaunchEnvironment)),
+        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
+      ]
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)),
+        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
+      ]
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)),
+        "# allocation-store-refusals=0",
+      ]
   }
 }
 
@@ -1464,6 +1709,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
       observed_spark: observed_spark,
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: _,
     } =>
       join(
         concat(
@@ -1483,6 +1729,14 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
               ),
           ),
           fabric_cell_baseline_rows(population: observed_fabric_cells),
+        ),
+        "\n",
+      )
+    LaunchEnvironmentConverge { host: host, observed_timers: observed_timers } =>
+      join(
+        concat(
+          [fleet_converge_scope_wire(scope: LaunchEnvironment), concat("host:", host as String)],
+          map(observed_timers, m => concat("timer:", m.unit_name as String)),
         ),
         "\n",
       )
@@ -1551,7 +1805,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
 // sum rather than adding a second execution type keeps one non-empty-in-steps invariant over one
 // population: a retirement step that ran is accounted exactly as an install step that ran.
 type PlannedEffectExecution {
-  effect: SparkServingPlannedEffect
+  effect: SparkServingExecutablePlannedEffect
   first_step: PlannedRemoteStep
   further_steps: List<PlannedRemoteStep>
 }
@@ -1579,7 +1833,7 @@ fn fleet_converge_spark_serving_row_executions(
 // parallel-population defect: there is no second list to fall out of step with the first.
 fn fleet_converge_spark_serving_row_effects(
   row: FleetConvergeSparkServingTypedAction,
-) -> List<SparkServingPlannedEffect> {
+) -> List<SparkServingExecutablePlannedEffect> {
   map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
 }
 
@@ -1623,6 +1877,7 @@ fn fleet_converge_spark_serving_install_effect_wire(effect: ServingInstallEffect
     WriteSystemUnitFile => "WriteSystemUnitFile"
     ReloadSystemManager => "ReloadSystemManager"
     EnableSystemUnit => "EnableSystemUnit"
+    StartSystemUnit => "StartSystemUnit"
     WriteUserUnitFile => "WriteUserUnitFile"
     ReloadUserManager => "ReloadUserManager"
     EnableUserUnit => "EnableUserUnit"
@@ -1641,7 +1896,7 @@ fn fleet_converge_spark_serving_install_effect_wire(effect: ServingInstallEffect
 // plan wire is read by humans comparing two converges, and `StartUserUnit` beside `StopUserUnit`
 // with nothing to separate them invites reading a retirement as an install that was spelled oddly.
 // The prefix is the sum's own arm, so the rendering cannot claim a kind the value does not have.
-fn fleet_converge_spark_serving_effect_wire(effect: SparkServingPlannedEffect) -> String {
+fn fleet_converge_spark_serving_effect_wire(effect: SparkServingExecutablePlannedEffect) -> String {
   match effect {
     PlannedInstallEffect { install: e } =>
       fleet_converge_spark_serving_install_effect_wire(effect: e)
@@ -2205,12 +2460,16 @@ fn fleet_converge_locked_apply_script(
   ])
 }
 
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
 fn fleet_converge_apply_shell(
-  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
-  host: NonEmptyStr,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
-  observed_activation_readiness: RunnerActivationReadiness,
+  request: FleetConvergeRequest,
   terminal: FleetConvergeApplyTerminal,
 ) -> String {
   join(
@@ -2218,29 +2477,74 @@ fn fleet_converge_apply_shell(
       [
         concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
         concat("# ", fleet_converge_cap_apply_shell_note),
-        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects",
-        "set -euo pipefail",
-      ],
-      ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
-      timer_apply_lines(plan: timer_plan),
-      [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
-      ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
-      concat(
-        slot_apply_lines(host: host, observed_slots: observed_slots),
         concat(
-          ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
-          concat(
-            activation_apply_lines(host: host, readiness: observed_activation_readiness),
-            concat(
-              fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
-              [fleet_converge_apply_terminal_line(terminal: terminal)],
-            ),
-          ),
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
         ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_axis_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
       ),
     ),
     "\n",
   )
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } =>
+      "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots),
+            concat(
+              ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
 }
 
 // THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
@@ -2499,7 +2803,20 @@ fn fleet_converge_plan_artifact(
       }
   }
 }
-
+// THE ASSEMBLER IS NOW A CONSTRUCTOR INTO THE REQUEST FOLD, NOT A SECOND FOLD BESIDE IT.
+//
+// It used to build the plan body itself -- header, then one hardcoded section per axis, then the
+// counters, then the terminal -- with the FULL-HOST axis set written into its own concat. That was
+// the only shape available while the terminal took seven loose axis parameters, and it is what made
+// a narrower scope impossible to express: there was nowhere to say "this transaction has no
+// runner-slot position" except by passing an empty list, which is a claim that the host HAS no
+// slots rather than that they are not this transaction's business.
+//
+// So the body fold moved onto the REQUEST, whose arms carry exactly the axes their scope owns, and
+// this function became what it always was semantically: the full-host constructor. Everything added
+// around it on main -- the Spark axis eliminator, the refusal coproduct, the dissolved Optional --
+// is preserved above and unchanged; only the assembly step is now shared with every other scope
+// instead of duplicated once per entry point.
 fn fleet_converge_plan_artifact_assembled(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -2511,70 +2828,144 @@ fn fleet_converge_plan_artifact_assembled(
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
 ) -> FleetConvergePlanArtifact {
-  let request = FullHostConverge {
-    host: host,
-    observed_timers: observed_timers,
-    observed_caps: observed_caps,
-    observed_spark: observed_spark,
-    observed_slots: observed_slots,
-    observed_fabric_cells: observed_fabric_cells,
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: observed_spark,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+    },
+    prior_generation: prior_generation,
+    spark_rows: spark_rows,
+  )
+}
+
+// THE SPARK AXIS IS ELIMINATED WHERE IT IS OWNED, WHICH IS THE FULL-HOST ARM AND NOWHERE ELSE.
+//
+// The Spark axis can refuse -- unobserved, planning-refused, or tagged for another host -- and those
+// refusals are real and must reach the operator. But they are refusals of an axis the narrower
+// scopes never took on: a launch-environment transaction has no Spark position, so routing its plan
+// through the Spark eliminator would let a Spark observation failure refuse a plan that does not
+// depend on it. That is precisely the coupling this PR exists to remove, one axis over. So the
+// eliminator runs on the full-host arm, and the other arms are Ready by construction.
+fn fleet_converge_plan_outcome_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifactOutcome {
+  match request {
+    FullHostConverge {
+      host: h,
+      observed_timers: t,
+      observed_caps: c,
+      observed_spark: _,
+      observed_slots: sl,
+      observed_fabric_cells: fc,
+      observed_activation_readiness: ar,
+    } =>
+      fleet_converge_plan_artifact(
+        host: h,
+        prior_generation: prior_generation,
+        observed_timers: t,
+        observed_caps: c,
+        spark_axis: spark_axis,
+        observed_slots: sl,
+        observed_fabric_cells: fc,
+        observed_activation_readiness: ar,
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
   }
+}
+
+// THE SPARK WIRE IS AN AXIS ROW LIKE ANY OTHER, so it is emitted by the arm that owns the axis. It
+// rode the body unconditionally while the body was full-host-only; leaving it there would have put
+// an empty "# spark-serving-typed-actions:" line into a launch-environment plan, which reads as an
+// observed-and-empty Spark axis rather than as a scope that never took one on -- the same
+// empty-observation confusion the whole scope narrowing exists to remove.
+fn fleet_converge_plan_spark_wire_lines(
+  request: FleetConvergeRequest,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: _, observed_timers: _, observed_caps: _, observed_spark: _,
+      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _,
+    } => [
+      concat(
+        "# spark-serving-typed-actions:",
+        fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows)),
+      ),
+    ]
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => []
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => []
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// TOTAL, NOT OPTIONAL, and that is main's dissolution preserved rather than re-litigated: the Absent
+// arm answered "there is no plan artifact" when a hash did not match an expected union arm, which
+// every caller reads as nothing to converge rather than as could-not-classify. content_hash_atom
+// returns the structural digest directly, so there is no union to match and no arm to get wrong.
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifact {
   let subject = fleet_converge_plan_subject(request: request)
-  let timer_plan = timer_retirement_plan(observed: observed_timers)
-  let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
-  let timer_lines = membership_plan_lines_timer(plan: timer_plan)
-  let cap_lines = membership_plan_lines_cap(plan: cap_plan)
   let baseline = observed_baseline_text(request: request)
   let planned_generation = prior_generation + 1
+  let planned_terminal = fleet_converge_apply_terminal(request: request)
   let body = join(
     concat(
-      [
-        "# fleet-converge plan",
-        concat("subject_host:", subject.host as String),
-        concat(
-          "subject_member_set:",
-          serialize_content_hash(hash: subject.member_set_fingerprint) as String,
-        ),
-        concat("plan_generation:", to_string(planned_generation)),
-        concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
-        "observed_baseline:",
-        baseline,
-        "# timer-retirement",
-      ],
-      timer_lines,
-      ["# cap-axis"],
-      cap_lines,
-      ["# runner-slot"],
-      fleet_converge_slot_lines(host: host, observed_slots: observed_slots),
-      ["# runner-service-activation"],
-      fleet_converge_activation_lines(host: host, readiness: observed_activation_readiness),
-      fleet_converge_activation_declaration_lines(),
-      ["# fabric-cell"],
-      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
-      [
-        concat(
-          "# spark-serving-typed-actions:",
-          fleet_converge_spark_serving_typed_actions_wire(
-            rows: scheduled_rows_list(scheduled: spark_rows),
+      concat(
+        [
+          "# fleet-converge plan",
+          concat("subject_host:", subject.host as String),
+          concat(
+            "subject_member_set:",
+            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
           ),
-        ),
-        concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
-        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: observed_activation_readiness))),
-        concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
-        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_plan))),
-        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
-        fleet_converge_apply_terminal_line(
-          terminal: fleet_converge_apply_terminal(
-            host: host,
-            observed_slots: observed_slots,
-            observed_caps: observed_caps,
-            timer_plan: timer_plan,
-            cap_plan: cap_plan,
-            observed_fabric_cells: observed_fabric_cells,
-            observed_activation_readiness: observed_activation_readiness,
-          ),
-        ),
-      ],
+          concat("plan_generation:", to_string(planned_generation)),
+          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+          "observed_baseline:",
+          baseline,
+        ],
+        fleet_converge_plan_axis_lines(request: request),
+        fleet_converge_plan_spark_wire_lines(request: request, spark_rows: spark_rows),
+      ),
+      fleet_converge_plan_refusal_counter_lines(request: request),
+      [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
     ),
     "\n",
   )
@@ -2584,23 +2975,6 @@ fn fleet_converge_plan_artifact_assembled(
     prior_generation: prior_generation,
     owner_fingerprint: owner_fp,
   )
-  let planned_terminal = fleet_converge_apply_terminal(
-    host: host,
-    observed_slots: observed_slots,
-    observed_caps: observed_caps,
-    timer_plan: timer_plan,
-    cap_plan: cap_plan,
-    observed_fabric_cells: observed_fabric_cells,
-    observed_activation_readiness: observed_activation_readiness,
-  )
-  let apply_shell = fleet_converge_apply_shell(
-    timer_plan: timer_plan,
-    host: host,
-    observed_slots: observed_slots,
-    observed_fabric_cells: observed_fabric_cells,
-    observed_activation_readiness: observed_activation_readiness,
-    terminal: planned_terminal,
-  )
   FleetConvergePlanArtifact {
     subject: subject,
     prior_generation: prior_generation,
@@ -2608,9 +2982,29 @@ fn fleet_converge_plan_artifact_assembled(
     apply_terminal: planned_terminal,
     observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
     plan_body: body,
-    apply_shell: apply_shell,
+    apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
     spark_serving_typed_actions: spark_rows,
   }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+    spark_rows: scheduled_rows_empty(),
+  )
 }
 
 // The allocation store has its own host-scoped transaction. It is not a cell member and therefore
@@ -2673,7 +3067,7 @@ fn fleet_converge_allocation_store_plan_artifact(
           subject: subject,
           prior_generation: prior_generation,
           plan_lease: lease,
-          apply_terminal: FullyApplied,
+          apply_terminal: fleet_converge_apply_terminal(request: request),
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
@@ -2703,6 +3097,7 @@ data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-pl
 
 data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
 data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
 fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,

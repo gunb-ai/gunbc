@@ -1052,21 +1052,21 @@ fn program_standing_census() -> StandingCensus {
 
 fn census_line(c: StandingCensus) -> String {
   concat("milestones ",
-  concat(to_string(n: c.milestones),
-  concat("\n\nstanding\n  clear ", concat(to_string(n: c.clear),
-  concat("\n  outstanding ", concat(to_string(n: c.outstanding),
-  concat("\n  not-derivable ", concat(to_string(n: c.not_derivable),
-  concat("\n\ndirect prerequisites\n  startable ", concat(to_string(n: c.startable),
-  concat("\n  blocked, all blockers known ", concat(to_string(n: c.blocked_known_only),
-  concat("\n  startability not derivable, no known blocker ", concat(to_string(n: c.not_derivable_only),
-  concat("\n  BLOCKED AND blocker set not fully derivable ", to_string(n: c.blocked_and_not_fully_derivable))))))))))))))))
+  concat(to_string(value: c.milestones),
+  concat("\n\nstanding\n  clear ", concat(to_string(value: c.clear),
+  concat("\n  outstanding ", concat(to_string(value: c.outstanding),
+  concat("\n  not-derivable ", concat(to_string(value: c.not_derivable),
+  concat("\n\ndirect prerequisites\n  startable ", concat(to_string(value: c.startable),
+  concat("\n  blocked, all blockers known ", concat(to_string(value: c.blocked_known_only),
+  concat("\n  startability not derivable, no known blocker ", concat(to_string(value: c.not_derivable_only),
+  concat("\n  BLOCKED AND blocker set not fully derivable ", to_string(value: c.blocked_and_not_fully_derivable))))))))))))))))
 }
 
 fn instrument_report_line(i: MissingInstrument) -> String {
   let waiting = concat(milestones_awaiting(i: i), stages_awaiting(i: i))
   let obstacle = missing_instrument_obstacle(i: i)
   concat("- (",
-  concat(to_string(n: count(waiting)),
+  concat(to_string(value: count(waiting)),
   concat(") [",
   concat(instrument_obstacle_label(o: obstacle),
   concat("] ",

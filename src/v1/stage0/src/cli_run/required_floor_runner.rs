@@ -3564,7 +3564,9 @@ pub fn run_required_floor(
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
     // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
-    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower — while its
+    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower, which is the
+    // class `gunbc.rung_drop floor_cost_contention_verdict` now carries with its measurements and
+    // its restoration trigger; this comment states the instance and does not restate the class — while its
     // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
     // The `OnceLock` miss is not bracketed by `record_shared_artifact_fill_cpu`, so
     // `run_claim_measured` could not net it either; paying it here is the ONE mechanism, and a
@@ -5599,8 +5601,34 @@ pub fn run_required_floor(
                     let detail = result
                         .budget_figure_phrase()
                         .unwrap_or_else(|| format!("{result:?}"));
-                    outcome.interrupted_before_verdict.push(format!(
-                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
+                    // TWO DERIVATIONS OVER ONE CLAIM, AND A DISAGREEMENT REFUSES. This arm is
+                    // reached only for `ClaimOutcome::BudgetInterrupted`, and `claim_terminality`
+                    // maps exactly that outcome to `SafetyInterrupted` — so `None` here means the
+                    // outcome classifier and the terminality classifier disagree about whether
+                    // this claim was interrupted at all. Substituting zeroes would publish a
+                    // fabricated reading; the line stops instead, typed and located (DESIGN §5).
+                    let Some(interrupt) = safety_interrupt_reading(&terminality) else {
+                        outcome.failures.push(format!(
+                            "{} classified as BUDGET-REFUSED by ClaimOutcome but its \
+                             ClaimTerminality is not SafetyInterrupted. The two derivations \
+                             over one claim disagree, so no interrupt reading can be published \
+                             for it. This is a defect in the classifiers, not in the witness.",
+                            claim.qualified
+                        ));
+                        continue;
+                    };
+                    outcome
+                        .interrupted_before_verdict
+                        .push(InterruptedBeforeVerdict {
+                            qualified: claim.qualified.clone(),
+                            interrupt,
+                            enrolled_expected_red: true,
+                            // THE IDENTITY IS THE ROW'S FIELD AND IS NOT RESTATED HERE. It used
+                            // to lead this sentence, which made `qualified` a second
+                            // representation of a string a reader would otherwise have to
+                            // recover by parsing prose. The printer renders the field.
+                            detail: format!(
+                                "is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
                          CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
@@ -5609,8 +5637,9 @@ pub fn run_required_floor(
                          that declares its own ceiling, is what lets it reach a verdict at all; \
                          removing it from the roster would not help, because it is not passing \
                          either.",
-                        claim.qualified, detail
-                    ));
+                                detail
+                            ),
+                        });
                     continue;
                 }
                 // NOT COUNTED AS A PASS. A held row did not pass — it failed as enrolled, and
@@ -5895,13 +5924,31 @@ pub fn run_required_floor(
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
-                outcome.interrupted_before_verdict.push(format!(
-                    "{} was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
+                // SAME REFUSAL AS THE ENROLLED ARM, and for the same reason — see there.
+                let Some(interrupt) = safety_interrupt_reading(&terminality) else {
+                    outcome.failures.push(format!(
+                        "{} classified as BUDGET-REFUSED by ClaimOutcome but its \
+                         ClaimTerminality is not SafetyInterrupted. The two derivations over \
+                         one claim disagree, so no interrupt reading can be published for it. \
+                         This is a defect in the classifiers, not in the witness.",
+                        claim.qualified
+                    ));
+                    continue;
+                };
+                outcome
+                    .interrupted_before_verdict
+                    .push(InterruptedBeforeVerdict {
+                        qualified: claim.qualified.clone(),
+                        interrupt,
+                        enrolled_expected_red: false,
+                        detail: format!(
+                            "was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
                      expected-red, so nothing claims it is broken — but the deadline preempted \
                      the verdict, so whether it PASSES is UNKNOWN too. Reduce the cost, or move \
                      it to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                    claim.qualified, figure
-                ))
+                            figure
+                        ),
+                    })
             }
             ClaimOutcome::CompletedOverBudget { .. } => {
                 let figure = result

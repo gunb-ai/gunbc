@@ -519,7 +519,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         }
       ],
       realization: CliRefusesUnwired {
-        successor: "unwired: gunbc.cli_wire CliWireResponse has no host renderer bound. MEASURED, not assumed -- `gunbc run --entry dag/gunbc/scm/read_command.dag --function scm_read_log --arg path=<p>` binds its argument and READS THE FILE, then the host refuses with `returned ScmReadResult, not ProcessExit`, so the answer is computed and discarded. There is therefore NO route a user can invoke today that yields this answer, and naming one would be a dead end dressed as a redirect."
+        successor: "unwired AS A SUBCOMMAND -- `gunbc scm log` does not exist -- but the answer is now REACHABLE, and this row said it was not. The successor is `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=<p>`, which prints the rendered answer and exits on the exit the response itself carries. What changed: gunbc.cli_wire CliWireResponse gained a host binding in run_verb (cli_run classify_cli_wire + cli_wire_outcome), so a wire-returning entry is no longer refused with `returned ScmReadResult, not ProcessExit` and its answer is no longer computed and discarded. The earlier text -- `there is NO route a user can invoke today` -- was true when written and this row is the authority that has to stop saying it, because a surface that keeps asserting an absence the host has since filled is a §3 fork between the model and the thing it models. scm_status and scm_init are reachable by the same route; scm_init REFUSES an occupied path (gunbc.scm.init)."
       },
       emission: AbsentFromShippedDispatch
     },

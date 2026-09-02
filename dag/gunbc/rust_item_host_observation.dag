@@ -110,7 +110,7 @@ type RustModulePathProjection
   | RustModulePathRefused { repo_path: String, detail: String }
 
 fn path_replace_slashes(s: String) -> String {
-  replace(s: s, pattern: "/", replacement: ".")
+  replace(s: s, from: "/", to: ".")
 }
 
 fn strip_rs_suffix(s: String) -> String {
@@ -291,7 +291,7 @@ fn digits_from(s: String, at: Int, acc: String) -> String {
   if at >= string_length(s: s) {
     acc
   } else {
-    let c = char_at(s: s, index: at)
+    let c = char_at(s: s, pos: at)
     if c >= "0" && c <= "9" {
       digits_from(s: s, at: at + 1, acc: concat(acc, c))
     } else {

@@ -7,7 +7,7 @@ import gunbc.model_artifact { ModelArtifact }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ollama_default_port }
 import v2.std.algebra { fold_list }
 import std.nat { Nat }
-import std.measure { TokenCount }
+import std.measure { TokenCount, PositiveSlotCount }
 import gunbc.spark.serving_realization {
   SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
   EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
@@ -83,7 +83,8 @@ type SparkServingRelease {
 // identity domains.
 type OllamaServingLaunchProfile {
   bind: SparkServingBindListen
-  configured_context: TokenCount
+  default_context: TokenCount
+  serving_slots: PositiveSlotCount
 }
 
 // The identity is DERIVED from the release, never authored. It previously carried a NonEmptyStr
