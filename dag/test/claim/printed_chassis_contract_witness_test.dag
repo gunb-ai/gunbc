@@ -703,3 +703,51 @@ test fn w_the_datum_is_at_rung_zero() -> Bool {
     LadderTooFewRungs { supplied: _ } => false
   }
 }
+
+
+// WITNESS 19 — A DATUM MIRRORED ACROSS THE CENTRE-LINE IS REFUSED, WHICH IS THE COUPON TURNED OVER.
+//
+// This is the gap the other two datum controls left, and it is the case a human actually creates:
+// witness 14 catches the coupon rotated end for end, witness 15 catches a datum that never went off
+// the centre-line at all, and NEITHER catches the coupon picked up and FLIPPED. A flip about the long
+// axis maps y to plate_depth - y and leaves x alone, so the datum stays at the 3.00 mm end and moves
+// to the other side of the ladder. Both earlier controls pass.
+//
+// It matters because the datum's job is HANDED orientation and not merely "which end". A plate has
+// four distinguishable placements for one off-axis hole -- near or far, above or below the ladder --
+// and a datum that only fixed the end would leave the two faces interchangeable. On a through-hole
+// coupon the two faces are not equivalent: the ladder is measured in canonical orientation, and a
+// flipped coupon reverses the sense of any subsequent handed feature the design gains.
+//
+// The refusal must name FieldCenterY, because the flip leaves the diameter and the x untouched.
+test fn w_a_datum_mirrored_across_the_centreline_is_refused() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let s = contract.specimen
+      let mirrored_y =
+        micrometer_count(m: s.geometry.plate.size_y) - micrometer_count(m: hole_ladder_datum_center_y)
+      let flipped = datum_moved_to(s: s, x: datum_center_x_um(s: s), y: mirrored_y)
+      match judge_realization(contract: contract, envelope: envelope_with_datum(s: s, datum: flipped)) {
+        RealizationJudged { conformance: c } => match c {
+          GeometryDatumDiverges { field: f, modeled: m, realized: r } =>
+            match f {
+              FieldCenterY =>
+                micrometer_count(m: m) == micrometer_count(m: hole_ladder_datum_center_y)
+                  && micrometer_count(m: r) == mirrored_y
+                  && mirrored_y != micrometer_count(m: hole_ladder_datum_center_y)
+              FieldDiameter => false
+              FieldCenterX => false
+            }
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { refusal: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
