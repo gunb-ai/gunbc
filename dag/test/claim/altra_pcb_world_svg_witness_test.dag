@@ -1007,13 +1007,18 @@ test fn w_the_canonical_board_still_reaches_its_world() -> Bool {
   }
 }
 
-// A BOARD THE JUDGE REFUSES CANNOT REACH A WORLD, asserted on the TERMINAL route rather than on the
-// placement verdict. The earlier control in this cut showed that `placement_causes` reports
-// DesignIsNotAdmitted, which review 5094151475 correctly said proves nothing about whether an
-// unadmitted board can still produce a plan and a preview -- construction ran before judgment did.
-// The board below populates a fifth controller with no copper under it, so `admit_board` refuses
-// it, and this asserts the whole route ends in a refusal rather than in an emitted world.
-fn a_board_the_judge_refuses() -> AltraMinimalMotherboard {
+// A BOARD THE JUDGE REFUSES CANNOT REACH A WORLD, and this witness deliberately claims only that.
+// An earlier revision of this block asserted it as evidence that the JUDGE prevents an unadmitted
+// board from being planned. Review 5095322755 showed it cannot: `altra_pcb_world_for` compares the
+// board against the canonical one first, so this non-canonical board refuses as
+// PcbDesignPlanUnavailable before admission is consulted, and deleting the judge would leave this
+// green. The gate evidence now lives where it discriminates, on the plan constructor itself
+// (`w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects` in the placement suite).
+//
+// IT IS KEPT RATHER THAN DELETED because the claim it DOES support is still worth holding: no
+// board unequal to the canonical one reaches a world through this entry point. The name says that
+// and nothing more.
+fn a_board_unequal_to_the_canonical_one() -> AltraMinimalMotherboard {
   AltraMinimalMotherboard {
     design: RevARoutedMemoryDesign {
       routed: RoutedDdrTopology {
@@ -1031,8 +1036,8 @@ fn a_board_the_judge_refuses() -> AltraMinimalMotherboard {
   }
 }
 
-test fn w_a_board_the_judge_refuses_reaches_no_world() -> Bool {
-  match altra_pcb_world_for(d: a_board_the_judge_refuses()) {
+test fn w_a_board_unequal_to_the_canonical_one_reaches_no_world() -> Bool {
+  match altra_pcb_world_for(d: a_board_unequal_to_the_canonical_one()) {
     PcbWorldRefused { cause: _ } => true
     PartialPcbWorldReady { value: _ } => false
     AdmittedPcbWorld { value: _ } => false

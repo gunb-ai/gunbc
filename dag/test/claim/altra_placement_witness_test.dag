@@ -49,6 +49,7 @@ import product.altra_motherboard.placement {
   altra_board_frame,
   altra_1p_minimum_ref,
   altra_reference_plan,
+  altra_reference_plan_for,
   BoardPlanConstruction,
   BoardPlanReady,
   BoardPlanOutlineRefused,
@@ -877,5 +878,53 @@ test fn w_the_admission_gate_is_silent_on_a_design_that_is_admitted() -> Bool {
     Present { value: p } =>
       count_tagged(cs: placement_causes(d: d, d_ref: altra_1p_minimum_ref(), plan: p),
                    wanted: "DesignIsNotAdmitted") == 0
+  }
+}
+
+// THE JUDGE'S OWN REFUSAL, DISCRIMINATED FROM EVERY OTHER REASON A BOARD MIGHT NOT GET A PLAN.
+// The first attempt at this control asked `altra_pcb_world_for` about a refused board and accepted
+// any PcbWorldRefused. Review 5095322755 showed that proves nothing about the judge: that entry
+// point compares the board against the canonical one FIRST, so a non-canonical board refuses as
+// PcbDesignPlanUnavailable before admission is ever consulted -- delete the judge entirely and
+// that witness stays green. It established "this non-canonical invalid board reaches no world",
+// which was never the claim in question.
+//
+// SO THIS ASKS THE GATED PLAN CONSTRUCTOR DIRECTLY AND REQUIRES THE EXACT ARM. The board populates
+// a fifth controller with no copper under it, which only `admit_board` can object to, and the
+// assertion is BoardPlanDesignNotAdmitted specifically -- not "some refusal". Removing the judge
+// from the constructor returns BoardPlanReady and turns this false.
+fn a_board_the_judge_refuses() -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+test fn w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects() -> Bool {
+  match altra_reference_plan_for(d: a_board_the_judge_refuses(), d_ref: altra_1p_minimum_ref()) {
+    BoardPlanDesignNotAdmitted { causes: _ } => true
+    BoardPlanOutlineRefused { cause: _ } => false
+    BoardPlanReady { value: _ } => false
+  }
+}
+
+// THE PAIRED POSITIVE, so the control above is not merely a function that refuses everything.
+// The canonical board reaches the ready arm through the same parameterized constructor.
+test fn w_the_canonical_board_reaches_the_ready_arm() -> Bool {
+  match altra_reference_plan_for(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref()) {
+    BoardPlanReady { value: _ } => true
+    BoardPlanDesignNotAdmitted { causes: _ } => false
+    BoardPlanOutlineRefused { cause: _ } => false
   }
 }

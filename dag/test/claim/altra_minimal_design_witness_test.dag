@@ -260,3 +260,29 @@ test fn w_the_fixture_arm_differs_from_production_only_on_reachability() -> Bool
     && refuses_naming(d: design(intent_is_production: true, chans: two_channels, positions: one_dimm(), lanes: 4),
                       wanted: "DebugOnly")
 }
+
+// THE FIXTURE ARM STILL APPLIES THE ROUTED-SUBSET HALF, which the three-channel witness above does
+// NOT establish. That one proves active-count admission is live; a selective regression could drop
+// population_subset_causes from the EngineeringFixturePopulation arm alone and leave it green, and
+// the existing unrouted-channel witness exercises BringUpThenFill rather than this arm. Two active
+// channels are admitted under engineering intent, so the ONLY intended refusal here is the
+// unrouted seventh channel -- which is exactly what makes it discriminating for the subset half.
+test fn w_a_fixture_still_owes_the_routed_subset_law() -> Bool {
+  let fixture_off_copper = AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: EngineeringFixturePopulation {
+        bringup: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel7],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+  refuses_naming(d: fixture_off_copper, wanted: "ChannelNotRouted")
+    && admits(d: design(intent_is_production: false, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4))
+}

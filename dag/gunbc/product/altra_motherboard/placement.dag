@@ -781,22 +781,31 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
 // vocabulary inside `std.orthogonal_geometry`, which is the layer inversion section 3 forbids, and
 // would have told a caller "the outline is wrong" about a board whose outline is fine.
 //
-// THE CALLER CANNOT HAND IN A VERDICT. This reads the canonical declaration and invokes the judge
-// itself, so there is no admitted-token parameter to forge and no way to reach the ready arm
-// except by being a design the judge admits.
+// THE CONSTRUCTION IS INLINE IN THE ADMITTED ARM, AND THAT IS THE WHOLE POINT OF THE SHAPE. An
+// earlier revision split it into an `altra_reference_plan_admitted()` helper called from that arm,
+// and claimed there was "no way to reach the ready arm except by being a design the judge admits".
+// Review 5095322755 showed the claim was false: the helper was an ordinary callable declaration
+// that minted BoardPlanReady WITHOUT calling admit_board, and an adjacent function -- or, absent
+// caller sealing, an importer -- could call it directly. A wrapper does not dominate every call
+// merely because its present caller behaves correctly. Inlining removes the bypass rather than
+// documenting it away; the ready arm now has no entry point that is not the judge's own arm.
+//
+// AND THE DESIGN IS A PARAMETER SO THE REFUSAL IS AUTHORABLE. Keeping this nullary and reading the
+// canonical board made the judge inert for every input the corpus can express: the canonical board
+// is admitted, so no in-corpus caller could ever observe the refusing arm, and a check whose RED
+// cannot be written is a decoration that will be cited as coverage. Taking the design lets a
+// witness hand it a board the judge rejects and require the exact BoardPlanDesignNotAdmitted arm.
+// `altra_reference_plan()` is that same function at the canonical declaration.
 type BoardPlanConstruction
   = BoardPlanDesignNotAdmitted { causes: DesignRefusalSet }
   | BoardPlanOutlineRefused { cause: OrthogonalRefusal }
   | BoardPlanReady { value: BoardPlacementPlan }
 
 fn altra_reference_plan() -> BoardPlanConstruction {
-  match admit_board(b: altra_1p_minimum) {
-    RoutedDesignRefused { causes: c } => BoardPlanDesignNotAdmitted { causes: c }
-    RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => altra_reference_plan_admitted()
-  }
+  altra_reference_plan_for(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref())
 }
 
-fn altra_reference_plan_admitted() -> BoardPlanConstruction {
+fn altra_reference_plan_for(d: AltraMinimalMotherboard, d_ref: DeclarationRef) -> BoardPlanConstruction {
   let fixed = [
     PlannedComponent {
       identity: "board_control_cpld",
@@ -840,16 +849,20 @@ fn altra_reference_plan_admitted() -> BoardPlanConstruction {
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
-  match altra_board_outline() {
-    OrthogonalRefused { cause: c } => BoardPlanOutlineRefused { cause: c }
-    OrthogonalReady { value: o } =>
-      BoardPlanReady {
-        value: BoardPlacementPlan {
-          frame: altra_board_frame(),
-          outline: o,
-          design: altra_1p_minimum_ref(),
-          components: concat(fixed, memory_slot_obligations(d: altra_1p_minimum)),
-        }
+  match admit_board(b: d) {
+    RoutedDesignRefused { causes: c } => BoardPlanDesignNotAdmitted { causes: c }
+    RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } =>
+      match altra_board_outline() {
+        OrthogonalRefused { cause: c } => BoardPlanOutlineRefused { cause: c }
+        OrthogonalReady { value: o } =>
+          BoardPlanReady {
+            value: BoardPlacementPlan {
+              frame: altra_board_frame(),
+              outline: o,
+              design: d_ref,
+              components: concat(fixed, memory_slot_obligations(d: d)),
+            }
+          }
       }
   }
 }
