@@ -11,7 +11,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark
         required: true
-        options: [plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -212,6 +212,16 @@ jobs:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
+      - name: Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)
+        id: launch_environment_plan
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_launch_environment_plan_wet
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+        if: github.event.inputs.mode == 'launch_environment_plan'
+        timeout-minutes: 5
       - name: Fleet allocation-store substrate plan
         id: allocation_store_plan
         run: |
@@ -228,7 +238,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'allocation_store_plan'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan'
         timeout-minutes: 10
       - name: Download fleet converge plan artifact
         id: plan_download
