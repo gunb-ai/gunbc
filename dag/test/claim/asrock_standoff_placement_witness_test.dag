@@ -1,6 +1,6 @@
 module test.claim.asrock_standoff_placement_witness
 import std.types { Bool, Int, List }
-import extdeps.standards.atx_2_2 { MountingLocationId, LocJ, LocS, LocF, LocB }
+import extdeps.standards.micro_atx { MountingLocationId, LocJ, LocS, LocF, LocB }
 import extdeps.boards.asrock_rack {
   BoardLocationStanding,
   HoleCorrespondenceInferred, HoleAbsenceExplicitlyDirected, HoleNotObservedInDrawing,

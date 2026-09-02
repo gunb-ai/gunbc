@@ -37,7 +37,7 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.standards.atx_2_2 { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
+import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.uri { Uri, Https }
@@ -599,15 +599,26 @@ data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM 
 //
 // An earlier revision transposed these and asserted the board was 267 mm WIDE against micro-ATX's
 // 244 mm, concluding that a micro-ATX hole pattern would be laid out 23 mm too narrow. That was
-// backwards and the conclusion inverts. Deep micro-ATX keeps the micro-ATX rear-I/O WIDTH exactly
-// and extends the DEPTH — extdeps.standards.atx_2_2 deep_micro_atx_axis_note carries the relation —
-// so the rear-edge hole columns are the standard micro-ATX ones and it is the FRONT row that moves
-// outward by the extra 0.9 in. The error mattered: it is the difference between "the standard
-// pattern does not apply" and "the standard pattern applies except at known positions".
+// backwards and the conclusion inverts. The board is 244 mm along the rear I/O edge — the micro-ATX
+// width exactly — and deeper. The error mattered: it is the difference between "the standard pattern
+// does not apply" and "the standard pattern applies except at known positions".
+//
+// THIS PARAGRAPH CARRIED THREE DEAD CLAIMS UNTIL THE STANDARD SPLIT FORCED THEM INTO VIEW, and they
+// are recorded because the way they survived is more instructive than any of them.
+//
+// It cited `extdeps.standards.atx_2_2 deep_micro_atx_axis_note`, a symbol DELETED earlier in this
+// same program. It said that module "deliberately does not supply that grid", which became false the
+// moment the grid was added. And it repeated the retracted claim that the FRONT ROW MOVES OUTWARD BY
+// THE EXTRA 0.9 IN — retracted in the standard module hours before, and still asserted here.
+//
+// All three are the same failure: a correction was applied where it was pointed out and the CLASS
+// was treated as closed. The front row does not move. 8.950 in is measured from Datum B, itself
+// 0.400 in from the edge, so L and M sit at 9.350 in on a deep board and a standard-depth board
+// alike; the extra depth extends the board PAST them, which is what the front-overhang row records.
 //
 // The outline is still NOT a conformance claim. Matching two edge dimensions is not the same as
-// carrying the specification's hole grid, and extdeps.standards.atx_2_2 deliberately does not
-// supply that grid either — the specification places the holes in a figure with no text layer.
+// carrying the specification's hole grid, and populating that grid is not envelope conformance
+// either — extdeps.standards.micro_atx records why those are separate claims.
 // ---------------------------------------------------------------------------------------------
 fn asrock_altrad8ud_board_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 31) }
 
@@ -650,61 +661,36 @@ data asrock_altrad8ud_board_outline_citation: FactCitation = FactCitation {
   authority: extdeps_external_authority_anchor
 }
 
-// THE MOUNTING HOLES ARE NOT HERE, AND THEIR ABSENCE IS THE POINT.
+// THE MOUNTING-HOLE POSITION IS SUPPLIED, AND WHAT IS REFUSED IS NARROWER THAN IT ONCE WAS.
 //
-// Section 1.4 draws the standoff holes as unlabelled circles on the layout figure and dimensions
-// NONE of them: the manual states the outline and stops. So the coordinates a chassis actually
-// needs are, for this subject, an OBLIGATION and not a fact — and this module refuses to hold them
-// rather than deriving them from the micro-ATX pattern the form-factor label gestures at. That
-// derivation is available, plausible, and would be wrong in a way nothing downstream could detect:
-// it would place standoffs against a 244 mm-wide pattern on a 267 mm-wide board, produce a chassis
-// that assembles until the last two screws, and cite this manual while doing it.
+// This paragraph previously said "THE MOUNTING HOLES ARE NOT HERE, AND THEIR ABSENCE IS THE POINT",
+// that the module "refuses to hold them rather than deriving them from the micro-ATX pattern", and
+// that deriving them "would place standoffs against a 244 mm-wide pattern on a 267 mm-wide board".
+// By the time it was read, all three were false: the correspondence roster below supplies exactly
+// which standard locations this board populates, and the 267-mm-wide clause is the AXIS
+// TRANSPOSITION that was retracted in two other modules while surviving verbatim here. The board is
+// 244 mm along the rear I/O edge and 266.700 mm deep.
 //
-// DESIGN §5's absorbing fallback is precisely this move — substituting the superset, or the nearby
-// standard, when the precise answer is unavailable — so the arm refuses and names what would clear
-// it. The operator holds four of these boards and four more are inbound; caliper positions from a
-// declared origin corner are a first-party measurement, admissible at the OperatorMeasured grade
-// that extdeps.ampere.mt_collins_product_brief.platform already establishes for a tape-measured
-// chassis depth. That is the trigger: measured standoff coordinates, not a second reading of this
-// manual, which does not contain them.
-// ---------------------------------------------------------------------------------------------
-// THE STANDOFF POSITIONS: A CORRESPONDENCE TO THE MICRO-ATX GRID, NOT A SET OF READ COORDINATES.
+// IT WAS CITED BY A REVIEW AS EVIDENCE OF DISCIPLINE, which is the part worth recording. A stale
+// annotation does not merely rot quietly; it is read, and a refusal that no longer holds gets
+// counted as a wall. That is strictly worse than no annotation, because it earns credit for a
+// property the module does not have. This is the fourth stale-claim instance in this program and the
+// class is the same each time: the correction is applied where it was pointed out and the CLASS is
+// treated as closed. A retraction is not done until the retracted WORDING is swept for.
 //
-// AN EARLIER REVISION OF THIS BLOCK GOT THE EPISTEMICS WRONG IN THE CONSERVATIVE DIRECTION, which is
-// still wrong. It recorded all seven holes as estimates with a +/- 0.4 in region, reasoning that
-// they came from reading a figure. But the readings land exactly on 0.250, 6.450, 8.250, 9.050,
-// 6.500 and 9.350 — the micro-ATX grid's own values — and two near-misses (1.29, 0.39) are raster
-// approximations of 1.300 and 0.400. Values do not land on nine standard coordinates by accident.
+// WHAT IS ACTUALLY REFUSED, stated at the grain that is still true: the exact hole positions on THIS
+// PHYSICAL BOARD are not measured. Section 1.4 draws the standoffs as unlabelled circles and
+// dimensions none of them, so the manual establishes no coordinate. What the roster below carries is
+// a CORRESPONDENCE -- which named standard location each drawn hole is -- inferred from a to-scale
+// figure and discharged physically at FIT. The standard's coordinates are exact and are
+// extdeps.standards.micro_atx's; the claim that this board sits on them is an inference; and the
+// board's own hole diameter and underside keep-outs remain unmeasured, which is what
+// asrock_altrad8ud_open_mounting_unknowns enumerates.
 //
-// So the reading is not evidence about WHERE the holes are. It is evidence for a different
-// proposition: that this board POPULATES those named standard locations. The coordinates themselves
-// are exact and come from extdeps.standards.atx_2_2, not from any pixel. Treating registration
-// evidence as coordinate uncertainty put a +/- 10 mm region on numbers that are known to the
-// thousandth of an inch, and would have forced a slotted carrier where a drilled hole is justified.
-//
-// WHAT REMAINS INFERRED is the correspondence itself: ASRock does not dimension these holes or name
-// them by letter, so "this board's visible hole IS standard location C" is a strongly supported
-// inference from a to-scale drawing, not a vendor statement. It is discharged physically at FIT.
-//
-// J AND S REACH THE SAME ACTUATION THROUGH DIFFERENT EVIDENCE, and collapsing that was the defect.
-// Both are standard micro-ATX locations, neither carries a board hole here, and a chassis built to
-// the full micro-ATX population would put a metal standoff at each. So both must be left empty.
-//
-// But the REASONS are not the same strength, and only the model can keep them apart:
-//   J is DIRECTED. The vendor's own layout figure marks it as a standoff to remove. That is a
-//     product statement, and it is the strongest evidence in this file.
-//   S is UNOBSERVED. It is simply not drawn. Absence from a figure is weaker than an instruction,
-//     and it is exactly the kind of claim a physical check at FIT can overturn.
-// One earlier revision spelled both as a single ChassisStandoffForbidden constructor, which made the
-// weaker claim indistinguishable from the stronger one and gave a future reader no way to know which
-// row to re-examine when a board is finally in hand. Evidence and decision are now two types joined
-// by a total derivation: the standing is what is known, the placement is what is done.
-//
-// NOT CLAIMED, and an earlier revision did claim it: that either location "sits under copper". What
-// the underside actually carries at J and S has not been observed by anything. The reason to keep a
-// standoff out of an unpopulated location is that it is unpopulated; inventing a specific hazard to
-// justify a correct decision weakens the decision by attaching it to a fact nobody checked.
-// ---------------------------------------------------------------------------------------------
+// The absorbing fallback the old paragraph warned about is still a real hazard and is still refused:
+// substituting the nearby standard for a measurement nobody took. The difference is that the refusal
+// now sits on the product-specific facts that are genuinely absent, rather than on a grid that this
+// module does supply.
 
 data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

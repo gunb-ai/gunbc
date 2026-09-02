@@ -8,9 +8,18 @@ import extdeps.printing.fdm {
   EnvelopeFit,
   PartFits,
   PartExceedsEnvelope,
-  EnvelopeZ,
+  EnvelopeAxis, EnvelopeX, EnvelopeY, EnvelopeZ,
   part_extent,
   envelope_fit,
+  MaterialSuitabilityRow,
+  MaterialSuitabilityLookup, SuitabilityResolved, SuitabilityRowsConflict,
+  MaterialSuitability, SuitabilityIdeal, SuitabilityNotRecommended, SuitabilityUnstated,
+  material_suitability,
+  Pla, Abs,
+}
+import extdeps.printing.bambu_lab_a1_mini {
+  a1_mini_build_envelope,
+  a1_mini_material_suitability,
 }
 import product.printed_chassis.coupon {
   LengthLadder,
@@ -81,18 +90,21 @@ test fn w_the_plate_width_follows_the_rung_count() -> Bool {
     _ => false
   }
 }
-// WITNESS 6 — THE SPECIMEN FITS THE A1 MINI. 102 x 18 x 4 mm against 180 cubed.
+// WITNESS 6 — THE SPECIMEN FITS THE A1 MINI, AND THE ENVELOPE IS THE MACHINE'S, NOT THIS FILE'S.
+//
+// An earlier revision spelled `build_envelope(180, 180, 180)` right here. That made the witness its
+// own subject: it would have stayed green if the real machine had a different envelope, and green if
+// no printer authority existed in the corpus at all. Reading extdeps.printing.bambu_lab_a1_mini
+// means the vendor row is what this claim is about, and editing that row is what moves it.
 test fn w_the_hole_ladder_coupon_fits_the_a1_mini() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } =>
-      match specimen_fits(
-        envelope: build_envelope(x: millimeter(count: 180), y: millimeter(count: 180), z: millimeter(count: 180)),
-        s: hole_ladder_specimen(l: l)
-      ) {
+      match specimen_fits(envelope: a1_mini_build_envelope, s: hole_ladder_specimen(l: l)) {
         PartFits => true
-        _ => false
+        PartExceedsEnvelope { first: _, rest: _ } => false
       }
-    _ => false
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
   }
 }
 // WITNESS 7 — THE CONVERSION ROUNDS UP, AND THIS IS THE CASE TRUNCATION GETS WRONG. 180_500 um
@@ -108,14 +120,54 @@ test fn w_the_micrometre_conversion_rounds_up_not_down() -> Bool {
 // pins that the fit path CONSUMES it. A part 180.5 mm tall must be refused on Z against a 180 mm
 // envelope — the exact print that truncation would have greenlit.
 test fn w_an_oversize_part_is_refused_on_the_axis_that_exceeds() -> Bool {
-  let envelope = build_envelope(x: millimeter(count: 180), y: millimeter(count: 180), z: millimeter(count: 180))
+  let envelope = a1_mini_build_envelope
   let part = part_extent(
     x: millimeter(count: 100),
     y: millimeter(count: 100),
     z: micrometer_to_millimeter_ceiling(m: micrometer(count: 180500))
   )
   match envelope_fit(envelope: envelope, part: part) {
-    PartExceedsEnvelope { first: e, rest: _ } => match e.axis { EnvelopeZ => true, _ => false }
-    _ => false
+    PartExceedsEnvelope { first: e, rest: _ } =>
+      match e.axis {
+        EnvelopeZ => true
+        EnvelopeX => false
+        EnvelopeY => false
+      }
+    PartFits => false
   }
+}
+
+// WITNESS 9 — THE MACHINE GRADES EVERY MATERIAL THE SUBSTRATE CAN NAME. The vendor table grades ten
+// materials and FilamentMaterial has ten arms, so this roster is total: no consumer can ask about a
+// filament the A1 mini row does not answer for. If a material is added to the substrate without a
+// row here, this goes red — which is the point, because the alternative is a silent
+// SuitabilityUnstated standing in for "the vendor never said", which for THIS machine is false.
+test fn w_the_a1_mini_grades_every_modelled_material() -> Bool {
+  a1_mini_material_suitability.length() == 10
+}
+
+// WITNESS 10 — THE GRADING DISCRIMINATES, which a completeness count alone does not show. A roster
+// that graded all ten identically would satisfy witness 9 and be useless. PLA is Ideal and ABS is
+// Not Recommended in the vendor's own table, and those are the two the chassis decision turns on:
+// PLA is what ships in the combo and ABS is what a naive "stronger plastic" instinct reaches for.
+test fn w_pla_is_ideal_and_abs_is_not_recommended() -> Bool {
+  let pla = match material_suitability(rows: a1_mini_material_suitability, material: Pla) {
+    SuitabilityResolved { suitability: s } =>
+      match s {
+        SuitabilityIdeal => true
+        SuitabilityNotRecommended => false
+        SuitabilityUnstated => false
+      }
+    SuitabilityRowsConflict { material: _, count: _ } => false
+  }
+  let abs = match material_suitability(rows: a1_mini_material_suitability, material: Abs) {
+    SuitabilityResolved { suitability: s } =>
+      match s {
+        SuitabilityNotRecommended => true
+        SuitabilityIdeal => false
+        SuitabilityUnstated => false
+      }
+    SuitabilityRowsConflict { material: _, count: _ } => false
+  }
+  pla && abs
 }

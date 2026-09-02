@@ -1,0 +1,118 @@
+module extdeps.printing.bambu_lab_a1_mini
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure {
+  Micrometer, micrometer,
+  Millimeter, millimeter,
+  Celsius, celsius,
+  Watt, watt,
+  Volt, volt,
+  Hertz, hertz,
+}
+import extdeps.printing.fdm {
+  BuildEnvelope, build_envelope,
+  NozzleDiameter, nozzle_diameter,
+  FilamentDiameter, filament_diameter,
+  MaterialSuitabilityRow, material_suitability_row,
+  SuitabilityIdeal, SuitabilityNotRecommended,
+  FilamentMaterial,
+  Pla, Petg, Tpu, Pva, Abs, Asa, Polycarbonate, Polyamide, Pet, FiberReinforcedPolymer,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE A1 MINI AS A CONCRETE PRODUCT, which is the thing extdeps.printing.fdm deliberately is not.
+//
+// fdm owns the agnostic shapes — an envelope, a nozzle diameter, a material and a suitability
+// grading. It enumerates no machine and grades no material, because a generic hub that named
+// products would be the external-decomposition violation DESIGN section 3 describes. This module is
+// the other half: one independently versioned product, owning its own facts.
+//
+// WHY IT EXISTS AT ALL, stated because its absence was a real defect rather than a gap. The coupon
+// fit witness previously authored `build_envelope(180, 180, 180)` inline. That witness therefore
+// tested a number it had written itself: it would have stayed green if this machine's envelope were
+// different, and green if no printer authority existed anywhere in the corpus. A witness whose
+// subject is its own literal establishes nothing about the world. It now reads the row below, so
+// changing this row is what moves that witness.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "bambulab.com/en/a1-mini/specs"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.bambu_lab_a1_mini",
+      decl_name: "a1_mini_build_envelope",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// PROVENANCE, AND IT IS RELAYED RATHER THAN FETCHED. The vendor's "Technical Specifications A1 mini"
+// table, supplied verbatim by the operator 2026-09-01. Outbound requests to bambulab.com are
+// refused by this environment's egress policy (403) and the Wayback availability API returns no
+// snapshot for that host, so no first-party read is available here and none is claimed. Every value
+// below appears in that table; nothing is inferred from the machine's class, and where the table is
+// silent this module is silent too rather than supplying the usual answer for a printer like this.
+
+data a1_mini_build_envelope: BuildEnvelope = build_envelope(
+  x: millimeter(count: 180),
+  y: millimeter(count: 180),
+  z: millimeter(count: 180)
+)
+
+// The INCLUDED nozzle, distinguished from the optional ones because they are different facts: one
+// describes the machine as delivered, the others describe what may be fitted. A process qualified on
+// one nozzle is not qualified on another, so collapsing these into a set would let a 0.4 mm
+// qualification be spent on a 0.2 mm job.
+data a1_mini_nozzle_included: NozzleDiameter = nozzle_diameter(value: micrometer(count: 400))
+
+data a1_mini_nozzle_optional: List<NozzleDiameter> = [
+  nozzle_diameter(value: micrometer(count: 200)),
+  nozzle_diameter(value: micrometer(count: 600)),
+  nozzle_diameter(value: micrometer(count: 800)),
+]
+
+data a1_mini_filament_diameter: FilamentDiameter = filament_diameter(value: micrometer(count: 1750))
+
+data a1_mini_max_hot_end_temperature: Celsius = celsius(count: 300)
+data a1_mini_max_build_plate_temperature: Celsius = celsius(count: 80)
+
+// Electrical, carried because the rack this program builds shares a supply with these machines and
+// because a printer is a node with a power envelope like any other.
+data a1_mini_input_voltage_minimum: Volt = volt(count: 100)
+data a1_mini_input_voltage_maximum: Volt = volt(count: 240)
+data a1_mini_input_frequency_minimum: Hertz = hertz(count: 50)
+data a1_mini_input_frequency_maximum: Hertz = hertz(count: 60)
+data a1_mini_max_power: Watt = watt(count: 150)
+
+// Physical footprint of the MACHINE, not of anything it prints. Named to keep that distinction
+// visible: 347 x 315 x 365 is the desk space it occupies, and confusing it with the build envelope
+// is a mistake that would silently admit parts nearly twice the printable size.
+data a1_mini_machine_width: Millimeter = millimeter(count: 347)
+data a1_mini_machine_depth: Millimeter = millimeter(count: 315)
+data a1_mini_machine_height: Millimeter = millimeter(count: 365)
+
+// THE SUITABILITY ROSTER IS COMPLETE OVER FilamentMaterial, and that is a property worth stating.
+// The vendor table grades ten materials and fdm models exactly ten, so every arm has a row and no
+// consumer can ask about a material this roster does not answer for. SuitabilityUnstated therefore
+// does not appear here — it exists for machines whose vendor is silent, which this one is not.
+data a1_mini_material_suitability: List<MaterialSuitabilityRow> = [
+  material_suitability_row(material: Pla, suitability: SuitabilityIdeal),
+  material_suitability_row(material: Petg, suitability: SuitabilityIdeal),
+  material_suitability_row(material: Tpu, suitability: SuitabilityIdeal),
+  material_suitability_row(material: Pva, suitability: SuitabilityIdeal),
+  material_suitability_row(material: Abs, suitability: SuitabilityNotRecommended),
+  material_suitability_row(material: Asa, suitability: SuitabilityNotRecommended),
+  material_suitability_row(material: Polycarbonate, suitability: SuitabilityNotRecommended),
+  material_suitability_row(material: Polyamide, suitability: SuitabilityNotRecommended),
+  material_suitability_row(material: Pet, suitability: SuitabilityNotRecommended),
+  material_suitability_row(material: FiberReinforcedPolymer, suitability: SuitabilityNotRecommended),
+]

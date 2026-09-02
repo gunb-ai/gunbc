@@ -1,0 +1,142 @@
+module extdeps.standards.micro_atx
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Micrometer, micrometer, Millimeter, millimeter }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// MICROATX IS ITS OWN SPECIFICATION, NOT A SECTION OF ATX 2.2, and an earlier revision of this
+// corpus got that wrong by putting the microATX envelope, location population and coordinates inside
+// extdeps.standards.atx_2_2 because the two standards share some mounting locations.
+//
+// Sharing a few coordinates is not shared governance. The microATX Motherboard Interface
+// Specification independently defines its own motherboard/chassis interface, its own maximum
+// envelope, its own B/C/F/H/J/L/M/R/S population, the R and S requirements, and the rule that
+// extraneous chassis standoffs be removable or absent. A change to microATX must not require editing
+// the ATX module, which is precisely the external-decomposition test DESIGN section 3 states.
+//
+// NO NEUTRAL SHARED MODULE IS EXTRACTED YET, deliberately. MountingLocationId and MountingLocation
+// are shapes a second standard could eventually share, but there is no multi-standard consumer today
+// -- ATX 2.2 carries no location population in this corpus -- and extracting a hub for one consumer
+// would be inventing an authority to hold a symbol rather than to answer a question. They live here,
+// with the standard that actually enumerates. The extraction becomes correct when a second standard
+// enumerates, and not before.
+//
+// THE REVISION IS NOT ESTABLISHED HERE, and the module is named accordingly. The coordinates below
+// arrived by relay from a routed review naming the microATX Motherboard Interface Specification; no
+// first-party read of a specific revision happened in this session, so this module does not spell a
+// revision it cannot cite. That is the same rule that deleted an unverified vendor legal name
+// earlier in this program. When a revision is read first-party, this module gains that fact and may
+// be renamed to carry it.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20180417122513/http://www.formfactors.org:80/developer/specs/atx2_2.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.micro_atx",
+      decl_name: "micro_atx_mounting_locations",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// PROVENANCE OF THE COORDINATES: CITED-VIA-RELAY, the grade extdeps.climbing_holds.atomik defines
+// for a document read by someone other than the authoring session. This session's own extraction of
+// the archived ATX PDF recovered Figure 7's text layer and not the mounting-location artwork, so the
+// values below are NOT this session's reading. They were supplied by a routed review and are
+// corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on them exactly, which
+// is not a coincidence available to invented numbers. Corroboration of a board correspondence is not
+// a provenance upgrade for the standard reading, and this row does not claim otherwise.
+data micro_atx_coordinate_provenance: NonEmptyStr = "cited-via-relay: routed review reporting the microATX Motherboard Interface Specification location population and coordinates; no first-party figure read in this session; revision not established"
+
+// THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
+// and because this session got it BACKWARDS once and shipped the error.
+//
+// micro-ATX is 9.6 x 9.6 in: it reduces full-size ATX along the DEPTH axis and leaves the rear-I/O
+// width alone. "Deep micro-ATX" restores some of that depth while keeping the same 9.6 in width. So
+// a deep-micro-ATX board is NOT a wider micro-ATX board — it is exactly as wide, and deeper.
+//
+// The error worth recording: an earlier revision of extdeps.boards.asrock_rack read the ALTRAD8UD's
+// 9.6 x 10.5 in as 267 mm WIDE against micro-ATX's 244 mm, and concluded that a micro-ATX hole
+// pattern would be laid out at the wrong width. The axes were transposed. The board is 244 mm wide,
+// which is the micro-ATX width exactly, and 267 mm deep.
+//
+// RETRACTED, and it was written in this file: the sentence that followed said "it is the FRONT row
+// that moves outward by the extra depth". That is false, for the datum reason recorded in
+// extdeps.standards.micro_atx, which now owns that grid. The front row does not move; a deep board
+// extends PAST it.
+// THE LETTERED MOUNTING-LOCATION GRID. The specifications name their location populations by letter,
+// and the letters — not coordinates — are the identity: a location is the same location across
+// revisions and across boards, which is what makes "this board populates C" a checkable claim rather
+// than a coincidence of numbers.
+//
+// Coordinates are in the board frame used throughout this corpus: x ALONG THE REAR I/O EDGE, y DEPTH
+// FROM THAT EDGE, micrometres. They are exact standard values, not readings.
+//
+// THE DATUM CORRECTION THAT MAKES THE FRONT ROW MAKE SENSE, and it killed a wrong claim of ours.
+// The specification's figure gives the front row as 8.950 in — measured FROM DATUM B, which itself
+// sits 0.400 in from the rear board edge. So the front row is 0.400 + 8.950 = 9.350 in from the
+// edge. An earlier revision of extdeps.boards.asrock_rack asserted that a deep board's extra depth
+// PUSHED this row outward from a nominal 8.95; it does not. L and M sit at the ordinary micro-ATX
+// location on a deep board and on a standard-depth board alike. What the extra depth does is extend
+// the board PAST them.
+type MountingLocationId
+  = LocB | LocC | LocF | LocH | LocJ | LocL | LocM | LocR | LocS
+
+type MountingLocation sole_constructor {
+  id: MountingLocationId
+  along_rear_edge: Micrometer
+  depth_from_rear_edge: Micrometer
+}
+
+fn mounting_location(id: MountingLocationId, along_rear_edge: Micrometer, depth_from_rear_edge: Micrometer) -> MountingLocation {
+  MountingLocation { id: id, along_rear_edge: along_rear_edge, depth_from_rear_edge: depth_from_rear_edge }
+}
+
+// The micro-ATX population the specification names: B, C, F, H, J, L, M, R, S.
+data micro_atx_mounting_locations: List<MountingLocation> = [
+  mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 33020)),
+  mounting_location(id: LocJ, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocM, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocC, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocH, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocL, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocB, along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocS, along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocR, along_rear_edge: micrometer(count: 229870), depth_from_rear_edge: micrometer(count: 165100)),
+]
+
+// The STANDARD's nominal mounting-hole diameter. It is a property of the location definition and
+// NOT of any product: a board populating location C is not thereby asserted to have a 3.96 mm hole.
+// A product's actual hole diameter is a product fact and stays unknown until measured or cited.
+// 0.156 in nominal. This belongs to the STANDARD LOCATION definition and to nothing else; no
+// consumer may read a product's physical hole diameter from it.
+data micro_atx_standard_hole_diameter: Micrometer = micrometer(count: 3962)
+
+// The maximum envelope, and the reason reusing the grid is not conformance. A design exceeding this
+// envelope requires a dedicated chassis by the specification's own statement, so a 9.6 x 10.5 in
+// board cannot be called mechanically conforming micro-ATX merely because it populates the grid.
+// GRID REUSE AND ENVELOPE CONFORMANCE ARE SEPARATE CLAIMS, and a board can make the first while
+// failing the second. The two rows below ARE the maximum envelope: a design exceeding it requires a
+// dedicated chassis by the specification's own statement. So populating the lettered grid does not
+// make a 9.6 x 10.5 in board mechanically conforming micro-ATX.
+//
+// AND THE VENDOR PHRASE IS NOT A FORM FACTOR. An earlier revision of this module generalised "deep
+// micro-ATX" to mean 9.6 in wide plus extra depth. That is refuted by the vendor's own catalogue:
+// ASRock applies the same phrase to a 9.6 x 10.5 in board AND to a 10.4 x 10.5 in board. The label
+// determines neither the outline nor a mounting-hole population, which is why this corpus carries a
+// standard with a lettered location catalog, a separately cited vendor label claim carrying no
+// dimensions, and a per-product mechanical profile — rather than a FormFactor coproduct with a
+// DeepMicroAtx arm. A name that silently implies an envelope is the category error that produced the
+// axis transposition recorded above.
+data micro_atx_width_along_rear_io: Millimeter = millimeter(count: 244)
+data micro_atx_depth: Millimeter = millimeter(count: 244)
