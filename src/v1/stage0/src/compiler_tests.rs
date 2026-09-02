@@ -1037,23 +1037,22 @@ mod compiler_tests {
                     std::rc::Rc::new(im::vector![source]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                let emitted = r
-                    .files
-                    .iter()
-                    .find(|f| f.path == "src/probe.rs")
-                    .map(|f| f.content.clone())
-                    .expect("service module must emit src/probe.rs");
+                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
+                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                        missing_realization_fact,
+                        ..
+                    } => missing_realization_fact.contains("not_a_channel"),
+                    _ => false,
+                });
                 assert!(
-                    emitted.contains("not_a_channel")
-                        && emitted.contains("has no modeled channel"),
-                    "an unmodeled output key must refuse and name the key. Got:\n{}",
-                    emitted
+                    named,
+                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
+                    r.diagnostics
                 );
                 assert!(
-                    !emitted.contains("stdout.clone()"),
-                    "a refused operation must not fall through to the stdout channel. \
-                     Got:\n{}",
-                    emitted
+                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
+                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
                 );
             })
             .expect("failed to spawn thread")
