@@ -244,6 +244,8 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `predicate_vacuously_true_on_an_empty_domain`
 - `check_subject_narrower_than_its_declared_claim`
 - `recurrence_ledger_scoped_below_the_recurrence`
+- `hedged_benefit_leaves_the_harm_axis_unexamined`
+- `receipt_names_a_property_not_the_tree_it_holds_of`
 
 ## Building & checks
 
