@@ -99,6 +99,7 @@ pub mod derived_realization_schedule;
 pub mod evaluation_budget_consequence_generated;
 pub mod memory_governor;
 pub mod module_path_index;
+pub mod process_group;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;

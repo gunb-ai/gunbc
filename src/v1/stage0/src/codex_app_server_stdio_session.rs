@@ -183,8 +183,6 @@ fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
 }
 
 fn spawn_codex_child(req: &CodexStdioSessionRequest<'_>, stdin_rx: File) -> Result<Child, String> {
-    use std::os::unix::process::CommandExt;
-
     let mut cmd = std::process::Command::new(req.executable);
     cmd.arg("app-server")
         .arg("--stdio")
@@ -194,24 +192,14 @@ fn spawn_codex_child(req: &CodexStdioSessionRequest<'_>, stdin_rx: File) -> Resu
         .env("CODEX_HOME", req.codex_home)
         .current_dir(req.cwd);
 
-    unsafe {
-        cmd.pre_exec(|| {
-            if libc::setpgid(0, 0) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-
-    cmd.spawn()
+    // The group mechanics moved to `crate::process_group` when the evaluation-budget falsifier
+    // became a second consumer of them; the protocol above and below stays here.
+    crate::process_group::spawn_in_new_process_group(&mut cmd)
         .map_err(|e| format!("spawn codex app-server: {e}"))
 }
 
 fn kill_process_group(pid: u32) {
-    unsafe {
-        let _ = libc::kill(pid as i32, libc::SIGTERM);
-        let _ = libc::kill(-(pid as i32), libc::SIGTERM);
-    }
+    crate::process_group::signal_process_group(pid, libc::SIGTERM);
 }
 
 fn poll_thread_start_id(

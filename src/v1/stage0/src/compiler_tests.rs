@@ -499,6 +499,45 @@ mod compiler_tests {
         );
     }
 
+    /// THE PRODUCT FALSIFIER FOR THE EVALUATION-BUDGET CONSEQUENCE BRIDGE.
+    ///
+    /// It moves the authority value in a disposable worktree and requires the SERVED response
+    /// to move with it: exactly one drift before regeneration, the regenerated constant
+    /// carrying the moved value, a rebuilt seed, a real thread-CPU breach over the committed
+    /// fixture, the moved code once and the former code zero times, then a restored tree.
+    ///
+    /// WHY THE PERTURBATION IS THE INSTRUMENT: unperturbed, every step of that chain is green
+    /// whether or not the seed reads the projection at all, because the value the boundary
+    /// would have chosen independently is the same value.
+    ///
+    /// #[ignore] AND WHY: this arm builds the compiler three times, runs two regeneration
+    /// generations and starts a server, which is tens of minutes rather than milliseconds,
+    /// while repo_self_test_command runs the whole --lib suite on every push. It is ENROLLED
+    /// AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// evaluation_budget_consequence_falsifier -- --ignored`. An #[ignore] is a cost decision
+    /// and NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn evaluation_budget_consequence_falsifier() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let scratch = std::env::var("GUNBC_FALSIFIER_SCRATCH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let outcome =
+            crate::cli_run::run_evaluation_budget_consequence_falsifier(&repo_root, &scratch);
+        // The receipt is printed on the way past whichever verdict is reached, so a red names
+        // the step that refused rather than only the fact that the transaction did not pass.
+        eprintln!("evaluation-budget falsifier: {:?}", outcome);
+        assert!(
+            crate::cli_run::evaluation_budget_consequence_falsifier_passed(&outcome),
+            "the served consequence must move with its authority: {:?}",
+            outcome
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask

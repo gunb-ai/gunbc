@@ -165,6 +165,13 @@ mod partition_crate_boundary_host;
 
 #[path = "emitted_closure_compile_host.rs"]
 mod emitted_closure_compile_host;
+
+// TEST-ONLY, and wired the same #[path] way as the hosts above rather than through lib.rs: the
+// falsifier exists to be invoked by one #[ignore] test and has no production caller, so declaring
+// it unconditionally would put a module nothing calls into every release build.
+#[cfg(test)]
+#[path = "evaluation_budget_consequence_falsifier_host.rs"]
+mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -39280,6 +39287,25 @@ fn witness_eval_verdict_from_claim_outcome(
 }
 
 pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
+/// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
+///
+/// The predicate is here rather than in the test body because a test that pattern-matched the
+/// outcome itself would be a second adjudication of the same terminal: RefusedWithCleanupFailure
+/// is a refusal, and a reader writing `matches!(_, Passed(_) | ...)` by hand is one edit away from
+/// treating a cleanup failure as a pass.
+#[cfg(test)]
+pub(crate) use evaluation_budget_consequence_falsifier_host::run_evaluation_budget_consequence_falsifier;
+
+#[cfg(test)]
+pub(crate) fn evaluation_budget_consequence_falsifier_passed(
+    outcome: &evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome,
+) -> bool {
+    matches!(
+        outcome,
+        evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome::Passed(_)
+    )
+}
 
 pub fn run_required_regen(
     candidate_dir_rel: &str,

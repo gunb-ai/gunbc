@@ -10,6 +10,7 @@ import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
+import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
 import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
@@ -210,6 +211,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     census_memo_seed_growth_justification,
     declaration_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
+    evaluation_budget_falsifier_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
