@@ -1,0 +1,125 @@
+module test.claim.undeclared_bare_type_reference_class_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLASS: A TYPE NAME THAT RESOLVES ONLY BECAUSE ITS DEFINER HAPPENED TO BE IN THE POOL.
+//
+// A bare type position resolves against the whole module pool by global uniqueness rather than by
+// import binding. So a module may name a type it never imports, and a WHOLE-CORPUS compile stays
+// green: the definer is in the pool anyway, dragged there by some unrelated import elsewhere, and
+// the name finds it. Under any NARROWER closure the definer is absent and the same source refuses
+// -- pointing at the USING module, which reads like a corpus bug and is not one. Every tool that
+// compiles a SUBSET pays this: the synthetic-fixture instruments today, and any projection
+// machinery that has to compute a closure.
+//
+// WHY THE SUBJECT IS AUTHORED MODULES AND NOT CORPUS ONES. The obvious witness -- compile a real
+// module's real closure and assert it succeeds -- was written first and MEASURED RED, twice over,
+// for a reason that has nothing to do with any one module: at the order of one module in six, a
+// closure of any interesting size contains several independent instances of this class, so the
+// claim silently becomes "the whole corpus burndown is finished". That is a different and much
+// larger subject, and a witness that cannot be green until it is finished is not a wall, it is a
+// hostage. tools.multi_module_compile_fixture compiles a CALLER-AUTHORED manifest with no module
+// index and no corpus roots, so the subject here is the resolution rule itself, at a grain fully
+// under this file's control and immune to whatever else is in the tree.
+//
+// WHAT THIS DOES AND DOES NOT ANSWER, because the distinction is the whole point. It witnesses THE
+// CLASS: an undeclared bare type reference refuses under a narrower closure, and the SAME source
+// with the import line added compiles clean. It does NOT witness the repair of any particular
+// corpus module -- that is a per-module subject, and the sizing of what remains is recorded at
+// gunbc.compile_clean_diagnostic_policy unlisted_import_use_burndown_sizing beside the enforcement
+// row that consumes it.
+//
+// THE DEFINER IS SUPPLIED IN BOTH MANIFESTS AND DELETING IT IS NOT A SIMPLIFICATION. The unimported
+// name is a REAL declaration of a module present in the same manifest, so the only thing missing
+// from the red arm is the import EDGE. Drop the definer to "simplify" the red manifest and the
+// claim still goes red -- for an unresolvable SPELLING, which is a different class with its own
+// wall -- and the probe would then be green for a reason that has nothing to do with import edges.
+// The cost of that edit is the entire discriminating power of this file, and it is invisible: the
+// test still passes.
+//
+// NO std.types IMPORT IN EITHER FIXTURE, and that is load-bearing rather than terseness. The
+// instrument compiles the supplied manifest with NO corpus roots, so `import std.types { Int }`
+// names a module that does not exist in the subject and refuses the whole compile -- including the
+// positive control. That is how the first revision of this file was written and BOTH arms came back
+// false in under 4ms; the control going red with the subject is exactly the signature of a broken
+// harness rather than a real class, which is why the control is read first. Int needs no import:
+// it is in kernel_type_set and every module sees it.
+
+data ubtr_definer_source: String = "module ubtr.definer\n\ntype UbtrProvenance {\n  attempt: Int\n}\n"
+
+data ubtr_user_without_import_source: String = "module ubtr.user\n\ntype UbtrRow {\n  provenance: UbtrProvenance\n  seq: Int\n}\n"
+
+data ubtr_user_with_import_source: String = "module ubtr.user\n\nimport ubtr.definer { UbtrProvenance }\n\ntype UbtrRow {\n  provenance: UbtrProvenance\n  seq: Int\n}\n"
+
+fn ubtr_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/definer.dag", ubtr_definer_source),
+      fixture_source("ubtr/user.dag", user_source)
+    ],
+    entry: "ubtr/user.dag"
+  })
+}
+
+// THE OUTCOME IS READ BY MATCHING, NEVER BY AN ACCESSOR, so FixtureInstrumentRefused -- the arm
+// that says the HARNESS broke rather than the subject -- cannot render as "zero diagnostics" on
+// either side. Both readers return false on it, so a ragged manifest fails BOTH claims rather than
+// silently satisfying the control.
+fn ubtr_diagnosed(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) > 0,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn ubtr_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE DISCRIMINATING RED. ubtr.user names UbtrProvenance at a field position and imports it from
+// nowhere. The definer is in the manifest, so the declaration EXISTS -- what is missing is only the
+// import edge, which is exactly the corpus shape.
+//
+// IT ASSERTS THAT THE COMPILER SAYS SOMETHING, NOT WHICH THING IT SAYS, and that is a deliberate
+// rung rather than a hedge. Two arms are live here and they are not the same fact: the definer is
+// supplied, so the manifest pool may resolve the name by the very global-uniqueness rule under test
+// and answer with the advisory UnlistedImportUse, or the narrower closure may refuse outright with
+// UnresolvedType. Naming one of them without having observed which fires is the failure where a
+// diagnostic name is asserted and the mechanism behind it is silent. The pair still discriminates:
+// zero diagnostics on the control against a non-empty population on the subject, over the SAME
+// bytes plus one import line. NEXT-RUNG TRIGGER: read the emitted diagnostic class off this claim's
+// own floor run and pin it here by name; until then this file measures that the reference is seen,
+// not how it is classified.
+test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
+  ubtr_diagnosed(ubtr_run(ubtr_user_without_import_source))
+}
+
+// THE POSITIVE CONTROL, and it is the same bytes plus one import line. Without it the red above is
+// satisfied by a fixture that never compiled at all, by a harness that refuses every manifest, and
+// by a definer whose own declaration is malformed -- three failures that look identical from the
+// red side.
+test fn the_same_source_with_the_import_line_compiles_clean() -> Bool {
+  ubtr_completed_clean(ubtr_run(ubtr_user_with_import_source))
+    && !ubtr_diagnosed(ubtr_run(ubtr_user_with_import_source))
+}
