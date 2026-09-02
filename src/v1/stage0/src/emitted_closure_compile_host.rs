@@ -44,6 +44,18 @@
 //! the current tree would be the tree-copied oracle DESIGN 5 rejects; an identity-grain debt
 //! contract over the emitted population is a separate construction with a separate argument.
 
+// CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::disallowed_macros,  // 6
+    unused_imports,  // 1
+)]
+
 use std::path::{Path, PathBuf};
 
 use super::{
@@ -120,7 +132,7 @@ pub enum CargoVerdict {
     DidNotComplete { detail: String },
     /// Ran to completion and reported its own exit status.
     ///
-    /// `probe_line` is the first diagnostic line naming the CALLER'S ATTRIBUTION SYMBOL, scanned
+    /// `probe_line` is the first ERROR-diagnostic line naming the CALLER'S ATTRIBUTION SYMBOL, scanned
     /// from the WHOLE stderr, not `stderr_tail`: the tail is the last 20 lines kept for a human
     /// reader, and a genuine diagnostic for the attributed item can sit above it when other
     /// diagnostics follow. Attributing from the tail would fail a run whose fault WAS refused
@@ -131,10 +143,16 @@ pub enum CargoVerdict {
     /// (`MUTATION_PROBE_SYMBOL`), while the fixture route attributes a red to the FIXTURE'S OWN
     /// emitted module. A red naming neither is a red about something else in the closure, and
     /// both callers need to be able to say so.
+    /// `probe_diagnostic` is the rustc DIAGNOSTIC HEADER governing `probe_line` -- the
+    /// `error[E0308]: mismatched types` line the attributed location sits under. A location line
+    /// alone says only WHERE a fault was reported and never WHAT rustc refused, so a caller
+    /// holding only `probe_line` passes on ANY refusal reported in the attributed file. The
+    /// header is what lets a caller name the error class it expects.
     Completed {
         status: i32,
         stderr_tail: String,
         probe_line: Option<String>,
+        probe_diagnostic: Option<String>,
     },
 }
 
@@ -161,6 +179,17 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
 pub fn cargo_verdict_probe_line(verdict: &CargoVerdict) -> Option<&str> {
     match verdict {
         CargoVerdict::Completed { probe_line, .. } => probe_line.as_deref(),
+        _ => None,
+    }
+}
+
+/// The rustc diagnostic header governing the attributed line -- WHAT was refused, beside
+/// `cargo_verdict_probe_line`'s WHERE.
+pub fn cargo_verdict_probe_diagnostic(verdict: &CargoVerdict) -> Option<&str> {
+    match verdict {
+        CargoVerdict::Completed {
+            probe_diagnostic, ..
+        } => probe_diagnostic.as_deref(),
         _ => None,
     }
 }
@@ -613,6 +642,53 @@ fn write_probe_crate_files(
 
 /// Run cargo over the probe crate.
 ///
+/// THE ATTRIBUTED LOCATION AND THE DIAGNOSTIC IT SITS UNDER, READ FROM ONE PASS OVER STDERR.
+///
+/// WHY BOTH, AND WHY THE SECOND IS NOT A NICETY. A caller holding only the location line knows a
+/// fault was reported IN a file and nothing about WHAT was reported: a syntax error, an
+/// unresolved name, a wrong arity and the type mismatch a caller is actually adjudicating are one
+/// answer to it. That is the difference between "rustc refused something here" and "rustc refused
+/// THIS CLASS here", and only the second can carry a claim about an emitter behaviour.
+///
+/// THE GOVERNING HEADER IS THE MOST RECENT ONE ABOVE THE LOCATION, which is rustc's own layout:
+/// `error[E0308]: mismatched types` followed by its ` --> file:line:col`. Scanning forward and
+/// keeping the last header seen therefore attributes the location to its OWN diagnostic and not
+/// to a neighbouring one -- the property the unit test beside this function pins, because both
+/// directions typecheck and only one is right.
+///
+/// ONLY AN `error` DIAGNOSTIC ATTRIBUTES, AND A `warning` CLEARS THE HEADER RATHER THAN
+/// STANDING AS ONE. Both callers are asking WHY A RUN WAS REFUSED, and a warning naming the file
+/// is not a refusal: attributing a red to a warning's location would name a line that did not
+/// stop the build, and letting an intervening warning keep an earlier error's header would
+/// attribute a warning's span to an error it does not belong to. A file named only by warnings is
+/// therefore unattributed -- `None`, never the nearest error elsewhere in the run, because an
+/// answer invented from a diagnostic that does not govern the line is a fabricated attribution,
+/// which is worse for a caller than admitting that stderr did not say.
+///
+/// PURE, AND SEPARATE FROM `run_cargo`, so the parse this route's verdict depends on is testable
+/// without spawning a toolchain: the scan executes on every push through the unit test, while the
+/// cargo route around it does not.
+fn attributed_diagnostic(
+    stderr: &str,
+    attribution_symbol: &str,
+) -> (Option<String>, Option<String>) {
+    let mut header: Option<&str> = None;
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("error") {
+            header = Some(trimmed);
+        } else if trimmed.starts_with("warning") {
+            header = None;
+        }
+        if let Some(error_header) = header {
+            if line.contains(attribution_symbol) {
+                return (Some(trimmed.to_string()), Some(error_header.to_string()));
+            }
+        }
+    }
+    (None, None)
+}
+
 /// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: the
 /// lane's first step is `cargo build --release -p v1-compiler --bins`, so the seed crate is
 /// already compiled there under that profile; a `check` or a private target dir would share no
@@ -642,14 +718,13 @@ fn run_cargo(crate_dir: &Path, workspace: &Path, attribution_symbol: &str) -> Ca
             Some(status) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let tail: Vec<&str> = stderr.lines().rev().take(20).collect();
-                let probe_line = stderr
-                    .lines()
-                    .find(|line| line.contains(attribution_symbol))
-                    .map(|line| line.trim().to_string());
+                let (probe_line, probe_diagnostic) =
+                    attributed_diagnostic(&stderr, attribution_symbol);
                 CargoVerdict::Completed {
                     status,
                     stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
                     probe_line,
+                    probe_diagnostic,
                 }
             }
         },
@@ -1031,6 +1106,18 @@ pub(crate) fn fixture_closure_attributed_line(outcome: &FixtureClosureOutcome) -
     }
 }
 
+/// The rustc diagnostic HEADER governing the attributed line -- WHAT rustc refused in the
+/// fixture's own emitted module, as against `fixture_closure_attributed_line`'s WHERE.
+#[cfg(test)]
+pub(crate) fn fixture_closure_attributed_diagnostic(
+    outcome: &FixtureClosureOutcome,
+) -> Option<&str> {
+    match outcome {
+        FixtureClosureOutcome::Measured { cargo, .. } => cargo_verdict_probe_diagnostic(cargo),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn fixture_closure_summary(outcome: &FixtureClosureOutcome) -> String {
     match outcome {
@@ -1178,6 +1265,21 @@ const FIXTURE_GREEN_PATH: &str = "fixtures/fixture_closure_rustc/green_probe.dag
 #[cfg(test)]
 const FIXTURE_RED_PATH: &str = "fixtures/fixture_closure_rustc/text_nonliteral_probe.dag";
 
+/// THE ERROR CLASS THE RED ARM CLAIMS, NAMED IN RUSTC'S OWN VOCABULARY: `E0308`, the mismatched
+/// types code of the rustc error index. It is cited rather than coined because the arm's whole
+/// claim is about what THAT compiler does, and `gunbc.rung_drop` `text_boundary_identity_wall`
+/// states the class in the same words — a host representation emitted where the structural
+/// carrier was declared "renders as a Rust type mismatch".
+///
+/// WHAT IT DISCRIMINATES AND WHAT IT DOES NOT, so nobody reads it as more: it separates a TYPE
+/// MISMATCH in the fixture's emitted module from every other way that module could be refused. It
+/// does not pin WHICH two types were mismatched — that pair sits in rustc's `expected`/`found`
+/// notes, whose wording is not part of the error index and would bind this arm to a rustc
+/// release. Every arm's diagnostic lines are reported in full beside the verdict, so a reader who
+/// needs the pair reads it there.
+#[cfg(test)]
+const FIXTURE_RED_EXPECTED_RUSTC_CODE: &str = "E0308";
+
 /// AN UNREADABLE ARM IS `CrateNotWritten`, NAMING THE PATH -- never an empty source quietly
 /// compiled. An empty `.dag` text emits a crate that builds, so substituting one would turn a
 /// missing fixture into a GREEN control and a red arm that stopped discriminating.
@@ -1262,17 +1364,26 @@ pub(crate) fn run_function_value_adapter_discrimination(
 }
 
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
-/// fixture was refused BY RUSTC with a diagnostic naming its own emitted module.
+/// fixture was refused BY RUSTC, in its own emitted module, WITH THE ERROR CLASS THE ARM CLAIMS.
 ///
 /// A `SourceRefused` red does NOT pass. gunbc refusing the fixture is a different and better
 /// outcome — it means the wall climbed — but it is not this pair's subject, and reporting it as
 /// a pass here would let the route's evidence green while nothing reached rustc at all.
+///
+/// THE ERROR CODE IS PART OF THE RED, AND WITHOUT IT THE ARM CLAIMED MORE THAN IT CHECKED. An
+/// earlier revision required only that SOME diagnostic line name the fixture's emitted module, so
+/// any refusal reported in that file passed: a fixture edited into a syntax error, an emitter
+/// regression producing an unresolved path, an arity fault — every one of them reds the arm in
+/// the right file and none of them is the class this pair adjudicates. The arm would have gone on
+/// reporting PASSED while the text-boundary subject it names had stopped being the subject.
 #[cfg(test)]
 pub(crate) fn fixture_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
     fixture_closure_compiled(&pair.green)
         && fixture_closure_reached_rustc(&pair.red)
         && !fixture_closure_compiled(&pair.red)
         && fixture_closure_attributed_line(&pair.red).is_some()
+        && fixture_closure_attributed_diagnostic(&pair.red)
+            .is_some_and(|diagnostic| diagnostic.contains(FIXTURE_RED_EXPECTED_RUSTC_CODE))
 }
 
 /// EACH ARM REPORTS ITS OWN DIAGNOSTIC, NOT A VERDICT ABOUT ITSELF.
@@ -1306,6 +1417,11 @@ pub(crate) fn fixture_discrimination_report(pair: &FixtureDiscrimination) -> Vec
     lines.push(format!(
         "fixture-closure: red attribution {}",
         fixture_closure_attributed_line(&pair.red).unwrap_or("unattributed")
+    ));
+    lines.push(format!(
+        "fixture-closure: red diagnostic {} (expected {})",
+        fixture_closure_attributed_diagnostic(&pair.red).unwrap_or("none"),
+        FIXTURE_RED_EXPECTED_RUSTC_CODE
     ));
     lines.push(format!(
         "fixture-closure: pair {}",
@@ -1892,12 +2008,127 @@ mod tests {
         );
     }
 
+    /// THE ATTRIBUTED LOCATION MUST CARRY ITS OWN DIAGNOSTIC, NOT A NEIGHBOUR'S.
+    ///
+    /// This is the parse the fixture route's red arm rests on, and it runs on every push while
+    /// the cargo route around it does not. The stderr below is the shape rustc emits for a
+    /// multi-module failure: an unrelated diagnostic in another module of the closure, then the
+    /// one in the attributed file. Reading the header from the WRONG direction — nearest below,
+    /// or first in the run — returns `E0433` for a location governed by `E0308`, and the pair
+    /// would then adjudicate an error class the fixture did not produce.
+    #[test]
+    fn the_attributed_diagnostic_is_the_header_governing_the_attributed_line() {
+        let stderr = "\
+error[E0433]: failed to resolve: use of undeclared crate or module `nope`
+  --> src/some_other_module.rs:4:5
+   |
+4  |     nope::thing()
+   |     ^^^^ use of undeclared crate or module
+error[E0308]: mismatched types
+  --> src/fixture_probe.rs:3:52
+   |
+3  | pub fn p() -> String { concat() }
+   |               ------   ^^^^^^^^ expected `String`, found `&str`
+error: aborting due to 2 previous errors
+";
+        let (line, diagnostic) = attributed_diagnostic(stderr, "fixture_probe.rs");
+        assert_eq!(
+            line.as_deref(),
+            Some("--> src/fixture_probe.rs:3:52"),
+            "the attributed line is the location naming the symbol"
+        );
+        assert_eq!(
+            diagnostic.as_deref(),
+            Some("error[E0308]: mismatched types"),
+            "the governing header is the last one ABOVE the attributed line, not the first in \
+             the run and not the nearest below it"
+        );
+    }
+
+    /// A SYMBOL STDERR NEVER NAMES IS `None` IN BOTH FIELDS -- never the run's first diagnostic
+    /// standing in for an attribution that was not made. Answering a header for an unattributed
+    /// run is the fabricated attribution the fixture pair exists to refuse.
+    #[test]
+    fn an_unnamed_symbol_attributes_nothing_rather_than_the_first_diagnostic() {
+        let stderr = "error[E0308]: mismatched types\n  --> src/elsewhere.rs:1:1\n";
+        let (line, diagnostic) = attributed_diagnostic(stderr, "fixture_probe.rs");
+        assert_eq!(line, None);
+        assert_eq!(diagnostic, None);
+    }
+
+    /// A WARNING NAMING THE FILE IS NOT AN ATTRIBUTION OF A REFUSAL.
+    ///
+    /// Both callers of this scan ask why a run was REFUSED. An emitted module routinely collects
+    /// warnings — an unused import, a dead item — and they are printed above the error that
+    /// actually stopped the build. Attributing from one would report a line that refused nothing,
+    /// and would then carry a diagnostic header that is not an error at all.
+    #[test]
+    fn a_warning_naming_the_file_does_not_attribute_the_refusal() {
+        let stderr = "\
+warning: unused import: `std::rc::Rc`
+  --> src/fixture_probe.rs:1:5
+error[E0433]: failed to resolve: use of undeclared crate or module `nope`
+  --> src/some_other_module.rs:4:5
+error: could not compile `probe` (lib) due to 1 previous error
+";
+        let (line, diagnostic) = attributed_diagnostic(stderr, "fixture_probe.rs");
+        assert_eq!(
+            line, None,
+            "a file named only by a warning is unattributed: the warning refused nothing"
+        );
+        assert_eq!(
+            diagnostic, None,
+            "and no error header elsewhere in the run stands in for one"
+        );
+    }
+
+    /// THE DISCRIMINATING RED FOR THE ERROR-CLASS CONJUNCT ITSELF.
+    ///
+    /// The conjunct is only worth its line if a red of the WRONG CLASS fails the pair, so this
+    /// builds the exact shape the route reports -- both arms `Measured`, the control compiled,
+    /// the red refused and attributed to the fixture's own module -- and varies ONLY the rustc
+    /// code. `E0308` passes; `E0433` (an unresolved path, the shape an emitter regression or an
+    /// edited fixture produces) fails, which is precisely the case the arm used to report PASSED.
+    #[test]
+    fn a_red_of_the_wrong_error_class_does_not_pass_the_pair() {
+        let measured = |status: i32, diagnostic: Option<&str>| FixtureClosureOutcome::Measured {
+            crate_dir: "/tmp/x".to_string(),
+            emitted_files: 1,
+            cargo: CargoVerdict::Completed {
+                status,
+                stderr_tail: String::new(),
+                probe_line: Some("--> src/fixture_probe.rs:13:5".to_string()),
+                probe_diagnostic: diagnostic.map(|value| value.to_string()),
+            },
+        };
+        let pair_with = |diagnostic: Option<&str>| FixtureDiscrimination {
+            green: measured(0, None),
+            red: measured(101, diagnostic),
+        };
+        assert!(
+            fixture_discrimination_passed(&pair_with(Some("error[E0308]: mismatched types"))),
+            "the class the arm claims passes"
+        );
+        assert!(
+            !fixture_discrimination_passed(&pair_with(Some(
+                "error[E0433]: failed to resolve: use of undeclared crate or module `nope`"
+            ))),
+            "a refusal of another class in the same file is not this arm's subject, and passing \
+             it is the defect this conjunct closes"
+        );
+        assert!(
+            !fixture_discrimination_passed(&pair_with(None)),
+            "an unattributed red establishes nothing at all"
+        );
+    }
+
     #[test]
     fn a_green_baseline_does_not_pass_without_the_discrimination() {
         let green = CargoVerdict::Completed {
             status: 0,
             stderr_tail: String::new(),
             probe_line: None,
+            probe_diagnostic: None,
         };
         for mutation in [
             MutationVerdict::NotAttempted {

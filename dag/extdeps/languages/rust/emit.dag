@@ -134,7 +134,7 @@ fn rust_value_binding_choose_unblocked(found: String?, candidate: String, blocke
 }
 
 // Do not use terminal `first`: gunbc.cli_dispatch_surface
-// interpreter_algebra_optional_method_semantic_divergence_rung enrolls the substrate split that
+// cli_dispatch_rung_classes enrolls the interpreter-algebra Optional substrate split that
 // makes its interpreted result disagree with emitted Rust.
 fn fresh_rust_value_binding_name(blocked: List<String>, prefix: String) -> String? {
   let first_n = enumerate(blocked) |> map(pair => rust_value_binding_candidate(prefix: prefix, index: pair.first))

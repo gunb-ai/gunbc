@@ -4,6 +4,7 @@
 use self::AdmittedBootstrapOperationIdentity::*;
 use self::CliArmRealization::*;
 use self::CliBootstrapExecutionClass::*;
+use self::CliDispatchGuaranteePosition::*;
 use self::CliOperandArity::*;
 use self::CliOperandValue::*;
 use self::CliOptionArity::*;
@@ -26,31 +27,44 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn cli_dispatch_executor_name_construction_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The generated CLI dispatch consumes one collision-free executor binding spelling derived from its modeled local-binding population.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum CliDispatchGuaranteePosition {
+    CliDispatchStructurallyGuaranteed,
+    CliDispatchOutsideGuaranteeLadder,
 }
 
-pub fn cli_dispatch_executor_binding_collision_rung() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_rust_value_binding_name total and delete the Absent arm and this row together.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CliDispatchRungClass {
+    pub identity: String,
+    pub position: CliDispatchGuaranteePosition,
+    pub invalid_state: String,
+    pub harm: String,
+    pub found_at: String,
+    pub ceiling: String,
+    pub dissolution: Rc<DissolutionCondition>,
 }
 
-pub fn interpreter_algebra_optional_method_semantic_divergence_rung() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Class: interpreter/emitted algebra OptionalOf method semantic divergence. Invalid state: interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control. Harm: silent wrongness outside the ladder. Found at: one executing known-red first specimen. Population: candidate consumers and executed probes are derived by docs/plans/first-optional-divergence-census.md on PR #9785; the measured populations are candidates, not a claim that every site is harmed, and pipeline and method forms are correct today for different reasons in each lane. Ceiling: structural. Trigger: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf -- first, last, get, and lookup -- from that existing row rather than hand-implementing it, so an arm cannot disagree with the declared signature; AND builtin parameter cardinality is grounded in the signature authority beside the return type builtin_function_registry already carries, so argument coercion is derivable for builtin callees. The second half is required because raw-element arms compensate for missing coercion today; repairing result construction alone flips passing witnesses that name nothing about optionals.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+pub fn cli_dispatch_rung_classes() -> Rc<Vec<Rc<CliDispatchRungClass>>> {
+    Rc::new(vec![Rc::new(CliDispatchRungClass {
+    identity: "generated_dispatch_executor_binding_collision".to_string(),
+    position: CliDispatchGuaranteePosition::CliDispatchStructurallyGuaranteed {},
+    invalid_state: "the generated dispatch executor binding collides with a modeled local binding".to_string(),
+    harm: "the emitted Rust declaration and its uses can bind or address the wrong value".to_string(),
+    found_at: "the enrolled allocator collision mutation and emitted definition/use-site control".to_string(),
+    ceiling: "a total signature backed by a substrate nonempty-list carrier whose first returns the element type".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("dissolve-on: fresh_rust_value_binding_name returns a nonempty-list-backed value rather than Optional, so the unreachable Absent arm deletes while the allocator collision mutation remains enrolled".to_string()),
+}), Rc::new(CliDispatchRungClass {
+    identity: "interpreter_algebra_optional_method_semantic_divergence".to_string(),
+    position: CliDispatchGuaranteePosition::CliDispatchOutsideGuaranteeLadder {},
+    invalid_state: "interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control".to_string(),
+    harm: "silent wrongness outside the ladder".to_string(),
+    found_at: "one executing known-red first specimen; candidate consumers and executed probes are recorded in docs/plans/first-optional-divergence-census.md on PR #9785, without claiming every candidate is harmed".to_string(),
+    ceiling: "structural".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("dissolve-on: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf — first, last, get, and lookup — from that existing row rather than hand-implementing it, AND builtin parameter cardinality is grounded beside the return type in the builtin signature authority so argument coercion is derivable for builtin callees; repairing result construction alone does not satisfy this trigger because the raw-element arms currently compensate for missing coercion".to_string()),
+})])
 }
 
 #[derive(
@@ -329,15 +343,6 @@ pub fn gunbc_build_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
         }),
         execution_class: CliBootstrapExecutionClass::BootstrapSuccessorOperation {},
     })
-}
-
-pub fn gunbc_build_emitted_seed_growth_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "PURPOSE admission for the emitted `gunbc build` route. It serves the v2 self-host program by making its existing exact self-build operation consumable through the product CLI. Classification against the five refused v1-seed classes: NewLanguageBehavior -- no, the language and compiler semantics are unchanged. NewCompatibilityObligation -- no, the searched production/documentation population contains no predecessor devboot `gunbc run --entry` route. NewEscapeHatchOrAdmissionRow -- no, every missing binding or execution fact refuses without fallback. SeedFeatureCompletion -- no compiler feature is completed. PublicSurfaceGrowth -- yes: one modeled Build row and its single operand become emitted. The successor operation cannot legally enter the frozen seed closure, and mirroring it would fork its semantics, so the narrowly classified BootstrapSuccessorOperation uses the retained in-process evaluator as enumerated, reducible bootstrap residue. OrdinaryTargetProducer remains ineligible. Rung climb: CliArmRealization was declared but inert; emit_main_rs now derives every emitted arm from it. The former independent compile/run arm selection is deleted, while the discriminating known-operation/no-realization RED remains enrolled.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn cli_realization_missing_refusal(realization: Rc<CliArmRealization>) -> Option<String> {
@@ -776,6 +781,10 @@ pub fn gunbc_cli_qualified_option_names() -> Rc<Vec<String>> {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliDispatchStructurallyGuaranteed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliDispatchOutsideGuaranteeLadder;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliRequired;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -1,0 +1,65 @@
+module extdeps.standards.atx_2_2
+import std.types { NonEmptyStr }
+import std.measure { Micrometer, micrometer, Millimeter, millimeter }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+// THE ATX SPECIFICATION, VERSION 2.2, as its own subject. It is the form-factor authority that the
+// ATX FAMILY of board outlines and mounting-hole grids descends from, and it is modelled separately
+// from any board because a specification and a product that claims conformance to it are two
+// subjects, not one. A board module citing this one asserts a conformance CLAIM; this module asserts
+// only what the document says.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20180417122513/http://www.formfactors.org:80/developer/specs/atx2_2.pdf"
+  }
+}
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.atx_2_2",
+      decl_name: "atx_board_width_along_rear_io",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+// PROVENANCE. The PDF was fetched and read first-party by the authoring session from the Internet
+// Archive snapshot named above; formfactors.org itself no longer serves it. The figures below are
+// the dimensions the document prints in its own figure text layer, in inches with the millimetre
+// conversion the document itself carries — they are not converted here, which is why both numbers
+// appear and agree.
+//
+// WHAT THIS MODULE OWNS, AND WHAT IT DELIBERATELY NO LONGER OWNS.
+//
+// ATX 2.2 facts only: the full-size board extents and the two datum offsets its Figure 7 labels.
+// The microATX envelope, lettered location population and coordinates USED TO LIVE HERE and were
+// moved to extdeps.standards.micro_atx, because sharing some mounting locations with ATX is not
+// shared governance -- microATX is a separately governed specification with its own revision, and a
+// change to it must not require editing this file.
+//
+// This module carries NO location population. If one is added later it will be ATX 2.2's own, read
+// from this document, and the shared shapes will move to a neutral home at that point -- when a
+// second standard actually enumerates, which is the event that makes the extraction correct.
+// THE ROUNDED AND THE EXACT ARE BOTH CARRIED, and the exact one is a Micrometer rather than a
+// sentence. An earlier revision kept 243.84 in a prose row that said it was "preserved in this note
+// rather than silently lost" — but a note is exactly where a number IS lost: no Accepted program can
+// read one, so the only surviving machine-readable value was the rounded 244. The whole-millimetre
+// carrier cannot hold the spec's figure; the micrometre carrier can, so the spec's figure lives
+// there and the rounding stops being lossy.
+data atx_board_width_along_rear_io: Millimeter = millimeter(count: 244)
+data atx_board_width_along_rear_io_exact: Micrometer = micrometer(count: 243840)
+
+// 12.000 in, the full-size ATX board depth. Carried because it is the dimension the micro-ATX and
+// deep-micro-ATX variants reduce, NOT as a claim about any board in this corpus.
+data atx_full_size_depth: Millimeter = millimeter(count: 305)
+data atx_full_size_depth_exact: Micrometer = micrometer(count: 304800)
+// THE TWO BOARD-MOUNTING-HOLE OFFSETS the specification's figure labels as REF dimensions. They are
+// the only hole-related numbers with an extractable text layer in the whole document, and they are
+// offsets from datum rather than hole positions: on their own they place nothing — two offsets
+// cannot locate seven holes. They are kept because they are cited and exact, and because any later
+// first-party reading of Figure 3 has to agree with them, which makes them a check on that reading.
+data atx_board_mtg_hole_offset_a: Micrometer = micrometer(count: 16510)
+data atx_board_mtg_hole_offset_b: Micrometer = micrometer(count: 10160)

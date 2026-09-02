@@ -10,9 +10,19 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // output. The blocked population is derived from the same operand/option projections that produce
 // the pattern bindings. N blocked identities produce N+1 valid numeric candidates in deterministic
 // order. Dissolve into a general Rust value-identifier allocation authority when one exists.
-data cli_dispatch_executor_name_construction_note: String = "The generated CLI dispatch consumes one collision-free executor binding spelling derived from its modeled local-binding population."
+type CliDispatchGuaranteePosition
+  = CliDispatchStructurallyGuaranteed
+  | CliDispatchOutsideGuaranteeLadder
 
-data cli_dispatch_executor_binding_collision_rung: String = "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_rust_value_binding_name total and delete the Absent arm and this row together."
+type CliDispatchRungClass {
+  identity: String,
+  position: CliDispatchGuaranteePosition,
+  invalid_state: String,
+  harm: String,
+  found_at: String,
+  ceiling: String,
+  dissolution: DissolutionCondition,
+}
 
 // `first` currently has two runtime meanings: the interpreter returns the raw element or Null,
 // while emitted Rust returns Optional<T>. That is silent wrongness, outside the ladder: the
@@ -22,7 +32,28 @@ data cli_dispatch_executor_binding_collision_rung: String = "Class: generated di
 // consumers, not a claim that every site is harmed. The ceiling is structural: derive both the
 // interpreter and emitted realizations from one authority for `first`. When that capability lands,
 // the known-red turns green and becomes an ordinary regression control; this row then deletes.
-data interpreter_algebra_optional_method_semantic_divergence_rung: String = "Class: interpreter/emitted algebra OptionalOf method semantic divergence. Invalid state: interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control. Harm: silent wrongness outside the ladder. Found at: one executing known-red first specimen. Population: candidate consumers and executed probes are derived by docs/plans/first-optional-divergence-census.md on PR #9785; the measured populations are candidates, not a claim that every site is harmed, and pipeline and method forms are correct today for different reasons in each lane. Ceiling: structural. Trigger: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf -- first, last, get, and lookup -- from that existing row rather than hand-implementing it, so an arm cannot disagree with the declared signature; AND builtin parameter cardinality is grounded in the signature authority beside the return type builtin_function_registry already carries, so argument coercion is derivable for builtin callees. The second half is required because raw-element arms compensate for missing coercion today; repairing result construction alone flips passing witnesses that name nothing about optionals."
+fn cli_dispatch_rung_classes() -> List<CliDispatchRungClass> {
+  [
+    CliDispatchRungClass {
+      identity: "generated_dispatch_executor_binding_collision",
+      position: CliDispatchStructurallyGuaranteed {},
+      invalid_state: "the generated dispatch executor binding collides with a modeled local binding",
+      harm: "the emitted Rust declaration and its uses can bind or address the wrong value",
+      found_at: "the enrolled allocator collision mutation and emitted definition/use-site control",
+      ceiling: "a total signature backed by a substrate nonempty-list carrier whose first returns the element type",
+      dissolution: unbound_dissolution(description: "dissolve-on: fresh_rust_value_binding_name returns a nonempty-list-backed value rather than Optional, so the unreachable Absent arm deletes while the allocator collision mutation remains enrolled"),
+    },
+    CliDispatchRungClass {
+      identity: "interpreter_algebra_optional_method_semantic_divergence",
+      position: CliDispatchOutsideGuaranteeLadder {},
+      invalid_state: "interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control",
+      harm: "silent wrongness outside the ladder",
+      found_at: "one executing known-red first specimen; candidate consumers and executed probes are recorded in docs/plans/first-optional-divergence-census.md on PR #9785, without claiming every candidate is harmed",
+      ceiling: "structural",
+      dissolution: unbound_dissolution(description: "dissolve-on: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf — first, last, get, and lookup — from that existing row rather than hand-implementing it, AND builtin parameter cardinality is grounded beside the return type in the builtin signature authority so argument coercion is derivable for builtin callees; repairing result construction alone does not satisfy this trigger because the raw-element arms currently compensate for missing coercion"),
+    },
+  ]
+}
 
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
@@ -312,8 +343,6 @@ fn gunbc_build_operation_binding() -> CliBootstrapDagOperationBinding {
     execution_class: BootstrapSuccessorOperation {},
   }
 }
-
-data gunbc_build_emitted_seed_growth_note: String = "PURPOSE admission for the emitted `gunbc build` route. It serves the v2 self-host program by making its existing exact self-build operation consumable through the product CLI. Classification against the five refused v1-seed classes: NewLanguageBehavior -- no, the language and compiler semantics are unchanged. NewCompatibilityObligation -- no, the searched production/documentation population contains no predecessor devboot `gunbc run --entry` route. NewEscapeHatchOrAdmissionRow -- no, every missing binding or execution fact refuses without fallback. SeedFeatureCompletion -- no compiler feature is completed. PublicSurfaceGrowth -- yes: one modeled Build row and its single operand become emitted. The successor operation cannot legally enter the frozen seed closure, and mirroring it would fork its semantics, so the narrowly classified BootstrapSuccessorOperation uses the retained in-process evaluator as enumerated, reducible bootstrap residue. OrdinaryTargetProducer remains ineligible. Rung climb: CliArmRealization was declared but inert; emit_main_rs now derives every emitted arm from it. The former independent compile/run arm selection is deleted, while the discriminating known-operation/no-realization RED remains enrolled."
 
 fn cli_realization_missing_refusal(realization: CliArmRealization) -> String? {
   match realization {
