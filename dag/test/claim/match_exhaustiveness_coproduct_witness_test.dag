@@ -233,11 +233,23 @@ test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool {
 // or refuse. And in EITHER setting the arm must name each shape -- `_ => false` swallows variants
 // added later, which is the fail-open this whole class exists to remove.
 //
-// THE POLARITY READ IS BLOCKING, NOT ADVISORY, and it is the one thing neither instrument here can
-// catch: a site whose match INVERTS its assertion needs `true`, and writing `false` flips what the
-// test means while leaving it green. The suite is green by construction either way and the site
-// leaves the refusal census either way, so nothing downstream contradicts a wrong polarity. It has
-// to be read at the site before the arm is written.
+// AND THE GREEN AT AN A SITE IS GREEN BY CONSTRUCTION, WHICH IS WHY NO PER-SITE RED EXISTS TO ASK
+// FOR. Every group A enclosing declaration is NULLARY -- `test fn name() -> Bool`, no parameters,
+// verified across all 63 with zero exceptions -- so nothing can be threaded in from outside and the
+// scrutinee is a closed term. Exactly one arm is ever taken, and an arm added for a shape the closed
+// scrutinee does not have is UNREACHABLE: never evaluated, contributing no value.
+//
+// That is the honest reason to neither claim this suite validates a repair batch nor demand a
+// discriminating red per repaired site. There is no red to construct: the arm cannot run. A batch is
+// reviewable by reading the arms against the declaration, and by this file's own witnesses covering
+// the CHECKER, not by expecting the repaired sites to prove themselves.
+//
+// A blocking per-site POLARITY read was briefly recorded here and is WITHDRAWN (tidy-lynx-804,
+// retracted; the nullary/closed-term argument above is still-swift-363's and closes it structurally
+// rather than by sampling). It is struck rather than quietly deleted because a witness carrier
+// outlives the thread that wrote it, so a retracted obligation left standing here would be read as a
+// live requirement by everyone who touches the census afterwards -- which is precisely why it was
+// put here, and precisely why leaving it would be worse than never recording it.
 
 // -- A VARIANT NAMED IN A TYPE POSITION IS JUDGED AGAINST ITS PARENT'S ROSTER --
 //
