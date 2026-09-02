@@ -151,6 +151,21 @@ not perform. Neither is established. The second has exactly one observation and 
 Only one gate mutates at a time. A later gate may author inert types and fixtures but may not
 activate production rows before its predecessor's receipt is accepted.
 
+**A gate does not complete while a §5.2 question that owns one of its dispositions is open.** This
+is a precondition of the gate, not a note beside it: §5 exists to answer these classes *in advance*,
+and a plan that lets a gate finish while its own identified fail-open is unadjudicated has recorded
+the class instead of handling it. The bindings, and each is repeated in the gate itself:
+
+| Question | Gate it blocks | What the gate may not do until it returns |
+|---|---|---|
+| Q3 — converge restarts the serving process mid-turn | **DCH-0** | complete without a drain/lease, or without a declared §4b drop naming the restoration trigger |
+| Q1 — stop-the-line boundary | **DCH-2** | fix the failure-arm partition |
+| Q2 — typed disposition for a degenerate turn | **DCH-2** | claim a terminal disposition is total |
+| Q5 — is a process exit status a carrier | **DCH-2** | fix where the attempt record is written relative to process death |
+| Q4 — what n=1 under survivorship licenses | none | it governs how §2's hypothesis list is read, not a gate's completion |
+
+An open question is not a reason to stop work inside a gate; it is a bar on that gate's **receipt**.
+
 ### DCH-0 — Enrol the Sparks, and reconcile the rendered unit against the live hosts
 
 **Question owned:** what does the fleet know about these two machines, who says so, and does either
@@ -164,6 +179,12 @@ The parallel axis and the cost model **left this gate on 2026-09-01**; #9960 per
   below.)
 - Reconcile the rendered unit on both hosts against desired state, which is now complete on four
   axes where it was complete on three.
+- **Answer Q3 before this gate's receipt is accepted, and carry the answer in a row.** Placing the
+  serving unit under convergence means a converge can restart the serving process, and a restart
+  mid-turn is the failure that dominated the relayed transcript in §5. This gate may not complete
+  while that is neither prevented nor declared. The admissible endings are a drain or lease so a
+  converge cannot land against an in-flight turn; or, if the drain is deferred, a §4b(3) row whose
+  trigger names the drain capability — never silence, and never a note that a restart is unlikely.
 
 **Receipt:** an observed-vs-desired comparison of the rendered unit on both hosts, not a return
 code. The rendered unit is the only member of the must-move-together set that produces **no failure
@@ -265,6 +286,27 @@ blob closure, so nothing in it could hold seven.
 
 - The loop: post a request, and while the response stops on tool use, execute the tools and post the
   results back. Four tools is the starting surface: run a command, read, write, edit.
+- **The tool surface is where §5.1 row 7 lands, so it is specified here rather than left to the
+  implementer.** Every quirk in the relayed transcript was a real semantic of this surface that
+  nothing announced, so the rule for all of them is one rule: **a tool's contract is carried in the
+  tool's declared shape, and any limit it enforces is reported in its result rather than inferred
+  from a truncated or missing one.** Concretely, six dispositions this gate owes:
+  - **Working directory.** Either a command's working directory is part of the call's declared
+    input, or the surface states that each call is independent — the failure to avoid is a caller
+    that happens to comply, which is what theirs did, by luck and unprompted.
+  - **Duration.** A limit that kills a build is a real refusal and must arrive as one: a typed
+    timeout disposition naming the limit, distinguishable from the command's own failure. A default
+    chosen for a chat turn is the wrong default for a compile.
+  - **Input.** No stdin means anything that prompts hangs until the limit kills it, and the operator
+    sees a timeout rather than a prompt. Either the surface supplies input, or a prompt-shaped hang
+    is typed as its own disposition.
+  - **Truncation.** Keep their shape: a cap that **announces** it, so a large result is
+    distinguishable from a complete one. This is already right and is adopted deliberately.
+  - **Edit matching.** Keep their shape: refuse on zero or multiple matches rather than patching the
+    first. Construction over validation, and already right.
+  - **Context exhaustion.** A full window must be a typed refusal, not a turn that begins to fail.
+    Compaction is a later capability; the disposition is owed now, because without it exhaustion
+    presents as the model getting worse.
 - Preserve what the codex realization learned expensively, because these are provider-independent
   and were paid for once: the three separated layers (durable goal, execution lease, controller),
   the exactly-once command identity, and the trap that an idle thread never authorizes a start.
@@ -337,12 +379,14 @@ number that nobody could re-derive. DESIGN §6 governs both — name the instrum
 its output. A harness of ours may not report a rate it cannot ground, and where a quantity is not
 measurable the honest render is a refusal to render, not a zero.
 
-Row 7 is a single line in DCH-2 today ("four tools: run a command, read, write, edit"), and that
-line is where every operator-visible quirk in their lane lived. It is expanded there rather than
-here. Two of their choices are worth keeping as-is because they are already the right shape: an
-output cap that **announces** its truncation, so a large result is distinguishable from a complete
-one; and an edit that **refuses on zero or multiple matches** rather than patching the first, which
-is construction over validation.
+Row 7 was a single line in DCH-2 ("four tools: run a command, read, write, edit"), and that line is
+where every operator-visible quirk in their lane lived. **It is now specified in DCH-2 as six owed
+dispositions** — working directory, duration, input, truncation, edit matching, context exhaustion —
+rather than deferred by a forward reference, since a promise to expand a brief elsewhere is the same
+unreachable route this plan refuses in others. Two of their choices are adopted deliberately because
+they are already the right shape: an output cap that **announces** its truncation, so a large result
+is distinguishable from a complete one; and an edit that **refuses on zero or multiple matches**
+rather than patching the first, which is construction over validation.
 
 Row 8 is not about the harness. It is a note to this lane's own reviewers: their repair for a
 mini-agent-only failure aborted bootstrap for every session on the node. A fix that widens the
