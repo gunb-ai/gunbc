@@ -774,16 +774,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: RUNG_DROP_AUTHORITY_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.runner_service_activation",
-            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
-            spelling: "stall_is_permanent",
-            target: "gunbc.guarantee_stall",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_AUTHORITY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.runner_service_activation",
             in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
             spelling: "Mitigatable",
             target: "gunbc.guarantee_rung",
@@ -806,16 +796,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.runner_service_activation",
             in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
             spelling: "stall_is_below_ceiling",
-            target: "gunbc.guarantee_stall",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_AUTHORITY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.runner_service_activation",
-            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
-            spelling: "stall_is_permanent",
             target: "gunbc.guarantee_stall",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
