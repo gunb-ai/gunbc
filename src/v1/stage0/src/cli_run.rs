@@ -8861,6 +8861,10 @@ pub enum WitnessRuntimeCause {
     HostToolRelativePathAmbiguous,
     ShellOutputLimitExceeded,
     CallContractMismatch,
+    /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
+    /// ceiling fired. The token makes the prospective-fill population countable without
+    /// treating first-touch order as intrinsic claim cost.
+    FillBudgetExceeded,
     /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
     /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
     /// it should say so on the row rather than presenting the throw as an ordinary one.
@@ -8893,6 +8897,7 @@ impl WitnessRuntimeCause {
             }
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
+            WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
         }
     }
@@ -8926,6 +8931,7 @@ impl WitnessRuntimeCause {
             }
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
+            E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
             | E::HermeticHostEffectRefused { .. }
