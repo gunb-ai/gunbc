@@ -166,12 +166,11 @@ import v2.std.collection { List }
 // CONSUMERS SPECIFICALLY -- not on their family total, which has already been observed pointing
 // the wrong way.
 //
-// THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: the zero-walk serve, these rows not
-// enrolled) AND 33661252708 (PRESENT: the same tree plus these rows), and the comparison is
+// THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: the zero-walk serve, no rust row enrolled)
+// AND 33661252708 (PRESENT: the same tree plus those rows), and the comparison is
 // `required_floor_claim_cost.tsv` from each, joined at IDENTITY grain. Re-derive it rather than
 // trusting a sentence: the absent run REFUSED, `verdict=FloorRefused` with `failed=0`, carried
-// entirely by one COMPLETED-OVER-COST-REQUIREMENT row in `v2.test.emit.rust_produced_decl_emit`;
-// the present run is `verdict=FloorClean` with `completed_over_cost_requirement=0`.
+// entirely by one COMPLETED-OVER-COST-REQUIREMENT row in `v2.test.emit.rust_produced_decl_emit`.
 //
 // FIVE RUNS IN ALL, AND THE LAST TWO ARE THE WITHDRAWAL'S OWN RECEIPT rather than a repetition
 // of the first. 33664119594 carries the same roster as the present arm and agrees with it on
@@ -186,10 +185,8 @@ import v2.std.collection { List }
 // every row in the corpus got cheaper between them. The admissible reading is the NORMALISED
 // one -- each row set against the rows in NO consumer module of these keys, in the same run
 // pair -- and the consumer sets are read from the present run's own `[floor-shared-fill]`
-// `modules=` field, which names them rather than counting them. On that basis the target-model
-// consumers improve by about a sixth beyond the control and the frontier consumers by more than
-// half, which is what admits the rows. A raw comparison would have credited the runner with
-// most of it.
+// `modules=` field, which names them rather than counting them. A raw comparison would have
+// credited the runner with most of the movement in both directions.
 //
 // MEASURED SHARING WAS NEVER THE QUESTION FOR THE THREE WITHDRAWN ROWS, and saying so guards
 // against the next reader re-proposing them on that evidence: the ledger reports
@@ -222,14 +219,30 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
 //
-// compile_phase_frontier_standing is the second family's shared producer. It is claim-forced
-// rather than warm because it takes the receipt series as an argument, and it is enrolled at
-// THAT declaration rather than at the witness-local latest_receipt() that wraps it, because the
-// production producer is what both consuming modules share -- the live-gate witness and
-// test.claim.self_host_compile_phase_frontier_witness reach it, and a row keyed on one witness's
-// helper would serve only that witness and would die with its next edit.
+// THE PERSISTED FRONTIER STANDING IS NOT ENROLLED HERE, AND ITS ABSENCE IS A DECISION RATHER
+// THAN AN OVERSIGHT. `gunbc.self_host_compile_phase_frontier` `compile_phase_frontier_standing`
+// is the shared producer under `test.claim.self_host_compile_phase_live_gate_witness` and
+// `test.claim.self_host_compile_phase_frontier_witness`, and gunbc#10094 measured a large win
+// from enrolling it CLAIM-FORCED at that general declaration -- 13 rows from 445-467 cpu-ms to
+// about 73, holding across three present runs. The row was WITHDRAWN anyway, and the reason is
+// this file's own single-authority discipline rather than its cost criterion.
+//
+// The general declaration takes the receipt series as an ARGUMENT, so every consuming frame
+// must reify and structurally verify a `List<CompilePhaseFrontierReceipt>` before it may be
+// served -- the shape whose serve cost this file's header already records LOSING to recompute
+// twice. That it measured a win here does not make the shape sound; it makes this measurement
+// the outlier that a nullary enrolment would not need to explain. gunbc#10108 removes the
+// argument instead of paying to verify it: it consolidates the one persisted series into a
+// NULLARY standing, which is preparation-forceable with an empty argument row, and enrols that.
+// That is the DESIGN section 3 repair, and it also reaches consumers this row could not --
+// `test.claim.compiler_frontend_program_status_witness`, and a fold that took the series and
+// re-derived the standing itself.
+//
+// SO ONE FACT GETS ONE ROW, AT THE DECLARATION THAT MAKES IT CHEAP. Landing both would be two
+// roster rows claiming one saving, which is the failure gunbc#10108's own note names about
+// enrolling a nest. This paragraph stands in the withdrawn row's place so the next reader does
+// not re-derive its cost figures and re-propose it.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
-  "gunbc.self_host_compile_phase_frontier.compile_phase_frontier_standing",
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
   "v2.compiler.translate.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
