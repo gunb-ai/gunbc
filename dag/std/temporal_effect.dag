@@ -2,6 +2,14 @@ module std.temporal_effect
 
 import std.types { String, NonEmptyStr, Int, Bool, Timestamp, List }
 import std.content_hash { ContentHash }
+import std.scoped_authorization {
+  AttemptIdentity,
+  AuthorizationScope,
+  AuthorizationRequest,
+  ScopedAuthorization,
+  authorize,
+  authorization_is_permitted,
+}
 import std.measure { Millisecond, measure_le, millisecond_count }
 import std.upsert_decision {
   ObservationVerdict,
@@ -71,20 +79,15 @@ fn held_lease_with_observed(lease: HeldLease, observed: HeldLeaseObservedState) 
 }
 
 
-type DurableApprovalGrant
-  = GrantAbsent
-  | GrantActive {
-      escalation_id: NonEmptyStr
-      intent_hash: ContentHash
-      granted_by: NonEmptyStr
-      granted_at: Timestamp
-      expires_at: Timestamp
-    }
-  | GrantConsumed {
-      escalation_id: NonEmptyStr
-      intent_hash: ContentHash
-      consumed_by_step: NonEmptyStr
-    }
+// DurableApprovalGrant USED TO BE DECLARED HERE -- GrantAbsent | GrantActive { escalation_id,
+// intent_hash, granted_by, granted_at, expires_at } | GrantConsumed { ..., consumed_by_step }.
+// It was the §3 meaning fork of gunbc.workflow_escalation's WorkflowApprovalState: one act
+// (an operator authorizing one destructive step) carried under two names, with expiry and
+// single-use modeled HERE and zero production consumers, and the production consumer over THERE
+// carrying neither. Both are dissolved into std.scoped_authorization.ScopedAuthorization, which
+// is a strict superset -- it adds the scope and resource the pair never named, and it decides the
+// intent-hash agreement through compare_content_hash instead of `==`, closing the cross-family
+// silent-false this module's check carried.
 
 type BaseSnapshotRow {
   row_key: NonEmptyStr
@@ -116,29 +119,25 @@ type PriorStepReceipt
   = NoPriorReceipt
   | PriorReceipt { receipt: EffectStepReceipt }
 
-fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
-  observed_at <= expires_at
-}
-
-fn approval_grant_covers_intent(
-  grant: DurableApprovalGrant,
+// The join between a planned effect attempt and the operator authorization that may cover it.
+// The attempt's OWN identity and content hash become the grant-binding fields, so a grant issued
+// for one attempt cannot cover another and a grant issued for one planned action cannot cover a
+// changed one. scope and purpose come from the caller because they are facts about the SUBJECT of
+// the approval, which this module -- a generic effect spine -- does not know.
+fn authorization_request_for_attempt(
   intent: EffectAttemptIntent,
   escalation_id: NonEmptyStr,
-  observed_at: Timestamp,
-) -> Bool {
-  match grant {
-    GrantAbsent => false
-    GrantConsumed { escalation_id: _, intent_hash: _, consumed_by_step: _ } => false
-    GrantActive {
-      escalation_id: eid,
-      intent_hash: ih,
-      granted_by: _,
-      granted_at: _,
-      expires_at: exp,
-    } =>
-      eid == escalation_id
-        && ih == intent.intent_hash
-        && grant_not_expired_at(observed_at: observed_at, expires_at: exp)
+  scope: AuthorizationScope,
+  purpose: NonEmptyStr,
+  destructive: Bool,
+) -> AuthorizationRequest {
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scope: scope,
+    purpose: purpose,
+    attempt: intent.attempt_id as AttemptIdentity,
+    intent_hash: intent.intent_hash,
+    destructive: destructive,
   }
 }
 
@@ -206,23 +205,23 @@ fn plan_for_held_lease_observation(
 }
 
 fn plan_next_step_from_prior_receipt_and_lease(
-  intent: EffectAttemptIntent,
+  request: AuthorizationRequest,
   pending_step_id: NonEmptyStr,
   requires_destructive_approval: Bool,
-  escalation_id: NonEmptyStr,
-  grant: DurableApprovalGrant,
+  authorization: ScopedAuthorization,
   lease: HeldLease,
   prior: PriorStepReceipt,
   observed_at: Timestamp,
 ) -> NextStepPlan {
   if requires_destructive_approval
-    && !approval_grant_covers_intent(
-      grant: grant,
-      intent: intent,
-      escalation_id: escalation_id,
-      observed_at: observed_at,
+    && !authorization_is_permitted(
+      decision: authorize(
+        authorization: authorization,
+        request: request,
+        observed_at: observed_at,
+      ),
     ) {
-    PlanAwaitApproval { escalation_id: escalation_id }
+    PlanAwaitApproval { escalation_id: request.escalation_id }
   } else {
     match prior {
       PriorReceipt { receipt: r } =>

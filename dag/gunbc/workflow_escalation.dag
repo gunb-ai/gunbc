@@ -1,67 +1,117 @@
 module gunbc.workflow_escalation
 
-import std.types { NonEmptyStr, String, Bool }
-
-type WorkflowEscalation {
-  escalation_id: NonEmptyStr
-  rationale: NonEmptyStr
-  destructive: Bool
+import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.scoped_authorization {
+  AuthorizationRequest,
+  ScopedAuthorization,
+  AuthorizationDecision,
+  AuthorizationPermitted,
+  AuthorizationRefused,
+  AuthorizationRefusalCause,
+  AuthorizationNotGranted,
+  AuthorizationExpired,
+  AuthorizationAlreadyConsumed,
+  AuthorizationEscalationMismatch,
+  AuthorizationScopeMismatch,
+  AuthorizationAttemptMismatch,
+  AuthorizationIntentMismatch,
+  AuthorizationIntentIncomparable,
+  authorize,
+  authorization_refusal_reason,
 }
 
-type WorkflowApprovalState
-  = PendingApproval { escalation: WorkflowEscalation }
-  | ApprovalGranted { escalation_id: NonEmptyStr, granted_by: NonEmptyStr }
+// WHAT MOVED AND WHY. This module used to declare WorkflowEscalation { escalation_id, rationale,
+// destructive } and WorkflowApprovalState = PendingApproval | ApprovalGranted { escalation_id,
+// granted_by }. Both are dissolved into std.scoped_authorization, which carries the same act with
+// the five facts the pair was missing -- what access, on which resource, for which attempt, until
+// when, and for what stated purpose. The move is not a relocation for tidiness: a SECOND instance
+// of the identical shape is landing (the Spark first-boot agreement acceptance, which authorizes
+// one action on one device for one attempt and must refuse on absence, staleness and mismatch),
+// and modeling it beside this one would have been the §3 fork. std.temporal_effect's
+// DurableApprovalGrant -- the pre-existing fork of the SAME meaning, with expiry and single-use
+// modeled and zero production consumers -- is dissolved into it in the same motion.
+//
+// WHAT STAYS HERE, because it is genuinely a different fact: whether a WORKFLOW STEP may run.
+// std.scoped_authorization answers "is this authorization valid for this request"; the projection
+// below answers "therefore, what does the step do". The two are separable -- the same decision
+// drives a step, a fleet phase, or a wizard screen -- and only the second is workflow vocabulary.
 
 type WorkflowStepDisposition
   = StepRunnable
   | StepBlocked { reason: String }
-  | StepAwaitingApproval { escalation: WorkflowEscalation }
+  | StepAwaitingApproval { request: AuthorizationRequest }
 
-fn workflow_approval_is_granted(state: WorkflowApprovalState) -> Bool {
-  match state {
-    PendingApproval { escalation: _ } => false
-    ApprovalGranted { escalation_id: _, granted_by: _ } => true
-  }
-}
-
-fn workflow_step_disposition_for_approval(
-  escalation: WorkflowEscalation,
-  approval: WorkflowApprovalState,
+// THE FAIL-CLOSED SPLIT, and it is the whole safety content of this projection. Exactly ONE
+// refusal cause -- nobody has granted anything yet -- routes to StepAwaitingApproval, the arm a
+// caller is expected to answer by asking the operator. EVERY other cause routes to StepBlocked:
+// an expired grant, a grant for a different attempt, a grant whose scope does not reach the
+// requested resource, and a grant issued against a different planned action are not "still
+// waiting", they are a live disagreement between what was approved and what is about to run.
+// Folding them into the awaiting arm would make the natural remedy "ask again and it will
+// proceed", which is the absorbing fallback DESIGN §5 names: the precise deficit disappears and
+// the widened arm succeeds. So the disagreement blocks, carrying its own located cause.
+fn workflow_step_disposition_for_authorization(
+  request: AuthorizationRequest,
+  authorization: ScopedAuthorization,
+  observed_at: Timestamp,
 ) -> WorkflowStepDisposition {
-  match approval {
-    PendingApproval { escalation: pending } =>
-      if pending.escalation_id == escalation.escalation_id {
-        StepAwaitingApproval { escalation: escalation }
-      } else {
-        StepBlocked {
-          reason: concat(
-            "approval escalation_id mismatch: expected ",
-            concat(escalation.escalation_id as String, concat(" got ", pending.escalation_id as String)),
-          ),
-        }
-      }
-    ApprovalGranted { escalation_id: id, granted_by: _ } =>
-      if id == escalation.escalation_id {
-        StepRunnable
-      } else {
-        StepBlocked {
-          reason: concat(
-            "approval escalation_id mismatch: expected ",
-            concat(escalation.escalation_id as String, concat(" got ", id as String)),
-          ),
-        }
+  workflow_step_disposition_for_decision(
+    request: request,
+    decision: authorize(
+      authorization: authorization,
+      request: request,
+      observed_at: observed_at,
+    ),
+  )
+}
+
+fn workflow_step_disposition_for_decision(
+  request: AuthorizationRequest,
+  decision: AuthorizationDecision,
+) -> WorkflowStepDisposition {
+  match decision {
+    AuthorizationPermitted { grant: _ } => StepRunnable
+    AuthorizationRefused { cause: cause } =>
+      match cause {
+        AuthorizationNotGranted { escalation_id: _ } =>
+          StepAwaitingApproval { request: request }
+        AuthorizationExpired { expires_at: _, observed_at: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationAlreadyConsumed { consumed_by_step: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationEscalationMismatch { requested: _, granted: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationScopeMismatch { requested: _, granted: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationAttemptMismatch { requested: _, granted: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationIntentMismatch { requested: _, granted: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationIntentIncomparable { requested: _, granted: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
       }
   }
 }
 
+fn workflow_step_is_runnable(disposition: WorkflowStepDisposition) -> Bool {
+  match disposition {
+    StepRunnable => true
+    StepBlocked { reason: _ } => false
+    StepAwaitingApproval { request: _ } => false
+  }
+}
+
+// The refusal sentence a caller puts in front of a human. The empty string is reserved for the
+// runnable arm ALONE, and every caller reads it as "no refusal" -- so no refusing arm may render
+// "" and no arm may fall through to a default (§5: one refusal, one destination).
 fn workflow_destructive_step_refusal_reason(disposition: WorkflowStepDisposition) -> String {
   match disposition {
     StepRunnable => ""
     StepBlocked { reason: r } => r
-    StepAwaitingApproval { escalation: e } =>
+    StepAwaitingApproval { request: req } =>
       concat(
         "operator approval required before ",
-        concat(e.escalation_id as String, concat(": ", e.rationale as String)),
+        concat(req.escalation_id as String, concat(": ", req.purpose as String)),
       )
   }
 }

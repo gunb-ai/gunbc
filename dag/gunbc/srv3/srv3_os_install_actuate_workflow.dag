@@ -1,15 +1,25 @@
 module gunbc.srv3_os_install_actuate_workflow
 
-import std.types { NonEmptyStr, List, Int }
+import std.types { NonEmptyStr, List, Int, Bool, Timestamp }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.scoped_authorization {
+  AuthorizedAction,
+  AttemptIdentity,
+  AuthorizationScope,
+  AuthorizationRequest,
+  OperatorGrant,
+  ScopedAuthorization,
+  AuthorizationPending,
+  AuthorizationGranted,
+}
 import gunbc.workflow_escalation {
-  WorkflowEscalation,
-  WorkflowApprovalState,
   WorkflowStepDisposition,
-  PendingApproval,
-  ApprovalGranted,
   StepRunnable,
   StepAwaitingApproval,
-  workflow_step_disposition_for_approval,
+  workflow_step_disposition_for_authorization,
+  workflow_step_is_runnable,
 }
 import gunbc.nbd_proxy_virtual_media_install {
   ActuatorPlanReady,
@@ -24,24 +34,74 @@ type OsInstallActuateWorkflowStep
   | WorkflowBmcCredentialProbeAndResolve
   | WorkflowBmcwebSessionLogin
   | WorkflowNbdProxyServe
-  | WorkflowOperatorApproval { escalation: WorkflowEscalation }
+  | WorkflowOperatorApproval { request: AuthorizationRequest }
   | WorkflowBootOnceCd
   | WorkflowSolConsoleCapture
 
-data srv3_boot_once_cd_escalation: WorkflowEscalation = WorkflowEscalation {
+// The RESOURCE this step's approval reaches, named as a position in the cited Redfish service
+// operation tree rather than as a service name. The prefix relation in std.effect_grant is what
+// makes a grant on this position refuse a request against /redfish/v1/Managers/bmc/Actions -- the
+// approval covers ONE system's boot-source override and nothing else on the same BMC.
+data srv3_boot_override_resource: NamespacePosition = NamespacePosition {
+  tree: ServiceOpTree { service: "redfish" },
+  path: ["redfish", "v1", "Systems", "system", "Boot"],
+}
+
+data srv3_boot_override_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: srv3_boot_override_resource,
+  action: "redfish.boot-source-override.set" as AuthorizedAction,
+}
+
+// The attempt this workflow's grant is bound to. A grant issued for this attempt refuses any
+// other, which is the difference between approving THIS run and issuing a standing approval for
+// every future run of the same step.
+data srv3_boot_once_cd_attempt: AttemptIdentity = "srv3-os-install-actuate-1" as AttemptIdentity
+
+// The content identity of the planned action. It binds the grant to boot-override-to-CD-once plus
+// ForceRestart; if the planned action changes, a grant issued against the old one refuses rather
+// than silently authorizing the new one.
+data srv3_boot_once_cd_intent_hash: ContentHash = content_hash_of_value(
+  value: "srv3-boot-source-override-cd-once-uefi+force-restart" as NonEmptyStr,
+)
+
+// purpose is what the operator READS before deciding. It is the field the request exists for --
+// an approval prompt that cannot state what the access is for is not a request for consent.
+data srv3_boot_once_cd_authorization_request: AuthorizationRequest = AuthorizationRequest {
   escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
-  rationale: "PATCH boot override to CD Once + ForceRestart is destructive and may interrupt srv3" as NonEmptyStr,
+  scope: srv3_boot_override_scope,
+  purpose: "Set srv3's BMC boot source override to CD (Once, UEFI) and force a restart, to boot the seeded install media. This interrupts anything srv3 is currently running." as NonEmptyStr,
+  attempt: srv3_boot_once_cd_attempt,
+  intent_hash: srv3_boot_once_cd_intent_hash,
   destructive: true,
 }
 
-data srv3_boot_once_cd_default_approval: WorkflowApprovalState = PendingApproval {
-  escalation: srv3_boot_once_cd_escalation,
+data srv3_boot_once_cd_default_approval: ScopedAuthorization = AuthorizationPending {
+  request: srv3_boot_once_cd_authorization_request,
 }
 
-data srv3_boot_once_cd_operator_granted_approval: WorkflowApprovalState = ApprovalGranted {
-  escalation_id: srv3_boot_once_cd_escalation.escalation_id,
-  granted_by: "operator" as NonEmptyStr,
+// A SOURCE-DECLARED GRANT IS THE THING THIS LANE EXISTS TO REMOVE, and it is carried here only
+// because no out-of-band grant channel is modeled yet. What has changed is that it is no longer
+// ambient: it reaches ONE Redfish position with ONE action, it is bound to ONE attempt and ONE
+// planned action, and it ENDS -- after expires_at the granted entry point refuses loudly instead
+// of continuing to work forever. That refusal is the pressure that lands the channel; it is not
+// an outage to be papered over by editing the constant.
+data srv3_boot_once_cd_operator_granted_approval: ScopedAuthorization = AuthorizationGranted {
+  grant: OperatorGrant {
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    scope: srv3_boot_override_scope,
+    purpose: srv3_boot_once_cd_authorization_request.purpose,
+    attempt: srv3_boot_once_cd_attempt,
+    intent_hash: srv3_boot_once_cd_intent_hash,
+    granted_by: "operator" as NonEmptyStr,
+    granted_at: "2026-09-02T00:00:00Z",
+    expires_at: "2026-10-02T00:00:00Z",
+  },
 }
+
+data srv3_boot_once_cd_source_declared_grant_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "srv3_boot_once_cd_operator_granted_approval is a grant declared in SOURCE, so the operator's consent is recorded by editing a file rather than by an act they perform per run. DISSOLVES WHEN an out-of-band operator grant channel delivers a std.scoped_authorization OperatorGrant into the workflow at run time -- sufficient to carry granted_by, granted_at, expires_at and the requesting AttemptIdentity from outside the repository, so that this declaration and the srv3_boot_once_cd_operator_approved entry point are both DELETED rather than re-dated. Re-dating expires_at when it lapses satisfies nothing and restores the standing credential.",
+)
 
 fn srv3_os_install_actuate_workflow_steps() -> List<OsInstallActuateWorkflowStep> {
   [
@@ -50,7 +110,7 @@ fn srv3_os_install_actuate_workflow_steps() -> List<OsInstallActuateWorkflowStep
     WorkflowBmcCredentialProbeAndResolve,
     WorkflowBmcwebSessionLogin,
     WorkflowNbdProxyServe,
-    WorkflowOperatorApproval { escalation: srv3_boot_once_cd_escalation },
+    WorkflowOperatorApproval { request: srv3_boot_once_cd_authorization_request },
     WorkflowBootOnceCd,
     WorkflowSolConsoleCapture,
   ]
@@ -60,26 +120,35 @@ fn srv3_os_install_actuate_workflow_step_count() -> Int {
   srv3_os_install_actuate_workflow_steps().length()
 }
 
-fn srv3_boot_once_cd_workflow_disposition(approval: WorkflowApprovalState) -> WorkflowStepDisposition {
-  workflow_step_disposition_for_approval(
-    escalation: srv3_boot_once_cd_escalation,
-    approval: approval,
+fn srv3_boot_once_cd_workflow_disposition(
+  approval: ScopedAuthorization,
+  observed_at: Timestamp,
+) -> WorkflowStepDisposition {
+  workflow_step_disposition_for_authorization(
+    request: srv3_boot_once_cd_authorization_request,
+    authorization: approval,
+    observed_at: observed_at,
   )
 }
 
-fn srv3_boot_once_cd_is_runnable_with_approval(approval: WorkflowApprovalState) -> Bool {
-  match srv3_boot_once_cd_workflow_disposition(approval: approval) {
-    StepRunnable => true
-    _ => false
-  }
+fn srv3_boot_once_cd_is_runnable_with_approval(
+  approval: ScopedAuthorization,
+  observed_at: Timestamp,
+) -> Bool {
+  workflow_step_is_runnable(
+    disposition: srv3_boot_once_cd_workflow_disposition(
+      approval: approval,
+      observed_at: observed_at,
+    ),
+  )
 }
 
 fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> Bool {
   let steps = srv3_os_install_actuate_workflow_steps()
   srv3_os_install_actuate_workflow_step_count() == 8
     && match steps.skip(n: 5).first() {
-      WorkflowOperatorApproval { escalation: e } =>
-        e.escalation_id == srv3_boot_once_cd_escalation.escalation_id
+      WorkflowOperatorApproval { request: r } =>
+        r.escalation_id == srv3_boot_once_cd_authorization_request.escalation_id
       _ => false
     }
     && match steps.skip(n: 6).first() {

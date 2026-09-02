@@ -2,8 +2,10 @@ module gunbc.srv3_boot_once_cd
 
 import std.measure { Second, second }
 import extdeps.bmc.http
+import std.scoped_authorization { ScopedAuthorization }
+import std.types { Timestamp }
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.workflow_escalation {
-  WorkflowApprovalState,
   workflow_destructive_step_refusal_reason
 }
 import gunbc.srv3_os_install_actuate_workflow {
@@ -65,21 +67,32 @@ fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> St
 }
 
 func srv3_boot_once_cd() -> ProcessExit
-  uses net: std.resources.Network
+  uses net: std.resources.Network, clock: std.resources.Clock
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
 }
 
 func srv3_boot_once_cd_operator_approved() -> ProcessExit
-  uses net: std.resources.Network
+  uses net: std.resources.Network, clock: std.resources.Clock
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
 }
 
-func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
-  uses net: std.resources.Network
+// The expiry check needs an instant, and the only honest source of one is the clock -- a
+// caller-supplied observed_at would let the grant be revalidated against whatever time made it
+// pass. An unreadable clock REFUSES: "we could not tell whether the grant had expired" is not
+// evidence that it had not (§5 -- a failure arm refuses, never widens).
+func srv3_boot_once_cd_gated(approval: ScopedAuthorization) -> ProcessExit
+  uses net: std.resources.Network, clock: std.resources.Clock
 {
-  let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval)
+  let observed_at = match clock_now_probed_at() {
+    Present { value: ts } => ts as Timestamp
+    Absent =>
+      return exit_failure(
+        reason: "boot-once-cd: clock unreadable, cannot decide whether the operator grant has expired",
+      )
+  }
+  let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval, observed_at: observed_at)
   let refusal = workflow_destructive_step_refusal_reason(disposition: disposition)
   if refusal != "" {
     return exit_failure(reason: concat("boot-once-cd: ", refusal))
