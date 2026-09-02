@@ -537,24 +537,133 @@ pub struct TransitionAdmission {
 /// ledger with dissolution rules: the resolved roster is the old cohort, UNION newly live main
 /// cohorts, MINUS every cohort whose trigger has fired as of the base being merged, asked of each
 /// side independently.
+/// FOURTEENTH DISSOLUTION (2026-09-02), AND IT IS THE THIRTEENTH'S OWN LESSON APPLIED TO THE ROWS
+/// THAT TAUGHT IT. RLM-2b's two rows above declare their trigger as "#9832 merging". #9832 IS the
+/// base this change merges -- main's head is that merge -- so their lifetime ended at the moment
+/// this merge began. Base and head both carry the constant's relocation, no run can produce those
+/// deltas, and both rows would report stale, refusing every unrelated PR exactly as the seventeen
+/// did. They are removed here.
+///
+/// THE THIRTEENTH ENTRY WARNED THAT "PRESERVE BOTH SIDES" IS THE WRONG DEFAULT FOR A LEDGER WITH
+/// DISSOLUTION RULES, and asking the trigger question of the kept rows only is how the previous
+/// cohort outlived itself by ten minutes. Keeping RLM-2b's rows through this merge because they
+/// arrived from main would be that identical mistake one iteration later, with the roles swapped.
+/// The recipe was run against BOTH sides: this change's own cohort has an unfired trigger and
+/// stays; the imported cohort's has fired and goes.
+/// FIFTEENTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
+/// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
+/// module more than one implementation cites. No declaration was renamed and no name was minted:
+/// every spelling below denotes the same declaration it denoted at the base, at a new home, so
+/// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
+/// `{extdeps.llm.anthropic_messages_api}`.
+///
+/// THE POPULATION IS EXACTLY NINE, AND THE REST OF THE MOTION NEEDED NO ROW. The same phase
+/// classified this change's membership and closure motion automatically -- the memberships
+/// `extdeps.llm.anthropic` lost are `SameDeclarationIdentityRebind`, the memberships the new module
+/// gained are `ExplicitlyEvaluatedZeroDelta` -- so the nine below are the whole unadjudicated set,
+/// not a sample of it. Every row names one exact (module, declaration, spelling) triple: a tenth
+/// binding re-pointed at the new module anywhere in the corpus still refuses as UNADJUDICATED.
+///
+/// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
+/// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
+/// here refuses every unrelated PR in the repository.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "RLM-2b: plan bundle-member path joins the module that mints the digest 2026-09-01",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_plan_cli",
-            in_declaration: "fleet_converge_apply_bound_wet",
-            spelling: "fleet_converge_plan_spark_typed_actions_wire_path",
-            target: "gunbc.fleet_converge_plan",
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "AnthropicChatMessage",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "RLM-2b: plan bundle-member path joins the module that mints the digest 2026-09-01",
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_plan_cli",
-            in_declaration: "write_fleet_converge_plan_artifact_wet",
-            spelling: "fleet_converge_plan_spark_typed_actions_wire_path",
-            target: "gunbc.fleet_converge_plan",
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "AnthropicMessages200Body",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "AnthropicStopReason",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.llm.anthropic_rest",
+            in_declaration: "llm.Anthropic",
+            spelling: "current_api_version",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.extdeps_llm_type_grounding_witness",
+            in_declaration: "w_anthropic_messages_object_type",
+            spelling: "Assistant",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.extdeps_llm_type_grounding_witness",
+            in_declaration: "w_anthropic_messages_object_type",
+            spelling: "Standard",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+            in_declaration: "redundancy_region1_anthropic_green_against_nonmatching_present",
+            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+            in_declaration: "redundancy_region1_anthropic_marks_nonempty",
+            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+            target: "extdeps.llm.anthropic_messages_api",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+            in_declaration: "redundancy_region1_fires_when_a_real_mark_successor_present",
+            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+            target: "extdeps.llm.anthropic_messages_api",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

@@ -483,6 +483,12 @@ type AdmissionVerification {
 // measured at for that reason. The mechanism is rostered as gunbc.recurring_failure_mode
 // alias_resolution_collides_with_kernel_spelling.
 
+// THE SEVENTEEN ADMISSION ROWS THESE VERIFY ARE GONE, AND THIS ROSTER IS NOT (2026-09-02, DCH-1).
+// #9907 merged, the required run reported all seventeen CONSUMED at the base, and the next touch of
+// NAMESPACE_TRANSITION_ADMISSIONS deleted them. What dissolved is the PERMISSION; what stands here
+// is the EVIDENCE that the transition it permitted was sound, which DESIGN section 4b(4) keeps
+// enrolled rather than retiring with the machinery it justified. So these rows are now a receipt of
+// a completed requalification, and a reader must not expect a matching admission row to exist.
 data structural_text_admission_verifications: List<AdmissionVerification> = [
   AdmissionVerification {
     module_path: "v2.compiler.tokenize",

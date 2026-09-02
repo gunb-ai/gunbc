@@ -1897,8 +1897,8 @@ mod compiler_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn contracts_sidecar_wired_into_emit_scope() {
         // Discriminating witness: AnthropicChatMessage is declared in
-        // extdeps.llm.anthropic; its tag = "role" wire_contract lives in the
-        // anthropic_contracts.dag sidecar. This proves contracts_items_for_module
+        // extdeps.llm.anthropic_messages_api; its tag = "role" wire_contract lives in the
+        // anthropic_messages_api_contracts.dag sidecar. This proves contracts_items_for_module
         // and the wire_contract alias-resolution scope merge the sidecar into the
         // emitted module -- red if the sidecar wiring or alias scope regresses.
         let result = std::thread::Builder::new()
@@ -1911,8 +1911,8 @@ mod compiler_tests {
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let anthropic_file = result.files.iter()
-                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
-                    .expect("emitted file for extdeps.llm.anthropic not found in source closure");
+                    .find(|f| f.path.ends_with("extdeps_llm_anthropic_messages_api.rs"))
+                    .expect("emitted file for extdeps.llm.anthropic_messages_api not found in source closure");
                 assert!(
                     anthropic_file.content.contains("#[serde(tag = \"role\""),
                     "AnthropicChatMessage serde tag = role must be present in emitted Rust (contracts_items_for_module merged into emit scope); missing from: {}",
