@@ -1759,8 +1759,7 @@ fn ci_heal_shell_lines() -> List<String> {
             "  git commit --no-verify -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
             "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
-            "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\"",
-            "  ROOT=$(git rev-parse --show-toplevel)"
+            "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""
           ]
         )
       )
@@ -1768,19 +1767,33 @@ fn ci_heal_shell_lines() -> List<String> {
   )
 }
 
+// THE PUSHED HEAD IS NOT REVALIDATED BY THIS JOB, AND THE JOB SAYS SO RATHER THAN IMPLYING IT.
+// A push made with the Actions job credential does not start a new workflow run -- GitHub
+// suppresses that edge to stop a job from triggering itself -- so after a successful heal the
+// pull request's checks describe PRIOR_HEAD and no longer describe the branch. That is a real
+// gap and the arm below is the fail-closed answer to it: the job prints SupersededByHealedHead
+// naming both revisions and EXITS NONZERO, so the healed head arrives with a red job whose text
+// says why, and a human or a re-run decides. It does not exit zero on a head nothing has judged.
+//
+// WHAT WOULD CLOSE IT, named as a capability rather than as an artifact: a workflow_dispatch
+// entry point on this same workflow carrying the healed sha as a declared input, which every
+// dispatched run binds its own github.sha and checkout against before any witness counts.
+// gunbc.ci_spec gunbc_ci_heal_dispatch_target and tools.ci_heal_dispatch are the modeled half of
+// exactly that and stay unconsumed here, because the workflow they name (`ci.yml`) does not exist
+// and witnesses.yml declares no dispatch inputs. Wiring the invocation without those inputs would
+// dispatch a run that cannot check WHICH head it got -- the revalidation would be fabricated, not
+// performed -- so this cut restores the write-and-push capability and leaves the revalidation
+// half openly missing rather than apparently present.
 fn gunbc_ci_heal_commit_push_script() -> String {
   concat(
     fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
     concat(
-      concat("  if ! ", gunbc_ci_heal_dispatch_invoke()),
+      "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
       concat(
-        "  then\n  echo \"::error::HealDispatchRefused healed_head=$HEALED_HEAD cause=CreateWorkflowDispatchFailed\" >&2\n  exit 1\n  fi\n",
+        "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
         concat(
-          "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
-          "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
           concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
-          "  fi\n",
-          "  exit 1\nfi\n"
+          "  fi\n  exit 1\nfi\n"
         )
       )
     )

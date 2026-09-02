@@ -1744,20 +1744,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.ci_heal_credential",
-        "ci_heal_job_ref",
-        "gunbc.ci_workflow",
-        "ci_heal_generated_artifacts_job",
-        "",
-    ),
-    (
-        "gunbc.ci_heal_credential",
-        "ci_heal_workflow_ref",
-        "gunbc.ci_workflow",
-        "ci_workflow",
-        "",
-    ),
-    (
         "gunbc.claude_setup_token_enrollment",
         "claude_enrollment_exact_version_read_back_scaffold",
         "extdeps.cloud.gcp.secret_manager",
