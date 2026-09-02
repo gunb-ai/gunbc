@@ -554,6 +554,41 @@ test fn a_cause_population_is_sized_by_distinct_defects() -> Bool {
     && count(axis_roster_contradiction(axes: both_axes)) == 0
 }
 
+// A SUBJECT DOES NOT DOMINATE ITSELF, AND THE ANSWER MUST BE CONSTRUCTED RATHER THAN FALL OUT OF
+// THE FOLD. Three cases, and each kills a different wrong implementation:
+//   1. a WIDE reading compared with itself -> PairNoDominance. A fall-through answers
+//      PairPendingEvidence, because identical wide intervals are UndecidedOnEvidence between two
+//      INDEPENDENT subjects -- true there, false here, since this is one subject.
+//   2. two complete payloads sharing one identity but carrying different readings ->
+//      PairNoDominance. A fall-through answers PairDominates: the exported API reporting that a
+//      structural candidate dominates ITSELF.
+//   3. those same two rows placed together in one field -> SelectionRefused, because a duplicated
+//      identity in a FIELD POPULATION is still a defect. Case 3 is what stops case 2 from being
+//      read as "duplicates are fine now"; the pair API answers a self-comparison, the field path
+//      still refuses a duplicated population, and both are true at once.
+//
+// KILLING MUTATIONS, and BOTH prior implementations must red this:
+//   - the intermediate version that returned PairRefused on identity equality (cases 1 and 2 red)
+//   - the fall-through version with no identity arm at all (cases 1 and 2 red)
+test fn a_subject_does_not_dominate_itself() -> Bool {
+  let wide_vs_self = match compare_pair(a: entry_wide_twin, b: entry_wide_twin, axes: both_axes) {
+    PairNoDominance => true
+    PairPendingEvidence { undecided_axes } => false
+    PairDominates { winning_axes } => false
+    PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
+  }
+  let same_id_differing_readings = match compare_pair(a: entry_same_id_other_readings, b: entry_cheap_strong, axes: both_axes) {
+    PairNoDominance => true
+    PairDominates { winning_axes } => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
+  }
+  let field_still_refuses = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: [entry_cheap_strong, entry_same_id_other_readings], axes: both_axes, sensitivities: spine_sensitivities))
+  wide_vs_self && same_id_differing_readings && field_still_refuses
+}
+
 fn pareto_witness_report() -> NonEmptyStr {
   join([
     "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
@@ -572,6 +607,7 @@ fn pareto_witness_report() -> NonEmptyStr {
     " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
     " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
     " causes_sized_by_defects=", flag(b: a_cause_population_is_sized_by_distinct_defects()),
+    " no_self_dominance=", flag(b: a_subject_does_not_dominate_itself()),
   ], "")
 }
 
@@ -590,6 +626,7 @@ fn pareto_witness_main() -> ProcessExit {
     && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
     && a_duplicated_axis_roster_refuses_the_pair_too()
     && a_cause_population_is_sized_by_distinct_defects()
+    && a_subject_does_not_dominate_itself()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
@@ -603,6 +640,36 @@ fn pareto_witness_main() -> ProcessExit {
 // (DESIGN 4b(4)): each one returned a CONFIDENT answer before the cut.
 
 fn le_int(a: Int, b: Int) -> Bool { a <= b }
+
+// SELF-COMPARISON FIXTURES. entry_wide_twin carries a genuinely WIDE reading, which is what makes
+// case 1 discriminating: identical wide intervals are UndecidedOnEvidence between two independent
+// subjects, so a fall-through implementation answers PairPendingEvidence here and only a
+// constructed self-comparison answer reaches PairNoDominance. entry_same_id_other_readings shares
+// one identity with entry_cheap_strong while carrying strictly better exact readings, so a
+// fall-through implementation reports a candidate DOMINATING ITSELF.
+data entry_wide_twin: ParetoEntry = ParetoEntry {
+  identity: id_wide_twin,
+  display_label: "wide twin",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: span(low: 10, high: 20) },
+    AxisReading { axis: axis_power_id, interval_micro: span(low: 30, high: 40) },
+  ],
+  missing_inputs: no_missing,
+}
+
+data entry_same_id_other_readings: ParetoEntry = ParetoEntry {
+  identity: id_cheap_strong,
+  display_label: "same identity, better readings",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 50) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 900) },
+  ],
+  missing_inputs: no_missing,
+}
+
+data id_wide_twin: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_twin", field: WholeDeclaration }
+
+
 
 // A widening fixture. A refused construction would be a fixture defect, and it is surfaced as an
 // obviously-wrong degenerate rather than silently swapped into order -- the refusal arm belongs to

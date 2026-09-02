@@ -493,16 +493,25 @@ fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
 // The precedence now falls out of the shared reader rather than being restated here: projector
 // contradiction (duplicate anywhere, or absent-while-declaring-complete) > honest declared
 // incompleteness > ordinary axis comparison.
-// COMPARE_PAIR DELIBERATELY DOES NOT REFUSE TWO OPERANDS SHARING ONE IDENTITY, and the arm that did
-// was removed after review of 96babf499 rather than kept. Duplication is a property of a FIELD
-// POPULATION -- one identity occupying two positions -- and two operands cannot carry that fact, so
-// refusing here does not implement field_has_duplicate_identity at pair grain; it conflates an
-// intentional self-comparison with a field defect this function cannot observe.
+// A SELF-COMPARISON IS ANSWERED, NOT REFUSED -- AND NOT LEFT TO THE FOLD EITHER. Identity equality
+// is not evidence that some field holds a duplicate: that is a FIELD POPULATION property, one
+// identity in two positions, which two operands cannot carry. So this does not refuse, and
+// field_has_duplicate_identity stays field-only.
 //
-// It was also fail-shut where an answer existed: an entry does not dominate itself, so
-// PairNoDominance is the TRUE answer to compare_pair(x, x), and refusing turned an available answer
-// into a refusal. That is the mirror of the fail-open this PR exists to close, and no more honest
-// for erring the other way. The field admission rule stays with the field path.
+// But identity equality IS proof that the relation is a subject compared with itself, and nothing
+// dominates itself, so the answer is PairNoDominance and it has to be CONSTRUCTED. An earlier
+// revision deleted the wrong answer (a refusal) and left the axis fold to produce the right one,
+// which it does not: two point-identical payloads happen to reach PairNoDominance, but the result is
+// not stable under the evidence carrier. A clean WIDE reading such as [10,20] compared with itself
+// reaches UndecidedOnEvidence -- correct for two independently-valued subjects, wrong here, since
+// this is one subject -- and returned PairPendingEvidence. Worse, two complete payloads carrying one
+// identity but different exact readings returned PairDominates: the exported API saying a structural
+// candidate dominates ITSELF.
+//
+// Precedence is malformed query first: the axis roster and either operand's projector contradiction
+// are defects in what was ASKED, and they outrank the answer to the question. Identity equality then
+// short-circuits ahead of declared gaps and the axis fold, because a self-comparison needs no
+// evidence -- a gap cannot make a subject fail to tie with itself.
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
   let axis_defects = axis_roster_contradiction(axes: axes)
   if count(axis_defects) > 0 {
@@ -511,6 +520,8 @@ fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Pa
     let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
     if count(malformed) > 0 {
       PairRefused { cause: join(malformed, " ; ") }
+    } else if declaration_ref_eq(a: a.identity, b: b.identity) {
+      PairNoDominance
     } else {
       let gaps = declared_gap_cause(a: a, b: b)
       if count(gaps) > 0 {

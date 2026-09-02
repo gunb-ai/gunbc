@@ -647,24 +647,31 @@ pub fn compare_pair(
                         cause: malformed.clone().join(&" ; ".to_string()),
                     })
                 } else {
-                    {
-                        let gaps = declared_gap_cause(a.clone(), b.clone());
-                        if ((gaps.clone().len() as i64) > 0) {
-                            Rc::new(PairStanding::PairEvidenceIncomplete {
-                                missing: gaps.clone().join(&" ; ".to_string()),
-                            })
-                        } else {
-                            pair_from_accum(axes.iter().cloned().fold(
-                                Rc::new(PairAccum {
-                                    refusal_causes: no_names(),
-                                    a_worse_somewhere: false,
-                                    winning_axes: no_axis_ids(),
-                                    undecided_axes: no_axis_ids(),
-                                }),
-                                |acc: _, axis: Rc<SelectionAxis>| {
-                                    axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
-                                },
-                            ))
+                    if crate::std_decl_ref::declaration_ref_eq(
+                        a.identity.clone(),
+                        b.identity.clone(),
+                    ) {
+                        Rc::new(PairStanding::PairNoDominance)
+                    } else {
+                        {
+                            let gaps = declared_gap_cause(a.clone(), b.clone());
+                            if ((gaps.clone().len() as i64) > 0) {
+                                Rc::new(PairStanding::PairEvidenceIncomplete {
+                                    missing: gaps.clone().join(&" ; ".to_string()),
+                                })
+                            } else {
+                                pair_from_accum(axes.iter().cloned().fold(
+                                    Rc::new(PairAccum {
+                                        refusal_causes: no_names(),
+                                        a_worse_somewhere: false,
+                                        winning_axes: no_axis_ids(),
+                                        undecided_axes: no_axis_ids(),
+                                    }),
+                                    |acc: _, axis: Rc<SelectionAxis>| {
+                                        axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
+                                    },
+                                ))
+                            }
                         }
                     }
                 }
