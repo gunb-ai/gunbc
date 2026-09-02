@@ -213,6 +213,27 @@ test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bo
   )
 }
 
+// THE WHITESPACE ARM IS THE ONE THE OLD COMPARISON COULD NOT SEE. join(a," ")==join(b," ") cannot
+// distinguish one word carrying a space from the words it would split into, so a value like a path
+// with a space passed the predicate whether or not the transport tokenised it correctly. Carrying
+// such a value here means the control fails if argv agreement is ever weakened back to a text
+// comparison: the words still join to the same text, and only cardinality separates them.
+test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> Bool {
+  systemd_run_transient_operation_argv_matches_authority(
+    unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
+    properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
+    command_argv: ["nbdkit", "-p", "10809"],
+  )
+}
+
+// THE ENCODING'S OWN PRECONDITION IS ASSERTED, not assumed. argv_exact_token_equal is injective
+// only while no word contains the separator; a word that does must refuse rather than compare.
+test fn witness_argv_exact_token_equal_separates_split_words() -> Bool {
+  !argv_exact_token_equal(left: ["a b"], right: ["a", "b"])
+    && argv_exact_token_equal(left: ["a b"], right: ["a b"])
+    && !argv_exact_token_equal(left: ["a\nb"], right: ["a\nb"])
+}
+
 // A PREDICATE THAT ONLY EVER RETURNS TRUE IS NOT A CONTROL. The two witnesses above compare one
 // authority against one materialization; if the transport template silently dropped the property
 // words, BOTH sides would drop them together only if the authority also stopped rendering them --

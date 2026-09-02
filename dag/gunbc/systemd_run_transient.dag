@@ -111,15 +111,38 @@ fn systemd_run_transient_read(
   }
 }
 
+// ARGV EQUALITY IS A QUESTION ABOUT TOKENS, AND join() ANSWERS A QUESTION ABOUT TEXT.
+// The prior spelling compared join(materialized, " ") == join(authority, " "), which cannot tell
+// ["--property=WorkingDirectory=/path with space"] from ["...=/path", "with", "space"]: one word
+// carrying a space and three words collapse to the same string, so an accidental token split at
+// exactly the seam that carries paths and property values was invisible. There is no zip or index
+// in the list vocabulary to fold two lists in lockstep, so equality is established the way an
+// encoding establishes it: cardinality must agree, and the words must be joined on a separator no
+// word contains, which makes the joined form injective. A word containing the separator REFUSES
+// rather than falling back to the ambiguous comparison -- an unusable encoding is an unanswerable
+// question, not a passing one.
+data argv_token_separator: String = "\n"
+
+fn argv_word_free_of_separator(words: List<String>) -> Bool {
+  fold(words, init: true, f: (acc, w) => acc && !string_contains(s: w, pattern: argv_token_separator))
+}
+
+fn argv_exact_token_equal(left: List<String>, right: List<String>) -> Bool {
+  list_length(items: left) == list_length(items: right)
+    && argv_word_free_of_separator(words: left)
+    && argv_word_free_of_separator(words: right)
+    && join(left, argv_token_separator) == join(right, argv_token_separator)
+}
+
 // THE MATERIALIZED ARGV IS CHECKED AGAINST THE EXTDEPS AUTHORITY, not against a second hand-built
-// copy of it. The prior spelling rebuilt the launcher words here, so this predicate could only ever
-// confirm that two local folds agreed; a property population would have been invisible to it. It
-// now compares against systemd_run_transient_unit_argv, which is the same function the transport
-// template must agree with, so a property that fails to reach the executed words goes red here.
+// copy of it. An earlier spelling rebuilt the launcher words here, so this predicate could only
+// confirm that two local folds agreed; a property population was invisible to it. It now compares
+// against systemd_run_transient_unit_argv, which is the same function the transport template must
+// agree with, so a property that fails to reach the executed words goes red here.
 fn systemd_run_transient_operation_argv_matches_authority(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
   let authority = systemd_run_transient_unit_argv(unit: unit, properties: properties, command_argv: command_argv)
   match systemd_run_transient_operation_argv(unit: unit, properties: properties, command_argv: command_argv) {
-    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterialized { argv: materialized } => argv_exact_token_equal(left: materialized, right: authority)
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }
