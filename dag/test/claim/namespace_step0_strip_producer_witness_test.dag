@@ -190,6 +190,49 @@ test fn a_span_that_does_not_delimit_an_import_statement_is_refused() -> Bool {
   }
 }
 
+// DISCRIMINATING RED, and the one review 58968 asked for. `w.provid` is a proper PREFIX of the
+// module the span actually imports, so a `string_contains` check would have said the span names it
+// and cut the statement out under a module path that does not exist. The boundary is positional:
+// the module path is the exact run after the keyword, delimited by a character that cannot continue
+// it, and `e` can.
+test fn a_span_naming_a_prefix_of_the_module_it_imports_is_refused() -> Bool {
+  match strip_one_import_statement(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statement: ParsedImportStatement {
+      span: SourceSpan { file: entry_path() as String, start: 16, end: 51 },
+      imported_module: "w.provid"
+    }
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpanDoesNotNameItsModule { span: _, imported_module: _, source_text: _ } => true
+        _ => false
+      }
+  }
+}
+
+// DISCRIMINATING RED, the same softness read from the other end: a declaration whose name merely
+// BEGINS with the keyword is not an import statement. `starts_with` alone admitted this text.
+test fn a_span_whose_text_only_begins_with_the_keyword_is_refused() -> Bool {
+  match strip_one_import_statement(
+    source_file: entry_path() as String,
+    source: "import_alias w.provider\n",
+    statement: ParsedImportStatement {
+      span: SourceSpan { file: entry_path() as String, start: 0, end: 23 },
+      imported_module: "w.provider"
+    }
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpanDoesNotDelimitAnImportStatement { span: _, source_text: _ } => true
+        _ => false
+      }
+  }
+}
+
 // DISCRIMINATING RED. Descending spans are refused rather than silently rebuilding the source from
 // gaps that overlap, which would drop or duplicate bytes with no diagnostic.
 test fn descending_spans_are_refused_rather_than_rebuilding_the_source() -> Bool {
