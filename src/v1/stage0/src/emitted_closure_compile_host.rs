@@ -2009,6 +2009,46 @@ error: could not compile `probe` (lib) due to 1 previous error
         );
     }
 
+    /// THE DISCRIMINATING RED FOR THE ERROR-CLASS CONJUNCT ITSELF.
+    ///
+    /// The conjunct is only worth its line if a red of the WRONG CLASS fails the pair, so this
+    /// builds the exact shape the route reports -- both arms `Measured`, the control compiled,
+    /// the red refused and attributed to the fixture's own module -- and varies ONLY the rustc
+    /// code. `E0308` passes; `E0433` (an unresolved path, the shape an emitter regression or an
+    /// edited fixture produces) fails, which is precisely the case the arm used to report PASSED.
+    #[test]
+    fn a_red_of_the_wrong_error_class_does_not_pass_the_pair() {
+        let measured = |status: i32, diagnostic: Option<&str>| FixtureClosureOutcome::Measured {
+            crate_dir: "/tmp/x".to_string(),
+            emitted_files: 1,
+            cargo: CargoVerdict::Completed {
+                status,
+                stderr_tail: String::new(),
+                probe_line: Some("--> src/fixture_probe.rs:13:5".to_string()),
+                probe_diagnostic: diagnostic.map(|value| value.to_string()),
+            },
+        };
+        let pair_with = |diagnostic: Option<&str>| FixtureDiscrimination {
+            green: measured(0, None),
+            red: measured(101, diagnostic),
+        };
+        assert!(
+            fixture_discrimination_passed(&pair_with(Some("error[E0308]: mismatched types"))),
+            "the class the arm claims passes"
+        );
+        assert!(
+            !fixture_discrimination_passed(&pair_with(Some(
+                "error[E0433]: failed to resolve: use of undeclared crate or module `nope`"
+            ))),
+            "a refusal of another class in the same file is not this arm's subject, and passing \
+             it is the defect this conjunct closes"
+        );
+        assert!(
+            !fixture_discrimination_passed(&pair_with(None)),
+            "an unattributed red establishes nothing at all"
+        );
+    }
+
     #[test]
     fn a_green_baseline_does_not_pass_without_the_discrimination() {
         let green = CargoVerdict::Completed {
