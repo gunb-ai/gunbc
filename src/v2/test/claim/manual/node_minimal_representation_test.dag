@@ -74,6 +74,9 @@ fn witness_substrate_kind_round_trips_v2_node() -> Bool {
     MrnSurfaceConnective { connective: _, provenance: _, children: _, params: _, uses: _, inference: _ } => false
     MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } => false
     MrnSurfaceMatchArm { pattern: _, provenance: _, children: _ } => false
+    MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrenceSynthetic } => false
+    MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
+    MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
   }
 }
 

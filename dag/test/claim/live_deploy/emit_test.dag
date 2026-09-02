@@ -480,6 +480,8 @@ test fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_
       m == "gunbc.live_deploy.emit"
         && n == "live_deploy_emit_shell_dissolution_trigger"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -498,6 +500,8 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
     } =>
       m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 

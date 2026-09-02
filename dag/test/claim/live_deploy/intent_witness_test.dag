@@ -42,6 +42,8 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
     } =>
       m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 

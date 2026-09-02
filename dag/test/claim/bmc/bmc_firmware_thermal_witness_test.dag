@@ -730,6 +730,7 @@ test fn srv4_durability_gate_preserves_typed_linkage_refusal_verdict() -> Bool {
       },
     } => count == 6 && list_length(items: assertions) == 6
     BmcFanPolicyDurabilityQualified { qualification: _ } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityQualified { qualification: _ } } => false
   }
 }
 
@@ -1127,6 +1128,8 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
       cause: DurabilityReceiptDigestMismatch,
     } => true
     BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
+    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptBoundaryMismatch { reset_type: _ } } => false
+    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptNonPositiveInterval { cause: _ } } => false
   }
 }
 
@@ -1374,5 +1377,7 @@ test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
       },
     } => true
     BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
+    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptDigestMismatch } => false
+    BmcFanDurabilityEvidenceConstructionRefused { cause: DurabilityReceiptBoundaryMismatch { reset_type: _ } } => false
   }
 }

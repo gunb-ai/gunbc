@@ -241,6 +241,11 @@ test fn occurrence_binding_resolve_duplicate_supplied_identity_refuses_holds() -
       },
     } => duplicate.value == 10
     OccurrenceReferenceBindingDecided { result: _ } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateAuthoredOccurrenceIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: _, observed: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: UnknownOccurrenceIdentity { occurrence: _ } } => false
   }
 }
 
@@ -315,6 +320,11 @@ test fn occurrence_binding_resolve_malformed_transport_refuses_holds() -> Bool {
       },
     } => true
     OccurrenceReferenceBindingDecided { result: _ } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: _, observed: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: UnknownOccurrenceIdentity { occurrence: _ } } => false
   }
 }
 
@@ -328,6 +338,11 @@ test fn occurrence_binding_resolve_unknown_reference_identity_refuses_holds() ->
       refusal: UnknownOccurrenceIdentity { occurrence: observed },
     } => observed.value == 999
     OccurrenceReferenceBindingDecided { result: _ } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateAuthoredOccurrenceIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: _, observed: _, diagnostic_span: _ } } => false
   }
 }
 
@@ -341,6 +356,11 @@ test fn occurrence_binding_resolve_unknown_supplied_candidate_identity_refuses_h
       refusal: UnknownOccurrenceIdentity { occurrence: observed },
     } => observed.value == 999
     OccurrenceReferenceBindingDecided { result: _ } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateAuthoredOccurrenceIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: _, observed: _, diagnostic_span: _ } } => false
   }
 }
 
@@ -359,6 +379,11 @@ fn occurrence_binding_resolve_reference_identity_as_candidate_refuses_wrong_role
       },
     } => observed.value == obr_type_reference_id().value
     OccurrenceReferenceBindingDecided { result: _ } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateAuthoredOccurrenceIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: UnknownOccurrenceIdentity { occurrence: _ } } => false
   }
 }
 
@@ -378,5 +403,10 @@ test fn occurrence_binding_resolve_wrong_roles_refuse_holds() -> Bool {
       },
     } => observed.value == 10
     OccurrenceReferenceBindingDecided { result: _ } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateAuthoredOccurrenceIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: UnknownOccurrenceIdentity { occurrence: _ } } => false
   }
 }

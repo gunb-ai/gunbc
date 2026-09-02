@@ -82,6 +82,8 @@ test fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool {
     } =>
       m == "gunbc.live_deploy.readiness" && n == "live_deploy_poll_until_service_ready"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -94,6 +96,8 @@ test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
       m == "gunbc.live_deploy.service_ready"
         && n == "live_deploy_service_ready_scaffold_dissolution_trigger"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -137,6 +141,8 @@ test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
     } =>
       m == "gunbc.host_effect" && n == "Srv3BootOnceReadBackSleep"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
