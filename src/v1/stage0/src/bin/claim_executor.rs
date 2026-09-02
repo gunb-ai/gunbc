@@ -1611,7 +1611,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // would put the evidence on a surface disjoint from the one anyone reads for that identity.
     for refused in &outcome.interrupted_before_verdict {
         eprintln!(
-            "required-floor: INTERRUPTED-BEFORE-VERDICT raised_by={} enrolled_expected_red={} {}",
+            "required-floor: INTERRUPTED-BEFORE-VERDICT {} raised_by={} enrolled_expected_red={} {}",
+            refused.qualified,
             refused.raised_by.label(),
             refused.enrolled_expected_red,
             refused.detail

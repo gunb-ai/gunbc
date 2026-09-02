@@ -5607,8 +5607,12 @@ pub fn run_required_floor(
                             qualified: claim.qualified.clone(),
                             raised_by,
                             enrolled_expected_red: true,
+                            // THE IDENTITY IS THE ROW'S FIELD AND IS NOT RESTATED HERE. It used
+                            // to lead this sentence, which made `qualified` a second
+                            // representation of a string a reader would otherwise have to
+                            // recover by parsing prose. The printer renders the field.
                             detail: format!(
-                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
+                                "is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
                          CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
@@ -5617,7 +5621,7 @@ pub fn run_required_floor(
                          that declares its own ceiling, is what lets it reach a verdict at all; \
                          removing it from the roster would not help, because it is not passing \
                          either.",
-                        claim.qualified, detail
+                                detail
                             ),
                         });
                     continue;
@@ -5912,11 +5916,11 @@ pub fn run_required_floor(
                         raised_by: SafetyInterruptTrigger::from(kind),
                         enrolled_expected_red: false,
                         detail: format!(
-                            "{} was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
+                            "was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
                      expected-red, so nothing claims it is broken — but the deadline preempted \
                      the verdict, so whether it PASSES is UNKNOWN too. Reduce the cost, or move \
                      it to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                            claim.qualified, figure
+                            figure
                         ),
                     })
             }
