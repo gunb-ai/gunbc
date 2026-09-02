@@ -550,120 +550,69 @@ pub struct TransitionAdmission {
 /// arrived from main would be that identical mistake one iteration later, with the roles swapped.
 /// The recipe was run against BOTH sides: this change's own cohort has an unfired trigger and
 /// stays; the imported cohort's has fired and goes.
-/// FIFTEENTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
-/// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
-/// module more than one implementation cites. No declaration was renamed and no name was minted:
-/// every spelling below denotes the same declaration it denoted at the base, at a new home, so
-/// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
-/// `{extdeps.llm.anthropic_messages_api}`.
+/// SIXTEENTH TRANSITION (2026-09-02, SJT-1, this change). The four Redfish boot-override
+/// constants moved WHOLE from `gunbc.srv3_boot_once_cd` to
+/// `gunbc.srv3_os_install_actuate_workflow`, the module that now authors the scoped-authorization
+/// subject those constants are the fields of. Nothing was renamed and no name was minted: each
+/// spelling below denotes the same declaration it denoted at the base, at a new home, so each
+/// arrives as `TargetChanged binding` with base `{gunbc.srv3_boot_once_cd}` -> head
+/// `{gunbc.srv3_os_install_actuate_workflow}`. The relocation is forced rather than stylistic:
+/// `srv3_boot_once_cd` already imports the workflow module, so leaving the constants behind would
+/// have made the subject's own module import its importer.
 ///
-/// THE POPULATION IS EXACTLY NINE, AND THE REST OF THE MOTION NEEDED NO ROW. The same phase
-/// classified this change's membership and closure motion automatically -- the memberships
-/// `extdeps.llm.anthropic` lost are `SameDeclarationIdentityRebind`, the memberships the new module
-/// gained are `ExplicitlyEvaluatedZeroDelta` -- so the nine below are the whole unadjudicated set,
-/// not a sample of it. Every row names one exact (module, declaration, spelling) triple: a tenth
-/// binding re-pointed at the new module anywhere in the corpus still refuses as UNADJUDICATED.
+/// THE POPULATION IS EXACTLY FOUR. The run's other motion classified automatically as
+/// `ExplicitlyEvaluatedZeroDelta` membership additions (the new `std.scoped_authorization` edges),
+/// so these four are the whole unadjudicated set, not a sample: a fifth re-pointed binding
+/// anywhere in the corpus still refuses as UNADJUDICATED.
 ///
-/// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
-/// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
-/// here refuses every unrelated PR in the repository.
+/// DISSOLVE-ON: this change merging. Base and head then both place the constants in the workflow
+/// module, no run can produce these deltas, all four report stale, and they are removed by that
+/// trigger -- a stale row here refuses every unrelated PR in the repository.
+///
+/// AND THE FIFTEENTH'S NINE ROWS ARE REMOVED HERE, BY ITS OWN STATED TRIGGER. DCH-1 declared
+/// "DISSOLVE-ON: #9985 merging"; #9985 is in the base this change merges, and the run at
+/// 78051a5 reported all nine as CONSUMED ADMISSION -- provable against the base, deletion owed on
+/// the roster's next touch. This is that touch. Per the fourteenth entry's recipe the trigger
+/// question was asked of BOTH sides: the imported cohort's trigger has fired and it goes; this
+/// change's own cohort has an unfired trigger and stays.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "AnthropicChatMessage",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "gunbc.srv3_boot_once_cd",
+            in_declaration: "srv3_boot_once_cd_resolved",
+            spelling: "srv3_boot_cd_enabled",
+            target: "gunbc.srv3_os_install_actuate_workflow",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "AnthropicMessages200Body",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "gunbc.srv3_boot_once_cd",
+            in_declaration: "srv3_boot_once_cd_resolved",
+            spelling: "srv3_boot_cd_mode",
+            target: "gunbc.srv3_os_install_actuate_workflow",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "AnthropicStopReason",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "gunbc.srv3_boot_once_cd",
+            in_declaration: "srv3_boot_once_cd_resolved",
+            spelling: "srv3_boot_cd_reset_type",
+            target: "gunbc.srv3_os_install_actuate_workflow",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "current_api_version",
-            target: "extdeps.llm.anthropic_messages_api",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.extdeps_llm_type_grounding_witness",
-            in_declaration: "w_anthropic_messages_object_type",
-            spelling: "Assistant",
-            target: "extdeps.llm.anthropic_messages_api",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.extdeps_llm_type_grounding_witness",
-            in_declaration: "w_anthropic_messages_object_type",
-            spelling: "Standard",
-            target: "extdeps.llm.anthropic_messages_api",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
-            in_declaration: "redundancy_region1_anthropic_green_against_nonmatching_present",
-            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-            target: "extdeps.llm.anthropic_messages_api",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
-            in_declaration: "redundancy_region1_anthropic_marks_nonempty",
-            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-            target: "extdeps.llm.anthropic_messages_api",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
-            in_declaration: "redundancy_region1_fires_when_a_real_mark_successor_present",
-            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "gunbc.srv3_boot_once_cd",
+            in_declaration: "srv3_boot_once_cd_resolved",
+            spelling: "srv3_boot_cd_target",
+            target: "gunbc.srv3_os_install_actuate_workflow",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
