@@ -13,6 +13,47 @@ data witness_intent: EffectAttemptIntent = EffectAttemptIntent {
   created_at: "2026-07-02T23:00:00Z",
 }
 
+data witness_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: NamespacePosition {
+    tree: ServiceOpTree { service: "redfish" },
+    path: ["redfish", "v1", "Systems", "system", "Boot"],
+  },
+  action: "redfish.boot-source-override.set" as AuthorizedAction,
+}
+
+type WitnessSubject { label: NonEmptyStr }
+
+data witness_subject: WitnessSubject = WitnessSubject { label: "srv3-boot" as NonEmptyStr }
+
+data witness_request: AuthorizationRequest<WitnessSubject> = authorization_request_for_attempt(
+  intent: witness_intent,
+  escalation_id: witness_escalation_id,
+  scopes: [witness_scope],
+  subject: witness_subject,
+  purpose: "witness: boot srv3 from CD once" as NonEmptyStr,
+  destructive: true,
+)
+
+fn witness_grant(granted_at: Timestamp, expires_at: Timestamp) -> ScopedAuthorization<WitnessSubject> {
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: witness_escalation_id,
+      scopes: [witness_scope],
+      subject: witness_subject,
+      purpose: witness_request.purpose,
+      attempt: witness_request.attempt,
+      intent_hash: witness_intent_hash,
+      granted_by: "operator" as NonEmptyStr,
+      granted_at: granted_at,
+      expires_at: expires_at,
+    },
+    claim: Unclaimed,
+  }
+}
+
+data witness_pending: ScopedAuthorization<WitnessSubject> = AuthorizationPending { request: witness_request }
+
 data witness_step_boot: NonEmptyStr = "boot-once-cd" as NonEmptyStr
 data witness_step_serve: NonEmptyStr = "nbd-serve" as NonEmptyStr
 
@@ -73,11 +114,10 @@ fn converged_serve_receipt() -> EffectStepReceipt {
 
 test fn missing_approval_awaits_not_apply() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_boot,
     requires_destructive_approval: true,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: expected_lease,
     prior: NoPriorReceipt,
     observed_at: witness_observed_at,
@@ -89,11 +129,10 @@ test fn missing_approval_awaits_not_apply() -> Bool {
 
 test fn foreign_lease_refuses_not_drain() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: foreign_lease,
     prior: NoPriorReceipt,
     observed_at: witness_observed_at,
@@ -106,11 +145,10 @@ test fn foreign_lease_refuses_not_drain() -> Bool {
 
 test fn stale_lease_drains_not_blind_start() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: stale_lease,
     prior: NoPriorReceipt,
     observed_at: witness_observed_at,
@@ -124,11 +162,10 @@ test fn stale_lease_drains_not_blind_start() -> Bool {
 
 test fn converged_receipt_stale_lease_drains_not_noop() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: stale_lease,
     prior: PriorReceipt { receipt: converged_serve_receipt() },
     observed_at: witness_observed_at,
@@ -152,11 +189,10 @@ test fn applied_without_read_back_refuses() -> Bool {
     recorded_at: "2026-07-02T23:01:00Z",
   }
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: expected_lease,
     prior: PriorReceipt { receipt: bad_receipt },
     observed_at: witness_observed_at,
@@ -168,11 +204,10 @@ test fn applied_without_read_back_refuses() -> Bool {
 
 test fn converged_receipt_expected_lease_yields_noop() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: expected_lease,
     prior: PriorReceipt { receipt: converged_serve_receipt() },
     observed_at: witness_observed_at,
@@ -183,45 +218,39 @@ test fn converged_receipt_expected_lease_yields_noop() -> Bool {
 }
 
 test fn active_grant_covers_matching_intent() -> Bool {
-  approval_grant_covers_intent(
-    grant: GrantActive {
-      escalation_id: witness_escalation_id,
-      intent_hash: witness_intent_hash,
-      granted_by: "operator" as NonEmptyStr,
+  match authorize(
+    authorization: witness_grant(
       granted_at: "2026-07-02T23:00:00Z",
       expires_at: "2026-07-03T23:00:00Z",
-    },
-    intent: witness_intent,
-    escalation_id: witness_escalation_id,
+    ),
+    request: witness_request,
     observed_at: witness_observed_at,
-  )
+  ) {
+    AuthorizationPermitted { grant: _ } => true
+    AuthorizationRefused { cause: _ } => false
+  }
 }
 
 test fn expired_grant_does_not_authorize_destructive() -> Bool {
-  !approval_grant_covers_intent(
-    grant: GrantActive {
-      escalation_id: witness_escalation_id,
-      intent_hash: witness_intent_hash,
-      granted_by: "operator" as NonEmptyStr,
+  match authorize(
+    authorization: witness_grant(
       granted_at: "2026-07-02T22:00:00Z",
       expires_at: "2026-07-02T23:00:00Z",
-    },
-    intent: witness_intent,
-    escalation_id: witness_escalation_id,
+    ),
+    request: witness_request,
     observed_at: witness_observed_at,
-  )
+  ) {
+    AuthorizationRefused { cause: AuthorizationExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
     && match plan_next_step_from_prior_receipt_and_lease(
-      intent: witness_intent,
+      request: witness_request,
       pending_step_id: witness_step_boot,
       requires_destructive_approval: true,
-      escalation_id: witness_escalation_id,
-      grant: GrantActive {
-        escalation_id: witness_escalation_id,
-        intent_hash: witness_intent_hash,
-        granted_by: "operator" as NonEmptyStr,
+      authorization: witness_grant(
         granted_at: "2026-07-02T22:00:00Z",
         expires_at: "2026-07-02T23:00:00Z",
-      },
+      ),
       lease: expected_lease,
       prior: NoPriorReceipt,
       observed_at: witness_observed_at,
@@ -267,26 +296,20 @@ test fn derived_cursor_uses_last_receipt_step() -> Bool {
 }
 
 test fn consumed_grant_does_not_authorize_destructive() -> Bool {
-  !approval_grant_covers_intent(
-    grant: GrantConsumed {
-      escalation_id: witness_escalation_id,
-      intent_hash: witness_intent_hash,
-      consumed_by_step: witness_step_boot,
-    },
-    intent: witness_intent,
-    escalation_id: witness_escalation_id,
+  match authorize(
+    authorization: consumed_witness_authorization(),
+    request: witness_request,
     observed_at: witness_observed_at,
-  )
+  ) {
+    AuthorizationRefused { cause: AuthorizationAlreadyCompleted { completed_by: who, completed_at: _ } } =>
+      who == witness_request.attempt
+    _ => false
+  }
     && match plan_next_step_from_prior_receipt_and_lease(
-      intent: witness_intent,
+      request: witness_request,
       pending_step_id: witness_step_boot,
       requires_destructive_approval: true,
-      escalation_id: witness_escalation_id,
-      grant: GrantConsumed {
-        escalation_id: witness_escalation_id,
-        intent_hash: witness_intent_hash,
-        consumed_by_step: witness_step_boot,
-      },
+      authorization: consumed_witness_authorization(),
       lease: expected_lease,
       prior: NoPriorReceipt,
       observed_at: witness_observed_at,
@@ -299,11 +322,10 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
 
 test fn absent_lease_plans_apply_when_no_prior_receipt() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: absent_lease,
     prior: NoPriorReceipt,
     observed_at: witness_observed_at,
@@ -315,11 +337,10 @@ test fn absent_lease_plans_apply_when_no_prior_receipt() -> Bool {
 
 test fn inaccessible_lease_refuses() -> Bool {
   match plan_next_step_from_prior_receipt_and_lease(
-    intent: witness_intent,
+    request: witness_request,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
-    escalation_id: witness_escalation_id,
-    grant: GrantAbsent,
+    authorization: witness_pending,
     lease: held_lease(
       epoch: LeaseEpoch {
         lease_key: witness_lease_key,
@@ -501,4 +522,21 @@ test fn held_lease_rebuilds_the_observation_without_a_second_epoch_spelling() ->
   )
   let restated = held_lease_with_observed(lease: absent_lease, observed: LeasePortForeign)
   rebuilt == restated
+}
+
+// The completed state is produced by claim_transition_completed, the same constructor a real
+// holder calls after its CAS commits -- hand-writing the terminal arm here would pass this test
+// while the real transition was broken.
+fn consumed_witness_authorization() -> ScopedAuthorization<WitnessSubject> {
+  match witness_grant(granted_at: "2026-07-02T23:00:00Z", expires_at: "2026-07-03T23:00:00Z") {
+    AuthorizationGranted { grant: g, claim: _ } =>
+      AuthorizationGranted {
+        grant: g,
+        claim: claim_transition_completed(
+          attempt: witness_request.attempt,
+          at: witness_observed_at,
+        ),
+      }
+    AuthorizationPending { request: _ } => witness_pending
+  }
 }

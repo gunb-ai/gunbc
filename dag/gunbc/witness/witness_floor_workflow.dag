@@ -30,6 +30,12 @@ import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
+import gunbc.compile_permit_scope {
+  FleetCompileCancellationStanding,
+  FleetCancellationSafe,
+  FleetCancellationNotSafe,
+  fleet_compile_cancellation_standing
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -273,9 +279,34 @@ type WitnessFloorConcurrencyPolicy {
   running: RunningSupersessionPolicy
 }
 
+// THE RUNNING AXIS IS DERIVED FROM THE OBSERVED FLEET STANDING, not authored beside it and not read
+// off a desired-state row.
+//
+// gunbc#9789 declared NeverSupersedeRunning and a DESIGN 4b(3) drop whose dissolve-on is a
+// capability: no client of the required floor holds a permit whose abandonment costs future compile
+// capacity. Written as a literal, that row survives its own reason -- the fleet stops leaking and CI
+// goes on refusing to supersede, the drop stays standing, and nothing refuses because nothing joins
+// the two facts. Section 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the
+// trigger is the whole check, and a check nothing evaluates is diligence rather than a check.
+//
+// IT READS THE STANDING AND NOT THE REALIZATION, for a reason that is a safety property rather than
+// a taste: a desired realization row and the live hosts are two independently actuated systems, and
+// a generated artifact cannot make them transition together. Deriving from the row would restore
+// cancellation the moment this workflow reached main, while hosts that had not yet restarted onto
+// the new unit went on losing a permit per kill. The unobserved fleet is on the refusing side, so
+// that interval is unwritable rather than merely unlikely.
+fn running_supersession_for_fleet_standing(
+  standing: FleetCompileCancellationStanding,
+) -> RunningSupersessionPolicy {
+  match standing {
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
+    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
 data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
   pending: ReplaceExistingPending,
-  running: NeverSupersedeRunning
+  running: running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing)
 }
 
 data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running
@@ -932,6 +963,73 @@ data required_floor_claim_cost_path: String = "required_floor_claim_cost.tsv"
 
 data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cost"
 
+// THE FIFTH FILE: THE CROSS-CLAIM DEMAND CENSUS, and it answers a question the four above
+// structurally cannot.
+//
+// The per-claim cost receipt says WHAT each claim was charged. It cannot say what the charge was
+// FOR, and on this corpus most of a tail row's charge is not its own work: measured on main run
+// 33615659836, a witness and its discriminating RED -- which do materially different work -- cost
+// within 2ms of each other while both sit near the ceiling, and one 34-row module spans 0ms to the
+// ceiling in three bands that track WHICH SHARED PRODUCER a row forces rather than what it
+// asserts. That is the floor's fresh-frame-per-claim boundary re-deriving each closure's pure
+// substrate once per claim, and DESIGN section 2 prices it as authored duplication whose least
+// common ancestor is the RUN.
+//
+// THE REPAIR ALREADY EXISTS AND ITS DISCOVERY MECHANISM DID NOT. `v2.workflow.floor_pure_producer_share`
+// serves one evaluation of a declared pure producer across claim frames -- and its roster is
+// hand-authored, because the interpreter's recompute ledger is scoped to ONE evaluation frame and
+// reports only keys re-hit inside it. A producer evaluated exactly once per claim, in thousands of
+// claims, has count=1 in every frame's ledger and appears in none of them. So the instrument that
+// ranks redundant recompute was blind to the entire population the roster is enrolled from, and
+// candidates were discovered when a budget refusal landed on an unrelated lane's pull request.
+// `absorb_claim_recompute_demand` folds each claim's ledger into a run-scoped census before the
+// frame is dropped, and this artifact is that census.
+//
+// WHAT IT DOES NOT ANSWER, said here because an artifact is read for more than it measures. It
+// explains the LEVEL -- why a family sits pinned near the ceiling -- and not the VARIANCE: a
+// per-closure constant is the same on two runs of one tree, while 32 rows have been measured with
+// byte-identical eval_steps and cpu up 1.31-1.80x across runs over a byte-identical payload. The
+// two compose (the constant puts the family AT the line, something run-to-run decides which rows
+// cross). Two receipts, neither a cross-run comparison: two rows of one module measured 502ms and
+// EXACTLY 500ms against the 500ms budget, and one row was observed crossing the two populations on
+// ONE tree -- run 33620893203 attempt 1 records it INTERRUPTED-BEFORE-VERDICT with cost=UNMEASURED
+// while attempt 2 of the same run records it COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500. Which
+// population a row lands in at that margin is decided by whether the poll fired before or after
+// the work finished. The pair is a BOUND beside a VALUE rather than two measurements of one
+// quantity, so no cost is written for attempt 1: an interrupted row's reported figure names where
+// the poll observed the ceiling, which is a property of the budget. Both citations pin the ATTEMPT, because a bare run id and a bare job id
+// resolve to the latest one and a rerun silently changes what they serve. The tipping
+// variable is separately open. And a cost inside a native builtin called directly from a claim
+// body is not a row here at all, because the ledger keys pure named fn evaluations -- the same
+// boundary std.evaluation_budget's opaque-host-call note draws for the deadline.
+//
+// THE COST COLUMN IS NOT ADDITIVE AND THE ARTIFACT SAYS SO IN ITS OWN SUMMARY LINE. Durations are
+// inclusive of callees, so a producer and everything it calls both appear and their figures
+// overlap; summing the column counts the same nanoseconds once per level of nesting. On the first
+// run that produced this artifact the naive sum over shared rows was ~1850s against a run whose
+// entire claim-side CPU was 130s. So the summary carries claim_cpu_total_ms as the ceiling any
+// true total must sit under, and a displaceable-cost figure needs self-time, which the ledger does
+// not carry yet.
+//
+// THE NEGATIVE CONTROL IS EXECUTED RATHER THAN PROMISED, and it is the strongest thing that can
+// be said about this artifact's separation of discovery from policy. The two rust target models
+// were enrolled in the share roster and REMOVED, because a measured present-versus-absent
+// experiment priced their serve above their recompute. They are exactly the kind of row this
+// census ranks highly -- and on the first run that produced the artifact, the rust target-model
+// chain does rank in the top ten by cross-claim recomputation while remaining unenrolled and
+// unenrollable by any path from here. Demand is observed; enrolment stays a separate decision
+// with its own measurement, in this order: demand observed, candidate selected, present/absent
+// serve experiment on ONE exact tree, portability and argument-reuse evidence, serve cheaper than
+// recompute, and only then a roster edit in floor_pure_producer_share.
+//
+// IT GATES NOTHING AND ENROLS NOTHING. A row is a CANDIDATE whose SERVE cost is unmeasured, and
+// `floor_pure_producer_share` records the case where the serve lost to the recompute and the row
+// was removed. Arming this variable changes no threshold and no verdict: the writer is a pure
+// write of rows the fold already produced, on the same completion path as the four above.
+data required_floor_cross_claim_demand_path: String = "required_floor_cross_claim_demand.tsv"
+
+data required_floor_cross_claim_demand_artifact_name: String = "required-floor-cross-claim-demand"
+
 // THE FLOOR HAS BEEN WRITING THREE FILES ON EVERY RUN AND THROWING ALL THREE AWAY.
 //
 // cli_run.rs reads GUNBC_REQUIRED_FLOOR_DISPOSITION, GUNBC_EXPECTED_RED_ROSTER_JOIN and
@@ -1133,6 +1231,15 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         ),
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the floor's cross-claim demand census",
+          artifact_name: required_floor_cross_claim_demand_artifact_name,
+          path: required_floor_cross_claim_demand_path
+        ),
+        role: capability_neutral,
+        step_name: "Upload the floor's cross-claim demand census",
       },
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
@@ -2063,6 +2170,7 @@ data witness_floor_workflow: Workflow = {
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path)),
       kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
     ]
   },
