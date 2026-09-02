@@ -1,6 +1,9 @@
 module test.claim.pipeline_transport_emit_rest_shell_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import std.types { Bool, Int, String }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -192,13 +195,34 @@ fn w_shell_single_unkeyed_field_keeps_whole_stdout() -> Bool {
   )
 }
 
+// RE-AIMED AT THE COMPILE REPORT, NOT THE EMITTED BYTES (review 58144). This
+// asserted that the emitted file CONTAINED the refusal text -- which the defective
+// shape satisfied perfectly: the emitter wrote `panic!("transport binding
+// refused ... not_a_channel ...")` into a file it then reported as a successful
+// compile. Every include matched, the exclude did not appear, and the witness went
+// green over "7 files emitted, 0 diagnostics". An assertion satisfied by the defect
+// it names discriminates nothing.
+//
+// A refusal is now a BLOCKING DIAGNOSTIC and ZERO files, so there is no file left to
+// grep and the census is the only reader that can see it.
 fn w_shell_unmodeled_output_key_refuses() -> Bool {
-  compile_dag_rust_emit_check(
-    "module re4d\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\", out: String from \"stdout\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
-    "src/re4d.rs",
-    ["transport binding refused", "not_a_channel", "has no modeled channel"],
-    ["stdout.clone()"]
-  )
+  shell_blocking_count_for(
+    source: "module re4d\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\", out: String from \"stdout\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n"
+  ) == 1
+}
+
+// NOT-RUNNABLE IS NOT ZERO. A census that could not run has observed nothing, and
+// reporting that as "no diagnostics" would let a broken harness satisfy the
+// zero-expecting control while making the refusal-expecting ones unsatisfiable.
+// 0 - 1 is neither, so a harness that stops working fails in BOTH directions.
+fn shell_blocking_count_for(source: String) -> Int {
+  match census_blocking_count_for_class(
+    census: compile_dag_diagnostic_census(source),
+    wanted: "TransportEmissionNotModeled"
+  ) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
 }
 
 // THE DISCRIMINATING CASE FOR AUTHORSHIP-VS-ARITY (review 58091). re4d below
@@ -209,12 +233,19 @@ fn w_shell_unmodeled_output_key_refuses() -> Bool {
 // negative expectation is the whole point -- `stdout.clone()` is exactly the
 // fabricated byte the old branch emitted here.
 fn w_shell_single_field_authored_unknown_key_refuses() -> Bool {
-  compile_dag_rust_emit_check(
-    "module re4f\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
-    "src/re4f.rs",
-    ["transport binding refused", "not_a_channel", "has no modeled channel"],
-    ["stdout.clone()"]
-  )
+  shell_blocking_count_for(
+    source: "module re4f\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n"
+  ) == 1
+}
+
+// THE LINE-STOP CONTROL, and it is the one the previous shape could not express:
+// a valid single UNKEYED field must still emit. If the diagnostic over-fired it
+// would refuse `output { result: String }`, which the corpus is built on, and the
+// pair above could not tell an over-firing wall from a correct one.
+fn w_shell_unkeyed_field_emits_no_diagnostic() -> Bool {
+  shell_blocking_count_for(
+    source: "module re4h\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n"
+  ) == 0
 }
 
 // POSITIVE CONTROL FOR THE SAME EDIT, so the refusal above cannot be satisfied by
@@ -243,5 +274,6 @@ test fn shell_emit_single_named_field_answers_its_channel() -> Bool { w_shell_si
 test fn shell_emit_single_unkeyed_field_keeps_whole_stdout() -> Bool { w_shell_single_unkeyed_field_keeps_whole_stdout() }
 test fn shell_emit_single_field_authored_unknown_key_refuses() -> Bool { w_shell_single_field_authored_unknown_key_refuses() }
 test fn shell_emit_single_field_authored_known_key_binds() -> Bool { w_shell_single_field_authored_known_key_binds() }
+test fn shell_emit_unkeyed_field_emits_no_diagnostic() -> Bool { w_shell_unkeyed_field_emits_no_diagnostic() }
 test fn shell_emit_unmodeled_output_key_refuses() -> Bool { w_shell_unmodeled_output_key_refuses() }
 test fn shell_emit_exit_error_arm_is_boxed() -> Bool { w_shell_exit_error_arm_is_boxed() }

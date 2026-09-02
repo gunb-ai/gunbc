@@ -2610,6 +2610,20 @@ fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
 // LOCATED AT THE FIELD, not at the operation: the span is the declaring op node
 // and the fact names the individual key, so an operation with one unrealizable
 // field among seven refuses on that field and says which.
+//
+// BOTH REFUSAL CAUSES STOP THE LINE, and the second arm was missing for one commit.
+// Review 58144 caught it: ShellChannelNotRealizedByTarget stopped the line while
+// ShellOutputKeyNotModeled still emitted N files beside a panic -- the SAME class
+// this branch had just filed as refusal_deferred_to_emitted_runtime. Closing one
+// arm and leaving its sibling open is exactly the shape that class exists to name,
+// and the recognition rule it carries (ask what the COMPILE reports on the same
+// input) is what finds it.
+//
+// THE UNMODELED-KEY ARM ASKS ABOUT AUTHORSHIP, NOT ABOUT RESOLUTION. The binding
+// keeps the whole-stdout convention for a field with NO authored `from`, so a
+// diagnostic keyed on "this key resolves to no channel" alone would refuse
+// `output { result: String }` -- valid source the corpus is built on. Reading the
+// same authorship fact the binding reads is what keeps the two readers agreeing.
 fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, target: RenderTarget) -> List<ErrorNode> {
   let env = tm.type_env
   let si = env.source_indices
@@ -2622,6 +2636,21 @@ fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, 
       Present { value: ShellTransport } =>
         shell_output_channel_fields(op_node: op_node) |> flat_map(ch =>
           match shell_result_channel_of_key(key: shell_output_channel_of_field(ch: ch, source_indices: si)) {
+            Absent =>
+              if !shell_field_authors_from_key(ch: ch, source_indices: si) { [] }
+              else { [make_error_node(
+                diagnostic: TransportEmissionNotModeled {
+                  transport_kind: "shell",
+                  service: service_name,
+                  operation: authored_name(env: env, node: op_node),
+                  declaring_module: module_name,
+                  target: render_target_name(target: target),
+                  missing_realization_fact: shell_emission_refusal_fact(refusal: ShellOutputKeyNotModeled {
+                    key: shell_output_channel_of_field(ch: ch, source_indices: si)
+                  }),
+                  span: ch.span
+                },
+                module_name: module_name)] }
             Present { value: c } =>
               if shell_channel_realized_by_target(c: c, target: target) { [] }
               else { [make_error_node(
@@ -2638,7 +2667,6 @@ fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, 
                   span: ch.span
                 },
                 module_name: module_name)] }
-            Absent => []
           })
       _ => []
     }
