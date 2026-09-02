@@ -1,0 +1,71 @@
+module test.claim.spark.spark_serving_schedule_closure_resolution_witness_test
+
+import std.types { Bool, String }
+
+// PERMANENT REGRESSION CONTROL FOR A TYPE REFERENCE THAT WAS RESOLVED BY GLOBAL UNIQUENESS.
+//
+// THE DEFECT, NOW REPAIRED. gunbc.spark.serving_execution_schedule named
+// SparkServingObservationProvenance (declared in gunbc.spark.serving_observation_transaction) and
+// HostIdentity (declared in product.placement_supply) at field and parameter positions while
+// naming neither in any import. A bare type position resolves against the whole module pool by
+// global uniqueness rather than by import binding, so in a full-corpus compile the name found its
+// declaration and nothing complained. Under any NARROWER source closure -- which is what every
+// closure-based tool constructs -- there was nothing for it to resolve against, and the compiler
+// answered `unresolved type 'SparkServingObservationProvenance'` pointing at the USING module.
+// That reads like a corpus bug and is not one, so the cost lands on whoever next builds a tool
+// that compiles a subset.
+//
+// WHY THIS IS A WITNESS AND NOT AN IMPORT LINE ALONE. The import line is invisible to every check
+// in this repository: the full-corpus compile was green before it and is green after it, so
+// nothing distinguishes the repaired module from the broken one, and the next narrow-closure tool
+// rediscovers this from scratch. The discriminating question is only askable of a CLOSURE, so the
+// evidence has to be a compile over one.
+//
+// THE PAIR. `w_fleet_converge_plan_closure_compiles` is the subject: gunbc.fleet_converge_plan
+// imports gunbc.spark.serving_execution_schedule, so a synthetic single-import module over it
+// constructs a closure that contains the repaired module and nothing that would rescue the two
+// names by coincidence. `w_serving_realization_closure_compiles` is the positive control: the same
+// synthetic shape over a sibling module of the same subsystem, which compiled BEFORE the repair as
+// well as after it. Without the control a red on the subject is indistinguishable from the probe
+// harness being broken, and a green from the harness never having run.
+//
+// THE RED IS AUTHORABLE, which is what keeps this from being a decoration (DESIGN 4b). Deleting
+// either import line from gunbc.spark.serving_execution_schedule turns the subject claim red while
+// the control stays green -- measured that way, not argued -- and every other check in the
+// repository stays green, which is the entire reason this control exists.
+//
+// THE POPULATION IS LARGER THAN THIS MODULE. A census of bare type references that are neither
+// declared locally nor named in any import, over the 4,459 .dag modules under dag/ and src/v2/,
+// finds the same shape in hundreds of other modules. That measurement is a finding about the
+// corpus, not about this repair; this file claims only its own two modules, and the corpus-grain
+// remedy is not asserted here.
+
+data scrw_fleet_converge_plan_probe_source: String = "module scrw_fleet_probe\n\nimport gunbc.fleet_converge_plan { PlannedEffectExecution }\nimport std.types { Int }\n\nfn scrw_fleet_one() -> Int {\n  1\n}\n"
+
+fn w_fleet_converge_plan_closure_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    scrw_fleet_converge_plan_probe_source,
+    "src/lib.rs",
+    ["pub mod scrw_fleet_probe;"],
+    []
+  )
+}
+
+data scrw_serving_realization_probe_source: String = "module scrw_realization_probe\n\nimport gunbc.spark.serving_realization { SparkServingRealization }\nimport std.types { Int }\n\nfn scrw_realization_one() -> Int {\n  1\n}\n"
+
+fn w_serving_realization_closure_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    scrw_serving_realization_probe_source,
+    "src/lib.rs",
+    ["pub mod scrw_realization_probe;"],
+    []
+  )
+}
+
+test fn fleet_converge_plan_closure_compiles() -> Bool {
+  w_fleet_converge_plan_closure_compiles()
+}
+
+test fn serving_realization_closure_compiles() -> Bool {
+  w_serving_realization_closure_compiles()
+}
