@@ -116,7 +116,15 @@ func generated_artifact_drift_failure_receipt() -> String {
 // THE CEILING, stated at the grain that is actually true (by polling VmHWM to completion):
 //   main_wet      -- all 35 artifacts -- peak RSS 7.55 GiB   (2026-08-31)
 //   main_wet_one  -- exactly one      -- peak RSS 8.37 GiB   (2026-09-01, SUPERSEDES 7.54)
+//   main_wet_one  -- exactly one      -- peak RSS 8.53 GiB   (2026-09-02, SUPERSEDES 8.37)
 //   ctrl-build --remote runner VM     -- 7.86 GB TOTAL       (= 7.32 GiB)
+//
+// THE THIRD FIGURE IS THE SECOND CONFIRMATION THAT THIS CEILING TRACKS THE CORPUS. 8.53 GiB was
+// measured on 2026-09-02 by the same method -- polling VmHWM to completion, peak 8939132 kB --
+// on a `docs/design-ledgers.md` regeneration that completed with RUN_EXIT=0. Growth of 0.16 GiB
+// in one day, against 0.83 the day before, so the series is rising but decelerating; the point of
+// keeping all three dated rows rather than one current number is that the SLOPE is the fact worth
+// having, and no single measurement carries it.
 //
 // THE ONE-ARTIFACT FIGURE ROSE 0.83 GiB IN ONE DAY AND THE OLD ONE IS NOT AMENDED IN PLACE,
 // because a ceiling that moves with the corpus is a different fact from a ceiling that was
