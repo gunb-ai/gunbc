@@ -21,7 +21,10 @@
 //! IT MUTATES SOURCE, SO IT MUTATES A DISPOSABLE COPY. The transaction perturbs an authority file,
 //! regenerates, rebuilds and serves. None of that touches the originating checkout: it runs in a
 //! detached worktree at the bound commit with its own CARGO_TARGET_DIR, and the parent's HEAD,
-//! tree, status and worktree inventory are re-verified at the end.
+//! tree and status are re-verified at the end, and this instrument's own worktree is required to
+//! be gone from the registration list. The WHOLE list is deliberately not compared: this repository
+//! is shared, other sessions add and remove worktrees while the transaction runs, and a check whose
+//! red is dominated by events outside its subject trains a reader to ignore the real one.
 //!
 //! EVERY OUTCOME IS TYPED. `Result<_, String>` at the adjudication boundary would make "the gate
 //! refused for the wrong reason" and "the instrument could not run" the same value. Detail strings
@@ -144,6 +147,15 @@ pub(crate) enum EvaluationBudgetConsequenceFalsifierOutcome {
     Refused(EvaluationBudgetConsequenceRefusal),
     RefusedWithCleanupFailure {
         primary: EvaluationBudgetConsequenceRefusal,
+        cleanup: EvaluationBudgetConsequenceRefusal,
+    },
+    /// A PASSING TRANSACTION WHOSE CLEANUP DID NOT SETTLE. It is not a pass -- an instrument that
+    /// leaves residue has not finished -- but the receipt is CARRIED rather than discarded. The
+    /// first run of this instrument lost exactly that information: cleanup refused, the match arm
+    /// replaced the outcome wholesale, and the terminal could no longer say whether the product
+    /// transaction had succeeded. Two facts, two fields.
+    PassedWithCleanupFailure {
+        receipt: EvaluationBudgetConsequenceReceipt,
         cleanup: EvaluationBudgetConsequenceRefusal,
     },
 }
@@ -343,7 +355,13 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
     let tree = stdout_of(&git(repo_root, &["rev-parse", "HEAD^{tree}"], short))
         .trim()
         .to_string();
-    let inventory_before = stdout_of(&git(repo_root, &["worktree", "list"], short));
+    // DELIBERATELY NOT A WHOLE-INVENTORY SNAPSHOT. The first run of this instrument compared
+    // `git worktree list` before and after and refused ParentCheckoutChanged -- correctly by its
+    // own rule and wrongly as a fact, because this repository is shared: other sessions add and
+    // remove worktrees while the transaction runs, and none of that is something this instrument
+    // caused or can control. A check whose red is dominated by events outside its subject is not a
+    // wall, it is a source of false refusals that would train a reader to ignore the real one. What
+    // this transaction OWNS is its own worktree, so that is what is verified gone.
 
     let worktree = scratch.join(format!("ebc-falsifier-{}", std::process::id()));
     let worktree_str = worktree.to_string_lossy().into_owned();
@@ -367,7 +385,6 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
         repo_root,
         &worktree,
         &worktree_str,
-        &inventory_before,
         &head,
         &tree,
         long,
@@ -381,15 +398,21 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
                 cleanup,
             }
         }
-        (_, Some(cleanup)) => EvaluationBudgetConsequenceFalsifierOutcome::Refused(cleanup),
+        (EvaluationBudgetConsequenceFalsifierOutcome::Passed(receipt), Some(cleanup)) => {
+            EvaluationBudgetConsequenceFalsifierOutcome::PassedWithCleanupFailure {
+                receipt,
+                cleanup,
+            }
+        }
+        (already_paired, Some(_)) => already_paired,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finalize(
     repo_root: &Path,
     worktree: &Path,
     worktree_str: &str,
-    inventory_before: &str,
     head: &str,
     tree: &str,
     long: Duration,
@@ -432,7 +455,6 @@ fn finalize(
         .trim()
         .to_string();
     let status_after = stdout_of(&git(repo_root, &["status", "--porcelain"], short));
-    let inventory_after = stdout_of(&git(repo_root, &["worktree", "list"], short));
     if head_after != head || tree_after != tree || !status_after.trim().is_empty() {
         return Some(EvaluationBudgetConsequenceRefusal::ParentCheckoutChanged {
             detail: format!(
@@ -441,11 +463,16 @@ fn finalize(
             ),
         });
     }
-    if inventory_after.trim() != inventory_before.trim() {
-        return Some(EvaluationBudgetConsequenceRefusal::ParentCheckoutChanged {
-            detail: format!(
-                "worktree inventory changed:\n{inventory_before}\n->\n{inventory_after}"
-            ),
+    // ITS OWN ROW, AND ONLY ITS OWN. A surviving registration for this instrument's worktree is a
+    // leak it caused; every other row in that list belongs to somebody else.
+    let inventory_after = stdout_of(&git(repo_root, &["worktree", "list"], short));
+    if inventory_after.contains(worktree_str) {
+        return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
+            observation: CommandObservation::Completed {
+                exit_code: 0,
+                stdout: format!("{worktree_str} still registered after remove and prune"),
+                stderr: String::new(),
+            },
         });
     }
     None
