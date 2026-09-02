@@ -97,9 +97,9 @@ fn host_effect_codex_supervised_turn_session_argv(
     "--client-command-id-path",
     intent.client_command_id_path,
     "--thread-start-id",
-    to_string(n: intent.thread_start_rpc_id),
+    to_string(value: intent.thread_start_rpc_id),
     "--turn-start-id",
-    to_string(n: intent.turn_start_wire_id),
+    to_string(value: intent.turn_start_wire_id),
   ]
 }
 

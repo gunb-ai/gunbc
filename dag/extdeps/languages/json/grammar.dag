@@ -202,7 +202,7 @@ fn json_text_skip_ws(s: String, i: Int) -> Int {
   if i >= s.length() {
     i
   } else {
-    match json_text_whitespace_char(c: char_at(s: s, i: i)) {
+    match json_text_whitespace_char(c: char_at(s: s, pos: i)) {
       Absent => i
       Present { value: _ } => json_text_skip_ws(s: s, i: i + 1)
     }
@@ -240,16 +240,16 @@ fn json_text_escape_end(s: String, i: Int) -> Int {
   if i >= s.length() {
     0 - 1
   } else {
-    let e = char_at(s: s, i: i)
+    let e = char_at(s: s, pos: i)
     if e == "\"" || e == "\\" || e == "/" || e == "b" || e == "f"
       || e == "n" || e == "r" || e == "t" {
       i + 1
     } else if e == "u" {
       if i + 5 <= s.length()
-        && is_json_hex_digit_char(c: char_at(s: s, i: i + 1))
-        && is_json_hex_digit_char(c: char_at(s: s, i: i + 2))
-        && is_json_hex_digit_char(c: char_at(s: s, i: i + 3))
-        && is_json_hex_digit_char(c: char_at(s: s, i: i + 4)) {
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 1))
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 2))
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 3))
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 4)) {
         i + 5
       } else {
         0 - 1
@@ -264,7 +264,7 @@ fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
   if i >= s.length() {
     json_text_parse_fail(end: i)
   } else {
-    let c = char_at(s: s, i: i)
+    let c = char_at(s: s, pos: i)
     if c == "\"" {
       json_text_parse_ok(end: i + 1)
     } else if c == "\\" {
@@ -281,7 +281,7 @@ fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
 }
 
 fn json_text_parse_string(s: String, i: Int) -> JsonTextParseResult {
-  if char_at(s: s, i: i) != "\"" {
+  if char_at(s: s, pos: i) != "\"" {
     json_text_parse_fail(end: i)
   } else {
     json_text_parse_string_inner(s: s, i: i + 1)
@@ -289,7 +289,7 @@ fn json_text_parse_string(s: String, i: Int) -> JsonTextParseResult {
 }
 
 fn json_text_parse_number_digits(s: String, i: Int) -> Int {
-  if i >= s.length() || !is_json_digit_char(c: char_at(s: s, i: i)) {
+  if i >= s.length() || !is_json_digit_char(c: char_at(s: s, pos: i)) {
     i
   } else {
     json_text_parse_number_digits(s: s, i: i + 1)
@@ -308,20 +308,20 @@ fn json_text_parse_number_digits(s: String, i: Int) -> Int {
 
 fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
   let start = i
-  let after_minus = if char_at(s: s, i: i) == "-" { i + 1 } else { i }
+  let after_minus = if char_at(s: s, pos: i) == "-" { i + 1 } else { i }
   let after_int = json_text_parse_number_digits(s: s, i: after_minus)
-  if after_int == after_minus && char_at(s: s, i: after_minus) != "-" {
+  if after_int == after_minus && char_at(s: s, pos: after_minus) != "-" {
     json_text_parse_fail(end: start)
   } else {
-    let after_frac = if char_at(s: s, i: after_int) == "." {
+    let after_frac = if char_at(s: s, pos: after_int) == "." {
       let d = json_text_parse_number_digits(s: s, i: after_int + 1)
       if d == after_int + 1 { after_int } else { d }
     } else {
       after_int
     }
-    let end = if char_at(s: s, i: after_frac) == "e" || char_at(s: s, i: after_frac) == "E" {
+    let end = if char_at(s: s, pos: after_frac) == "e" || char_at(s: s, pos: after_frac) == "E" {
       let exp = after_frac + 1
-      let signed = if char_at(s: s, i: exp) == "+" || char_at(s: s, i: exp) == "-" { exp + 1 } else { exp }
+      let signed = if char_at(s: s, pos: exp) == "+" || char_at(s: s, pos: exp) == "-" { exp + 1 } else { exp }
       let exp_digits = json_text_parse_number_digits(s: s, i: signed)
       if exp_digits == signed { after_frac } else { exp_digits }
     } else {
@@ -341,18 +341,18 @@ fn json_text_parse_literal(s: String, i: Int, lit: String) -> JsonTextParseResul
 
 fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
   let p = json_text_skip_ws(s: s, i: i)
-  if char_at(s: s, i: p) == "]" {
+  if char_at(s: s, pos: p) == "]" {
     json_text_parse_ok(end: p + 1)
   } else {
     match json_text_parse_value(s: s, i: p) {
       JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
       JsonTextParseOk { end: end } => {
         let q = json_text_skip_ws(s: s, i: end)
-        if char_at(s: s, i: q) == "]" {
+        if char_at(s: s, pos: q) == "]" {
           json_text_parse_ok(end: q + 1)
-        } else if char_at(s: s, i: q) == "," {
+        } else if char_at(s: s, pos: q) == "," {
           let next = json_text_skip_ws(s: s, i: q + 1)
-          if char_at(s: s, i: next) == "]" {
+          if char_at(s: s, pos: next) == "]" {
             json_text_parse_fail(end: next)
           } else {
             json_text_parse_array_values(s: s, i: next)
@@ -366,7 +366,7 @@ fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
 }
 
 fn json_text_parse_array(s: String, i: Int) -> JsonTextParseResult {
-  if char_at(s: s, i: i) != "[" {
+  if char_at(s: s, pos: i) != "[" {
     json_text_parse_fail(end: i)
   } else {
     json_text_parse_array_values(s: s, i: i + 1)
@@ -375,25 +375,25 @@ fn json_text_parse_array(s: String, i: Int) -> JsonTextParseResult {
 
 fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
   let p = json_text_skip_ws(s: s, i: i)
-  if char_at(s: s, i: p) == "}" {
+  if char_at(s: s, pos: p) == "}" {
     json_text_parse_ok(end: p + 1)
   } else {
     match json_text_parse_string(s: s, i: p) {
       JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
       JsonTextParseOk { end: key_end } => {
         let c = json_text_skip_ws(s: s, i: key_end)
-        if char_at(s: s, i: c) != ":" {
+        if char_at(s: s, pos: c) != ":" {
           json_text_parse_fail(end: c)
         } else {
           match json_text_parse_value(s: s, i: c + 1) {
             JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
             JsonTextParseOk { end: val_end } => {
               let q = json_text_skip_ws(s: s, i: val_end)
-              if char_at(s: s, i: q) == "}" {
+              if char_at(s: s, pos: q) == "}" {
                 json_text_parse_ok(end: q + 1)
-              } else if char_at(s: s, i: q) == "," {
+              } else if char_at(s: s, pos: q) == "," {
                 let next = json_text_skip_ws(s: s, i: q + 1)
-                if char_at(s: s, i: next) == "}" {
+                if char_at(s: s, pos: next) == "}" {
                   json_text_parse_fail(end: next)
                 } else {
                   json_text_parse_object_members(s: s, i: next)
@@ -410,7 +410,7 @@ fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
 }
 
 fn json_text_parse_object(s: String, i: Int) -> JsonTextParseResult {
-  if char_at(s: s, i: i) != "{" {
+  if char_at(s: s, pos: i) != "{" {
     json_text_parse_fail(end: i)
   } else {
     json_text_parse_object_members(s: s, i: i + 1)
@@ -439,7 +439,7 @@ fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
   if p >= s.length() {
     json_text_parse_fail(end: p)
   } else {
-    let c = char_at(s: s, i: p)
+    let c = char_at(s: s, pos: p)
     if c == "{" { json_text_parse_object(s: s, i: p) }
     else if c == "[" { json_text_parse_array(s: s, i: p) }
     else if c == "\"" { json_text_parse_string(s: s, i: p) }

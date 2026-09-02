@@ -1,0 +1,103 @@
+module test.claim.infer_record_lit_variant_field_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RECORD LITERAL'S EXCESS-FIELD JUDGMENT ON A PAYLOAD-CARRYING COPRODUCT ARM, and the
+// asymmetry that let the hole survive. Measured on origin/main eced9d24c59 before the repair, ONE
+// literal answered both ways: `Circle { radius: 1 }` against an arm declaring `radius` and `color`
+// reported MissingField == 1, while `Circle { radius: 1, nowhere: 2 }` -- a field declared NOWHERE
+// in the program -- reported FieldNotFound == 0. The literal refused a MISSING field and accepted
+// an INVENTED one, which is why nothing downstream ever noticed.
+//
+// THE UNDECLARED-FIELD ARM IS THE DISCRIMINATING CONTROL, not a variation on the sibling one.
+// Sibling-field zeros alone cannot separate "the roster leaks to sibling arms" from "no roster is
+// consulted at all", and the measurement said the second: the class is the absence of the
+// judgment, and a repair scoped to sibling arms would leave it open.
+//
+// The struct arms are positive regression controls for the wall that already held, so a repair
+// that reaches the arm path by breaking the product path fails here rather than in the corpus. The
+// bare nullary tag reference is the required ACCEPTANCE -- refusing it would be the same defect
+// mirrored -- while a nullary arm HANDED a field is a refusal, because a zero-field arm's roster is
+// empty rather than unknown.
+
+data arm_own_field_source: String = "module rlv.own\ntype Shape = Circle { radius: Int } | Square { side: Int }\nfn f() -> Shape { Circle { radius: 1 } }\n"
+data arm_sibling_field_source: String = "module rlv.sibling\ntype Shape = Circle { radius: Int } | Square { side: Int }\nfn f() -> Shape { Circle { radius: 1, side: 2 } }\n"
+data arm_undeclared_field_source: String = "module rlv.undeclared\ntype Shape = Circle { radius: Int } | Square { side: Int }\nfn f() -> Shape { Circle { radius: 1, nowhere: 2 } }\n"
+data arm_unrelated_coproduct_field_source: String = "module rlv.unrelated\ntype Shape = Circle { radius: Int } | Square { side: Int }\ntype Other = Alpha { elsewhere: Int } | Beta { b: Int }\nfn f() -> Shape { Circle { radius: 1, elsewhere: 2 } }\n"
+data struct_undeclared_field_source: String = "module rlv.struct_undeclared\ntype S { a: Int }\nfn f() -> S { S { a: 1, nowhere: 2 } }\n"
+data struct_own_field_source: String = "module rlv.struct_own\ntype S { a: Int }\nfn f() -> S { S { a: 1 } }\n"
+data arm_missing_field_source: String = "module rlv.missing\ntype Shape = Circle { radius: Int, color: Int } | Square { side: Int }\nfn f() -> Shape { Circle { radius: 1 } }\n"
+data arm_all_fields_source: String = "module rlv.all\ntype Shape = Circle { radius: Int, color: Int } | Square { side: Int }\nfn f() -> Shape { Circle { radius: 1, color: 2 } }\n"
+data nullary_arm_bare_source: String = "module rlv.nullary_bare\ntype Trio = Red | Green | Blue\nfn f() -> Trio { Red }\n"
+data nullary_arm_with_field_source: String = "module rlv.nullary_field\ntype Trio = Red | Green | Blue\nfn f() -> Trio { Red { x: 1 } }\n"
+
+fn class_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: wanted)))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn field_not_found_count(source: String) -> Int {
+  class_count(source: source, wanted: "FieldNotFound")
+}
+
+fn missing_field_count(source: String) -> Int {
+  class_count(source: source, wanted: "MissingField")
+}
+
+test fn w_arm_literal_own_field_observes_zero_field_not_found() -> Bool {
+  field_not_found_count(source: arm_own_field_source) == 0
+}
+
+test fn w_arm_literal_sibling_field_reports_one_field_not_found() -> Bool {
+  field_not_found_count(source: arm_sibling_field_source) == 1
+}
+
+test fn w_arm_literal_undeclared_field_reports_one_field_not_found() -> Bool {
+  field_not_found_count(source: arm_undeclared_field_source) == 1
+}
+
+test fn w_arm_literal_unrelated_coproduct_field_reports_one_field_not_found() -> Bool {
+  field_not_found_count(source: arm_unrelated_coproduct_field_source) == 1
+}
+
+test fn w_struct_literal_undeclared_field_reports_one_field_not_found() -> Bool {
+  field_not_found_count(source: struct_undeclared_field_source) == 1
+}
+
+test fn w_struct_literal_own_field_observes_zero_field_not_found() -> Bool {
+  field_not_found_count(source: struct_own_field_source) == 0
+}
+
+test fn w_arm_literal_omitting_required_field_reports_one_missing_field() -> Bool {
+  missing_field_count(source: arm_missing_field_source) == 1
+}
+
+test fn w_arm_literal_omitting_required_field_observes_zero_field_not_found() -> Bool {
+  field_not_found_count(source: arm_missing_field_source) == 0
+}
+
+test fn w_arm_literal_all_fields_observes_zero_of_both() -> Bool {
+  field_not_found_count(source: arm_all_fields_source) == 0 && missing_field_count(source: arm_all_fields_source) == 0
+}
+
+test fn w_nullary_arm_tag_reference_observes_zero_field_not_found() -> Bool {
+  field_not_found_count(source: nullary_arm_bare_source) == 0
+}
+
+test fn w_nullary_arm_given_a_field_reports_one_field_not_found() -> Bool {
+  field_not_found_count(source: nullary_arm_with_field_source) == 1
+}
