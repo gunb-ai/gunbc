@@ -1,5 +1,6 @@
 module gunbc.spark.serving_install_paths
 
+import extdeps.ollama.api { OllamaModelRef }
 import std.types { String, FilePath, NonEmptyStr }
 import std.measure { TokenCount, PositiveSlotCount }
 import std.content_hash { Fnv1a64Structural }
@@ -64,19 +65,36 @@ type SparkServingUserUnitSpec {
 // the directory the server writes and the directory the observer reads cannot drift apart. The
 // reference is split into model and tag by the cited store layout rather than by string surgery
 // here, because how a reference maps to a manifest path is upstream's rule and not ours.
-fn spark_serving_desired_model_manifest_path() -> FilePath {
+// THESE PATHS TAKE THE MODEL REFERENCE RATHER THAN READING THE DESIRED ONE OFF A GLOBAL.
+//
+// They used to close over spark_serving_desired_model_ref, which was invisible at every call site
+// and made the install plan's URLs a SECOND statement of which model is being installed -- beside
+// the manifest whose digest and blob closure the same plan verifies against. While exactly one
+// model was ever selected the two could not disagree, so the fork was latent rather than wrong.
+//
+// It stopped being latent the moment the materializer had to be able to build a plan for a manifest
+// OTHER than the selected one: paths from the global and bytes from the argument would have produced
+// a plan that fetches gpt-oss URLs and checks them against DeepSeek digests. That is the three
+// independent spellings of "which model" the converge realizer's own note records having shipped
+// once. Taking the reference as a parameter makes the disagreement unwritable instead of merely
+// unlikely, and the desired-state wrappers below keep the production call sites unchanged.
+fn spark_serving_model_manifest_path_for(model: OllamaModelRef) -> FilePath {
   concat(
     spark_serving_models_root() as String,
     concat("/", ollama_manifest_rel_path(
-      model: spark_serving_desired_model_ref.name,
-      tag: spark_serving_desired_model_ref.tag,
+      model: model.name,
+      tag: model.tag,
     )),
   ) as FilePath
 }
 
+fn spark_serving_desired_model_manifest_path() -> FilePath {
+  spark_serving_model_manifest_path_for(model: spark_serving_desired_model_ref)
+}
+
 // The directory the manifest is published INTO, needed because the publish step must create it
 // before the move and the manifest path is a file inside a per-model, per-registry tree.
-fn spark_serving_desired_model_manifest_dir() -> FilePath {
+fn spark_serving_model_manifest_dir_for(model: OllamaModelRef) -> FilePath {
   concat(
     spark_serving_models_root() as String,
     concat("/", concat(
@@ -85,11 +103,15 @@ fn spark_serving_desired_model_manifest_dir() -> FilePath {
         ollama_default_registry as String,
         concat("/", concat(
           ollama_default_namespace as String,
-          concat("/", spark_serving_desired_model_ref.name as String),
+          concat("/", model.name as String),
         )),
       )),
     )),
   ) as FilePath
+}
+
+fn spark_serving_desired_model_manifest_dir() -> FilePath {
+  spark_serving_model_manifest_dir_for(model: spark_serving_desired_model_ref)
 }
 
 // STAGING PATHS, and they are outside the store on purpose. A fetch that lands directly at the name
@@ -136,22 +158,30 @@ fn spark_serving_published_blob_path(hex: NonEmptyStr) -> FilePath {
 //
 // Blobs ARE digest-addressed and the same measurement confirms it (307 to a redirect, 200, bytes
 // hashing to the requested digest), so the blob half needs no such compensation.
-fn spark_serving_registry_manifest_url() -> String {
+fn spark_serving_registry_manifest_url_for(model: OllamaModelRef) -> String {
   join([
     "https://", ollama_default_registry as String, "/v2/",
     ollama_default_namespace as String, "/",
-    spark_serving_desired_model_ref.name as String, "/manifests/",
-    spark_serving_desired_model_ref.tag as String,
+    model.name as String, "/manifests/",
+    model.tag as String,
+  ], "")
+}
+
+fn spark_serving_registry_manifest_url() -> String {
+  spark_serving_registry_manifest_url_for(model: spark_serving_desired_model_ref)
+}
+
+fn spark_serving_registry_blob_url_for(model: OllamaModelRef, hex: NonEmptyStr) -> String {
+  join([
+    "https://", ollama_default_registry as String, "/v2/",
+    ollama_default_namespace as String, "/",
+    model.name as String, "/blobs/sha256:",
+    hex as String,
   ], "")
 }
 
 fn spark_serving_registry_blob_url(hex: NonEmptyStr) -> String {
-  join([
-    "https://", ollama_default_registry as String, "/v2/",
-    ollama_default_namespace as String, "/",
-    spark_serving_desired_model_ref.name as String, "/blobs/sha256:",
-    hex as String,
-  ], "")
+  spark_serving_registry_blob_url_for(model: spark_serving_desired_model_ref, hex: hex)
 }
 
 fn spark_serving_desired_model_blobs_dir() -> FilePath {

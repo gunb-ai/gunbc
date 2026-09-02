@@ -1,5 +1,51 @@
 // Split from cli_run.rs (pure code motion; no semantic change).
-#![allow(unused_imports)]
+// CLIPPY ROSTER -- 97 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::disallowed_macros,  // 75
+    clippy::needless_borrow,  // 7
+    clippy::needless_return,  // 1
+    clippy::nonminimal_bool,  // 1
+    clippy::type_complexity,  // 1
+    dead_code,  // 10
+    unused_imports,  // 0 -- pre-existing
+    unused_variables,  // 2
+)]
+// cli_run.rs is this module's PARENT, and an `#![allow]` there reaches every module
+// under it -- the same cascade this commit removed at the crate root, one level down.
+// These are the names its roster carries that this module does not trip, restored to
+// warn so `-D warnings` still judges them here. A name moves from this list to the
+// allow list above only with a counted site, never silently.
+#![warn(
+    clippy::assertions_on_constants,
+    clippy::clone_on_copy,
+    clippy::cloned_ref_to_slice_refs,
+    clippy::collapsible_str_replace,
+    clippy::doc_lazy_continuation,
+    clippy::empty_line_after_doc_comments,
+    clippy::enum_variant_names,
+    clippy::iter_kv_map,
+    clippy::manual_is_multiple_of,
+    clippy::manual_strip,
+    clippy::map_identity,
+    clippy::missing_const_for_thread_local,
+    clippy::needless_lifetimes,
+    clippy::only_used_in_recursion,
+    clippy::ptr_arg,
+    clippy::redundant_closure,
+    clippy::single_char_add_str,
+    clippy::too_many_arguments,
+    clippy::unnecessary_to_owned,
+    clippy::unneeded_struct_pattern,
+    clippy::useless_vec,
+    unused_mut
+)]
+
 use super::*;
 use im::HashMap;
 use std::cell::{Cell, RefCell};
@@ -351,6 +397,8 @@ pub fn run_claim_measured(
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
+    let steps_started = v1_interpreter::evaluator_steps();
+    let fill_steps_before = v1_interpreter::shared_artifact_fill_eval_steps();
     let fill_before_nanos = shared_artifact_fill_cpu_nanos();
     let fill_wall_before_nanos = shared_artifact_fill_wall_nanos();
     let outcome = run_claim(ctx, function);
@@ -380,6 +428,15 @@ pub fn run_claim_measured(
     // `measured_wall_nanos`.
     let fill_wall_nanos = shared_artifact_fill_wall_nanos().saturating_sub(fill_wall_before_nanos);
     let wall_nanos = marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos);
+    // THE WORK MEASURE, SPLIT BY THE SAME RULE AS THE TWO CLOCKS. Evaluator steps are counted
+    // unconditionally by `eval_expr`, so this delta is a property of what the claim evaluated
+    // and carries no term for the machine it evaluated on. Netting the stored fills is what
+    // keeps that true across execution ORDER as well: without it the claim that happened to
+    // fill a shared memo would carry the fill's steps and every later reader would carry none.
+    let measured_eval_steps = v1_interpreter::evaluator_steps().wrapping_sub(steps_started);
+    let fill_eval_steps =
+        v1_interpreter::shared_artifact_fill_eval_steps().wrapping_sub(fill_steps_before);
+    let eval_steps = measured_eval_steps.saturating_sub(fill_eval_steps);
     // EITHER clock, not the CPU one. A fill that blocked on I/O can spend wall time while
     // charging almost no CPU, and under a `fill_cpu_nanos > 0` guard that fill would be
     // subtracted from the enforced wall figure and reported nowhere — a cost dropped rather
@@ -394,6 +451,7 @@ pub fn run_claim_measured(
         eprintln!(
             "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
              measured_cpu_ms={} marginal_wall_ms={} fill_wall_ms={} measured_wall_ms={} \
+             marginal_eval_steps={} fill_eval_steps={} measured_eval_steps={} \
              provenance=filled-shared-artifact triggered_by={function}",
             cpu_nanos / 1_000_000,
             fill_cpu_nanos / 1_000_000,
@@ -401,6 +459,9 @@ pub fn run_claim_measured(
             wall_nanos / 1_000_000,
             fill_wall_nanos / 1_000_000,
             measured_wall_nanos / 1_000_000,
+            eval_steps,
+            fill_eval_steps,
+            measured_eval_steps,
         );
     }
     ctx.clear_eval_deadline();
@@ -418,6 +479,7 @@ pub fn run_claim_measured(
         function,
         wall_nanos,
         cpu_nanos,
+        eval_steps,
     );
     (outcome, receipt)
 }
@@ -3675,7 +3737,7 @@ pub fn run_required_floor(
     // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
     // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower, which is the
-    // class `gunbc.rung_drop floor_cost_contention_verdict` now carries with its measurements and
+    // class `gunbc.rung_drop floor_cost_claim_qualification_unavailable` now carries with its measurements and
     // its restoration trigger; this comment states the instance and does not restate the class — while its
     // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
     // The `OnceLock` miss is not bracketed by `record_shared_artifact_fill_cpu`, so
@@ -5601,6 +5663,7 @@ pub fn run_required_floor(
             outcome: witness_execution_outcome_label(&result).to_string(),
             wall_nanos: receipt.wall_nanos,
             cpu_nanos: receipt.cpu_nanos,
+            eval_steps: receipt.eval_steps,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
         });
@@ -6822,10 +6885,11 @@ pub fn run_required_floor(
     const OVER_COST_PRINT_LIMIT: usize = 25;
     for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
         eprintln!(
-            "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
+            "[over-cost] {} wall_ms={} cpu_ms={} eval_steps={} line_ms={} outcome={}",
             row.identity,
             row.wall_nanos / 1_000_000,
             row.cpu_nanos / 1_000_000,
+            row.eval_steps,
             row.cost_line_ms,
             row.outcome
         );
