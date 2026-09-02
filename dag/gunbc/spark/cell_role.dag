@@ -147,14 +147,30 @@ fn spark_cell_role_of(host: HostIdentity) -> SparkCellRoleLookup {
   spark_cell_role_in(assignments: spark_cell_role_assignments, host: host)
 }
 
-fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
-  flat_map(spark_cell_role_assignments, a =>
-    match spark_cell_role_of(host: a.host) {
+// THE ROSTER-PARAMETERISED FORM, AND IT IS THE SAME ARGUMENT ONE LEVEL UP.
+//
+// `spark_cell_role_in` exists because a capability's evidence must not depend on which machines are
+// currently assigned what. That argument does not stop at a single host's lookup: every claim about
+// a ROLE POPULATION -- how many cells hold a role, whether two role rosters partition a scope --
+// had the same dependency, and the operator withdrawing srv6's training dedication took the only
+// training cell with it. Four claims in `v2.test.claim.spark_observation_scope` went red on that
+// change alone, having asserted `length(training) == 1` against the production roster. The
+// behaviour they describe did not change; the machines did.
+fn spark_hosts_with_role_in(
+  assignments: List<SparkCellRoleAssignment>,
+  role: SparkCellRole,
+) -> List<HostIdentity> {
+  flat_map(assignments, a =>
+    match spark_cell_role_in(assignments: assignments, host: a.host) {
       SparkCellRoleUnique { role: r } =>
         if spark_cell_role_eq(a: r, b: role) { [a.host] } else { [] }
       SparkCellRoleAmbiguous { assignments: _ } => []
       SparkCellRoleAbsent => []
     })
+}
+
+fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
+  spark_hosts_with_role_in(assignments: spark_cell_role_assignments, role: role)
 }
 
 fn spark_serving_cell_hosts() -> List<HostIdentity> {
