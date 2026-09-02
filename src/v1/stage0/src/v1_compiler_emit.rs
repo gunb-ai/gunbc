@@ -5298,6 +5298,21 @@ pub fn unmodeled_shell_transport_operation_diagnostics(
             let t = effective_operation_transport(op_node.clone(), fallback.clone());
 match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
     Some(TransportKind::ShellTransport) => Rc::new({ let mut __result = Vec::new(); for ch in shell_output_channel_fields(op_node.clone()).iter().cloned() { __result.extend((*match shell_result_channel_of_key(shell_output_channel_of_field(ch.clone(), si.clone())) {
+    std::option::Option::None => if !shell_field_authors_from_key(ch.clone(), si.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+    transport_kind: "shell".to_string(),
+    service: service_name.clone(),
+    operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
+    declaring_module: module_name.clone(),
+    target: render_target_name(target.clone()),
+    missing_realization_fact: shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
+    key: shell_output_channel_of_field(ch.clone(), si.clone()),
+})),
+    span: ch.span.clone(),
+}), module_name.clone())])
+            },
     Some(c) => if shell_channel_realized_by_target(c.clone(), target.clone()) {
                 Rc::new(vec![])
             } else {
@@ -5314,7 +5329,6 @@ match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
     span: ch.span.clone(),
 }), module_name.clone())])
             },
-    std::option::Option::None => Rc::new(vec![]),
 }).iter().cloned()); } __result }),
     _ => Rc::new(vec![]),
 }

@@ -32,6 +32,7 @@ pub mod gunbc_stage0_executable_assembly_generated;
 pub mod gunbc_stage0_partition_package_graph;
 pub mod std_constructors;
 pub mod std_integer;
+pub mod std_interval;
 pub mod std_logic;
 pub mod std_machine_constraints;
 pub mod std_occurrence_binding;

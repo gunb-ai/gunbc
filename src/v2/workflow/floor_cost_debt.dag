@@ -222,6 +222,13 @@ import v2.std.collection { List }
 // error this file was rebuilt once to correct, in mirror image: there a real number belonged to
 // another row, here a real zero does.
 
+// THE 500ms CEILING ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
+// Every release and hold reasoned about here compares a claim's cost against
+// `required_floor_claim_cpu_safety_limit_ms`, and the standing of that comparison -- its measured
+// inflation, its bounded population, and the capability that restores it -- is carried by
+// `gunbc.rung_drop floor_cost_contention_verdict`. Cited rather than repeated: a second telling
+// would drift from the authority that retires it.
+
 // THE 45 test.claim.live_deploy ROWS ARE HELD, AND THEIR TRIGGER IS NOT A COST MEASUREMENT.
 //
 // This paragraph is where their trigger lives because the roster is a `List<String>` and carries

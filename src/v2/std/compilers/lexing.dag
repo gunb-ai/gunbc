@@ -36,8 +36,8 @@ type LexCharClass
 
 type LexPattern
   = EmptyPattern
-  | LiteralPattern { text: String }
-  | KeywordPattern { text: String }
+  | LiteralPattern { text: v2.std.text.String }
+  | KeywordPattern { text: v2.std.text.String }
   | CharPattern { char: Char }
   | CharClassPattern { class: LexCharClass }
   | SequencePattern { left: LexPattern, right: LexPattern }
@@ -219,8 +219,8 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
 
 type LexPatternFold<R> {
   empty:       R
-  literal:     fn(String) -> R
-  keyword:     fn(String) -> R
+  literal:     fn(v2.std.text.String) -> R
+  keyword:     fn(v2.std.text.String) -> R
   char:        fn(Char) -> R
   char_class:  fn(LexCharClass) -> R
   sequence:    fn(R, R) -> R
