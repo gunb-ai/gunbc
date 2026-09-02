@@ -237,6 +237,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `one_refusal_two_destinations`
 - `liveness_probe_read_as_currency`
 - `hedged_benefit_leaves_the_harm_axis_unexamined`
+- `receipt_names_a_property_not_the_tree_it_holds_of`
 
 ## Building & checks
 
