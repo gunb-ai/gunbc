@@ -90,7 +90,22 @@ import v2.workflow.required_floor {
 // WRONG bytes rather than none is caught by the round trip -- the digest is recomputed from the
 // rows a reader parses and compared to the footer the writer emitted.
 
-data ledger_wire_format: String = "gunbc-terminal-ledger/1"
+// THE FORMAT VERSION IS PART OF THE CONTRACT, SO A CHANGED VOCABULARY CHANGES THE NAME.
+//
+// This was `/1` while the route-gap tag widened from one spelling to three. Nothing published today
+// carries the old tag -- the publish target lives under `target/`, no tracked file holds it in field
+// position, and no consumer reads a ledger back -- but an EMPTY POPULATION DOES NOT MAKE THE NAME
+// HONEST. DESIGN section 3: within one naming surface and one declared effective version, holding
+// the name constant may not silently change the obligations; a materially different contract needs a
+// materially different name. A `/1` ledger written before this change and read after it would be
+// FORMAT-ADMITTED and then refused at its rows, which reports the wrong defect.
+//
+// THE ALTERNATIVE WAS REFUSED. Retaining `route-gap` as a legacy read arm alongside the three would
+// re-open the exact fail-closed property the refusing readback exists to provide: it would make one
+// terminal readable under two vocabularies, which is the meaning fork this widening removes. The
+// version bump instead sends an old ledger to `a_ledger_in_an_unrecognized_format_is_unreadable_not_empty`
+// -- a typed, located refusal naming the real cause, which is that the reader is newer than the file.
+data ledger_wire_format: String = "gunbc-terminal-ledger/2"
 
 data ledger_wire_footer_tag: String = "#end"
 
@@ -109,7 +124,10 @@ data ledger_wire_footer_tag: String = "#end"
 // than parsing it as a short run. That is the naming convention made structural: a partial file
 // being cited as a ledger has no spelling, instead of being forbidden by a rule someone must
 // remember. The floor still goes non-green; nothing here mints a receipt.
-data ledger_partial_format: String = "gunbc-terminal-ledger-partial/1"
+// THE DIAGNOSIS FORMAT MOVES WITH IT, because a refused ledger keeps every row and therefore carries
+// the same tag vocabulary. Leaving it at `/1` would version one half of a contract whose two halves
+// spell terminals identically.
+data ledger_partial_format: String = "gunbc-terminal-ledger-partial/2"
 
 // THE UNPUBLISHED TOKEN IS DECLARED HERE, and an unrecognised snapshot field REFUSES rather than
 // being read as unpublished. "anything I could not decode is a local run" would be the absorbing

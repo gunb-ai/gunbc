@@ -392,7 +392,7 @@ mod terminal_ledger_publish_law {
                 assert!(bytes > 0);
                 // header + two rows + footer, and the footer states the row count.
                 assert_eq!(text.lines().count(), 4, "ledger shape: {text}");
-                assert!(text.starts_with("gunbc-terminal-ledger/1\t"), "{text}");
+                assert!(text.starts_with("gunbc-terminal-ledger/2\t"), "{text}");
                 assert!(
                     text.contains("1234567890abcdef1234567890abcdef12345678"),
                     "the published commit must appear in the binding: {text}"
@@ -471,7 +471,7 @@ mod terminal_ledger_publish_law {
                 assert!(diagnosis.contains("test.claim.a.holds"), "{diagnosis}");
                 assert!(diagnosis.contains("test.claim.b.holds"), "{diagnosis}");
                 assert!(
-                    diagnosis.starts_with("gunbc-terminal-ledger-partial/1\t"),
+                    diagnosis.starts_with("gunbc-terminal-ledger-partial/2\t"),
                     "a diagnosis must not open with the ledger format token: {diagnosis}"
                 );
                 assert!(
