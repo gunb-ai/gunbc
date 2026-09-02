@@ -144,9 +144,19 @@ not choose it.
 
 ## Landed so far
 
-- `extdeps.boards.asrock_rack` — typed 267 x 244 outline, first-party manual read; mounting holes
-  refused with a named trigger rather than derived from the micro-ATX pattern (board is 23 mm wider
-  than that pattern).
+- `extdeps.boards.asrock_rack` — typed 243840 x 266700 um outline, first-party manual read. The
+  extents are NOMINAL: `asrock_altrad8ud_board_depth_nominal_exact` is the exact ARITHMETIC
+  conversion of the vendor's published 9.6 x 10.5 in, not the as-built extent of any board here, and
+  the rename exists to stop "exact" being read as zero physical tolerance by a clearance derivation.
+  Mounting holes are a standard-location correspondence with a per-location standing, so an inferred
+  hole and a physically confirmed one are different facts; `asrock_altrad8ud_open_mounting_unknowns`
+  carries the five unmeasured ones with their discharge instrument.
+- `extdeps.standards.micro_atx` — the nine microATX mounting locations own their own authority
+  rather than sitting inside the ATX 2.2 module, which now carries only ATX 2.2 facts.
+- `extdeps.printing.bambu_lab_a1_mini` — the printer as a PRODUCT ROW: build envelope, nozzle
+  diameters, filament diameter, temperature ceilings, input voltage and frequency range, machine
+  extents, and a ten-row material suitability roster. The fit witness reads the envelope from here
+  instead of a literal it wrote itself, so it goes red if the printer authority vanishes.
 - `extdeps.vendor.bambu_lab`, `extdeps.printing.fdm` — agnostic FDM shapes; build-envelope fit that
   reports every exceeded axis and never searches orientations.
 - `extdeps.printing.bambu_studio` — spec-sheet and release-artifact platform claims carried as two
@@ -159,7 +169,13 @@ not choose it.
   are DERIVED. `PlateDimensions` is its own type so a malformed plate has no zero-extent fallback to
   return. Micrometre-to-millimetre conversion rounds UP, because truncation reports a 180.5 mm part
   as fitting a 180 mm machine. Eight witnesses green; the conversion proven to flip in both the
-  arithmetic and the fit path.
+  arithmetic and the fit path. **V0 is now closed at one operation** (`OpThroughHole`) — see the v0
+  population section for why the second one was deleted rather than kept.
+- `product.printed_chassis.realization_contract` — the transport wall. Raw JSON from the CAD handler
+  is admitted through `admit_envelope`, which refuses an unsupported schema version, an unknown
+  operation kind, and an envelope carrying no rungs, each with a typed cause naming what it received.
+  The rung comparison reports the EARLIEST divergence rather than the last, and a count mismatch is
+  its own outcome rather than a silent zip truncation.
 
 ## The two-day cut (printers arrive 2026-09-03)
 
@@ -183,7 +199,22 @@ it observes real geometry calls, passes the lawful ones and rejects mutations.
 ### v0 operation population (closed; a feature belongs only if a chosen coupon consumes it)
 
 box/prism · cylindrical through-hole · slot · linear or grid repetition · male/female clearance pair ·
-wall or rib · part/revision datum marking · rigid transforms · boolean union and subtraction
+wall or rib · rigid transforms · boolean union and subtraction
+
+**`part/revision datum marking` was in this list and has been REMOVED from it, deliberately.** As
+`OpDatumMark { text, at_x, at_y }` it fixed text and position and left FONT, GLYPH METRICS, STROKE
+WIDTH, ALIGNMENT, ORIENTATION, DEPTH and ENGRAVED-VERSUS-EMBOSSED to the handler — the §3 tell in its
+exact form, the handler choosing geometry the model had not fixed. It had already produced a silent
+falsehood: `specimen_extent` assumed the mark was engraved and so assumed it could not enlarge the
+plate, an assumption stated nowhere and enforced by nothing, and a handler that embossed would make
+the envelope-fit answer wrong in the unsafe direction. Determining it fully means modelling fonts,
+which is a domain rather than a field, imported to label a calibration coupon.
+
+The need behind it is real and is tracked, not dropped: several coupons will exist physically and
+must be told apart by hand. `coupon_v1_physical_identification_obligation` carries it as a V1
+obligation with the route that looks right — identify the coupon by GEOMETRY, a coded through-hole or
+notch pattern, which `OpThroughHole` already determines completely, checked by the same contract the
+holes already pass through.
 
 The ladder itself is a modeled experimental design. "It is only a calibration coupon" is not
 permission for Python to choose test dimensions.
