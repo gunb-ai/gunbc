@@ -6,6 +6,21 @@ import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
+// THE SAFETY VOCABULARY IS IMPORTED, NOT DECLARED HERE. `ClaimSafetyOutcome` and
+// `ClaimPreemptionReachability` moved to `v2.workflow.floor_terminal_ledger`, beside the
+// `ClaimAttemptTerminal` arm that carries them. They are TERMINAL VOCABULARY -- what a claim attempt
+// reached -- and this module is a CONSUMER that classifies safety outcomes rather than the authority
+// that defines them. Declaring them here made a vocabulary depend on one of its readers, which
+// closed a cycle the moment a third module needed both; DESIGN section 4 makes acyclicity the import
+// graph's only structural law, so this direction is forced rather than preferred.
+//
+// WHAT STAYED: the opaque-host-operation POPULATION below. That is policy declared OVER this
+// vocabulary, not the vocabulary, and it is the same split `floor_route_gap` already draws between
+// its ground type and its expectation roster.
+import v2.workflow.floor_terminal_ledger {
+  ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
+  ClaimPreemptionReachability, CooperativelyPollable, OpaqueHostCallUnbounded
+}
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
@@ -779,12 +794,15 @@ fn required_floor_site_disposition(
 // -- they are NOT hard bounds across an opaque host operation unless that operation separately
 // carries a deadline-aware contract or a killable process boundary. Whichever deadline a poll
 // DOES observe crossing raises a genuinely terminal-before-verdict occurrence
-// (`ClaimSafetyOutcome.SafetyInterrupted`, below); a claim whose cost accrues where no poll can
+// (`ClaimSafetyOutcome.SafetyInterrupted`, declared in `v2.workflow.floor_terminal_ledger`); a claim
+// whose cost accrues where no poll can
 // land instead completes and is classified `CompletedPastSafetyLimit`, which blocks identically
 // (`claim_safety_outcome_blocks`) but is never mislabeled as an interrupt it did not receive. The
-// typed model -- `ClaimPreemptionReachability`, `ClaimSafetyOutcome`, `claim_safety_outcome`,
-// `claim_safety_outcome_blocks`, the migration wall, and the §4b rung drop -- is declared further
-// down this file rather than described here in prose a second time; the measured receipt behind
+// typed model is declared rather than described here in prose a second time, and it now spans TWO
+// modules: the VOCABULARY -- `ClaimPreemptionReachability` and `ClaimSafetyOutcome` -- lives in
+// `v2.workflow.floor_terminal_ledger` beside the terminal that carries it, while the CLASSIFICATION
+// over it -- `claim_safety_outcome`, `claim_safety_outcome_blocks`, the migration wall and the §4b
+// rung drop -- stays in this module, which is the consumer. The measured receipt behind
 // it (floor run 32301212975, `root_d_checkpoint_scalar_declared_arity_witness_holds` reaching a
 // verdict at 60317ms CPU against this module's 5000ms `required_floor_claim_cpu_safety_limit_ms`,
 // twelve times over and uninterrupted, not a first occurrence -- 2792-2855ms isolated per
@@ -994,16 +1012,6 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // a deadline-aware contract or a killable process boundary -- neither of which
 // `compile_dag_rust_emit_check` has today.
 
-// WHICH REACHABILITY ONE CLAIM HAS, closed and named rather than left implicit per-occurrence.
-// A claim either stays inside `eval_expr`'s own poll loop for its whole duration
-// (`CooperativelyPollable` -- the case the two safety limits above genuinely protect), or it
-// crosses into a synchronous native `free_call.*` arm that never re-enters `eval_expr` while it
-// runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
-// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
-// comment already described in prose; this type is what the ruling asked that prose become.
-type ClaimPreemptionReachability =
-    CooperativelyPollable
-  | OpaqueHostCallUnbounded { operation: String }
 
 // THE POPULATION OF OPAQUE HOST OPERATIONS THE PREEMPTION-1 RUNG DROP IS DECLARED OVER, AND IT
 // IS EIGHT MEMBERS RATHER THAN ONE. CORRECTED 2026-09-02; the correction is a rung-honesty repair,
@@ -1132,26 +1140,6 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
   }
 }
 
-// THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
-// prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`
-// is reserved for a claim the poll genuinely stopped before a verdict -- it must never be the
-// label for a claim that ran to completion, however far over its limit, because "terminal" and
-// "interrupted" are different facts and conflating them is exactly the relabeling this ruling
-// forbids. `CompletedPastSafetyLimit` names the other terminal-but-over-limit case and carries
-// its `ClaimPreemptionReachability`, so a reader can tell WHY the poll never had a chance to fire
-// without re-deriving it from a comment.
-type ClaimSafetyOutcome =
-    CompletedWithinSafetyLimits
-  | SafetyInterrupted {
-      raised_by: String
-      elapsed_cpu_at_least: Int
-      elapsed_wall_at_least: Int
-    }
-  | CompletedPastSafetyLimit {
-      observed_cpu: Int
-      observed_wall: Int
-      preemption: ClaimPreemptionReachability
-    }
 
 // FLAT-SCALAR MILLISECOND FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review
 // 53860 on gunbc#8584, BLOCKING on `observed_cpu_ms`/`observed_wall_ms`/`cpu_limit_ms`/

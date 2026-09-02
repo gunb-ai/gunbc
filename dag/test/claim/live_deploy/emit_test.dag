@@ -304,7 +304,7 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
     && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
-data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
+data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
 
 test fn retract_script_stays_within_ci_runner_grants() -> Bool {
   let retract = witness_retract_script()
@@ -327,11 +327,73 @@ test fn apply_script_and_tree_sync_unit_stay_within_ci_runner_grants() -> Bool {
       "ExecStart=/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
       " \"$\{GUNBC_TREE_SRC\}/\" /opt/gunbc/gunbc/",
     ], ""))
-    && string_contains(s: unit, pattern: "ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/")
-    && !string_contains(s: unit, pattern: "rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\"")
+    && !string_contains(s: unit, pattern: "$\{GUNBC_TREE_SRC\}/.git/")
     && !string_contains(s: unit, pattern: "--include=/config")
     && !string_contains(s: unit, pattern: "rsync -a")
     && string_contains(s: apply, pattern: unit)
+    && string_contains(s: apply, pattern: "gunbc deployed-repository git-native convergence")
+    && string_contains(s: apply, pattern: concat("--arg candidate=", deploy_witness_release_revision as String))
+    && string_contains(s: apply, pattern: "--function repository_converge_srv1_owner_wet")
+    && string_contains(s: apply, pattern: "repository_convergence_readback_wet")
+    && string_contains(s: apply, pattern: "/opt/gunbc/receipts/repository-convergence.json")
+    && !string_contains(s: apply, pattern: "--include=/HEAD")
+    && !string_contains(s: apply, pattern: "--include=/objects/***")
+}
+
+fn transports_git_metadata_as_files(unit: String) -> Bool {
+  string_contains(s: unit, pattern: "$\{GUNBC_TREE_SRC\}/.git/")
+    && string_contains(s: unit, pattern: "--include=/HEAD")
+    && string_contains(s: unit, pattern: "--include=/objects/***")
+    && string_contains(s: unit, pattern: "--include=/refs/***")
+}
+
+// THE ABSENCE CHECK HAS ITS OWN REACHABLE RED. The synthetic unit is the exact mechanism removed
+// from production, so this predicate must identify it while refusing to identify the emitted unit.
+// An empty emitter, renamed selector, or predicate that always answers false fails the positive arm.
+test fn git_metadata_file_transport_is_present_in_the_legacy_specimen_and_absent_from_emission() -> Bool {
+  let legacy = "ExecStart=/usr/bin/rsync --include=/HEAD --include=/objects/*** --include=/refs/*** \"$\{GUNBC_TREE_SRC\}/.git/\" /opt/gunbc/gunbc/.git/"
+  transports_git_metadata_as_files(unit: legacy)
+    && !transports_git_metadata_as_files(unit: live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1()))
+}
+
+fn later_segments_contain_third_after_second(segments: List<String>, second: String, third: String) -> Bool {
+  if segments.count() == 0 {
+    false
+  } else {
+    let segment = segments.first()
+    if string_contains(s: segment, pattern: second) {
+      any(split(s: segment, sep: second).skip(n: 1), part => string_contains(s: part, pattern: third))
+        || any(segments.skip(n: 1), part => string_contains(s: part, pattern: third))
+    } else {
+      later_segments_contain_third_after_second(segments: segments.skip(n: 1), second: second, third: third)
+    }
+  }
+}
+
+// ONE FORWARD PASS OVER SEGMENTS AFTER THE FIRST MARKER. The previous comparison computed four
+// offsets by splitting from the start each time, and its first replacement rebuilt two large
+// suffix strings; the required floor measured those shapes at 505ms and 511ms against a 500ms CPU
+// line. These fixed literal markers do not contain one another, so a match cannot straddle a split
+// boundary and the segments can be searched directly without either large join.
+fn three_markers_in_order(text: String, first: String, second: String, third: String) -> Bool {
+  let after_first = split(s: text, sep: first).skip(n: 1)
+  string_contains(s: text, pattern: first)
+    && any(after_first, part => string_contains(s: part, pattern: second))
+    && later_segments_contain_third_after_second(segments: after_first, second: second, third: third)
+}
+
+// BOTH ORDERS ARE AUTHORABLE INPUTS TO THE DECISION. The production apply must install the binary
+// before starting convergence and must read the receipt only after that start; reversing either
+// pair in the specimen proves this is an ordering assertion rather than two presence checks.
+test fn repository_convergence_is_ordered_after_binary_and_before_readback() -> Bool {
+  let binary = "target/release/gunbc"
+  let converge = "--function repository_converge_srv1_owner_wet"
+  let readback = "repository_convergence_readback_wet"
+  let apply = witness_apply_script()
+  three_markers_in_order(text: apply, first: binary, second: converge, third: readback)
+    && !three_markers_in_order(text: join([converge, binary, readback], "\n"), first: binary, second: converge, third: readback)
+    && !three_markers_in_order(text: join([binary, readback, converge], "\n"), first: binary, second: converge, third: readback)
+    && !three_markers_in_order(text: join([binary, readback], "\n"), first: binary, second: converge, third: readback)
 }
 
 data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for #7011/receipt 29928424523: the tree-sync restart is synchronous and precedes the poll-based unit_diagnosis capture, so a bare restart failure carries no WHY. The apply script must fall through to the same unit-status-tail authority the roadmap-unit diagnosis already uses (never a second format), append it to stderr, and still fail the step — never proceed as if the restart had succeeded."
@@ -832,5 +894,3 @@ fn tailscale_off_command(endpoint: TailscaleServeEndpoint) -> String {
     argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: endpoint)),
   )
 }
-
-

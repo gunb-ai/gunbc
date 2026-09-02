@@ -310,6 +310,7 @@ fn stage0_v1_infer_modules() -> List<String> {
   stage0_gunbc_binding_modules()
     |> concat([
     "v1_compiler_coercion",
+    "v1_compiler_compiler_tests_rust",
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
     "v1_compiler_infer_items",
