@@ -12,7 +12,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.std.algebra { list_append }
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_flat_map }
 import gunbc.floor_attempt_standing {
   floor_attempt_receipt_prefix,
   floor_attempt_receipt_measured_head_label,
@@ -193,6 +193,69 @@ fn required_lanes_head_standing_stmts(
   ]
 }
 
+// THE REQUIRED LANE, AS ONE CONCEPT WITH N INSTANCES RATHER THAN N NAMED PARAMETERS.
+//
+// This axis was a HARDCODED PAIR -- `build_var` beside `floor_var`, threaded through four
+// functions and spelled 28 times -- which is one concept given one name per instance, the fork
+// DESIGN section 2 horizontal exists to delete. The tell was mechanical: promoting a third job
+// into the aggregate was described by `gunbc.witness_floor_workflow` as a one-row edit, and was
+// in fact a signature change in four places plus a step-name rewrite, because the gate could not
+// say "a lane" at all -- only "the build one" and "the floor one".
+//
+// A LANE IS THREE FACTS AND NOT ONE, and each is read by a different surface: the JOB ID is what
+// the workflow's `needs.<id>.result` expression names, the VARIABLE is what the emitted shell
+// reads, and the LABEL is what the receipt prints. They are genuinely distinct strings -- the job
+// id is `required-witnesses-build`, the variable `BUILD`, the label `build` -- so collapsing any
+// two would force one surface to derive its spelling from another's, which is a nickname for a
+// fact the caller already holds. Carrying all three is what lets the gate AND the step's `env`
+// block be projections of one roster instead of two hand-kept lists whose agreement nothing
+// checks.
+//
+// NON-EMPTY BY CONSTRUCTION, and that is the whole safety argument for the shape. The verdict is
+// an OR-fold over the lanes, and an or-fold over nothing is FALSE -- so an empty lane list would
+// publish the required context GREEN over a gate that read no lane at all, which is section 5's
+// fail-open in its purest form. `FreeSemigroup` has no empty representation, so that state is
+// UNWRITABLE rather than validated: the structurally-impossible rung of section 4b rather than
+// the mechanically-preventable one, and no refusal arm is owed because there is no arm to write.
+// It is deliberately not a fresh NonEmptyRequiredLanes carrier -- `free_semigroup_grounding_note`
+// already names five monomorphised copies of that shape as convergence debt, and a sixth would be
+// the re-invention that section 2's own test forbids.
+type RequiredLane {
+  job_id: String,
+  label: String,
+  var_name: String
+}
+
+// THE OR-FOLD OVER THE LANES, left-associated so that the two-lane case is the exact node the
+// hardcoded pair built: `or_else(left: test(first), right: test(second))`.
+fn required_lanes_any_test(lanes: FreeSemigroup<RequiredLane>, mk: fn(String) -> Node) -> Node {
+  fold_list(
+    xs: lanes.tail,
+    empty: mk(lanes.head.var_name),
+    cons: fn(acc, lane) { bash_build_or_else(left: acc, right: mk(lane.var_name)) }
+  )
+}
+
+// THE RECEIPT'S LANE SEGMENT, one `label=$VAR` pair per lane.
+//
+// The head's literal carries the caller's leading text so it stays ONE literal word part rather
+// than two adjacent ones -- the serializer is handed the same node shape it was handed before,
+// not a shape that merely renders the same today.
+fn required_lanes_receipt_parts(lanes: FreeSemigroup<RequiredLane>, head_prefix: String) -> List<Node> {
+  list_append(
+    left: [
+      bash_build_word_lit(text: concat(head_prefix, lanes.head.label, "=")),
+      bash_build_word_var(name: lanes.head.var_name)
+    ],
+    right: list_flat_map(xs: lanes.tail, f: fn(lane) {
+      [
+        bash_build_word_lit(text: concat(" ", lane.label, "=")),
+        bash_build_word_var(name: lane.var_name)
+      ]
+    })
+  )
+}
+
 fn required_lane_is_failure_test(var_name: String) -> Node {
   required_lane_var_equals_lit_test(var_name: var_name, text: floor_lane_result_failure)
 }
@@ -210,26 +273,23 @@ fn required_lane_is_failure_test(var_name: String) -> Node {
 // unknown spelling therefore lands in unestablished and blocks; it can never land in green.
 // Reversing these two would make the enumeration load-bearing and reopen exactly that hole.
 fn required_lanes_verdict_stmts(
-  build_var: String,
-  floor_var: String,
+  lanes: FreeSemigroup<RequiredLane>,
   verdict_var: String
 ) -> List<Node> {
   [
     bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_green_name),
     bash_build_if_from_stmts(
-      cond: bash_build_or_else(
-        left: required_lane_not_success_test(var_name: build_var),
-        right: required_lane_not_success_test(var_name: floor_var)
-      ),
+      cond: required_lanes_any_test(lanes: lanes, mk: fn(v) {
+        required_lane_not_success_test(var_name: v)
+      }),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_unestablished_name)
       ]
     ),
     bash_build_if_from_stmts(
-      cond: bash_build_or_else(
-        left: required_lane_is_failure_test(var_name: build_var),
-        right: required_lane_is_failure_test(var_name: floor_var)
-      ),
+      cond: required_lanes_any_test(lanes: lanes, mk: fn(v) {
+        required_lane_is_failure_test(var_name: v)
+      }),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_red_name)
       ]
@@ -267,8 +327,7 @@ fn required_lanes_interruption_stmts(
 }
 
 fn required_lanes_verdict_receipt_stmt(
-  build_var: String,
-  floor_var: String,
+  lanes: FreeSemigroup<RequiredLane>,
   verdict_var: String,
   mechanism_var: String,
   attribution_var: String
@@ -277,18 +336,17 @@ fn required_lanes_verdict_receipt_stmt(
     words: [
       bash_build_word_lit(text: "echo"),
       bash_build_word_concat_parts(
-        parts: [
-          bash_build_word_lit(text: "required lanes: build="),
-          bash_build_word_var(name: build_var),
-          bash_build_word_lit(text: " floor="),
-          bash_build_word_var(name: floor_var),
+        parts: list_append(
+          left: required_lanes_receipt_parts(lanes: lanes, head_prefix: "required lanes: "),
+          right: [
           bash_build_word_lit(text: " verdict="),
           bash_build_word_var(name: verdict_var),
           bash_build_word_lit(text: " mechanism="),
           bash_build_word_var(name: mechanism_var),
           bash_build_word_lit(text: " attribution="),
           bash_build_word_var(name: attribution_var)
-        ]
+          ]
+        )
       )
     ]
   )
@@ -296,8 +354,7 @@ fn required_lanes_verdict_receipt_stmt(
 
 fn required_lanes_error_stmt(
   text: String,
-  build_var: String,
-  floor_var: String,
+  lanes: FreeSemigroup<RequiredLane>,
   mechanism_var: String,
   attribution_var: String
 ) -> Node {
@@ -306,17 +363,16 @@ fn required_lanes_error_stmt(
       words: [
         bash_build_word_lit(text: "echo"),
         bash_build_word_concat_parts(
-          parts: [
-            bash_build_word_lit(text: text),
-            bash_build_word_var(name: build_var),
-            bash_build_word_lit(text: " floor="),
-            bash_build_word_var(name: floor_var),
+          parts: list_append(
+            left: required_lanes_receipt_parts(lanes: lanes, head_prefix: text),
+            right: [
             bash_build_word_lit(text: " mechanism="),
             bash_build_word_var(name: mechanism_var),
             bash_build_word_lit(text: " attribution="),
             bash_build_word_var(name: attribution_var),
             bash_build_word_lit(text: ") - open that job's log")
-          ]
+            ]
+          )
         )
       ]
     ),
@@ -341,8 +397,7 @@ fn required_lanes_error_stmt(
 // reader to different places, and each carries the mechanism and attribution the aggregator can
 // actually establish, which today is one case and none respectively.
 fn required_lanes_refusal_stmts(
-  build_var: String,
-  floor_var: String,
+  lanes: FreeSemigroup<RequiredLane>,
   verdict_var: String,
   mechanism_var: String,
   attribution_var: String
@@ -355,9 +410,8 @@ fn required_lanes_refusal_stmts(
       ),
       then_stmts: [
         required_lanes_error_stmt(
-          text: "::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build=",
-          build_var: build_var,
-          floor_var: floor_var,
+          text: "::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (",
+          lanes: lanes,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var
         ),
@@ -371,9 +425,8 @@ fn required_lanes_refusal_stmts(
       ),
       then_stmts: [
         required_lanes_error_stmt(
-          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed; rerun it (build=",
-          build_var: build_var,
-          floor_var: floor_var,
+          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed; rerun it (",
+          lanes: lanes,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var
         ),
@@ -417,8 +470,7 @@ fn required_lanes_refusal_stmts(
 // function no longer has a parameter through which an expression could be handed to a shell
 // literal (DESIGN 5, construction over validation).
 fn required_lanes_gate_stmts(
-  build_var: String,
-  floor_var: String,
+  lanes: FreeSemigroup<RequiredLane>,
   pull_request_var: String,
   event_name_var: String,
   measured_head_var: String,
@@ -449,8 +501,7 @@ fn required_lanes_gate_stmts(
   let through_lane_axis = list_append(
     left: through_subject_receipt,
     right: required_lanes_verdict_stmts(
-      build_var: build_var,
-      floor_var: floor_var,
+      lanes: lanes,
       verdict_var: verdict_var
     )
   )
@@ -465,8 +516,7 @@ fn required_lanes_gate_stmts(
     left: through_interruption_axes,
     right: [
       required_lanes_verdict_receipt_stmt(
-        build_var: build_var,
-        floor_var: floor_var,
+        lanes: lanes,
         verdict_var: verdict_var,
         mechanism_var: mechanism_var,
         attribution_var: attribution_var
@@ -476,8 +526,7 @@ fn required_lanes_gate_stmts(
   list_append(
     left: through_verdict_receipt,
     right: required_lanes_refusal_stmts(
-      build_var: build_var,
-      floor_var: floor_var,
+      lanes: lanes,
       verdict_var: verdict_var,
       mechanism_var: mechanism_var,
       attribution_var: attribution_var
