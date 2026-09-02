@@ -44,6 +44,13 @@ import gunbc.scm.repository_save {
   RepositoryFileUnwritable,
   RepositoryWriteByteCountUnrepresentable,
 }
+import gunbc.scm.repository_envelope {
+  RepositoryEncodeOutcome,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  encode_repository_checked,
+}
+import extdeps.languages.json.emit { serialize_json }
 import std.measure { byte_size }
 import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListed,
@@ -287,6 +294,23 @@ test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool {
 // two present arms are one fact apart (the same listing and read, differing only in whether the
 // content decodes), so pinning each to its own arm is what makes the classification evidence rather
 // than a not-the-write-arm check. Review 5089156132 finding 5.2 on gunbc#10026.
+// THE VALID-REPOSITORY FIXTURE IS THE WRITER'S OWN OUTPUT, not a hand-authored literal. A literal
+// here is a second authority for the repository wire format (DESIGN section 3): it agrees with the
+// codec only for as long as someone keeps retyping it, and the version it drifts to is silently
+// classified `foreign_present` -- the classifier reporting a repository this program just wrote as
+// a foreign file. Deriving the bytes from `encode_repository_checked` makes writer and classifier
+// agree BY EXECUTION, so a codec change that breaks the round trip turns this claim red at the
+// change rather than at the next hand edit.
+//
+// A refused encode yields "" here, which decodes as foreign rather than as a repository, so the
+// refusal arm fails this claim instead of vacuously satisfying it.
+fn saved_repository_bytes() -> String {
+  match encode_repository_checked(repo: empty_repository()) {
+    RepositoryEncodeRefused { cause: _ } => ""
+    RepositoryEncoded { value: v } => serialize_json(v: v)
+  }
+}
+
 test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
   decide(o: observe(listed: true, entries: "repo.json", read_ok: true, content: "not json at all"))
       == "foreign_present"
@@ -294,7 +318,7 @@ test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
       listed: true,
       entries: "repo.json",
       read_ok: true,
-      content: "{\"format\":\"gunbc-scm-repository-v2\"}",
+      content: saved_repository_bytes(),
     )) == "repository_present"
 }
 
