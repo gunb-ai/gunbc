@@ -60,6 +60,45 @@ type AssessmentWindow =
     CalendarYearAssessed
   | EarningsPeriodAssessed
 
+// FOUR COORDINATES THIS CARRIER STILL ASSUMES, EACH NAMED BY AN ADVERSARIAL REVIEW AGAINST A
+// REAL NEW JERSEY ROW. None is reachable by any authority row that exists today - every row here
+// is a universal federal statutory rate assessed on cash wages - so each is a declared boundary
+// rather than a live defect. All four become live the moment the New Jersey module lands, and
+// that module is the trigger for all of them.
+//
+// 1. RATE APPLICABILITY. rate is a scalar on a row keyed by year, which assumes a rate is a
+//    globally reusable statutory constant. New Jersey employer unemployment rates are
+//    EXPERIENCE-RATED per employer account and assigned on a FISCAL year, 1 July to 30 June,
+//    while the wage cap runs on the calendar year. One effective_year cannot carry both
+//    intervals, and the position carries no payment date with which to select a rate. The
+//    missing coordinate is rate subject plus effective interval plus authority receipt.
+//
+// 2. AGGREGATION SCOPE IS A KIND, NOT AN IDENTITY. The check compares
+//    EmployerWorkerRelationship against EmployerWorkerRelationship and passes; it does not ask
+//    WHICH employer. Harmless while every rate is universal, and a fail-open the moment a rate
+//    belongs to one employer account. Adding an EmployerAccount variant does not repair it -
+//    the cap aggregates per employer-worker relationship while the rate is assigned per
+//    employer account, so one computation needs both coordinates at once.
+//
+// 3. CONTRIBUTION BASE. Omitted here on the grounds that nothing consumed it. New Jersey
+//    refutes that: covered remuneration includes noncash items valued for contribution
+//    purposes and is not the cash-gross figure, and federal Social Security wages and Medicare
+//    wages are themselves distinct bases. A spec meaning one base and a position carrying
+//    another currently agree on every represented field and emit a plausible amount.
+//
+// 4. ROUNDING CONTRACT. Flooring at micro grain is declared below, but the grain is only one
+//    third of the fact: mode, grain and application scope are all statutory. Publication 15
+//    accounts for rounding to the nearest cent per wage payment with a fractions-of-cents
+//    adjustment on the quarterly return, so a floored micro figure is an exact accrual and not
+//    the withholding amount.
+//
+// Rate PRECISION is the one finding that blocks New Jersey outright rather than deferring: the
+// rates are 2.6825, 0.1175, 0.3825 and 0.0425 percent, which are not whole basis points, and
+// BasisPoint counts whole units. Every federal rate here is exact in basis points, so this
+// carrier is honest for its current rows and cannot express the next authority. The repair is
+// not a third dimensionless nickname - std.measure already declares that a third such use case
+// is the trigger to build the unifying Ratio carrier - so it is raised rather than improvised.
+
 // WHOSE earnings accumulate. US OASDI restarts its wage base per employer, so a second employer
 // applies the cap again and the over-withholding is reconciled on the worker's own return; HMRC
 // likewise has each employer compute on what it pays, subject to aggregation for associated
@@ -145,6 +184,27 @@ fn scope_is_employer_relationship(s: AggregationScope) -> Bool {
   }
 }
 
+// A BetweenAnnualBounds row whose threshold is not strictly below its limit denotes an empty
+// interval, and the clamp arithmetic answers zero for every position - internally consistent, and
+// a plausible zero contribution rather than a refusal. That is a fail-open in the authority's own
+// shape rather than in a comparison between spec and position, so no equality check could reach
+// it. Equality of the two bounds is refused too: an accidentally empty band must not acquire
+// meaning from the arithmetic happening to return zero.
+//
+// This is validation where construction was not available - a .dag data row cannot refuse at
+// construction today - so the class sits at mechanically-preventable, not structurally
+// impossible. Its next-rung trigger is a refusing constructor for band rows, at which point this
+// check dissolves and its witness stays enrolled as the regression control.
+fn band_bounds_valid(b: ContributionBand) -> Bool {
+  match b {
+    FromFirstDollarUncapped => true
+    CappedAtAnnualLimit { annual_limit } => true
+    AboveAnnualThreshold { annual_threshold } => true
+    BetweenAnnualBounds { annual_threshold, annual_limit } =>
+      money_amount_micro_count(m: annual_threshold) < money_amount_micro_count(m: annual_limit)
+  }
+}
+
 // Saturating subtraction with no branch and no zero literal: subtracting the MINIMUM of the two is
 // exactly x - lower where that is defined and exactly zero where it is not, so the function is
 // total on the naturals by construction rather than by an if-arm that has to invent a zero.
@@ -183,6 +243,7 @@ fn subject_wage_micros(band: ContributionBand, before: Nat, total: Nat) -> Nat {
 }
 
 type ContributionRefusal =
+  | ContributionBandBoundsInvalid { spec: NonEmptyStr }
   | AssessmentWindowMismatch { spec: NonEmptyStr }
   | AssessmentWindowUnmodeled { spec: NonEmptyStr }
   | AggregationScopeMismatch { spec: NonEmptyStr }
@@ -206,12 +267,16 @@ type ContributionOutcome =
     }
   | ContributionRefused { cause: ContributionRefusal }
 
-// Window agreement is checked BEFORE the unmodelled-window arm, so a spec and position that
+// A malformed band is checked FIRST, because a spec whose own bounds are inconsistent cannot be
+// meaningfully compared against anything. Window agreement is then checked before the
+// unmodelled-window arm, so a spec and position that
 // disagree report the disagreement rather than being absorbed into the coarser refusal. Both
 // precede the year and currency checks because a window mismatch makes those comparisons
 // meaningless rather than merely wrong.
 fn contribution_for_period(spec: ContributionSpec, position: AssessedPosition) -> ContributionOutcome {
-  if window_is_calendar_year(w: spec.assessment_window) != window_is_calendar_year(w: position.assessment_window) {
+  if !band_bounds_valid(b: spec.band) {
+    ContributionRefused { cause: ContributionBandBoundsInvalid { spec: spec.name } }
+  } else if window_is_calendar_year(w: spec.assessment_window) != window_is_calendar_year(w: position.assessment_window) {
     ContributionRefused { cause: AssessmentWindowMismatch { spec: spec.name } }
   } else if !window_is_calendar_year(w: spec.assessment_window) {
     ContributionRefused { cause: AssessmentWindowUnmodeled { spec: spec.name } }

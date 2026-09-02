@@ -8,10 +8,11 @@ import extdeps.payroll.contribution {
   ContributionSpec, AssessedPosition, ContributionOutcome,
   ContributionOriginated, ContributionRefused, ContributionRefusal,
   AssessmentWindowMismatch, AssessmentWindowUnmodeled, AggregationScopeMismatch,
+  ContributionBandBoundsInvalid,
   EffectiveYearMismatch, ContributionCurrencyMismatch,
   CalendarYearAssessed, EarningsPeriodAssessed,
   EmployerWorkerRelationship, WorkerAcrossEmployers,
-  CappedAtAnnualLimit, Worker,
+  CappedAtAnnualLimit, BetweenAnnualBounds, Worker,
   contribution_for_period,
 }
 import extdeps.tax.us_irs_fica {
@@ -151,6 +152,65 @@ data probe_earnings_period_spec: ContributionSpec = ContributionSpec {
   aggregation_scope: EmployerWorkerRelationship,
 }
 
+
+// A band whose bounds are reversed. The clamp arithmetic answers zero for EVERY position, so
+// without a bounds check this row emits a plausible zero contribution instead of refusing - a
+// fail-open in the authority's own shape, which no spec-versus-position comparison could reach.
+data probe_reversed_bounds_spec: ContributionSpec = ContributionSpec {
+  name: "probe-reversed-bounds",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 1000),
+  band: BetweenAnnualBounds {
+    annual_threshold: money_amount_micro(count: 200000000),
+    annual_limit: money_amount_micro(count: 100000000)
+  },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+}
+
+// Equal bounds are refused too: an accidentally empty band must not acquire meaning from the
+// arithmetic happening to return zero.
+data probe_equal_bounds_spec: ContributionSpec = ContributionSpec {
+  name: "probe-equal-bounds",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 1000),
+  band: BetweenAnnualBounds {
+    annual_threshold: money_amount_micro(count: 100000000),
+    annual_limit: money_amount_micro(count: 100000000)
+  },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+}
+
+// The well-formed twin. Without this the bounds check could refuse everything and still look
+// green - a wall that never admits is indistinguishable from one that always refuses.
+data probe_well_formed_bounds_spec: ContributionSpec = ContributionSpec {
+  name: "probe-well-formed-bounds",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 1000),
+  band: BetweenAnnualBounds {
+    annual_threshold: money_amount_micro(count: 100000000),
+    annual_limit: money_amount_micro(count: 200000000)
+  },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+}
+
+data probe_between_band_position: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  position_before: money_amount_micro(count: 50000000),
+  this_period: money_amount_micro(count: 200000000),
+}
+
 // Optional-returning readers rather than a bare Nat with a zero on the refusal arm. A refusal that
 // read as zero would make every amount assertion below pass vacuously the moment the computation
 // broke - the absorbing-fixture failure, where the test survives the defect it exists to catch.
@@ -220,6 +280,7 @@ fn refusal_is_window_unmodeled(o: ContributionOutcome) -> Bool {
       AggregationScopeMismatch { spec } => false
       EffectiveYearMismatch { spec, spec_year, position_year } => false
       ContributionCurrencyMismatch { spec, spec_currency, presented_currency } => false
+      ContributionBandBoundsInvalid { spec } => false
     }
     ContributionOriginated { spec, borne_by, subject_wages, amount } => false
   }
@@ -233,6 +294,7 @@ fn refusal_is_window_mismatch(o: ContributionOutcome) -> Bool {
       AggregationScopeMismatch { spec } => false
       EffectiveYearMismatch { spec, spec_year, position_year } => false
       ContributionCurrencyMismatch { spec, spec_currency, presented_currency } => false
+      ContributionBandBoundsInvalid { spec } => false
     }
     ContributionOriginated { spec, borne_by, subject_wages, amount } => false
   }
@@ -246,6 +308,7 @@ fn refusal_is_scope_mismatch(o: ContributionOutcome) -> Bool {
       AssessmentWindowUnmodeled { spec } => false
       EffectiveYearMismatch { spec, spec_year, position_year } => false
       ContributionCurrencyMismatch { spec, spec_currency, presented_currency } => false
+      ContributionBandBoundsInvalid { spec } => false
     }
     ContributionOriginated { spec, borne_by, subject_wages, amount } => false
   }
@@ -269,6 +332,41 @@ test fn witness_aggregation_scope_must_agree() -> Bool {
   refusal_is_scope_mismatch(
     o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_cross_employer_position)
   )
+}
+
+
+fn refusal_is_band_bounds_invalid(o: ContributionOutcome) -> Bool {
+  match o {
+    ContributionRefused { cause } => match cause {
+      ContributionBandBoundsInvalid { spec } => true
+      AssessmentWindowMismatch { spec } => false
+      AssessmentWindowUnmodeled { spec } => false
+      AggregationScopeMismatch { spec } => false
+      EffectiveYearMismatch { spec, spec_year, position_year } => false
+      ContributionCurrencyMismatch { spec, spec_currency, presented_currency } => false
+    }
+    ContributionOriginated { spec, borne_by, subject_wages, amount } => false
+  }
+}
+
+// The reversed and equal bands refuse BY NAME; the well-formed band with identical rate and
+// position COMPUTES. The pair is the point: a bounds check that refused every between-band row
+// would satisfy the first two assertions alone.
+test fn witness_malformed_band_bounds_refuse_and_the_well_formed_twin_computes() -> Bool {
+  refusal_is_band_bounds_invalid(
+    o: contribution_for_period(spec: probe_reversed_bounds_spec, position: probe_between_band_position)
+  )
+    && refusal_is_band_bounds_invalid(
+      o: contribution_for_period(spec: probe_equal_bounds_spec, position: probe_between_band_position)
+    )
+    && subject_is(
+      o: contribution_for_period(spec: probe_well_formed_bounds_spec, position: probe_between_band_position),
+      micros: 100000000
+    )
+    && amount_is(
+      o: contribution_for_period(spec: probe_well_formed_bounds_spec, position: probe_between_band_position),
+      micros: 10000000
+    )
 }
 
 fn settlement_refusal_count(o: PeriodSettlementOutcome) -> Nat? {
