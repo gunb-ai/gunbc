@@ -34877,6 +34877,7 @@ mod peel_alias_fixpoint_termination {
                 authored_import_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
+                unit_variant_index_observed: false,
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
@@ -34900,6 +34901,17 @@ mod peel_alias_fixpoint_termination {
                     matches!(
                         *d.diagnostic,
                         crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
+                            | crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. }
+                    )
+                })
+                .count();
+            let unavailable_evidence_count = out
+                .diagnostics
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        &*d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. }
                     )
                 })
                 .count();
@@ -34931,14 +34943,20 @@ mod peel_alias_fixpoint_termination {
                 termination_probe,
                 quiet_diagnostic_count,
                 refusal_count,
+                unavailable_evidence_count,
                 retired_count,
             ));
         });
-        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count, retired_count) =
-            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
-                "peel_alias_once_for_field_access did not terminate within 30s — the \
+        let (
+            (name, is_fixpoint),
+            quiet_diagnostic_count,
+            refusal_count,
+            unavailable_evidence_count,
+            retired_count,
+        ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+            "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
-            );
+        );
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
             quiet_diagnostic_count, 0,
@@ -34947,6 +34965,10 @@ mod peel_alias_fixpoint_termination {
         assert_eq!(
             refusal_count, 2,
             "a resolver refusal during speculative peel must remain typed and countable"
+        );
+        assert_eq!(
+            unavailable_evidence_count, 2,
+            "an unobserved marker census must remain a distinct typed refusal"
         );
         assert_eq!(
             retired_count, 0,
