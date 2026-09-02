@@ -70,10 +70,10 @@ fn json_hex4_at(s: String, i: Int) -> Int {
   if i + 4 > s.length() {
     0 - 1
   } else {
-    let h0 = json_hex_nibble(c: char_at(s: s, i: i))
-    let h1 = json_hex_nibble(c: char_at(s: s, i: i + 1))
-    let h2 = json_hex_nibble(c: char_at(s: s, i: i + 2))
-    let h3 = json_hex_nibble(c: char_at(s: s, i: i + 3))
+    let h0 = json_hex_nibble(c: char_at(s: s, pos: i))
+    let h1 = json_hex_nibble(c: char_at(s: s, pos: i + 1))
+    let h2 = json_hex_nibble(c: char_at(s: s, pos: i + 2))
+    let h3 = json_hex_nibble(c: char_at(s: s, pos: i + 3))
     if h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0 {
       0 - 1
     } else {
@@ -86,12 +86,12 @@ fn json_unescape_from(s: String, i: Int, acc: String) -> String {
   if i >= s.length() {
     acc
   } else {
-    let c = char_at(s: s, i: i)
+    let c = char_at(s: s, pos: i)
     if c == "\\" {
       if i + 1 >= s.length() {
         acc
       } else {
-        let e = char_at(s: s, i: i + 1)
+        let e = char_at(s: s, pos: i + 1)
         if e == "u" {
           let cp = json_hex4_at(s: s, i: i + 2)
           if cp < 0 {
@@ -226,9 +226,9 @@ fn parse_json_array_elements(s: String, i: Int, acc: List<JsonValue>) -> JsonArr
     JsonParsed { value: v, next: n } => {
       let acc2 = acc |> list_push(v)
       let q = json_text_skip_ws(s: s, i: n)
-      if char_at(s: s, i: q) == "]" {
+      if char_at(s: s, pos: q) == "]" {
         JsonArrayAccOk { elements: acc2, next: q + 1 }
-      } else if char_at(s: s, i: q) == "," {
+      } else if char_at(s: s, pos: q) == "," {
         parse_json_array_elements(s: s, i: q + 1, acc: acc2)
       } else {
         JsonArrayAccFail { at: q }
@@ -239,7 +239,7 @@ fn parse_json_array_elements(s: String, i: Int, acc: List<JsonValue>) -> JsonArr
 
 fn parse_json_array_at(s: String, i: Int) -> JsonParse {
   let p = json_text_skip_ws(s: s, i: i + 1)
-  if char_at(s: s, i: p) == "]" {
+  if char_at(s: s, pos: p) == "]" {
     JsonParsed { value: JsonArray { elements: [] }, next: p + 1 }
   } else {
     match parse_json_array_elements(s: s, i: p, acc: []) {
@@ -259,7 +259,7 @@ fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> Json
     JsonParseFail { at: a } => JsonObjectAccFail { at: a }
     JsonParsed { value: keyval, next: key_end } => {
       let c = json_text_skip_ws(s: s, i: key_end)
-      if char_at(s: s, i: c) != ":" {
+      if char_at(s: s, pos: c) != ":" {
         JsonObjectAccFail { at: c }
       } else {
         match parse_json_value_at(s: s, i: c + 1) {
@@ -267,9 +267,9 @@ fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> Json
           JsonParsed { value: v, next: val_end } => {
             let acc2 = acc |> list_push(json_kv(key: json_string_value_or_empty(v: keyval), value: v))
             let q = json_text_skip_ws(s: s, i: val_end)
-            if char_at(s: s, i: q) == "}" {
+            if char_at(s: s, pos: q) == "}" {
               JsonObjectAccOk { members: acc2, next: q + 1 }
-            } else if char_at(s: s, i: q) == "," {
+            } else if char_at(s: s, pos: q) == "," {
               parse_json_object_members(s: s, i: q + 1, acc: acc2)
             } else {
               JsonObjectAccFail { at: q }
@@ -283,7 +283,7 @@ fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> Json
 
 fn parse_json_object_at(s: String, i: Int) -> JsonParse {
   let p = json_text_skip_ws(s: s, i: i + 1)
-  if char_at(s: s, i: p) == "}" {
+  if char_at(s: s, pos: p) == "}" {
     JsonParsed { value: JsonObject { members: [] }, next: p + 1 }
   } else {
     match parse_json_object_members(s: s, i: p, acc: []) {
@@ -298,7 +298,7 @@ fn parse_json_value_at(s: String, i: Int) -> JsonParse {
   if p >= s.length() {
     JsonParseFail { at: p }
   } else {
-    let c = char_at(s: s, i: p)
+    let c = char_at(s: s, pos: p)
     if c == "{" { parse_json_object_at(s: s, i: p) }
     else if c == "[" { parse_json_array_at(s: s, i: p) }
     else if c == "\"" { parse_json_string_at(s: s, i: p) }
@@ -361,9 +361,9 @@ type JsonDocumentParse
 fn json_document_gap_text(gap: JsonDocumentGap) -> String {
   match gap {
     JsonDocumentMalformedAt { at: at } =>
-      concat("not readable as JSON at offset ", to_string(n: at))
+      concat("not readable as JSON at offset ", to_string(value: at))
     JsonDocumentTrailingContentAt { at: at } =>
-      concat("one complete JSON value followed by trailing content at offset ", to_string(n: at))
+      concat("one complete JSON value followed by trailing content at offset ", to_string(value: at))
   }
 }
 
