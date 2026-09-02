@@ -222,4 +222,3 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 fn registry_contains(a: GeneratedArtifact) -> Bool {
   any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
 }
-

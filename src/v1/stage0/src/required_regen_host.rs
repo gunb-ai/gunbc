@@ -5054,6 +5054,216 @@ impl ObservedEffectPopulation {
     }
 }
 
+/// Build the model's `RegenSurfaceIdentity` list from basenames, refusing an unowned one rather
+/// than fabricating a module. The population joins compare IDENTITIES, so a fabricated module
+/// would make two different surfaces compare equal and quietly satisfy the join it exists to test.
+fn convergence_identity_values(
+    ctx: &crate::v1_interpreter::InterpContext,
+    basenames: &[String],
+    basename_to_module: &HashMap<String, String>,
+) -> Result<crate::v1_interpreter::Value, String> {
+    use crate::v1_interpreter::{str_value, Value};
+    let mut rows = Vec::new();
+    for basename in basenames {
+        let module = basename_to_module.get(basename).ok_or_else(|| {
+            format!("SurfaceOwnershipUnresolved: {basename} has no declaring module")
+        })?;
+        rows.push(Value::Record {
+            type_name: ctx.sym("RegenSurfaceIdentity"),
+            fields: Rc::new(vec![
+                (ctx.sym("declaring_module"), str_value(module)),
+                (ctx.sym("projected_path"), str_value(basename)),
+            ]),
+        });
+    }
+    Ok(Value::List(Rc::new(rows.into())))
+}
+
+/// Run one population admission and report its label AND detail. The label alone would name the
+/// arm and drop the residues, which is the whole defect these joins exist to close.
+fn population_admission_verdict(
+    model: &RegenConvergenceModel,
+    admission: crate::v1_interpreter::Value,
+) -> Result<(), String> {
+    use crate::v1_interpreter::{self, Value};
+    let ctx = model.context();
+    let for_detail = admission.clone();
+    let label = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_population_admission_label",
+            &[(Some("admission".to_string()), admission)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: population admission label failed: {e}"))?;
+    match label {
+        Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
+        Value::Str(label) => {
+            let detail = match v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "regen_population_admission_detail",
+                    &[(Some("admission".to_string()), for_detail)],
+                    false,
+                )
+            }) {
+                Ok(Value::Str(detail)) => detail.to_string(),
+                Ok(other) => format!("<detail returned {}>", other.type_label_public()),
+                Err(e) => format!("<detail refused: {e}>"),
+            };
+            Err(format!("{label}: {detail}"))
+        }
+        other => Err(format!(
+            "refusal: population admission label returned {}",
+            other.type_label_public()
+        )),
+    }
+}
+
+/// JOIN 1 -- the producer's changed population equals planned UNION deferred, by identity.
+///
+/// The host computes `deferred` as `drifted` minus the install set, so today the two sides agree
+/// by construction. That is exactly why the join is worth executing rather than assuming: the
+/// construction is one edit away from being wrong, and the previous form of this boundary was
+/// self-consistent for the same reason -- both sides inherited one narrowing and the receipt
+/// proved nothing about the population that entered.
+fn admit_install_boundary_population_from_model(
+    model: &RegenConvergenceModel,
+    admitted: &[String],
+    planned: &[String],
+    deferred: &[String],
+    basename_to_module: &HashMap<String, String>,
+) -> Result<(), String> {
+    use crate::v1_interpreter::Value;
+    let ctx = model.context();
+    let observation = Value::Record {
+        type_name: ctx.sym("RegenInstallBoundaryObservation"),
+        fields: Rc::new(vec![
+            (
+                ctx.sym("admitted"),
+                convergence_identity_values(&ctx, admitted, basename_to_module)?,
+            ),
+            (
+                ctx.sym("planned"),
+                convergence_identity_values(&ctx, planned, basename_to_module)?,
+            ),
+            (
+                ctx.sym("deferred"),
+                convergence_identity_values(&ctx, deferred, basename_to_module)?,
+            ),
+        ]),
+    };
+    let admission = crate::v1_interpreter::with_active_context(&ctx, || {
+        crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_install_boundary_population",
+            &[(Some("observation".to_string()), observation)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: install boundary population admission did not answer: {e}"))?;
+    population_admission_verdict(model, admission)
+}
+
+/// One surface's terminal disposition, accumulated across the transaction's generations.
+///
+/// `Deferred` is deliberately representable even though a converged transaction never ends in one:
+/// its presence is what lets the lineage join REFUSE an unfinished transaction rather than report a
+/// fixed point it did not reach. Dropping the arm because the happy path cannot produce it would
+/// make the terminality conjunct true by construction.
+enum ConvergenceDisposition {
+    Applied { installed_digest: String },
+    Superseded { by_generation_id: String },
+    Deferred,
+}
+
+/// JOIN 3 -- the population admitted across the transaction equals the terminal lineage, both
+/// directions, and every lineage row reached a terminal disposition.
+///
+/// THE LINEAGE IS BUILT FROM THE STAGE RECEIPTS, NEVER FROM THE ADMITTED LIST. Deriving it from
+/// the admitted population would make `admitted_without_lineage` empty by construction and the
+/// join would restate its own input -- the same `x == x.clone()` shape this lane was opened to
+/// remove, one level up. A surface the stage loop drops appears in no receipt, so it is absent
+/// from the lineage and the join names it.
+fn admit_transaction_lineage_from_model(
+    model: &RegenConvergenceModel,
+    admitted: &BTreeSet<String>,
+    lineage: &BTreeMap<String, ConvergenceDisposition>,
+    basename_to_module: &HashMap<String, String>,
+) -> Result<(), String> {
+    use crate::v1_interpreter::{str_value, Value};
+    let ctx = model.context();
+    let admitted_rows = admitted.iter().cloned().collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    for (basename, disposition) in lineage {
+        let module = basename_to_module.get(basename).ok_or_else(|| {
+            format!("SurfaceOwnershipUnresolved: lineage row {basename} has no declaring module")
+        })?;
+        let disposition_value = match disposition {
+            ConvergenceDisposition::Applied { installed_digest } => Value::Variant {
+                type_name: ctx.sym("RegenSurfaceDisposition"),
+                variant_name: ctx.sym("SurfaceApplied"),
+                fields: Rc::new(vec![(
+                    ctx.sym("installed_digest"),
+                    str_value(installed_digest),
+                )]),
+            },
+            ConvergenceDisposition::Superseded { by_generation_id } => Value::Variant {
+                type_name: ctx.sym("RegenSurfaceDisposition"),
+                variant_name: ctx.sym("SurfaceSuperseded"),
+                fields: Rc::new(vec![(
+                    ctx.sym("by_generation_id"),
+                    str_value(by_generation_id),
+                )]),
+            },
+            ConvergenceDisposition::Deferred => Value::Variant {
+                type_name: ctx.sym("RegenSurfaceDisposition"),
+                variant_name: ctx.sym("SurfaceDeferred"),
+                fields: Rc::new(vec![(
+                    ctx.sym("reason"),
+                    Value::Variant {
+                        type_name: ctx.sym("RegenDeferredReason"),
+                        variant_name: ctx.sym("AwaitingBuildableSeedGeneration"),
+                        fields: Rc::new(vec![]),
+                    },
+                )]),
+            },
+        };
+        rows.push(Value::Record {
+            type_name: ctx.sym("RegenSurfaceLineage"),
+            fields: Rc::new(vec![
+                (
+                    ctx.sym("identity"),
+                    Value::Record {
+                        type_name: ctx.sym("RegenSurfaceIdentity"),
+                        fields: Rc::new(vec![
+                            (ctx.sym("declaring_module"), str_value(module)),
+                            (ctx.sym("projected_path"), str_value(basename)),
+                        ]),
+                    },
+                ),
+                (ctx.sym("disposition"), disposition_value),
+            ]),
+        });
+    }
+    let admitted_values = convergence_identity_values(&ctx, &admitted_rows, basename_to_module)?;
+    let lineage_values = Value::List(Rc::new(rows.into()));
+    let admission = crate::v1_interpreter::with_active_context(&ctx, || {
+        crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_transaction_lineage",
+            &[
+                (Some("initial_admitted".to_string()), admitted_values),
+                (Some("lineage".to_string()), lineage_values),
+            ],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: transaction lineage admission did not answer: {e}"))?;
+    population_admission_verdict(model, admission)
+}
+
 fn admit_stage_execution_from_model(
     model: &RegenConvergenceModel,
     planned: &[RegenConvergenceSurfaceReceipt],
@@ -5237,6 +5447,12 @@ pub fn run_regen_round_cost(
     let mut generation_ordinal = 0usize;
     let mut round_failures = Vec::new();
     let convergence_model = RegenConvergenceModel::load(source_roots)?;
+    // THE DENOMINATOR, ACCUMULATED RATHER THAN SAMPLED. Every generation's drifted population
+    // joins this set, because installing generation inputs can make the NEXT generation emit a
+    // surface the first one did not -- so the transaction's admitted population is the union, and
+    // taking only the first generation's would refuse a correct run.
+    let mut transaction_admitted: BTreeSet<String> = BTreeSet::new();
+    let mut transaction_lineage: BTreeMap<String, ConvergenceDisposition> = BTreeMap::new();
     if matches!(regen.receipt, RegenReceipt::Refused { .. }) {
         round_failures.extend(
             regen
@@ -5302,6 +5518,23 @@ pub fn run_regen_round_cost(
                 "generation made no progress with drift {drifted:?}"
             ));
         }
+        transaction_admitted.extend(drifted.iter().cloned());
+        // JOIN 1, before any byte moves: the population this generation reported changed must be
+        // exactly the population the stage plans plus the population it postpones.
+        admit_install_boundary_population_from_model(
+            &convergence_model,
+            &drifted,
+            &install_set,
+            &deferred
+                .iter()
+                .map(|row| row.projected_path.clone())
+                .collect::<Vec<_>>(),
+            &basename_to_module,
+        )
+        .map_err(|failure| {
+            format!("install boundary population disagrees with the stage partition: {failure}")
+        })?;
+        let drifted_entering_stage = drifted.clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
             &convergence_model,
@@ -5344,6 +5577,38 @@ pub fn run_regen_round_cost(
         );
         match next {
             Ok(next) => {
+                // APPLIED comes from the stage RECEIPT, never from the plan: a surface the loop
+                // dropped leaves no receipt row, so the lineage join can see the hole.
+                for surface in &stages
+                    .last()
+                    .expect("a stage receipt was just pushed")
+                    .surfaces
+                {
+                    if let Some(basename) = surface.projected_path.rsplit('/').next() {
+                        transaction_lineage.insert(
+                            basename.to_string(),
+                            ConvergenceDisposition::Applied {
+                                installed_digest: surface.installed_digest.clone(),
+                            },
+                        );
+                    }
+                }
+                // SUPERSEDED is the honest name for a surface that entered the generation drifted
+                // and left it undrifted without being installed: a later candidate replaced the
+                // one that was pending, so its lineage ENDS -- it is not deferred, and calling it
+                // deferred would report an unfinished transaction as finished.
+                let next_drift: BTreeSet<&String> = next.drifted.iter().collect();
+                for basename in &drifted_entering_stage {
+                    if !next_drift.contains(basename) && !transaction_lineage.contains_key(basename)
+                    {
+                        transaction_lineage.insert(
+                            basename.clone(),
+                            ConvergenceDisposition::Superseded {
+                                by_generation_id: next.manifest.generation_id.clone(),
+                            },
+                        );
+                    }
+                }
                 candidate_digest = next.manifest.candidate_tree_digest.clone();
                 candidate_tree_id = next.manifest.candidate_tree_id.clone();
                 drifted = next.drifted;
@@ -5359,6 +5624,25 @@ pub fn run_regen_round_cost(
         }
     }
 
+    // Anything still drifting at the terminal is a PROMISE, not an outcome, and the lineage join
+    // refuses it. The loop exits on an empty drift so a converged run records none -- the arm
+    // exists because a fixed point that was never reached must not be able to render as one.
+    for basename in &drifted {
+        transaction_lineage
+            .entry(basename.clone())
+            .or_insert(ConvergenceDisposition::Deferred);
+    }
+    // JOIN 3: what was admitted across the whole transaction, against what the receipts account
+    // for, by identity in both directions and with every row required to have terminated.
+    admit_transaction_lineage_from_model(
+        &convergence_model,
+        &transaction_admitted,
+        &transaction_lineage,
+        &basename_to_module,
+    )
+    .map_err(|failure| {
+        format!("the admitted population did not survive to the terminal lineage: {failure}")
+    })?;
     let changed_paths = git_changed_stage0_paths(&workspace)?;
     let terminal_surface_digest = candidate_digest.clone();
     let ordered_stage_receipt_ids = stages
@@ -5771,6 +6055,103 @@ mod regen_convergence_host_instrument_tests {
     /// `InstalledDigestMismatch` -- a CONTENT verdict standing in for a POPULATION one. The
     /// assertion is on the cause, not on "it refused", because "it refused" was true before this
     /// change and would carry no information.
+    /// THE SEED-TO-MODEL LOCKSTEP FOR THE POPULATION JOINS, asserted on the CAUSE.
+    ///
+    /// These run the model through the interpreter with host-built values, so a renamed field or
+    /// variant on either side reds here rather than forty minutes into a convergence round. Each
+    /// arm asserts the refusal's own name and its residues -- "it refused" would be satisfied by a
+    /// join that refuses everything, which is the shape the positive controls exclude.
+    #[test]
+    fn population_joins_refuse_by_identity_and_admit_an_exact_partition() {
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        let modules = fixture_modules(&[
+            ("a.rs", "fixture.a", ""),
+            ("b.rs", "fixture.b", ""),
+            ("c.rs", "fixture.c", ""),
+        ]);
+        let names = |rows: &[&str]| rows.iter().map(|r| (*r).to_string()).collect::<Vec<_>>();
+
+        // JOIN 1, the loss this lane exists to close: an admitted surface that is neither planned
+        // nor deferred vanishes with no typed disposition.
+        let dropped = admit_install_boundary_population_from_model(
+            &model,
+            &names(&["a.rs", "b.rs"]),
+            &names(&["a.rs"]),
+            &[],
+            &modules,
+        )
+        .unwrap_err();
+        assert!(
+            dropped.contains("StagePartitionPopulationDisagrees")
+                && dropped.contains("admitted_without_partition=[b.rs]"),
+            "the dropped surface must be named as a residue, got: {dropped}"
+        );
+
+        // THE DIRECTION A COUNT CANNOT SEE: one missing and one phantom, totals equal.
+        let compensating = admit_install_boundary_population_from_model(
+            &model,
+            &names(&["a.rs"]),
+            &names(&["b.rs"]),
+            &[],
+            &modules,
+        )
+        .unwrap_err();
+        assert!(
+            compensating.contains("admitted_without_partition=[a.rs]")
+                && compensating.contains("partition_without_admitted=[b.rs]"),
+            "equal counts with different identities must name BOTH residues, got: {compensating}"
+        );
+
+        // POSITIVE CONTROL: an exact partition, planned and deferred together.
+        admit_install_boundary_population_from_model(
+            &model,
+            &names(&["a.rs", "b.rs"]),
+            &names(&["a.rs"]),
+            &names(&["b.rs"]),
+            &modules,
+        )
+        .expect("an exact partition is admitted");
+
+        // JOIN 3, both directions and terminality.
+        let admitted: BTreeSet<String> = names(&["a.rs", "b.rs"]).into_iter().collect();
+        let mut lineage = BTreeMap::new();
+        lineage.insert(
+            "a.rs".to_string(),
+            ConvergenceDisposition::Applied {
+                installed_digest: "digest-a".to_string(),
+            },
+        );
+        let missing = admit_transaction_lineage_from_model(&model, &admitted, &lineage, &modules)
+            .unwrap_err();
+        assert!(
+            missing.contains("TransactionLineagePopulationDisagrees")
+                && missing.contains("admitted_without_lineage=[b.rs]"),
+            "a surface the receipts never accounted for must be named, got: {missing}"
+        );
+
+        // DEFERRED IS NONTERMINAL: the populations agree in both directions here, so a population
+        // equality alone would report this transaction as complete.
+        lineage.insert("b.rs".to_string(), ConvergenceDisposition::Deferred);
+        let unfinished =
+            admit_transaction_lineage_from_model(&model, &admitted, &lineage, &modules)
+                .unwrap_err();
+        assert!(
+            unfinished.contains("SurfaceLineageUnfinished") && unfinished.contains("[b.rs]"),
+            "a lineage ending in a promise must refuse as unfinished, got: {unfinished}"
+        );
+
+        // POSITIVE CONTROL: Superseded closes a lineage that was never installed, so a correct
+        // transaction is not refused for having postponed something a later candidate replaced.
+        lineage.insert(
+            "b.rs".to_string(),
+            ConvergenceDisposition::Superseded {
+                by_generation_id: "g2".to_string(),
+            },
+        );
+        admit_transaction_lineage_from_model(&model, &admitted, &lineage, &modules)
+            .expect("applied and superseded together close the lineage");
+    }
+
     #[test]
     fn stage_execution_joins_the_plan_to_independently_observed_effects() {
         let (workspace, stage0, candidate, subject) = fixture_workspace();

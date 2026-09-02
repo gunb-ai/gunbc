@@ -11,12 +11,14 @@ import gunbc.scm.object_store {
   store_node,
   Stored,
   LocatorCollision,
+  SemanticNodeTarget,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
@@ -29,6 +31,7 @@ import gunbc.scm.log {
   CommitLogRows,
   CommitLogRow,
   LoggedCommitRootHeld,
+  LoggedCommitRootIsAuthoredSource,
   LoggedCommitRootMissingFromStore,
 }
 
@@ -42,15 +45,15 @@ fn log_witness_atom(name: Symbol) -> Node {
 
 type LogWitnessStored {
   store: ObjectStore
-  identity: ObjectId
+  identity: SemanticNodeTarget
 }
 
 fn log_witness_store_one(store: ObjectStore, name: Symbol) -> LogWitnessStored {
   match store_node(store: store, n: log_witness_atom(name: name)) {
-    Stored { store: next, identity: identity } =>
-      LogWitnessStored { store: next, identity: identity }
+    Stored { store: next, node: node } =>
+      LogWitnessStored { store: next, identity: node_target_of(reference: node) }
     LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-      LogWitnessStored { store: store, identity: identity }
+      LogWitnessStored { store: store, identity: SemanticNodeTarget { locator: identity } }
   }
 }
 
@@ -67,11 +70,12 @@ fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn log_witness_mint(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn log_witness_mint(repo: RepositoryEnvelope, root: SemanticNodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
   }
 }
@@ -176,6 +180,7 @@ test fn a_commit_whose_root_is_not_held_is_marked_rather_than_listed_as_ordinary
       map(rows, r => match r.standing {
         LoggedCommitRootHeld => "held"
         LoggedCommitRootMissingFromStore => "missing"
+        LoggedCommitRootIsAuthoredSource => "source"
       }) == ["held", "missing"]
   }
 }
