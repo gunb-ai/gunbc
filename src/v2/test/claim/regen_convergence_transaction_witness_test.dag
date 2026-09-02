@@ -62,6 +62,7 @@ import v2.workflow.regen_convergence_transaction {
   GenerationBoundExceeded,
   regen_admit_stage_execution,
   regen_stage_execution_admission_label,
+  regen_stage_execution_admission_detail,
   StagePlannedExecutedMismatch,
   regen_plan_stage,
   regen_admit_affected_bound
@@ -222,6 +223,29 @@ test fn a_planned_surface_with_no_observed_effect_refuses_before_the_digest_chec
         && regen_stage_execution_admission_label(admission: admission) == "StagePlannedExecutedMismatch"
     _ => false
   }
+}
+
+test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Bool {
+  let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity()],
+    executed: [one_identity(), second_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  })
+  regen_stage_execution_admission_detail(admission: admission)
+    == "planned=[std_subject.rs] executed=[std_subject.rs std_dependent.rs]"
+}
+
+test fn an_admitted_stage_renders_no_refusal_detail() -> Bool {
+  let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity()],
+    executed: [one_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  })
+  regen_stage_execution_admission_detail(admission: admission) == ""
 }
 
 test fn an_observed_effect_outside_the_plan_refuses_in_the_other_direction() -> Bool {

@@ -5137,6 +5137,7 @@ fn admit_stage_execution_from_model(
         )
     })
     .map_err(|e| format!("refusal: stage execution admission did not answer: {e}"))?;
+    let admission_for_detail = admission.clone();
     let label = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -5148,7 +5149,26 @@ fn admit_stage_execution_from_model(
     .map_err(|e| format!("refusal: stage execution admission label failed: {e}"))?;
     match label {
         Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
-        Value::Str(label) => Err(format!("stage execution admission {label}")),
+        Value::Str(label) => {
+            // The label NAMES the arm; the detail LOCATES it. Rendering only the name collapsed
+            // every unlabelled arm to one word and discarded the populations that caused a
+            // population verdict -- which is what a reader needs and what §5 asks a typed
+            // diagnostic to carry. A detail that itself refuses is reported rather than dropped,
+            // because a silent renderer here would reintroduce exactly the silence it repairs.
+            let detail = match v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "regen_stage_execution_admission_detail",
+                    &[(Some("admission".to_string()), admission_for_detail)],
+                    false,
+                )
+            }) {
+                Ok(Value::Str(detail)) => detail.to_string(),
+                Ok(other) => format!("<detail returned {}>", other.type_label_public()),
+                Err(e) => format!("<detail refused: {e}>"),
+            };
+            Err(format!("stage execution admission {label}: {detail}"))
+        }
         other => Err(format!(
             "refusal: stage execution admission label returned {}",
             other.type_label_public()
