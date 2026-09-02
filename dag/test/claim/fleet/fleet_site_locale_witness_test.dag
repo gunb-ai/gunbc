@@ -115,11 +115,79 @@ test fn w_unruled_policy_is_counted_as_undecidable_not_divergent() -> Bool {
 // This names each host and asserts its disposition FLIPS. Under a New York civil zone the two
 // UTC machines are divergent and srv6 is converged; move the site to UTC and every one of those
 // three verdicts inverts, with the same observations underneath.
+// THE RELOCATION PROBE KEEPS THE SAME SITE IDENTITY, and the earlier version did not -- it
+// invented "relocated-probe", which under the host-to-site join is now a MISMATCH rather than a
+// move. That distinction is the point of the join: relocating the operator's premises changes the
+// premises' civil zone, it does not reassign every host to a different site. A probe that swapped
+// the identity was modeling a different event than the operator described.
 fn relocated_probe_site() -> SiteCivilTimeFacts {
   SiteCivilTimeFacts {
-    site: "relocated-probe" as SiteIdentity,
+    site: operator_site,
     civil_time_zone: zone_etc_utc,
     civil_locale: locale_en_us_utf8,
+  }
+}
+
+// A site-policy row belonging to a DIFFERENT site must be refused, not silently adjudicated. This
+// is the witness that makes `site` a working key rather than a decorative field: before the join
+// existed, handing any site's facts to any host was accepted.
+fn foreign_site_facts() -> SiteCivilTimeFacts {
+  SiteCivilTimeFacts {
+    site: "some-other-site" as SiteIdentity,
+    civil_time_zone: zone_etc_utc,
+    civil_locale: locale_en_us_utf8,
+  }
+}
+
+test fn w_facts_from_another_site_are_refused_not_adjudicated() -> Bool {
+  host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).site_refused == 3
+    && host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).converged == 0
+    && host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).divergent == 0
+}
+
+// The mismatch REPORTS BOTH SIDES, because "wrong site" without the pair cannot drive a repair.
+test fn w_site_mismatch_names_assigned_and_supplied() -> Bool {
+  match host_zone_disposition_of(host: operator_host_srv4, site: foreign_site_facts(), policy: fleet_host_zone_policy) {
+    HostZoneSiteRefused { selection: sel } =>
+      match sel {
+        SiteFactsMismatch { assigned: a, supplied: u } => a == operator_site && u != operator_site
+        SiteAssignmentMissing => false
+        SiteFactsAccepted => false
+      }
+    HostZoneConverged => false
+    HostZoneDivergent { observed: _, desired: _ } => false
+    HostZoneUndecidable => false
+  }
+}
+
+// A host with no site assignment is UNMODELED, and that is a different state from a mismatch.
+test fn w_unassigned_host_is_missing_not_mismatched() -> Bool {
+  match select_site_facts(host: ("unmodeled-host" as HostIdentity), facts: operator_premises_civil_time) {
+    SiteAssignmentMissing => true
+    SiteFactsMismatch { assigned: _, supplied: _ } => false
+    SiteFactsAccepted => false
+  }
+}
+
+// The reach label is DERIVED from the procurement allocation, never restated here. Re-authoring
+// the pair would put a private second copy of an owned relation in this module.
+test fn w_reach_labels_come_from_the_procurement_binding() -> Bool {
+  match reach_label_of(host: operator_host_srv5) {
+    ReachLabelFromReservation { label: l } => l == ("spark-a3ee" as NonEmptyStr)
+    ReachLabelUnmodeled => false
+  }
+    && match reach_label_of(host: operator_host_srv6) {
+      ReachLabelFromReservation { label: l } => l == ("spark-3bd5" as NonEmptyStr)
+      ReachLabelUnmodeled => false
+    }
+}
+
+// srv4 has no modeled reservation, and the honest answer is Unmodeled rather than an invented
+// literal. An absent authority is reported, never filled in.
+test fn w_srv4_reach_label_is_unmodeled_rather_than_invented() -> Bool {
+  match reach_label_of(host: operator_host_srv4) {
+    ReachLabelUnmodeled => true
+    ReachLabelFromReservation { label: _ } => false
   }
 }
 
@@ -128,6 +196,7 @@ fn zone_verdict_is_divergent(c: HostZoneConvergence) -> Bool {
     HostZoneDivergent { observed: _, desired: _ } => true
     HostZoneConverged => false
     HostZoneUndecidable => false
+    HostZoneSiteRefused { selection: _ } => false
   }
 }
 
@@ -136,6 +205,7 @@ fn zone_verdict_is_converged(c: HostZoneConvergence) -> Bool {
     HostZoneConverged => true
     HostZoneDivergent { observed: _, desired: _ } => false
     HostZoneUndecidable => false
+    HostZoneSiteRefused { selection: _ } => false
   }
 }
 
@@ -169,16 +239,6 @@ test fn w_every_observation_keys_on_a_canonical_fleet_host() -> Bool {
   fold(observed_host_zones, init: true, f: (acc, o) => acc && is_canonical_fleet_host(h: o.host))
 }
 
-// The two Spark rows are the ones that were actually wrong: they were keyed on reservation
-// labels. This pins each label to the host the procurement allocation binds it to, so re-keying
-// a row back onto its label goes red rather than merely looking plausible.
-test fn w_spark_rows_bind_reservation_labels_to_their_allocated_hosts() -> Bool {
-  fold(observed_host_zones, init: false, f: (acc, o) =>
-    acc || (o.observed_through == ("spark-a3ee" as NonEmptyStr) && o.host == operator_host_srv5))
-    && fold(observed_host_zones, init: false, f: (acc, o) =>
-      acc || (o.observed_through == ("spark-3bd5" as NonEmptyStr) && o.host == operator_host_srv6))
-}
-
 // The Pi reading is retained WITHOUT minting a host identity for it.
 test fn w_pi_observation_is_retained_without_an_invented_identity() -> Bool {
   fold(zone_observations_pending_host_allocation, init: 0, f: (n, _o) => n + 1) == 1
@@ -192,6 +252,7 @@ test fn w_divergence_names_observed_and_desired() -> Bool {
       HostZoneConverged => true
       HostZoneDivergent { observed: o, desired: d } => o != d
       HostZoneUndecidable => false
+      HostZoneSiteRefused { selection: _ } => false
     })
 }
 
@@ -203,6 +264,7 @@ test fn w_unruled_policy_makes_convergence_undecidable() -> Bool {
       HostZoneUndecidable => true
       HostZoneConverged => false
       HostZoneDivergent { observed: _, desired: _ } => false
+      HostZoneSiteRefused { selection: _ } => false
     })
 }
 

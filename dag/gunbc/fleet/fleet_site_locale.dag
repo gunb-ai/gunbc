@@ -14,6 +14,13 @@ import std.types { NonEmptyStr, Bool, List, Int }
 import product.placement_supply { HostIdentity, SiteIdentity }
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.dgx_procurement {
+  DgxSparkRouterBinding,
+  SlotAssigned,
+  SlotUnassigned,
+  dgx_spark_router_bindings,
+}
+import extdeps.dhcp.v4 { DhcpLeaseObservation, StaticDhcpReservation, DynamicDhcpLease }
 import extdeps.posix.locale { PosixLocaleId, locale_en_us_utf8 }
 import extdeps.iana.time_zone_database {
   IanaTimeZoneId,
@@ -127,30 +134,60 @@ data fleet_observed_tzdata_release: TzdataRelease = tzdata_2026c
 // second edit anywhere. That is the property that makes this a single authority rather than the
 // dual representation the operator identified.
 
-// AN OBSERVATION IS KEYED ON THE SEMANTIC HOST, NOT ON THE LABEL IT WAS REACHED THROUGH, and the
-// first revision got this wrong in the same way an earlier revision got the account username
-// wrong. It wrote "spark-a3ee" and "spark-3bd5" as HostIdentity. Those are RESERVATION LABELS
-// (gunbc.spark.dgx_procurement reservation_label); the fleet identities are operator_host_srv5 and
-// operator_host_srv6, and the allocation binding them is already modeled. Minting an identity from
-// a presentation label is the same class as inferring a principal from a host-local username: the
-// label is one realization of the host, never the host.
+// AN OBSERVATION IS KEYED ON THE SEMANTIC HOST, NOT ON THE LABEL IT WAS REACHED THROUGH. An
+// earlier revision wrote "spark-a3ee" and "spark-3bd5" as HostIdentity. Those are RESERVATION
+// LABELS -- vendor-derived from a MAC tail, which gunbc.spark.dgx_procurement states explicitly
+// cannot decide which fleet subject a machine serves -- and the fleet identities are
+// operator_host_srv5 and operator_host_srv6.
 //
-// The reach path is RETAINED rather than discarded, because an observation nobody can re-take is
-// weaker evidence than one that names how it was obtained. It is a separate field precisely so it
-// can never be mistaken for identity again.
+// THE REACH LABEL IS NOW DERIVED RATHER THAN RESTATED, which is the second half of that repair and
+// the one the first fix missed. Writing `observed_through: "spark-a3ee"` beside
+// `host: operator_host_srv5` re-authored a relation gunbc.spark.dgx_procurement already carries
+// structurally in srv5_router_binding, so the module held a private second copy of an allocation
+// that has an owner -- and a witness asserting the pair merely restated the copy rather than
+// checking it against the authority. The label is read out of the binding instead.
+type HostReachLabel
+  = ReachLabelFromReservation { label: NonEmptyStr }
+  | ReachLabelUnmodeled
+
+fn reservation_label_of_binding(b: DgxSparkRouterBinding) -> HostReachLabel {
+  match b {
+    SlotUnassigned { identity: _ } => ReachLabelUnmodeled
+    SlotAssigned { identity: _, reservation: r, allocation: _ } =>
+      match r.lease {
+        StaticDhcpReservation { reservation_label: l, status: _ } => ReachLabelFromReservation { label: l }
+        DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => ReachLabelUnmodeled
+      }
+  }
+}
+
+// srv4 answers on its own name and has no modeled router reservation, so its reach label is
+// honestly Unmodeled rather than a literal invented here. An absent authority is reported, never
+// filled in.
+fn reach_label_of(host: HostIdentity) -> HostReachLabel {
+  fold(
+    dgx_spark_router_bindings,
+    init: ReachLabelUnmodeled,
+    f: (acc, b) =>
+      match b {
+        SlotUnassigned { identity: _ } => acc
+        SlotAssigned { identity: i, reservation: _, allocation: _ } =>
+          if i == host { reservation_label_of_binding(b: b) } else { acc }
+      }
+  )
+}
+
 type ObservedHostZone {
   host: HostIdentity
-  observed_through: NonEmptyStr
   observed_zone: IanaTimeZoneId
 }
 
-// Read 2026-09-02 over ssh. These are OBSERVATIONS, so they record what each machine reports and
-// never what it ought to report -- the ought is the derivation's job, and fusing them would
-// rebuild the fork.
+// Read 2026-09-02 over ssh. These are OBSERVATIONS: what each machine reports, never what it ought
+// to report -- the ought is the derivation's job, and fusing them would rebuild the fork.
 data observed_host_zones: List<ObservedHostZone> = [
-  ObservedHostZone { host: operator_host_srv4, observed_through: "srv4" as NonEmptyStr, observed_zone: zone_etc_utc },
-  ObservedHostZone { host: operator_host_srv5, observed_through: "spark-a3ee" as NonEmptyStr, observed_zone: zone_etc_utc },
-  ObservedHostZone { host: operator_host_srv6, observed_through: "spark-3bd5" as NonEmptyStr, observed_zone: zone_america_new_york },
+  ObservedHostZone { host: operator_host_srv4, observed_zone: zone_etc_utc },
+  ObservedHostZone { host: operator_host_srv5, observed_zone: zone_etc_utc },
+  ObservedHostZone { host: operator_host_srv6, observed_zone: zone_america_new_york },
 ]
 
 // THE PI IS MEASURED AND DELIBERATELY NOT GIVEN AN IDENTITY HERE. A reading was taken over "pi1"
@@ -171,23 +208,78 @@ data zone_observations_pending_host_allocation: List<UnallocatedZoneObservation>
   UnallocatedZoneObservation { observed_through: "pi1" as NonEmptyStr, observed_zone: zone_america_new_york },
 ]
 
+// THE HOST-TO-SITE JOIN, AND WITHOUT IT THE `site` FIELD WAS DECORATIVE. The previous revision
+// carried `site: SiteIdentity` on SiteCivilTimeFacts and then never read it: the adjudicator took
+// whatever facts the caller handed it, so setting operator_premises_civil_time.site to any other
+// identity left every witness green. A key nothing joins on is not a key, and a field no path
+// consumes cannot be cited as evidence that location drives the derivation.
+//
+// The assignment is AUTHORED, which is the honest rung. It is not resolved from coordinates and
+// does not pretend to be; what it buys is that a host and a site-policy row can no longer be
+// paired arbitrarily by a caller.
+type HostSiteAssignment {
+  host: HostIdentity
+  site: SiteIdentity
+}
+
+data fleet_host_site_assignments: List<HostSiteAssignment> = [
+  HostSiteAssignment { host: operator_host_srv4, site: operator_site },
+  HostSiteAssignment { host: operator_host_srv5, site: operator_site },
+  HostSiteAssignment { host: operator_host_srv6, site: operator_site },
+]
+
+// Three outcomes, not two, and the missing case is not folded into the mismatch case: a host with
+// NO assignment and a host assigned to a DIFFERENT site need different repairs -- one is an
+// unmodeled machine, the other is a caller supplying the wrong policy row.
+type SiteFactsSelection
+  = SiteFactsAccepted
+  | SiteAssignmentMissing
+  | SiteFactsMismatch { assigned: SiteIdentity, supplied: SiteIdentity }
+
+// One fold, no Optional hop. The first attempt routed through a SiteIdentity? and the branches
+// would not unify; carrying the three-arm answer directly is both simpler and the shape the
+// caller actually needs -- an intermediate Optional would have to be re-discriminated anyway.
+fn select_site_facts(host: HostIdentity, facts: SiteCivilTimeFacts) -> SiteFactsSelection {
+  fold(
+    fleet_host_site_assignments,
+    init: SiteAssignmentMissing,
+    f: (acc, a) =>
+      if a.host == host {
+        if a.site == facts.site {
+          SiteFactsAccepted
+        } else {
+          SiteFactsMismatch { assigned: a.site, supplied: facts.site }
+        }
+      } else {
+        acc
+      }
+  )
+}
+
 type HostZoneConvergence
   = HostZoneConverged
   | HostZoneDivergent { observed: IanaTimeZoneId, desired: IanaTimeZoneId }
   | HostZoneUndecidable
+  | HostZoneSiteRefused { selection: SiteFactsSelection }
 
 fn host_zone_convergence(
   observed: ObservedHostZone,
   site: SiteCivilTimeFacts,
   policy: HostZonePolicy,
 ) -> HostZoneConvergence {
-  match provisioned_time_zone(site: site, policy: policy) {
-    ZoneRefusedPolicyUnruled => HostZoneUndecidable
-    ProvisionedZone { zone: desired } =>
-      if observed.observed_zone == desired {
-        HostZoneConverged
-      } else {
-        HostZoneDivergent { observed: observed.observed_zone, desired: desired }
+  match select_site_facts(host: observed.host, facts: site) {
+    SiteAssignmentMissing => HostZoneSiteRefused { selection: SiteAssignmentMissing }
+    SiteFactsMismatch { assigned: a, supplied: u } =>
+      HostZoneSiteRefused { selection: SiteFactsMismatch { assigned: a, supplied: u } }
+    SiteFactsAccepted =>
+      match provisioned_time_zone(site: site, policy: policy) {
+        ZoneRefusedPolicyUnruled => HostZoneUndecidable
+        ProvisionedZone { zone: desired } =>
+          if observed.observed_zone == desired {
+            HostZoneConverged
+          } else {
+            HostZoneDivergent { observed: observed.observed_zone, desired: desired }
+          }
       }
   }
 }
@@ -202,19 +294,22 @@ type HostZoneCensus {
   converged: Int
   divergent: Int
   undecidable: Int
+  site_refused: Int
 }
 
 fn host_zone_census(site: SiteCivilTimeFacts, policy: HostZonePolicy) -> HostZoneCensus {
   fold(
     observed_host_zones,
-    init: HostZoneCensus { converged: 0, divergent: 0, undecidable: 0 },
+    init: HostZoneCensus { converged: 0, divergent: 0, undecidable: 0, site_refused: 0 },
     f: (acc, h) => match host_zone_convergence(observed: h, site: site, policy: policy) {
       HostZoneConverged =>
-        HostZoneCensus { converged: acc.converged + 1, divergent: acc.divergent, undecidable: acc.undecidable }
+        HostZoneCensus { converged: acc.converged + 1, divergent: acc.divergent, undecidable: acc.undecidable, site_refused: acc.site_refused }
       HostZoneDivergent { observed: _, desired: _ } =>
-        HostZoneCensus { converged: acc.converged, divergent: acc.divergent + 1, undecidable: acc.undecidable }
+        HostZoneCensus { converged: acc.converged, divergent: acc.divergent + 1, undecidable: acc.undecidable, site_refused: acc.site_refused }
       HostZoneUndecidable =>
-        HostZoneCensus { converged: acc.converged, divergent: acc.divergent, undecidable: acc.undecidable + 1 }
+        HostZoneCensus { converged: acc.converged, divergent: acc.divergent, undecidable: acc.undecidable + 1, site_refused: acc.site_refused }
+      HostZoneSiteRefused { selection: _ } =>
+        HostZoneCensus { converged: acc.converged, divergent: acc.divergent, undecidable: acc.undecidable, site_refused: acc.site_refused + 1 }
     }
   )
 }
@@ -230,7 +325,7 @@ fn host_zone_disposition_of(
 ) -> HostZoneConvergence {
   fold(
     observed_host_zones,
-    init: HostZoneUndecidable,
+    init: HostZoneSiteRefused { selection: SiteAssignmentMissing },
     f: (acc, h) =>
       if h.host == host {
         host_zone_convergence(observed: h, site: site, policy: policy)
