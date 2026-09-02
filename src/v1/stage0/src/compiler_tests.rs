@@ -1296,6 +1296,56 @@ mod compiler_tests {
         );
     }
 
+    /// CAPABILITY-ADJUDICATION PROBE, NOT A PRODUCTION REPAIR. The two callers differ only
+    /// in whether module_skips_direct_call_arg_check exempts their module name. The report
+    /// keeps formal declaration provenance, consumed formal provenance, actual provenance,
+    /// compat and inhabitance as five independent observations.
+    #[test]
+    fn callee_formal_conformance_reports_authority_loss_separately_from_the_v2_exemption() {
+        let sources = std::rc::Rc::new(im::vector![
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "v2_std_text.dag".to_string(),
+                content: "module v2.std.text\ntype String = List<Int>\nfn take(value: v2.std.text.String) -> Unit { Unit }\n".to_string(),
+            }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "caller_a.dag".to_string(),
+                content: "module caller_a\nimport v2.std.text { take }\nfn host() -> String { \"x\" }\nfn probe() -> Unit { take(value: host()) }\n".to_string(),
+            }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "v2_caller_b.dag".to_string(),
+                content: "module v2.caller_b\nimport v2.std.text { take }\nfn host() -> String { \"x\" }\nfn probe() -> Unit { take(value: host()) }\n".to_string(),
+            }),
+        ]);
+        let report =
+            crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(sources);
+        eprintln!("{}", report);
+        assert!(
+            report.contains("caller_a\tprobe\tv2.std.text.take\tRecoveredNotCarried"),
+            "ordinary caller row absent: {}",
+            report
+        );
+        assert!(
+            report.contains("v2.caller_b\tprobe\tv2.std.text.take\tRecoveredNotCarried"),
+            "v2 caller row absent: {}",
+            report
+        );
+        assert!(
+            report.lines().any(
+                |line| line.starts_with("caller_a\tprobe\t") && line.contains("\tCompatible\t")
+            ),
+            "ordinary caller must expose the caller-reconstructed compatibility verdict: {}",
+            report
+        );
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("v2.caller_b\tprobe\t")
+                    && line.contains("\tSkippedByV2Exemption\t")),
+            "v2 caller must report the exemption independently: {}",
+            report
+        );
+    }
+
     #[test]
     fn rendered_leaf_use_site_preserves_authored_occurrence_identity() {
         let mut authored_value = (*named_type_node("Time")).clone();

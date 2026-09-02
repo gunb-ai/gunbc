@@ -4,9 +4,13 @@
 use self::CensusOutcome::*;
 use self::DeclarationIdentityObservation::*;
 use self::LegacyKeyObservation::*;
-use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
 use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
+pub use crate::std_induction::SubValueRelation;
+use crate::std_induction::SubValueRelation::*;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -16,19 +20,39 @@ pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
 pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
+use crate::v1_compiler_infer::DeclaredTypePosition::PositionDirectCallArgument;
+use crate::v1_compiler_infer::InhabitanceVerdict::{
+    InhabitanceRefused, InhabitanceUndecidable, Inhabits,
+};
+pub use crate::v1_compiler_infer::{
+    build_call_application_plan, declared_type_inhabitance, direct_call_arg_type_mismatch,
+    module_skips_direct_call_arg_check,
+};
+pub use crate::v1_compiler_infer::{
+    CallFormalApplication, DeclaredTypeObligation, DeclaredTypePosition, InferScope,
+    InhabitanceVerdict,
+};
 pub use crate::v1_compiler_infer_env::lookup_type_for;
+pub use crate::v1_compiler_infer_env::TypeBinding;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
+pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
+pub use crate::v1_compiler_infer_service::OpEntry;
+pub use crate::v1_compiler_infer_sigs::FuncSigLookup;
+use crate::v1_compiler_infer_sigs::FuncSigLookup::{
+    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
+};
+pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
+use crate::v1_std_core::ExprData::ExprCall;
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
-    authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
-    type_reference_provenance,
+    arg_value, authored_name_at, declaration_provenance_of, expr_call_func_at,
+    param_node_type_expr, provenance_reported_file, type_reference_provenance,
 };
-pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node};
+pub use crate::v1_std_core::{Connective, ExprData, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -523,6 +547,246 @@ pub fn typed_census_tsv(rows: Rc<Vec<Rc<TypedCarrierRow>>>) -> String {
         })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CalleeFormalRow {
+    pub caller_module: String,
+    pub caller_decl: String,
+    pub callee_decl: String,
+    pub formal_decl_ref: Rc<TypeDeclarationProvenance>,
+    pub formal_as_consumed_ref: Rc<TypeDeclarationProvenance>,
+    pub actual_decl_ref: Rc<TypeDeclarationProvenance>,
+    pub arg_compat_verdict: String,
+    pub inhabitance_verdict: String,
+}
+
+pub fn inhabitance_label(v: Rc<InhabitanceVerdict>) -> String {
+    match (*v.clone()).clone() {
+        InhabitanceVerdict::Inhabits => "Inhabits".to_string(),
+        InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => "Refused".to_string(),
+        InhabitanceVerdict::InhabitanceUndecidable { reason: _, .. } => "Undecidable".to_string(),
+    }
+}
+
+pub fn callee_formal_row(
+    app: Rc<CallFormalApplication>,
+    caller_module: String,
+    caller_decl: String,
+    callee_decl: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<CalleeFormalRow>> {
+    match app.matched_arg.clone() {
+        std::option::Option::None => std::option::Option::None,
+        Some(ta) => {
+            let actual = crate::v1_compiler_infer_types::resolved_type(
+                crate::v1_std_core::arg_value(ta.clone()),
+            );
+            let mismatch = crate::v1_compiler_infer::direct_call_arg_type_mismatch(
+                app.formal.clone(),
+                actual.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            let compat = if crate::v1_compiler_infer::module_skips_direct_call_arg_check(
+                caller_module.clone(),
+            ) {
+                "SkippedByV2Exemption".to_string()
+            } else {
+                if mismatch.clone() {
+                    "Mismatch".to_string()
+                } else {
+                    "Compatible".to_string()
+                }
+            };
+            Some(Rc::new(CalleeFormalRow {
+                caller_module: caller_module.clone(),
+                caller_decl: caller_decl.clone(),
+                callee_decl: callee_decl.clone(),
+                formal_decl_ref: crate::v1_std_core::type_reference_provenance(
+                    app.formal_subst.clone(),
+                ),
+                formal_as_consumed_ref: crate::v1_std_core::type_reference_provenance(
+                    app.formal.clone(),
+                ),
+                actual_decl_ref: crate::v1_std_core::type_reference_provenance(actual.clone()),
+                arg_compat_verdict: compat.clone(),
+                inhabitance_verdict: inhabitance_label(
+                    crate::v1_compiler_infer::declared_type_inhabitance(
+                        Rc::new(DeclaredTypeObligation {
+                            position: DeclaredTypePosition::PositionDirectCallArgument,
+                            subject: app.param_name.clone(),
+                            declared: app.formal_subst.clone(),
+                            produced: actual.clone(),
+                            span: crate::v1_std_core::arg_value(ta.clone()).span.clone(),
+                        }),
+                        scope.clone(),
+                    ),
+                ),
+            }))
+        }
+    }
+}
+
+pub fn callee_formal_rows_in_expr(
+    expr: Rc<Node>,
+    caller_decl: String,
+    m: Rc<TypedModule>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CalleeFormalRow>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let caller_module = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
+        let scope = Rc::new(InferScope {
+            type_env: m.type_env.clone(),
+            func_env: m.func_env.clone(),
+            locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            body_locals: v1_rt::rc_empty_map::<String, bool>(),
+            match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
+            module_name: caller_module.clone(),
+            service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+            item_registry: m.item_registry.clone(),
+            lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+            caller_decl_name: caller_decl.clone(),
+        });
+        let here = match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => {
+                let callee = crate::v1_std_core::expr_call_func_at(expr.clone(), si.clone());
+                match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+                    m.func_env.clone(),
+                    m.type_env.clone(),
+                    callee.clone(),
+                ))
+                .clone()
+                {
+                    FuncSigLookup::FuncSigResolved { sig, declared, .. } => Rc::new({
+                        let mut __result = Vec::new();
+                        for app in crate::v1_compiler_infer::build_call_application_plan(
+                            sig.params.clone(),
+                            expr.children.clone(),
+                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                            m.type_env.clone(),
+                            caller_module.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*match callee_formal_row(
+                                    app.clone(),
+                                    caller_module.clone(),
+                                    caller_decl.clone(),
+                                    v1_rt::concat(
+                                        declared.owner_module_path.clone(),
+                                        v1_rt::concat(".".to_string(), declared.decl_name.clone()),
+                                    ),
+                                    scope.clone(),
+                                ) {
+                                    Some(row) => Rc::new(vec![row.clone()]),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                    FuncSigLookup::FuncSigUnresolved => Rc::new(vec![]),
+                    FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => Rc::new(vec![]),
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            here.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in expr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*callee_formal_rows_in_expr(
+                            child.clone(),
+                            caller_decl.clone(),
+                            m.clone(),
+                            si.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn callee_formal_rows_in_module(
+    m: Rc<TypedModule>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CalleeFormalRow>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in m.items.clone().iter().cloned() {
+            __result.extend(
+                (*match item.body.clone() {
+                    Some(body) => callee_formal_rows_in_expr(
+                        body.clone(),
+                        crate::v1_std_core::authored_name_at(si.clone(), item.clone()),
+                        m.clone(),
+                        si.clone(),
+                    ),
+                    std::option::Option::None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn provenance_label(p: Rc<TypeDeclarationProvenance>) -> String {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+            v1_rt::concat("CorpusDeclared:".to_string(), f.clone())
+        }
+        TypeDeclarationProvenance::KernelMinted { minted_name: n, .. } => {
+            v1_rt::concat("KernelMinted:".to_string(), n.clone())
+        }
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => {
+            "DeclarationIdentityAbsent".to_string()
+        }
+    }
+}
+
+pub fn callee_formal_header() -> String {
+    "caller_module\tcaller_decl\tcallee_decl\tformal_authority_state\tformal_decl_ref\tformal_as_consumed_ref\tactual_decl_ref\targ_compat_verdict\tinhabitance_verdict".to_string()
+}
+
+pub fn callee_formal_row_tsv(r: Rc<CalleeFormalRow>) -> String {
+    Rc::new(vec![
+        r.caller_module.clone(),
+        r.caller_decl.clone(),
+        r.callee_decl.clone(),
+        "RecoveredNotCarried".to_string(),
+        provenance_label(r.formal_decl_ref.clone()),
+        provenance_label(r.formal_as_consumed_ref.clone()),
+        provenance_label(r.actual_decl_ref.clone()),
+        r.arg_compat_verdict.clone(),
+        r.inhabitance_verdict.clone(),
+    ])
+    .join(&"\t".to_string())
+}
+
+pub fn callee_formal_tsv(rows: Rc<Vec<Rc<CalleeFormalRow>>>) -> String {
+    rows.iter().cloned().fold(
+        callee_formal_header(),
+        |acc: String, r: Rc<CalleeFormalRow>| {
+            v1_rt::concat(
+                v1_rt::concat(acc, "\n".to_string()),
+                callee_formal_row_tsv(r.clone()),
+            )
+        },
+    )
+}
+
 pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
         let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
@@ -530,15 +794,37 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
             std::option::Option::None => {
                 "REFUSED\tcompile_to_resolved produced no graph".to_string()
             }
-            Some(g) => typed_census_tsv(g.modules.clone().iter().cloned().fold(
-                no_typed_rows(),
-                |acc: _, m: _| {
-                    v1_rt::concat(
-                        acc,
-                        typed_module_rows(m.clone(), result.source_indices.clone()),
-                    )
-                },
-            )),
+            Some(g) => {
+                let typed_rows =
+                    g.modules
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(no_typed_rows(), |acc: _, m: _| {
+                            v1_rt::concat(
+                                acc,
+                                typed_module_rows(m.clone(), result.source_indices.clone()),
+                            )
+                        });
+                let call_rows = Rc::new({
+                    let mut __result = Vec::new();
+                    for m in g.modules.clone().iter().cloned() {
+                        __result.extend(
+                            (*callee_formal_rows_in_module(
+                                m.clone(),
+                                result.source_indices.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                });
+                v1_rt::concat(
+                    v1_rt::concat(typed_census_tsv(typed_rows.clone()), "\n\n".to_string()),
+                    callee_formal_tsv(call_rows.clone()),
+                )
+            }
         }
     }
 }

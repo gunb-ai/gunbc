@@ -3681,7 +3681,7 @@ fn ct_callee_formal_conformance_probe_test() -> String {
     "        eprintln!(\"{}\", report);\n",
     "        assert!(report.contains(\"caller_a\\tprobe\\tv2.std.text.take\\tRecoveredNotCarried\"), \"ordinary caller row absent: {}\", report);\n",
     "        assert!(report.contains(\"v2.caller_b\\tprobe\\tv2.std.text.take\\tRecoveredNotCarried\"), \"v2 caller row absent: {}\", report);\n",
-    "        assert!(report.lines().any(|line| line.starts_with(\"caller_a\\tprobe\\t\") && line.contains(\"\\tMismatch\\t\")), \"ordinary caller must expose the compat mismatch: {}\", report);\n",
+    "        assert!(report.lines().any(|line| line.starts_with(\"caller_a\\tprobe\\t\") && line.contains(\"\\tCompatible\\t\")), \"ordinary caller must expose the caller-reconstructed compatibility verdict: {}\", report);\n",
     "        assert!(report.lines().any(|line| line.starts_with(\"v2.caller_b\\tprobe\\t\") && line.contains(\"\\tSkippedByV2Exemption\\t\")), \"v2 caller must report the exemption independently: {}\", report);\n",
     "    }\n\n")
 }
