@@ -13,6 +13,10 @@ import product.altra_motherboard.minimal_design {
   DimmPositionRepeatedOnChannel,
   ChannelPopulatedMoreThanOnce,
   ChannelPopulationIsNotAnAdmittedCount,
+  PopulatedChannelIsNotRouted,
+  PopulatedPositionIsNotRouted,
+  NoProductionQualifiedPopulationIsReachable,
+  NoProductionQualifiedChannelCountExists,
   DdrChannel0,
   DdrChannel1,
   DdrChannel2,
@@ -99,6 +103,16 @@ fn refusal_is(r: DesignRefusal, wanted: String) -> Bool {
     NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => wanted == "NoReachableProduction"
     NoProductionQualifiedChannelCountExists => wanted == "NoProductionCountExists"
   }
+}
+
+// ROUTING REFUSALS ARE NOT ABSENCE OF A MINIMAL-DESIGN REFUSAL. They retain distinct names here,
+// so a caller can select the exact failed relation instead of folding every newly added refusal
+// into false or into one pre-existing category.
+test fn w_routing_refusal_names_remain_distinct() -> Bool {
+  refusal_is(r: PopulatedChannelIsNotRouted { channel: 4 }, wanted: "ChannelNotRouted")
+    && refusal_is(r: PopulatedPositionIsNotRouted { position: 1 }, wanted: "PositionNotRouted")
+    && refusal_is(r: NoProductionQualifiedPopulationIsReachable { routed_channels: 2 }, wanted: "NoReachableProduction")
+    && refusal_is(r: NoProductionQualifiedChannelCountExists, wanted: "NoProductionCountExists")
 }
 
 fn refuses_naming(d: AltraMinimalMotherboard, wanted: String) -> Bool {

@@ -33,7 +33,7 @@ import gunbc.discovery_census {
 // unreachability, not an omission padded out to satisfy exhaustiveness.
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
   DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   required_floor_site_disposition,
 }
@@ -216,6 +216,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -231,6 +232,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -249,6 +251,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -264,6 +267,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -282,6 +286,7 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -343,6 +348,7 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
     DeclinedOutsideRequiredGate => false
   }
 }
@@ -362,6 +368,7 @@ test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -382,6 +389,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -428,6 +436,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      PlannedAsChangedWitness => false
     })
     && all(split.declined, r => match r.disposition {
       DeclinedOutsideRequiredGate => true
@@ -437,6 +446,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      PlannedAsChangedWitness => false
     })
 }
 
