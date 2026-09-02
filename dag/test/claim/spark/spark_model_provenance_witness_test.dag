@@ -1,0 +1,219 @@
+module test.claim.spark_model_provenance_witness
+
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.content_hash { Sha256Digest, Sha256DigestHex, as_content_hash_cryptographic }
+import extdeps.pin { tracked_reference_resolution }
+import extdeps.ollama.api { OllamaModelRef }
+import gunbc.ollama_model_resolution {
+  OllamaResolvedManifest,
+  OllamaManifestReading,
+  ollama_manifest_reading,
+  OllamaBlobDigest,
+  OllamaManifestProvenance,
+  UpstreamPublished,
+  LocallyMaterialized,
+  IndependentlySelected,
+  CrossHostAgreementOnly,
+  CorroborationRefused,
+  ollama_resolved_manifest_corroboration,
+  gpt_oss_120b_manifest,
+  deepseek_v4_no_h3_stop_manifest,
+}
+import gunbc.spark.serving_model_admission {
+  SparkServingLocalModelAttestation,
+  SparkServingModelAxisUpstreamCatalogued,
+  SparkServingModelAxisLocalAttested,
+  SparkServingModelAxisRefused,
+  spark_serving_model_axis_in,
+  spark_serving_local_model_attestations,
+}
+
+// ================= FIXTURES =================
+//
+// THE REDS BELOW ARE AUTHORED HERE RATHER THAN LOOKED FOR IN THE CORPUS, because the states they
+// describe must not exist in it. DESIGN's question before writing a top-rung check is whether the
+// forbidden state is AUTHORABLE anywhere the check can run: a manifest whose readings disagree, and
+// a locally materialized manifest resting on one reading, are both perfectly constructible as
+// fixture source even though no accepted production row may hold them. That is what keeps these
+// claims discriminating instead of permanently green.
+
+data fx_digest_a: Sha256Digest = Sha256Digest {
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex,
+}
+
+data fx_digest_b: Sha256Digest = Sha256Digest {
+  hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Sha256DigestHex,
+}
+
+data fx_model: OllamaModelRef = OllamaModelRef {
+  name: "fixture-model" as NonEmptyStr,
+  tag: "fixture-tag" as NonEmptyStr,
+}
+
+fn fx_reading(authority: String, d: Sha256Digest) -> OllamaManifestReading {
+  ollama_manifest_reading(
+    authority: authority as NonEmptyStr,
+    observed_at: "2026-09-02T00:00Z",
+    observed_identity: d,
+  )
+}
+
+fn fx_provenance(local: Bool) -> OllamaManifestProvenance {
+  if local {
+    LocallyMaterialized {
+      producer: "fixture producer" as NonEmptyStr,
+      derived_from: "fixture parent" as NonEmptyStr,
+    }
+  } else {
+    UpstreamPublished { registry_authority: "fixture registry" as NonEmptyStr }
+  }
+}
+
+fn fx_manifest(readings_tail: List<OllamaManifestReading>, local: Bool) -> OllamaResolvedManifest {
+  OllamaResolvedManifest {
+    resolution: tracked_reference_resolution(
+      reference: fx_model,
+      resolved_identity: as_content_hash_cryptographic(digest: fx_digest_a),
+      resolved_at: "2026-09-02T00:00Z",
+      first_evidence: fx_reading(authority: "fixture host one", d: fx_digest_a),
+      further_evidence: readings_tail,
+    ),
+    closure: [],
+    provenance: fx_provenance(local: local),
+  }
+}
+
+// ================= THE POSITIVE CONTROLS =================
+
+// The upstream arm reports that an INDEPENDENT authority selected the bytes, and names it. This is
+// the guarantee the whole three-reading discipline in gunbc.ollama_model_resolution rests on.
+test fn an_upstream_published_manifest_is_independently_selected() -> Bool {
+  match ollama_resolved_manifest_corroboration(m: gpt_oss_120b_manifest) {
+    IndependentlySelected { registry_authority: a, reading_count: n } =>
+      string_contains(a as String, "registry.ollama.ai") && n == 3
+    CrossHostAgreementOnly { reading_count: _ } => false
+    CorroborationRefused { cause: _ } => false
+  }
+}
+
+// THE ARM THAT MATTERS, AND THE NUMBER IS THE POINT. The locally materialized manifest carries FOUR
+// readings to gpt-oss's three, and reports the WEAKER verdict. A higher count is not stronger
+// provenance, and this claim is what stops the two being read on one scale.
+test fn a_locally_materialized_manifest_reports_only_cross_host_agreement() -> Bool {
+  match ollama_resolved_manifest_corroboration(m: deepseek_v4_no_h3_stop_manifest) {
+    CrossHostAgreementOnly { reading_count: n } => n == 4
+    IndependentlySelected { registry_authority: _, reading_count: _ } => false
+    CorroborationRefused { cause: _ } => false
+  }
+}
+
+// ================= THE DISCRIMINATING REDS =================
+
+// A reading that disagrees with the settled identity refuses, under EITHER provenance. This is the
+// 2026-08-19 republish shape: three authorities agreeing with each other and disagreeing with the
+// pin. Without this arm the verdict would report corroboration for a resolution its own evidence
+// contradicts.
+test fn disagreeing_readings_refuse_under_upstream_provenance() -> Bool {
+  match ollama_resolved_manifest_corroboration(
+    m: fx_manifest(readings_tail: [fx_reading(authority: "fixture host two", d: fx_digest_b)], local: false)
+  ) {
+    CorroborationRefused { cause: c } => string_contains(c as String, "disagrees")
+    IndependentlySelected { registry_authority: _, reading_count: _ } => false
+    CrossHostAgreementOnly { reading_count: _ } => false
+  }
+}
+
+test fn disagreeing_readings_refuse_under_local_provenance() -> Bool {
+  match ollama_resolved_manifest_corroboration(
+    m: fx_manifest(readings_tail: [fx_reading(authority: "fixture host two", d: fx_digest_b)], local: true)
+  ) {
+    CorroborationRefused { cause: c } => string_contains(c as String, "disagrees")
+    IndependentlySelected { registry_authority: _, reading_count: _ } => false
+    CrossHostAgreementOnly { reading_count: _ } => false
+  }
+}
+
+// ONE HOST AGREEING WITH ITSELF IS NOT CORROBORATION, and this is the state a copy of the DeepSeek
+// block onto a new locally created tag would most easily produce: author the tag, read it once, ship
+// it. Unanimity over a single reading is trivially true, so without this arm the local verdict would
+// certify a manifest nothing has cross-checked.
+test fn a_single_reading_local_manifest_refuses() -> Bool {
+  match ollama_resolved_manifest_corroboration(m: fx_manifest(readings_tail: [], local: true)) {
+    CorroborationRefused { cause: c } => string_contains(c as String, "fewer than two readings")
+    IndependentlySelected { registry_authority: _, reading_count: _ } => false
+    CrossHostAgreementOnly { reading_count: _ } => false
+  }
+}
+
+// The same single-reading manifest is NOT refused when it is upstream published, because there the
+// one reading is the registry itself -- an independent selector. This is the claim that proves the
+// arms are genuinely different rather than one rule with a spelling variation.
+test fn a_single_reading_upstream_manifest_is_still_independently_selected() -> Bool {
+  match ollama_resolved_manifest_corroboration(m: fx_manifest(readings_tail: [], local: false)) {
+    IndependentlySelected { registry_authority: _, reading_count: n } => n == 1
+    CrossHostAgreementOnly { reading_count: _ } => false
+    CorroborationRefused { cause: _ } => false
+  }
+}
+
+// ================= THE SERVING MODEL AXIS =================
+
+data fx_required_version: NonEmptyStr = "0.32.9" as NonEmptyStr
+
+// The production attestation admits the production manifest at the production required release.
+test fn the_selected_local_model_is_admitted_by_its_observed_load() -> Bool {
+  match spark_serving_model_axis_in(
+    manifest: deepseek_v4_no_h3_stop_manifest,
+    attestations: spark_serving_local_model_attestations,
+    required_runtime_version: fx_required_version,
+  ) {
+    SparkServingModelAxisLocalAttested { runtime_version: v } => (v as String) == "0.32.9"
+    SparkServingModelAxisUpstreamCatalogued => false
+    SparkServingModelAxisRefused { cause: _ } => false
+  }
+}
+
+// AN OBSERVED LOAD ESTABLISHES ONE VERSION AND DOES NOT GENERALIZE. Move the required release and
+// this refuses until the load is re-observed. Without this arm the attestation would behave as a
+// floor, which is the fabricated catalogue row wearing a comparison operator.
+test fn a_required_release_the_model_was_not_observed_under_refuses() -> Bool {
+  match spark_serving_model_axis_in(
+    manifest: deepseek_v4_no_h3_stop_manifest,
+    attestations: spark_serving_local_model_attestations,
+    required_runtime_version: "0.33.0" as NonEmptyStr,
+  ) {
+    SparkServingModelAxisRefused { cause: c } => string_contains(c as String, "does not generalize")
+    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
+    SparkServingModelAxisUpstreamCatalogued => false
+  }
+}
+
+// A LOCAL ARTIFACT WITH NO ATTESTATION REFUSES. This is the arm that keeps the local path from being
+// a way around the catalogue: routing around ollama's support table is only admissible because a
+// stricter fact is required in its place, and if that fact is absent the answer is refusal, not
+// admission.
+test fn a_local_manifest_with_no_attestation_refuses() -> Bool {
+  match spark_serving_model_axis_in(
+    manifest: deepseek_v4_no_h3_stop_manifest,
+    attestations: [],
+    required_runtime_version: fx_required_version,
+  ) {
+    SparkServingModelAxisRefused { cause: c } => string_contains(c as String, "no observed-load attestation")
+    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
+    SparkServingModelAxisUpstreamCatalogued => false
+  }
+}
+
+// An upstream manifest still routes to the catalogue, whatever attestations exist. The local path
+// must not capture models the upstream table can actually answer for.
+test fn an_upstream_manifest_routes_to_the_catalogue() -> Bool {
+  match spark_serving_model_axis_in(
+    manifest: gpt_oss_120b_manifest,
+    attestations: spark_serving_local_model_attestations,
+    required_runtime_version: fx_required_version,
+  ) {
+    SparkServingModelAxisUpstreamCatalogued => true
+    SparkServingModelAxisLocalAttested { runtime_version: _ } => false
+    SparkServingModelAxisRefused { cause: _ } => false
+  }
+}
