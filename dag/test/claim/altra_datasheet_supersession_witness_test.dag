@@ -4,7 +4,7 @@ import std.types { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.publication {
-  HeldSpecificationSupersessionStanding, supersession_standing_is_current,
+  HeldSpecificationSupersessionStanding,
   HeldRevisionIsCurrentPublicCopy, NewerRevisionExistsUnretrieved, NewerRevisionPubliclyServed,
 }
 import extdeps.cpu.ampere {
@@ -41,18 +41,37 @@ test fn w_the_altra_max_citation_is_superseded() -> Bool {
 
 // BOTH ARE THE PUBLICLY-SERVED ARM, which is the distinction that carries the obligation: a
 // revision we retrieved is a live citation debt, while one merely listed is not.
-test fn w_neither_citation_claims_to_be_current() -> Bool {
-  !supersession_standing_is_current(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
-    && !supersession_standing_is_current(s: ampere_altra_max_rev_a1_datasheet_supersession_standing)
+//
+// THE SUBSTRATE NO LONGER EXPORTS A Bool COLLAPSE OVER THIS COPRODUCT, and this helper is
+// deliberately local rather than a re-export of the one that was deleted. Stating it plainly: the
+// fold below is the same shape as the dissolved predicate, so what changed is WHERE it lives and
+// what may depend on it, not the arithmetic. That is the whole of the difference and it is enough
+// -- extdeps.publication exported a variant test that any future consumer could reach for instead
+// of matching, which is the accretion the dissolution exists to stop; a helper private to one
+// witness file has exactly one reader and cannot become the surface anybody builds on.
+//
+// WHAT IS PRESERVED EITHER WAY: the match is exhaustive, so a fourth arm reds this file. A
+// predicate that collapsed three arms to a Bool is precisely what would let a new arm slip past
+// its readers unnoticed.
+fn standing_is_the_current_arm(s: HeldSpecificationSupersessionStanding) -> Bool {
+  match s {
+    HeldRevisionIsCurrentPublicCopy => true
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => false
+  }
 }
 
-// THE DISCRIMINATION CONTROL, CONSTRUCTED RATHER THAN BORROWED. The predicate must separate the
-// current arm from the superseded ones. Building the current arm here means this control survives
-// both rows being superseded at once -- which is exactly the situation that invalidated the
-// previous version of it.
+test fn w_neither_citation_claims_to_be_current() -> Bool {
+  !standing_is_the_current_arm(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
+    && !standing_is_the_current_arm(s: ampere_altra_max_rev_a1_datasheet_supersession_standing)
+}
+
+// THE POSITIVE CONTROL STAYS ENROLLED. Dissolving the production predicate does not retire the
+// evidence that the current arm is reachable and distinguishable from the superseded ones --
+// section 4b(4) deletes the obsoleted production machinery, never the discriminating control.
 test fn w_RED_the_predicate_separates_current_from_superseded() -> Bool {
-  supersession_standing_is_current(s: HeldRevisionIsCurrentPublicCopy)
-    && !supersession_standing_is_current(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
+  standing_is_the_current_arm(s: HeldRevisionIsCurrentPublicCopy)
+    && !standing_is_the_current_arm(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing)
 }
 
 // THE INDEX IS PART OF THE FACT. Both standings must name the surface that actually serves the

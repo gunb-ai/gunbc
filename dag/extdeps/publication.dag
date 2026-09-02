@@ -78,6 +78,16 @@ type DocumentPublicationStatus
 // stands up a second, untyped citation scheme beside the ExternalAuthority system this file
 // already owns. A retrieved document has an authority; that is the whole point of having retrieved
 // it.
+// NO is_current PREDICATE LIVES HERE, and its absence is the point. An earlier revision carried
+// supersession_standing_is_current, which matched this coproduct into true for exactly ONE arm.
+// That is a variant test wearing a predicate's name, and it is the shape the 2026-07-12 predicate
+// dissolution deleted -- std.execution_mode records the criterion: execution_mode_is_wet_dispatch
+// SURVIVED that cut because it is a two-variant semantic partition whose host branches on exactly
+// that partition at two dispatch sites, not because predicates over coproducts are permitted.
+// This one grouped no partition and had no production consumer at all; only witnesses read it.
+// Consumers match the coproduct directly, which is what the exhaustive match already guarantees:
+// adding a fourth arm must red every reader, and a predicate collapsing three arms to a Bool is
+// precisely what would let a new arm slip past them.
 type HeldSpecificationSupersessionStanding
   = HeldRevisionIsCurrentPublicCopy
   | NewerRevisionExistsUnretrieved {
@@ -94,14 +104,6 @@ type HeldSpecificationSupersessionStanding
       held_version_label: NonEmptyStr,
       detail: NonEmptyStr,
     }
-
-fn supersession_standing_is_current(s: HeldSpecificationSupersessionStanding) -> Bool {
-  match s {
-    HeldRevisionIsCurrentPublicCopy => true
-    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
-    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => false
-  }
-}
 
 fn publication_status_is_publicly_published(status: DocumentPublicationStatus) -> Bool {
   match status {
