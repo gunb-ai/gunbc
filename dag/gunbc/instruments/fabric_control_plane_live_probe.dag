@@ -622,6 +622,7 @@ type Fci1ReservationCleanupAuthority sole_constructor {
 type Fci1ReservationCleanupAuthorityDecode
   = Fci1ReservationCleanupAuthorityDecoded { authority: Fci1ReservationCleanupAuthority }
   | Fci1ReservationCleanupAuthorityUndecodable
+  | Fci1ReservationCleanupAuthorityObservationUnmodeled
 
 fn fci1_reservation_cleanup_authority_wire(authority: Fci1ReservationCleanupAuthority) -> NonEmptyStr {
   join([
@@ -958,9 +959,12 @@ fn fci1_cleanup_authority_for_observation(
   let authority_generation = match observed {
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation
     Fci1SlotFree { path: _, generation: generation, released_by: _, payload: _, content: _ } => generation - 1
-    _ => -1
+    Fci1SlotAbsent { path: _ } => 0
+    Fci1SlotUnreadable { path: _ } => 0
+    Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => 0
   }
-  if authority_generation < 1 { Fci1ReservationCleanupAuthorityUndecodable }
+  if authority_generation == 0 { Fci1ReservationCleanupAuthorityObservationUnmodeled }
+  else if authority_generation < 1 { Fci1ReservationCleanupAuthorityUndecodable }
   else { fci1_cleanup_authority_from_path(
     path: fci1_cleanup_authority_generation_path(path: path, generation: authority_generation),
   ) }
@@ -1046,6 +1050,7 @@ func fci1_canonical_cleanup_disposition(
             }
           } else { CanonicalCleanupRefused { prestate: prestate, observed: observed } }
         Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: prestate, observed: observed }
+        Fci1ReservationCleanupAuthorityObservationUnmodeled => CanonicalCleanupRefused { prestate: prestate, observed: observed }
       } }
       match initial_disposition {
         CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } =>
@@ -1065,6 +1070,7 @@ func fci1_canonical_cleanup_disposition(
                 }
               } else { CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } }
             Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed }
+            Fci1ReservationCleanupAuthorityObservationUnmodeled => CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed }
           }
         _ => initial_disposition
       }
@@ -1095,6 +1101,7 @@ func fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: St
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } =>
       if generation == 1 || generation == 2 { match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityUndecodable => exit_failure(reason: "disposable cleanup authority undecodable")
+        Fci1ReservationCleanupAuthorityObservationUnmodeled => exit_failure(reason: "disposable cleanup observation unmodeled")
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } => if !fci1_authority_matches_held(authority: authority, observed: observed) {
           exit_failure(reason: "disposable held reservation identity refused")
         } else {
@@ -1120,6 +1127,7 @@ func fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: St
     Fci1SlotFree { path: _, generation: generation, released_by: _, payload: _, content: _ } =>
       match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityUndecodable => exit_failure(reason: "disposable already-Free authority undecodable")
+        Fci1ReservationCleanupAuthorityObservationUnmodeled => exit_failure(reason: "disposable already-Free cleanup observation unmodeled")
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
           if (generation == 2 || generation == 3) && fci1_authority_matches_exact_free(authority: authority, observed: observed) {
             let write = Filesystem.Write(path: path, content: join(["DisposableAlreadyExactFree|authority=", to_string(authority), "|observed=", to_string(observed)], ""))
