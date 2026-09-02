@@ -1,6 +1,6 @@
 module std.import
 
-import std.types { FilePath, Int, List, SourceSpan, String }
+import std.types { FilePath, Int, List, NonEmptyStr, SourceSpan, String }
 
 // THE TYPED SOURCE REWRITE THAT REMOVES A COMPLETE IMPORT STATEMENT.
 //
@@ -33,7 +33,7 @@ type ParsedImportStatements
       statements: List<ParsedImportStatement>
     }
   | ImportStatementParseRefused {
-      cause: String
+      cause: NonEmptyStr
     }
 
 type ImportStripRefusal

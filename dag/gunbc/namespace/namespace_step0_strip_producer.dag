@@ -59,7 +59,7 @@ import gunbc.namespace_step0_canary {
 type Step0StripProductionRefusalCause
   = Step0SourceImportsNotParsed {
       file: NonEmptyStr
-      cause: String
+      cause: NonEmptyStr
     }
   | Step0SourceRewriteRefused {
       file: NonEmptyStr
@@ -182,9 +182,16 @@ fn namespace_step0_observe_containment(
 // THE FOLD, and the only caller the receipt constructor admits. Its arguments are the executed
 // rewrite (the statements actually removed) and the observation that followed it (the containment
 // compile's own cause); it invents neither.
+//
+// THE COMPILER IS ONE FACT AND ARRIVES FROM ONE CALLER. compiler_program travels beside
+// compiler_executable_sha256 rather than being spelled here, because which program was run and
+// which bytes it had are two halves of one observation about one dispatch; a literal here would
+// make this module a second authority on the first half while the caller owned the second, and the
+// two could then disagree with nothing to notice (review 58952).
 fn namespace_step0_strip_receipt(
   source_commit: GitObjectId,
   source_tree: GitObjectId,
+  compiler_program: NonEmptyStr,
   compiler_executable_sha256: Sha256Digest,
   sources: List<FixtureSource>,
   entry: NonEmptyStr
@@ -205,7 +212,7 @@ fn namespace_step0_strip_receipt(
               contract_identity: namespace_step0_canary_contract.identity,
               source_commit: source_commit,
               source_tree: source_tree,
-              compiler_program: "target/release/gunbc" as NonEmptyStr,
+              compiler_program: compiler_program,
               compiler_executable_sha256: compiler_executable_sha256,
               input_subject_manifest: namespace_step0_manifest_identity(),
               observed_tree: source_tree,

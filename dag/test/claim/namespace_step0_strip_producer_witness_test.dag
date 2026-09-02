@@ -231,6 +231,7 @@ fn production_over(sources: List<FixtureSource>, entry: NonEmptyStr) -> Step0Str
         Present { value: compiler } => Present { value: namespace_step0_strip_receipt(
           source_commit: commit,
           source_tree: tree,
+          compiler_program: "target/release/gunbc" as NonEmptyStr,
           compiler_executable_sha256: compiler,
           sources: sources,
           entry: entry
