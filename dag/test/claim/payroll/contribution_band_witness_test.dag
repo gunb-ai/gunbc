@@ -23,7 +23,7 @@ import extdeps.tax.us_irs_fica {
 }
 import gunbc.payroll.period_accrual {
   PeriodAccrual, PeriodAccrualOutcome, AccrualDerived, AccrualRefusedWhole,
-  AccrualRefusal, ContributionCause, PositionUnavailableForBase,
+  AccrualRefusal, ContributionCause, PositionUnavailableForBase, AccrualCurrencyMismatch,
   accrue_period,
 }
 
@@ -340,7 +340,24 @@ fn accrual_refusal_tag(r: AccrualRefusal) -> String {
   match r {
     ContributionCause { cause } => refusal_tag(c: cause)
     PositionUnavailableForBase { spec, required_base } => "position-unavailable"
+    AccrualCurrencyMismatch { spec, accrual_currency, spec_currency } => "accrual-currency-mismatch"
   }
+}
+
+// AN INVENTED LEVY, NOT A CITED AUTHORITY. It exists to be a spec that agrees with a Eur position
+// in every represented coordinate, so the ONLY thing that can refuse it inside a Usd period is the
+// period's own currency wall. A real euro-denominated row would carry a citation and belong in
+// extdeps; this is a fixture and is named as one.
+data fixture_eur_levy_2025: ContributionSpec = ContributionSpec {
+  name: "fixture-eur-levy-2025",
+  effective_year: 2025,
+  currency: Eur,
+  rate: basis_point(count: 620),
+  band: CappedAtAnnualLimit { annual_limit: money_amount_micro(count: 176100000000) },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: ss_base,
 }
 
 fn accrual_refuses_all_with(o: PeriodAccrualOutcome, tag: String, n: Nat) -> Bool {
@@ -354,7 +371,7 @@ fn accrual_refuses_all_with(o: PeriodAccrualOutcome, tag: String, n: Nat) -> Boo
 // Only the Social Security position is offered, so the Medicare rows have no position under their
 // own base and refuse BY NAME rather than borrowing this one.
 test fn witness_spec_without_a_position_for_its_base_refuses_by_name() -> Bool {
-  match accrue_period(specs: fica_specs_2025, positions: [probe_ordinary_ss]) {
+  match accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_ordinary_ss]) {
     AccrualDerived { accrual } => false
     AccrualRefusedWhole { causes } =>
       count(causes) == 3
@@ -363,12 +380,12 @@ test fn witness_spec_without_a_position_for_its_base_refuses_by_name() -> Bool {
 }
 
 test fn witness_stale_effective_year_refuses_the_whole_accrual() -> Bool {
-  accrual_refuses_all_with(o: accrue_period(specs: fica_specs_2025, positions: [probe_next_year_ss, probe_next_year_hi]), tag: "year-mismatch", n: 5)
-    && accrual_refuses_all_with(o: accrue_period(specs: fica_specs_2026, positions: [probe_ordinary_ss, probe_ordinary_hi]), tag: "year-mismatch", n: 5)
+  accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_next_year_ss, probe_next_year_hi]), tag: "year-mismatch", n: 5)
+    && accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2026, positions: [probe_ordinary_ss, probe_ordinary_hi]), tag: "year-mismatch", n: 5)
 }
 
 test fn witness_foreign_currency_refuses_the_whole_accrual() -> Bool {
-  accrual_refuses_all_with(o: accrue_period(specs: fica_specs_2025, positions: [probe_foreign_ss, probe_foreign_hi]), tag: "currency-mismatch", n: 5)
+  accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_foreign_ss, probe_foreign_hi]), tag: "currency-mismatch", n: 5)
 }
 
 // On 4,000 dollars of first-of-year wages the published rates give, to the cent: OASDI 6.2 percent
@@ -378,8 +395,41 @@ test fn witness_foreign_currency_refuses_the_whole_accrual() -> Bool {
 //
 // There is no gross, net or employer-cost assertion, because this module no longer claims to
 // settle money: a micro-floored accrual is not the cent-rounded amount withheld.
+// THE PAIR THAT DISCRIMINATES THE PERIOD'S CURRENCY WALL, which is a DIFFERENT wall from
+// witness_foreign_currency_refuses_the_whole_accrual above. That one is spec-against-its-own-
+// position, which contribution_for_period already refused. This one is spec-against-spec: every
+// pairwise check passes - the Usd spec has its Usd position, the Eur spec has its Eur position -
+// so before the wall both originated and their amounts were summed into one total with no currency
+// on it. MoneyAmountMicro cannot object, because Currency there is the dimension and not the code.
+//
+// The second arm is the positive control: the SAME Eur spec and position accrue normally in a
+// period declared in Eur, so the first arm refuses for the currency and not because the fixture is
+// malformed.
+test fn witness_period_currency_holds_every_spec_not_just_its_own_position() -> Bool {
+  let crossed = accrue_period(
+    currency: Usd,
+    specs: [us_social_security_employee_2025, fixture_eur_levy_2025],
+    positions: [probe_ordinary_ss, probe_foreign_ss]
+  )
+  let control = accrue_period(
+    currency: Eur,
+    specs: [fixture_eur_levy_2025],
+    positions: [probe_foreign_ss]
+  )
+  return match crossed {
+    AccrualDerived { accrual } => false
+    AccrualRefusedWhole { causes } =>
+      count(causes) == 1
+        && count(filter(causes, c => accrual_refusal_tag(r: c) == "accrual-currency-mismatch")) == 1
+  } && match control {
+    AccrualRefusedWhole { causes } => false
+    AccrualDerived { accrual } =>
+      accrual.currency == Eur && money_amount_micro_count(m: accrual.worker_borne) == 248000000
+  }
+}
+
 test fn witness_ordinary_period_accrues_against_published_rates() -> Bool {
-  match accrue_period(specs: fica_specs_2025, positions: [probe_ordinary_ss, probe_ordinary_hi]) {
+  match accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_ordinary_ss, probe_ordinary_hi]) {
     AccrualRefusedWhole { causes } => false
     AccrualDerived { accrual } =>
       money_amount_micro_count(m: accrual.worker_borne) == 306000000
