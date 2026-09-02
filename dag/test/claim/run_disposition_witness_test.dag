@@ -9,7 +9,40 @@ import extdeps.github.actions_runs {
   run_conclusion_wire,
   run_settled
 }
+import gunbc.witness_floor_workflow {
+  WitnessFloorConcurrencyPolicy,
+  PendingReplacementPolicy,
+  ReplaceExistingPending,
+  RetainPendingQueue,
+  RunningSupersessionPolicy,
+  SupersedeRunningForEvent,
+  witness_floor_concurrency_policy,
+  witness_floor_running_supersession_policy,
+  concurrency_of_policy
+}
+import extdeps.github.actions {
+  ConcurrencySpec,
+  ConcurrencyScalar,
+  ConcurrencyMappingQueueMax,
+  ConcurrencyMappingQueueNotMax,
+  CancelInProgressSpec,
+  CancelInProgressBool,
+  CancelInProgressExpression,
+  CancelInProgressWhenQueueMax,
+  QueueMaxCancelInProgressFalse,
+  QueueMaxCancelInProgressExpression
+}
 import gunbc.run_disposition {
+  CancellationExecutionStanding,
+  CancelledWhilePending,
+  CancelledAfterExecutionStarted,
+  CancellationStandingUnobserved,
+  cancellation_execution_standing,
+  classify_cancellation_under,
+  GoverningPolicyProvenance,
+  PolicyKnownForRun,
+  PolicyProvenanceUnestablished,
+  classify_run_with_provenance,
   ReplacementUnobserved,
   ReplacementAbsent,
   ReplacementObserved,
@@ -37,11 +70,59 @@ import gunbc.run_disposition {
   verdict_loss_unestablished_name,
   disposition_in_verdict_bearing_denominator,
   supersession_available_for_event,
+  supersession_available_under,
+  supersession_availability_rule_text_under,
+  classify_run_under,
   classifier_rule_rows
 }
-import gunbc.witness_floor_workflow {
-  witness_floor_cancel_in_progress_expression,
-  witness_floor_cancel_in_progress_event
+
+// THE CLASSIFIER'S ARMS ARE EXERCISED UNDER AN EXPLICIT POLICY, NOT UNDER THE LIVE ONE.
+//
+// The live policy is now an unconditional false -- gunbc.witness_floor_workflow
+// witness_floor_concurrency_policy, whose running axis is NeverSupersedeRunning -- because superseding a run SIGKILLs cargo and permanently
+// leaks its host jobserver permits. Under that policy NO production input can reach
+// DispositionSuperseded, so every arm below asking about supersession would be permanently green
+// by construction if it consulted the live value: a decoration that would be cited as coverage
+// while proving nothing (DESIGN 4b -- ask whether the RED is authorable before writing the check).
+//
+// Passing the superseding policy explicitly keeps the discriminations real and, when the leak is
+// closed and the live row goes back to an expression, these arms are already the regression
+// control for it rather than needing to be written then.
+fn superseding_policy() -> RunningSupersessionPolicy {
+  SupersedeRunningForEvent { event: "pull_request" }
+}
+
+data superseding_policy_event: String = "pull_request"
+
+// AND THE LIVE POLICY ITSELF IS PINNED, which is the arm that actually fails if containment is
+// reverted by accident rather than by decision. It is the reason the fixture above is not simply
+// hiding the change: one witness asserts what the fleet really emits.
+test fn w_live_cancel_policy_supersedes_nothing() -> Bool {
+  supersession_available_under(policy: witness_floor_running_supersession_policy, event: "pull_request") == false
+    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "push") == false
+    && supersession_available_for_event(event: "pull_request") == false
+}
+
+// UNDER THE LIVE POLICY A CANCELLED PULL-REQUEST RUN IS AN EVICTION, NOT A SUPERSESSION, and that
+// reclassification is the point rather than a side effect: while nothing may lawfully supersede,
+// every cancellation is unexplained and is counted as one.
+// THE EVICTION JUDGEMENT NOW REQUIRES KNOWN PROVENANCE, and this witness moved with it rather than
+// being deleted. It previously asked the LIVE entry and asserted eviction, which the provenance
+// repair deliberately made false: a WorkflowRunRecord does not carry the policy that governed it,
+// so the live entry refuses rather than judging a past run under the present. The eviction claim is
+// still the containment's substance -- under the live policy a started, cancelled pull-request run
+// IS an eviction -- so it is asserted where it can honestly be asserted, against a policy stated to
+// govern this record. Its live-entry counterpart is
+// w_the_live_entry_refuses_to_attribute_a_cancellation_it_cannot_date, and the two together say
+// what the classifier knows and what it declines to invent.
+test fn w_live_policy_makes_a_cancelled_pr_run_an_eviction() -> Bool {
+  let pr = cancelled_run(event: "pull_request")
+  let d = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
+    record: pr,
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  )
+  disposition_name(disposition: d) == disposition_externally_cancelled_name
 }
 
 // THESE WITNESSES RUN. The subject is a pure classification over authored fixture records -- no
@@ -72,9 +153,9 @@ fn cancelled_run(event: String) -> WorkflowRunRecord {
 // against records identical in every other field, so it fails the moment the sign test is dropped,
 // loosened to presence, or given the wrong comparison direction.
 test fn w_RED_a_replacement_created_after_the_cancel_is_never_superseded() -> Bool {
-  let pr = cancelled_run(event: witness_floor_cancel_in_progress_event)
-  let superseded = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
-  let retried = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 0 - 27 })
+  let pr = cancelled_run(event: superseding_policy_event)
+  let superseded = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
+  let retried = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: pr, replacement: ReplacementObserved { lag_seconds: 0 - 27 })
   disposition_name(disposition: superseded) == disposition_superseded_name
     && disposition_name(disposition: retried) == disposition_externally_cancelled_name
     && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: superseded)) == verdict_not_lost_name
@@ -90,10 +171,10 @@ test fn w_RED_a_replacement_created_after_the_cancel_is_never_superseded() -> Bo
 // positive-lag replacement) and requiring it to still classify external.
 test fn w_RED_a_push_cancel_is_external_even_with_a_prior_replacement() -> Bool {
   let push = cancelled_run(event: "push")
-  let d = classify_run(record: push, replacement: ReplacementObserved { lag_seconds: 27 })
+  let d = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: push, replacement: ReplacementObserved { lag_seconds: 27 })
   disposition_name(disposition: d) == disposition_externally_cancelled_name
-    && supersession_available_for_event(event: "push") == false
-    && supersession_available_for_event(event: witness_floor_cancel_in_progress_event) == true
+    && supersession_available_under(policy: superseding_policy(), event: "push") == false
+    && supersession_available_under(policy: superseding_policy(), event: superseding_policy_event) == true
 }
 
 // THE EMPTY-OBSERVATION NARROW: NOT LOOKING IS NOT THE SAME AS FINDING NOTHING.
@@ -104,9 +185,9 @@ test fn w_RED_a_push_cancel_is_external_even_with_a_prior_replacement() -> Bool 
 // an unknown attribution is not evidence of a loss -- while remaining IN the verdict-bearing
 // denominator, because the run genuinely did not report on its subject.
 test fn w_RED_an_unobserved_replacement_is_not_an_absent_one() -> Bool {
-  let pr = cancelled_run(event: witness_floor_cancel_in_progress_event)
-  let unobserved = classify_run(record: pr, replacement: ReplacementUnobserved { cause: "run list truncated" })
-  let absent = classify_run(record: pr, replacement: ReplacementAbsent)
+  let pr = cancelled_run(event: superseding_policy_event)
+  let unobserved = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: pr, replacement: ReplacementUnobserved { cause: "run list truncated" })
+  let absent = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: pr, replacement: ReplacementAbsent)
   disposition_name(disposition: unobserved) == disposition_attribution_unestablished_name
     && disposition_name(disposition: absent) == disposition_externally_cancelled_name
     && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: unobserved)) == verdict_loss_unestablished_name
@@ -121,9 +202,9 @@ test fn w_RED_an_unobserved_replacement_is_not_an_absent_one() -> Bool {
 // success share and the 59.8% verdict-bearing one, and quoting the first as a fleet health figure
 // is what nearly justified a capacity ask.
 test fn w_RED_supersessions_leave_the_verdict_bearing_denominator() -> Bool {
-  let pr = cancelled_run(event: witness_floor_cancel_in_progress_event)
-  let superseded = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
-  let external = classify_run(record: pr, replacement: ReplacementAbsent)
+  let pr = cancelled_run(event: superseding_policy_event)
+  let superseded = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
+  let external = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: pr, replacement: ReplacementAbsent)
   disposition_in_verdict_bearing_denominator(disposition: superseded) == false
     && disposition_in_verdict_bearing_denominator(disposition: external) == true
     && disposition_reached_verdict(disposition: superseded) == false
@@ -135,7 +216,7 @@ test fn w_RED_supersessions_leave_the_verdict_bearing_denominator() -> Bool {
 test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
   let green = classify_run(
     record: WorkflowRunRecord {
-      run_id: 1, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      run_id: 1, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "success",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -143,7 +224,7 @@ test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
   )
   let red = classify_run(
     record: WorkflowRunRecord {
-      run_id: 2, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      run_id: 2, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "failure",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -164,7 +245,7 @@ test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
 test fn w_RED_an_in_flight_run_is_classified_by_status_not_conclusion() -> Bool {
   let running = classify_run(
     record: WorkflowRunRecord {
-      run_id: 3, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      run_id: 3, event: superseding_policy_event, head_branch: "b",
       status: "in_progress", conclusion: "",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -183,7 +264,7 @@ test fn w_RED_an_in_flight_run_is_classified_by_status_not_conclusion() -> Bool 
 test fn w_RED_an_unknown_conclusion_survives_as_its_own_spelling() -> Bool {
   let d = classify_run(
     record: WorkflowRunRecord {
-      run_id: 4, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      run_id: 4, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "evicted",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -200,8 +281,8 @@ test fn w_RED_an_unknown_conclusion_survives_as_its_own_spelling() -> Bool {
 // emits. Editing the workflow to cancel on a different event, without revisiting the classifier,
 // reds here instead of leaving the classifier quietly answering for a configuration that is gone.
 test fn w_RED_the_classifier_event_occurs_in_the_emitted_concurrency_expression() -> Bool {
-  string_contains(s: witness_floor_cancel_in_progress_expression, pattern: witness_floor_cancel_in_progress_event)
-    && string_contains(s: witness_floor_cancel_in_progress_expression, pattern: "github.event_name")
+  supersession_available_under(policy: superseding_policy(), event: superseding_policy_event)
+    && supersession_available_under(policy: superseding_policy(), event: "push") == false
 }
 
 // THE RULE SHIPS WITH THE NUMBERS. A count whose partition rule is not printed beside it is the
@@ -212,7 +293,11 @@ test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
   count(rows) == 5
     && string_contains(s: join(rows, "\n"), pattern: "lag < 0")
     && string_contains(s: join(rows, "\n"), pattern: "never external")
-    && string_contains(s: join(rows, "\n"), pattern: witness_floor_cancel_in_progress_event)
+    && string_contains(s: join(rows, "\n"), pattern: "unconditionally false")
+    && string_contains(
+         s: supersession_availability_rule_text_under(spec: superseding_policy()),
+         pattern: superseding_policy_event
+       )
 }
 
 // THE REFUSAL ARM HAS LIVE OCCUPANCY, WHICH IS WHY IT IS NOT DECORATION.
@@ -225,20 +310,256 @@ test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
 // as a non-loss either. Answering `not-lost` here would undercount lost verdicts, which is the
 // fail-open direction for the one count this module exists to get right.
 test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
-  let startup = classify_run(
+  let startup = classify_run_under(
+    spec: superseding_policy(),
+    pending: ReplaceExistingPending,
     record: WorkflowRunRecord {
-      run_id: 5, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      run_id: 5, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "startup_failure",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
     replacement: ReplacementAbsent
   )
-  let unattributable = classify_run(
-    record: cancelled_run(event: witness_floor_cancel_in_progress_event),
+  let unattributable = classify_run_under(
+    spec: superseding_policy(),
+    pending: ReplaceExistingPending,
+    record: cancelled_run(event: superseding_policy_event),
     replacement: ReplacementUnobserved { cause: "window truncated" }
   )
   verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: startup)) == verdict_loss_unestablished_name
     && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: unattributable)) == verdict_loss_unestablished_name
     && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: startup)) != verdict_not_lost_name
     && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: startup)) != verdict_lost_name
+}
+
+// THE PENDING ARM, AUTHORED BECAUSE NO PRODUCTION DERIVATION CAN REACH IT, and authored WITHOUT a
+// record whose own timestamps contradict the standing beside it.
+//
+// An earlier cut passed cancelled_run() -- created 1000, started 1010 -- alongside an authored
+// CancelledWhilePending. This module's own derivation reads that record as CancelledAfterExecutionStarted,
+// so the fixture exercised the pending branch using a state that cannot be true under its own rules,
+// and carried the derived fact and its source as two independent representations. The record is now
+// built to AGREE with the standing it is used at: a pending subject's start is not later than its
+// creation, which is exactly the shape cancellation_execution_standing refuses to call started.
+fn pending_shaped_run(event: String) -> WorkflowRunRecord {
+  WorkflowRunRecord {
+    run_id: 7, event: event, head_branch: "b",
+    status: "completed", conclusion: "cancelled",
+    created_at_epoch_s: 1000, run_started_at_epoch_s: 1000, updated_at_epoch_s: 1200
+  }
+}
+
+// UNDER THE REPLACING QUEUE a pending cancellation with a causally prior replacement is LAWFUL
+// supersession even under the live unconditional-false running policy, because the flag governs the
+// RUNNING member alone.
+test fn w_a_pending_run_is_lawfully_superseded_even_under_the_live_policy() -> Bool {
+  match classify_cancellation_under(
+    spec: witness_floor_running_supersession_policy,
+    pending: ReplaceExistingPending,
+    standing: CancelledWhilePending,
+    record: pending_shaped_run(event: "push"),
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  ) {
+    DispositionSuperseded { lag_seconds: _ } => true
+    DispositionInFlight => false
+    DispositionVerdictGreen => false
+    DispositionVerdictRed => false
+    DispositionExternallyCancelled { supersession_was_available: _ } => false
+    DispositionCancelAttributionUnestablished { cause: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+}
+
+// UNDER A RETAINING QUEUE the same pending cancellation is NOT lawful, which is the discriminator
+// proving the classifier consults the queue axis rather than asserting today's regime.
+test fn w_a_pending_run_under_a_retaining_queue_is_not_supersession() -> Bool {
+  match classify_cancellation_under(
+    spec: witness_floor_running_supersession_policy,
+    pending: RetainPendingQueue,
+    standing: CancelledWhilePending,
+    record: pending_shaped_run(event: "push"),
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  ) {
+    DispositionExternallyCancelled { supersession_was_available: a } => a == false
+    DispositionSuperseded { lag_seconds: _ } => false
+    DispositionInFlight => false
+    DispositionVerdictGreen => false
+    DispositionVerdictRed => false
+    DispositionCancelAttributionUnestablished { cause: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+}
+
+// A STARTED run cancelled under the live policy is an eviction -- the containment's whole subject,
+// since a started run holds a cooperative jobserver permit that a kill leaks permanently.
+test fn w_a_started_run_cancelled_under_the_live_policy_is_an_eviction() -> Bool {
+  match classify_cancellation_under(
+    spec: witness_floor_running_supersession_policy,
+    pending: ReplaceExistingPending,
+    standing: CancelledAfterExecutionStarted,
+    record: cancelled_run(event: "push"),
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  ) {
+    DispositionExternallyCancelled { supersession_was_available: a } => a == false
+    DispositionInFlight => false
+    DispositionVerdictGreen => false
+    DispositionVerdictRed => false
+    DispositionSuperseded { lag_seconds: _ } => false
+    DispositionCancelAttributionUnestablished { cause: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+}
+
+// THE PRODUCTION DERIVATION REFUSES rather than guessing when the timestamps cannot decide.
+test fn w_an_undecidable_execution_standing_refuses_rather_than_defaulting() -> Bool {
+  match cancellation_execution_standing(record: pending_shaped_run(event: "push")) {
+    CancellationStandingUnobserved { cause: _ } => true
+    CancelledWhilePending => false
+    CancelledAfterExecutionStarted => false
+  }
+}
+
+// THE CROSS-EPOCH CONTROL. One record, two policies, two honest answers -- and the live entry
+// refuses to pick either, because the record does not say which governed it. Without this the
+// classifier would silently reclassify history every time the policy moved.
+fn old_event_scoped_policy() -> WitnessFloorConcurrencyPolicy {
+  WitnessFloorConcurrencyPolicy { pending: ReplaceExistingPending, running: SupersedeRunningForEvent { event: "pull_request" } }
+}
+
+test fn w_the_same_started_cancellation_classifies_differently_across_a_policy_change() -> Bool {
+  let pr = cancelled_run(event: "pull_request")
+  let obs = ReplacementObserved { lag_seconds: 27 }
+  let under_old = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: old_event_scoped_policy() }, record: pr, replacement: obs)
+  let under_new = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy }, record: pr, replacement: obs)
+  let lawful_then = match under_old {
+    DispositionSuperseded { lag_seconds: _ } => true
+    DispositionInFlight => false
+    DispositionVerdictGreen => false
+    DispositionVerdictRed => false
+    DispositionExternallyCancelled { supersession_was_available: _ } => false
+    DispositionCancelAttributionUnestablished { cause: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+  let evicted_now = match under_new {
+    DispositionExternallyCancelled { supersession_was_available: a } => a == false
+    DispositionInFlight => false
+    DispositionVerdictGreen => false
+    DispositionVerdictRed => false
+    DispositionSuperseded { lag_seconds: _ } => false
+    DispositionCancelAttributionUnestablished { cause: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+  lawful_then && evicted_now
+}
+
+// AND THE LIVE ENTRY REFUSES THAT SAME RECORD, because provenance is unestablished. A green here
+// would mean the report had judged the past under the present.
+test fn w_the_live_entry_refuses_to_attribute_a_cancellation_it_cannot_date() -> Bool {
+  match classify_run(record: cancelled_run(event: "pull_request"), replacement: ReplacementObserved { lag_seconds: 27 }) {
+    DispositionCancelAttributionUnestablished { cause: _ } => true
+    DispositionInFlight => false
+    DispositionVerdictGreen => false
+    DispositionVerdictRed => false
+    DispositionSuperseded { lag_seconds: _ } => false
+    DispositionExternallyCancelled { supersession_was_available: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+}
+
+
+// THE EMITTED QUEUE REGIME IS THE POLICY, NOT A LITERAL BESIDE IT.
+//
+// Raised in review 58012: PendingReplacementPolicy governed the classifier while the emission named
+// ConcurrencyMappingQueueNotMax directly, so the two could disagree and only the classifier would
+// move. concurrency_of_policy closes that, and these three arms are what make the closure executed
+// rather than asserted -- the second is the discriminating red, because under the old literal it
+// was UNWRITABLE: no policy value could change the emitted constructor at all.
+fn queue_regime_name(spec: ConcurrencySpec) -> String {
+  match spec {
+    ConcurrencyScalar { group: _ } => "scalar"
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: _ } => "queue-max"
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => "queue-not-max"
+  }
+}
+
+fn retaining_policy() -> WitnessFloorConcurrencyPolicy {
+  WitnessFloorConcurrencyPolicy {
+    pending: RetainPendingQueue,
+    running: witness_floor_running_supersession_policy
+  }
+}
+
+// A RETAINING POLICY THAT ALSO SUPERSEDES. The fixture above varies only the pending axis, so it
+// carries the live NeverSupersedeRunning into the queue-max vocabulary -- where the false arm is
+// what a fold that DROPPED policy.running would render too. This one varies the running axis
+// across the same crossing, so the pair below is what makes the loss authorable.
+fn retaining_superseding_policy() -> WitnessFloorConcurrencyPolicy {
+  WitnessFloorConcurrencyPolicy {
+    pending: RetainPendingQueue,
+    running: SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
+test fn w_the_live_policy_emits_the_replacing_queue_regime() -> Bool {
+  queue_regime_name(spec: concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")) == "queue-not-max"
+}
+
+test fn w_a_retaining_policy_emits_the_queue_max_regime() -> Bool {
+  queue_regime_name(spec: concurrency_of_policy(policy: retaining_policy(), group: "g")) == "queue-max"
+}
+
+// AND THE RUNNING AXIS SURVIVES THE CROSSING. GitHub gives queue:max its own cancel-in-progress
+// vocabulary, so a fold that dropped the running policy there would be silently lossy while both
+// regime witnesses above stayed green. The two queue-max arms are the discrimination: the live
+// NeverSupersedeRunning must render the false constructor and a SupersedeRunningForEvent must
+// render the expression one, so replacing queue_max_cancel_of_policy with a constant goes red
+// whichever constant is chosen. Asking only the live policy there would have been green by
+// construction -- the decoration DESIGN 4b names.
+test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
+  let live = concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")
+  let retaining = concurrency_of_policy(policy: retaining_policy(), group: "g")
+  let live_holds = match live {
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: c, explicit_single: _ } =>
+      match c {
+        Present { value: v } =>
+          match v {
+            CancelInProgressBool { value: b } => b == false
+            CancelInProgressExpression { expression: _ } => false
+          }
+        none => false
+      }
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: _ } => false
+    ConcurrencyScalar { group: _ } => false
+  }
+  let retaining_holds = match retaining {
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: c } =>
+      match c {
+        Present { value: v } =>
+          match v {
+            QueueMaxCancelInProgressFalse => true
+            QueueMaxCancelInProgressExpression { expression: _ } => false
+          }
+        none => false
+      }
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => false
+    ConcurrencyScalar { group: _ } => false
+  }
+  let superseding = concurrency_of_policy(policy: retaining_superseding_policy(), group: "g")
+  let superseding_holds = match superseding {
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: c } =>
+      match c {
+        Present { value: v } =>
+          match v {
+            QueueMaxCancelInProgressFalse => false
+            QueueMaxCancelInProgressExpression { expression: e } =>
+              e == "${{ github.event_name == 'pull_request' }}"
+          }
+        none => false
+      }
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => false
+    ConcurrencyScalar { group: _ } => false
+  }
+  live_holds && retaining_holds && superseding_holds
 }

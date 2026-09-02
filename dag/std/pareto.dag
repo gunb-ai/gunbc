@@ -4,29 +4,61 @@ import std.types { Int, List, NonEmptyStr }
 import std.logic { Bool }
 import std.algebra { Ordering }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.interval { OrderedClosedInterval, interval_low, interval_high }
 
-type DominanceVerdict = Dominates | Dominated | Equivalent | Incomparable
+// EVIDENCE IS A REGION, AND A POINT IS THE DEGENERATE ONE. A reading used to be a single Int, which
+// made every axis adjudicate: two candidates always compared Better, Same or Worse, whatever the
+// measurement was actually worth. That is a total answer computed from evidence that does not
+// support one, and its failure mode is the quiet kind -- a dominance verdict derived as if the axis
+// were settled, indistinguishable downstream from one that was.
+//
+// So the two states this vocabulary could not previously tell apart are now separate. INCOMPARABLE
+// means the evidence DECIDED a trade-off: better here, worse there, proven. UNDECIDED means the
+// evidence is too coarse to say which way this axis goes at all. They have opposite remedies --
+// accept the trade-off and choose on other grounds, versus go and measure more sharply -- and
+// collapsing them into one word made the second look like the first.
+type DominanceVerdict
+  = Dominates
+  | Dominated
+  | Equivalent
+  | Incomparable
+  | DominanceUndecided
 
 type AxisGoal = HigherIsBetter | LowerIsBetter
 
-type AxisComparison = Better | Same | Worse
+type AxisComparison = Better | Same | Worse | UndecidedOnEvidence
 
 fn compare_int(a: Int, b: Int) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
 }
 
-fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
+// ORIENTATION IS SHARP AND STAYS SHARP. Turning a raw value order into a better/worse order is a
+// total operation on a total relation -- it needs no evidence vocabulary, and a caller comparing
+// exact quantities should not have to acquire one. So orientation answers in `Ordering`, the
+// universal sharp relation, and AxisComparison is built ON it rather than instead of it.
+//
+// This exists because the alternative was measured and rejected: when AxisComparison widened to
+// carry UndecidedOnEvidence, every sharp consumer matching on it inherited an arm its inputs cannot
+// construct. product.fabric.contention is the live case -- its comparator comes from a total
+// Ordering over exact rates -- and giving it an unreachable "evidence could not decide" arm would
+// have been an unreachable state modeled ahead of any carrier that can produce it, which that
+// module's own annotation already refuses to do for exactly this reason.
+fn oriented_ordering(goal: AxisGoal, value_order: Ordering) -> Ordering {
   match goal {
-    HigherIsBetter => match value_order {
-      Greater => Better
-      Equal => Same
-      Less => Worse
-    }
+    HigherIsBetter => value_order
     LowerIsBetter => match value_order {
-      Greater => Worse
-      Equal => Same
-      Less => Better
+      Greater => Less
+      Equal => Equal
+      Less => Greater
     }
+  }
+}
+
+fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
+  match oriented_ordering(goal: goal, value_order: value_order) {
+    Greater => Better
+    Equal => Same
+    Less => Worse
   }
 }
 
@@ -34,21 +66,84 @@ fn axis_comparison_int(goal: AxisGoal, a: Int, b: Int) -> AxisComparison {
   axis_comparison(goal: goal, value_order: compare_int(a: a, b: b))
 }
 
-type DominanceTally { saw_better: Bool, saw_worse: Bool }
+// SEPARATION IS THE ONLY THING THAT DECIDES AN AXIS. Two regions settle their order exactly when
+// they do not touch: every value one could take beats every value the other could take. Anything
+// else -- overlap, containment, a shared endpoint -- leaves at least one pair of true values that
+// would order the other way, so the axis is undecided ON THIS EVIDENCE rather than equal.
+//
+// A SHARED BOUNDARY IS NOT SEPARATION. [10,20] against [20,30] admits both true values being
+// exactly 20, so the strict comparison is the right one and the touching case falls through to
+// undecided.
+//
+// IDENTICAL WIDE INTERVALS ARE NOT `Same`, and this is the case most easily got wrong. Two readings
+// of [10,20] say both true values lie in one region; they do not say the true values are equal. Only
+// the DEGENERATE interval carries that claim, because [x,x] admits exactly one value. Answering
+// `Same` for equal wide regions would manufacture an equality the measurement never established.
+fn intervals_are_equal_points(a: OrderedClosedInterval<Int>, b: OrderedClosedInterval<Int>) -> Bool {
+  interval_low(interval: a) == interval_high(interval: a)
+    && interval_low(interval: b) == interval_high(interval: b)
+    && interval_low(interval: a) == interval_low(interval: b)
+}
 
-fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
-  match cmp {
-    Better => DominanceTally { saw_better: true, saw_worse: acc.saw_worse }
-    Worse => DominanceTally { saw_better: acc.saw_better, saw_worse: true }
-    Same => acc
+fn axis_comparison_interval(
+  goal: AxisGoal,
+  a: OrderedClosedInterval<Int>,
+  b: OrderedClosedInterval<Int>,
+) -> AxisComparison {
+  if intervals_are_equal_points(a: a, b: b) {
+    Same
+  } else {
+    if interval_high(interval: a) < interval_low(interval: b) {
+      axis_comparison(goal: goal, value_order: Less)
+    } else {
+      if interval_high(interval: b) < interval_low(interval: a) {
+        axis_comparison(goal: goal, value_order: Greater)
+      } else {
+        UndecidedOnEvidence
+      }
+    }
   }
 }
 
+// The tally carries WHETHER an axis was undecided, not WHICH. Naming the axes is a located
+// diagnostic and belongs where axis identities are in scope -- the pair standing below, which folds
+// over SelectionAxis. This layer is reached by callers holding bare comparisons with no identities
+// at all (std.cache_interface compares exact reach counts), and giving the verdict a payload they
+// cannot supply would force an empty list that reads as "undecided, naming nothing".
+type DominanceTally { saw_better: Bool, saw_worse: Bool, saw_undecided: Bool }
+
+fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
+  match cmp {
+    Better => DominanceTally { saw_better: true, saw_worse: acc.saw_worse, saw_undecided: acc.saw_undecided }
+    Worse => DominanceTally { saw_better: acc.saw_better, saw_worse: true, saw_undecided: acc.saw_undecided }
+    Same => acc
+    UndecidedOnEvidence => DominanceTally { saw_better: acc.saw_better, saw_worse: acc.saw_worse, saw_undecided: true }
+  }
+}
+
+// A PROVEN TRADE-OFF OUTRANKS UNCERTAINTY ELSEWHERE, and this precedence is the load-bearing law of
+// the new tally. Once one axis is known better and another known worse, the pair IS incomparable:
+// no amount of sharpening a third axis can un-prove either of those two facts, so reporting
+// "undecided" there would understate what the evidence already established and send someone to
+// measure a question that is already answered.
+//
+// Everywhere else uncertainty wins, because an undecided axis could still fall either way and so
+// could still change the conclusion. A one-sided advantage with an undecided axis beside it is NOT
+// dominance -- the undecided axis might turn out worse -- and no observed difference at all with an
+// undecided axis beside it is NOT equivalence, for the same reason in both directions.
 fn tally_verdict(t: DominanceTally) -> DominanceVerdict {
-  if t.saw_better {
-    if t.saw_worse { Incomparable } else { Dominates }
+  if t.saw_better && t.saw_worse {
+    Incomparable
   } else {
-    if t.saw_worse { Dominated } else { Equivalent }
+    if t.saw_undecided {
+      DominanceUndecided
+    } else {
+      if t.saw_better {
+        Dominates
+      } else {
+        if t.saw_worse { Dominated } else { Equivalent }
+      }
+    }
   }
 }
 
@@ -56,7 +151,7 @@ fn dominance_of_comparisons(comparisons: List<AxisComparison>) -> DominanceVerdi
   tally_verdict(
     t: fold(
       comparisons,
-      init: DominanceTally { saw_better: false, saw_worse: false },
+      init: DominanceTally { saw_better: false, saw_worse: false, saw_undecided: false },
       f: (acc, c) => tally_step(acc: acc, cmp: c)
     )
   )
@@ -64,6 +159,7 @@ fn dominance_of_comparisons(comparisons: List<AxisComparison>) -> DominanceVerdi
 
 fn verdict_dominates(v: DominanceVerdict) -> Bool {
   match v {
+    DominanceUndecided => false
     Dominates => true
     Dominated => false
     Equivalent => false
@@ -73,6 +169,7 @@ fn verdict_dominates(v: DominanceVerdict) -> Bool {
 
 fn verdict_is_dominated(v: DominanceVerdict) -> Bool {
   match v {
+    DominanceUndecided => false
     Dominated => true
     Dominates => false
     Equivalent => false
@@ -82,6 +179,7 @@ fn verdict_is_dominated(v: DominanceVerdict) -> Bool {
 
 fn verdict_is_equivalent(v: DominanceVerdict) -> Bool {
   match v {
+    DominanceUndecided => false
     Equivalent => true
     Dominates => false
     Dominated => false
@@ -91,6 +189,7 @@ fn verdict_is_equivalent(v: DominanceVerdict) -> Bool {
 
 fn verdict_is_incomparable(v: DominanceVerdict) -> Bool {
   match v {
+    DominanceUndecided => false
     Incomparable => true
     Dominates => false
     Dominated => false
@@ -102,8 +201,35 @@ fn any_dominates(verdicts: List<DominanceVerdict>) -> Bool {
   fold(verdicts, init: false, f: (acc, v) => acc || verdict_dominates(v: v))
 }
 
-fn on_pareto_front(verdicts: List<DominanceVerdict>) -> Bool {
-  !any_dominates(verdicts: verdicts)
+fn any_undecided(verdicts: List<DominanceVerdict>) -> Bool {
+  fold(verdicts, init: false, f: (acc, v) => acc || match v {
+    DominanceUndecided => true
+    Dominates => false
+    Dominated => false
+    Equivalent => false
+    Incomparable => false
+  })
+}
+
+// on_pareto_front WAS HERE AND IS DELETED, for the reason pair_dominates was deleted above and now
+// applies one layer out. It answered `!any_dominates`, which was total and correct while every
+// verdict was decided -- but the moment a verdict can be DominanceUndecided, "nobody was shown to
+// dominate me" stops meaning "I am on the front". A pool with one undecided comparison and no
+// proven dominator answered `true`: on the frontier, asserted from evidence that established no
+// such thing. That is the fail-open this change exists to close, so the Boolean is replaced by the
+// three-state rather than patched, and a caller that wants a yes/no must first say what it intends
+// to do about pending evidence.
+type FrontStanding = OnFront | OffFront | FrontPendingEvidence
+
+// Same precedence as the tally: a PROVEN dominator outranks uncertainty elsewhere. Being dominated
+// is established by the dominating comparison alone, and no undecided axis in some other pairing
+// can un-establish it.
+fn front_standing(verdicts: List<DominanceVerdict>) -> FrontStanding {
+  if any_dominates(verdicts: verdicts) {
+    OffFront
+  } else {
+    if any_undecided(verdicts: verdicts) { FrontPendingEvidence } else { OnFront }
+  }
 }
 
 // PARETO SELECTION OVER PARTIALLY OBSERVED EVIDENCE - the entry/field layer over the
@@ -134,9 +260,12 @@ type SelectionAxis {
   goal: AxisGoal
 }
 
+// The reading is the region the evidence supports. A sharp measurement is degenerate_interval(x)
+// and carries the claim that the true value IS x; a coarse one carries a width and says so. There
+// is no second sharp representation beside this one, because a point is already this one.
 type AxisReading {
   axis: DeclarationRef
-  value_micro: Int
+  interval_micro: OrderedClosedInterval<Int>
 }
 
 // One candidate as the spine sees it: a structural identity, a display label, its
@@ -156,20 +285,44 @@ type Domination {
   winning_axes: List<DeclarationRef>
 }
 
+// IncomparablePendingEvidence IS SPLIT IN TWO HERE, and the split matters more than the rename that
+// prompted it. The old arm already carried two states -- a subject with declared missing inputs, and
+// a comparison that REFUSED because an entry claimed complete inputs while lacking a reading -- and
+// folding overlapping readings in beside them would have made three. They are not one answer:
+//
+//   NotComputable  - the SUBJECT honestly declares an input it does not have. Nothing is broken:
+//                    the projector said what is absent instead of substituting a zero. The remedy
+//                    is to supply the input, and until then no standing is derivable.
+//   PendingEvidence - a standing WAS derived and it is "not established either way". Every reading
+//                    is present and consistent; they are simply too coarse to separate. The remedy
+//                    is to measure more sharply, and the answer may legitimately stay this way.
+//
+// A THIRD STATE WAS HIDING IN THE OLD ARM AND IS ROUTED OUT OF IT ENTIRELY. An entry that declares
+// COMPLETE inputs while lacking a funded-axis reading is not missing evidence -- it is evidence
+// contradicting its own declaration, a projector defect. That belongs with the other structural
+// contradictions in SelectionRefused, which already means "the selection inputs contradict their
+// own contract", and NOT beside an honest declaration of absence. Keeping it in NotComputable made
+// a defect and a truthful report share one arm, so no consumer could act differently on them.
+//
+// The old name also said "Incomparable" about a standing that is precisely NOT a comparison result,
+// which is the fork the rename closes: Incomparable now means only what the verdict means by it, a
+// trade-off the evidence proved.
 type ParetoStanding
   = ProvisionallyNonDominated { sensitivities: List<NonEmptyStr> }
   | DominatedBy { dominators: List<Domination> }
-  | IncomparablePendingEvidence { missing: NonEmptyStr }
+  | NotComputable { missing: NonEmptyStr }
+  | PendingEvidence { undecided: NonEmptyStr }
   | SelectionRefused { cause: NonEmptyStr }
 
 type ReadingLookup
-  = ReadingFound { value_micro: Int }
+  = ReadingFound { interval_micro: OrderedClosedInterval<Int> }
   | ReadingAbsent { absent_axis: DeclarationRef }
   | ReadingDuplicated { duplicated_axis: DeclarationRef }
 
 type PairStanding
   = PairDominates { winning_axes: List<DeclarationRef> }
   | PairNoDominance
+  | PairPendingEvidence { undecided_axes: List<DeclarationRef> }
   | PairRefused { cause: NonEmptyStr }
 
 fn reading_matches(e: ParetoEntry, wanted: DeclarationRef) -> Int {
@@ -185,10 +338,10 @@ fn reading_for(e: ParetoEntry, wanted: DeclarationRef) -> ReadingLookup {
   } else {
     fold(e.readings, init: ReadingAbsent { absent_axis: wanted }, f: fn(acc, r) {
       match acc {
-        ReadingFound { value_micro } => acc,
+        ReadingFound { interval_micro } => acc,
         ReadingDuplicated { duplicated_axis } => acc,
         ReadingAbsent { absent_axis } =>
-          if declaration_ref_eq(a: r.axis, b: absent_axis) { ReadingFound { value_micro: r.value_micro } } else { acc },
+          if declaration_ref_eq(a: r.axis, b: absent_axis) { ReadingFound { interval_micro: r.interval_micro } } else { acc },
       }
     })
   }
@@ -201,6 +354,7 @@ type PairAccum {
   refusal_causes: List<NonEmptyStr>
   a_worse_somewhere: Bool
   winning_axes: List<DeclarationRef>
+  undecided_axes: List<DeclarationRef>
 }
 
 data no_names: List<NonEmptyStr> = []
@@ -216,30 +370,44 @@ fn accum_refusal(acc: PairAccum, axis: SelectionAxis, defect: NonEmptyStr) -> Pa
     refusal_causes: concat(acc.refusal_causes, one_name(name: join(["axis ", declaration_ref_display_key(ref: axis.identity), " ", defect], ""))),
     a_worse_somewhere: acc.a_worse_somewhere,
     winning_axes: acc.winning_axes,
+    undecided_axes: acc.undecided_axes,
   }
 }
 
-fn accum_both_read(acc: PairAccum, axis: SelectionAxis, a_value: Int, b_value: Int) -> PairAccum {
-  match axis_comparison_int(goal: axis.goal, a: a_value, b: b_value) {
+fn accum_both_read(
+  acc: PairAccum,
+  axis: SelectionAxis,
+  a_interval: OrderedClosedInterval<Int>,
+  b_interval: OrderedClosedInterval<Int>,
+) -> PairAccum {
+  match axis_comparison_interval(goal: axis.goal, a: a_interval, b: b_interval) {
     Better => PairAccum {
       refusal_causes: acc.refusal_causes,
       a_worse_somewhere: acc.a_worse_somewhere,
       winning_axes: concat(acc.winning_axes, one_axis_id(id: axis.identity)),
+      undecided_axes: acc.undecided_axes,
     },
     Worse => PairAccum {
       refusal_causes: acc.refusal_causes,
       a_worse_somewhere: true,
       winning_axes: acc.winning_axes,
+      undecided_axes: acc.undecided_axes,
     },
     Same => acc,
+    UndecidedOnEvidence => PairAccum {
+      refusal_causes: acc.refusal_causes,
+      a_worse_somewhere: acc.a_worse_somewhere,
+      winning_axes: acc.winning_axes,
+      undecided_axes: concat(acc.undecided_axes, one_axis_id(id: axis.identity)),
+    },
   }
 }
 
-fn accum_with_a(acc: PairAccum, axis: SelectionAxis, a_value: Int, b_read: ReadingLookup) -> PairAccum {
+fn accum_with_a(acc: PairAccum, axis: SelectionAxis, a_interval: OrderedClosedInterval<Int>, b_read: ReadingLookup) -> PairAccum {
   match b_read {
     ReadingAbsent { absent_axis } => accum_refusal(acc: acc, axis: axis, defect: "has no reading on one side"),
     ReadingDuplicated { duplicated_axis } => accum_refusal(acc: acc, axis: axis, defect: "has duplicate readings on one side"),
-    ReadingFound { value_micro } => accum_both_read(acc: acc, axis: axis, a_value: a_value, b_value: value_micro),
+    ReadingFound { interval_micro } => accum_both_read(acc: acc, axis: axis, a_interval: a_interval, b_interval: interval_micro),
   }
 }
 
@@ -248,10 +416,18 @@ fn axis_pair_step(acc: PairAccum, axis: SelectionAxis, a: ParetoEntry, b: Pareto
   match a_read {
     ReadingAbsent { absent_axis } => accum_refusal(acc: acc, axis: axis, defect: "has no reading on one side"),
     ReadingDuplicated { duplicated_axis } => accum_refusal(acc: acc, axis: axis, defect: "has duplicate readings on one side"),
-    ReadingFound { value_micro } => accum_with_a(acc: acc, axis: axis, a_value: value_micro, b_read: reading_for(e: b, wanted: axis.identity)),
+    ReadingFound { interval_micro } => accum_with_a(acc: acc, axis: axis, a_interval: interval_micro, b_read: reading_for(e: b, wanted: axis.identity)),
   }
 }
 
+// THE DIRECTIONAL PATH IS NOT THE SYMMETRIC ONE, and the difference is deliberate. This asks only
+// "does a dominate b", so a challenger KNOWN WORSE on any axis has already lost the question --
+// sharpening an undecided axis cannot make it dominate, because dominance requires no worse axis at
+// all. That stays ordinary PairNoDominance rather than being promoted to pending: reporting it as
+// pending would send someone to measure a question whose answer cannot change the outcome.
+//
+// Only a challenger with NO known worse axis and at least one undecided axis is genuinely pending:
+// there, sharpening the undecided axis really can decide it either way.
 fn pair_from_accum(folded: PairAccum) -> PairStanding {
   if count(folded.refusal_causes) > 0 {
     PairRefused { cause: join(folded.refusal_causes, " ; ") }
@@ -259,13 +435,17 @@ fn pair_from_accum(folded: PairAccum) -> PairStanding {
     if folded.a_worse_somewhere {
       PairNoDominance
     } else {
-      if count(folded.winning_axes) > 0 { PairDominates { winning_axes: folded.winning_axes } } else { PairNoDominance }
+      if count(folded.undecided_axes) > 0 {
+        PairPendingEvidence { undecided_axes: folded.undecided_axes }
+      } else {
+        if count(folded.winning_axes) > 0 { PairDominates { winning_axes: folded.winning_axes } } else { PairNoDominance }
+      }
     }
   }
 }
 
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
-  pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids }, f: fn(acc, axis) {
+  pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
     axis_pair_step(acc: acc, axis: axis, a: a, b: b)
   }))
 }
@@ -300,6 +480,46 @@ fn field_has_duplicate_identity(field: List<ParetoEntry>) -> Bool {
 
 // A challenger participates only when it is a DIFFERENT candidate (by identity, never by
 // label) that declares complete inputs.
+// A CONTRADICTION IS A PROPERTY OF ONE ENTRY, NOT OF A PAIRING, so it is found by scanning the
+// field rather than by whichever comparison happened to trip over it. Deriving it pairwise made the
+// diagnostic name the innocent side as often as the guilty one, and made a subject that honestly
+// declares a missing input generate refusals ABOUT ITSELF the moment anything was compared to it.
+// THE EXEMPTION IS PER DEFECT CLASS, NOT PER ENTRY, and getting that wrong was a fail-open. An
+// entry declaring missing inputs has explained why a reading is ABSENT -- that is the truth it told,
+// and holding an absence against it would punish the honest declaration. It has explained nothing
+// about a DUPLICATE. Two readings on one axis identity is malformed evidence whatever else the entry
+// declares: the spine would have to pick one, which is the first-one-wins accident the duplicate
+// rule exists to refuse. Exempting the whole entry let a duplicate ride in behind an unrelated
+// declared gap and surface as NotComputable -- a projector defect wearing the report of an honest
+// one, which is exactly the conflation this split was made to end.
+fn entry_contradicts_its_declaration(e: ParetoEntry, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
+  let declares_its_gaps = count(e.missing_inputs) > 0
+  fold(axes, init: no_names, f: fn(acc, ax) {
+    match reading_for(e: e, wanted: ax.identity) {
+      ReadingFound { interval_micro } => acc
+      ReadingAbsent { absent_axis } =>
+        if declares_its_gaps {
+          acc
+        } else {
+          concat(acc, one_name(name: join([
+            declaration_ref_display_key(ref: e.identity),
+            " declares complete inputs but has no reading on funded axis ",
+            declaration_ref_display_key(ref: absent_axis)], "")))
+        }
+      ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
+        declaration_ref_display_key(ref: e.identity),
+        " has duplicate readings on funded axis ",
+        declaration_ref_display_key(ref: duplicated_axis)], "")))
+    }
+  })
+}
+
+fn field_contradictions(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
+  fold(field, init: no_names, f: fn(acc, e) {
+    concat(acc, entry_contradicts_its_declaration(e: e, axes: axes))
+  })
+}
+
 fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
   !declaration_ref_eq(a: other.identity, b: subject.identity) && count(other.missing_inputs) == 0
 }
@@ -309,6 +529,7 @@ fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
 type FieldAccum {
   refusal_causes: List<NonEmptyStr>
   dominators: List<Domination>
+  pending_causes: List<NonEmptyStr>
 }
 
 fn one_domination(d: Domination) -> List<Domination> { [d] }
@@ -319,28 +540,77 @@ fn field_step(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis
       PairDominates { winning_axes } => FieldAccum {
         refusal_causes: acc.refusal_causes,
         dominators: concat(acc.dominators, one_domination(d: Domination { candidate: other.identity, winning_axes: winning_axes })),
+        pending_causes: acc.pending_causes,
       },
       PairNoDominance => acc,
+      PairPendingEvidence { undecided_axes } => FieldAccum {
+        refusal_causes: acc.refusal_causes,
+        dominators: acc.dominators,
+        pending_causes: concat(acc.pending_causes, one_name(name: join([
+          "challenger ", declaration_ref_display_key(ref: other.identity),
+          " is not shown either way on ",
+          join(fold(undecided_axes, init: no_names, f: fn(a2, ax) { concat(a2, one_name(name: declaration_ref_display_key(ref: ax))) }), ", "),
+          " - the readings overlap, so whether it dominates is undecided on this evidence"], ""))),
+      },
       PairRefused { cause } => FieldAccum {
         refusal_causes: concat(acc.refusal_causes, one_name(name: join(["comparison against ", declaration_ref_display_key(ref: other.identity), " refused - ", cause, " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed"], ""))),
         dominators: acc.dominators,
+        pending_causes: acc.pending_causes,
       },
     }
   } else { acc }
 }
 
+// THE FULL FIELD PRECEDENCE, and the order is the whole safety argument:
+//
+//   malformed evidence  >  subject not computable  >  proven domination
+//                       >  pending interval evidence  >  provisionally non-dominated
+//
+// Malformed evidence stays FIRST and outranks even a proven domination, which is the pre-existing
+// fail-closed rule and is deliberately not weakened here: if the field contradicts its own
+// declaration, the domination was computed from evidence that cannot be trusted to mean what it
+// says, so it is not a result to report. "Proven domination outranks pending" is a law about the
+// NEW interval-pending state only, and applying it one step higher would have quietly demoted the
+// malformed-evidence wall.
+//
+// Below that it is the tally law at field grain: a proven dominator settles the standing, because
+// being dominated is established by that one comparison and no undecided pairing elsewhere can
+// un-establish it. Only when nothing dominates does pending evidence decide -- and there it MUST,
+// because "no proven dominator" is not "on the frontier" when a challenger's comparison never
+// resolved.
 fn standing_from_accum(folded: FieldAccum, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
   if count(folded.refusal_causes) > 0 {
-    IncomparablePendingEvidence { missing: join(folded.refusal_causes, " ; ") }
+    SelectionRefused { cause: join(folded.refusal_causes, " ; ") }
   } else {
     if count(folded.dominators) > 0 {
       DominatedBy { dominators: folded.dominators }
     } else {
-      ProvisionallyNonDominated { sensitivities: sensitivities }
+      if count(folded.pending_causes) > 0 {
+        PendingEvidence { undecided: join(folded.pending_causes, " ; ") }
+      } else {
+        ProvisionallyNonDominated { sensitivities: sensitivities }
+      }
     }
   }
 }
 
+// THE SUBJECT IS SCANNED EXACTLY ONCE, WHETHER OR NOT IT SITS IN THE FIELD. Callers normally pass
+// a field that already contains the subject, so appending it unconditionally scanned it twice and
+// emitted its contradiction twice in one cause string -- a diagnostic that overstates how many
+// things are wrong, which is its own small dishonesty in a message a human reads to decide what to
+// repair. Membership is decided on IDENTITY through the same counter the duplicate-identity refusal
+// uses, not by position or by trusting the caller's convention.
+fn scanned_population(subject: ParetoEntry, field: List<ParetoEntry>) -> List<ParetoEntry> {
+  if count_entry_identity(field: field, id: subject.identity) > 0 {
+    field
+  } else {
+    concat(field, [subject])
+  }
+}
+
+// The contradiction scan runs BEFORE the subject's own missing-input check, because a field that
+// lies about its completeness invalidates every standing derived in it -- including the honest
+// report that this particular subject is short an input.
 fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<SelectionAxis>, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
   if axes_have_duplicate_identity(axes: axes) {
     SelectionRefused { cause: "two selection axes share one identity - a duplicate axis would resolve first-one-wins, so the selection refuses" }
@@ -348,15 +618,20 @@ fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<Sel
     if field_has_duplicate_identity(field: field) {
       SelectionRefused { cause: "two field entries share one candidate identity - a duplicate would be skipped as self-comparison, so the selection refuses" }
     } else {
+      let contradictions = field_contradictions(field: scanned_population(subject: subject, field: field), axes: axes)
+      if count(contradictions) > 0 {
+        SelectionRefused { cause: join(contradictions, " ; ") }
+      } else {
       if count(subject.missing_inputs) > 0 {
-        IncomparablePendingEvidence { missing: join(subject.missing_inputs, " ; ") }
+        NotComputable { missing: join(subject.missing_inputs, " ; ") }
       } else {
         standing_from_accum(
-          folded: fold(field, init: FieldAccum { refusal_causes: no_names, dominators: no_dominators }, f: fn(acc, other) {
+          folded: fold(field, init: FieldAccum { refusal_causes: no_names, dominators: no_dominators, pending_causes: no_names }, f: fn(acc, other) {
             field_step(subject: subject, other: other, axes: axes, acc: acc)
           }),
           sensitivities: sensitivities,
         )
+      }
       }
     }
   }
@@ -370,7 +645,8 @@ fn pareto_label(s: ParetoStanding) -> NonEmptyStr {
   match s {
     ProvisionallyNonDominated { sensitivities } => "on the frontier",
     DominatedBy { dominators } => join(["dominated by ", join(dominator_names(dominators: dominators), ", ")], ""),
-    IncomparablePendingEvidence { missing } => "not computable",
+    NotComputable { missing } => "not computable",
+    PendingEvidence { undecided } => "pending evidence",
     SelectionRefused { cause } => "selection refused",
   }
 }

@@ -2,10 +2,10 @@ module gunbc.fabric_control_plane_charge
 
 import std.types { String, NonEmptyStr, Bool, Int }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 
-data fabric_control_plane_charge_authority: Disposition = SingleAuthority {
+data fabric_control_plane_charge_authority: Disposition = Terminal {
   reason: "Single authority for what a statically pinned fabric control-plane resident COSTS on a host. It owns the placement row, the resource envelope, and the per-host claim that gunbc.fleet_host_budget charges. It does not own the control plane's lifecycle, its supervision, or its liveness promise -- those are separate facts and belong with whatever eventually deploys it. It is deliberately HOST-PARAMETRIC: it answers what the resident costs on host H rather than what it costs on srv1, because a hardcoded host is how a placement gets decided by which machine was named first."
 }
 

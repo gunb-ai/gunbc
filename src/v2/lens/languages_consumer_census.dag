@@ -1,5 +1,21 @@
 module v2.lens.languages_consumer_census
 
+// THE SCANNED AUTHORITY IS AN IMPORT, NOT AN AMBIENT ACCIDENT.
+//
+// The `languages_consumer_census_*` builtins below scan the PREPARED INVENTORY -- the resolved
+// closure of whatever entry invoked them -- and they read `dag/std/languages.dag` specifically:
+// it is the authority whose `data` declarations the census counts consumers of, and the host
+// refuses outright when the inventory does not carry it.
+//
+// Nothing here used to say so. The file arrived in the closure because SOME ambiguous bare
+// reference elsewhere happened to be ranked onto `std.languages` by the proximity heuristic that
+// used to resolve ambiguity, so the census's own input was a side effect of an unrelated
+// resolution accident. When that ranking was replaced by a refusal, the file stopped arriving and
+// the census panicked -- a receipt for DESIGN's reachability-read-as-occupancy class, and the
+// reason this import is a correctness fix rather than tidying: the scan reads this module, so
+// this module declares it.
+import std.languages { NamingCase }
+
 // Class-5 carve-out: these baselines are point-in-time RATCHET CEILINGS over live host scans (languages_consumer_census_*_count builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline. Authority split: baseline = ceiling snapshot; live scan = independent representation checked by ratchet_holds.
 data languages_consumer_census_data_decl_baseline: Int = 73
 data languages_consumer_census_per_language_row_baseline: Int = 66

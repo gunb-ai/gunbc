@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
@@ -42,7 +43,9 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
+  CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
+  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
 }
@@ -210,24 +213,127 @@ data witness_floor_workflow_name: String = "witnesses"
 // under `target/` is worth identifying before this is widened further.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
-// SUPERSESSION IS AVAILABLE ONLY WHERE THIS EXPRESSION IS TRUE, AND THAT FACT NOW HAS ONE HOME.
+// SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
-// This expression decides, per event, whether GitHub cancels an in-flight run when a newer one
-// joins the group. It was previously an inline literal inside the workflow value below, unreachable
-// by name: any consumer reasoning about whether a cancellation COULD have been a lawful
-// supersession had to restate `pull_request` in its own module -- the DESIGN section 3 nicknaming
-// violation, with the specific decay that nothing relates a policy literal in a classifier to a
-// string in an emitted workflow, so the two drift silently. Hoisting it changes no emitted byte.
+// This value decides whether GitHub cancels an in-flight run when a newer one joins the group. It
+// was `${{ github.event_name == 'pull_request' }}` -- superseding pull-request runs to save fleet
+// occupancy. It is now false for every event, and that is a DECLARED, TEMPORARY REGRESSION in
+// capacity efficiency taken to stop a capacity LEAK, which is the larger loss.
 //
-// The consumer is gunbc.run_disposition, which derives supersession AVAILABILITY from this row
-// rather than hardcoding the event name it mentions.
-data witness_floor_cancel_in_progress_expression: String = "${{ github.event_name == 'pull_request' }}"
+// WHY, MEASURED RATHER THAN ARGUED. The fleet's builds are bounded by a host-persistent GNU
+// jobserver whose permits are returned COOPERATIVELY. A cancelled run SIGKILLs cargo mid-build, so
+// every borrowed permit that process held is lost for the lifetime of the daemon -- there is no
+// action a process can take after SIGKILL. The pool therefore decays monotonically toward zero
+// under normal supersession, and a host at zero permits still accepts jobs: they simply wait.
+//
+// srv1 reached 0 of 128 permits with 86.8% CPU idle and 21 runner jobs resident. Its
+// required-witnesses-build median was 26.1 minutes over 11 runs, range 24.8-27.3. Its daemon
+// self-restarted on RuntimeMaxSec=86400 at 2026-08-30T22:35:54Z with no human action and reseeded
+// 128 permits; the next two builds took 11.0 and 12.2 minutes, and the median over the following
+// six was 12.5. The band was registered BEFORE the restart, which is what makes this an
+// intervention rather than a correlation -- the earlier host-contention account had already failed
+// against the timing, since durations were flat across fleet concurrency 0/30/41/14. srv3, never
+// reseeded, still medians 22.8 minutes against srv4's 11.8.
+//
+// THE COST OF THIS ROW IS N CONCURRENT RUNS PER PULL REQUEST where one used to survive. That is
+// the same trade the concurrency group above already accepts for main, for the same reason: stale
+// work completing is expensive, and capacity silently disappearing is not recoverable. Cancelling
+// is only cheaper than not cancelling while the permits come back.
+//
+// DISSOLVE-ON, and it is the CAPABILITY rather than any artifact: no client of the required floor
+// holds a host-persistent cooperative permit -- either the ctrl host FIFO is deleted and compile
+// parallelism is invocation-local to cargo, or the pool is server-owned with admission that
+// survives client death. At that point a SIGKILL costs only the work in flight, supersession stops
+// destroying capacity, and this row goes back to an expression. Re-enabling it earlier restores
+// the leak; re-enabling it as part of the cutover canary is how the cutover proves itself, because
+// a cancelled build that leaves the next build at full declared capacity IS the acceptance test.
+// THE SUPERSESSION POLICY IS SEMANTIC, AND THE YAML SPELLING IS ITS PROJECTION.
+//
+// `cancel-in-progress` is a SERIALIZED SPELLING of a business decision, and the decision is a
+// workflow fact this repository owns -- DESIGN section 3 puts business policy in the workflow layer
+// and calls modelling it in extdeps a layer inversion. So the policy is declared here as a closed
+// vocabulary and the extdeps spec is DERIVED from it, never the reverse.
+//
+// WHY THIS IS NOT COSMETIC: the classifier used to consult the serialized form by asking whether
+// the expression text CONTAINED the event name. That is not expression evaluation, and it inverts
+// on a perfectly ordinary policy -- `${{ github.event_name != 'pull_request' }}` contains
+// `pull_request` while authorizing exactly the opposite population, so a substring reader would
+// report supersession available for the one event the policy excludes. Reading the semantic arm
+// makes the question decidable by construction instead of by text search.
+type RunningSupersessionPolicy
+  = NeverSupersedeRunning
+  | SupersedeRunningForEvent { event: String }
 
-// The event name the expression above tests, declared beside the expression in the module that
-// owns it so the pair cannot drift apart -- and a witness asserts this name actually occurs within
-// that expression, the only mechanical link available between a GitHub expression string and the
-// event vocabulary it names.
-data witness_floor_cancel_in_progress_event: String = "pull_request"
+// THE QUEUE AXIS IS THE SECOND HALF OF THE SAME FACT, and omitting it left the classifier carrying
+// a hardcoded copy of today's regime. ConcurrencySpec already distinguishes QueueMax from
+// QueueNotMax: under the not-max regime a newly queued run REPLACES the existing pending member,
+// which is what makes a pending cancellation lawful whatever cancel-in-progress says. A classifier
+// that assumes replacement is universally lawful is asserting QueueNotMax without consulting it,
+// and would go on asserting it if this workflow ever moved to the retaining regime.
+type PendingReplacementPolicy
+  = ReplaceExistingPending
+  | RetainPendingQueue
+
+type WitnessFloorConcurrencyPolicy {
+  pending: PendingReplacementPolicy
+  running: RunningSupersessionPolicy
+}
+
+data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
+  pending: ReplaceExistingPending,
+  running: NeverSupersedeRunning
+}
+
+data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running
+
+data witness_floor_pending_replacement_policy: PendingReplacementPolicy = witness_floor_concurrency_policy.pending
+
+fn supersession_event_expression(event: String) -> String {
+  concat(concat("${{ github.event_name == '", event), "' }}")
+}
+
+fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
+  match policy {
+    NeverSupersedeRunning => CancelInProgressBool { value: false }
+    SupersedeRunningForEvent { event: e } =>
+      CancelInProgressExpression { expression: supersession_event_expression(event: e) }
+  }
+}
+
+
+// THE QUEUE AXIS EMITS FROM THE SAME ROW THE CLASSIFIER READS, or the policy is not the authority.
+// Raised in review 58012: the running axis was already derived through cancel_in_progress_of_policy
+// while the emitted mapping named ConcurrencyMappingQueueNotMax as a literal, so flipping the
+// modeled policy to RetainPendingQueue would have moved the classifier and left CI in replacement
+// mode -- one fact with two authorities, which is the thing DESIGN 3 forbids. Both axes now fold
+// out of witness_floor_concurrency_policy, so the emission cannot disagree with the classifier.
+//
+// The QueueMax arm is not a hypothetical: GitHub forces cancel-in-progress into its own
+// CancelInProgressWhenQueueMax vocabulary there, and this fold carries the running policy across
+// that boundary rather than dropping it, so the retaining regime stays expressible without a
+// second edit here.
+fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressWhenQueueMax {
+  match policy {
+    NeverSupersedeRunning => QueueMaxCancelInProgressFalse
+    SupersedeRunningForEvent { event: e } =>
+      QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
+  }
+}
+
+fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -> ConcurrencySpec {
+  let pending = policy.pending
+  match pending {
+    ReplaceExistingPending => ConcurrencyMappingQueueNotMax {
+      group: group,
+      cancel_in_progress: Present { value: cancel_in_progress_of_policy(policy: policy.running) },
+      explicit_single: none
+    }
+    RetainPendingQueue => ConcurrencyMappingQueueMax {
+      group: group,
+      cancel_in_progress: Present { value: queue_max_cancel_of_policy(policy: policy.running) }
+    }
+  }
+}
 
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
@@ -1826,15 +1932,9 @@ data witness_floor_workflow: Workflow = {
     }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
-      group: witness_floor_concurrency_group,
-      cancel_in_progress: Present {
-        value: CancelInProgressExpression {
-          expression: witness_floor_cancel_in_progress_expression
-        }
-      },
-      explicit_single: none
-    }
+    value: concurrency_of_policy(
+      policy: witness_floor_concurrency_policy,
+      group: witness_floor_concurrency_group)
   },
   env: Present {
     value: [
@@ -1842,7 +1942,8 @@ data witness_floor_workflow: Workflow = {
       kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
-      kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path))
+      kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
+      kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
     ]
   },
   permissions: Present {

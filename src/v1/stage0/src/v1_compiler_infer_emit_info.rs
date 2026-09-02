@@ -108,10 +108,17 @@ pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-pub fn collect_type_node_import_surface_names(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeSurfaceOccurrence {
+    pub name: String,
+    pub applied_argument: bool,
+}
+
+pub fn collect_type_node_import_surface_occurrences(
     n: Rc<Node>,
+    applied_argument: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<Rc<TypeSurfaceOccurrence>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
@@ -123,16 +130,23 @@ pub fn collect_type_node_import_surface_names(
         let own = if (((name.clone() != "".to_string()) && (name.clone() != "Dynamic".to_string()))
             && !is_tv.clone())
         {
-            Rc::new(vec![name.clone()])
+            Rc::new(vec![Rc::new(TypeSurfaceOccurrence {
+                name: name.clone(),
+                applied_argument: applied_argument.clone(),
+            })])
         } else {
             Rc::new(vec![])
         };
+        let children_are_applied_arguments = (((name.clone() != "".to_string())
+            && (peeled.connective.clone() == Connective::NoConnective))
+            && ((peeled.children.clone().len() as i64) > 0));
         let child_names = Rc::new({
             let mut __result = Vec::new();
             for ch in peeled.children.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_type_node_import_surface_names(
+                    (*collect_type_node_import_surface_occurrences(
                         crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                        children_are_applied_arguments.clone(),
                         source_indices.clone(),
                     ))
                     .iter()
@@ -143,15 +157,36 @@ pub fn collect_type_node_import_surface_names(
         });
         let inferred_names = match peeled.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                collect_type_node_import_surface_names(rt.clone(), source_indices.clone())
+                collect_type_node_import_surface_occurrences(
+                    rt.clone(),
+                    applied_argument.clone(),
+                    source_indices.clone(),
+                )
             }
             _ => Rc::new(vec![]),
         };
-        dedupe_nonempty_strings(v1_rt::concat(
+        v1_rt::concat(
             own.clone(),
             v1_rt::concat(child_names.clone(), inferred_names.clone()),
-        ))
+        )
     })
+}
+
+pub fn collect_type_node_import_surface_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    dedupe_nonempty_strings(Rc::new({
+        let mut __result = Vec::new();
+        for o in
+            collect_type_node_import_surface_occurrences(n.clone(), false, source_indices.clone())
+                .iter()
+                .cloned()
+        {
+            __result.push(o.name.clone());
+        }
+        __result
+    }))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
