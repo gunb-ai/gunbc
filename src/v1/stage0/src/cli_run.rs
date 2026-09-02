@@ -18310,8 +18310,19 @@ pub fn cli_wire_outcome(class: CliWireClass, function: &str) -> Option<CliWireOu
 /// The `ExitClass` half of the map, shared by the wire path and the driver's plain
 /// `ProcessExit` path so the two cannot disagree about what a verdict means.
 ///
-/// Kept byte-for-byte equivalent to the driver's own `exit_status_for`, including its refusal
-/// of `ExitFailure { code: 0 }` — a variant that claims failure while reporting success.
+/// This IS the driver's `exit_status_for` — `main.rs` delegates to it and holds no match of its
+/// own — so the two paths cannot disagree about what a verdict means, including the refusal of
+/// `ExitFailure { code: 0 }`, a variant that claims failure while reporting success. That is a
+/// property of there being one implementation, not a discipline anyone has to maintain.
+///
+/// THE COMMENT USED TO CLAIM SOMETHING WEAKER AND FALSER: "kept byte-for-byte equivalent",
+/// asserting an equivalence held by care. It was not held. The relocation dropped the
+/// `status: refused — printing the value and exiting 0 would report success for a run whose
+/// outcome is unknown.` sentence from the `NotProcessExit` message, so the doc asserted byte
+/// equivalence against a message that had lost a line — the doc lied, not the code. Found by
+/// review 58567 on gunbc#9864. The sentence is restored rather than the claim weakened, because
+/// it carries the operator-facing reason the refusal exists: an unknown outcome reported as
+/// success is the fabricated plausible output §5 forbids.
 pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<String>) {
     match class {
         ExitClass::Success => (0, None),
@@ -18332,7 +18343,9 @@ pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<S
             Some(format!(
                 "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
                  cause: the host maps a run's verdict to an exit code, and only ProcessExit \
-                 carries one. Wrap the result in ExitSuccess / ExitFailure."
+                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
+                 status: refused — printing the value and exiting 0 would report success for \
+                 a run whose outcome is unknown."
             )),
         ),
     }
