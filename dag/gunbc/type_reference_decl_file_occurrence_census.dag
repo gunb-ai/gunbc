@@ -411,3 +411,43 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
     why_it_is_the_same_defect: "a SIXTH representation of declaration identity in this tree, and the one furthest from a symbol: it is not merely a position standing where a name would do, it is a position and a name FUSED into a value that neither the containment tree nor any roster can read back apart. It is outside the 39 -- no occurrence of the census subject reaches it -- and it is recorded because it dissolves for exactly the same reason the classes above do, so a reader who repairs the identity channel and leaves this one has moved the defect rather than removed it. Not priced and not in scope.",
   },
 ]
+
+// DISCHARGE RECEIPT. The roster above is a MEASUREMENT taken on 2026-09-02 against a tree in which
+// v1.compiler.coercion type_reference_decl_file still existed, and its rows are left exactly as
+// measured -- a census edited to match the repair it prompted stops being evidence that the repair
+// was needed. This row records what the repair did, so a reader does not read the roster as a live
+// work list.
+//
+// WHAT WAS DISCHARGED, AND IT WAS NOT BY THE ROUTE THE ROSTER PRESCRIBED. Both decided classes carry
+// ConvertAtRosterGrainFirst, which says re-key the roster before moving any occurrence. That
+// disposition was correct about what NOT to do and wrong about the unit: pricing the conversion
+// showed the roster's new key could only be produced at the 19 sites already carrying a TypeEnv, so
+// re-keying forces the occurrence conversion into the same change or a two-key intermediate. The
+// smaller and terminal move was neither -- consult the roster ONCE at the mint and thread the
+// DECISION, which deletes the identity parameter at all 95 production sites instead of retyping it.
+// The roster's own argument survives intact and is what ruled the alternative out: converting call
+// sites while the authority still substring-matches paths moves the position rather than removing
+// it. What the roster did not see is that the channel's WIDTH was the defect rather than a cost to
+// absorb, and a census that counts occurrences is structurally disposed to miss that -- it prices
+// the sites, and the sites were never the unit.
+//
+// PER-CLASS: the native-realization and checkpoint-applicability classes are discharged, their
+// terminal predicates now consuming a decision. The kernel-minted class's constructor EXISTS --
+// std.coercion TypeDeclarationProvenance, minted by v1.std.core declaration_provenance_of by exact
+// equality against kernel_span -- so its IrreducibleUntilAuthorityExists disposition is retired by
+// the authority arriving, which is exactly the condition that row named. The two CorrectAsPosition
+// classes are unchanged and were never debt. The sibling-fallback class dissolved with the helper.
+//
+// WHAT IS NOT DISCHARGED: CorpusDeclared still carries a path matched by contains, so the surviving
+// arm answers WHAT a declaration realizes as positionally. That is the residue both decided classes
+// named, and its successor is the key v1.compiler.infer_env global_bare_fallback_invariant already
+// declares. This carrier's own dissolution condition is likewise NOT satisfied by the discharge: it
+// names a derived lens, and a hand roster that has been repaired is still a hand roster.
+data type_reference_decl_file_census_discharge: List<DeclarationRef> = [
+  decl_ref(module_path: "std.coercion", decl_name: "TypeDeclarationProvenance"),
+  decl_ref(module_path: "std.coercion", decl_name: "RealizationGround"),
+  decl_ref(module_path: "std.coercion", decl_name: "RealizationRefusalCause"),
+  decl_ref(module_path: "v1.std.core", decl_name: "declaration_provenance_of"),
+  decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_realization"),
+  decl_ref(module_path: "v1.compiler.coercion", decl_name: "declaration_realization"),
+]
