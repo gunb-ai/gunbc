@@ -264,6 +264,19 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // does not execute on the acceptance path. The reversal condition is the one that row already
 // carries and is not re-minted here -- `rust-unit-tests` promoted into the required aggregate.
 //
+// HOW THIS SITS BESIDE THE BYTE-LEVEL CONTROL THAT LANDED ON main WHILE THIS LANE RAN (#9938,
+// v1.compiler.compiler_tests_rust ct_function_value_adapter_bound_alignment_control_test). That
+// control asserts, by substring over the emitted text, that the adapter fires exactly where the
+// `impl Fn` bound is emitted and nowhere else -- the two emitter decisions staying aligned -- and
+// it says in as many words what it does NOT establish: "whether these bytes compile is a RUSTC
+// verdict", and "no enrolled fail-closed rustc consumer covers this synthetic fixture". THIS PAIR
+// IS THAT VERDICT AND IS NOT A SECOND COPY OF THAT CONTROL: different oracle (rustc, not
+// substrings), different subject grain (does the emitted crate type-check), different fixtures.
+// AND IT DOES NOT FALSIFY THAT SENTENCE: this consumer is #[ignore]d, so after it lands there is
+// still no fail-closed rustc consumer covering the adapter on the merge path. The two are the
+// alignment half and the compilation half of one subject, and both remain honest about their own
+// grain.
+//
 // THE LEDGER ROW IS NOT UPDATED IN THIS DIFF, AND THE REASON IS AN INSTRUMENT THAT WOULD NOT RUN,
 // stated rather than left as a silent omission. gunbc.recurring_failure_mode
 // accepted_source_emits_uncompilable_target is PROJECTED into docs/design-ledgers.md, so appending
