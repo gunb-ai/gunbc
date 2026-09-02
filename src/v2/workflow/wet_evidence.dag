@@ -42,14 +42,15 @@ import v2.workflow.floor_terminal_ledger {
 // four arrivals is that proof -- a far better argument than reasoning about elegance.
 
 // WHICH ROUTE PRODUCED A ROW. Not decoration: the two routes have DIFFERENT DRY ANTECEDENTS (see
-// `WetDrySource`) and different bindings, so a row that cannot say which route it came from cannot
+// `WetRouteAntecedent`) and different bindings, so a row that cannot say which route it came from cannot
 // be validated against the right relation. It is also what makes the cross-route disjointness wall
 // below expressible at all.
 type WetRoute
   = LocalRepoCoResidentRoute
   | SelfHostTransportedRoute
 
-// WHAT THE DRY SIDE OF THIS IDENTITY ACTUALLY DID, and the two routes do NOT share it.
+// WHAT THE DRY SIDE OF THIS IDENTITY ACTUALLY DID -- FUSED WITH THE ROUTE, because the two facts
+// are not independent and a type that lets them vary separately admits states that cannot exist.
 //
 // The co-resident route SUPPLEMENTS a real hermetic attempt: the identity was planned, executed,
 // reached a host effect the hermetic route has no arm for, and produced a genuine
@@ -57,12 +58,33 @@ type WetRoute
 // the identity was declined and routed to the wet lane, so no hermetic attempt was ever made.
 //
 // Same evidence, different antecedent. A content-free "wet passed" arm would erase that difference
-// and let a deliberate decline read exactly like an observed route gap -- which is the state-space
+// and let a deliberate decline read exactly like an observed route gap -- the state-space
 // conflation that makes "this witness executed nowhere" indistinguishable from "this witness tried
 // and could not reach its subject".
-type WetDrySource
-  = HermeticRouteGapObserved
-  | DirectWetRouteDecline
+//
+// THIS WAS TWO INDEPENDENT FIELDS FOR ONE COMMIT AND THAT WAS A DEFECT. `route: WetRoute` beside
+// `dry_source: WetDrySource` admitted two pairings with no referent -- a co-resident execution
+// after a deliberate decline, and a transported receipt after an observed hermetic route gap --
+// and nothing read the second field, so the distinction was COMMENTARY a realization could
+// contradict. An ordinary data row whose only function is to say something is what DESIGN section
+// 4c forbids, and a check standing where construction was available is what section 5 forbids.
+//
+// The repair is structural rather than a validator: the invalid combinations have NO CONSTRUCTOR.
+// The route is DERIVED from the antecedent below, so the two can no longer disagree -- rung 4
+// rather than the rung 2 an exhaustive mismatch refusal would have bought, and it costs no witness
+// because there is no invalid state left to witness.
+type WetRouteAntecedent
+  = LocalRepoAfterHermeticRouteGap
+  | SelfHostAfterDirectWetDecline
+
+// THE ROUTE IS A PROJECTION OF THE ANTECEDENT, never a field beside it. Total, so a new antecedent
+// arm must decide its route here rather than defaulting to one.
+fn wet_route_of_antecedent(antecedent: WetRouteAntecedent) -> WetRoute {
+  match antecedent {
+    LocalRepoAfterHermeticRouteGap => LocalRepoCoResidentRoute {}
+    SelfHostAfterDirectWetDecline => SelfHostTransportedRoute {}
+  }
+}
 
 // WHAT BINDS A TERMINAL TO THIS TREE, TYPED BY WHICH RELATION PRODUCED IT.
 //
@@ -101,12 +123,11 @@ type WetEvidenceBinding
 // the wider route unrepresentable; widening the narrow roster would be rung inflation. Neither
 // happens, because policy lives in the roster and not in the type.
 type WetScheduledClaim {
-  route: WetRoute
+  antecedent: WetRouteAntecedent
   identity: WitnessIdentity
   entry: String
   function: String
   expectation: ClaimExpectation
-  dry_source: WetDrySource
 }
 
 // ONE TERMINAL ROW. `observed_entry` and `observed_function` are what the executor ACTUALLY
@@ -242,7 +263,7 @@ fn wet_forward_causes(
             xs: hits,
             empty: acc,
             cons: fn(inner, t) {
-              if !wet_route_eq(a: t.route, b: s.route) {
+              if !wet_route_eq(a: t.route, b: wet_route_of_antecedent(antecedent: s.antecedent)) {
                 list_append(left: inner, right: [WetTerminalForeignRoute { identity: name }])
               } else {
                 let binding_causes = wet_binding_causes(identity: name, observed: t.binding, required: required)
