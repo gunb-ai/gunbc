@@ -1,13 +1,12 @@
 module gunbc.fleet.fleet_site_locale
 
 import std.types { NonEmptyStr, Bool, List, Int }
+import extdeps.posix.locale { PosixLocaleId, locale_en_us }
 import extdeps.iana.time_zone_database {
   IanaTimeZoneId,
-  PosixLocaleId,
   TzdataRelease,
   zone_etc_utc,
   zone_america_new_york,
-  locale_en_us,
   tzdata_2026c,
 }
 
@@ -84,13 +83,6 @@ fn provisioned_time_zone(site: PhysicalSite, policy: HostZonePolicy) -> Provisio
   }
 }
 
-fn provisioned_zone_is_settled(outcome: ProvisionedTimeZone) -> Bool {
-  match outcome {
-    ProvisionedZone { zone: _ } => true
-    ZoneRefusedPolicyUnruled => false
-  }
-}
-
 // The LOCALE has no such ambiguity and is therefore derived without a policy axis: every host
 // observed at this site runs an en-US userland, and nothing in the measurement suggests a second
 // arm exists. Adding one when a site needs it is a row, not a redesign.
@@ -151,25 +143,22 @@ fn host_zone_convergence(
   }
 }
 
-fn host_is_converged(
-  observed: ObservedHostZone,
-  site: PhysicalSite,
-  policy: HostZonePolicy,
-) -> Bool {
-  match host_zone_convergence(observed: observed, site: site, policy: policy) {
-    HostZoneConverged => true
-    HostZoneDivergent { observed: _, desired: _ } => false
-    HostZoneUndecidable => false
-  }
-}
-
 // The count of hosts needing a change under the current site and ruling. It is a DERIVED
 // number: it is not a debt list anyone maintains, and it drops to zero by converging hosts or
 // changes wholesale when the site moves.
+// The fold matches the convergence coproduct directly rather than routing through an
+// is_converged Bool. Re-exposing a three-arm discriminant as two-valued loses the arm that
+// matters most here -- HostZoneUndecidable is not "not converged", it is "no ruling exists to
+// decide" -- and a caller handed a Bool cannot tell those apart. Counting them together is
+// deliberate and is stated at the arm, not hidden behind a predicate's name.
 fn divergent_host_count(site: PhysicalSite, policy: HostZonePolicy) -> Int {
   fold(
     observed_host_zones,
     init: 0,
-    f: (n, h) => if host_is_converged(observed: h, site: site, policy: policy) { n } else { n + 1 }
+    f: (n, h) => match host_zone_convergence(observed: h, site: site, policy: policy) {
+      HostZoneConverged => n
+      HostZoneDivergent { observed: _, desired: _ } => n + 1
+      HostZoneUndecidable => n + 1
+    }
   )
 }

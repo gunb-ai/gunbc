@@ -67,12 +67,3 @@ type IanaTimeZoneId = NonEmptyStr where brand("IanaTimeZoneId")
 // read as a host deliberately set to UTC.
 data zone_etc_utc: IanaTimeZoneId = "Etc/UTC" as IanaTimeZoneId
 data zone_america_new_york: IanaTimeZoneId = "America/New_York" as IanaTimeZoneId
-
-// POSIX locale identifier, modeled here beside the zone because the DGX Spark's setup screen
-// prompts for the pair and a consumer needs both. It is a distinct concept from the zone --
-// language and territory decide formatting and translation, the zone decides offsets -- and a
-// model that fused them could not express en-US on a machine set to UTC, which is precisely the
-// combination this fleet runs.
-type PosixLocaleId = NonEmptyStr where brand("PosixLocaleId")
-
-data locale_en_us: PosixLocaleId = "en-US" as PosixLocaleId

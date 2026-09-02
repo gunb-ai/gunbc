@@ -35,7 +35,6 @@ import gunbc.spark.oobe_screen_observation {
   oobe_screen_eula,
   observed_oobe_screen_prefix,
   observed_walk_termination,
-  observed_walk_is_complete,
   observed_screen_covers_field,
   screen_presents_field,
   field_is_pending_observation,
@@ -153,7 +152,10 @@ test fn w_observed_prefix_is_welcome_then_settings_then_eula_in_order() -> Bool 
 test fn w_receipt_carries_the_canonical_prefix_and_termination() -> Bool {
   prefix_route_spelling(screens: dgx_spark_0c75_oobe_prefix_run.screens)
     == prefix_route_spelling(screens: observed_oobe_screen_prefix)
-    && !observed_walk_is_complete(termination: dgx_spark_0c75_oobe_prefix_run.termination)
+    && match dgx_spark_0c75_oobe_prefix_run.termination {
+      WalkReachedFlowCompletion => false
+      WalkHaltedAwaitingOperatorAuthority { at_route: _ } => true
+    }
 }
 
 // The root landing was prose-only in the first revision. It is load-bearing for an actuator:
@@ -171,11 +173,10 @@ test fn w_root_resolves_to_welcome_by_client_side_route_not_http_redirect() -> B
 // ---- the population claim: this is a prefix, and it says so ------------------------------
 
 test fn w_walk_is_not_complete_and_names_where_it_halted() -> Bool {
-  !observed_walk_is_complete(termination: observed_walk_termination)
-    && match observed_walk_termination {
-      WalkReachedFlowCompletion => false
-      WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/eula"
-    }
+  match observed_walk_termination {
+    WalkReachedFlowCompletion => false
+    WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/eula"
+  }
 }
 
 // ---- the documented-versus-observed join, in both directions -----------------------------

@@ -347,13 +347,6 @@ data observed_walk_termination: OobeWalkTermination = WalkHaltedAwaitingOperator
   at_route: "/welcome/eula" as OobeScreenRoute,
 }
 
-fn observed_walk_is_complete(termination: OobeWalkTermination) -> Bool {
-  match termination {
-    WalkReachedFlowCompletion => true
-    WalkHaltedAwaitingOperatorAuthority { at_route: _ } => false
-  }
-}
-
 // ------------------------------------------------------------------------------------------
 // DOCUMENTED VERSUS OBSERVED.
 //
@@ -368,7 +361,7 @@ fn observed_walk_is_complete(termination: OobeWalkTermination) -> Bool {
 // verdict, because the two predicates answer different questions over different populations:
 // the vendor's covers the whole wizard, ours covers a prefix that stops at the EULA. A
 // difference between them is only evidence of vendor error where our walk was complete, and
-// observed_walk_is_complete says it is not. Presenting the difference as a defect list would
+// observed_walk_termination says it is not. Presenting the difference as a defect list would
 // be the undecided fraction read as a denominator.
 fn screen_presents_field(screen: ObservedOobeScreen, field: OobeSetupField) -> Bool {
   fold(

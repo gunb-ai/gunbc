@@ -1,0 +1,44 @@
+module extdeps.posix.locale
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE LOCALE IDENTIFIER, homed here rather than beside the time zone it is usually prompted
+// with. It first landed in extdeps.iana.time_zone_database because the DGX Spark's setup screen
+// asks for language and timezone together, and the screen's convenience is not an authority:
+// a POSIX locale is not an IANA fact. IANA publishes the time zone database; the locale
+// identifier's shape is POSIX's, and its territory and language subtags are ISO's. Leaving it
+// in the tz module made one module speak for two independently versioned upstreams, which
+// DESIGN §3's external-upstream decomposition forbids -- and the row's own comment already
+// admitted the concepts were distinct while the placement said otherwise.
+//
+// The cost of leaving it was not hypothetical: the moment a second consumer imported
+// PosixLocaleId from the IANA module, the wrong authority would have been frozen by use, and
+// moving it later becomes a migration rather than a rename.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap07.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.locale",
+      decl_name: "PosixLocaleId",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.posix.locale.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A locale names language and territory, and decides collation, formatting and translation.
+// It is branded rather than left a bare String because "English", "US" and "en_US.UTF-8" are
+// all things a human writes and only one family of spellings is an identifier POSIX defines.
+type PosixLocaleId = NonEmptyStr where brand("PosixLocaleId")
+
+data locale_en_us: PosixLocaleId = "en-US" as PosixLocaleId

@@ -2,7 +2,8 @@ module test.claim.fleet.fleet_site_locale_witness
 
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york, locale_en_us }
+import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york }
+import extdeps.posix.locale { locale_en_us }
 import gunbc.fleet.fleet_site_locale { PhysicalSite, SiteIdentity }
 import std.types { Int }
 import gunbc.fleet.fleet_site_locale {
@@ -11,7 +12,6 @@ import gunbc.fleet.fleet_site_locale {
   HostZoneUndecidable,
   observed_host_zones,
   host_zone_convergence,
-  host_is_converged,
   divergent_host_count,
   HostFollowsSiteCivilZone,
   HostRunsCoordinatedUniversalTime,
@@ -21,7 +21,6 @@ import gunbc.fleet.fleet_site_locale {
   site_us_east_operator_premises,
   fleet_host_zone_policy,
   provisioned_time_zone,
-  provisioned_zone_is_settled,
   provisioned_locale,
 }
 
@@ -36,12 +35,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that goes red if anyone gives HostZonePolicyUnruled a default, which is the exact repair a
 // future author reaches for when the workflow refuses and they want it to proceed.
 test fn w_unruled_policy_refuses_rather_than_defaulting() -> Bool {
-  !provisioned_zone_is_settled(
-    outcome: provisioned_time_zone(
-      site: site_us_east_operator_premises,
-      policy: HostZonePolicyUnruled,
-    )
-  )
+  match provisioned_time_zone(site: site_us_east_operator_premises, policy: HostZonePolicyUnruled) {
+    ZoneRefusedPolicyUnruled => true
+    ProvisionedZone { zone: _ } => false
+  }
 }
 
 // POSITIVE CONTROLS, without which the refusal above would also be satisfied by a derivation
@@ -90,10 +87,7 @@ test fn w_fleet_policy_follows_the_site_civil_zone() -> Bool {
 // below names a zone for a host, so moving the site's civil zone moves every verdict.
 
 test fn w_utc_hosts_are_divergent_under_the_ruling() -> Bool {
-  fold(observed_host_zones, init: 0,
-    f: (n, h) => if host_is_converged(observed: h, site: site_us_east_operator_premises, policy: fleet_host_zone_policy) { n } else { n + 1 }
-  ) == 2
-    && divergent_host_count(site: site_us_east_operator_premises, policy: fleet_host_zone_policy) == 2
+  divergent_host_count(site: site_us_east_operator_premises, policy: fleet_host_zone_policy) == 2
 }
 
 // THE RELOCATION PROPERTY, asserted rather than described. Under a site whose civil zone is UTC
