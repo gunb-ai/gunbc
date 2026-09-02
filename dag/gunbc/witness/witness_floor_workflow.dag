@@ -956,10 +956,12 @@ data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cos
 // two compose (the constant puts the family AT the line, something run-to-run decides which rows
 // cross). Two receipts, neither a cross-run comparison: two rows of one module measured 502ms and
 // EXACTLY 500ms against the 500ms budget, and one row was observed crossing the two populations on
-// ONE tree -- run 33620893203 attempt 1 records it INTERRUPTED-BEFORE-VERDICT at 502ms while
-// attempt 2 of the same run records it COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500. Which
+// ONE tree -- run 33620893203 attempt 1 records it INTERRUPTED-BEFORE-VERDICT with cost=UNMEASURED
+// while attempt 2 of the same run records it COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500. Which
 // population a row lands in at that margin is decided by whether the poll fired before or after
-// the work finished. Both citations pin the ATTEMPT, because a bare run id and a bare job id
+// the work finished. The pair is a BOUND beside a VALUE rather than two measurements of one
+// quantity, so no cost is written for attempt 1: an interrupted row's reported figure names where
+// the poll observed the ceiling, which is a property of the budget. Both citations pin the ATTEMPT, because a bare run id and a bare job id
 // resolve to the latest one and a rerun silently changes what they serve. The tipping
 // variable is separately open. And a cost inside a native builtin called directly from a claim
 // body is not a row here at all, because the ledger keys pure named fn evaluations -- the same

@@ -8166,14 +8166,24 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // the floor keeps showing: the constant puts a family AT the line, and something run-to-run
 // decides WHICH of its rows cross it, and there are TWO INDEPENDENT RECEIPTS for that, neither of
 // which is a cross-run comparison. (i) ZERO MARGIN, single attempt: two rows of one module
-// measured 502ms and EXACTLY 500ms against the 500ms budget. (ii) A ROW OBSERVED CROSSING THE
+// COMPLETED over budget — so these are measured values, not preemption bounds — at 502ms and
+// EXACTLY 500ms against the 500ms budget. (ii) A ROW OBSERVED CROSSING THE
 // TWO POPULATIONS ON ONE TREE: run 33620893203, attempt 1, records
 // `test.claim.self_host_compile_phase_live_gate_witness.an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held`
-// as INTERRUPTED-BEFORE-VERDICT at 502ms, and ATTEMPT 2 of the SAME RUN records it as
-// COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500 — reaching its verdict. Those are the two
+// as INTERRUPTED-BEFORE-VERDICT with `cost=UNMEASURED`, and ATTEMPT 2 of the SAME RUN records it
+// as COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500 — reaching its verdict. Those are the two
 // populations the 2026-08-19 budget cut separated BECAUSE THEY ARE DIFFERENT FACTS WITH DIFFERENT
 // REMEDIES, and at this margin which one a row lands in is decided by whether the poll fired
 // before or after the work finished. A fact about the poll, not about the row.
+//
+// AND THE PAIR IS NOT TWO MEASUREMENTS OF ONE QUANTITY — one is a BOUND and one is a VALUE, which
+// is why no cost figure is written for attempt 1 here. The interrupted arm knows only that the
+// cost exceeded 500ms by an unknown amount; its `interrupt_point` names where the poll observed
+// the ceiling, so it is a property of the BUDGET and the diagnostic says so in three clauses.
+// Writing it as "502ms in attempt 1 against 500ms in attempt 2" would say the row got two
+// milliseconds cheaper and crossed a line — a story about the row, and the instrument-property-
+// as-subject-property misreading this very census exists to stop. What changed between the
+// attempts is what the OBSERVER could say.
 //
 // CITE THE ATTEMPT, NOT THE RUN. Both readings above are pinned to
 // `/actions/runs/<id>/attempts/<n>/logs`, because a bare run id and a bare job id BOTH resolve to
