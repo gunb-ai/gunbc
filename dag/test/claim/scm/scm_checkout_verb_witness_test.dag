@@ -19,6 +19,7 @@ import gunbc.scm.object_store {
   store_node,
   Stored,
   LocatorCollision,
+  SemanticNodeTarget,
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -28,6 +29,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintParentMissing,
+  RepositoryCommitMintRootIsAuthoredSource,
   RepositoryCommitMintRootMissing,
   mint_repository_commit,
 }
@@ -56,6 +58,7 @@ import gunbc.scm.checkout {
   Commit,
   CheckoutRefusal,
   MissingObject,
+  ObjectIsAuthoredSource,
   RepositoryCheckout,
   RepositoryCheckedOut,
   CheckoutReferenceUnresolved,
@@ -69,14 +72,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // duplicates (#8707), which this layer's witness files already document hitting.
 type ScmCkPut {
   store: ObjectStore
-  identity: ObjectId
+  identity: SemanticNodeTarget
 }
 
 fn scm_ck_put(store: ObjectStore, n: Node) -> ScmCkPut {
   match store_node(store: store, n: n) {
-    Stored { store: s, identity: identity } => ScmCkPut { store: s, identity: identity }
+    Stored { store: s, node: node } => ScmCkPut { store: s, identity: node_target_of(reference: node) }
     LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-      ScmCkPut { store: store, identity: identity }
+      ScmCkPut { store: store, identity: SemanticNodeTarget { locator: identity } }
   }
 }
 
@@ -97,12 +100,13 @@ fn scm_ck_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn scm_ck_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn scm_ck_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
   }
 }
 
@@ -193,6 +197,7 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
       r == scm_ck_ref(ordinal: 0)
         && match cause {
              MissingObject { identity: _ } => true
+             ObjectIsAuthoredSource { identity: _ } => false
            }
     CheckoutReferenceUnresolved { reference: _ } => false
     RepositoryCheckedOut { repository: _, program: _ } => false
