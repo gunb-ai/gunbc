@@ -385,9 +385,16 @@ type OperationField = FieldDiameter | FieldCenterX | FieldCenterY
 // forbids. The two faults also mean different things to a reader: a divergent rung says the handler
 // cut one hole wrong, a divergent datum says the coupon cannot be oriented and every rung ordinal is
 // therefore in doubt.
-type GeometryConformance
-  = GeometryConforms
-  | GeometryPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
+// THE DIVERGENCES ARE THEIR OWN COPRODUCT, SEPARATE FROM THE VERDICT THAT MAY CARRY ONE.
+//
+// An earlier cut had one flat GeometryConformance whose arms were Conforms plus four divergences,
+// and that was correct while nothing consumed a rejection. It stops being correct the moment a
+// rejection arm exists to carry a cause: typing that arm on the flat coproduct puts GeometryConforms
+// inside the payload of a REJECTION, which is the same defect this file already closed one layer
+// down when RealizationRefusedAtWire carried the whole EnvelopeAdmission. Splitting first is what
+// keeps the discharge below from re-opening it.
+type GeometryDivergence
+  = GeometryPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
   | GeometryDatumDiverges { field: OperationField, modeled: Micrometer, realized: Micrometer }
   | GeometryOperationCountDiverges { modeled: Int, realized: Int }
   | GeometryOperationDiverges {
@@ -396,6 +403,10 @@ type GeometryConformance
       modeled: Micrometer,
       realized: Micrometer,
     }
+
+type GeometryConformance
+  = GeometryConforms
+  | GeometryDiverges { divergence: GeometryDivergence }
 // THE SCAN IS ONE FOLD OVER ZIPPED PAIRS, and the shape is the point rather than the speed.
 //
 // The first revision recursed with `modeled.count() == 0` as its base case. List is an alias for
@@ -433,11 +444,11 @@ fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> G
     OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
       OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
         if micrometer_count(m: md) != micrometer_count(m: rd) {
-          GeometryOperationDiverges { index: index, field: FieldDiameter, modeled: md, realized: rd }
+          GeometryDiverges { divergence: GeometryOperationDiverges { index: index, field: FieldDiameter, modeled: md, realized: rd } }
         } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
-          GeometryOperationDiverges { index: index, field: FieldCenterX, modeled: mx, realized: rx }
+          GeometryDiverges { divergence: GeometryOperationDiverges { index: index, field: FieldCenterX, modeled: mx, realized: rx } }
         } else if micrometer_count(m: my) != micrometer_count(m: ry) {
-          GeometryOperationDiverges { index: index, field: FieldCenterY, modeled: my, realized: ry }
+          GeometryDiverges { divergence: GeometryOperationDiverges { index: index, field: FieldCenterY, modeled: my, realized: ry } }
         } else {
           GeometryConforms
         }
@@ -455,11 +466,11 @@ fn datum_divergence(m: CouponOperation, r: CouponOperation) -> GeometryConforman
     OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
       OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
         if micrometer_count(m: md) != micrometer_count(m: rd) {
-          GeometryDatumDiverges { field: FieldDiameter, modeled: md, realized: rd }
+          GeometryDiverges { divergence: GeometryDatumDiverges { field: FieldDiameter, modeled: md, realized: rd } }
         } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
-          GeometryDatumDiverges { field: FieldCenterX, modeled: mx, realized: rx }
+          GeometryDiverges { divergence: GeometryDatumDiverges { field: FieldCenterX, modeled: mx, realized: rx } }
         } else if micrometer_count(m: my) != micrometer_count(m: ry) {
-          GeometryDatumDiverges { field: FieldCenterY, modeled: my, realized: ry }
+          GeometryDiverges { divergence: GeometryDatumDiverges { field: FieldCenterY, modeled: my, realized: ry } }
         } else {
           GeometryConforms
         }
@@ -467,15 +478,13 @@ fn datum_divergence(m: CouponOperation, r: CouponOperation) -> GeometryConforman
   }
 }
 
+// The four separate carry-forward arms collapsed to one when the divergences became their own
+// coproduct, and that is DESIGN 4b(4) dissolution rather than tidying: every one of them said the
+// same thing -- a divergence already found is kept -- and having four spellings of it meant a fifth
+// divergence arm would have needed a fifth copy of a line that never varies.
 fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
   match acc.outcome {
-    GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } =>
-      RungScan { index: acc.index + 1, outcome: acc.outcome }
-    GeometryPlateDiverges { axis: _, modeled: _, realized: _ } =>
-      RungScan { index: acc.index + 1, outcome: acc.outcome }
-    GeometryDatumDiverges { field: _, modeled: _, realized: _ } =>
-      RungScan { index: acc.index + 1, outcome: acc.outcome }
-    GeometryOperationCountDiverges { modeled: _, realized: _ } =>
+    GeometryDiverges { divergence: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
     GeometryConforms =>
       RungScan {
@@ -495,7 +504,7 @@ fn compare_operations(
   let modeled_count = modeled.length()
   let realized_count = realized.length()
   if modeled_count != realized_count {
-    GeometryOperationCountDiverges { modeled: modeled_count, realized: realized_count }
+    GeometryDiverges { divergence: GeometryOperationCountDiverges { modeled: modeled_count, realized: realized_count } }
   } else {
     fold(
       zip_map(a: modeled, b: realized, f: fn(m, r) {
@@ -512,11 +521,11 @@ fn compare_operations(
 // would name a symptom and bury the cause.
 fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> GeometryConformance {
   if micrometer_count(m: modeled.size_x) != micrometer_count(m: realized.size_x) {
-    GeometryPlateDiverges { axis: PlateAxisX, modeled: modeled.size_x, realized: realized.size_x }
+    GeometryDiverges { divergence: GeometryPlateDiverges { axis: PlateAxisX, modeled: modeled.size_x, realized: realized.size_x } }
   } else if micrometer_count(m: modeled.size_y) != micrometer_count(m: realized.size_y) {
-    GeometryPlateDiverges { axis: PlateAxisY, modeled: modeled.size_y, realized: realized.size_y }
+    GeometryDiverges { divergence: GeometryPlateDiverges { axis: PlateAxisY, modeled: modeled.size_y, realized: realized.size_y } }
   } else if micrometer_count(m: modeled.size_z) != micrometer_count(m: realized.size_z) {
-    GeometryPlateDiverges { axis: PlateAxisZ, modeled: modeled.size_z, realized: realized.size_z }
+    GeometryDiverges { divergence: GeometryPlateDiverges { axis: PlateAxisZ, modeled: modeled.size_z, realized: realized.size_z } }
   } else {
     GeometryConforms
   }
@@ -575,16 +584,10 @@ fn judge_realized_geometry(
       match datum_outcome {
         GeometryConforms =>
           compare_operations(modeled: modeled.ladder_holes, realized: realized.ladder_holes)
-        GeometryDatumDiverges { field: _, modeled: _, realized: _ } => datum_outcome
-        GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => datum_outcome
-        GeometryOperationCountDiverges { modeled: _, realized: _ } => datum_outcome
-        GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => datum_outcome
+        GeometryDiverges { divergence: _ } => datum_outcome
       }
     }
-    GeometryDatumDiverges { field: _, modeled: _, realized: _ } => plate_outcome
-    GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => plate_outcome
-    GeometryOperationCountDiverges { modeled: _, realized: _ } => plate_outcome
-    GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => plate_outcome
+    GeometryDiverges { divergence: _ } => plate_outcome
   }
 }
 
@@ -592,9 +595,50 @@ fn judge_realized_geometry(
 // because admission is what produces the modeled values conformance consumes -- the refusal arms have
 // no plate and no features to hand on. That is the construction DESIGN section 5 asks for in place of
 // a validation step a caller could forget to run.
+// THE ADMITTED CARRIER, AND IT HOLDS THE CANONICAL GEOMETRY RATHER THAN THE TRANSPORTED GEOMETRY.
+//
+// This is the discharge of ActuatorGeometryPairingUnbound, and the field is the whole argument. The
+// obvious mint is to carry the DECODED geometry, on the reasoning that conformance just proved the
+// two equal. They are equal along every axis the comparison reads -- and "every axis the comparison
+// reads" is a smaller set than "the geometry", which is exactly the class this file has already been
+// wrong about twice: it compared the ladder LAW and missed the artifact, then compared a PROJECTION
+// of the artifact and missed the plate and the centres. If a third such gap exists, carrying the
+// transported values hands the handler the divergent geometry with a conforming verdict attached,
+// while carrying the canonical values hands it the model's own geometry and the wire is demoted to
+// an assertion that was checked. The failure modes are not symmetric: one cuts the wrong part, the
+// other cuts the right part against a wire that lied.
+//
+// It is sole_constructor, and the only function in this module that builds one is judge_realization
+// on the arm where conformance held. So no caller anywhere can obtain admitted geometry without a
+// judgment having produced it, and the seal has the same executing evidence as its sibling.
+type AdmittedRealizationV0 sole_constructor {
+  specimen: CouponSpecimen
+}
+
+fn admitted_realization_geometry(a: AdmittedRealizationV0) -> HoleDiameterCouponGeometry {
+  a.specimen.geometry
+}
+
+fn admitted_realization_identity(a: AdmittedRealizationV0) -> CouponSpecimenIdentity {
+  a.specimen.identity
+}
+
+// THE VERDICT RETURNS THE GEOMETRY FROM THE JUDGMENT THAT ESTABLISHED IT, WHICH IS WHAT REMOVES THE
+// PAIRING.
+//
+// The previous shape returned RealizationJudged { conformance } and no geometry, so a handler had to
+// obtain geometry from decode_envelope and associate it with this verdict itself: judge envelope A,
+// retain envelope B's decoded geometry, hand B to the handler under A's conforming verdict. Every
+// honest caller passed the same envelope twice and the invalid pairing stayed writable regardless.
+// There is now no pair to mis-associate, because the accepting arm CARRIES what the handler needs.
+//
+// The rejection arm takes GeometryDivergence and not GeometryConformance, for the same reason
+// RealizationRefusedAtWire takes EnvelopeRefusal: a rejection whose payload can spell "conforms" is
+// a state no route produces and nothing prevents.
 type RealizationVerdict
   = RealizationRefusedAtWire { refusal: EnvelopeRefusal }
-  | RealizationJudged { conformance: GeometryConformance }
+  | RealizationRejected { divergence: GeometryDivergence }
+  | RealizationAccepted { admitted: AdmittedRealizationV0 }
 
 fn judge_realization(
   contract: RealizationContract,
@@ -603,47 +647,39 @@ fn judge_realization(
   let admission = decode_envelope(envelope: envelope)
   match admission {
     EnvelopeDecodedV0 { decoded: a } =>
-      RealizationJudged {
-        conformance: judge_realized_geometry(contract: contract, realized: a.geometry),
+      match judge_realized_geometry(contract: contract, realized: a.geometry) {
+        GeometryConforms => RealizationAccepted {
+          admitted: AdmittedRealizationV0 { specimen: contract.specimen },
+        }
+        GeometryDiverges { divergence: d } => RealizationRejected { divergence: d }
       }
     EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
   }
 }
 
-// THE ACTUATOR PAIRING IS UNBOUND, AND THAT IS AN OBLIGATION ON PRINT-5 RATHER THAN A DEFECT HERE.
+// THE ACTUATOR PAIRING OBLIGATION IS DISCHARGED, AND THE ROSTER IS EMPTY RATHER THAN DELETED.
 //
-// judge_realization returns a VERDICT and no geometry. So a handler that wants to cut something must
-// obtain geometry from somewhere else -- today only decode_envelope -- and then associate that value
-// with this verdict itself. That association is unbound: judge envelope A, retain the decoded
-// geometry of envelope B, hand B to the handler under A's conforming verdict. Every honest caller
-// passes the same envelope twice, and the invalid pairing stays writable regardless. It is the same
-// class as the refusal payload that could carry a success, one level out: a state no route produces
-// and nothing prevents (routed review, 2026-09-02).
+// It read ActuatorGeometryPairingUnbound while judge_realization returned a verdict and no geometry,
+// so a handler had to pair the two itself and the mis-pairing was writable. The accepting arm now
+// carries AdmittedRealizationV0, minted inside the judgment from the contract's canonical specimen,
+// so there is no pair left to associate and no way to obtain admitted geometry without a judgment.
+// The route the obligation named -- MintSealedGeometryFromCanonicalSpecimenAtJudgment -- is what was
+// built, which is the point of naming a route rather than recording a wish.
 //
-// The close is a second sealed type returned FROM the judgment that established conformance, so
-// there is no pair left to mis-associate -- and minted from the CONTRACT'S OWN canonical specimen
-// rather than from the transported values that happened to compare equal, so what the handler cuts
-// is the model's geometry and the wire is reduced to an assertion that was checked. The name
-// AdmittedRealizationV0 is reserved for it above and deliberately unspent.
-//
-// WHY IT IS NOT BUILT IN THIS REVISION. Nothing actuates geometry yet: there is no handler, so the
-// pairing has no site at which to go wrong, and the invariant "the decoded carrier never actuates"
-// holds vacuously today. Minting a sealed carrier with zero consumers to hold a symbol is the
-// speculative move DESIGN section 2 prices as redundant, and the same review that named this
-// obligation also warned against establishing a public capability merely because the state
-// conceptually exists. So the obligation is DECLARED rather than discharged, in a typed carrier
-// rather than an annotation, because PRINT-5 must not be able to reach a handler without answering
-// it -- and an annotation is a thing no Accepted program can read.
+// THE VOCABULARY STAYS AND THE ROSTER GOES EMPTY. Deleting the coproduct with its last member would
+// take the forcing with it: the next obligation this layer discovers would have nowhere typed to
+// land and would arrive as prose, which is the state the coupon module's own roster was repaired
+// out of. An empty roster is also a stronger statement than an absent one -- it says this layer was
+// asked and has nothing open, where absence says nobody asked. The route fold stays total over a
+// vocabulary that still has one arm, so it costs nothing and reds on the next addition.
 type RealizationV0Obligation = ActuatorGeometryPairingUnbound {}
 
 type RealizationV0Route = MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
 
-// Total by construction: a second obligation reds this match until it is routed. The route is not a
-// promise that the work is done, only that the open need names its close.
 fn realization_v0_route(o: RealizationV0Obligation) -> RealizationV0Route {
   match o {
     ActuatorGeometryPairingUnbound {} => MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
   }
 }
 
-data realization_v0_open_obligations: List<RealizationV0Obligation> = [ActuatorGeometryPairingUnbound {}]
+data realization_v0_open_obligations: List<RealizationV0Obligation> = []
