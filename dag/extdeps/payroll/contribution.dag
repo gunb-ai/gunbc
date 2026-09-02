@@ -99,6 +99,24 @@ type AssessmentWindow =
 // not a third dimensionless nickname - std.measure already declares that a third such use case
 // is the trigger to build the unifying Ratio carrier - so it is raised rather than improvised.
 
+// THE CONTRIBUTION BASE IS AN OPEN REGISTRY, DEPLOYED AS AN IDENTIFIER RATHER THAN A COPRODUCT.
+// Federal Social Security wages and Medicare wages are not one universal cash-wages figure, so a
+// spec meaning one base could previously receive a position computed under the other with every
+// represented field agreeing, and emit a plausible number. That is a fail-open at the FEDERAL
+// level and not a New Jersey predecessor, which is where an earlier reading of this carrier was
+// too comfortable.
+//
+// It is a NonEmptyStr and deliberately not a variant list. Assessment window is a closed semantic
+// axis the kernel may own; the set of contribution bases is an open registry each AUTHORITY
+// defines, so enumerating them here would be the generic hub dispatching over concrete products
+// that DESIGN 3 forbids - the same reason there is no Country enum. New Jersey covered
+// remuneration becomes one more authored row and edits nothing here.
+//
+// One consequence for the accrual fold: it applies ONE position to MANY specs, which is only
+// valid while those specs share a base. It is not separately checked, because it does not need to
+// be - a spec whose base differs from the position refuses, and the fold refuses whole on any
+// cause, so a mixed-base spec list cannot produce a number.
+
 // WHOSE earnings accumulate. US OASDI restarts its wage base per employer, so a second employer
 // applies the cap again and the over-withholding is reconciled on the worker's own return; HMRC
 // likewise has each employer compute on what it pays, subject to aggregation for associated
@@ -148,6 +166,7 @@ type ContributionSpec {
   borne_by: BearingParty
   assessment_window: AssessmentWindow
   aggregation_scope: AggregationScope
+  contribution_base: NonEmptyStr
 }
 
 // The position BEFORE this period, and the period's own earnings, as separate fields. This is the
@@ -166,6 +185,7 @@ type AssessedPosition {
   aggregation_scope: AggregationScope
   effective_year: Int
   currency: CurrencyCode
+  contribution_base: NonEmptyStr
   position_before: MoneyAmountMicro
   this_period: MoneyAmountMicro
 }
@@ -247,6 +267,11 @@ type ContributionRefusal =
   | AssessmentWindowMismatch { spec: NonEmptyStr }
   | AssessmentWindowUnmodeled { spec: NonEmptyStr }
   | AggregationScopeMismatch { spec: NonEmptyStr }
+  | ContributionBaseMismatch {
+      spec: NonEmptyStr,
+      spec_base: NonEmptyStr,
+      presented_base: NonEmptyStr
+    }
   | EffectiveYearMismatch { spec: NonEmptyStr, spec_year: Int, position_year: Int }
   | ContributionCurrencyMismatch {
       spec: NonEmptyStr,
@@ -282,6 +307,14 @@ fn contribution_for_period(spec: ContributionSpec, position: AssessedPosition) -
     ContributionRefused { cause: AssessmentWindowUnmodeled { spec: spec.name } }
   } else if scope_is_employer_relationship(s: spec.aggregation_scope) != scope_is_employer_relationship(s: position.aggregation_scope) {
     ContributionRefused { cause: AggregationScopeMismatch { spec: spec.name } }
+  } else if spec.contribution_base != position.contribution_base {
+    ContributionRefused {
+      cause: ContributionBaseMismatch {
+        spec: spec.name,
+        spec_base: spec.contribution_base,
+        presented_base: position.contribution_base
+      }
+    }
   } else if spec.effective_year != position.effective_year {
     ContributionRefused {
       cause: EffectiveYearMismatch {
@@ -303,11 +336,17 @@ fn contribution_for_period(spec: ContributionSpec, position: AssessedPosition) -
   }
 }
 
-// Rounding is floor at micro grain. That is a declared boundary and not a claim of statutory
-// correctness: real filings round to the cent under rules the authority publishes, and this module
-// does not yet model them. The residue is bounded by one micro-unit per contribution and is
-// therefore observable in a reconciliation rather than silent - which is the condition for leaving
-// it unmodeled at all.
+// WHAT THIS PRODUCES IS AN EXACT ACCRUAL, NOT A SETTLED AMOUNT, AND THE DISTINCTION IS THE WHOLE
+// REASON THE CONSUMER IS NAMED FOR ACCRUAL. The rate product is floored at micro grain. Statutory
+// withholding is not: Publication 15 accounts for rounding to the nearest cent per wage payment
+// with a fractions-of-cents adjustment on the quarterly return, so 100.09 dollars at 6.2 percent
+// accrues 6.205580 here and is withheld as 6.21. Naming a residual carefully does not make a
+// floored micro figure into money withheld - only a resolved rounding contract does, and mode,
+// grain and application scope are all statutory rather than one global choice.
+//
+// So no consumer may treat this output as an amount withheld or paid. Its next-rung trigger is a
+// RoundingContract carried by the authority, at which point a settled amount becomes derivable
+// and the accrual stays as the exact intermediate it already is.
 fn contribution_originated(spec: ContributionSpec, position: AssessedPosition) -> ContributionOutcome {
   let before = money_amount_micro_count(m: position.position_before)
   let total = before + money_amount_micro_count(m: position.this_period)

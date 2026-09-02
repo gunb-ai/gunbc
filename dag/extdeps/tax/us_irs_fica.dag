@@ -20,6 +20,11 @@ import extdeps.uri { Uri, Https }
 // here. That separation is the point - a federal rate change must not require editing New
 // Jersey, and adding New Jersey must not widen anything federal.
 //
+// Social Security wages and Medicare wages are DIFFERENT BASES and the rows say so. They coincide
+// for an ordinary private-sector worker below the wage base, which is exactly what makes the
+// distinction easy to lose: a position computed under one and consumed under the other agreed on
+// every other field and produced a plausible number until contribution_base was represented.
+//
 // Every row is assessed over the CALENDAR YEAR and accumulates per EMPLOYER-WORKER
 // RELATIONSHIP. The second is a real fact and not a default: US OASDI restarts its wage base at
 // each employer, so a worker with two jobs has the cap applied twice and reconciles the
@@ -81,6 +86,7 @@ data us_social_security_employee_2025: ContributionSpec = ContributionSpec {
   borne_by: Worker,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-social-security-wages",
 }
 
 data us_social_security_employer_2025: ContributionSpec = ContributionSpec {
@@ -92,6 +98,7 @@ data us_social_security_employer_2025: ContributionSpec = ContributionSpec {
   borne_by: Employer,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-social-security-wages",
 }
 
 data us_medicare_employee_2025: ContributionSpec = ContributionSpec {
@@ -103,6 +110,7 @@ data us_medicare_employee_2025: ContributionSpec = ContributionSpec {
   borne_by: Worker,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-medicare-wages",
 }
 
 data us_medicare_employer_2025: ContributionSpec = ContributionSpec {
@@ -114,6 +122,7 @@ data us_medicare_employer_2025: ContributionSpec = ContributionSpec {
   borne_by: Employer,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-medicare-wages",
 }
 
 // THIS ROW IS THE EMPLOYER'S WITHHOLDING RULE AND ITS NAME SAYS SO. The IRS directs an employer
@@ -137,6 +146,7 @@ data us_additional_medicare_employer_withholding_2025: ContributionSpec = Contri
   borne_by: Worker,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-medicare-wages",
 }
 
 data us_social_security_employee_2026: ContributionSpec = ContributionSpec {
@@ -148,6 +158,7 @@ data us_social_security_employee_2026: ContributionSpec = ContributionSpec {
   borne_by: Worker,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-social-security-wages",
 }
 
 data us_social_security_employer_2026: ContributionSpec = ContributionSpec {
@@ -159,6 +170,7 @@ data us_social_security_employer_2026: ContributionSpec = ContributionSpec {
   borne_by: Employer,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-social-security-wages",
 }
 
 data us_medicare_employee_2026: ContributionSpec = ContributionSpec {
@@ -170,6 +182,7 @@ data us_medicare_employee_2026: ContributionSpec = ContributionSpec {
   borne_by: Worker,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-medicare-wages",
 }
 
 data us_medicare_employer_2026: ContributionSpec = ContributionSpec {
@@ -181,6 +194,7 @@ data us_medicare_employer_2026: ContributionSpec = ContributionSpec {
   borne_by: Employer,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-medicare-wages",
 }
 
 data us_additional_medicare_employer_withholding_2026: ContributionSpec = ContributionSpec {
@@ -192,6 +206,7 @@ data us_additional_medicare_employer_withholding_2026: ContributionSpec = Contri
   borne_by: Worker,
   assessment_window: CalendarYearAssessed,
   aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: "us-irs-medicare-wages",
 }
 
 data fica_specs_2025: List<ContributionSpec> = [
