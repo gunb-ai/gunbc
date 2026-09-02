@@ -15,6 +15,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.algebra { list_append }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
+import v2.workflow.floor_route_gap {
+  FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval
+}
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,
   RepositorySnapshot,
@@ -238,7 +241,26 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
         CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
       }
     HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
-    RouteGap { route: _ } => "route-gap"
+    RouteGap { operation: _, ground: g } => render_route_gap_ground_tag(ground: g)
+  }
+}
+
+// THE TAG DESCENDS INTO THE GROUND, EXACTLY AS IT ALREADY DESCENDS INTO THE SAFETY OUTCOME. That
+// precedent is three arms above this one and it was set for the same reason: a closed sub-coproduct
+// that changes the REMEDY belongs in the field a reader of the published ledger joins on, while the
+// free-form String belongs in the detail. So the ground picks the tag and the operation is the
+// detail, and no new wire column is needed -- the row stays four fields and every other arm renders
+// byte-identically.
+//
+// EVERY ONE OF THESE THREE TAGS READS BACK TO `RouteGapBeforeVerdict`, which is what keeps this a
+// WIDENING rather than a behaviour change: the disposition every existing consumer decides on is
+// unchanged, and what becomes newly representable is only the distinction between three grounds
+// with three different remedies.
+fn render_route_gap_ground_tag(ground: FloorRouteGapGround) -> String {
+  match ground {
+    UnpublishedMockCase => "route-gap-unpublished-mock-case"
+    NoMockResponse => "route-gap-no-mock-response"
+    FilesystemRemoval => "route-gap-filesystem-removal"
   }
 }
 
@@ -263,7 +285,7 @@ fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
     NotAttempted { halted_by: h } => h
     BudgetRefused { safety: s } => render_safety_detail(safety: s)
     HostToolUnresolved { name: n, probed: _ } => n
-    RouteGap { route: r } => r
+    RouteGap { operation: o, ground: _ } => o
   }
 }
 
@@ -720,7 +742,13 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "host-tool-unresolved" {
     Present { value: HostToolUnresolvedBeforeVerdict }
   } else {
-  if row.terminal_tag == "route-gap" {
+  if row.terminal_tag == "route-gap-unpublished-mock-case" {
+    Present { value: RouteGapBeforeVerdict }
+  } else {
+  if row.terminal_tag == "route-gap-no-mock-response" {
+    Present { value: RouteGapBeforeVerdict }
+  } else {
+  if row.terminal_tag == "route-gap-filesystem-removal" {
     Present { value: RouteGapBeforeVerdict }
   } else {
   if row.terminal_tag == "returned-unreadable" {
@@ -739,7 +767,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
     }
   } else {
     none
-  }}}}}}}}}}}
+  }}}}}}}}}}}}}
 }
 
 // ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────

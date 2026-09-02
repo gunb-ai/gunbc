@@ -16892,7 +16892,20 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::BudgetInterrupted { .. } => "budget-refused",
         ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
-        ClaimOutcome::HostEffectRefused { .. } => "route-gap",
+        // THE TAG DESCENDS INTO THE GROUND, mirroring `render_route_gap_ground_tag` in
+        // `v2.workflow.floor_terminal_ledger_wire`. One tag over three grounds published an
+        // unpublished mock case and a filesystem removal as the same fact, and their remedies
+        // differ: record the case, versus give the operation a hermetic arm. The detail below
+        // already carried `operation`, so this is the half of the pair that was still fused.
+        ClaimOutcome::HostEffectRefused { ground, .. } => match ground {
+            v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+                "route-gap-unpublished-mock-case"
+            }
+            v1_interpreter::HermeticEffectGround::NoMockResponse => "route-gap-no-mock-response",
+            v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+                "route-gap-filesystem-removal"
+            }
+        },
         ClaimOutcome::Panicked { .. } => "panicked",
         ClaimOutcome::NotAttempted { .. } => "not-attempted",
     }
