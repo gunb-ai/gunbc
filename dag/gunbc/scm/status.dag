@@ -24,7 +24,7 @@ module gunbc.scm.status
 import std.types { Bool, Int, List, String }
 import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
-import gunbc.scm.object_store { ObjectId }
+import gunbc.scm.object_store { SemanticNodeObjectRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.merge {
   Requirement,
@@ -46,7 +46,7 @@ import gunbc.scm.merge {
 // would state a commit exists when it may not.
 type StatusCheckout
   = NothingCheckedOut
-  | CheckedOutCommit { root: ObjectId, message: String }
+  | CheckedOutCommit { root: SemanticNodeObjectRef, message: String }
   | CheckedOutCommitMissing { reference: RepositoryCommitRef }
 
 // THREE STATES, NOT TWO, AND THE THIRD IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that
@@ -153,7 +153,7 @@ fn render_staged_role(staged: StagedRole) -> String {
 // a second naming scheme -- it repeats the one the model already publishes.
 //
 // THE SIBLING ARM IS DELIBERATELY UNCHANGED, and the asymmetry is the model's rather than this
-// function's. `CheckedOutCommit` carries a root `ObjectId` and NO reference, so the only identity in
+// function's. `CheckedOutCommit` carries a root node reference and NO commit reference, so the only identity in
 // reach is the content hash -- which `status_does_not_report_store_representation` states this
 // surface must not report, on the ground that below-boundary representation is opaque. Naming that
 // commit by its ordinal would require `StatusCheckout` to carry the reference, which is a change to
