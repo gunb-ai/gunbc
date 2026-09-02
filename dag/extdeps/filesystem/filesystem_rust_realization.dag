@@ -1,0 +1,91 @@
+module extdeps.filesystem.rust_realization
+
+// THE RUST REALIZATION OF create-new PUBLISH, AS ONE AUTHORITY BOTH CONSUMERS COPY.
+//
+// `extdeps.filesystem` owns the INTERFACE shape of a filesystem operation. This module owns one
+// REALIZATION of it -- the Rust transport handler bound to that shape -- which DESIGN section 3
+// keeps peripheral to the interface rather than inside it. It is a separate module for the reason
+// the section gives: interface, realization and policy are three facts, not one row.
+//
+// WHY IT EXISTS AT ALL. `Filesystem.WriteCreateNew` had TWO Rust realizations. The seed interpreter
+// carried a hand-written `write_file_create_new`, and `v1.compiler.emit_rust` carried a string of
+// Rust source emitted into every compiled program. One fact, two authorities -- and review
+// 5089156132 on gunbc#10069 measured the consequence: finding 3 repaired the interpreter to
+// stage-then-publish while the emitted spelling still opened the target directly, so a failed
+// emitted write left a partial repository that the model reported as never created. Repairing the
+// reachable authority left the other lying, which is DESIGN section 4b rung honesty: a class's rung
+// is the MINIMUM across its paths, so a fix on one path raises nothing.
+//
+// #10069 brought the two spellings back into agreement BY HAND, and said so in its own annotation:
+// nothing but review held them in step. This module is the construction that replaces that review.
+//
+// THE SEAM IS A COMPLETE NAMED FUNCTION, NOT A BLOCK, AND THAT CHOICE IS THE WHOLE DESIGN.
+//
+// The obvious repair -- keep the emitted bare block and teach the seed to build a function from it
+// -- was proposed and REFUSED on external review, correctly. That translator would have to know
+// what the block assumes in scope and how its result channel maps onto `io::Result`, which makes it
+// a THIRD hand-maintained authority sitting on the seam. It would be worse than the fork it
+// replaces: a fork fails loudly the moment the two sides disagree, while a translator keeps
+// producing something plausible from inputs it has misunderstood.
+//
+// So the row below is a whole function definition, and BOTH consumers copy these exact bytes. The
+// emitted crate places it in its lib.rs root beside the other shared definitions and reaches it
+// through `use crate::`; the seed receives the same text as a committed generated artifact and
+// calls it. Nothing transforms the text on either path, so there is no seam left to maintain into
+// disagreement.
+//
+// IT RETURNS `io::Result<()>`, NOT THE FILE RESULT TUPLE, and that is not seed ergonomics. The
+// `(success, content, error, byte_count)` tuple is the RESULT-CHANNEL POLICY of the File transport:
+// a stringified error and a byte count. Making it canonical would stringify `std::io::Error` inside
+// the realization and discard the host's structured failure before any consumer asked for that
+// loss -- policy fused into realization, the layer inversion DESIGN section 3 names. Each consumer
+// projects the outcome into whatever channel it owns; that projection is ordinary consumer code,
+// not a second implementation.
+//
+// THE STAGING NAME CARRIES A SEQUENCE, WHICH IS A DEFECT REPAIR, NOT DECORATION. The #10069
+// spelling was `{path}.gunbc-create-{pid}`, unique per TARGET but not per THREAD. Two threads of
+// one process creating the same target derived the same staging name, so the loser failed its
+// exclusive open on the TEMPORARY and reported `EEXIST` against an internal name it had never
+// asked to write. Refusing was right -- one of two racers must lose -- but the refusal did not
+// locate itself at the operator's subject, and if the winner then failed too, both calls could
+// refuse with no target ever published. A process-wide atomic sequence makes each attempt's staging
+// name its own, so the loser now falls through to `hard_link` and refuses on the REAL target.
+
+// PUBLISH-WHEN-COMPLETE, and the ordering is the guarantee rather than a checked property.
+//
+// Content is written to an exclusive sibling and the target name is claimed with `hard_link`, which
+// refuses an existing target. So this operation's exclusivity lives in the PUBLISH step, and every
+// failure before it leaves the target ABSENT rather than present-and-partial. No preflight closes
+// that race and none is attempted: `O_EXCL` on the staging file and `hard_link` on the target are
+// what decide it.
+//
+// THE ROW IS AUTHORED IN RUSTFMT'S OWN SHAPE, and that is load-bearing rather than cosmetic.
+// Both consumers receive these bytes verbatim, but one of them is committed through a path
+// rustfmt normalizes. Authoring the chain broken across lines the way rustfmt would break it
+// keeps the two committed copies BYTE-IDENTICAL; leaving it on one line made them differ by a
+// reflow, which would have left this module claiming an identity its own artifacts refuted.
+// THE ONE FAILURE ARM THAT DOES NOT CLEAN UP IS THE FIRST, and that is not an oversight. If the
+// exclusive open fails, this call created nothing, so there is no staging file of ours to remove --
+// and removing one would delete a file another attempt owns. The three later arms each remove the
+// staging file they created. `?` is exact for the first arm for the same reason.
+data rust_file_write_create_new_fn_def: String = "fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {\n    use std::io::Write;\n    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n    let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);\n    let staging_path = format!(\"{}.gunbc-create-{}-{}\", file_path, std::process::id(), seq);\n    let mut staged = std::fs::OpenOptions::new()\n        .write(true)\n        .create_new(true)\n        .open(&staging_path)?;\n    if let Err(staging_err) = staged.write_all(content) {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(staging_err);\n    }\n    if let Err(sync_err) = staged.sync_all() {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(sync_err);\n    }\n    drop(staged);\n    let published = std::fs::hard_link(&staging_path, file_path);\n    let _ = std::fs::remove_file(&staging_path);\n    published\n}\n"
+
+// THE SEED'S COPY, AS A COMMITTED GENERATED ARTIFACT.
+//
+// The emitted crate receives the definition through its own lib.rs root. The seed cannot: it is
+// ordinary Rust compiled by cargo, and it cannot execute a String. So it receives the SAME BYTES as
+// a generated .rs module that the stage0 crate compiles and calls, enrolled in
+// gunbc.generated_artifact like every other committed projection -- which means the regeneration
+// and fixed-point gates refuse drift on it rather than a reviewer noticing.
+//
+// THE HEADER IS THE ORDINARY GENERATED-ARTIFACT HEADER, so the merge driver and the drift gate
+// treat this file exactly as they treat the others. `pub` because the interpreter is a different
+// module of the same crate; the emitted crate's copy is crate-root and needs no qualifier.
+fn expected_gunbc_file_transport_generated_rs() -> String {
+  join([
+    "// Generated by v1 compiler -- do not edit.\n",
+    "// Source module: extdeps.filesystem.rust_realization\n",
+    "\n",
+    "pub ", rust_file_write_create_new_fn_def,
+  ], "")
+}

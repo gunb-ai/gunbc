@@ -12884,36 +12884,20 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 /// The temporary is removed on every path. Its removal failure is deliberately NOT propagated: it
 /// leaves a stray sibling and does not affect what the target is, and reporting it as a write
 /// failure would say the repository was not created when it was.
-fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-
-    let temp = format!("{path}.gunbc-create-{}", std::process::id());
-
-    // The temporary is exclusive too, so two concurrent creators cannot share one staging file.
-    // `?` rather than a match: this arm creates nothing, so there is no staging file to clean up --
-    // which is exactly why it is the one failure below that does NOT remove_file. The emitted
-    // realization already spells it `?`, so this also stops the two spellings differing over a
-    // difference that was never semantic.
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp)?;
-    if let Err(e) = file.write_all(content) {
-        let _ = std::fs::remove_file(&temp);
-        return Err(e);
-    }
-    if let Err(e) = file.sync_all() {
-        let _ = std::fs::remove_file(&temp);
-        return Err(e);
-    }
-    drop(file);
-
-    // hard_link refuses an existing target, which is where this operation's exclusivity now lives.
-    let published = std::fs::hard_link(&temp, path);
-    let _ = std::fs::remove_file(&temp);
-    published
-}
+// THE CREATE-NEW REALIZATION IS NOT WRITTEN HERE ANY MORE, AND THAT IS THE POINT.
+//
+// This function used to be a hand-written twin of the Rust source string
+// v1.compiler.emit_rust emitted into every compiled program. One fact, two authorities: review
+// 5089156132 on gunbc#10069 repaired the defect in THIS one while the emitted spelling still
+// opened the target directly, so a failed emitted write left a partial repository the model
+// reported as never created. The two were brought back into agreement by hand, and #10069's own
+// annotation admitted that nothing but review held them there.
+//
+// The implementation now has ONE home, extdeps.filesystem.rust_realization, and both consumers
+// receive its exact bytes: the emitted crate through its lib.rs root, the seed through the
+// committed generated artifact this call resolves to. The regeneration and fixed-point gates
+// refuse drift on that artifact, so the agreement is machine-held rather than review-held.
+use crate::gunbc_file_transport_generated::gunbc_file_write_create_new as write_file_create_new;
 
 // ------------------------------------------------------------------------------------------------
 // THE PRIMITIVE'S OWN EVIDENCE. gunbc.scm.init's witnesses cover the DECISION -- which observation
@@ -12923,6 +12907,96 @@ fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
 // ------------------------------------------------------------------------------------------------
 #[cfg(test)]
 mod write_file_create_new_tests {
+    // ---------------------------------------------------------------------------------------
+    // THE SAME-PROCESS STAGING COLLISION, AND WHY THE FIRST FORMULATION OF THIS CONTROL WAS
+    // NOT DISCRIMINATING.
+    //
+    // Review 58836 on gunbc#10069 found that the staging name was `{path}.gunbc-create-{pid}`:
+    // unique per TARGET, but not per THREAD. Two threads of one process creating the same target
+    // derived the SAME staging name, so the loser failed its exclusive open on the TEMPORARY and
+    // reported AlreadyExists against an internal name it never asked to write -- and if the winner
+    // then failed too, both calls could refuse with no target ever published.
+    //
+    // The obvious control -- race N threads and assert exactly one wins -- PASSES under the
+    // defective construction, because there too exactly one wins and the losers report
+    // AlreadyExists. Same verdict, same ErrorKind, no information. It would have been a decoration
+    // (DESIGN section 4b), and #10069 already paid for one of those.
+    //
+    // THIS ONE IS DETERMINISTIC AND SEPARATES THE TWO CONSTRUCTIONS. It plants exactly the staging
+    // file the OLD naming rule would have chosen and leaves the TARGET ABSENT. The old rule
+    // collides with that leftover and refuses a create that was entirely legitimate; the sequence
+    // suffix makes each attempt's staging name its own, so the create proceeds. Red on the defect,
+    // green on the repair, with no timing dependence.
+    #[test]
+    fn a_leftover_staging_file_does_not_refuse_a_legitimate_create() {
+        let dir = std::env::temp_dir().join(format!("gunbc-stale-staging-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // Exactly the name the pre-repair rule derived, and nothing else.
+        let collided = format!("{}.gunbc-create-{}", target, std::process::id());
+        std::fs::write(&collided, b"a leftover from an earlier attempt")
+            .expect("plant the leftover");
+
+        super::write_file_create_new(&target, b"a fresh repository")
+            .expect("a leftover staging file must not refuse a create whose TARGET is absent");
+        assert_eq!(
+            std::fs::read(&path).expect("target must exist"),
+            b"a fresh repository",
+        );
+
+        let _ = std::fs::remove_file(&collided);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // AND THE RACE ITSELF STILL HAS TO BEHAVE. This one is not discriminating on its own -- see
+    // above -- but it is the positive control for the claim the repair makes about concurrency:
+    // every refusal must name a target that REALLY exists, so no caller is told AlreadyExists about
+    // a target nobody published, and no staging file may survive the run.
+    #[test]
+    fn concurrent_same_target_creates_produce_one_winner_and_no_residue() {
+        let dir = std::env::temp_dir().join(format!("gunbc-race-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        let payload = vec![b'x'; 512 * 1024];
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let t = target.clone();
+                let p = payload.clone();
+                std::thread::spawn(move || super::write_file_create_new(&t, &p))
+            })
+            .collect();
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().expect("thread"))
+            .collect();
+
+        let winners = results.iter().filter(|r| r.is_ok()).count();
+        assert_eq!(winners, 1, "exactly one creator may publish the target");
+        for r in results.iter().filter(|r| r.is_err()) {
+            let e = r.as_ref().unwrap_err();
+            assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+        }
+        assert!(path.exists(), "the winner's target must be published");
+        assert_eq!(std::fs::read(&path).expect("target").len(), payload.len());
+
+        let residue: Vec<_> = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".gunbc-create-"))
+            .collect();
+        assert!(
+            residue.is_empty(),
+            "staging files must not survive: {residue:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn create_new_refuses_a_path_that_already_exists_and_leaves_its_bytes() {
         let dir = std::env::temp_dir().join(format!("gunbc-create-new-{}", std::process::id()));

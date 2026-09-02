@@ -217,13 +217,25 @@ fn dispatch_generated_macro_use_pub_mod_decl() -> String {
   "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
 }
 
+// THE FILE-TRANSPORT REALIZATION IS DECLARED BESIDE THE INTERPRETER THAT CALLS IT, for the same
+// reason the dispatch module is: it reaches disk through the wet actuator rather than through
+// compile_stage0()'s per-module emit, so it never appears in the emitted population that would
+// otherwise carry its declaration. Its content is the single authority
+// extdeps.filesystem.rust_realization, copied verbatim, and v1_interpreter is its only consumer.
+fn file_transport_generated_pub_mod_decl() -> String {
+  "pub mod gunbc_file_transport_generated;"
+}
+
 fn pub_mod_decl_lines_for_basename(basename: String) -> List<String> {
   if basename == "v1_interpreter" {
   [
     dispatch_generated_macro_use_pub_mod_decl(),
+    file_transport_generated_pub_mod_decl(),
     basename_to_pub_mod_decl(basename: basename),
   ]
   } else if basename == "v1_interpreter_dispatch_generated" {
+    []
+  } else if basename == "gunbc_file_transport_generated" {
     []
   } else {
     [basename_to_pub_mod_decl(basename: basename)]
@@ -309,7 +321,8 @@ type WetActuatorGeneratedRegistration {
 
 data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration> = [
   WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated" },
-  WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated" }
+  WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated" },
+  WetActuatorGeneratedRegistration { basename: "gunbc_file_transport_generated" }
 ]
 
 data v1_interpreter_dispatch_generated_family_note: String = "MOVED here from seed_retained_scaffold_registrations 2026-08-21. It was never a quarantine scaffold: its own banner names its producer, dag/gunbc/v1/v1_interpreter_dispatch_emit.dag, a SECOND wet actuator with exactly the property this family exists to state — it reaches disk through main_wet and so structurally never appears in compile_stage0()'s emitted population, which is why it must stay in the filename exclusion. Verified NOT-EMITTED by execution 2026-08-21 alongside the other 34. The move is byte-neutral for the pub-mod block: pub_mod_decl_lines_for_basename returns the empty list for this basename because its declaration is spliced by the v1_interpreter row as a macro_use line, so leaving the scaffold family costs it no pub mod it previously had."

@@ -1147,6 +1147,29 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
     format!("{:016x}", fnv1a64(&bytes))
 }
 
+pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let staging_path = format!("{}.gunbc-create-{}-{}", file_path, std::process::id(), seq);
+    let mut staged = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&staging_path)?;
+    if let Err(staging_err) = staged.write_all(content) {
+        let _ = std::fs::remove_file(&staging_path);
+        return Err(staging_err);
+    }
+    if let Err(sync_err) = staged.sync_all() {
+        let _ = std::fs::remove_file(&staging_path);
+        return Err(sync_err);
+    }
+    drop(staged);
+    let published = std::fs::hard_link(&staging_path, file_path);
+    let _ = std::fs::remove_file(&staging_path);
+    published
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,
