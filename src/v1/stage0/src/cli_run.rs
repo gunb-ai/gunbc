@@ -1,3 +1,40 @@
+// CLIPPY ROSTER -- 256 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::assertions_on_constants,  // 1
+    clippy::clone_on_copy,  // 1
+    clippy::cloned_ref_to_slice_refs,  // 2
+    clippy::collapsible_str_replace,  // 1
+    clippy::disallowed_macros,  // 94
+    clippy::doc_lazy_continuation,  // 2
+    clippy::empty_line_after_doc_comments,  // 4
+    clippy::enum_variant_names,  // 1
+    clippy::iter_kv_map,  // 1
+    clippy::manual_is_multiple_of,  // 1
+    clippy::manual_strip,  // 3
+    clippy::map_identity,  // 2
+    clippy::missing_const_for_thread_local,  // 2
+    clippy::needless_borrow,  // 2
+    clippy::needless_lifetimes,  // 1
+    clippy::only_used_in_recursion,  // 1
+    clippy::ptr_arg,  // 4
+    clippy::redundant_closure,  // 3
+    clippy::single_char_add_str,  // 2
+    clippy::too_many_arguments,  // 2
+    clippy::type_complexity,  // 7
+    clippy::unnecessary_to_owned,  // 12
+    clippy::unneeded_struct_pattern,  // 1
+    clippy::useless_vec,  // 1
+    dead_code,  // 88
+    unused_imports,  // 14
+    unused_mut,  // 3
+)]
+
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
@@ -1286,7 +1323,7 @@ mod process_cwd_mutation_reachability_gate {
                 // A raw-string opener: `r`, then zero or more `#`, then `"`, and not preceded by
                 // an identifier character (else it is the tail of a name like `attr`).
                 if c == 'r'
-                    && i.checked_sub(1).map_or(true, |prev| {
+                    && i.checked_sub(1).is_none_or(|prev| {
                         !(chars[prev].is_ascii_alphanumeric() || chars[prev] == '_')
                     })
                 {
@@ -18243,12 +18280,17 @@ mod budget_completion_tests {
             "claim",
             9_000_000,
             4_000_000,
+            77,
         );
         assert_eq!(
             receipt.wall_nanos, 9_000_000,
             "wall is the measurement basis"
         );
         assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
+        assert_eq!(
+            receipt.eval_steps, 77,
+            "the work measure is carried beside both clocks, not derived from either"
+        );
         assert_ne!(
             receipt.wall_nanos, receipt.cpu_nanos,
             "the two clocks must be carried independently, not aliased"
@@ -29173,6 +29215,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 1_000,
                     cpu_nanos: 1_000,
                     eval_self_nanos: 1_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
                 PerformanceReceipt {
@@ -29181,6 +29224,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 50_000,
                     cpu_nanos: 50_000,
                     eval_self_nanos: 50_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
                 PerformanceReceipt {
@@ -29189,6 +29233,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 5_000,
                     cpu_nanos: 5_000,
                     eval_self_nanos: 5_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
             ],
@@ -39541,6 +39586,12 @@ pub struct WitnessExecutionOccurrence {
     pub outcome: String,
     pub wall_nanos: u128,
     pub cpu_nanos: u128,
+    /// Evaluator steps this claim took, marginal of stored shared-artifact fills — the
+    /// deterministic work measure beside the two clocks, invariant across the execution
+    /// envelope in a way neither clock is. Recorded, published, and compared against nothing:
+    /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing, and this column is the
+    /// evidence a step-denominated verdict would later be built on, not that verdict.
+    pub eval_steps: u64,
     /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
     /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
     /// claim has no cost to be over, and inferring that from the duration would make a slow
@@ -40213,19 +40264,20 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms"
+        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
             row.verdict_reached,
             row.wall_nanos / 1_000_000,
             row.cpu_nanos / 1_000_000,
+            row.eval_steps,
             row.cost_line_ms
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
