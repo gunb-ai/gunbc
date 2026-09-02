@@ -264,7 +264,17 @@ data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
 // the SUBJECT file was deleted outright, and the row's own cadence, FalsifierRehomedBinWet, went dark
 // with falsifier.yml. Neither failure could surface the other -- a row that executes nowhere cannot
 // red on a missing subject, and a broken subject leaves no trace in a lane nobody runs -- so the row
-// read as covered for a fortnight while being doubly incapable of the claim it names. The subject half
+// read as covered for a fortnight while being doubly incapable of the claim it names.
+//
+// THE ONE THING THAT WAS NOT WRONG IS WORTH STATING, because it decides the remedy and the opposite
+// was the likelier guess: the row was UNREACHABLE, not VACUOUS. Measured by running the release
+// `claim_batch` over the deleted entry (BuildBuddy invocation ee22e7c5-6250-446d-a864-c2bf76cad6bd,
+// 2026-09-02): it REFUSES, typed and located -- "resolved against the process working directory ...
+// which does not exist; refusing" -- at exit 2, which under this row's `ExpectSuccess` is a red.
+// So the missing subject was never being silently passed over; it was waiting behind a dark cadence.
+// The consequence runs the other way from the usual one: restoring a scheduled route for
+// FalsifierRehomedBinWet WITHOUT this re-point would have reddened the lane on its first run, for a
+// reason with nothing to do with the mechanism under test. The subject half
 // is repaired in the same change by re-pointing at `test.claim.gitattributes_emit_witness`
 // `witness_committed_matches_emit_holds`, a live per-PR row whose `Filesystem.Read` carries no
 // `expect:`; the cadence half is not repairable here and is what this row records.
