@@ -3,7 +3,7 @@ module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 import v2.lens.disposition_redundancy { disposition_redundancy_violation_count, terminal_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
-import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
+import extdeps.llm.anthropic_messages_api { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
 import std.bytes { bytes_seam_host_realization_marker }
 import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fill_carrier_debt_marker }
 import gunbc.ci_floor_measurement {
@@ -63,7 +63,7 @@ data redundancy_present_empty: List<DeclarationRef> = []
 
 data redundancy_region1_real_successor_present: List<DeclarationRef> = [
   DeclarationRef {
-    module_path: "extdeps.llm.anthropic",
+    module_path: "extdeps.llm.anthropic_messages_api",
     decl_name: "AnthropicTextBlock",
     field: NamedField { field_name: "cache_control" }
   }
