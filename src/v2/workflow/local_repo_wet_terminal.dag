@@ -3,7 +3,20 @@ module v2.workflow.local_repo_wet_terminal
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.algebra { Cons, Empty }
+import v2.std.integer { Int }
+import v2.std.algebra { Cons, Empty, filter, length }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger {
+  ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
+  ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed
+}
+import v2.workflow.wet_evidence {
+  WetEvidenceRequirement, LocalRepoCoResidentRequirement,
+  WetEvidenceBinding, CoResidentPreparedSubject, TransportedReceiptSubject,
+  WetScheduledClaim, WetTerminalRow,
+  WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
+  WetEvidenceRefusal, wet_evidence_validate
+}
 
 // WHY THIS AUTHORITY EXISTS. `v2.workflow.floor_route_gap` gives an enrolled hermetic route gap a
 // truthful DEBT disposition: the identity executed, reached a host effect the hermetic route has no
@@ -30,183 +43,39 @@ import v2.std.algebra { Cons, Empty }
 //
 // It still refuses against this lane's only expectation. A member that passes only by running past
 // its line is not a member this lane can carry; what changes is that the refusal says so.
-type LocalRepoWetVerdict
-  = LocalRepoWetPassed
-  | LocalRepoWetFailed
-  | LocalRepoWetRefused { detail: String }
-  | LocalRepoWetNonterminal { detail: String }
-  | LocalRepoWetCompletedOverBudget { detail: String }
-
-fn local_repo_wet_verdict_is_passed(v: LocalRepoWetVerdict) -> Bool {
-  match v {
-    LocalRepoWetPassed => true
-    LocalRepoWetFailed => false
-    LocalRepoWetRefused { detail: _ } => false
-    LocalRepoWetNonterminal { detail: _ } => false
-    LocalRepoWetCompletedOverBudget { detail: _ } => false
-  }
-}
-
-// THE SCHEDULED EXPECTATION IS SINGLE-ARMED, AND THAT IS THE HONEST WIDTH.
 //
-// It carried the whole LocalRepoWetVerdict, so the roster could declare a member expected to fail,
-// refuse, or reach no verdict. The executing host could realize none of that: it mapped Passed to
-// true, every other arm to false, and compared Bools -- so the non-passing arms were one state to
-// production, and a roster row declaring any of them would have been
-// an authority claiming a behaviour the only executor cannot perform. DESIGN section 4b calls that
-// rung inflation and section 5 calls the collapse a widened failure arm; both are closed by making
-// the type as wide as the contract and no wider.
+// WHAT THIS MODULE OWNS AFTER THE CONVERGENCE, AND WHAT IT NO LONGER DOES.
 //
-// The OBSERVED side keeps every arm, because each is a real outcome and the refusal must say which
-// one occurred. What is narrowed is only what a roster may DEMAND. Admitting an
-// expected-red member is a widening of this type, arriving with the executor arm that realizes it.
-type LocalRepoWetExpectation = | LocalRepoWetExpectPassed
+// This module used to carry its own verdict type, expectation type, scheduled row, terminal row,
+// join, and seven refusal causes. `v2.workflow.floor_terminal_ledger` already owned the terminal
+// vocabulary and `claim_disposition` already derived the completed-past-limit split, so a second
+// spelling of both was a MEANING FORK: one fact answered by two authorities, which DESIGN section 3
+// forbids and which had already begun to diverge -- this module's `LocalRepoWetRefused { detail:
+// String }` collapsed five typed `ClaimOutcome` arms into prose, while the ledger types them.
+//
+// So the join moved to `v2.workflow.wet_evidence`, which answers it for BOTH routes, and what stays
+// here is exactly what is ROUTE-OWNED and cannot be shared:
+//
+//   THE ROSTER -- which identities this lane claims, and the execution property that admits them.
+//   THE REQUIREMENT -- that this route binds by CO-RESIDENT PREPARED SUBJECT and not by a
+//   transported receipt digest, which is a fact about this route and not about the join.
+//   THE INVOCATION WALL -- that an executor which was never called is a refusal rather than a
+//   silence, which the join cannot see because it compares a schedule against terminals.
+//
+// The seven causes are preserved one-for-one by the shared refusal type and every one still refuses
+// the same population: missing, duplicated, unscheduled, foreign entry, foreign function, and
+// verdict-not-expected map directly, and the foreign CANDIDATE becomes
+// `WetBindingPreparedSubjectDiffers` -- the same comparison, now typed by WHICH relation produced
+// the binding rather than by an untyped String equality.
 
-// ONE SCHEDULED IDENTITY. The entry and function are the two halves of the identity the executor is
-// asked to run, and `entry` is not decoration: the host joins the authored path against the source
-// path the prepared subject actually resolved for the module, so a stale entry refuses instead of
-// sitting unread beside a module the executor found some other way.
-type LocalRepoWetScheduled {
-  identity: String
-  entry: String
-  function: String
-  expected: LocalRepoWetExpectation
-}
-
-// ONE TERMINAL RECEIPT. `candidate` is the tree or commit the executor actually ran against.
-type LocalRepoWetTerminal {
-  identity: String
-  entry: String
-  function: String
-  candidate: String
-  observed: LocalRepoWetVerdict
-}
-
-// THE REFUSALS ARE SEPARATED BY REMEDY, not collapsed into "the receipt is bad". A missing receipt
-// means the executor did not run the identity; a foreign candidate means it ran somewhere else; a
-// foreign entry or function means the roster and the executor disagree about what was run; a
-// duplicate means two rows claim one fact and neither can be trusted over the other. Each sends a
-// reader to a different place.
-type LocalRepoWetJoinRefusal
-  = LocalRepoWetTerminalMissing { identity: String }
-  | LocalRepoWetTerminalDuplicated { identity: String, occurrences: Int }
-  | LocalRepoWetTerminalForeignCandidate { identity: String, observed: String, required: String }
-  | LocalRepoWetTerminalForeignEntry { identity: String, observed: String, required: String }
-  | LocalRepoWetTerminalForeignFunction { identity: String, observed: String, required: String }
-  | LocalRepoWetTerminalVerdictNotExpected { identity: String }
-  | LocalRepoWetTerminalUnscheduled { identity: String }
-
-type LocalRepoWetJoin
-  = LocalRepoWetJoinHolds
-  | LocalRepoWetJoinRefused { causes: List<LocalRepoWetJoinRefusal> }
-
-fn local_repo_wet_terminals_for(identity: String, terminals: List<LocalRepoWetTerminal>) -> List<LocalRepoWetTerminal> {
-  filter(terminals, t => t.identity == identity)
-}
-
-fn local_repo_wet_scheduled_has(identity: String, scheduled: List<LocalRepoWetScheduled>) -> Bool {
-  any(scheduled, s => s.identity == identity)
-}
-
-// THE FORWARD JOIN: every scheduled identity has exactly one terminal, for this candidate, naming
-// the entry and function the roster scheduled, with the verdict the roster expects.
-fn local_repo_wet_forward_causes(
-  scheduled: List<LocalRepoWetScheduled>,
-  terminals: List<LocalRepoWetTerminal>,
-  candidate: String,
-) -> List<LocalRepoWetJoinRefusal> {
-  fold(scheduled, init: [], f: fn(acc, s) {
-    let hits = local_repo_wet_terminals_for(identity: s.identity, terminals: terminals)
-    let n = hits.length()
-    if n == 0 {
-      concat(acc, [LocalRepoWetTerminalMissing { identity: s.identity }])
-    } else if n > 1 {
-      concat(acc, [LocalRepoWetTerminalDuplicated { identity: s.identity, occurrences: n }])
-    } else {
-      match first(hits) {
-        Absent => concat(acc, [LocalRepoWetTerminalMissing { identity: s.identity }])
-        Present { value: t } =>
-          if t.candidate != candidate {
-            concat(acc, [LocalRepoWetTerminalForeignCandidate { identity: s.identity, observed: t.candidate, required: candidate }])
-          } else if t.entry != s.entry {
-            concat(acc, [LocalRepoWetTerminalForeignEntry { identity: s.identity, observed: t.entry, required: s.entry }])
-          } else if t.function != s.function {
-            concat(acc, [LocalRepoWetTerminalForeignFunction { identity: s.identity, observed: t.function, required: s.function }])
-          } else if !local_repo_wet_expectation_met(expected: s.expected, observed: t.observed) {
-            concat(acc, [LocalRepoWetTerminalVerdictNotExpected { identity: s.identity }])
-          } else {
-            acc
-          }
-      }
-    }
-  })
-}
-
-// THE REVERSE JOIN, which is what makes this a SET EQUALITY rather than a coverage count. A
-// terminal for an identity nobody scheduled means the executor ran something the roster does not
-// describe, and accepting it would let an unscheduled row supply evidence for itself.
-fn local_repo_wet_reverse_causes(
-  scheduled: List<LocalRepoWetScheduled>,
-  terminals: List<LocalRepoWetTerminal>,
-) -> List<LocalRepoWetJoinRefusal> {
-  fold(terminals, init: [], f: fn(acc, t) {
-    if local_repo_wet_scheduled_has(identity: t.identity, scheduled: scheduled) {
-      acc
-    } else {
-      concat(acc, [LocalRepoWetTerminalUnscheduled { identity: t.identity }])
-    }
-  })
-}
-
-// THE EXPECTATION MEETS THE OBSERVATION BY EXHAUSTIVE MATCH ON BOTH SIDES, never by collapsing
-// either to a Bool. One accepting cell today; adding an expectation arm forces every observed arm
-// beside it to be decided rather than defaulted.
-fn local_repo_wet_expectation_met(expected: LocalRepoWetExpectation, observed: LocalRepoWetVerdict) -> Bool {
-  match expected {
-    LocalRepoWetExpectPassed =>
-      match observed {
-        LocalRepoWetPassed => true
-        LocalRepoWetFailed => false
-        LocalRepoWetRefused { detail: _ } => false
-        LocalRepoWetNonterminal { detail: _ } => false
-        LocalRepoWetCompletedOverBudget { detail: _ } => false
-      }
-  }
-}
-
-
-// THE WHOLE JOIN, both directions. Empty scheduled and empty terminals is the positive control: no
-// rows in, no causes out, and the lane holds with nothing claimed.
-fn local_repo_wet_join(
-  scheduled: List<LocalRepoWetScheduled>,
-  terminals: List<LocalRepoWetTerminal>,
-  candidate: String,
-) -> LocalRepoWetJoin {
-  let causes = concat(
-    local_repo_wet_forward_causes(scheduled: scheduled, terminals: terminals, candidate: candidate),
-    local_repo_wet_reverse_causes(scheduled: scheduled, terminals: terminals),
-  )
-  if causes.length() == 0 { LocalRepoWetJoinHolds } else { LocalRepoWetJoinRefused { causes: causes } }
-}
-
-// THE ONE FACT THE CHANGED-WITNESS GATE ASKS FOR, per identity: is there a terminal for THIS
-// candidate, for this exact identity, whose observed verdict is Passed. It is deliberately narrower
-// than the join above -- the join answers whether the LANE is honest, this answers whether ONE
-// identity may be admitted -- and both must hold before the gate admits anything.
-fn local_repo_wet_identity_passed_on_candidate(
-  identity: String,
-  terminals: List<LocalRepoWetTerminal>,
-  candidate: String,
-) -> Bool {
-  let hits = filter(terminals, t => t.identity == identity && t.candidate == candidate)
-  if hits.length() != 1 {
-    false
-  } else {
-    match first(hits) {
-      Absent => false
-      Present { value: t } => local_repo_wet_verdict_is_passed(v: t.observed)
-    }
-  }
+// THIS ROUTE'S REQUIREMENT, AND WHY IT IS A FUNCTION RATHER THAN A CONSTANT. The prepared subject is
+// the tree the FLOOR prepared for this run, so it arrives as an argument; what is fixed here is the
+// RELATION -- co-resident execution against that subject. A transported receipt cannot satisfy this
+// route no matter what digest it carries, and after the convergence that is true BY CONSTRUCTION
+// rather than by a comparison: the requirement determines the route, so there is no way to write a
+// local schedule under a transported requirement.
+fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
+  LocalRepoCoResidentRequirement { prepared_subject: candidate }
 }
 
 // THE LANE'S COMPLETE ROSTER. Membership is by EXECUTION PROPERTY: every member's real effects are
@@ -239,26 +108,87 @@ fn local_repo_wet_identity_passed_on_candidate(
 // each run wet through `gunbc run` over this tree before this row was written: every one executed
 // its real host effects to completion and returned true. That measurement is the reason they are
 // here, and it is why an unmeasured member does not get added by analogy with a measured one.
-fn local_repo_wet_schedule() -> List<LocalRepoWetScheduled> {
+//
+// THE ROWS NOW CARRY `WitnessIdentity` RATHER THAN A QUALIFIED STRING, and that removed a duplicated
+// fact rather than adding a field: every row's `identity` ended with "." plus its own `function`, so
+// the qualified name was authored twice per row and could disagree with itself. It is derived from
+// the pair by `witness_identity_qualified_name`, which is the same projection every other consumer
+// of an identity already uses.
+fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
-    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_refuses_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_refuses_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.clean_staged_index_admits_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "clean_staged_index_admits_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unmerged_index_with_no_markers_refuses_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unmerged_index_with_no_markers_refuses_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.space_and_tab_named_paths_admit_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "space_and_tab_named_paths_admit_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.contract_identity.required_ci_epoch_real_execution_witness.a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution", entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.contract_identity.required_ci_epoch_real_execution_witness.a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution", entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", function: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.contract_identity.required_ci_epoch_real_execution_witness.a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution", entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", function: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution", expected: LocalRepoWetExpectPassed },
-    LocalRepoWetScheduled { identity: "test.claim.contract_identity.required_ci_epoch_real_execution_witness.a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution", entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution", expected: LocalRepoWetExpectPassed },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_refuses_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "divergent_generated_artifact_merge_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "one_sided_generated_artifact_change_merges_clean_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "clean_staged_index_admits_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "clean_staged_index_admits_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "unmerged_index_with_no_markers_refuses_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "unmerged_index_with_no_markers_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "space_and_tab_named_paths_admit_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "space_and_tab_named_paths_admit_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution",
+      expectation: ExpectedToHold {}
+    }
   ]
 }
 
 // The identity projection the executor and the changed-witness gate both read, so neither authors a
 // second list beside this one.
 fn local_repo_wet_scheduled_identities() -> List<String> {
-  local_repo_wet_schedule() |> map(s => s.identity)
+  local_repo_wet_schedule() |> map(s => witness_identity_qualified_name(identity: s.identity))
 }
 
 // THE INVOCATION TOOTH. The join above enforces completeness CONDITIONAL ON THE HOST HAVING RUN THE
@@ -275,7 +205,7 @@ fn local_repo_wet_scheduled_identities() -> List<String> {
 // its arms, and the floor's finalization asks this fold rather than asking the executor.
 type LocalRepoWetExecution
   = LocalRepoWetExecutorNotInvoked
-  | LocalRepoWetExecutorRan { candidate: String, terminals: List<LocalRepoWetTerminal> }
+  | LocalRepoWetExecutorRan { candidate: String, terminals: List<WetTerminalRow> }
 
 // SEPARATED BY REMEDY, like the join causes. An absent executor sends a reader to the floor's call
 // site; a foreign candidate says the executor ran, but not against this tree, which is a receipt
@@ -284,7 +214,7 @@ type LocalRepoWetExecution
 type LocalRepoWetFinalizationRefusal
   = LocalRepoWetExecutorAbsent { scheduled: Int }
   | LocalRepoWetExecutionForeignCandidate { observed: String, required: String }
-  | LocalRepoWetFinalizationJoinCause { cause: LocalRepoWetJoinRefusal }
+  | LocalRepoWetFinalizationJoinCause { cause: WetEvidenceRefusal }
 
 type LocalRepoWetFinalization
   = LocalRepoWetFinalizationHolds
@@ -298,8 +228,15 @@ type LocalRepoWetFinalization
 // that turns absence into a refusal, and `local_repo_wet_schedule` is non-empty by construction with
 // a witness of its own -- so the accepting cell of this arm is unreachable from production and
 // reachable from a fixture, which is where its control lives.
+//
+// THE EXECUTION-LEVEL CANDIDATE CHECK IS NOT REDUNDANT WITH THE BINDING JOIN, and the two are kept
+// apart deliberately. This one asks whether the EXECUTOR RAN against this tree at all -- one fact
+// about the whole invocation, whose remedy is the floor's call site. The join's
+// `WetBindingPreparedSubjectDiffers` asks it PER TERMINAL, and its remedy is the row. Collapsing
+// them would report a wholly foreign run as N row-level disagreements, or N imported receipts as
+// one run-level one.
 fn local_repo_wet_finalize(
-  scheduled: List<LocalRepoWetScheduled>,
+  scheduled: List<WetScheduledClaim>,
   execution: LocalRepoWetExecution,
   candidate: String,
 ) -> LocalRepoWetFinalization {
@@ -318,13 +255,68 @@ fn local_repo_wet_finalize(
           causes: [LocalRepoWetExecutionForeignCandidate { observed: ran_candidate, required: candidate }]
         }
       } else {
-        match local_repo_wet_join(scheduled: scheduled, terminals: terminals, candidate: candidate) {
-          LocalRepoWetJoinHolds => LocalRepoWetFinalizationHolds
-          LocalRepoWetJoinRefused { causes: cs } =>
+        match wet_evidence_validate(
+          scheduled: scheduled,
+          terminals: terminals,
+          requirement: local_repo_wet_requirement(candidate: candidate)
+        ) {
+          WetEvidenceAdmitted { binding: _, terminals: _ } => LocalRepoWetFinalizationHolds
+          WetEvidenceRefused { causes: cs } =>
             LocalRepoWetFinalizationRefused {
               causes: map(cs, c => LocalRepoWetFinalizationJoinCause { cause: c })
             }
         }
       }
+  }
+}
+
+// THE ONE FACT THE CHANGED-WITNESS GATE ASKS FOR, per identity: is there a terminal for THIS
+// candidate, for this exact identity, whose disposition is `Passed`. It is deliberately narrower
+// than the join above -- the join answers whether the LANE is honest, this answers whether ONE
+// identity may be admitted -- and both must hold before the gate admits anything.
+//
+// THE PASS TEST IS THE LEDGER'S DERIVATION, NOT A SECOND ONE. It used to match a local verdict arm;
+// it now asks `claim_disposition` under the roster's own expectation, which is what keeps the
+// completed-over-budget split from being re-implemented here for a third time. A claim that reached
+// its verdict past its cost line is NOT admitted by this gate, exactly as before.
+fn local_repo_wet_identity_passed_on_candidate(
+  identity: String,
+  terminals: List<WetTerminalRow>,
+  candidate: String,
+) -> Bool {
+  let hits = filter(
+    xs: terminals,
+    predicate: fn(t) {
+      witness_identity_qualified_name(identity: t.identity) == identity
+        && local_repo_wet_terminal_binds_to(terminal: t, candidate: candidate)
+    }
+  )
+  if length(xs: hits) != 1 {
+    false
+  } else {
+    match first(hits) {
+      Absent => false
+      Present { value: t } =>
+        match claim_disposition(
+          row: ClaimTerminalRow {
+            identity: t.identity,
+            expectation: ExpectedToHold {},
+            terminal: t.terminal
+          }
+        ) {
+          Passed => true
+          _ => false
+        }
+    }
+  }
+}
+
+// WHETHER ONE TERMINAL IS BOUND TO THIS TREE BY THIS ROUTE'S RELATION. A transported receipt reaches
+// the wrong arm and answers false rather than comparing digests, which is the state-space
+// conflation an untyped `candidate: String` could not express.
+fn local_repo_wet_terminal_binds_to(terminal: WetTerminalRow, candidate: String) -> Bool {
+  match terminal.binding {
+    CoResidentPreparedSubject { prepared_subject: p } => p == candidate
+    TransportedReceiptSubject { semantic_subject: _, executor_contract: _ } => false
   }
 }
