@@ -10,7 +10,7 @@ import gunbc.guarantee_rung {
 // THE POPULATION BOTH. It was not, and the fork was live in main: gunbc.guarantee_rung_drop carried
 // a SECOND record for the same declaration, `GuaranteeRungDrop`, with the five 4b(3) fields typed,
 // and four Standing drops were declared through it IN SITU at their own subjects' modules. Those
-// four appeared in no roster, in docs/design-ledgers.md nowhere, and in DESIGN.md's "the ones
+// four appeared in no roster, in the projected drop roster nowhere, and in DESIGN.md's "the ones
 // standing today" list nowhere -- while DESIGN section 4b(3) states that declared drops are rostered
 // IN FULL and names this module as the authority. That is not untidiness. It is the document that
 // states the obligation under-reporting the live safety accounting by four rows, in a file loaded in
@@ -37,7 +37,8 @@ import gunbc.guarantee_rung {
 // THIS CUT IS MECHANICAL AND ITS ORACLE IS CONTENT PRESERVATION. Each row carries its authored
 // paragraph BYTE-FOR-BYTE in `authored`; only the typed `identity`, `subject` and `declared` fields
 // are new, and they are read off the paragraph own opening sentence rather than composed. The
-// projection renders the roster in source order into docs/design-ledgers.md, so every sentence that
+// projection renders the roster in source order into the file `gunbc.design_ledgers` names, so every
+// sentence that
 // was in DESIGN.md is still generated from this repository and still adjudicated by the
 // generated-artifact phase -- what changed is WHICH file it lands in, and therefore what every
 // session loads on every turn.
