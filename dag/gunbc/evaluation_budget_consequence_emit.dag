@@ -2,7 +2,7 @@ module gunbc.evaluation_budget_consequence_emit
 
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 import std.evaluation_budget { evaluation_budget_refusal_code }
-import std.types { List, NonEmptyStr, String }
+import std.types { NonEmptyStr, String }
 
 // THE MACHINE IDENTITY OF A BUDGET BREACH, PROJECTED INTO THE SEED.
 //
@@ -52,29 +52,15 @@ fn expected_evaluation_budget_consequence_generated_rs() -> String {
   )
 }
 
-// THE FALSIFIER IS NAMED HERE AS STEPS, NOT RECORDED AS NUMBERS. DESIGN section 6 says a
-// measurement is cited by naming the producer that re-derives it, so this row names the four
-// instruments that answer "does the served machine identity actually come from the authority" and
-// the one-token perturbation that makes them discriminate. Each step is an existing entry point;
-// none of them was written for this receipt.
+// THE FALSIFIER IS AN EXECUTABLE INSTRUMENT, AND IT USED TO BE THIS PROSE.
 //
-// WHY THE PERTURBATION IS PART OF THE INSTRUMENT AND NOT AN AFTERTHOUGHT: with the authority
-// unchanged, every one of these steps is green whether or not the seed reads the projection at
-// all, because the value it would have chosen independently is the same value. Only moving the
-// authority separates "the response carries the code BECAUSE the projection carries it" from "the
-// response happens to spell the same thing".
+// A `evaluation_budget_consequence_falsifier_steps()` row stood here and hand-described the same
+// perturb -> gate -> regenerate -> build -> serve -> judge -> restore procedure that
+// `v1_compiler.evaluation_budget_consequence_falsifier_host` now performs and adjudicates. Keeping
+// both would leave a second WRITABLE sequence beside the executing one, free to drift from it in
+// either direction, and DESIGN section 6 is explicit that a measurement worth re-deriving is worth
+// an entry point rather than a description of one. The entry point exists, so the description is
+// deleted rather than demoted to documentation.
 //
-// STEP 3 REBUILDS BEFORE SERVING FOR THE REASON gunbc.generated_artifact_merge_driver ALREADY
-// RECORDS ABOUT REGEN: a binary that predates the change it must express will report a confident
-// green for the wrong reason. Learned again the expensive way on this construction, where the seed
-// emitter had to be rebuilt from the installed mirror before it would place the module at all.
-fn evaluation_budget_consequence_falsifier_steps() -> List<String> {
-  [
-    "0. perturb ONLY std.evaluation_budget evaluation_budget_refusal_code, changing nothing else",
-    "1. drift arm, BEFORE regenerating: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main -- it must refuse, naming evaluation_budget_consequence_generated.rs",
-    "2. regenerate with the same gate's main_wet, then read EVALUATION_BUDGET_REFUSAL_CODE out of src/v1/stage0/src/evaluation_budget_consequence_generated.rs -- it must carry the moved value",
-    "3. rebuild the seed (cargo build --release --bin gunbc), then serve the breach fixture: gunbc serve --entry dag/test/fixture/serve_seam_probe.dag --function serve_budget_breach_probe --eval-budget-cpu-ms 50, and POST to it",
-    "4. the 500 body must carry the MOVED code exactly once and the FORMER code exactly zero times; the refusal must come from a real thread-CPU breach, which the fixture arm produces by spinning rather than by asserting one",
-    "5. revert the perturbation and regenerate, leaving the tree clean",
-  ]
-}
+// The instrument is on-demand and NOT on the merge path:
+//   cargo test --release -p v1-compiler --lib evaluation_budget_consequence_falsifier -- --ignored
