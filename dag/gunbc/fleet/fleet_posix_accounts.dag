@@ -285,7 +285,26 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   )
 }
 
+// TWO GRANT SETS, ONE VALUE, TWO AUTHORITIES -- and the coincidence is why this is easy to get
+// wrong. The srv3 set is an OCCURRENCE FACT: what the probe found on that host. The role set is a
+// POLICY CLAIM: what the fleet grants this role anywhere, which is what fleet_principal_intent
+// asks for and what a srv4 or Spark occurrence is measured AGAINST. Collapsing them because both
+// read [] today would make a future srv3-only privilege change silently become policy for every
+// other host administrator -- the same role-versus-occurrence leak the receipt family was renamed
+// to close, one field upstream (review 58941).
+//
+// NO WITNESS GUARDS THIS SPLIT TODAY, DELIBERATELY. Both sets are empty, so a check that the
+// intent reads the role set and not srv3's is green under either wiring -- permanently green by
+// construction, which §4b says is worse than absent because it would be cited as coverage. The
+// separation is carried by construction instead: two declarations, each consumed at exactly one
+// grain. The trigger for an executing check is the first host-administrator occurrence whose
+// OBSERVED grants are non-empty; at that moment the two sets can differ, the RED becomes
+// authorable, and the witness lands with it.
 fn fleet_posix_srv3_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+fn fleet_posix_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -482,7 +501,7 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         principal: key,
         login_policy: LegacyHostAccount,
         name_requirements: legacy_name_requirements,
-        sudo_grants: fleet_posix_srv3_host_administrator_sudo_grants(),
+        sudo_grants: fleet_posix_host_administrator_sudo_grants(),
       }
     FleetAccountAutomation =>
       FleetPrincipalIntent {
