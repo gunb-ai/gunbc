@@ -4,6 +4,8 @@ import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.self_host_compile_phase_frontier {
+  TargetDefaultedToHost,
+  TargetPinnedOnInvocation,
   CompilePhaseFrontierReceipt,
   CompilePhaseFrontierStanding,
   CompilePhaseFrontierValidated,
@@ -172,6 +174,7 @@ test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> 
           rustc_identity: latest.subject.rustc_identity,
           invocation: CompilePhaseInvocation {
             target: concat(latest.subject.invocation.target, "-not-this-host"),
+            target_selection: latest.subject.invocation.target_selection,
             profile: latest.subject.invocation.profile,
             features: latest.subject.invocation.features
           },
@@ -181,6 +184,41 @@ test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> 
       match live_tree_frontier_verdict(series: self_host_compile_phase_frontier_receipts, observation: foreign) {
         LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "host target")
         verdict => false
+      }
+    }
+  }
+}
+
+// A PINNED LIVE MEASUREMENT AGAINST A DEFAULTED RECEIPT IS NOT COMPARABLE, AND THIS IS THE PROBE
+// THAT WOULD HAVE STAYED GREEN BEFORE THE FIX. Both sides spell the SAME triple -- the two persisted
+// receipts record x86_64-unknown-linux-gnu, and a pinned invocation on that host passes exactly that
+// string -- so every field a String comparison can see agrees. What differs is how the value was
+// obtained: the receipt recorded what rustc reported as the host while the measured `cargo check`
+// passed no --target, and a pinned invocation records what cargo was told to compile. If this arm
+// answered Comparable, the ratchet would compare a population measured under one instrument against
+// one measured under another and call the agreement a pass. The RED is authorable only because the
+// distinction is a constructor rather than a note: with `target` a bare String there is nothing here
+// to perturb.
+test fn a_pinned_live_invocation_is_incomparable_to_a_defaulted_receipt() -> Bool {
+  match latest_receipt() {
+    Absent => false
+    Present { value: latest } => {
+      let pinned = LiveToolchainReading {
+        cargo_identity: latest.subject.cargo_identity,
+        rustc_identity: latest.subject.rustc_identity,
+        invocation: CompilePhaseInvocation {
+          target: latest.subject.invocation.target,
+          target_selection: TargetPinnedOnInvocation,
+          profile: latest.subject.invocation.profile,
+          features: latest.subject.invocation.features
+        },
+        classification_policy_digest: latest.subject.classification_policy_digest
+      }
+      match live_comparability(latest: latest, live: pinned) {
+        LiveIncomparable { reason: why } =>
+          string_contains(s: why as String, pattern: "selects its target differently")
+            && latest.subject.invocation.target == pinned.invocation.target
+        LiveComparable => false
       }
     }
   }

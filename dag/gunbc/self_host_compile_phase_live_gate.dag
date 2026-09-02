@@ -10,6 +10,7 @@ import tools.emission_entry_instrument {
   cargo_error_identity_rows
 }
 import gunbc.self_host_compile_phase_frontier {
+  target_selection_label,
   RustcPhaseBoard,
   CompilePhaseInvocation,
   CompilePhaseFrontierReceipt,
@@ -148,6 +149,20 @@ fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainRe
       reason: concat(
         concat("the live host target is not the latest receipt's: live=", live.invocation.target),
         concat(" receipt=", latest.subject.invocation.target)
+      ) as NonEmptyStr
+    }
+  } else if target_selection_label(t: latest.subject.invocation.target_selection)
+            != target_selection_label(t: live.invocation.target_selection) {
+    LiveIncomparable {
+      reason: concat(
+        concat(
+          "the live invocation selects its target differently from the latest receipt's: live=",
+          target_selection_label(t: live.invocation.target_selection)
+        ),
+        concat(
+          concat(" receipt=", target_selection_label(t: latest.subject.invocation.target_selection)),
+          ". The two spell the same triple, and that agreement is incidental: a defaulted invocation records what rustc reported as the host while a pinned one records what cargo was told to compile. Comparing them is a comparison across an instrument change."
+        )
       ) as NonEmptyStr
     }
   } else if latest.subject.invocation.profile != live.invocation.profile {
