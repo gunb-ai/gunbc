@@ -394,8 +394,28 @@ data ct_row_ct_contracts_sidecar_witness_test: LanguageSourceScaffoldRow = Langu
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
-data ct_row_ct_caret_parse_smoke_native_witness_tests: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
-  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_caret_parse_smoke_native_witness_tests",
+data ct_row_ct_fixture_closure_rustc_discrimination_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_fixture_closure_rustc_discrimination_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_import_lines_follow_resolved_binding_identity_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_import_lines_follow_resolved_binding_identity_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_witness_carrier_declines_non_witness_expected_type_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_witness_carrier_declines_non_witness_expected_type_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_generic_param_declines_fail_closed_unwrap_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_generic_param_declines_fail_closed_unwrap_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_shell_service_output_projection_known_hole_probe_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_shell_service_output_projection_known_hole_probe_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
@@ -411,6 +431,12 @@ data ct_row_ct_call_shape_duplicate_wall_witness_test: LanguageSourceScaffoldRow
 
 data ct_row_ct_call_deficit_red_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_call_deficit_red_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
+data ct_row_ct_function_value_adapter_bound_alignment_control_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust",
+  blob_decl: "ct_function_value_adapter_bound_alignment_control_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
@@ -485,9 +511,14 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_constructor_call_admission_qualified_caller_test,
   ct_row_ct_sole_constructor_fieldless_witness_test,
   ct_row_ct_contracts_sidecar_witness_test,
-  ct_row_ct_caret_parse_smoke_native_witness_tests,
+  ct_row_ct_fixture_closure_rustc_discrimination_test,
+  ct_row_ct_import_lines_follow_resolved_binding_identity_test,
+  ct_row_ct_witness_carrier_declines_non_witness_expected_type_test,
+  ct_row_ct_generic_param_declines_fail_closed_unwrap_test,
+  ct_row_ct_shell_service_output_projection_known_hole_probe_test,
   ct_row_ct_call_shape_wall_witness_test,
   ct_row_ct_call_shape_duplicate_wall_witness_test,
+  ct_row_ct_function_value_adapter_bound_alignment_control_test,
   ct_row_ct_call_deficit_red_witness_test,
   ct_row_ct_function_value_named_application_controls_witness_test,
   ct_row_ct_function_value_field_method_known_hole_probe_test,

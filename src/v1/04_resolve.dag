@@ -12,6 +12,7 @@ import v1.std.core {
   make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
+  field_from_key_property_name,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
@@ -60,17 +61,26 @@ import v1.compiler.infer_env {
 // The contract is unchanged: exactly one visible unit variant with this name resolves; zero or
 // several refuse. Duplicate variant names within one coproduct keep count > 1 and refuse, as
 // the scan's multiple appended matches did.
-fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
-  match map_get(env.unit_variant_index, variant_name) {
-    Present { value: contribs } =>
-      let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
-      if total == 1 {
-        match filter(contribs |> map_values, c => c.count == 1) |> first {
-          Present { value: single } => Present { value: single.variant }
-          Absent => none
-        }
-      } else { none }
-    Absent => none
+type UnitVariantPhantomLookup
+  = UnitVariantPhantomPresent { variant: Node }
+  | UnitVariantPhantomAbsent
+  | UnitVariantPhantomEvidenceUnavailable
+
+fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitVariantPhantomLookup {
+  if !env.unit_variant_index_observed {
+    UnitVariantPhantomEvidenceUnavailable
+  } else {
+    match map_get(env.unit_variant_index, variant_name) {
+      Present { value: contribs } =>
+        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+        if total == 1 {
+          match filter(contribs |> map_values, c => c.count == 1) |> first {
+            Present { value: single } => UnitVariantPhantomPresent { variant: single.variant }
+            Absent => UnitVariantPhantomAbsent
+          }
+        } else { UnitVariantPhantomAbsent }
+      Absent => UnitVariantPhantomAbsent
+    }
   }
 }
 
@@ -633,11 +643,16 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
-              Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
-              Absent =>
+              UnitVariantPhantomPresent { variant: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
+              UnitVariantPhantomAbsent =>
                 NodeResolveResult {
                   resolved: n,
                   diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
+                }
+              UnitVariantPhantomEvidenceUnavailable =>
+                NodeResolveResult {
+                  resolved: n,
+                  diagnostics: [make_error_node(diagnostic: UnitVariantPhantomIdentityEvidenceUnavailable { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
                 }
             }
           }
@@ -697,7 +712,7 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolve
         Present { value: result } => Present { value: result.expr }
         Absent => none
       },
-      from_key_properties: field.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key"),
+      from_key_properties: field.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == field_from_key_property_name),
       span: field.span, name_span: node_name_span(n: field)
     ),
     diagnostics: concat(type_diags, default_diags)

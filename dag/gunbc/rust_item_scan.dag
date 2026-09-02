@@ -204,7 +204,7 @@ fn leading_ident_from(s: String, at: Int, acc: String) -> String {
   if at >= string_length(s: s) {
     acc
   } else {
-    let c = char_at(s: s, index: at)
+    let c = char_at(s: s, pos: at)
     if char_is_ident(c: c) {
       leading_ident_from(s: s, at: at + 1, acc: concat(acc, c))
     } else {
@@ -224,7 +224,7 @@ fn drop_prefix_length(s: String, n: Int) -> String {
 fn indent_width_from(s: String, at: Int) -> Int {
   if at >= string_length(s: s) {
     at
-  } else if char_at(s: s, index: at) == " " {
+  } else if char_at(s: s, pos: at) == " " {
     indent_width_from(s: s, at: at + 1)
   } else {
     at
@@ -238,7 +238,7 @@ fn indent_width(s: String) -> Int {
 fn scan_past_char_from(s: String, at: Int, target: String) -> Int {
   if at >= string_length(s: s) {
     at
-  } else if char_at(s: s, index: at) == target {
+  } else if char_at(s: s, pos: at) == target {
     at + 1
   } else {
     scan_past_char_from(s: s, at: at + 1, target: target)
@@ -364,7 +364,7 @@ fn ends_with(s: String, suffix: String) -> Bool {
 fn hash_run_from(s: String, at: Int, acc: Int) -> Int {
   if at >= string_length(s: s) {
     acc
-  } else if char_at(s: s, index: at) == "#" {
+  } else if char_at(s: s, pos: at) == "#" {
     hash_run_from(s: s, at: at + 1, acc: acc + 1)
   } else {
     acc
@@ -393,12 +393,12 @@ fn repeat_hashes(n: Int, acc: String) -> String {
 fn raw_string_open_terminator_from(s: String, at: Int) -> String {
   if at >= string_length(s: s) {
     ""
-  } else if char_at(s: s, index: at) != "r" {
+  } else if char_at(s: s, pos: at) != "r" {
     raw_string_open_terminator_from(s: s, at: at + 1)
   } else {
     let hashes = hash_run_from(s: s, at: at + 1, acc: 0)
     if at + 1 + hashes < string_length(s: s)
-      && char_at(s: s, index: at + 1 + hashes) == "\"" {
+      && char_at(s: s, pos: at + 1 + hashes) == "\"" {
       concat("\"", repeat_hashes(n: hashes, acc: ""))
     } else {
       raw_string_open_terminator_from(s: s, at: at + 1)
