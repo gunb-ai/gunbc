@@ -381,18 +381,25 @@ fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerInterval
   }
 }
 
+// Both signed bounds are the SAME 2^(width-1), read once as a magnitude and once
+// decremented -- one computation identity with two demands whose least common ancestor is
+// the Signed arm, so it is carried rather than re-derived. The re-derivation was not free:
+// integer_pow2_magnitude is a linear recursion of width-1 decimal doublings, so the
+// duplicate paid a whole second ladder for every machine width.
 fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> IntegerIntervalSpec {
   match signedness {
-    Signed =>
+    Signed => {
+      let signed_pow2 = integer_pow2_magnitude(exponent: width_bits - 1)
       integer_interval(
         inclusive_min: integer_concrete_bound(
           sign: IntegerBoundNegative,
-          magnitude: integer_pow2_magnitude(exponent: width_bits - 1)
+          magnitude: signed_pow2
         ),
         inclusive_max: integer_magnitude_upper_bound(
-          magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits - 1))
+          magnitude: decimal_nonzero_sub_one(m: signed_pow2)
         )
       )
+    }
     Unsigned =>
       integer_interval(
         inclusive_min: integer_concrete_zero(),
