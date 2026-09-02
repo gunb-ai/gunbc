@@ -77,7 +77,14 @@ type ParsePhaseEvidence
 // pinned population against a defaulted one is a comparison across an instrument change, and the
 // gate must refuse it rather than discover later that the agreement was incidental. No receipt can
 // be written without answering, which is the point: the distinction is unwritable-wrong rather than
-// checked.
+// checked. The constructors are compared STRUCTURALLY, not through their label: the label exists to
+// render a refusal a human reads, and joining on it would make a display string load-bearing.
+//
+// ONLY THE CROSSING REFUSES, AND NOTHING IN THE EXISTING SERIES IS STRANDED. Both persisted receipts
+// are `TargetDefaultedToHost` -- which is what they WERE, observable from the fact that nothing
+// pinned them, rather than a guess about what they probably compiled as -- so they remain comparable
+// to EACH OTHER and the series ratchet is untouched. What refuses is a pinned population meeting a
+// defaulted one, which is the only pair where the agreement of the triples is incidental.
 type TargetSelection
   = TargetPinnedOnInvocation
   | TargetDefaultedToHost
@@ -1005,8 +1012,7 @@ fn comparison_inputs_same(a: CompilePhaseReceiptSubject, b: CompilePhaseReceiptS
     && a.rustc_identity == b.rustc_identity
     && a.classification_policy_digest == b.classification_policy_digest
     && a.invocation.target == b.invocation.target
-    && target_selection_label(t: a.invocation.target_selection)
-       == target_selection_label(t: b.invocation.target_selection)
+    && a.invocation.target_selection == b.invocation.target_selection
     && a.invocation.profile == b.invocation.profile
     && a.invocation.features == b.invocation.features
 }

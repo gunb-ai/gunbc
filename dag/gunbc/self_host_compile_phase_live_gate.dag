@@ -151,8 +151,7 @@ fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainRe
         concat(" receipt=", latest.subject.invocation.target)
       ) as NonEmptyStr
     }
-  } else if target_selection_label(t: latest.subject.invocation.target_selection)
-            != target_selection_label(t: live.invocation.target_selection) {
+  } else if latest.subject.invocation.target_selection != live.invocation.target_selection {
     LiveIncomparable {
       reason: concat(
         concat(
