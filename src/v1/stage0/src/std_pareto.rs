@@ -637,40 +637,34 @@ pub fn compare_pair(
                 cause: axis_defects.clone().join(&" ; ".to_string()),
             })
         } else {
-            if crate::std_decl_ref::declaration_ref_eq(a.identity.clone(), b.identity.clone()) {
-                Rc::new(PairStanding::PairRefused {
-    cause: Rc::new(vec!["both sides of the pair carry one candidate identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(a.identity.clone()), " - entry_standing refuses a field holding a duplicate for the same reason, and the pair API is where a caller reaches that state directly".to_string()]).join(&"".to_string()),
-})
-            } else {
-                {
-                    let malformed = v1_rt::concat(
-                        entry_contradicts_its_declaration(a.clone(), axes.clone()),
-                        entry_contradicts_its_declaration(b.clone(), axes.clone()),
-                    );
-                    if ((malformed.clone().len() as i64) > 0) {
-                        Rc::new(PairStanding::PairRefused {
-                            cause: malformed.clone().join(&" ; ".to_string()),
-                        })
-                    } else {
-                        {
-                            let gaps = declared_gap_cause(a.clone(), b.clone());
-                            if ((gaps.clone().len() as i64) > 0) {
-                                Rc::new(PairStanding::PairEvidenceIncomplete {
-                                    missing: gaps.clone().join(&" ; ".to_string()),
-                                })
-                            } else {
-                                pair_from_accum(axes.iter().cloned().fold(
-                                    Rc::new(PairAccum {
-                                        refusal_causes: no_names(),
-                                        a_worse_somewhere: false,
-                                        winning_axes: no_axis_ids(),
-                                        undecided_axes: no_axis_ids(),
-                                    }),
-                                    |acc: _, axis: Rc<SelectionAxis>| {
-                                        axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
-                                    },
-                                ))
-                            }
+            {
+                let malformed = v1_rt::concat(
+                    entry_contradicts_its_declaration(a.clone(), axes.clone()),
+                    entry_contradicts_its_declaration(b.clone(), axes.clone()),
+                );
+                if ((malformed.clone().len() as i64) > 0) {
+                    Rc::new(PairStanding::PairRefused {
+                        cause: malformed.clone().join(&" ; ".to_string()),
+                    })
+                } else {
+                    {
+                        let gaps = declared_gap_cause(a.clone(), b.clone());
+                        if ((gaps.clone().len() as i64) > 0) {
+                            Rc::new(PairStanding::PairEvidenceIncomplete {
+                                missing: gaps.clone().join(&" ; ".to_string()),
+                            })
+                        } else {
+                            pair_from_accum(axes.iter().cloned().fold(
+                                Rc::new(PairAccum {
+                                    refusal_causes: no_names(),
+                                    a_worse_somewhere: false,
+                                    winning_axes: no_axis_ids(),
+                                    undecided_axes: no_axis_ids(),
+                                }),
+                                |acc: _, axis: Rc<SelectionAxis>| {
+                                    axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
+                                },
+                            ))
                         }
                     }
                 }

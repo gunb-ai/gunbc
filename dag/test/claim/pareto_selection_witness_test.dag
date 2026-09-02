@@ -34,6 +34,7 @@ data power_only: List<SelectionAxis> = [axis_power]
 // A second axis row carrying the SAME identity under a different goal - the duplicate the
 // selection must refuse rather than resolve first-one-wins.
 data axis_cost_duplicate: SelectionAxis = SelectionAxis { identity: axis_cost_id, goal: HigherIsBetter }
+data axis_power_duplicate: SelectionAxis = SelectionAxis { identity: axis_power_id, goal: LowerIsBetter }
 data duplicated_axes: List<SelectionAxis> = [axis_cost, axis_cost_duplicate, axis_power]
 
 data no_missing: List<NonEmptyStr> = []
@@ -518,37 +519,39 @@ test fn a_duplicated_axis_roster_refuses_the_pair_too() -> Bool {
   refused && standing_agrees
 }
 
-// ONE DUPLICATED IDENTITY IS ONE CAUSE, NOT ONE PER COPY. duplicated_axes carries exactly one
-// defect -- axis_cost and axis_cost_duplicate share axis_cost_id -- so a roster scan that folds over
-// OCCURRENCES reports it twice. Counting the causes is the check; asserting merely that a refusal
-// happened would pass under either spelling, which is what let this through when the cause-returning
-// form replaced the Bool.
+// A CAUSE POPULATION MUST BE SIZED BY DISTINCT DEFECTS, NOT BY MALFORMED ROWS. This is the whole
+// reason the Bool was replaced: if the returned causes are the authority, their CARDINALITY tells a
+// caller how many separate repairs are owed, and a count that follows occurrences misstates that.
+// One identity duplicated three times is ONE defect to fix, not three.
 //
-// KILLING MUTATION: drop the identity_already_named guard from axis_roster_contradiction so it emits
-// per occurrence. This control reds; every other axis control stays green, because they only ask
-// whether a refusal occurred.
-test fn a_duplicated_identity_is_named_once_not_once_per_copy() -> Bool {
-  count(axis_roster_contradiction(axes: duplicated_axes)) == 1
-    && count(axis_roster_contradiction(axes: both_axes)) == 0
+// The cases below are the discriminator, and the middle one is why counting is not enough on its own:
+// a two-copy duplicate and a three-copy duplicate must both yield exactly one cause, so a scan that
+// merely halved the count, or emitted n-1, would pass [A,A] and fail [A,A,A].
+//   [A, A]        -> exactly one cause, naming A
+//   [A, A, A]     -> exactly one cause, naming A
+//   [A, A, B, B]  -> exactly two causes, one naming each
+//   [A, B]        -> none
+// Identity is the authority, so this is a structural scan carrying a seen-identity population, NOT
+// string deduplication of rendered messages -- two defects that happened to render alike must still
+// count twice, and one defect rendered under two spellings must still count once.
+//
+// KILLING MUTATION: restore the per-occurrence append (drop the seen-identity guard in
+// axis_roster_contradiction). [A,A] then yields two causes and this control reds, while every other
+// axis control stays green because they only ask whether a refusal occurred.
+fn names_identity(causes: List<NonEmptyStr>, id: DeclarationRef) -> Int {
+  count(filter(causes, c => string_contains(s: c as String, pattern: declaration_ref_display_key(ref: id))))
 }
 
-// THE PAIR PATH MUST REFUSE A SHARED CANDIDATE IDENTITY, as the field path does. entry_standing
-// refuses a field holding two entries under one identity; compare_pair is where a caller reaches
-// that state DIRECTLY, and it used to compare the two happily and answer PairNoDominance -- every
-// axis equal, since it is the same candidate twice. field_step never exposed it because
-// challenger_applies excludes self-comparison before compare_pair is reached, so only the exported
-// entry point could exhibit it, which is precisely why the field-path control could not catch it.
-//
-// KILLING MUTATION: delete the identity-equality arm from compare_pair. This control reds while
-// witness_duplicate_candidate_identity_refuses, which drives the standing path, stays green.
-test fn the_pair_path_refuses_one_candidate_compared_with_itself() -> Bool {
-  match compare_pair(a: entry_cheap_strong, b: entry_cheap_strong, axes: both_axes) {
-    PairRefused { cause } => count(cause) > 0
-    PairNoDominance => false
-    PairDominates { winning_axes } => false
-    PairEvidenceIncomplete { missing } => false
-    PairPendingEvidence { undecided_axes } => false
-  }
+test fn a_cause_population_is_sized_by_distinct_defects() -> Bool {
+  let two_copies = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate])
+  let three_copies = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate, axis_cost])
+  let two_defects = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate, axis_power, axis_power_duplicate])
+  count(two_copies) == 1 && names_identity(causes: two_copies, id: axis_cost_id) == 1
+    && count(three_copies) == 1 && names_identity(causes: three_copies, id: axis_cost_id) == 1
+    && count(two_defects) == 2
+    && names_identity(causes: two_defects, id: axis_cost_id) == 1
+    && names_identity(causes: two_defects, id: axis_power_id) == 1
+    && count(axis_roster_contradiction(axes: both_axes)) == 0
 }
 
 fn pareto_witness_report() -> NonEmptyStr {
@@ -568,8 +571,7 @@ fn pareto_witness_report() -> NonEmptyStr {
     " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
     " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
     " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
-    " one_cause_per_identity=", flag(b: a_duplicated_identity_is_named_once_not_once_per_copy()),
-    " pair_refuses_self=", flag(b: the_pair_path_refuses_one_candidate_compared_with_itself()),
+    " causes_sized_by_defects=", flag(b: a_cause_population_is_sized_by_distinct_defects()),
   ], "")
 }
 
@@ -587,8 +589,7 @@ fn pareto_witness_main() -> ProcessExit {
     && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
     && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
     && a_duplicated_axis_roster_refuses_the_pair_too()
-    && a_duplicated_identity_is_named_once_not_once_per_copy()
-    && the_pair_path_refuses_one_candidate_compared_with_itself()
+    && a_cause_population_is_sized_by_distinct_defects()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()

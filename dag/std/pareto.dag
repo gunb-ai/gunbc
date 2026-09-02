@@ -493,15 +493,20 @@ fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
 // The precedence now falls out of the shared reader rather than being restated here: projector
 // contradiction (duplicate anywhere, or absent-while-declaring-complete) > honest declared
 // incompleteness > ordinary axis comparison.
+// COMPARE_PAIR DELIBERATELY DOES NOT REFUSE TWO OPERANDS SHARING ONE IDENTITY, and the arm that did
+// was removed after review of 96babf499 rather than kept. Duplication is a property of a FIELD
+// POPULATION -- one identity occupying two positions -- and two operands cannot carry that fact, so
+// refusing here does not implement field_has_duplicate_identity at pair grain; it conflates an
+// intentional self-comparison with a field defect this function cannot observe.
+//
+// It was also fail-shut where an answer existed: an entry does not dominate itself, so
+// PairNoDominance is the TRUE answer to compare_pair(x, x), and refusing turned an available answer
+// into a refusal. That is the mirror of the fail-open this PR exists to close, and no more honest
+// for erring the other way. The field admission rule stays with the field path.
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
   let axis_defects = axis_roster_contradiction(axes: axes)
   if count(axis_defects) > 0 {
     PairRefused { cause: join(axis_defects, " ; ") }
-  } else if declaration_ref_eq(a: a.identity, b: b.identity) {
-    PairRefused { cause: join([
-      "both sides of the pair carry one candidate identity ",
-      declaration_ref_display_key(ref: a.identity),
-      " - entry_standing refuses a field holding a duplicate for the same reason, and the pair API is where a caller reaches that state directly"], "") }
   } else {
     let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
     if count(malformed) > 0 {
