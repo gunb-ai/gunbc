@@ -3,7 +3,7 @@ module v1.compiler.stage0_crates
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v1.std.core { TextFile }
-import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
+import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, generated_rust_lint_relaxations }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_partition_package_graph {
@@ -44,17 +44,21 @@ type Stage0CratePlan {
 // (HandExplicit ~8-crate interim partition). Dissolve-on: rust_crate_partition_interim_explicit
 // when PolicyPartition lands.
 
+// THE LINT NAMES ARE NOT SPELLED HERE. They were, and the identical list stood in
+// v1.compiler.emit_rust as well -- one concept with two names, which is the fork §3 forbids:
+// a lint added to one root and missed by the other is invisible, because the disagreement is
+// between two suppressions and neither says anything. This module contributes only the
+// RENDERING -- one lint per line, the deny and the recursion limit beside it -- over the list
+// the emitter owns. A crate-level block is honest for these crates and only these: every
+// partition crate is generated in full, including the modules it includes by `#[path]`, so
+// there is no hand-authored line under this root for it to silence.
 fn stage0_crate_allow_block() -> String {
+  let lints = generated_rust_lint_relaxations
+    |> map(lint => concat("    ", lint))
+    |> join(separator: ",\n")
   [
     "#![allow(",
-    "    unused_imports,",
-    "    unused_variables,",
-    "    unused_mut,",
-    "    unused_parens,",
-    "    dead_code,",
-    "    non_shorthand_field_patterns,",
-    "    suspicious_double_ref_op,",
-    "    clippy::all",
+    lints,
     ")]",
     "#![deny(unreachable_patterns)]",
     "#![recursion_limit = \"256\"]"
