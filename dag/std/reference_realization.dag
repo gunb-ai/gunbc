@@ -1,6 +1,6 @@
 module std.reference_realization
 
-import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused }
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused, RealizationRefusalCause, realization_refusal_label }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.types { Bool, List, NonEmptyStr, String }
 
@@ -123,7 +123,7 @@ fn provider_reference_realization_standing(
 // lane's -- the provider was examined and needs a shape neither ground fits. Collapsing them would
 // be one reason symbol over three repairs.
 type ReferenceRenderingRefusal
-  = ProviderIdentityUnknown { cause: String }
+  = ProviderIdentityUnknown { cause: RealizationRefusalCause }
   | ReferenceRealizationPolicyUndeclared { provider_key: String }
   | ReferenceGroundDecidesNoMode { ground: ReferenceRealizationGround }
 
@@ -147,7 +147,7 @@ fn reference_position_rendering(
   standing: ReferenceRealizationStanding
 ) -> ReferencePositionRendering {
   match decision {
-    Realized { checkpoint: cp } =>
+    Realized { checkpoint: cp, ground: _ } =>
       match standing {
         ReferenceRealizationDeclared { ground: g } =>
           match reference_realization_from_ground(ground: g) {

@@ -73,10 +73,79 @@ type TypeCheckpoint {
 // decl_file == "" (identity ABSENT), not identity AMBIGUOUS, so a many-to-many regression here
 // would not refuse but answer confidently and wrongly. Whoever prices many-to-many in
 // source_authority must revisit this type first.
+// WHY THE REFUSAL CAUSE IS A TYPE AND NOT A SENTENCE. The cause was a String, and one of its
+// inhabitants -- "declaration identity unknown: empty decl_file" -- was the empty-string sentinel
+// PROMOTED ONE LEVEL rather than removed: a caller that could not name a declaration produced a
+// value whose only reading was prose. A consumer wanting to act differently on `identity absent`
+// than on `this declaration is bound to a representation with no realization row` had to compare
+// sentences, and a witness that wanted to pin the behaviour asserted the sentence itself.
+//
+// The variants are ordered by who must act: the first two are the ASKING side's defect (a caller
+// reached a declaration-keyed authority without a declaration), the last two are the CORPUS's (a
+// binding roster that is silent or contradictory). BareRowMigratedToExactBinding sits between them
+// deliberately -- the caller did supply identity and the corpus does have an answer, but the
+// spelling-keyed route is closed for that name, so the remedy is to ask the exact path instead.
+//
+// GroundedByUnidentifiedBareRow is the declared safety regression made VISIBLE. A caller that
+// supplies no declaration identity is still answered from the bare table today; that is a bounded
+// rung drop with a restoration trigger, and while it was spelled as a String comparison against ""
+// no consumer could tell such an answer apart from one keyed on a real declaration. As a ground it
+// is countable, and a consumer that must not accept it can now refuse it -- which is the whole
+// difference between a documented drop and a silent one.
+// THE IDENTITY OF A DECLARATION, AS A STATE SPACE RATHER THAN AS A PATH. The value threaded to
+// every realization gate used to be a file path carrying three disjoint inhabitants in one String:
+// a real corpus file, the synthetic pseudo-file a compiler mints for a node that has no
+// declaration, and the empty string meaning identity is unknown. Consumers discriminated only empty
+// from non-empty, so the other two were told apart -- where they were told apart at all -- by
+// separate spelling tests scattered across the emitter, and each such test was a second authority
+// for a state the type could not express.
+//
+// It is homed here rather than in the seed because it is the SUBJECT of the decision below and the
+// two are one fact: a decision keyed on an identity that cannot say `there is no declaration` is
+// exactly the shape whose absent case gets guessed. CorpusDeclared still carries a path, and that
+// is honest residue with a named successor rather than a resting place -- the declared module path
+// is the containment tree's key, and re-keying this arm on it is a separate change with its own
+// prerequisite.
+type TypeDeclarationProvenance
+  = CorpusDeclared { decl_file: String }
+  | KernelMinted { minted_name: String }
+  | DeclarationIdentityAbsent
+
+type RealizationRefusalCause
+  = DeclarationIdentityUnavailable
+  | ExactSourceIdentityAbsent { detail: String }
+  | BareRowMigratedToExactBinding { dag_name: String }
+  | BoundRepresentationHasNoRealizationRow { decl_name: String }
+  | ExactBindingAmbiguousForOneDeclaration
+
+// The human rendering of a refusal, homed with the cause so a consumer never re-spells one. Each
+// arm says what the ASKER must do differently, which is the distinction the String form could only
+// gesture at.
+fn realization_refusal_label(cause: RealizationRefusalCause) -> String {
+  match cause {
+    DeclarationIdentityUnavailable => "no declaration identity was supplied"
+    ExactSourceIdentityAbsent { detail: d } => d
+    BareRowMigratedToExactBinding { dag_name: n } => concat("declaration-keyed name `", n, "` reached the spelling-keyed arm without a declaration: its bare row is migrated, answer from the exact binding")
+    BoundRepresentationHasNoRealizationRow { decl_name: n } => concat("declaration `", n, "` is bound to a target representation with no realization row")
+    ExactBindingAmbiguousForOneDeclaration => "ambiguous exact binding: more than one row for one declaration"
+  }
+}
+
+// HOW A REALIZATION WAS GROUNDED, carried because two consumers ask different questions of one
+// Realized. A checkpoint row and a host numeric alias both produce a TypeCheckpoint, and until this
+// field existed they were indistinguishable at the periphery -- so a site asking `is this the host
+// numeric` could not read the decision and had to re-derive the answer from a name and a file. That
+// re-derivation is the identity channel this field exists to close: the question is answered where
+// the decision is made, and the answer travels instead of the key.
+type RealizationGround
+  = GroundedByCheckpointRow
+  | GroundedByHostNumericAlias
+  | GroundedByUnidentifiedBareRow
+
 type TypeRealizationDecision
-  = Realized { checkpoint: TypeCheckpoint }
+  = Realized { checkpoint: TypeCheckpoint, ground: RealizationGround }
   | Unrealized
-  | Refused { cause: String }
+  | Refused { cause: RealizationRefusalCause }
 
 type InhabitantDecl {
   algebra: String

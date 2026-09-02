@@ -20,7 +20,7 @@ import v1.compiler.infer_types {
   child_type_node, emit_map_has, node_type_equals
 }
 import v1.compiler.artifact { Rust }
-import v1.compiler.coercion { lookup_checkpoint, decl_identity_file }
+import v1.compiler.coercion { realized_checkpoint, declaration_realization }
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -539,11 +539,10 @@ fn structural_alias_direct_fn_names_with(names: Set<String>, name: String, inclu
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
   let decl_name = authored_name_at(source_indices: source_indices, node: item)
   let alias_rhs = resolved_type(n: item)
-  let item_decl_file = decl_identity_file(item: item)
   let alias_rhs_name = authored_name_at(source_indices: source_indices, node: alias_rhs)
   let is_type_alias = decl_name != "" && item.connective == NoConnective && item.body == none && (item.params |> count) == 0 && item.transport == none && (item.children |> count) == 0 && alias_rhs_name != "Unit"
   let is_structural_alias = if is_type_alias {
-    match lookup_checkpoint(target: Rust, dag_name: decl_name, decl_file: item_decl_file) {
+    match realized_checkpoint(decision: declaration_realization(item: item, dag_name: decl_name, target: Rust)) {
       Present { value: _ } => false
       Absent => true
     }
