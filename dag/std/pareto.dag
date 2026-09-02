@@ -319,10 +319,21 @@ type ReadingLookup
   | ReadingAbsent { absent_axis: DeclarationRef }
   | ReadingDuplicated { duplicated_axis: DeclarationRef }
 
+// PairEvidenceIncomplete IS NOT PairNoDominance AND IS NOT PairRefused, and keeping the three apart
+// is the whole point of this arm. A candidate that DECLARES a gap has not been shown not to
+// dominate - nothing was shown about it at all - and it is not malformed either: declaring your
+// missing inputs is the honest thing the spine asks for. It is simply not ELIGIBLE to be shown
+// dominating anyone, because dominance is a claim over evidence it says it does not have.
+//
+// Without this arm compare_pair answered the dominance question while ignoring missing_inputs
+// entirely, so it could return PairDominates for a candidate whose own standing is NotComputable -
+// and entry_standing disagreed with it, because challenger_applies excluded exactly those
+// challengers. Two answers to one question, with the exported one permissive.
 type PairStanding
   = PairDominates { winning_axes: List<DeclarationRef> }
   | PairNoDominance
   | PairPendingEvidence { undecided_axes: List<DeclarationRef> }
+  | PairEvidenceIncomplete { missing: NonEmptyStr }
   | PairRefused { cause: NonEmptyStr }
 
 fn reading_matches(e: ParetoEntry, wanted: DeclarationRef) -> Int {
@@ -444,10 +455,33 @@ fn pair_from_accum(folded: PairAccum) -> PairStanding {
   }
 }
 
+// THE DECLARED GAPS ARE READ BEFORE ANY AXIS IS. This check used to live only in
+// challenger_applies, one layer up, so a caller reaching compare_pair directly got a dominance
+// verdict computed from readings while the entry's own declaration said its inputs were incomplete.
+// Measured on the private node-build field: a board declaring unproven supply depth was reported
+// DOMINATING a peer at the low memory price, while entry_standing reported it NotComputable.
+//
+// Either side's gap makes the question unanswerable, not answerable-in-the-negative: a is not
+// eligible to be shown dominating, and a b that cannot be evaluated cannot be shown dominated.
+fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
+  let from_a = if count(a.missing_inputs) > 0 {
+    one_name(name: join([declaration_ref_display_key(ref: a.identity), " declares missing inputs, so it is not eligible to be shown dominating: ", join(a.missing_inputs, " ; ")], ""))
+  } else { no_names }
+  let from_b = if count(b.missing_inputs) > 0 {
+    one_name(name: join([declaration_ref_display_key(ref: b.identity), " declares missing inputs, so it cannot be shown dominated: ", join(b.missing_inputs, " ; ")], ""))
+  } else { no_names }
+  concat(from_a, from_b)
+}
+
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
-  pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
-    axis_pair_step(acc: acc, axis: axis, a: a, b: b)
-  }))
+  let gaps = declared_gap_cause(a: a, b: b)
+  if count(gaps) > 0 {
+    PairEvidenceIncomplete { missing: join(gaps, " ; ") }
+  } else {
+    pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
+      axis_pair_step(acc: acc, axis: axis, a: a, b: b)
+    }))
+  }
 }
 
 // pair_dominates WAS HERE AND IS DELETED (2026-08-19). It answered Bool over
@@ -520,8 +554,12 @@ fn field_contradictions(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> 
   })
 }
 
+// ONE AUTHORITY FOR ELIGIBILITY, NOW THAT compare_pair CARRIES IT. This used to restate the
+// gap rule beside compare_pair's silence about it; the rule lives in compare_pair, and the fold
+// below reads its PairEvidenceIncomplete arm. All that is left here is the self-comparison guard,
+// which is about identity rather than evidence.
 fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
-  !declaration_ref_eq(a: other.identity, b: subject.identity) && count(other.missing_inputs) == 0
+  !declaration_ref_eq(a: other.identity, b: subject.identity)
 }
 
 // The field accumulator: every refusal and every dominator is collected, so the derived
@@ -552,6 +590,7 @@ fn field_step(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis
           join(fold(undecided_axes, init: no_names, f: fn(a2, ax) { concat(a2, one_name(name: declaration_ref_display_key(ref: ax))) }), ", "),
           " - the readings overlap, so whether it dominates is undecided on this evidence"], ""))),
       },
+      PairEvidenceIncomplete { missing } => acc,
       PairRefused { cause } => FieldAccum {
         refusal_causes: concat(acc.refusal_causes, one_name(name: join(["comparison against ", declaration_ref_display_key(ref: other.identity), " refused - ", cause, " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed"], ""))),
         dominators: acc.dominators,

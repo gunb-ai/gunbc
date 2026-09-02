@@ -330,6 +330,9 @@ pub enum PairStanding {
     PairPendingEvidence {
         undecided_axes: Rc<Vec<Rc<DeclarationRef>>>,
     },
+    PairEvidenceIncomplete {
+        missing: NonEmptyStr,
+    },
     PairRefused {
         cause: NonEmptyStr,
     },
@@ -591,20 +594,62 @@ pub fn pair_from_accum(folded: Rc<PairAccum>) -> Rc<PairStanding> {
     }
 }
 
+pub fn declared_gap_cause(a: Rc<ParetoEntry>, b: Rc<ParetoEntry>) -> Rc<Vec<String>> {
+    {
+        let from_a = if ((a.missing_inputs.clone().len() as i64) > 0) {
+            one_name(
+                Rc::new(vec![
+                    crate::std_decl_ref::declaration_ref_display_key(a.identity.clone()),
+                    " declares missing inputs, so it is not eligible to be shown dominating: "
+                        .to_string(),
+                    a.missing_inputs.clone().join(&" ; ".to_string()),
+                ])
+                .join(&"".to_string()),
+            )
+        } else {
+            no_names()
+        };
+        let from_b = if ((b.missing_inputs.clone().len() as i64) > 0) {
+            one_name(
+                Rc::new(vec![
+                    crate::std_decl_ref::declaration_ref_display_key(b.identity.clone()),
+                    " declares missing inputs, so it cannot be shown dominated: ".to_string(),
+                    b.missing_inputs.clone().join(&" ; ".to_string()),
+                ])
+                .join(&"".to_string()),
+            )
+        } else {
+            no_names()
+        };
+        v1_rt::concat(from_a.clone(), from_b.clone())
+    }
+}
+
 pub fn compare_pair(
     a: Rc<ParetoEntry>,
     b: Rc<ParetoEntry>,
     axes: Rc<Vec<Rc<SelectionAxis>>>,
 ) -> Rc<PairStanding> {
-    pair_from_accum(axes.iter().cloned().fold(
-        Rc::new(PairAccum {
-            refusal_causes: no_names(),
-            a_worse_somewhere: false,
-            winning_axes: no_axis_ids(),
-            undecided_axes: no_axis_ids(),
-        }),
-        |acc: _, axis: Rc<SelectionAxis>| axis_pair_step(acc, axis.clone(), a.clone(), b.clone()),
-    ))
+    {
+        let gaps = declared_gap_cause(a.clone(), b.clone());
+        if ((gaps.clone().len() as i64) > 0) {
+            Rc::new(PairStanding::PairEvidenceIncomplete {
+                missing: gaps.clone().join(&" ; ".to_string()),
+            })
+        } else {
+            pair_from_accum(axes.iter().cloned().fold(
+                Rc::new(PairAccum {
+                    refusal_causes: no_names(),
+                    a_worse_somewhere: false,
+                    winning_axes: no_axis_ids(),
+                    undecided_axes: no_axis_ids(),
+                }),
+                |acc: _, axis: Rc<SelectionAxis>| {
+                    axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
+                },
+            ))
+        }
+    }
 }
 
 pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationRef>) -> i64 {
@@ -685,8 +730,7 @@ pub fn field_contradictions(
 }
 
 pub fn challenger_applies(subject: Rc<ParetoEntry>, other: Rc<ParetoEntry>) -> bool {
-    (!crate::std_decl_ref::declaration_ref_eq(other.identity.clone(), subject.identity.clone())
-        && ((other.missing_inputs.clone().len() as i64) == 0))
+    !crate::std_decl_ref::declaration_ref_eq(other.identity.clone(), subject.identity.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -722,6 +766,7 @@ pub fn field_step(
     dominators: acc.dominators.clone(),
     pending_causes: v1_rt::concat(acc.pending_causes.clone(), one_name(Rc::new(vec!["challenger ".to_string(), crate::std_decl_ref::declaration_ref_display_key(other.identity.clone()), " is not shown either way on ".to_string(), undecided_axes.iter().cloned().fold(no_names(), |a2: Rc<Vec<String>>, ax: Rc<DeclarationRef>| v1_rt::concat(a2, one_name(crate::std_decl_ref::declaration_ref_display_key(ax.clone())))).join(&", ".to_string()), " - the readings overlap, so whether it dominates is undecided on this evidence".to_string()]).join(&"".to_string()))),
 }),
+    PairStanding::PairEvidenceIncomplete { missing: missing, .. } => acc.clone(),
     PairStanding::PairRefused { cause: cause, .. } => Rc::new(FieldAccum {
     refusal_causes: v1_rt::concat(acc.refusal_causes.clone(), one_name(Rc::new(vec!["comparison against ".to_string(), crate::std_decl_ref::declaration_ref_display_key(other.identity.clone()), " refused - ".to_string(), cause.clone(), " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed".to_string()]).join(&"".to_string()))),
     dominators: acc.dominators.clone(),

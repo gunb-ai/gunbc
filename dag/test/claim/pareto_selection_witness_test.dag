@@ -9,6 +9,7 @@ import std.pareto {
   SelectionAxis, AxisReading, ParetoEntry, ParetoStanding, Domination,
   ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
   PairStanding, PairDominates, PairNoDominance, PairRefused, PairPendingEvidence,
+  PairEvidenceIncomplete,
   AxisComparison, Better, Same, Worse, UndecidedOnEvidence, axis_comparison_interval,
   compare_pair, entry_standing, pareto_label,
 }
@@ -122,6 +123,33 @@ data entry_double_reading: ParetoEntry = ParetoEntry {
 // The CLEAN field for the domination and trade-off controls; the holed field adds the
 // reading-hole entry for the fail-closed control; the reversed field proves order
 // invariance; the duplicated field plants one identity twice.
+// THE DANGEROUS CASE, AND IT NEEDED ITS OWN ROW. entry_quote_pending declares a gap but is the
+// WORST entry on power (that axis is HigherIsBetter), so it could never dominate anything and
+// proves nothing about whether the gate is load-bearing. This row is the one that matters: cost 1
+// and power 999 make it beat every other entry on both funded axes, and it declares an outstanding
+// quote. Reading-only dominance and declared-gap ineligibility point in opposite directions here,
+// which is exactly the case a silent gate cannot be trusted on.
+//
+// It is deliberately NOT a member of clean_field - the other controls pin that field's standings -
+// and lives in gap_best_field with the entries it is compared against.
+data id_gap_but_best: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_but_best", field: WholeDeclaration }
+
+data entry_gap_but_best: ParetoEntry = ParetoEntry {
+  identity: id_gap_but_best,
+  display_label: "gap-but-best",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 1) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 999) },
+  ],
+  missing_inputs: ["a written quote is outstanding, so this row's cost is not evidence"],
+}
+
+data gap_best_field: List<ParetoEntry> = [
+  entry_gap_but_best,
+  entry_dear_weak,
+  entry_cheap_strong,
+]
+
 data clean_field: List<ParetoEntry> = [
   entry_cheap_strong,
   entry_dear_weak,
@@ -286,6 +314,7 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
   let standing_surfaces_it = standing_is_refused(s: entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_never_dominates = match compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
@@ -293,6 +322,7 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
   let hole_poisons_the_field = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_poisons_from_the_front = standing_is_refused(s: entry_standing(subject: entry_dear_weak, field: holed_field_hole_first, axes: both_axes, sensitivities: spine_sensitivities))
@@ -317,6 +347,7 @@ fn standing_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>)
     PairNoDominance => false,
     PairRefused { cause } => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
 }
 
@@ -363,10 +394,73 @@ test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
 }
 
 fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+// CONTROL 11 - A DECLARED GAP IS NOT ELIGIBLE TO DOMINATE, AND THE PAIR API SAYS SO. This is the
+// defect that closed here, found while migrating a private consumer: compare_pair computed the
+// dominance question from readings alone and never read missing_inputs, while entry_standing
+// excluded exactly those challengers through challenger_applies. Two answers to one question, and
+// the exported one was the permissive arm - a caller reaching the pair API directly got
+// PairDominates for a candidate whose own standing is NotComputable.
+//
+// entry_gap_but_best is the fixture that makes the gate load-bearing rather than merely stated: it
+// beats every other entry on BOTH funded axes and declares an outstanding quote, so readings and
+// declaration point opposite ways. Turning the gate off makes both halves of this control red.
+//
+// The arm is its own, not PairNoDominance and not PairRefused: nothing was shown about this
+// candidate either way, and declaring your missing inputs is the honest behaviour the spine asks
+// for rather than a malformed entry. The cause names the entry and its obligations, so a caller
+// learns what would make the question answerable.
+//
+// The control runs the OTHER direction too: an entry that cannot be evaluated cannot be shown
+// DOMINATED either, so both operands are gated rather than just the challenger.
+test fn a_declared_gap_is_ineligible_to_dominate() -> Bool {
+  let would_win_on_readings = match compare_pair(a: entry_gap_but_best, b: entry_dear_weak, axes: both_axes) {
+    PairEvidenceIncomplete { missing } => count(missing) > 0
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+  }
+  let not_shown_dominated = match compare_pair(a: entry_cheap_strong, b: entry_gap_but_best, axes: both_axes) {
+    PairEvidenceIncomplete { missing } => true
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+  }
+  would_win_on_readings && not_shown_dominated
+}
+
+// THE TWO PATHS NOW AGREE, which is the actual repair. Before this cut the pair API and the standing
+// path disagreed about the same candidate. entry_gap_but_best would dominate both peers on readings
+// alone, so if the field fold ever stopped excluding it, dear_weak would name it as a dominator -
+// a candidate whose own standing is NotComputable being cited as the reason another row died.
+//
+// Its second half is what the eligibility read now DERIVES from the pair arm rather than restating
+// beside it: challenger_applies is down to the self-comparison guard, so this control is the only
+// thing standing between that deletion and a silent behaviour change.
+test fn the_pair_api_and_the_standing_path_agree_about_a_gap() -> Bool {
+  let gapped_row_is_not_computable = match entry_standing(subject: entry_gap_but_best, field: gap_best_field, axes: both_axes, sensitivities: spine_sensitivities) {
+    NotComputable { missing } => count(missing) > 0
+    ProvisionallyNonDominated { sensitivities } => false
+    DominatedBy { dominators } => false
+    PendingEvidence { undecided } => false
+    SelectionRefused { cause } => false
+  }
+  let never_a_dominator = match entry_standing(subject: entry_dear_weak, field: gap_best_field, axes: both_axes, sensitivities: spine_sensitivities) {
+    DominatedBy { dominators } => count(filter(dominators, d => declaration_ref_eq(a: d.candidate, b: id_gap_but_best))) == 0
+    ProvisionallyNonDominated { sensitivities } => false
+    NotComputable { missing } => false
+    PendingEvidence { undecided } => false
+    SelectionRefused { cause } => false
+  }
+  gapped_row_is_not_computable && never_a_dominator
+}
 
 fn pareto_witness_report() -> NonEmptyStr {
   join([
@@ -380,6 +474,8 @@ fn pareto_witness_report() -> NonEmptyStr {
     " duplicate_axis_refuses=", flag(b: witness_duplicate_axis_identity_refuses()),
     " duplicate_candidate_refuses=", flag(b: witness_duplicate_candidate_identity_refuses()),
     " duplicate_reading_refuses=", flag(b: witness_duplicate_reading_refuses_the_pair()),
+    " gap_ineligible_to_dominate=", flag(b: a_declared_gap_is_ineligible_to_dominate()),
+    " pair_and_standing_agree=", flag(b: the_pair_api_and_the_standing_path_agree_about_a_gap()),
   ], "")
 }
 
@@ -392,6 +488,8 @@ fn pareto_witness_main() -> ProcessExit {
     && witness_axis_orientation_is_consulted()
     && witness_shared_label_still_compares()
     && witness_field_order_is_irrelevant()
+    && a_declared_gap_is_ineligible_to_dominate()
+    && the_pair_api_and_the_standing_path_agree_about_a_gap()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
@@ -491,6 +589,7 @@ test fn overlap_with_no_worse_axis_is_pending_not_dominance() -> Bool {
     PairDominates { winning_axes } => false
     PairNoDominance => false
     PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
   }
 }
 
@@ -504,6 +603,7 @@ test fn a_known_worse_axis_is_no_dominance_not_pending() -> Bool {
     PairPendingEvidence { undecided_axes } => false
     PairDominates { winning_axes } => false
     PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
   }
 }
 
