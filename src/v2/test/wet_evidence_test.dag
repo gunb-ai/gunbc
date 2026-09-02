@@ -316,6 +316,9 @@ test fn evidence_of_the_wrong_kind_is_its_own_cause_in_both_directions() -> Bool
 //
 // The control is the same terminal under ExpectedRed enrolment reaching KnownRedNowPassing, which
 // is also refused: a cost debt must not retire an enrolled red.
+// THIS WITNESS IS NAMED FOR THE DISPOSITION IT CARRIES, so it reads that disposition rather than
+// stopping at refuse-versus-admit. Without this the name asserted a payload nothing inspected, and
+// a refusal carrying any other cause would have kept it green.
 test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -> Bool {
   let over = BudgetRefused {
     safety: CompletedPastSafetyLimit { observed_cpu: 505, observed_wall: 505, preemption: CooperativelyPollable {} }
@@ -328,9 +331,6 @@ test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -
     terminals: [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: passed())],
     requirement: transported_requirement(subject: "s", executor: "x")
   )
-  // THIS WITNESS IS NAMED FOR THE DISPOSITION IT CARRIES, so it reads that disposition rather than
-  // stopping at refuse-versus-admit. Without this the name asserted a payload nothing inspected,
-  // and a refusal carrying any other cause would have kept it green.
   let carried = match first(causes_of(v: v)) {
     Absent => false
     Present { value: c } =>
@@ -362,6 +362,11 @@ test fn an_enrolled_red_observed_red_is_agreement() -> Bool {
 // terminal, a terminal nobody scheduled, and two terminals for one identity are different defects
 // with different remedies; a coverage count would report the first two as one number and miss the
 // third entirely.
+// THE NAME OF THIS WITNESS CLAIMS DISTINCTNESS, SO THE ASSERTION MUST ESTABLISH IT. An earlier
+// revision asserted only that each scenario produced exactly ONE cause and admitted none, which an
+// implementation returning `WetTerminalMissing` for all three would satisfy -- the check was
+// narrower than its own declared claim. The tags are compared to their expected values AND to each
+// other, so neither a collapse onto one cause nor a permutation of the three survives.
 test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool {
   let binding = transported_binding(subject: "s", executor: "x")
   let requirement = transported_requirement(subject: "s", executor: "x")
@@ -380,11 +385,6 @@ test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool 
     terminals: [terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())],
     requirement: requirement
   )
-  // THE NAME OF THIS WITNESS CLAIMS DISTINCTNESS, SO THE ASSERTION MUST ESTABLISH IT. An earlier
-  // revision asserted only that each scenario produced exactly ONE cause and admitted none, which
-  // an implementation returning `WetTerminalMissing` for all three would satisfy -- the check was
-  // narrower than its own declared claim. The tags are compared to their expected values AND to
-  // each other, so neither a collapse onto one cause nor a permutation of the three survives.
   sole_cause_tag(v: none_run) == "missing"
     && sole_cause_tag(v: twice_run) == "duplicated"
     && sole_cause_tag(v: unscheduled) == "unscheduled"
@@ -506,7 +506,7 @@ fn one_cause_satisfying(row: WetTerminalRow, p: fn(WetEvidenceRefusal) -> Bool) 
     terminals: [row],
     requirement: co_resident_requirement(subject: "tree-aaaa")
   ))
-  length(xs: cs) == 1 && fold_list(xs: cs, init: false, step: fn(acc, c) { acc || p(c) })
+  length(xs: cs) == 1 && fold_list(xs: cs, empty: false, cons: fn(acc, c) { acc || p(c) })
 }
 
 test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool {
