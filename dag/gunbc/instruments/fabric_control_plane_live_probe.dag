@@ -575,7 +575,7 @@ func fci1_assert_replace_held(
     _ => -1
   }
   if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
-  let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
+  else { let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
   let authority_write = Filesystem.Write(
     path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
     content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
@@ -586,7 +586,6 @@ func fci1_assert_replace_held(
       ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterReplacementAuthorityBeforeCommit" }
       ExitFailure { code: _, reason: why } => exit_failure(reason: why)
     }
-  }
   else { let outcome = fci1_live_replace_held(root: root)
   match outcome {
     CellReserved { offer: offer, slot_key: slot, generation: generation, account: _ } =>
@@ -594,7 +593,7 @@ func fci1_assert_replace_held(
         exit_failure(reason: join(["generation replacement selected wrong identity: ", fci1_cell_reservation_wire(reservation: outcome)], ""))
       }
     _ => exit_failure(reason: join(["generation replacement refused: ", fci1_cell_reservation_wire(reservation: outcome)], ""))
-  } }
+  } } }
 }
 
 func fci1_live_binding_observation(root: NonEmptyStr) -> RequiredBuildCellObservation {
