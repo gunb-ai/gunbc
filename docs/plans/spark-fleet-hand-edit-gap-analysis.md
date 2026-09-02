@@ -56,15 +56,24 @@ Main desires `1048576`, which is what the hosts serve. No divergence.
 Main models the slot count as a typed `PositiveSlotCount` of 4, renders it, and witnesses
 the rendering. No divergence.
 
-### 3. Served model: modeled `gpt-oss`, live `hf.co/antirez/deepseek-v4-gguf`
+### 3. Served model — CLOSED
 
-`gunbc.spark.serving_desired` selects a gpt-oss build. Both serving hosts run DeepSeek-V4.
-The two are not variants of one choice — different publisher, family, artifact and runtime
-footprint — so no evidence gathered against one answers for the other.
+`gunbc.spark.serving_desired` selected a gpt-oss build while both serving hosts ran
+DeepSeek-V4, and the two are not variants of one choice — different publisher, family,
+artifact and runtime footprint — so no evidence gathered against one answered for the
+other.
 
-Note also a divergence INSIDE the model: the rendered `Description=` says `gpt-oss:20b`
-while the row's own annotation records the operator decision as `gpt-oss:120b`. The
-description is a second, stale spelling of a fact the row already carries.
+`spark_serving_desired_manifest` now names the DeepSeek manifest, resolved through
+`gunbc.ollama_model_resolution` with the provenance arm that records it as locally
+materialized rather than upstream-published, and `gunbc.spark.serving_model_admission`
+requires an exact runtime version AND a manifest-identity match before a local artifact is
+admitted. The divergence INSIDE the model closed with it: the rendered `Description=` was a
+second, stale spelling of the model name and is now derived from
+`spark_serving_desired_model_ref` rather than authored beside it.
+
+What this did NOT close, and the reason the ordering below still starts here: the desired
+model is now correct, and reproducing that artifact from desired state remains impossible,
+which is carried as a declared §4b(3) rung drop rather than as silence.
 
 ### 4. Residency: modeled and live both silent on `OLLAMA_KEEP_ALIVE`
 
@@ -74,7 +83,20 @@ and `srv6` reported `none resident` minutes after serving a request. Any latency
 measurement that does not declare residency state is measuring two different things
 depending on when it ran.
 
-### 5. The second pair is entirely outside the model
+### 5. The second pair is entirely outside the model — AND IS NOT TWO SERVING HOSTS
+
+This section originally described the pair as two independent ollama serving hosts. That
+was the state when it was written and it is not the state now, and the difference is
+load-bearing rather than a refresh: `192.168.1.232` runs a **llama-server front door** on
+`:30000` whose weights live on `192.168.1.233` behind an `ggml-rpc-server` reached over the
+RoCE fabric. They are ONE serving unit split across two machines, not two of anything, and
+a roster that admits them as two serving cells would plan an 86.7 GB load onto the weights
+peer — which has roughly 16 GiB free and swap disabled, so the load is an OOM kill that
+takes the front door down with it.
+
+`gunbc.spark.serving_unit_observed` now carries that subject with the split as a
+constructor condition. The membership gap below is unchanged and is what remains open;
+what changed is what membership would have to mean.
 
 `spark-c2b1` (192.168.1.232) and `spark-ac79` (192.168.1.233) are provisioned, serving,
 and unknown to every authority that should own them:
@@ -85,8 +107,10 @@ and unknown to every authority that should own them:
   no modeled network identity even in principle
 - different service user (`briansrls`, not `gunbc-automation`)
 - different install root (`/usr/local/ollama`, not the install-paths authority's tree)
-- different unit name (`ollama.service`, not `gunbc-spark-serving.service`)
-- `OLLAMA_KEEP_ALIVE=-1`, which the modeled unit has no field for
+- different unit name, and on `.232` not an ollama unit at all
+- `OLLAMA_KEEP_ALIVE=-1` on the ollama that `.233` still runs alongside its weights role,
+  which the modeled unit has no field for — and that ollama is itself the hazard in the
+  paragraph above, because it WILL accept a load the weights peer cannot survive
 
 The runtime itself is the one thing that IS aligned: the pinned `v0.32.9` arm64 asset was
 installed after verifying its SHA-256 against `extdeps.ollama.binary_release`, so the
@@ -118,13 +142,13 @@ first on which variables are configuration and which are ambient.
 
 ## What has to happen, in order
 
-1. **Decide the served model in the model.** This is now the largest real divergence:
-   `serving_desired` selects a gpt-oss build and both hosts run DeepSeek-V4. If the fleet
-   is moving to a DeepSeek build or to dspark, the desired row should say so.
+1. ~~**Decide the served model in the model.**~~ CLOSED — see §3. The desired row names the
+   DeepSeek manifest and admission requires an identity match, not a name match.
 2. **Model residency.** `OLLAMA_KEEP_ALIVE` appears nowhere on main, so a 94 GB model
    evicts on the default idle timer and every measurement silently depends on when it ran.
 3. **Admit the second pair** — cell roles, host identities, and whatever network identity
-   can be bound given that static reservations are refused by design.
+   can be bound given that static reservations are refused by design. Admission must admit
+   ONE serving unit, not two serving cells; see §5.
 4. **Widen the realization carrier to environment.** The side chat has since ruled on
    the partition: consume a runtime-owned closed projection of causal configuration, not
    the whole process environment. `OLLAMA_CONTEXT_LENGTH` and `OLLAMA_NUM_PARALLEL` are
@@ -135,9 +159,9 @@ first on which variables are configuration and which are ambient.
 
 ## The standing risk this document is really about
 
-After the correction, the remaining divergences are narrower than first reported but they
-are the same class: the served model, residency, the second pair, and credentials are
-facts about the fleet that no authority owns. The danger is not that the model is wrong on
+After the correction, and after the served-model divergence closed, the remaining
+divergences are narrower still but they are the same class: residency, the second pair,
+and credentials are facts about the fleet that no authority owns. The danger is not that the model is wrong on
 those axes — it is that it is SILENT on them, so nothing refuses when they drift.
 
 The generalization worth keeping is the one the correction taught: a divergence report is
