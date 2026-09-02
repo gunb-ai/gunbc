@@ -1,0 +1,95 @@
+module gunbc.fci1_bounded_execution_context
+
+import std.types { FilePath, Int, NonEmptyStr }
+import std.measure {
+  Measure, Memory, One, ByteSize, byte_size_count,
+  PositiveMeasureCount, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
+  positive_measure_count_from_int, positive_measure_count_value,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import v2.std.optional { Present }
+
+// A finite byte quantity is not a second memory model. ByteSize already rules out systemd's
+// `infinity` spelling by carrying a Nat; using the existing positive-count construction also makes
+// zero unrepresentable. The FCI-1 context can therefore be projected to a live cgroup bound
+// without a validator deciding whether its purported limit is actually a limit.
+type FiniteByteSize = Measure<Memory, One, PositiveMeasureCount>
+
+fn finite_byte_size(count: PositiveMeasureCount) -> FiniteByteSize {
+  Measure { count: count }
+}
+
+fn finite_byte_size_count(size: FiniteByteSize) -> Int {
+  positive_measure_count_value(count: size.count)
+}
+
+type FiniteByteSizeBuild
+  = FiniteByteSizeBuilt { size: FiniteByteSize }
+  | FiniteByteSizeNonPositive { observed: Int }
+
+fn finite_byte_size_from_byte_size(size: ByteSize) -> FiniteByteSizeBuild {
+  let observed = byte_size_count(b: size)
+  match positive_measure_count_from_int(count: observed) {
+    PositiveMeasureCountBuilt { count: positive } =>
+      FiniteByteSizeBuilt { size: finite_byte_size(count: positive) }
+    PositiveMeasureCountRefused { cause: _ } =>
+      FiniteByteSizeNonPositive { observed: observed }
+  }
+}
+
+// This is the bound for the instrument process roots, not a claim that the driver is a runner
+// slot. The basis names why the values may be reused: the driver performs sequential gunbc
+// resolution over the same dag + src/v2 corpus family whose measured floor workload determines
+// gunbc_runner_slot_desired. A bounded no-reservation control must still prove that this realization
+// completes under the projected envelope; failure triggers a separately measured driver envelope,
+// never an ungrounded widening of the runner allocation.
+type Fci1BoundedExecutionContext sole_constructor {
+  checkout_root: FilePath
+  memory_max: FiniteByteSize
+  memory_high: FiniteByteSize?
+  driver_unit: NonEmptyStr
+  envelope_basis: DeclarationRef
+}
+
+type Fci1BoundedExecutionContextBuild
+  = Fci1BoundedExecutionContextBuilt { context: Fci1BoundedExecutionContext }
+  | Fci1MemoryMaxNonPositive { observed: Int }
+  | Fci1MemoryHighNonPositive { observed: Int }
+  | Fci1MemoryHighExceedsMax { high_bytes: Int, max_bytes: Int }
+
+data fci1_driver_unit: NonEmptyStr = "fci1-bounded-driver.service"
+
+data fci1_runner_envelope_basis: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.runner_slot_allocation",
+  decl_name: "gunbc_runner_slot_desired",
+  field: WholeDeclaration,
+}
+
+fn fci1_bounded_execution_context(checkout_root: FilePath) -> Fci1BoundedExecutionContextBuild {
+  let desired = gunbc_runner_slot_desired()
+  match finite_byte_size_from_byte_size(size: desired.memory_max) {
+    FiniteByteSizeNonPositive { observed: max } =>
+      Fci1MemoryMaxNonPositive { observed: max }
+    FiniteByteSizeBuilt { size: max } =>
+      match finite_byte_size_from_byte_size(size: desired.memory_high) {
+        FiniteByteSizeNonPositive { observed: high } =>
+          Fci1MemoryHighNonPositive { observed: high }
+        FiniteByteSizeBuilt { size: high } =>
+          if finite_byte_size_count(size: high) > finite_byte_size_count(size: max) {
+            Fci1MemoryHighExceedsMax {
+              high_bytes: finite_byte_size_count(size: high),
+              max_bytes: finite_byte_size_count(size: max),
+            }
+          } else {
+            Fci1BoundedExecutionContextBuilt { context: Fci1BoundedExecutionContext {
+              checkout_root: checkout_root,
+              memory_max: max,
+              memory_high: Present { value: high },
+              driver_unit: fci1_driver_unit,
+              envelope_basis: fci1_runner_envelope_basis,
+            } }
+          }
+      }
+  }
+}

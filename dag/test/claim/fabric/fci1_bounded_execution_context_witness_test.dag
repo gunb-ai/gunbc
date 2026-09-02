@@ -1,0 +1,37 @@
+module test.claim.fabric.fci1_bounded_execution_context_witness_test
+
+import std.types { Bool }
+import std.measure { byte_size, byte_size_count }
+import gunbc.fci1_bounded_execution_context {
+  FiniteByteSizeBuilt, FiniteByteSizeNonPositive,
+  Fci1BoundedExecutionContextBuilt,
+  finite_byte_size_count, finite_byte_size_from_byte_size,
+  fci1_bounded_execution_context,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import v2.std.optional { Present, Absent }
+
+fn finite_byte_size_refuses_zero() -> Bool {
+  match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {
+    FiniteByteSizeNonPositive { observed: zero } => zero == 0
+    FiniteByteSizeBuilt { size: _ } => false
+  }
+}
+
+fn fci1_context_derives_the_runner_workload_envelope() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: "/tmp/fci1 checkout") {
+    Fci1BoundedExecutionContextBuilt { context: context } =>
+      finite_byte_size_count(size: context.memory_max)
+          == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+        && match context.memory_high {
+          Present { value: high } =>
+            finite_byte_size_count(size: high)
+              == byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+          Absent => false
+        }
+        && context.checkout_root == "/tmp/fci1 checkout"
+        && context.envelope_basis.module_path == "gunbc.runner_slot_allocation"
+        && context.envelope_basis.decl_name == "gunbc_runner_slot_desired"
+    _ => false
+  }
+}
