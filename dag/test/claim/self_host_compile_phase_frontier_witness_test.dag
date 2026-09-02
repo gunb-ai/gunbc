@@ -53,6 +53,7 @@ import gunbc.self_host_compile_phase_frontier {
   board_row,
   CompilePhaseFrontierValidated,
   compile_phase_frontier_standing,
+  current_compile_phase_frontier_standing,
   CompilePhaseFrontierCoverage,
   FrontierCoversSubjectTree,
   FrontierReceiptTreeStale,
@@ -413,7 +414,7 @@ test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool
 // the document renders may not say the emitted compiler clears typeck or borrowck while the latest
 // validated receipt's census says otherwise.
 test fn the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed() -> Bool {
-  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+  match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => {
       let rendered = render_phase_board(board: latest.board)
       !string_contains(s: rendered, pattern: "typeck PASSES")
@@ -786,4 +787,24 @@ test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> 
     FrontierCoverageRefused { reason: _ } => true
     _ => false
   }
+}
+
+// THE CONSOLIDATED ACCESSOR NAMES THE SAME SUBJECT AS THE SPELLING IT REPLACED.
+//
+// gunbc.self_host_compile_phase_frontier current_compile_phase_frontier_standing exists so that
+// "the standing of THE persisted series" has one home instead of being re-spelled at five call
+// sites. That consolidation has exactly one way to go wrong and it goes wrong SILENTLY: the
+// accessor binds a DIFFERENT series -- a truncated one, a fixture one, a second data declaration
+// added later -- and every consumer keeps compiling and keeps answering, about the wrong subject.
+// No existing claim in either consuming closure would notice, because they all read the accessor
+// and would agree with each other about the wrong thing.
+//
+// So this asserts the identity the rewire assumed, against the general function it delegates to,
+// applied to the series by name. It is not a restatement of the delegation: it is authored one
+// layer above it and it is the only executing place the two spellings are compared. Rebind the
+// accessor to `self_host_compile_phase_frontier_receipts |> skip(n: 1)` -- the perturbation this
+// module's sibling live-gate witnesses already use -- and this reds while nothing else does.
+test fn the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series() -> Bool {
+  current_compile_phase_frontier_standing()
+    == compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
 }

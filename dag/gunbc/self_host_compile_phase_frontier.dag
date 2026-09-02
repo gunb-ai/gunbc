@@ -1203,6 +1203,31 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
   }
 }
 
+// THE STANDING OF THE PERSISTED SERIES -- one authority for the question five call sites were
+// each spelling out.
+//
+// WHY IT EXISTS AS A DECLARATION RATHER THAN AS A REPEATED ARGUMENT. `compile_phase_frontier_standing`
+// is general in its series: it judges ANY series of receipts, which is what its own witnesses
+// exercise with perturbed fixtures. But there is only ONE persisted series in this repository, and
+// "the standing of THAT series" is a distinct, singular fact that this module owns. Spelling the
+// pairing at every consumer made the fact positional -- five sites each re-asserting the join --
+// and DESIGN section 3 puts one fact in one place. Consumers that judge a HYPOTHETICAL series keep
+// calling the general function directly; that distinction is the whole reason both spellings stay.
+//
+// THE COST CONSEQUENCE IS A CONSEQUENCE AND NOT THE REASON, but it is why the rewire happened now.
+// The required floor builds a fresh evaluation frame per claim, so the eval-frame memo dies at
+// every claim boundary and each claim re-derived this standing from scratch. Measured on main run
+// 33664768371's `required_floor_cross_claim_demand.tsv`: 22 claims, 36 evaluations, 6508ms
+// inclusive-of-callees, with `phase_board_series_ratchet` (23/23) and `apply_regression_transition`
+// (23/23) nested underneath it. Being NULLARY, this declaration is preparation-forceable, so
+// `v2.workflow.floor_pure_producer_share` can serve it as a WARM row with an empty argument row --
+// no per-serve argument reification of the receipt series at all, which is the cost shape that
+// disqualified earlier candidates from that roster. Re-derive with the instruments the roster
+// names, never from these sentences.
+fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
+  compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
+}
+
 // THE RATCHET ABOVE JUDGES RECEIPTS AGAINST EACH OTHER, AND NOTHING IN IT LOOKS AT THE TREE BEING
 // MERGED. compile_phase_frontier_standing answers Validated{latest} from the persisted series
 // alone, so its verdict is a claim about the TREE THE LATEST RECEIPT NAMES -- a past tree by

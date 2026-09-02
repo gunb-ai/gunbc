@@ -9,7 +9,7 @@ import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierReceipt,
   CompilePhaseFrontierStanding,
   CompilePhaseFrontierValidated,
-  compile_phase_frontier_standing,
+  current_compile_phase_frontier_standing,
   self_host_compile_phase_frontier_receipts,
   ParseReached,
   CompilePhaseInvocation
@@ -47,7 +47,7 @@ import gunbc.self_host_compile_phase_live_gate {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn latest_receipt() -> CompilePhaseFrontierReceipt? {
-  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+  match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => Present { value: latest }
     standing => none
   }
