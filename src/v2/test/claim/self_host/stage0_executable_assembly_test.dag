@@ -1,6 +1,6 @@
 module v2.test.claim.self_host.stage0_executable_assembly_test
 
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.self_host.stage0_executable_assembly {
   BinaryEntrypointOwner,
   EmittedPartitionOwner,
@@ -35,7 +35,7 @@ import v2.workflow.rust_crate_partition {
   stage0_unit_std_core
 }
 import v2.std.algebra { any, length }
-import v2.std.collection
+import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -57,7 +57,7 @@ import v2.std.text { String }
 // not -- so the live probe at the end is the regression control over the corpus and the fixtures
 // are the evidence that a wall exists at all.
 
-data probe_partition_rows: v2.std.collection.List<Stage0PartitionCrateRow> = [
+data probe_partition_rows: List<Stage0PartitionCrateRow> = [
   Stage0PartitionCrateRow {
     unit_id: stage0_unit_runtime,
     package_name: "probe-foundation",
@@ -78,23 +78,23 @@ data probe_partition_rows: v2.std.collection.List<Stage0PartitionCrateRow> = [
   }
 ]
 
-data probe_retention_roster: v2.std.collection.List<SeedRetentionFrontierRow> = [
+data probe_retention_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/probe_host.rs", cause: SeedRetainedIntrinsicSource)
 ]
 
-data probe_emitted: v2.std.collection.List<String> = ["probe_rt", "probe_types", "probe_unpartitioned"]
+data probe_emitted: List<String> = ["probe_rt", "probe_types", "probe_unpartitioned"]
 
-data probe_retained: v2.std.collection.List<String> = ["probe_host"]
+data probe_retained: List<String> = ["probe_host"]
 
-data probe_declared: v2.std.collection.List<String> = ["probe_rt", "probe_types", "probe_unpartitioned", "probe_host"]
+data probe_declared: List<String> = ["probe_rt", "probe_types", "probe_unpartitioned", "probe_host"]
 
 fn probe_census_refusals(
-  declared: v2.std.collection.List<String>,
-  partition_rows: v2.std.collection.List<Stage0PartitionCrateRow>,
-  emitted: v2.std.collection.List<String>,
-  retained: v2.std.collection.List<String>,
-  roster: v2.std.collection.List<SeedRetentionFrontierRow>
-) -> v2.std.collection.List<Stage0AssemblyOwnershipRefusalCause> {
+  declared: List<String>,
+  partition_rows: List<Stage0PartitionCrateRow>,
+  emitted: List<String>,
+  retained: List<String>,
+  roster: List<SeedRetentionFrontierRow>
+) -> List<Stage0AssemblyOwnershipRefusalCause> {
   stage0_assembly_ownership_census(
     declared_modules: declared,
     partition_rows: partition_rows,
@@ -222,7 +222,7 @@ fn refusal_is_two_packages(cause: Stage0AssemblyOwnershipRefusalCause, module_ba
   }
 }
 
-data probe_duplicate_owner_rows: v2.std.collection.List<Stage0PartitionCrateRow> = [
+data probe_duplicate_owner_rows: List<Stage0PartitionCrateRow> = [
   Stage0PartitionCrateRow {
     unit_id: stage0_unit_runtime,
     package_name: "probe-foundation",
