@@ -959,6 +959,14 @@ data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cos
 // body is not a row here at all, because the ledger keys pure named fn evaluations -- the same
 // boundary std.evaluation_budget's opaque-host-call note draws for the deadline.
 //
+// THE COST COLUMN IS NOT ADDITIVE AND THE ARTIFACT SAYS SO IN ITS OWN SUMMARY LINE. Durations are
+// inclusive of callees, so a producer and everything it calls both appear and their figures
+// overlap; summing the column counts the same nanoseconds once per level of nesting. On the first
+// run that produced this artifact the naive sum over shared rows was ~1850s against a run whose
+// entire claim-side CPU was 130s. So the summary carries claim_cpu_total_ms as the ceiling any
+// true total must sit under, and a displaceable-cost figure needs self-time, which the ledger does
+// not carry yet.
+//
 // THE NEGATIVE CONTROL IS EXECUTED RATHER THAN PROMISED, and it is the strongest thing that can
 // be said about this artifact's separation of discovery from policy. The two rust target models
 // were enrolled in the share roster and REMOVED, because a measured present-versus-absent

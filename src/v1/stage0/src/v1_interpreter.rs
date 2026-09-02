@@ -8130,6 +8130,18 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // CLAIM COUNT is the stable half, and it is a property of the corpus and the plan rather than
 // of the machine.
 //
+// THE COST COLUMN IS NOT ADDITIVE, AND THIS PARAGRAPH EXISTS BECAUSE THE ARTIFACT INVITES THE
+// ERROR. Durations are INCLUSIVE OF CALLEES — the ledger times a producer's whole subtree — so a
+// producer and everything it calls both appear, and their figures OVERLAP. Summing the column
+// therefore counts the same nanoseconds once per level of nesting. Measured on the first run that
+// produced the artifact: summing cross-claim over the shared rows gives ~1850s against a run
+// whose ENTIRE claim-side CPU was 130s — a 14x overcount, which is the nesting and nothing else.
+// So a per-row figure is a valid statement about THAT producer, and no sum of rows is a valid
+// statement about the run. The run's own total claim CPU travels in the summary line as the
+// ceiling any true total must sit under; anyone wanting a displaceable-cost figure needs
+// self-time (inclusive minus the callees the same pass already counted), which this ledger does
+// not carry and which is the next thing to build here.
+//
 // WHAT THIS CENSUS CANNOT SEE, DECLARED HERE RATHER THAN DISCOVERED BY A LATER READER. Two
 // boundaries, and neither is a defect in the aggregation — they are properties of the ledger it
 // folds, and a reader who does not know them will read absence as evidence.

@@ -38608,20 +38608,22 @@ fn write_required_floor_cross_claim_demand_tsv(
     path: &str,
     rows: &[v1_interpreter::CrossClaimDemandRow],
     disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
+    claim_cpu_total_ms: u128,
 ) -> Result<(), String> {
     use std::io::Write;
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
     writeln!(
         file,
-        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity",
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
         disclosure.claims_absorbed,
         rows.len(),
         disclosure.omitted_keys,
         disclosure.omitted_ns / 1_000_000,
         disclosure.overflow_keys,
         disclosure.absorb_ns_total / 1_000_000,
-        disclosure.absorb_ns_max / 1_000_000
+        disclosure.absorb_ns_max / 1_000_000,
+        claim_cpu_total_ms
     )
     .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
     writeln!(

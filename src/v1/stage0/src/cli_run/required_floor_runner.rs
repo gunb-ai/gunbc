@@ -6637,6 +6637,15 @@ pub fn run_required_floor(
     {
         let rows = v1_interpreter::cross_claim_demand_rows();
         let disclosure = v1_interpreter::cross_claim_demand_disclosure();
+        // THE CEILING ANY TRUE TOTAL MUST SIT UNDER, carried beside the rows because the cost
+        // column is inclusive of callees and therefore NOT additive. Without it the first thing a
+        // reader does is sum the column, which on the first artifact gave ~14x the run's entire
+        // claim-side CPU.
+        let claim_cpu_total_ms: u128 = outcome
+            .claim_cost
+            .iter()
+            .map(|row| row.cpu_nanos / 1_000_000)
+            .sum();
         // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
         // orders by cross-claim recomputation and says so in band, so no consumer can read a
         // log head as the census's own ranking or as a candidate roster.
@@ -6646,10 +6655,13 @@ pub fn run_required_floor(
         eprintln!(
             "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
              omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
-             absorb_ms={} absorb_max_ms={} (observation only; nothing refuses on these figures. \
-             The absorb runs AFTER each claim's measurement returns, so it is outside every \
-             claim's charged window and cannot trip the deadline; absorb_ms is what this \
-             instrument cost the run in total.)",
+             absorb_ms={} absorb_max_ms={} claim_cpu_total_ms={} (observation only; nothing \
+             refuses on these figures. The absorb runs AFTER each claim's measurement returns, so \
+             it is outside every claim's charged window and cannot trip the deadline; absorb_ms \
+             is what this instrument cost the run in total. DO NOT SUM THE COST COLUMN: durations \
+             are inclusive of callees, so a producer and its callees overlap and the sum counts \
+             the same nanoseconds once per level of nesting -- claim_cpu_total_ms is the ceiling \
+             any true total must sit under.)",
             disclosure.claims_absorbed,
             rows.len(),
             shared.len(),
@@ -6657,7 +6669,8 @@ pub fn run_required_floor(
             disclosure.omitted_ns / 1_000_000,
             disclosure.overflow_keys,
             disclosure.absorb_ns_total / 1_000_000,
-            disclosure.absorb_ns_max / 1_000_000
+            disclosure.absorb_ns_max / 1_000_000,
+            claim_cpu_total_ms
         );
         const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
         eprintln!(
@@ -6694,7 +6707,12 @@ pub fn run_required_floor(
             );
         }
         if let Some(path) = cross_claim_demand_path {
-            write_required_floor_cross_claim_demand_tsv(&path, &rows, &disclosure)?;
+            write_required_floor_cross_claim_demand_tsv(
+                &path,
+                &rows,
+                &disclosure,
+                claim_cpu_total_ms,
+            )?;
         }
     }
     if let Some(path) = required_floor_disposition_path {
