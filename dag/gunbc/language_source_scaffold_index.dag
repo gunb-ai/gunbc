@@ -434,6 +434,12 @@ data ct_row_ct_call_deficit_red_witness_test: LanguageSourceScaffoldRow = Langua
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_function_value_adapter_bound_alignment_control_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust",
+  blob_decl: "ct_function_value_adapter_bound_alignment_control_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_function_value_named_application_controls_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_function_value_named_application_controls_witness_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -512,6 +518,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_shell_service_output_projection_known_hole_probe_test,
   ct_row_ct_call_shape_wall_witness_test,
   ct_row_ct_call_shape_duplicate_wall_witness_test,
+  ct_row_ct_function_value_adapter_bound_alignment_control_test,
   ct_row_ct_call_deficit_red_witness_test,
   ct_row_ct_function_value_named_application_controls_witness_test,
   ct_row_ct_function_value_field_method_known_hole_probe_test,
