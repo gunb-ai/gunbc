@@ -132,7 +132,34 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // live_deploy measurement): 21 apply witnesses rebuild one byte-identical script 21 times
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
+// phase_board_series_ratchet is the compile-phase frontier lane's whole shared derivation,
+// named by the floor's OWN cross-claim demand census rather than by a sandbox: in
+// required_floor_cross_claim_demand.tsv (main run 33668368846) it carries 23 claims against 23
+// evals across three modules -- one derivation per claim and no reuse at all -- and the two
+// modules whose rows it dominates
+// (test.claim.self_host_compile_phase_live_gate_witness, test.claim.compiler_frontend_program_status_witness)
+// are the same run's two largest over-cost-line populations in required_floor_claim_cost.tsv,
+// every row of each landing within a few percent of ~615k eval steps. Twenty-one witnesses
+// re-folding one receipt series is DESIGN section 2 redundant work; the witnesses are not the
+// subject and splitting them would only re-attribute the fold
+// (witness_decomposition_does_not_reduce_entry_cost_note).
+//
+// IT IS THE SHAPE THIS TIER WINS ON, which is the admission criterion the two rust target
+// models failed: expensive to DERIVE and trivial to REIFY. The value is
+// PhaseBoardSeriesVerdict -- a nullary variant on the held arm, at worst an invocation string
+// and a reason -- so serving it walks nothing, where a TargetModel serve had to rebuild a
+// bundle node, lex rules and realization catalogs. The one cost this row does carry is on the
+// ARGUMENT side: the key is the whole receipt series, so each serve content-hashes and
+// structurally verifies it. That is a compare over the series, never the fold over it, and the
+// present-vs-absent floor receipt named below is what settles it rather than this sentence.
+//
+// ENROLLED AT THE ROOT, NOT AT compile_phase_frontier_standing, which the same census shows
+// costs 22 claims inclusive of this fold: sharing the ratchet leaves the standing with
+// reverse |> first, so one row discharges both, and the ratchet reaches one more claim.
+// Re-derive present-vs-absent with required_floor_claim_cost.tsv on this branch against run
+// 33668368846, and the reuse with required_floor_cross_claim_demand.tsv on the same pair.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
+  "gunbc.self_host_compile_phase_frontier.phase_board_series_ratchet",
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
   "v2.compiler.translate.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
