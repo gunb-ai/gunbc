@@ -73,7 +73,7 @@ import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline,
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { recurring_failure_mode_roster }
-import gunbc.rung_drop { rung_drop_roster }
+import gunbc.rung_drop { rung_drop_roster, RungDropStanding, Standing, Retired }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
   census_identity_domain_separator,
@@ -122,15 +122,42 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
         h2(text: "Declared rung drops (§4b(3))"),
         p(text: "Each row declares a safety guarantee that was lowered: what stood before, what stands now, why, over what population, and the trigger that restores it. A drop is retired by its trigger and by nothing else."),
       ],
-      flat_map(rung_drop_roster, d => concat([
-        h3(text: concat(concat(d.subject, " — declared "), d.declared)),
+      flat_map(rung_drop_roster, d => concat(concat([
+        h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing))),
+      ], rung_drop_standing_blocks(standing: d.standing)), concat([
         p(text: d.authored),
       ], if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
-      } else { [] })),
+      } else { [] }))),
     ],
     bs => bs
   )
+}
+
+// THE LEDGER RENDERED A RETIRED DROP AND A STANDING ONE IDENTICALLY, which made it unable to
+// answer the one question it exists to answer. `rung_drop` has carried `RungDropStanding` since it
+// was written, and this projection read `subject`, `declared` and `authored` and never `standing`
+// -- so four retired rows sat under headings spelled exactly like the live ones, and a reader
+// counting outstanding safety regressions here counted them all. DESIGN.md's own list filters to
+// standing and therefore disagreed with this file about which drops are open.
+//
+// It is a rendering repair and not a model change: nothing about which rows are retired moves, and
+// `standing_rung_drops` remains the authority any check should join against. What changes is that
+// the projection stops discarding the field that decides it. The retirement's own trigger_fired
+// text is rendered too, because a retirement asserting no reason is the shape that lets a row be
+// retired quietly.
+fn rung_drop_standing_suffix(standing: RungDropStanding) -> String {
+  match standing {
+    Standing => ""
+    Retired { trigger_fired: _ } => " · RETIRED"
+  }
+}
+
+fn rung_drop_standing_blocks(standing: RungDropStanding) -> List<MarkdownBlock> {
+  match standing {
+    Standing => []
+    Retired { trigger_fired } => [p(text: concat("**RETIRED — TRIGGER FIRED.** ", (trigger_fired as String)))]
+  }
 }
 
 fn failure_mode_document() -> MarkdownDocument {
