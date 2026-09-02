@@ -858,7 +858,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.preemption_reachability",
-            in_declaration: "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
             spelling: "CompletedPastSafetyLimit",
             target: "v2.workflow.floor_terminal_ledger",
         },
@@ -868,7 +869,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.preemption_reachability",
-            in_declaration: "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
             spelling: "CompletedWithinSafetyLimits",
             target: "v2.workflow.floor_terminal_ledger",
         },
@@ -878,7 +880,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.preemption_reachability",
-            in_declaration: "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
             spelling: "CooperativelyPollable",
             target: "v2.workflow.floor_terminal_ledger",
         },
@@ -888,7 +891,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.preemption_reachability",
-            in_declaration: "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
             spelling: "OpaqueHostCallUnbounded",
             target: "v2.workflow.floor_terminal_ledger",
         },
@@ -898,7 +902,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.preemption_reachability",
-            in_declaration: "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
             spelling: "SafetyInterrupted",
             target: "v2.workflow.floor_terminal_ledger",
         },
@@ -1251,46 +1256,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "floor_run_blocks",
             spelling: "ClaimSafetyOutcome",
             target: "v2.workflow.floor_terminal_ledger",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_enabled",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_mode",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_reset_type",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_target",
-            target: "gunbc.srv3_os_install_actuate_workflow",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
