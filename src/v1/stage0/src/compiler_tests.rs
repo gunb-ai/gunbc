@@ -1042,23 +1042,22 @@ mod compiler_tests {
                     std::rc::Rc::new(im::vector![source]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                let emitted = r
-                    .files
-                    .iter()
-                    .find(|f| f.path == "src/probe.rs")
-                    .map(|f| f.content.clone())
-                    .expect("service module must emit src/probe.rs");
+                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
+                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                        missing_realization_fact,
+                        ..
+                    } => missing_realization_fact.contains("not_a_channel"),
+                    _ => false,
+                });
                 assert!(
-                    emitted.contains("not_a_channel")
-                        && emitted.contains("has no modeled channel"),
-                    "an unmodeled output key must refuse and name the key. Got:\n{}",
-                    emitted
+                    named,
+                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
+                    r.diagnostics
                 );
                 assert!(
-                    !emitted.contains("stdout.clone()"),
-                    "a refused operation must not fall through to the stdout channel. \
-                     Got:\n{}",
-                    emitted
+                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
+                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
                 );
             })
             .expect("failed to spawn thread")
@@ -1221,6 +1220,164 @@ mod compiler_tests {
         result.expect(
             "function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted panicked",
         );
+    }
+
+    #[test]
+    fn rendered_leaf_use_site_preserves_authored_occurrence_identity() {
+        let mut authored_value = (*named_type_node("Time")).clone();
+        authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 101 },
+            },
+        );
+        let authored = std::rc::Rc::new(authored_value);
+        let mut resolved_value = (*named_type_node("Quantity")).clone();
+        resolved_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 202 },
+            },
+        );
+        let resolved = std::rc::Rc::new(resolved_value);
+        let rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            authored.clone(),
+            resolved.clone(),
+        );
+        let mut expected_value = (*resolved).clone();
+        expected_value.occurrence_identity = authored.occurrence_identity.clone();
+        assert_eq!(
+            rendered,
+            std::rc::Rc::new(expected_value),
+            "a rendered leaf must preserve the exact authored occurrence identity while every other field remains the selected declaration's field"
+        );
+        let mut wrong_present_value = (*rendered).clone();
+        wrong_present_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        );
+        assert_ne!(
+            rendered,
+            std::rc::Rc::new(wrong_present_value),
+            "a wrong-but-present occurrence identity must not satisfy exact fidelity"
+        );
+        let mut sibling_a_value = (*named_type_node("Time")).clone();
+        sibling_a_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 301 },
+            },
+        );
+        let sibling_a = std::rc::Rc::new(sibling_a_value);
+        let mut sibling_b_value = (*named_type_node("Time")).clone();
+        sibling_b_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 302 },
+            },
+        );
+        let sibling_b = std::rc::Rc::new(sibling_b_value);
+        let sibling_a_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_a.clone(),
+            resolved.clone(),
+        );
+        let sibling_b_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_b.clone(),
+            resolved.clone(),
+        );
+        assert_eq!(
+            sibling_a_rendered.name, sibling_b_rendered.name,
+            "equal-looking siblings must render the same textual carrier"
+        );
+        assert_eq!(
+            sibling_a_rendered.occurrence_identity,
+            sibling_a.occurrence_identity
+        );
+        assert_eq!(
+            sibling_b_rendered.occurrence_identity,
+            sibling_b.occurrence_identity
+        );
+        assert_ne!(
+            sibling_a_rendered.occurrence_identity, sibling_b_rendered.occurrence_identity,
+            "equal-looking siblings must not exchange occurrences"
+        );
+        let projected_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceProjected {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 401 },
+                caused_by: std::rc::Rc::new(crate::std_occurrence_identity::ScopedOccurrenceRef {
+                    scope: std::rc::Rc::new(crate::std_content_hash::Fnv1a64Structural {
+                        digest: "scope-identity".to_string(),
+                    }),
+                    occurrence: crate::std_occurrence_identity::OccurrenceId { value: 400 },
+                }),
+            },
+        );
+        let mut projected_authored_value = (*named_type_node("Time")).clone();
+        projected_authored_value.occurrence_identity = projected_identity.clone();
+        let projected_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            std::rc::Rc::new(projected_authored_value),
+            resolved.clone(),
+        );
+        assert_eq!(
+            projected_rendered.occurrence_identity, projected_identity,
+            "projected id and caused_by must survive exactly"
+        );
+        let mut nonleaf_authored_value =
+            (*shaped_type_node("Box", vec![named_type_node("Time")])).clone();
+        nonleaf_authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 501 },
+            },
+        );
+        let nonleaf_authored = std::rc::Rc::new(nonleaf_authored_value);
+        let nonleaf_resolved = shaped_type_node("Vec", vec![named_type_node("Int")]);
+        let nonleaf_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            nonleaf_authored.clone(),
+            nonleaf_resolved.clone(),
+        );
+        let mut nonleaf_expected_value = (*nonleaf_authored).clone();
+        nonleaf_expected_value.children = nonleaf_resolved.children.clone();
+        nonleaf_expected_value.inferred = Some(std::rc::Rc::new(
+            crate::v1_std_core::InferredNode::Resolved {
+                node: nonleaf_resolved.clone(),
+            },
+        ));
+        nonleaf_expected_value.properties = nonleaf_resolved.properties.clone();
+        assert_eq!(
+            nonleaf_rendered,
+            std::rc::Rc::new(nonleaf_expected_value),
+            "the children-present arm must remain byte-for-byte structurally stable"
+        );
+    }
+
+    #[test]
+    fn resolved_pipeline_preserves_leaf_type_reference_occurrence_identity() {
+        let result = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {
+            let producer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_producer.dag".to_string(),
+                content: "module identity.producer\ntype Foreign { value: Int }\n".to_string(),
+            });
+            let consumer_text = "module identity.consumer\nimport identity.producer { Foreign }\nfn leaf(x: Foreign) -> Int { x.value }\nfn applied(x: List<Foreign>) -> Int { 0 }\n".to_string();
+            let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_consumer.dag".to_string(),
+                content: consumer_text.clone(),
+            });
+            let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                std::rc::Rc::new(im::vector![producer, consumer]),
+            );
+            let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
+            assert!(blocking.is_empty(), "identity fixture must traverse the live acceptance path: {:?}", blocking);
+            let graph = resolved.graph.as_ref().expect("identity fixture must produce a typed graph");
+            let typed = graph.modules.iter().find(|m| m.module.name == "identity.consumer").expect("consumer typed module");
+            let transport = typed.occurrence_transport.as_ref().expect("consumer occurrence transport");
+            let occurrence_at = |needle: &str, ordinal: usize| {
+                let start = consumer_text.match_indices(needle).nth(ordinal).expect("fixture occurrence").0 as i64;
+                transport.index.entries.iter().find(|e| e.projection.diagnostic_span.start == start).expect("transport projection at fixture occurrence").projection.occurrence
+            };
+            let leaf = typed.items.iter().find(|item| item.name == "leaf").expect("leaf function");
+            let leaf_type = crate::v1_std_core::param_node_type_expr(leaf.params[0].clone());
+            let leaf_reference = occurrence_at("Foreign", 1);
+            assert_eq!(leaf_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: leaf_reference }), "typed leaf must carry the authored parameter reference, not the resolved declaration occurrence");
+            let applied = typed.items.iter().find(|item| item.name == "applied").expect("applied function");
+            let applied_type = crate::v1_std_core::param_node_type_expr(applied.params[0].clone());
+            let applied_reference = occurrence_at("List", 0);
+            assert_eq!(applied_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: applied_reference }), "neighbouring children-present type must retain its authored outer occurrence");
+        }).expect("spawn identity pipeline test").join().expect("identity pipeline test panicked");
     }
 
     #[test]
