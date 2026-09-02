@@ -192,14 +192,25 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
 // absent arm and 461ms with the share enrolled but this row still folding for itself -- the single
 // highest row in a 3499-row corpus at 92% of the 500ms ceiling.
 //
-// THE ONE THING THIS COSTS, DECLARED RATHER THAN LEFT FOR A READER TO NOTICE: this row now trusts
-// the served value instead of re-deriving it, so a store that served a WRONG standing would take
-// this claim green with it. That is not left uncovered -- it is exactly what
-// `the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series` below asserts,
-// and that row deliberately keeps paying the full recompute so that ONE claim in the corpus
-// compares the served value against a freshly folded one. One payer, one cross-check, and every
-// other consumer reads the shared value: that is the structure the share tier exists to create,
-// and it is only sound while that witness stays enrolled.
+// WHAT THIS ROW NOW TRUSTS, STATED PRECISELY, BECAUSE AN EARLIER REVISION OF THIS COMMENT OVERCLAIMED
+// IT. It said this row's safety rested on
+// `the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series` acting as the
+// corpus's cache cross-check, which would make the share tier's correctness depend on one test in
+// one module. That is the wrong home for that fact and it is not where it lives.
+//
+// THE SERVE IS THE TIER'S OWN GUARANTEE. `v2.workflow.floor_pure_producer_share` keys every entry on
+// FN-NODE IDENTITY plus a content hash of the full argument row and serves only after the stored
+// argument row verifies structurally equal in portable form, a hash collision degrading to
+// recompute rather than to a wrong value. For a NULLARY producer the argument row is empty, so a
+// wrong serve would mean one declaration's value returned under another declaration's node
+// identity. That invariant is the tier's, it carries the tier's own evidence, and re-asserting it
+// here would be a second authority for it.
+//
+// SO THE WITNESS BELOW GUARDS A DIFFERENT HAZARD, AND THE TWO WERE CONFLATED. Its subject is
+// AUTHORING: whether `current_compile_phase_frontier_standing` names the series its name claims.
+// That is decidable without the cache and is not a statement about serving at all. Its removal is
+// an ordinary loss of a discriminating red -- which is a real loss -- and not a silent conversion of
+// a verified share into an unverified one.
 test fn current_persisted_compile_phase_frontier_holds() -> Bool {
   match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: _ } => true
