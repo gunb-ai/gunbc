@@ -123,10 +123,15 @@ first on which variables are configuration and which are ambient.
    is moving to a DeepSeek build or to dspark, the desired row should say so.
 2. **Model residency.** `OLLAMA_KEEP_ALIVE` appears nowhere on main, so a 94 GB model
    evicts on the default idle timer and every measurement silently depends on when it ran.
-4. **Admit the second pair** — cell roles, host identities, and whatever network identity
+3. **Admit the second pair** — cell roles, host identities, and whatever network identity
    can be bound given that static reservations are refused by design.
-5. **Widen the realization carrier to environment**, after the ruling in (7).
-6. **Route credentials through the modeled `SecretRef`** and rotate the current one.
+4. **Widen the realization carrier to environment.** The side chat has since ruled on
+   the partition: consume a runtime-owned closed projection of causal configuration, not
+   the whole process environment. `OLLAMA_CONTEXT_LENGTH` and `OLLAMA_NUM_PARALLEL` are
+   configuration; `OLLAMA_HOST` is deployment identity; `OLLAMA_MODELS` is
+   artifact-resolution provenance already subsumed once the artifact digest is joined.
+   This is landing in #9897 rather than waiting.
+5. **Route credentials through the modeled `SecretRef`** and rotate the current one.
 
 ## The standing risk this document is really about
 
