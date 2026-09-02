@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.systemd.systemd_run",
-      decl_name: "SystemdRun",
+      decl_name: "systemd.SystemdRun",
       field: WholeDeclaration
     }
   },
