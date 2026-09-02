@@ -82,7 +82,7 @@ type RepositoryTransitionRealization
   = LegacyGitFileSync
   | GitNativeConvergence
 
-data deployed_tree_repository_transition: RepositoryTransitionRealization = LegacyGitFileSync
+data deployed_tree_repository_transition: RepositoryTransitionRealization = GitNativeConvergence
 
 type RepositoryTransitionAdmission
   = RepositoryTransitionAdmitted

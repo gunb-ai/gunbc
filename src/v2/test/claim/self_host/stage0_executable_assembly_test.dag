@@ -1,5 +1,6 @@
 module v2.test.claim.self_host.stage0_executable_assembly_test
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.self_host.stage0_executable_assembly {
   BinaryEntrypointOwner,
   EmittedPartitionOwner,
@@ -14,7 +15,9 @@ import v2.compiler.self_host.stage0_executable_assembly {
   stage0_assembly_ownership_census,
   stage0_assembly_ownership_disjoint_and_total,
   stage0_host_shell_declared_modules,
+  stage0_host_shell_emitted_owner_count,
   stage0_host_shell_partition_dependencies,
+  stage0_live_assembly_ownership_census,
   stage0_live_partition_owned_module_basenames,
   stage0_live_retained_pub_mod_basenames
 }
@@ -27,6 +30,7 @@ import v2.workflow.rust_crate_partition {
   Stage0FoundationCrate,
   Stage0LayeredCoreCrate,
   Stage0PartitionCrateRow,
+  stage0_module_bearing_crate_rows,
   stage0_unit_runtime,
   stage0_unit_std_core
 }
@@ -299,6 +303,47 @@ test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool {
   !any(xs: partitioned, predicate: fn(p) {
     any(xs: retained, predicate: fn(r) { r == p })
   })
+}
+
+// The live two-surface flip for v1.compiler.compiler_tests_rust. Partition ownership alone is
+// insufficient: the same path may still be declared by the host shell, which Rust permits when
+// the declarations live in separate crates. The executable-assembly census ranges over both
+// surfaces, requires the emitted mirror to resolve as a partition owner, and requires the shell
+// subtraction to remove it. The singleton makes the residue delta observable directly: this
+// identity contributes zero HostShellEmittedOwner rows after the move, where it contributed one
+// before the partition row landed.
+//
+// The model derives the intended subtraction from the partition row. The checkout read binds
+// that answer to the committed generated surface, so a stale first-generation lib.rs that still
+// declares the moved module makes the witness RED rather than letting the model agree with itself
+// while Rust compiles the path through two separate crates.
+test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -> Bool {
+  let module_basename = "v1_compiler_compiler_tests_rust"
+  let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
+  let census = stage0_live_assembly_ownership_census(
+    declared_modules: [module_basename],
+    emitted_module_basenames: [module_basename]
+  )
+  (length(xs: census.refusals) == 0)
+    && (length(xs: census.owners) == 1)
+    && any(xs: census.owners, predicate: fn(owner) {
+      match owner {
+        EmittedPartitionOwner { module_basename: m, package_name: p } =>
+          (m == module_basename) && (p == "v1-stage0-v1-infer")
+        HostShellEmittedOwner { module_basename: _, host_package: _ } => false
+        RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
+        BinaryEntrypointOwner { target: _, package_name: _ } => false
+      }
+    })
+    && (stage0_host_shell_emitted_owner_count(census: census) == 0)
+    && (length(xs: stage0_host_shell_declared_modules(
+      declared_modules: [module_basename],
+      partition_rows: stage0_module_bearing_crate_rows()
+    )) == 0)
+    && !string_contains(
+      s: host_shell_lib,
+      pattern: "pub mod v1_compiler_compiler_tests_rust;"
+    )
 }
 
 // The host shell links the partition through one declared edge, and it is the top module-bearing
