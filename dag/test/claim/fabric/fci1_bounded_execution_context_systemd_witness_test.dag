@@ -1,0 +1,52 @@
+module test.claim.fabric.fci1_bounded_execution_context_systemd_witness_test
+
+import std.types { Bool, list_length }
+import std.measure { byte_size_count }
+import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, MemoryHigh }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import gunbc.fci1_bounded_execution_context {
+  Fci1BoundedExecutionContextBuilt, fci1_bounded_execution_context,
+}
+import gunbc.fci1_bounded_execution_context_systemd {
+  fci1_bounded_context_systemd_properties,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+
+fn property_is_working_directory(property: SystemdRunProperty) -> Bool {
+  match property.property { WorkingDirectoryProperty => true _ => false }
+}
+
+fn property_is_memory_max(property: SystemdRunProperty) -> Bool {
+  match property.property { MemoryMax => true _ => false }
+}
+
+fn property_is_memory_high(property: SystemdRunProperty) -> Bool {
+  match property.property { MemoryHigh => true _ => false }
+}
+
+fn fci1_systemd_projection_is_the_exact_closed_population() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: "/tmp/fci1 checkout") {
+    Fci1BoundedExecutionContextBuilt { context: context } =>
+      let properties = fci1_bounded_context_systemd_properties(context: context)
+      list_length(items: properties) == 3
+        && list_length(items: filter(properties, property_is_working_directory)) == 1
+        && list_length(items: filter(properties, property_is_memory_max)) == 1
+        && list_length(items: filter(properties, property_is_memory_high)) == 1
+        && any(properties, property => match property {
+          SystemdRunProperty { property: WorkingDirectoryProperty, value: value } =>
+            value == "/tmp/fci1 checkout"
+          _ => false
+        })
+        && any(properties, property => match property {
+          SystemdRunProperty { property: MemoryMax, value: value } =>
+            value == to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max))
+          _ => false
+        })
+        && any(properties, property => match property {
+          SystemdRunProperty { property: MemoryHigh, value: value } =>
+            value == to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high))
+          _ => false
+        })
+    _ => false
+  }
+}
