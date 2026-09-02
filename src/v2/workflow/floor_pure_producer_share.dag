@@ -126,9 +126,18 @@ import v2.std.collection { List }
 // now process-canonical spelling identities; crossing frames no longer changes equality. That
 // is the property the hand-over rests on, and it was established before this change rather
 // than by it.
+//
+// THE THREE RUST TARGET-MODEL ROWS BELOW ARE THE RE-ENROLMENT THAT TRIGGER LICENSED, AND THEY
+// ARE ADMITTED ON A MEASURED PRESENT-VS-ABSENT FLOOR RECEIPT rather than on the implementation
+// change above -- which is the criterion this file made binding on itself, and inferring
+// admission from "the serve is cheaper now" would be exactly the specification-without-execution
+// DESIGN section 5 names. The two runs are cited in the enrolment note below the rows.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
+  "v2.extdeps.languages.rust.rust_target_model",
+  "v2.extdeps.languages.rust.rust_target_model_staging",
+  "v2.extdeps.languages.rust.rust_target_model_core_edges"
 ]
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
@@ -149,7 +158,15 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // live_deploy measurement): 21 apply witnesses rebuild one byte-identical script 21 times
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
+//
+// compile_phase_frontier_standing is the second family's shared producer. It is claim-forced
+// rather than warm because it takes the receipt series as an argument, and it is enrolled at
+// THAT declaration rather than at the witness-local latest_receipt() that wraps it, because the
+// production producer is what both consuming modules share -- the live-gate witness and
+// test.claim.self_host_compile_phase_frontier_witness reach it, and a row keyed on one witness's
+// helper would serve only that witness and would die with its next edit.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
+  "gunbc.self_host_compile_phase_frontier.compile_phase_frontier_standing",
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
   "v2.compiler.translate.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
