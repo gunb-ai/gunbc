@@ -52,26 +52,38 @@ because a step without one cannot be said to be done.
 
 | Step | Project | Terminal evidence | State |
 |---|---|---|---|
-| **PRINT-0** | MEASURE | Board outline typed from the vendor manual (244 x 267, axes corrected); micro-ATX lettered grid modelled as its own standard authority; standoff placement derived from per-location evidence standings | **done** |
-| **PRINT-1** | TOOLCHAIN | Printer, build envelope, filament classes, slicer platform claims as separate authorities | **done** |
+| **PRINT-0** | MEASURE | Board outline typed from the vendor manual (243.840 x 266.700 mm exact, axes corrected); micro-ATX lettered grid under its own standard authority; standoff placement derived from per-location evidence standings | **done** |
+| **PRINT-1** | TOOLCHAIN | Build envelope, filament classes, slicer platform claims as separate authorities, **and a concrete A1 mini product row that the coupon fit witness consumes** | reopened |
 | **PRINT-2** | MEASURE | Measurement authority: absent refuses, duplicate-key conflict refuses, precision budget enforced | **done** |
 | **PRINT-3** | CAL | Coupon authority: ladder as modeled experimental design, rungs and plate derived | **done** |
 | **PRINT-4** | TOOLCHAIN | Realization contract v0: contract derives its own rungs; a wrong-step handler is caught and located | **done** |
-| **PRINT-5** | TOOLCHAIN | CadQuery handler + four-part authority wall; all four negative controls flip | **current** |
-| **PRINT-6** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | |
-| **PRINT-7** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | |
-| **PRINT-8** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
-| **PRINT-9** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | needs printers + board |
-| **PRINT-10** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
-| **PRINT-11** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
-| **PRINT-11b** | CASSETTE | **Cable model**: every run carries endpoints, bend/service volume, clip positions, strain relief, moving-vs-fixed segment, and separation from blades and hot surfaces | |
-| **PRINT-13b** | RACK | **Management-node mount** (Raspberry-Pi class) on the rack, with its own cable route into the spine | |
-| **PRINT-12** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
-| **PRINT-13** | RACK | One fixed bay; cassette retained in service, removable after disconnect; empty bay structurally complete | |
-| **PRINT-14** | RACK | 2x2 block; an enclosed node extracted with neighbours untouched | |
-| **PRINT-15** | VERDICT | Cost, volume, print hours, labour, reprint rate, thermal, service time -> buy-more-printers decision | |
+| **PRINT-5** | TOOLCHAIN | Raw transport schema admission: unknown version, missing field and unknown operation all refuse before any geometry call | |
+| **PRINT-6** | TOOLCHAIN | CadQuery handler + four-part authority wall; all four negative controls flip | |
+| **PRINT-7** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | |
+| **PRINT-8** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | |
+| **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
+| **PRINT-10** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | needs printers + board |
+| **PRINT-11** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
+| **PRINT-12** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
+| **PRINT-13** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
+| **PRINT-14** | RACK | One fixed bay; cassette retained in service, removable after disconnect; empty bay structurally complete | |
+| **PRINT-15** | RACK | Management-node mount (Raspberry-Pi class) on the rack, carried as a bay peer rather than an accessory | |
+| **PRINT-16** | RACK | 2x2 block; an enclosed node extracted with neighbours untouched | |
+| **PRINT-17** | VERDICT | Cost, volume, print hours, labour, reprint rate, thermal, service time -> buy-more-printers decision | |
 
-**N = 15.** PRINT-0 through PRINT-4 are landed and executing (18 witnesses). PRINT-5 through PRINT-7
+**THE SEQUENCE IS INTEGERS, AND AN EARLIER REVISION BROKE THAT.** It carried PRINT-11b and PRINT-13b
+while still calling itself N = 15, so the spine had two numbering authorities at once and the count
+was wrong. Letter suffixes were how cable routing and the management mount got appended as
+afterthoughts instead of being placed. Renumbered; new work takes the next integer.
+
+**CABLE ROUTING IS NOT A STEP.** The operator's requirement is routing at EVERY controlled layer, so
+it is a property each cassette and rack step must satisfy to be called done, not one step of its own.
+It was PRINT-11b, which was exactly the bolt-on that requirement forbids. Every step from PRINT-11
+onward now carries the cable obligation in its own terminal evidence: endpoints, bend and service
+volume, clip positions, strain relief, moving-versus-fixed classification, and declared separation
+from blades and hot surfaces.
+
+**N = 17.** PRINT-0 through PRINT-4 are landed and executing (27 witnesses); PRINT-1 is REOPENED because the build envelope is authored inside the fit witness rather than owned by a printer product row, so that witness would stay green if the product authority changed or vanished. PRINT-5 through PRINT-7
 are the pre-arrival critical path and depend on no operator input. PRINT-8 is the first step that
 needs hardware.
 
@@ -251,6 +263,27 @@ contradiction. A future adjudication relation may supersede a measurement, but s
 be smuggled into ordinary resolution.
 
 
+## The floor-budget cluster, and why this program did not take the coverage loss
+
+Adding this program's witnesses tipped a rotating subset of ten whole-corpus-reflection claims past
+the floor's 500ms per-claim ceiling — claims that already sat at 415-436ms on main and were already
+`[over-cost]` flagged. Two runs tipped DISJOINT subsets, so there was never a single slow witness to
+chase.
+
+The interim move was to lift those ten off the required floor into `test.claim.long.`, declared as a
+§4b(3) rung drop. That was reverted before it was pushed, and the reason is worth keeping: a child
+lane investigating the cause found `deduplicate_identities` building a COPIED ACCUMULATOR inside a
+quadratic fold, over a population that is the corpus — roughly 16s of the 19s that one reflection
+costs. Rewritten as a set-membership fold it drops the standing to ~4.8s.
+
+So the ceiling was never the problem and the ten witnesses were never really the subject. Taking
+them off the floor would have spent ten executing checks — including the one that EXECUTES the
+compile-phase ratchet — to work around a cost-shape defect that §6 says is always fixed regardless of
+realized n. The fix lands on main ahead of this program, and this program takes no drop.
+
+The transferable rule: when a budget refusal names your change as the trigger, the trigger and the
+cause are different questions. A rotating victim set is the tell that you have found neither.
+
 ## Grounding — R14, and why it is TWO networks rather than one path
 
 **Corrected.** An earlier revision of this section said the earth connection is "part of the docking
@@ -304,6 +337,23 @@ G4 is the one that is easy to skip: not knowing whether a mounting hole is bonde
 a reason to make no claim, not a reason to assume the convenient answer. A dedicated bonding stud,
 conductor, terminal and tested connection are part of the rack design. Incidental contact through
 rails or mounting screws is never the bond.
+
+### The witnesses above are not sufficient, and the gap is a sequencing one
+
+G1-G3 prove that the REMAINING rack stays bonded after something is removed. They say nothing about
+whether the thing that was removed was correctly bonded while it was powered — a cassette can be
+live, unbonded, and still leave a perfectly continuous rack behind it. Two ordering relations close
+that, and both are about the service protocol rather than about geometry:
+
+- **Power admission requires the bond.** `NodePowerAdmitted -> EveryRequiredAccessibleMetalPartPeBonded`.
+  A node may not be energised unless every accessible conductive part it brings is already bonded.
+- **Bond removal requires the power to be gone.** `PeBondMayBeRemoved -> AcDisconnected AND HazardousEnergyAbsent`.
+  The earth connection is the last thing disconnected and the first thing connected.
+
+This is why the bond is a captive bolt in the connect/disconnect sequence even though the docking
+interface carries no PE obligation. "A dock is a connector, PE is a bolt" settles what the MECHANISM
+is; it does not settle WHEN the bolt is made and broken, and the second question is the one that
+decides whether a person servicing a live rack is safe.
 
 ### Front-edge support — admitted only under all five conjuncts
 

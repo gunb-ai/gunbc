@@ -616,13 +616,28 @@ fn asrock_altrad8ud_board_frame() -> CoordinateFrameIdentity { coordinate_frame_
 // value it must hold. Whole millimetres are sufficient for these two extents and are NOT sufficient
 // for what will be drawn in this frame next — DIMM slot pitch and standoff positions — and a frame
 // whose quantum is retro-fitted after coordinates exist in it silently rescales every one of them.
-// x is ALONG THE REAR I/O EDGE (244 mm), y is DEPTH FROM THAT EDGE (267 mm). The axis assignment is
-// stated here because the frame carries no axis names and the numbers alone do not disclose which is
-// which — which is exactly how the transposition above survived review the first time.
+// x is ALONG THE REAR I/O EDGE, y is DEPTH FROM THAT EDGE. The axis assignment is stated here
+// because the frame carries no axis names and the numbers alone do not disclose which is which —
+// which is exactly how the transposition above survived review the first time.
+//
+// THE EXTENTS ARE THE INCH FIGURES CONVERTED EXACTLY, NOT THE ROUNDED MILLIMETRES, and an earlier
+// revision got this wrong in a way that produced a live contradiction inside this one module.
+//
+// The vendor states 9.6 x 10.5 in and presents 244 x 267 mm beside it. Those mm are rounded: the
+// exact conversions are 243.840 and 266.700. The earlier outline carried 244000 and 267000 µm while
+// asrock_altrad8ud_front_overhang below carried 29210 µm, which derives from 266700 − 237490. So the
+// module asserted a depth of 267000 and an overhang computed from 266700, disagreeing by 300 µm —
+// both spellings treated as exact in different rows, which is the same defect this session had
+// already fixed once in extdeps.standards.atx_2_2 and failed to sweep for here.
+//
+// One representation owns it, and it is the exact one: a micrometre frame can hold 243840 and
+// 266700 losslessly, so there is no reason to spend precision on a presentational rounding. The
+// overhang is now derivable from the rows above it rather than merely consistent with them, and
+// w_the_overhang_derives_from_the_outline asserts exactly that subtraction.
 fn asrock_altrad8ud_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
   axis_aligned_rectangle2(
     min: point2(frame: asrock_altrad8ud_board_frame(), x: 0, y: 0),
-    max: point2(frame: asrock_altrad8ud_board_frame(), x: 244000, y: 267000)
+    max: point2(frame: asrock_altrad8ud_board_frame(), x: 243840, y: 266700)
   )
 }
 
@@ -784,6 +799,8 @@ data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocati
 // sit near that edge and take insertion force on unsupported PCB. A non-conductive front-edge
 // support is therefore a cassette candidate rather than a nicety — gated on an underside-component
 // keep-out measurement, since a support that fouls a solder joint is worse than none.
+data asrock_altrad8ud_board_depth_exact: Micrometer = micrometer(count: 266700)
+data asrock_altrad8ud_front_mounting_row_offset: Micrometer = micrometer(count: 237490)
 data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
 
 // THE OPEN MOUNTING UNKNOWNS, AS A CLOSED TYPE RATHER THAN A PARAGRAPH.

@@ -188,28 +188,21 @@ fn material_suitability_row(material: FilamentMaterial, suitability: MaterialSui
 // compile. A wildcard over a closed coproduct converts "I enumerated the domain" into "I did not,
 // and the compiler may not tell you".
 //
-// The projection below is one exhaustive match with no wildcard, so a new material fails to compile
-// HERE, at the one place that must learn about it, and equality is then ordinary integer comparison.
-// The tag is an ordinal comparison device and not a second name for the material: it is not
-// serialized, not cited, and not stable across edits — anything needing a stable external spelling
-// must model that separately rather than reading these numbers.
-fn filament_material_tag(m: FilamentMaterial) -> Int {
-  match m {
-    Pla => 0
-    Petg => 1
-    Tpu => 2
-    Pva => 3
-    Abs => 4
-    Asa => 5
-    Polycarbonate => 6
-    Polyamide => 7
-    Pet => 8
-    FiberReinforcedPolymer => 9
-  }
-}
-
+// EQUALITY IS THE SUBSTRATE'S, NOT THIS MODULE'S.
+//
+// An earlier revision projected every variant to an integer tag and compared the integers, with an
+// annotation arguing the tag was "an ordinal comparison device and not a second name". That defence
+// is the tell: a second representation always claims not to be one. `==` is structurally defined for
+// closed coproducts in this substrate -- `std.roster_frontier` `frontier_subject_eq` is the same
+// one-line shape -- so the ordinals were a hand-rolled duplicate of a decision the language already
+// makes, and DESIGN section 2 prices a re-derivation of an existing law as redundant regardless of
+// how small it is.
+//
+// It also failed at the thing it was introduced to do. The tags were written to avoid a wildcard
+// over a closed coproduct, but a new material added to FilamentMaterial gets a fresh ordinal only if
+// the author remembers to extend the projection; structural equality has nothing to extend.
 fn filament_material_eq(a: FilamentMaterial, b: FilamentMaterial) -> Bool {
-  filament_material_tag(m: a) == filament_material_tag(m: b)
+  a == b
 }
 
 // DUPLICATE ROWS REFUSE, AND THIS IS THE SAME DEFECT THIS SESSION ALREADY FIXED ONCE ELSEWHERE.

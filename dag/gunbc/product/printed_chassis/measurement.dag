@@ -96,37 +96,17 @@ fn fabrication_measurement(key: FabricationMeasurementKey, standing: ChassisLeng
   FabricationMeasurement { key: key, standing: standing }
 }
 
-// EXHAUSTIVE TAG PROJECTIONS, WILDCARD-FREE, for the reason extdeps.printing.fdm records at length:
-// a nested pairwise match needs a `_` arm, and a wildcard over a closed coproduct means a newly added
-// subject or axis is absorbed rather than refused. A new FabricationSubject must fail to compile at
-// the projection below — which is the one place that has to learn about it — rather than quietly
-// comparing unequal to itself wherever a wildcard swallowed it.
-fn fabrication_subject_tag(s: FabricationSubject) -> Int {
-  match s {
-    Altrad8udBoard => 0
-    CpuCoolerFourU => 1
-    CpuCoolerTwoU => 2
-    NodePowerSupply => 3
-    Fan80mm => 4
-    InstalledDimm => 5
-    RearIoAperture => 6
-  }
-}
-
-fn fabrication_axis_tag(a: FabricationAxis) -> Int {
-  match a {
-    FabWidth => 0
-    FabDepth => 1
-    FabHeight => 2
-  }
-}
-
+// EQUALITY IS THE SUBSTRATE'S. An earlier revision projected FabricationSubject and FabricationAxis
+// to integer ordinals and compared those, to avoid a wildcard over a closed coproduct. `==` is
+// structurally defined for closed coproducts here, so the ordinals re-derived a law the language
+// already carries -- and worse, a subject added later would silently need a hand-written ordinal,
+// which is the very extension hazard the projection was introduced to close.
 fn fabrication_subject_eq(a: FabricationSubject, b: FabricationSubject) -> Bool {
-  fabrication_subject_tag(s: a) == fabrication_subject_tag(s: b)
+  a == b
 }
 
 fn fabrication_axis_eq(a: FabricationAxis, b: FabricationAxis) -> Bool {
-  fabrication_axis_tag(a: a) == fabrication_axis_tag(a: b)
+  a == b
 }
 
 fn fabrication_measurement_key_eq(a: FabricationMeasurementKey, b: FabricationMeasurementKey) -> Bool {

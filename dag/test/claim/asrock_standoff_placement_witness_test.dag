@@ -17,7 +17,11 @@ import extdeps.boards.asrock_rack {
   DischargedByContinuityMeter,
   mounting_unknown_discharge,
   asrock_altrad8ud_open_mounting_unknowns,
+  asrock_altrad8ud_board_depth_exact,
+  asrock_altrad8ud_front_mounting_row_offset,
+  asrock_altrad8ud_front_overhang,
 }
+import std.measure { Micrometer, micrometer_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -126,4 +130,30 @@ test fn w_the_bond_unknown_routes_to_its_own_instrument() -> Bool {
     DischargedByContinuityMeter => false
   }
   bond && fit && caliper
+}
+
+// WITNESS 8 — THE OVERHANG DERIVES, AND THIS IS THE RED FOR A PRECISION CONTRADICTION.
+//
+// The module previously carried a 267000 µm board depth beside a 29210 µm overhang computed from
+// 266700 — the rounded millimetre spelling and the exact inch conversion both treated as exact, 300
+// µm apart, in one module. Nothing could see it, because no row subtracted one from the other.
+//
+// This does. It goes red if the depth is ever restated as the rounded 267000, if the front-row
+// offset drifts, or if the overhang is hand-edited away from the difference. That is the whole point
+// of asserting a DERIVATION rather than asserting the literal 29210: an equality against the
+// constant would agree with itself no matter which of the two spellings the other rows adopted.
+test fn w_the_overhang_derives_from_the_outline() -> Bool {
+  let depth = micrometer_count(m: asrock_altrad8ud_board_depth_exact)
+  let front_row = micrometer_count(m: asrock_altrad8ud_front_mounting_row_offset)
+  let overhang = micrometer_count(m: asrock_altrad8ud_front_overhang)
+  depth - front_row == overhang
+}
+
+// WITNESS 9 — THE ROUNDED SPELLING IS NOT THE ONE THAT WOULD SATISFY IT. The positive control for
+// witness 8: 267000 minus the same offset is 29510, not 29210, so the two spellings are genuinely
+// discriminated rather than being within some tolerance that makes the check vacuous.
+test fn w_the_rounded_depth_would_not_satisfy_the_derivation() -> Bool {
+  let front_row = micrometer_count(m: asrock_altrad8ud_front_mounting_row_offset)
+  let overhang = micrometer_count(m: asrock_altrad8ud_front_overhang)
+  267000 - front_row != overhang
 }

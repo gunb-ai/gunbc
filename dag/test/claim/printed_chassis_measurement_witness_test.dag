@@ -69,29 +69,43 @@ fn caliper_evidence() -> ChassisMeasurementEvidence {
   }
 }
 
-fn interval_or_degenerate(low: Nat, high: Nat) -> LengthInterval {
-  match length_interval(low: millimeter(count: low), high: millimeter(count: high)) {
-    IntervalReady { interval: i } => i
-    IntervalRefused { reason: _ } => degenerate_interval(point: millimeter(count: 0))
+// AN UNBUILDABLE FIXTURE BECOMES UNKNOWN, NOT PERFECT, and the arm this replaces was the worst
+// fallback in the PR because it sat in the fixtures every other witness is measured against.
+//
+// The earlier `interval_or_degenerate` turned a REFUSED interval into `degenerate_interval(0 mm)` --
+// uncertainty [0,0], which is MAXIMALLY PRECISE. So a fixture that failed to build did not merely
+// survive: it became the most precise measurement expressible, satisfying every precision budget
+// downstream. A fail-open, pointing the wrong way, inside the test data.
+//
+// `std.interval` states the rule this broke in its own annotation: the degenerate constructor "is
+// not a default -- a caller wanting a WIDTH still goes through the refusing mint."
+//
+// The refusal now lands in SpatialUnknown, which is vocabulary this module already refuses on
+// (SpatialGeometryUnknown), so an unbuildable fixture reddens the witness that depends on it instead
+// of flattering it. No new refusal path was invented for this; the existing one was routed to.
+fn measured_with_half_width(value: Nat, half_width: Nat, obligation: NonEmptyStr) -> ChassisLengthStanding {
+  match length_interval(
+    low: millimeter(count: value - half_width),
+    high: millimeter(count: value + half_width),
+  ) {
+    IntervalReady { interval: i } =>
+      SpatialMeasured {
+        value: millimeter(count: value),
+        uncertainty: i,
+        evidence: caliper_evidence(),
+      }
+    IntervalRefused { reason: _ } => SpatialUnknown { obligation: obligation }
   }
 }
 
 // Measured to +/- 1 mm.
 fn measured_precise(value: Nat) -> ChassisLengthStanding {
-  SpatialMeasured {
-    value: millimeter(count: value),
-    uncertainty: interval_or_degenerate(low: value - 1, high: value + 1),
-    evidence: caliper_evidence(),
-  }
+  measured_with_half_width(value: value, half_width: 1, obligation: "fixture-interval-unbuildable-precise")
 }
 
 // Same STANDING, +/- 15 mm. A cooler height known only to 30 mm cannot set a bay pitch.
 fn measured_coarse(value: Nat) -> ChassisLengthStanding {
-  SpatialMeasured {
-    value: millimeter(count: value),
-    uncertainty: interval_or_degenerate(low: value - 15, high: value + 15),
-    evidence: caliper_evidence(),
-  }
+  measured_with_half_width(value: value, half_width: 15, obligation: "fixture-interval-unbuildable-coarse")
 }
 
 fn cooler_height_key() -> FabricationMeasurementKey {
@@ -103,7 +117,26 @@ fn cooler_height_key() -> FabricationMeasurementKey {
 fn bay_pitch_requirement() -> SpatialRequirement<LengthInterval> {
   SpatialRequirement {
     minimum_standing: MeasuredOnly,
-    maximum_uncertainty: interval_or_degenerate(low: 0, high: 4),
+    maximum_uncertainty: budget_or_strictest(low: 0, high: 4),
+  }
+}
+
+// THE SAME FALLBACK SHAPE AS THE ONE DELETED ABOVE, POINTING THE OTHER WAY, AND THE DIRECTION IS
+// THE WHOLE ARGUMENT.
+//
+// This interval is a BUDGET -- the widest uncertainty a measurement may carry and still be admitted
+// -- whereas the one above was an OBSERVATION's uncertainty. Degenerate [0,0] therefore means the
+// opposite thing in each position. As an observation it claims perfect precision and satisfies every
+// budget; as a budget it admits nothing, because no real measurement has zero uncertainty.
+//
+// So the unbuildable-budget arm refuses the whole roster rather than passing it, which is the arm
+// DESIGN section 5 requires. Writing the identical expression in both places would have been a
+// coincidence of spelling, not of meaning: one is a fail-open and one is a fail-closed, and reading
+// them as the same idiom is how the first one got written.
+fn budget_or_strictest(low: Nat, high: Nat) -> LengthInterval {
+  match length_interval(low: millimeter(count: low), high: millimeter(count: high)) {
+    IntervalReady { interval: i } => i
+    IntervalRefused { reason: _ } => degenerate_interval(point: millimeter(count: 0))
   }
 }
 

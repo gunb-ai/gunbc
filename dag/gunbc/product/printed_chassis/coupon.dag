@@ -182,7 +182,7 @@ fn specimen_hole_diameters(s: CouponSpecimen) -> List<Micrometer> {
   fold(s.features, init: [], f: fn(acc, op) {
     match op {
       OpThroughHole { diameter: d, center_x: _, center_y: _ } => concat(acc, [d])
-      _ => acc
+      OpDatumMark { text: _, at_x: _, at_y: _ } => acc
     }
   })
 }
