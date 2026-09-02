@@ -50,6 +50,7 @@ type DesignRefusal
   | PopulatedChannelIsNotRouted { channel: Int }
   | PopulatedPositionIsNotRouted { position: Int }
   | NoProductionQualifiedPopulationIsReachable { routed_channels: Int }
+  | NoProductionQualifiedChannelCountExists
 
 // A CHANNEL HAS AN IDENTITY, AND IT IS NOT ITS ORDINAL POSITION IN A COUNT. An earlier revision
 // derived the populated set from the count by generating [0..n), which is cardinality standing
@@ -169,9 +170,9 @@ fn position_occurrences(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> Int 
   })
 }
 
-fn duplicate_position_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
-  fold(t.positions_per_channel, init: [], f: fn(acc, p) {
-    if position_occurrences(ps: t.positions_per_channel, p: p) > 1
+fn duplicate_position_causes(ps: List<DimmSlotPosition>) -> List<DesignRefusal> {
+  fold(ps, init: [], f: fn(acc, p) {
+    if position_occurrences(ps: ps, p: p) > 1
       && !fold(acc, init: false, f: fn(seen, r) {
         seen || match r {
           DimmPositionRepeatedOnChannel { position: n } => n == dimm_slot_position_ordinal(p: p)
@@ -184,6 +185,7 @@ fn duplicate_position_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           PopulatedChannelIsNotRouted { channel: _ } => false
           PopulatedPositionIsNotRouted { position: _ } => false
           NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => false
+          NoProductionQualifiedChannelCountExists => false
         }
       }) {
       concat(acc, [DimmPositionRepeatedOnChannel { position: dimm_slot_position_ordinal(p: p) }])
@@ -197,9 +199,9 @@ fn duplicate_position_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
 // clearest evidence that identity was the missing fact rather than a nicety. A generated range
 // is duplicate-free by construction, so this class did not exist to be caught; naming the
 // channels makes it writable, and this makes it refused.
-fn duplicate_channel_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
-  fold(t.populated_channels, init: [], f: fn(acc, c) {
-    if channel_occurrences(cs: t.populated_channels, c: c) > 1
+fn duplicate_channel_causes(cs: List<DdrChannelIdentity>) -> List<DesignRefusal> {
+  fold(cs, init: [], f: fn(acc, c) {
+    if channel_occurrences(cs: cs, c: c) > 1
       && !fold(acc, init: false, f: fn(seen, r) {
         seen || match r {
           ChannelPopulatedMoreThanOnce { channel: n } => n == ddr_channel_ordinal(c: c)
@@ -212,6 +214,7 @@ fn duplicate_channel_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           PopulatedChannelIsNotRouted { channel: _ } => false
           PopulatedPositionIsNotRouted { position: _ } => false
           NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => false
+          NoProductionQualifiedChannelCountExists => false
         }
       }) {
       concat(acc, [ChannelPopulatedMoreThanOnce { channel: ddr_channel_ordinal(c: c) }])
@@ -273,12 +276,12 @@ fn design_causes(d: AltraMinimalMotherboard) -> List<DesignRefusal> {
   let population_cause = if selected > altra_ddr4_channel_count {
     [ChannelCountExceedsControllerPopulation { selected: selected, available: altra_ddr4_channel_count }]
   } else {
-    concat([], duplicate_channel_causes(t: d.memory.topology))
+    concat([], duplicate_channel_causes(cs: d.memory.topology.populated_channels))
   }
   let dimm_cause = if list_length(items: d.memory.topology.positions_per_channel) < 1 {
     [ChannelHasNoDimmPositions]
   } else {
-    duplicate_position_causes(t: d.memory.topology)
+    duplicate_position_causes(ps: d.memory.topology.positions_per_channel)
   }
   let pcie_cause = if d.pcie_lanes_broken_out > altra_pcie_gen4_lane_count {
     [PcieLanesExceedPackage { requested: d.pcie_lanes_broken_out, available: altra_pcie_gen4_lane_count }]
@@ -320,9 +323,40 @@ fn admit_design(d: AltraMinimalMotherboard) -> DesignAdmission {
 // right rather than as a flag on the routed one is what makes the violating case WRITABLE and
 // therefore refusable -- exactly the move the named-channel comment above describes, applied one
 // level up.
+// ROUTING AND POPULATION ARE TWO FACTS AND THEY NOW HAVE TWO CARRIERS. An earlier revision gave
+// both fields the type ActiveDdrTopology, so the SAME type -- and a field literally spelled
+// populated_channels -- meant copper under `routed` and shipped memory under `initially_populated`.
+// Meaning that depends on which field a value was stored in is a meaning fork wearing one name: it
+// cannot be read locally, and nothing refuses the two being swapped at a call site.
+type RoutedDdrTopology {
+  routed_channels: List<DdrChannelIdentity>
+  routed_positions_per_channel: List<DimmSlotPosition>
+}
+
+fn routed_channel_count(r: RoutedDdrTopology) -> Int {
+  list_length(items: r.routed_channels)
+}
+
+// A BOARD IS NOT ONE POPULATION, IT IS A POPULATION OVER TIME. One production board may route
+// eight channels, come up on two under bring-up intent, and ship on four. A single topology under
+// a single intent cannot say that: judging it once as EngineeringBringUp establishes nothing about
+// the shipped product, and judging it separately as Production produces a second verdict with no
+// structural relation to the first. The lifecycle makes the relation a modelled fact, so both
+// populations are judged under their own intent against ONE routed ceiling.
+type MemoryPopulationLifecycle
+  = ShipsWithProductionPopulation { production: ActiveDdrTopology }
+  | BringUpThenFill { bringup: ActiveDdrTopology, production: ActiveDdrTopology }
+
+fn lifecycle_production_population(l: MemoryPopulationLifecycle) -> ActiveDdrTopology {
+  match l {
+    ShipsWithProductionPopulation { production: p } => p
+    BringUpThenFill { bringup: _, production: p } => p
+  }
+}
+
 type RevARoutedMemoryDesign {
-  routed: ActiveDdrTopology
-  initially_populated: ActiveDdrTopology
+  routed: RoutedDdrTopology
+  lifecycle: MemoryPopulationLifecycle
 }
 
 fn channel_is_in(cs: List<DdrChannelIdentity>, c: DdrChannelIdentity) -> Bool {
@@ -336,16 +370,20 @@ fn position_is_in(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> Bool {
 // EVERY POPULATED IDENTITY MUST BE A ROUTED ONE, reported per offending identity rather than as a
 // single "not a subset" boolean, so the refusal names which channel or position is unroutable
 // instead of only that something is.
-fn routed_population_causes(d: RevARoutedMemoryDesign) -> List<DesignRefusal> {
-  let channel_causes = fold(d.initially_populated.populated_channels, init: [], f: fn(acc, c) {
-    if channel_is_in(cs: d.routed.populated_channels, c: c) {
+// EVERY POPULATED IDENTITY MUST BE A ROUTED ONE, reported per offending identity rather than as a
+// single "not a subset" boolean, so the refusal names which channel or position is unroutable
+// instead of only that something is. Applied to EACH population in the lifecycle: copper is the
+// ceiling for the bring-up population exactly as it is for the shipped one.
+fn population_subset_causes(routed: RoutedDdrTopology, populated: ActiveDdrTopology) -> List<DesignRefusal> {
+  let channel_causes = fold(populated.populated_channels, init: [], f: fn(acc, c) {
+    if channel_is_in(cs: routed.routed_channels, c: c) {
       acc
     } else {
       concat(acc, [PopulatedChannelIsNotRouted { channel: ddr_channel_ordinal(c: c) }])
     }
   })
-  let position_causes = fold(d.initially_populated.positions_per_channel, init: [], f: fn(acc, p) {
-    if position_is_in(ps: d.routed.positions_per_channel, p: p) {
+  let position_causes = fold(populated.positions_per_channel, init: [], f: fn(acc, p) {
+    if position_is_in(ps: routed.routed_positions_per_channel, p: p) {
       acc
     } else {
       concat(acc, [PopulatedPositionIsNotRouted { position: dimm_slot_position_ordinal(p: p) }])
@@ -354,69 +392,85 @@ fn routed_population_causes(d: RevARoutedMemoryDesign) -> List<DesignRefusal> {
   concat(channel_causes, position_causes)
 }
 
-// TWO AXES, TWO DIFFERENT LAWS. An earlier revision of this function applied design_causes to the
-// ROUTED topology, which used the ACTIVE-channel authority to classify copper. The datasheet
-// qualifies "active channels", and says nothing of the form "a production motherboard may route
-// exactly four, six or eight channel interfaces". Judging copper by that sentence produced two
-// defects at once.
+// ONE STRUCTURAL LAW, STATED OVER THE IDENTITY LISTS THEMSELVES so that both carriers are judged
+// by it rather than only the one it was first written for. The earlier revision applied duplicate
+// and empty-position refusal to the ROUTED topology alone, which left two states writable and
+// admitted, both proven by execution before this law landed:
+//   [DDR0, DDR0, DDR1, DDR2] -- list length four, so it reached the production-qualified arm, and
+//     every identity in it IS routed, so the subset law above could not see the repeat.
+//   four channels with NO dimm positions -- the empty-position refusal was routed-only, and the
+//     position subset fold succeeds vacuously on an empty list.
+// Neither is a near-miss: the first names four channels while populating three, and the second
+// describes a board that populates no slot at all.
+fn identity_structural_causes(channels: List<DdrChannelIdentity>, positions: List<DimmSlotPosition>) -> List<DesignRefusal> {
+  let count_cause = if list_length(items: channels) > altra_ddr4_channel_count {
+    [ChannelCountExceedsControllerPopulation { selected: list_length(items: channels), available: altra_ddr4_channel_count }]
+  } else {
+    duplicate_channel_causes(cs: channels)
+  }
+  let dimm_cause = if list_length(items: positions) < 1 {
+    [ChannelHasNoDimmPositions]
+  } else {
+    duplicate_position_causes(ps: positions)
+  }
+  concat(count_cause, dimm_cause)
+}
+
+// TWO AXES, TWO DIFFERENT LAWS. An earlier revision applied the ACTIVE-channel authority to
+// copper. The datasheet qualifies "active channels", and says nothing of the form "a production
+// motherboard may route exactly four, six or eight channel interfaces". Judging copper by that
+// sentence produced a fail-open -- eight routed with two active under Production was ADMITTED --
+// and an over-refusal of a five-routed/four-active board that nothing in the source refuses.
 //
-// THE FAIL-OPEN, which is the serious one: a board routing eight channels and shipping TWO active
-// under Production intent was ADMITTED, because the routed count was eight and the populated count
-// was never production-qualified at all. The vendor classifies two active channels as debug and
-// bring-up only, so that design is exactly what the predicate exists to refuse, and it passed.
+// SO THE ROUTED SIDE RECEIVES A REACHABILITY LAW INSTEAD: every subset of a two-channel routed set
+// has at most two active channels, and one and two are both non-production, so no
+// production-qualified population is reachable from it. That refuses the two-route board while
+// leaving the five-route/four-active board admitted.
 //
-// THE OVER-REFUSAL: a board routing five channel interfaces and operating a supported four-channel
-// active population was refused, because five is not an admitted ACTIVE count. Nothing in the
-// source refuses that board. A fifth route may be unearned copper and lose on a minimality
-// criterion, but it is not vendor-refused.
-//
-// SO THE ROUTED SIDE RECEIVES A REACHABILITY LAW INSTEAD. The concern that motivated the old shape
-// -- a board routing two channels passing by shipping a legal subset -- is answered without
-// misreading the source: every subset of a two-channel routed set has at most two active channels,
-// and one and two are both non-production, so NO production-qualified population is reachable from
-// it. That is the true statement, and it refuses the two-route board while leaving the
-// five-route/four-active board admitted. The false statement -- that the routed topology IS a
-// debug-only active topology -- reaches the same verdict for the two-route case and the wrong one
-// everywhere else.
-fn smallest_production_channel_count() -> Int {
-  fold([OneChannel, TwoChannels, FourChannels, SixChannels, EightChannels], init: 0, f: fn(acc, c) {
-    if channel_count_is_production_qualified(c: c) && (acc == 0 || active_channel_count(c: c) < acc) {
-      active_channel_count(c: c)
+// THE MINIMUM IS OPTIONAL BECAUSE ITS ABSENCE IS A REAL STATE. The previous fold seeded init: 0 and
+// returned an Int, so a vendor roster in which NO count was production-qualified yielded 0, and
+// `routed_count >= 0` admitted every routed topology at exactly the moment no production population
+// existed at all. Absence must refuse, not return the identity of the comparison.
+fn smallest_production_channel_count() -> Int? {
+  fold([OneChannel, TwoChannels, FourChannels, SixChannels, EightChannels], init: none, f: fn(acc, c) {
+    if channel_count_is_production_qualified(c: c) {
+      match acc {
+        Absent => Present { value: active_channel_count(c: c) }
+        Present { value: best } =>
+          if active_channel_count(c: c) < best { Present { value: active_channel_count(c: c) } } else { acc }
+      }
     } else {
       acc
     }
   })
 }
 
-// REACHABILITY IS DERIVED FROM THE VENDOR ROSTER, not from a literal 4. If the datasheet ever
-// admits a smaller production population, this law follows it rather than disagreeing with it.
-fn production_population_is_reachable(routed: ActiveDdrTopology) -> Bool {
-  topology_channel_count(t: routed) >= smallest_production_channel_count()
+fn routed_reachability_causes(routed: RoutedDdrTopology) -> List<DesignRefusal> {
+  match smallest_production_channel_count() {
+    Absent => [NoProductionQualifiedChannelCountExists]
+    Present { value: m } =>
+      if routed_channel_count(r: routed) >= m {
+        []
+      } else {
+        [NoProductionQualifiedPopulationIsReachable { routed_channels: routed_channel_count(r: routed) }]
+      }
+  }
 }
 
-fn routed_structural_causes(routed: ActiveDdrTopology, pcie_lanes: Int) -> List<DesignRefusal> {
-  let count_cause = if topology_channel_count(t: routed) > altra_ddr4_channel_count {
-    [ChannelCountExceedsControllerPopulation { selected: topology_channel_count(t: routed), available: altra_ddr4_channel_count }]
-  } else {
-    duplicate_channel_causes(t: routed)
-  }
-  let dimm_cause = if list_length(items: routed.positions_per_channel) < 1 {
-    [ChannelHasNoDimmPositions]
-  } else {
-    duplicate_position_causes(t: routed)
-  }
+fn routed_structural_causes(routed: RoutedDdrTopology, pcie_lanes: Int) -> List<DesignRefusal> {
   let pcie_cause = if pcie_lanes > altra_pcie_gen4_lane_count {
     [PcieLanesExceedPackage { requested: pcie_lanes, available: altra_pcie_gen4_lane_count }]
   } else {
     []
   }
-  concat(concat(count_cause, dimm_cause), pcie_cause)
+  concat(identity_structural_causes(channels: routed.routed_channels, positions: routed.routed_positions_per_channel), pcie_cause)
 }
 
-// THE ACTIVE POPULATION CARRIES THE VENDOR PREDICATE, under its own declared intent.
+// THE ACTIVE POPULATION CARRIES THE VENDOR PREDICATE, under its own declared intent, AND the same
+// structural law as copper.
 fn active_population_causes(populated: ActiveDdrTopology, intent: DesignIntent) -> List<DesignRefusal> {
   let selected = topology_channel_count(t: populated)
-  match admitted_channel_count(n: selected) {
+  let vendor_causes = match admitted_channel_count(n: selected) {
     Absent => [ChannelPopulationIsNotAnAdmittedCount { populated: selected }]
     Present { value: c } =>
       match intent {
@@ -429,31 +483,39 @@ fn active_population_causes(populated: ActiveDdrTopology, intent: DesignIntent) 
           }
       }
   }
+  concat(identity_structural_causes(channels: populated.populated_channels, positions: populated.positions_per_channel), vendor_causes)
 }
 
-fn admit_routed_design(d: RevARoutedMemoryDesign, intent: DesignIntent, pcie_lanes: Int) -> DesignAdmission {
-  let reachability = match intent {
-    EngineeringBringUp => []
-    Production =>
-      if production_population_is_reachable(routed: d.routed) {
-        []
-      } else {
-        [NoProductionQualifiedPopulationIsReachable { routed_channels: topology_channel_count(t: d.routed) }]
-      }
+// EACH POPULATION IN THE LIFECYCLE IS JUDGED UNDER ITS OWN INTENT, and both against one ceiling.
+fn lifecycle_causes(routed: RoutedDdrTopology, l: MemoryPopulationLifecycle) -> List<DesignRefusal> {
+  match l {
+    ShipsWithProductionPopulation { production: p } =>
+      concat(active_population_causes(populated: p, intent: Production), population_subset_causes(routed: routed, populated: p))
+    BringUpThenFill { bringup: b, production: p } =>
+      concat(
+        concat(active_population_causes(populated: b, intent: EngineeringBringUp), population_subset_causes(routed: routed, populated: b)),
+        concat(active_population_causes(populated: p, intent: Production), population_subset_causes(routed: routed, populated: p))
+      )
   }
+}
+
+// THE ADMITTED VALUE RETAINS THE ROUTING IT WAS JUDGED AGAINST. The earlier success constructor
+// built a motherboard carrying only the initial active population, discarding the exact routed
+// copper the admission had just checked. A downstream selector could then not consume the accepted
+// design at all: it would have to keep the original input beside the result and assert the two
+// belong together, which is the adjacent-but-unbound shape this module exists to remove.
+type RoutedDesignAdmission
+  = RoutedDesignAdmitted { admitted: RevARoutedMemoryDesign, pcie_lanes_broken_out: Int }
+  | RoutedDesignRefused { causes: DesignRefusalSet }
+
+fn admit_routed_design(d: RevARoutedMemoryDesign, pcie_lanes: Int) -> RoutedDesignAdmission {
   let causes = concat(
-    concat(routed_structural_causes(routed: d.routed, pcie_lanes: pcie_lanes), reachability),
-    concat(active_population_causes(populated: d.initially_populated, intent: intent), routed_population_causes(d: d))
+    concat(routed_structural_causes(routed: d.routed, pcie_lanes: pcie_lanes), routed_reachability_causes(routed: d.routed)),
+    lifecycle_causes(routed: d.routed, l: d.lifecycle)
   )
   match fold(causes, init: none, f: fn(acc, c) { push_design_refusal(acc: acc, r: c) }) {
-    Absent => DesignAdmitted {
-      design: AltraMinimalMotherboard {
-        intent: intent,
-        memory: MemoryConfiguration { topology: d.initially_populated },
-        pcie_lanes_broken_out: pcie_lanes,
-      }
-    }
-    Present { value: s } => DesignRefused { causes: s }
+    Absent => RoutedDesignAdmitted { admitted: d, pcie_lanes_broken_out: pcie_lanes }
+    Present { value: s } => RoutedDesignRefused { causes: s }
   }
 }
 
