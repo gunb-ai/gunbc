@@ -14046,11 +14046,20 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
 // Every emitted service operation method declares
 // `-> Result<T, Box<dyn std::error::Error>>`, so every error arm owes that Box and
 // reaches it through `Into`. This is the ONE place the conversion is spelled.
-// It was two: the REST arms wrote `.into()` at their own call sites while the shell
-// arm carried its own constant. They agreed only by coincidence -- the shell arm
-// spent its whole life NOT agreeing, emitting `Err(stderr)` against the declared
-// Box -- and the emitter does not typecheck what it emits, so nothing caught it.
-// A second site is where that divergence gets written; there is no second site.
+//
+// It was two: the REST arms wrote `.into()` at their own call sites, and the shell
+// arms went through a constant of their own. Those two spellings agreed -- but only
+// because #9886 had just made them agree. Before it, the shell arm was written
+// inline and emitted a bare `Err(stderr)` against the declared Box for its whole
+// life, so every operation declaring an `exit` block emitted a function that does
+// not compile; #9886 replaced that inline arm with the boxed constant this
+// constructor now supersedes.
+//
+// The fork therefore survived its own repair: the repair produced a SECOND
+// authority for one fact rather than removing the first. That is the argument for
+// this constructor. The emitter does not typecheck what it emits, so nothing goes
+// red when two spellings drift apart -- and a second site is exactly where that
+// agreement gets lost again. There is no second site.
 fn emit_rust_boxed_error_return(message_expr: String) -> String {
   concat("Err(", message_expr, ".into())")
 }
