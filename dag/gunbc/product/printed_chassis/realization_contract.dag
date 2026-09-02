@@ -1,0 +1,649 @@
+module product.printed_chassis.realization_contract
+import std.types { Bool, Int, List, NonEmptyStr }
+import v2.std.algebra { zip_map }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import product.printed_chassis.coupon {
+  hole_ladder_specimen,
+  LengthLadder,
+  CouponSpecimen,
+  CouponOperation,
+  OpThroughHole,
+  PlateDimensions,
+  plate_dimensions,
+  HoleDiameterCouponGeometry,
+  hole_diameter_coupon_geometry,
+  ladder_rungs,
+  ladder_base,
+  ladder_step,
+  ladder_rung_count,
+}
+// REALIZATION CONTRACT v0 — the transport between the .dag authority and the CAD handler.
+//
+// IT DEFINES NO GEOMETRY VOCABULARY OF ITS OWN, AND THAT IS THE MAIN DECISION IN THIS FILE.
+//
+// The obvious shape for a transport is a parallel set of "contract feature" types — ContractHole
+// beside OpThroughHole, ContractPlate beside PlateDimensions — on the reasoning that the wire format
+// should be decoupled from the model. That reasoning is wrong here and it is wrong in the specific
+// way DESIGN §3 names: two structures answering one semantic question, where one is intended to
+// track the other. They would drift. A hole gains a countersink in the coupon vocabulary, the
+// contract vocabulary does not, and the handler silently realizes a hole with no countersink while
+// every type still checks.
+//
+// So the contract CARRIES the coupon's own closed operation coproduct. CouponOperation is already
+// exactly what a schema-bound feature graph needs to be: closed, so an unknown operation kind has no
+// constructor; total, so every arm carries its own required fields; and owned by the module that
+// decides what a coupon is. Serializing it is a realization concern that adds no vocabulary.
+//
+// WHAT THE CONTRACT ADDS is the three facts the specimen does not carry and the handler cannot be
+// trusted to supply: which contract version this is, which derivation law produced the derived
+// values, and the derived values themselves for cross-checking.
+// THE SCHEMA WALL LIVES AT THE RAW BOUNDARY, AND AN EARLIER REVISION DELETED IT FOR THE WRONG
+// REASON. This is the correction, and the reasoning error is worth more than the wall.
+//
+// The first draft declared `type ContractVersion = ContractV0` with a ContractVersionUnsupported
+// arm, and that arm really was unfirable: one version exists, so no value of that TYPE can carry an
+// unknown version. It was deleted as a DESIGN section 4b decoration -- a check whose RED cannot be
+// authored, permanently green, worse than absent because it gets cited as coverage.
+//
+// That reasoning checked one boundary and section 4b names TWO, saying explicitly that "only the
+// second decides it": a state unrepresentable in the ACCEPTED CORPUS may still be perfectly
+// representable as SOURCE HANDED IN BY A FIXTURE. The handler does not send a `ContractVersion`. It
+// sends JSON, and JSON can say "v999" -- so the forbidden state is authorable at the transport
+// boundary, has always been authorable there, and the deleted check was not a decoration but a wall
+// standing in the wrong place. Deleting it removed a real refusal.
+//
+// So the vocabulary is split. RawRealizationEnvelope is what ARRIVES: strings and integers, no
+// modeled types, nothing yet trusted. Admission is the total decision procedure that turns one into
+// modeled values or refuses with a located cause. Nothing downstream sees an unadmitted envelope,
+// which is the construction that makes the typed side safe -- rather than a validation bolted onto
+// a type that was already unable to express the fault.
+// ONE ROW PER OPERATION, NOT TWO PARALLEL LISTS. The previous shape carried operation_kinds and
+// rung_diameters_um side by side, so their correspondence was POSITIONAL and enforced by nothing: a
+// two-kind, three-diameter envelope was perfectly representable, and admission had no way to say
+// which diameter belonged to which operation. Making the row the unit removes that state rather than
+// checking for it -- a ragged pairing has no constructor.
+//
+// The geometry is carried in FULL. Diameter alone was the sidecar in another costume: a handler that
+// realized the right diameters at the wrong centres, or on a plate of the wrong thickness, passed a
+// wall whose entire purpose was to catch exactly that.
+type RawOperationRow sole_constructor {
+  kind: NonEmptyStr
+  diameter_um: Int
+  center_x_um: Int
+  center_y_um: Int
+}
+
+fn raw_operation_row(
+  kind: NonEmptyStr,
+  diameter_um: Int,
+  center_x_um: Int,
+  center_y_um: Int,
+) -> RawOperationRow {
+  RawOperationRow {
+    kind: kind,
+    diameter_um: diameter_um,
+    center_x_um: center_x_um,
+    center_y_um: center_y_um,
+  }
+}
+
+// THE DATUM AND THE LADDER ARE SEPARATE WIRE FIELDS, AND THIS IS NOT A RETURN TO PARALLEL LISTS.
+//
+// The shape this file already deleted was operation_kinds beside rung_diameters_um: two lists of the
+// SAME population whose correspondence was positional and enforced by nothing. These two fields are
+// two DIFFERENT populations -- one orientation datum and one ordered experimental ladder -- which is
+// the distinction that makes separating them the fix rather than the defect. Nothing here pairs an
+// element of one with an element of the other, so there is no ragged state to represent.
+//
+// Carrying the datum inside `operations` would have made "the last row is the datum" a positional
+// convention on the wire, one layer below the same convention the canonical geometry refuses to
+// adopt. A handler that emitted them in the wrong order would then produce a coupon whose datum is a
+// twelfth rung and whose ordinal zero is a datum, and the wall would compare twelve rows against
+// twelve rows and find them equal.
+type RawRealizationEnvelope sole_constructor {
+  schema_version: NonEmptyStr
+  plate_x_um: Int
+  plate_y_um: Int
+  plate_z_um: Int
+  orientation_datum: RawOperationRow
+  ladder_holes: List<RawOperationRow>
+}
+
+fn raw_realization_envelope(
+  schema_version: NonEmptyStr,
+  plate_x_um: Int,
+  plate_y_um: Int,
+  plate_z_um: Int,
+  orientation_datum: RawOperationRow,
+  ladder_holes: List<RawOperationRow>,
+) -> RawRealizationEnvelope {
+  RawRealizationEnvelope {
+    schema_version: schema_version,
+    plate_x_um: plate_x_um,
+    plate_y_um: plate_y_um,
+    plate_z_um: plate_z_um,
+    orientation_datum: orientation_datum,
+    ladder_holes: ladder_holes,
+  }
+}
+
+// Every refusal names WHAT arrived, not merely that something was wrong. A handler debugging a
+// rejected payload needs the offending spelling; "unsupported schema" alone sends them to read our
+// source instead of their own output.
+// Admission yields the MODEL'S OWN TYPES or nothing. It does not yield a validated raw envelope,
+// because a raw envelope that has been checked is still a raw envelope, and the next reader has no
+// way to tell it apart from an unchecked one. Decoding into PlateDimensions and CouponOperation is
+// what makes the downstream total: there is no arm in which an unadmitted value reaches geometry.
+// THE NAME SAYS DECODED, NOT ADMITTED, AND THE EARLIER NAME WAS THE OVERCLAIM.
+//
+// This type was called AdmittedRealization. It is minted by decode_envelope after schema and tag
+// decoding and BEFORE any comparison against the canonical contract, so a caller may legally obtain
+// one and never invoke judge_realization -- and "admitted" claimed a stronger standing than the
+// function that mints it establishes. That is DESIGN section 3's meaning fork in its quietest form:
+// the annotation cannot narrow what the type name claims, and the name is what the next reader
+// imports. Renamed rather than re-annotated, before it becomes PRINT-5's vocabulary. The conformance
+// verdict is renamed on the same reasoning: it compares normalized GEOMETRY, not the whole specimen,
+// so GeometryConformance says what it decides.
+//
+// The terminal shape this leaves room for, and deliberately does not build yet:
+//
+//   RawRealizationEnvelope -> DecodedRealizationV0 -> GeometryConforms -> AdmittedRealizationV0
+//
+// where only the last is accepted by a handler, and carries geometry RE-DERIVED from the canonical
+// model rather than the transported geometry that happened to compare equal. Nothing here mints that
+// type, because nothing consumes it yet; the name is left free rather than spent.
+//
+// THE DECODED VALUE IS UNFORGEABLE, AND AN EARLIER REVISION ONLY CLAIMED IT WAS.
+//
+// That revision put the geometry directly on the accepted arm -- EnvelopeDecodedV0 { plate, features }
+// -- and argued that conformance was unreachable without admission "because the refusal arms have no
+// plate and no features to hand on". That reasoning is necessary and INSUFFICIENT, and a probe
+// settled it: a foreign module compiled `EnvelopeDecodedV0 { plate: p, features: [] }` directly, with
+// a deliberate must-fail control in the same file proving the compiler had actually read it. The raw
+// envelope could not bypass the judge; a CALLER could bypass the raw envelope entirely and mint the
+// trusted result. The accepted arm was itself a geometry mint.
+//
+// DecodedRealizationV0 is sole_constructor, so it can only be built inside THIS module, and the only
+// function here that builds one is decode_envelope after every wire check has passed. A foreign
+// module may still name the EnvelopeDecodedV0 arm; it cannot obtain a DecodedRealizationV0 to put in
+// it. That moves the class from "no caller happens to do this" to "no caller can express this".
+//
+// THE EVIDENCE IS AN EXECUTING WITNESS. An earlier cut of this annotation said the evidence could
+// only ever be the compiler, on the reasoning that the RED is a compile failure and so cannot be
+// enrolled in a corpus that must compile. That reasoning skipped the distinction DESIGN 4b draws
+// exactly here: a state unauthorable in the ACCEPTED CORPUS may still be authorable as SOURCE HANDED
+// TO THE COMPILER BY A FIXTURE, and only the second boundary decides whether the check has a RED.
+// It does. test.claim.printed_chassis_admitted_realization_seal_witness_test hands the forged record
+// literal to gunbc.compile_diagnostic_census as data and asserts a SoleConstructorViolation scoped to
+// subject_name DecodedRealizationV0, against a green source with identical imports and no literal, and
+// asserts the difference between them -- the two forms that module's own annotation names as exact.
+type DecodedRealizationV0 sole_constructor {
+  geometry: HoleDiameterCouponGeometry
+}
+
+// The refusal reasons are their own closed coproduct, SEPARATE from the admission outcome, because
+// the refusal payload must not be able to carry a success. An earlier cut typed
+// RealizationRefusedAtWire { admission: EnvelopeAdmission }, so the refusal arm's payload included
+// EnvelopeDecodedV0 -- unreachable in practice, since judge_realization only builds that arm on the
+// three refusing branches, but perfectly writable, and reachability is not occupancy. The tell was
+// visible in the witnesses rather than in this file: four of them carried a dead
+// EnvelopeDecodedV0 { decoded: _ } => false arm to satisfy exhaustiveness over a case the route
+// cannot produce. Splitting the coproduct climbs that class from mechanically preventable to
+// structurally impossible and deletes those four arms with it -- DESIGN 4b(4) dissolution on climb,
+// which retires the redundant PRODUCTION handling while the discriminating witnesses stay enrolled.
+type EnvelopeRefusal
+  = EnvelopeSchemaUnsupported { received: NonEmptyStr, supported: NonEmptyStr }
+  | EnvelopeOperationUnknown { received: NonEmptyStr }
+  | EnvelopeCarriesNoOperations
+
+type EnvelopeAdmission
+  = EnvelopeDecodedV0 { decoded: DecodedRealizationV0 }
+  | EnvelopeRefused { refusal: EnvelopeRefusal }
+
+// The closed operation vocabulary AS SPELLED ON THE WIRE, and this roster is HAND-SYNCED to the
+// CouponOperation arms rather than derived from them. That is a known weakness, stated here rather
+// than discovered later, because it has already failed once.
+//
+// WHAT HAPPENED: this list read ["through_hole", "datum_mark"] while OpDatumMark was being deleted
+// from CouponOperation. The compile stayed clean through the whole deletion, because a string in a
+// list has no referent the namespace can refuse. For one revision the wall would have ADMITTED a
+// datum_mark envelope into a vocabulary that no longer had a constructor for it -- the transport
+// accepting what the model cannot represent, which is the precise inversion of what a wall is for.
+// A stringly roster beside a closed coproduct is a second authority for the operation vocabulary,
+// and it drifts in exactly the direction that fails open.
+//
+// THERE ARE TWO WALLS HERE AND ONLY ONE OF THEM IS CLOSABLE BY PROJECTION. An earlier revision of
+// this annotation conflated them and would have retired too much.
+//
+// WALL ONE, SCHEMA SYNCHRONISATION: the model's operation population must equal the admitted wire-tag
+// population. That is what this roster is, it is mechanically preventable and not structural, and its
+// ceiling IS reachable -- projecting the spelling from the coproduct's arms would make a deleted arm
+// delete its spelling in the same motion. NEXT-RUNG TRIGGER is that projection capability: enumerating
+// a closed coproduct's constructors as data, together with a modeled TAG LAW, because OpThroughHole
+// and "through_hole" are not automatically the same fact and equating them silently makes every arm
+// rename a schema-breaking change.
+//
+// WALL TWO, DECODER BEHAVIOUR: an unknown or deleted tag must REFUSE BEFORE GEOMETRY. No projection
+// closes this one. A decoder can still map an unknown tag onto a default known arm, skip the
+// operation, or continue with a partial contract -- all of which are fail-open behaviours that a
+// perfectly synchronised roster does not prevent. So w_the_deleted_operation_refuses_at_the_wire is
+// evidence for BOTH walls today and remains permanently required for the second. It does not retire
+// when the projection lands. It must never be deleted as redundant with the type, because that
+// reasoning closes only wall one and would leave wall two unguarded.
+data admitted_operation_kinds: List<NonEmptyStr> = ["through_hole"]
+
+fn operation_kind_admitted(kind: NonEmptyStr) -> Bool {
+  fold(admitted_operation_kinds, init: false, f: fn(acc, k) { acc || k == kind })
+}
+
+type OperationScan sole_constructor {
+  unknown: List<NonEmptyStr>
+}
+
+fn decode_operation_row(row: RawOperationRow) -> CouponOperation {
+  OpThroughHole {
+    diameter: micrometer(count: row.diameter_um),
+    center_x: micrometer(count: row.center_x_um),
+    center_y: micrometer(count: row.center_y_um),
+  }
+}
+
+// THE KIND SCAN COVERS BOTH POPULATIONS, DATUM FIRST. Scanning only the ladder would have left the
+// datum row's kind unchecked, so a handler could have spelled it anything at all and the wall would
+// have decoded it as a through-hole regardless -- the vocabulary check exempting the one feature
+// whose whole job is to be unambiguous.
+//
+// AND THE EMPTY REFUSAL IS NOW ONLY EVER ABOUT THE LADDER. A missing DATUM is not representable
+// here: it is a scalar field, so the wire cannot omit it. One of the two populations lost its empty
+// state entirely, which is the split doing its work at the transport layer rather than at the check.
+fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
+  if envelope.schema_version != contract_schema_version {
+    EnvelopeRefused {
+      refusal: EnvelopeSchemaUnsupported {
+        received: envelope.schema_version,
+        supported: contract_schema_version,
+      },
+    }
+  } else {
+    let scan = fold(
+      concat([envelope.orientation_datum], envelope.ladder_holes),
+      init: OperationScan { unknown: [] },
+      f: fn(acc, row) {
+        if operation_kind_admitted(kind: row.kind) {
+          acc
+        } else {
+          OperationScan { unknown: concat(acc.unknown, [row.kind]) }
+        }
+      }
+    )
+    if scan.unknown.length() != 0 {
+      EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: scan.unknown.first() } }
+    } else if envelope.ladder_holes.length() == 0 {
+      EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
+    } else {
+      EnvelopeDecodedV0 {
+        decoded: DecodedRealizationV0 {
+          geometry: hole_diameter_coupon_geometry(
+            plate: plate_dimensions(
+              size_x: micrometer(count: envelope.plate_x_um),
+              size_y: micrometer(count: envelope.plate_y_um),
+              size_z: micrometer(count: envelope.plate_z_um),
+            ),
+            orientation_datum: decode_operation_row(row: envelope.orientation_datum),
+            ladder_holes: fold(envelope.ladder_holes, init: [], f: fn(acc, row) {
+              concat(acc, [decode_operation_row(row: row)])
+            }),
+          ),
+        },
+      }
+    }
+  }
+}
+
+data contract_schema_version: NonEmptyStr = "v0"
+// THE DERIVATION IDENTITY IS CARRIED, NOT THE DERIVATION.
+//
+// The permitted-realization rule lets the handler IMPLEMENT a modeled derivation whose identity and
+// inputs the model already fixed; it forbids the handler CHOOSING which derivation to run. Those two
+// are separated by exactly this field. An arithmetic series and a geometric series over the same
+// base and step produce different ladders, and a contract that named neither would leave the choice
+// in Python — where it would be invisible, because the resulting part still looks like a ladder.
+//
+// The coproduct is closed so that adding a second derivation law is a modeling act with its own
+// review, not a handler edit.
+// THE DERIVATION LAW IS FIXED BY THIS CARRIER'S TYPE, not by a field, for the same reason.
+//
+// The intent is unchanged and is the load-bearing one: the handler may IMPLEMENT a derivation whose
+// identity the model fixed, and may not CHOOSE which derivation to run. An arithmetic series and a
+// geometric series over one base and step produce different ladders, and a contract naming neither
+// would leave that choice in Python, invisible, because the result still looks like a ladder.
+//
+// With exactly one law in v0, a DerivationIdentity FIELD would be a single-arm coproduct — an alias
+// wearing a choice's clothes, whose "wrong law" refusal is unauthorable. Instead LadderRealization
+// IS the arithmetic-series realization: the law is the type. A handler cannot select a different law
+// because the contract has no field in which to express one, which is construction rather than
+// validation. Adding a second law is then a modeling act that splits this type, with review, rather
+// than a handler edit.
+// ONE DECLARATION IN, ONE CONTRACT OUT — AND THE TWO DEFECTS THIS REPLACED WERE BOTH REAL.
+//
+// DEFECT 1, UNBOUND PAIRING, found in review. The mint used to take a specimen and a ladder
+// realization as SEPARATE parameters, so a specimen built from ladder A could be paired with a
+// realization built from ladder B. Conformance would then compare B's rungs against A's holes, or
+// worse agree by coincidence, while the contract claimed a coherence it had never checked. Nothing
+// refused, because nothing related the two arguments.
+//
+// DEFECT 2, THE ORPHANED SIDECAR, which this branch created itself. LadderRealization carried a
+// derived_rungs list beside the declaration, argued for as a cross-trust-domain checksum. Then the
+// conformance repair moved the comparison onto specimen_hole_diameters — the artifact — which is
+// correct, and left derived_rungs with NO production consumer at all. Its only remaining reader was
+// a witness asserting that the field equalled the derivation it was built from: a check that tests
+// only itself. A duplicate whose consumer is a test of the duplicate is not a checksum, it is dead
+// data with a green light on it.
+//
+// Both dissolve into the same construction. The contract takes ONE authored declaration and derives
+// the specimen from it. The pairing is unwritable rather than checked — there is no second argument
+// to disagree with — and the rung list is gone because the specimen's own holes are the artifact
+// conformance reads. The declaration remains because the handler needs the law it is realizing, not
+// merely the result.
+type RealizationContract sole_constructor {
+  schema_version: NonEmptyStr
+  declaration: LengthLadder
+  specimen: CouponSpecimen
+}
+
+fn realization_contract(declaration: LengthLadder) -> RealizationContract {
+  RealizationContract {
+    schema_version: contract_schema_version,
+    declaration: declaration,
+    specimen: hole_ladder_specimen(l: declaration),
+  }
+}
+
+// THE HANDLER-SIDE CHECK, expressed here so both sides read the same law. The handler recomputes the
+// rungs from the declaration under the named derivation and compares. A length mismatch and a value
+// mismatch are separate causes because they fail for different reasons: a length mismatch means the
+// two sides disagree about the POPULATION, a value mismatch means they agree on how many rungs there
+// are and disagree about where.
+// THE COMPARED SUBJECT IS THE WHOLE SPECIMEN, NOT THE RUNG LIST. An earlier revision compared only
+// hole diameters, which left plate dimensions and hole CENTRES outside the wall entirely: a handler
+// that cut correct diameters at the wrong positions, or on a plate of the wrong thickness, conformed.
+// That is the sidecar failure the diameter check was itself introduced to fix, reappearing one level
+// out -- comparing a projection of the artifact instead of the artifact.
+//
+// The axis and field vocabularies are CLOSED COPRODUCTS rather than strings. This file has already
+// paid once for a stringly vocabulary standing beside a typed one, and a diagnostic that names its
+// axis as "z" is the same construction that let "datum_mark" outlive its constructor.
+type PlateAxis = PlateAxisX | PlateAxisY | PlateAxisZ
+
+type OperationField = FieldDiameter | FieldCenterX | FieldCenterY
+
+// A WRONG DATUM GETS ITS OWN ARM RATHER THAN BEING FOLDED INTO THE RUNG SCAN, because it is not a
+// rung fault and reporting it as one names a position that does not exist. GeometryOperationDiverges
+// carries an INDEX into the ladder; the datum has no index, and giving it a synthetic one -- 0, or
+// eleven, or minus one -- would be exactly the fabricated-plausible-output move DESIGN section 5
+// forbids. The two faults also mean different things to a reader: a divergent rung says the handler
+// cut one hole wrong, a divergent datum says the coupon cannot be oriented and every rung ordinal is
+// therefore in doubt.
+type GeometryConformance
+  = GeometryConforms
+  | GeometryPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
+  | GeometryDatumDiverges { field: OperationField, modeled: Micrometer, realized: Micrometer }
+  | GeometryOperationCountDiverges { modeled: Int, realized: Int }
+  | GeometryOperationDiverges {
+      index: Int,
+      field: OperationField,
+      modeled: Micrometer,
+      realized: Micrometer,
+    }
+// THE SCAN IS ONE FOLD OVER ZIPPED PAIRS, and the shape is the point rather than the speed.
+//
+// The first revision recursed with `modeled.count() == 0` as its base case. List is an alias for
+// FreeMonoid, so `.count()` walks the whole spine — an O(n) emptiness test inside an O(n) recursion,
+// quadratic over the ladder. DESIGN section 6's bare-minimum-cost rule says that is always fixed and
+// that "n is small here" is not a time-stable rebuttal, because reuse changes n.
+//
+// The cost was not the worse half. That recursion read `realized.first()` while only `modeled` was
+// tested for emptiness, so it was total only because a separate count precheck happened to run
+// first. Called with a shorter realized list it would have read past the end; called with a shorter
+// MODELED list it would have returned GeometryConforms — a fabricated pass, which is precisely the
+// absorbing fallback DESIGN section 5 forbids, guarded by nothing but a caller's good manners.
+//
+// Zipping removes the state rather than checking for it: a ragged pair has no representation, so the
+// scan cannot be handed one. Two length reads (which the count diagnostic needs anyway), one zip and
+// one fold — linear, and the raggedness question is answered by construction.
+type RungComparison sole_constructor {
+  modeled: CouponOperation
+  realized: CouponOperation
+}
+
+// The accumulator keeps the FIRST divergence rather than the last. A fold visits every pair, so
+// without this the reported index would be the final mismatch, and "where does it first go wrong" is
+// the only question an index answers usefully.
+type RungScan sole_constructor {
+  index: Int
+  outcome: GeometryConformance
+}
+
+// One operation pair, compared field by field, reporting the FIRST field that differs. Diameter is
+// checked before position because a wrong diameter is a process fault and a wrong centre is a layout
+// fault, and naming the process fault first is what an operator acts on.
+fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> GeometryConformance {
+  match m {
+    OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
+      OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
+        if micrometer_count(m: md) != micrometer_count(m: rd) {
+          GeometryOperationDiverges { index: index, field: FieldDiameter, modeled: md, realized: rd }
+        } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
+          GeometryOperationDiverges { index: index, field: FieldCenterX, modeled: mx, realized: rx }
+        } else if micrometer_count(m: my) != micrometer_count(m: ry) {
+          GeometryOperationDiverges { index: index, field: FieldCenterY, modeled: my, realized: ry }
+        } else {
+          GeometryConforms
+        }
+    }
+  }
+}
+
+// The datum is compared field by field in the same order as a rung, so a reader learns the same
+// three things in the same sequence, and the ONLY difference is which arm carries the answer. It
+// reuses no code with operation_divergence deliberately: that function's whole signature is built
+// around an index the datum does not have, and threading an optional index through it to serve one
+// caller would put a nullable in the middle of the comparison the wall depends on.
+fn datum_divergence(m: CouponOperation, r: CouponOperation) -> GeometryConformance {
+  match m {
+    OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
+      OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
+        if micrometer_count(m: md) != micrometer_count(m: rd) {
+          GeometryDatumDiverges { field: FieldDiameter, modeled: md, realized: rd }
+        } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
+          GeometryDatumDiverges { field: FieldCenterX, modeled: mx, realized: rx }
+        } else if micrometer_count(m: my) != micrometer_count(m: ry) {
+          GeometryDatumDiverges { field: FieldCenterY, modeled: my, realized: ry }
+        } else {
+          GeometryConforms
+        }
+    }
+  }
+}
+
+fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
+  match acc.outcome {
+    GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    GeometryPlateDiverges { axis: _, modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    GeometryDatumDiverges { field: _, modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    GeometryOperationCountDiverges { modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    GeometryConforms =>
+      RungScan {
+        index: acc.index + 1,
+        outcome: operation_divergence(index: acc.index, m: pair.modeled, r: pair.realized),
+      }
+  }
+}
+
+// Count is compared BEFORE values, and the order matters for the diagnostic rather than for
+// correctness: with unequal lengths the first differing index is an artefact of where the shorter
+// list ran out, so reporting it as a value divergence would name a position that means nothing.
+fn compare_operations(
+  modeled: List<CouponOperation>,
+  realized: List<CouponOperation>,
+) -> GeometryConformance {
+  let modeled_count = modeled.length()
+  let realized_count = realized.length()
+  if modeled_count != realized_count {
+    GeometryOperationCountDiverges { modeled: modeled_count, realized: realized_count }
+  } else {
+    fold(
+      zip_map(a: modeled, b: realized, f: fn(m, r) {
+        RungComparison { modeled: m, realized: r }
+      }),
+      init: RungScan { index: 0, outcome: GeometryConforms },
+      f: rung_scan_step
+    ).outcome
+  }
+}
+
+// The plate is compared BEFORE the operations, and the order is a diagnostic decision. A plate of
+// the wrong thickness makes every hole depth wrong at once, so reporting the first hole as divergent
+// would name a symptom and bury the cause.
+fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> GeometryConformance {
+  if micrometer_count(m: modeled.size_x) != micrometer_count(m: realized.size_x) {
+    GeometryPlateDiverges { axis: PlateAxisX, modeled: modeled.size_x, realized: realized.size_x }
+  } else if micrometer_count(m: modeled.size_y) != micrometer_count(m: realized.size_y) {
+    GeometryPlateDiverges { axis: PlateAxisY, modeled: modeled.size_y, realized: realized.size_y }
+  } else if micrometer_count(m: modeled.size_z) != micrometer_count(m: realized.size_z) {
+    GeometryPlateDiverges { axis: PlateAxisZ, modeled: modeled.size_z, realized: realized.size_z }
+  } else {
+    GeometryConforms
+  }
+}
+
+// THE BOUNDARY CHECK, AND IT READS THE SPECIMEN ITSELF -- twice corrected, in the same direction
+// both times, which is why the direction is written down rather than the fix.
+//
+// The first revision compared contract.ladder.derived_rungs, the declaration's own sidecar. Review
+// found that the specimen's holes were computed by a SECOND derivation, so the check could pass
+// while the geometry handed to CadQuery carried different diameters: it compared the LAW instead of
+// the ARTIFACT, and was structurally unable to see the fault it existed to catch.
+//
+// The second revision compared specimen_hole_diameters -- real diameters from the real operation
+// graph, and still a PROJECTION of the artifact rather than the artifact. Plate dimensions and hole
+// CENTRES sat outside the wall entirely, so a handler cutting correct diameters at wrong positions,
+// or on a plate of the wrong thickness, conformed. The same fault one level out.
+//
+// It now compares plate on three axes, then operation count, then every operation field by field.
+// The generalisation to write down is that a wall must compare the subject a consumer will actually
+// receive, and every projection of that subject is a place the two can disagree while the check
+// stays green.
+//
+// AND THIS IS WHOLE-GEOMETRY CONFORMANCE, NOT WHOLE-SPECIMEN CONFORMANCE. An earlier revision of
+// this annotation said "the whole specimen", which is the same over-read one level up from the two
+// it just corrected. What is compared is the normalized GEOMETRY PAYLOAD. What is NOT compared:
+//
+//   specimen identity    carried, single-armed, not compared
+//   revision             not modeled as a compared subject at all
+//   feature identity     POSITIONAL -- operation i is "the i-th rung" by list position, not by an
+//                        identity the operation carries
+//
+// The distinction matters downstream rather than here: PRINT-5 will read a conforming verdict and
+// must not take it as proof that identity and canonical ordering were adjudicated. A permutation is
+// REFUSED (see w_an_unauthorised_operation_order_refuses) because position is compared -- which is
+// not the same as features HAVING identities, and the difference reappears the moment two features
+// share a geometry.
+// THE ORDER IS PLATE, THEN DATUM, THEN THE LADDER, and each step is a diagnostic decision about
+// which fault explains the others. A wrong plate makes every hole depth wrong at once. A wrong datum
+// means the coupon cannot be oriented, so every rung ordinal below it is unreliable even where the
+// geometry happens to match -- reporting rung 7 as divergent while the datum is wrong would name the
+// symptom of an unreadable coupon. Only once plate and datum agree does a rung divergence mean what
+// it says.
+fn judge_realized_geometry(
+  contract: RealizationContract,
+  realized: HoleDiameterCouponGeometry,
+) -> GeometryConformance {
+  let modeled = contract.specimen.geometry
+  let plate_outcome = compare_plate(modeled: modeled.plate, realized: realized.plate)
+  match plate_outcome {
+    GeometryConforms => {
+      let datum_outcome = datum_divergence(
+        m: modeled.orientation_datum,
+        r: realized.orientation_datum,
+      )
+      match datum_outcome {
+        GeometryConforms =>
+          compare_operations(modeled: modeled.ladder_holes, realized: realized.ladder_holes)
+        GeometryDatumDiverges { field: _, modeled: _, realized: _ } => datum_outcome
+        GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => datum_outcome
+        GeometryOperationCountDiverges { modeled: _, realized: _ } => datum_outcome
+        GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => datum_outcome
+      }
+    }
+    GeometryDatumDiverges { field: _, modeled: _, realized: _ } => plate_outcome
+    GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => plate_outcome
+    GeometryOperationCountDiverges { modeled: _, realized: _ } => plate_outcome
+    GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => plate_outcome
+  }
+}
+
+// THE ONE ROUTE FROM WIRE TO VERDICT. A caller cannot reach conformance with an unadmitted envelope,
+// because admission is what produces the modeled values conformance consumes -- the refusal arms have
+// no plate and no features to hand on. That is the construction DESIGN section 5 asks for in place of
+// a validation step a caller could forget to run.
+type RealizationVerdict
+  = RealizationRefusedAtWire { refusal: EnvelopeRefusal }
+  | RealizationJudged { conformance: GeometryConformance }
+
+fn judge_realization(
+  contract: RealizationContract,
+  envelope: RawRealizationEnvelope,
+) -> RealizationVerdict {
+  let admission = decode_envelope(envelope: envelope)
+  match admission {
+    EnvelopeDecodedV0 { decoded: a } =>
+      RealizationJudged {
+        conformance: judge_realized_geometry(contract: contract, realized: a.geometry),
+      }
+    EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
+  }
+}
+
+// THE ACTUATOR PAIRING IS UNBOUND, AND THAT IS AN OBLIGATION ON PRINT-5 RATHER THAN A DEFECT HERE.
+//
+// judge_realization returns a VERDICT and no geometry. So a handler that wants to cut something must
+// obtain geometry from somewhere else -- today only decode_envelope -- and then associate that value
+// with this verdict itself. That association is unbound: judge envelope A, retain the decoded
+// geometry of envelope B, hand B to the handler under A's conforming verdict. Every honest caller
+// passes the same envelope twice, and the invalid pairing stays writable regardless. It is the same
+// class as the refusal payload that could carry a success, one level out: a state no route produces
+// and nothing prevents (routed review, 2026-09-02).
+//
+// The close is a second sealed type returned FROM the judgment that established conformance, so
+// there is no pair left to mis-associate -- and minted from the CONTRACT'S OWN canonical specimen
+// rather than from the transported values that happened to compare equal, so what the handler cuts
+// is the model's geometry and the wire is reduced to an assertion that was checked. The name
+// AdmittedRealizationV0 is reserved for it above and deliberately unspent.
+//
+// WHY IT IS NOT BUILT IN THIS REVISION. Nothing actuates geometry yet: there is no handler, so the
+// pairing has no site at which to go wrong, and the invariant "the decoded carrier never actuates"
+// holds vacuously today. Minting a sealed carrier with zero consumers to hold a symbol is the
+// speculative move DESIGN section 2 prices as redundant, and the same review that named this
+// obligation also warned against establishing a public capability merely because the state
+// conceptually exists. So the obligation is DECLARED rather than discharged, in a typed carrier
+// rather than an annotation, because PRINT-5 must not be able to reach a handler without answering
+// it -- and an annotation is a thing no Accepted program can read.
+type RealizationV0Obligation = ActuatorGeometryPairingUnbound {}
+
+type RealizationV0Route = MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
+
+// Total by construction: a second obligation reds this match until it is routed. The route is not a
+// promise that the work is done, only that the open need names its close.
+fn realization_v0_route(o: RealizationV0Obligation) -> RealizationV0Route {
+  match o {
+    ActuatorGeometryPairingUnbound {} => MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
+  }
+}
+
+data realization_v0_open_obligations: List<RealizationV0Obligation> = [ActuatorGeometryPairingUnbound {}]

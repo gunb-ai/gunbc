@@ -2,7 +2,7 @@ module test.claim.self_host_symbol_identity_binding_witness
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_in_list }
-import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized }
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, GroundedByCheckpointRow }
 import std.target_representation {
   SourceTypeTargetBinding, ExactBindingResolution,
   ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
@@ -299,7 +299,7 @@ test fn w_census_has_no_blocking_use() -> Bool {
 // spelling closes the declaration side. Both are asserted because they are independent.
 fn symbol_reference_rendering() -> ReferencePositionRendering? {
   match symbol_checkpoint() {
-    Present { value: cp } => Present { value: reference_realization_rendering(provider: symbol_identity_subject, decision: Realized { checkpoint: cp }) }
+    Present { value: cp } => Present { value: reference_realization_rendering(provider: symbol_identity_subject, decision: Realized { checkpoint: cp, ground: GroundedByCheckpointRow }) }
     Absent => none
   }
 }
