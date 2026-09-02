@@ -168,7 +168,7 @@ fn render_status_checkout(checkout: StatusCheckout) -> String {
       concat(
         "the checked-out selection names commit ",
         concat(
-          to_string(n: minted_id_ordinal(id: reference.identity)),
+          to_string(value: minted_id_ordinal(id: reference.identity)),
           ", which this repository does not contain",
         ),
       )
@@ -176,7 +176,7 @@ fn render_status_checkout(checkout: StatusCheckout) -> String {
 }
 
 fn render_commit_count(commit_count: Int) -> String {
-  if commit_count == 1 { "1 commit" } else { concat(to_string(n: commit_count), " commits") }
+  if commit_count == 1 { "1 commit" } else { concat(to_string(value: commit_count), " commits") }
 }
 
 // THE EMPTY STAGED LIST IS RENDERED EXPLICITLY, not left as blank space. "nothing staged" and "this

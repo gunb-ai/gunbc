@@ -96,8 +96,12 @@ fn receipt_wire_v2_pr_number(lines: List<String>) -> ReceiptWirePrNumber {
   if length(lines) == 6 {
     WirePrAbsent
   } else {
-    match parse_int(s: lines.skip(n: 6).first()) {
-      Present { value: n } => WirePrPresent { value: n }
+    match lines.skip(n: 6).first() {
+      Present { value: pr_line } =>
+        match parse_int(s: pr_line) {
+          Present { value: n } => WirePrPresent { value: n }
+          Absent => WirePrMalformed
+        }
       Absent => WirePrMalformed
     }
   }
@@ -125,29 +129,37 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
                 match parse_gate_roster_hash_wire(line: lines.skip(n: 2).first()) {
                   Absent => none
                   Present { value: gate_roster_hash } =>
-                    match receipt_wire_v2_pr_number(lines: lines) {
-                      WirePrMalformed => none
-                      WirePrAbsent =>
-                        Present {
-                          value: MergeAdmissionReceiptV2 {
-                            attempt_id: attempt,
-                            pr_number: none,
-                            tested_head_sha: lines.skip(n: 4).first(),
-                            tested_base_commit_sha: lines.skip(n: 5).first(),
-                            gate_roster_hash: gate_roster_hash,
-                            conclusion: conclusion,
-                          }
-                        }
-                      WirePrPresent { value: n } =>
-                        Present {
-                          value: MergeAdmissionReceiptV2 {
-                            attempt_id: attempt,
-                            pr_number: Present { value: n },
-                            tested_head_sha: lines.skip(n: 4).first(),
-                            tested_base_commit_sha: lines.skip(n: 5).first(),
-                            gate_roster_hash: gate_roster_hash,
-                            conclusion: conclusion,
-                          }
+                    match lines.skip(n: 4).first() {
+                      Absent => none
+                      Present { value: head_line } =>
+                        match lines.skip(n: 5).first() {
+                          Absent => none
+                          Present { value: base_commit_line } =>
+                            match receipt_wire_v2_pr_number(lines: lines) {
+                              WirePrMalformed => none
+                              WirePrAbsent =>
+                                Present {
+                                  value: MergeAdmissionReceiptV2 {
+                                    attempt_id: attempt,
+                                    pr_number: none,
+                                    tested_head_sha: head_line,
+                                    tested_base_commit_sha: base_commit_line,
+                                    gate_roster_hash: gate_roster_hash,
+                                    conclusion: conclusion,
+                                  }
+                                }
+                              WirePrPresent { value: n } =>
+                                Present {
+                                  value: MergeAdmissionReceiptV2 {
+                                    attempt_id: attempt,
+                                    pr_number: Present { value: n },
+                                    tested_head_sha: head_line,
+                                    tested_base_commit_sha: base_commit_line,
+                                    gate_roster_hash: gate_roster_hash,
+                                    conclusion: conclusion,
+                                  }
+                                }
+                            }
                         }
                     }
                 }

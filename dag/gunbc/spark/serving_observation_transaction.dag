@@ -598,6 +598,13 @@ fn spark_serving_transaction_duplicated_legs(
 // only. An absent capture must not be left for whichever downstream reader happens to want it
 // first, because that reader will read Absent and honestly report unobserved -- and the whole host
 // will look measured-and-empty rather than never-acquired.
+//
+// FOLLOW-UP TRIGGER: the receipt witnesses still spell the evaluated executed-count snapshots as
+// numeric literals. Before another probe leg joins this roster, expose the roster cardinality to
+// those witnesses and assert the relation `executed == required - refused` instead. The present
+// literals are honest for this closed population, but a third added leg can otherwise make the
+// oracle stale until a person recounts it; deriving the relation from this authority removes that
+// hand-maintained second count.
 fn spark_serving_required_probe_legs() -> List<SparkServingProbeLeg> {
   [
     ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,

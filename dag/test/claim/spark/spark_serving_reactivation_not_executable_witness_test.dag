@@ -31,14 +31,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // PlannedEffectExecution literal directly, because a fixture importing gunbc.fleet_converge_plan
 // does not compile under this instrument at all. Measured, not assumed: a fixture whose entire body
 // is `import gunbc.fleet_converge_plan { PlannedEffectExecution }` and a function returning `1` is
-// refused, while the same shape over gunbc.spark.serving_realization compiles -- that closure
-// carries a blocking `unresolved type 'SparkServingObservationProvenance'` in
-// gunbc.spark.serving_execution_schedule, a module and a type this change does not touch. Had the
-// fixture named PlannedEffectExecution, its refusal would have been that diagnostic rather than
-// this wall, and the red would have been vacuous. The residue is exactly the step from "reactivation
-// is not a member of the sum" to "reactivation cannot label an execution", which holds by the field's
-// declared type and is not independently executed here; making it executable is gated on that
-// closure compiling clean under the synthetic-source instrument.
+// refused, while the same shape over gunbc.spark.serving_realization compiles. Had the fixture named
+// PlannedEffectExecution, its refusal would have been that diagnostic rather than this wall, and the
+// red would have been vacuous.
+//
+// AND THE DIAGNOSTIC IS NOT WHAT IT FIRST READS AS, which matters because the misreading sends the
+// next reader hunting a corpus bug that does not exist. The instrument reports a blocking
+// `unresolved type 'SparkServingObservationProvenance'` in gunbc.spark.serving_execution_schedule,
+// but that type is declared in gunbc.spark.serving_observation_transaction and is not missing. The
+// defect is that serving_execution_schedule USES it at two field positions while naming it in no
+// import: in the full corpus the name resolves by global uniqueness, and under any narrower source
+// closure there is nothing for it to resolve against. So the failing subject is a module relying on
+// global-uniqueness resolution instead of a declared import, and it fails every closure-based tool,
+// this instrument being only the first to ask.
+//
+// The residue here is exactly the step from "reactivation is not a member of the sum" to
+// "reactivation cannot label an execution", which holds by the field's declared type and is not
+// independently executed. THE TRIGGER THAT CLOSES IT: a declared import of
+// SparkServingObservationProvenance in gunbc.spark.serving_execution_schedule, sufficient for a
+// fixture that imports gunbc.fleet_converge_plan to compile. With that, a probe whose subject is
+// PlannedEffectExecution itself becomes writable and the type-level argument becomes an executed red.
 //
 // It greens the moment anyone re-widens the sum -- including the moment DCH-0r-c lands, whose
 // settled shape is PlannedBoundReactivationExecution { plan, steps } with steps DERIVED from the

@@ -39,7 +39,7 @@ type ProseRowRef {
 fn prose_row_ident_end(line: String, i: Int, len: Int) -> Int {
   if i >= len {
     i
-  } else if code_point(ch: char_at(line, i)) == prose_row_colon_code_point {
+  } else if code_point(c: char_at(line, i)) == prose_row_colon_code_point {
     i
   } else {
     prose_row_ident_end(line: line, i: i + 1, len: len)
