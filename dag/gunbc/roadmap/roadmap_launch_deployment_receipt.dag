@@ -5,7 +5,13 @@ import std.measure { second_count }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_object, json_array, json_bool, serialize_json }
 import gunbc.actions_run_binding { ActionsRunBinding, run_binding_names_workflow_file }
-import gunbc.fleet_converge_plan { FullyApplied, PartiallyApplied }
+import gunbc.fleet_converge_plan {
+  FullyApplied, PartiallyApplied,
+  FleetConvergeScope, LaunchEnvironment,
+  fleet_converge_scope_wire, fleet_converge_scope_of_wire,
+  fleet_converge_scope_matches,
+  ScopeDecoded, ScopeUndecodable,
+}
 import gunbc.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
   fleet_converge_plan_receipt_identity_hex, fleet_converge_apply_receipt_identity_hex,
@@ -264,6 +270,58 @@ fn run_binding_blockers(member: String, s: RoadmapLaunchDeploymentSubject, run: 
       if !run_binding_names_workflow_file(binding: run, workflow_path: s.workflow_path) { blocker(member: member, detail: join(["run workflow ref ", run.workflow_ref, " is not ", s.workflow_path], "")) } else { [] },
     ),
   )
+}
+
+// THE SCOPE THIS TRANSACTION REQUIRES IS FIXED HERE, NOT SUPPLIED TO IT.
+//
+// RoadmapLaunchDeploymentSubject deliberately has no expected-scope field, and adding one is the
+// repair NOT taken: a subject that carried the scope as data would let a caller name whichever
+// scope its plan receipt happened to have, so the join would verify that the plan agreed with
+// itself. The scope RLM-2 requires is a property of the QUESTION -- can the launch environment be
+// proven converged at this revision -- not a parameter of a particular run, so it is a nullary
+// constant the fold reads and nobody passes.
+//
+// WHAT THIS CLOSES. Every fleet converge scope mints a FleetConvergePlanReceipt of the same type,
+// and each one is a perfectly valid receipt. Without this, a full-host plan, a fabric-cells-only
+// plan or an allocation-store plan could occupy the RLM plan slot and satisfy every other member of
+// the transaction -- run binding, revision, host, bundle hash -- while answering a question RLM-2
+// never asked. The terminal check does not catch it either: an allocation-store plan is FullyApplied
+// by the shape of its arm, so the wrong scope would arrive already green.
+fn rlm_required_plan_scope() -> FleetConvergeScope {
+  LaunchEnvironment
+}
+
+// THE UNDECODABLE ARM IS SEPARATE FROM THE WRONG-SCOPE ARM because they have different causes and
+// different operator remedies: a wire this build cannot read is a version skew between the plan run
+// and the receipt run, while a wire it reads as another scope is the wrong plan in the slot.
+fn plan_scope_blockers(f: PlanReceiptFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    PlanReceiptUnreadable { reason: _ } => []
+    PlanReceiptRead { receipt: p } =>
+      match fleet_converge_scope_of_wire(wire: p.scope_wire) {
+        ScopeUndecodable { cause: why } =>
+          blocker(
+            member: "plan_scope",
+            detail: join(["the plan receipt names a scope this build cannot decode: ", why], ""),
+          )
+        ScopeDecoded { scope: planned } =>
+          if fleet_converge_scope_matches(planned: planned, observed: rlm_required_plan_scope()) {
+            []
+          } else {
+            blocker(
+              member: "plan_scope",
+              detail: join(
+                [
+                  "the plan receipt was minted under ", fleet_converge_scope_wire(scope: planned),
+                  " and this transaction requires ", fleet_converge_scope_wire(scope: rlm_required_plan_scope()),
+                  "; a plan of another scope answers a question RLM-2 did not ask",
+                ],
+                "",
+              ),
+            )
+          }
+      }
+  }
 }
 
 fn plan_receipt_blockers(s: RoadmapLaunchDeploymentSubject, f: PlanReceiptFact) -> List<RoadmapLaunchDeploymentBlocker> {
@@ -611,7 +669,10 @@ fn roadmap_launch_deployment_blockers(s: RoadmapLaunchDeploymentSubject, f: Road
   concat(
     concat(
       concat(
-        concat(desired_revision_blockers(s: s, f: f.desired_revision), plan_receipt_blockers(s: s, f: f.plan_receipt)),
+        concat(
+          concat(desired_revision_blockers(s: s, f: f.desired_revision), plan_scope_blockers(f: f.plan_receipt)),
+          plan_receipt_blockers(s: s, f: f.plan_receipt),
+        ),
         concat(concat(apply_receipt_blockers(s: s, plan: f.plan_receipt, f: f.apply_receipt), apply_outcome_blockers(s: s, f: f.apply_receipt)), concat(dashboard_provenance_blockers(plan: f.plan_receipt, apply: f.apply_receipt, f: f.dashboard_receipt), dashboard_receipt_blockers(s: s, plan: f.plan_receipt, f: f.dashboard_receipt))),
       ),
       concat(
