@@ -6,8 +6,8 @@ import product.printed_chassis.coupon {
   hole_ladder_spec, hole_ladder_specimen, ladder_rungs, specimen_hole_diameters,
 }
 import product.printed_chassis.realization_contract {
-  LadderRealization, RealizationContract,
-  ladder_realization, realization_contract,
+  RealizationContract,
+  realization_contract,
   ContractConformance, ContractConforms,
   ContractRungCountDiverges, ContractRungValueDiverges,
   compare_rungs, admit_realized_ladder,
@@ -19,10 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn w_a_handler_reproducing_the_ladder_conforms() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
-      let contract = realization_contract(
-        specimen: hole_ladder_specimen(l: l),
-        ladder: ladder_realization(declaration: l)
-      )
+      let contract = realization_contract(declaration: l)
       match admit_realized_ladder(contract: contract, realized_rungs: ladder_rungs(l: l)) {
         ContractConforms => true
         _ => false
@@ -37,10 +34,7 @@ test fn w_a_handler_reproducing_the_ladder_conforms() -> Bool {
 test fn w_a_handler_that_drops_a_rung_diverges_on_count() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
-      let contract = realization_contract(
-        specimen: hole_ladder_specimen(l: l),
-        ladder: ladder_realization(declaration: l)
-      )
+      let contract = realization_contract(declaration: l)
       match admit_realized_ladder(contract: contract, realized_rungs: ladder_rungs(l: l).skip(n: 1)) {
         ContractRungCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
         _ => false
@@ -59,10 +53,7 @@ test fn w_a_handler_that_drops_a_rung_diverges_on_count() -> Bool {
 test fn w_a_handler_using_the_wrong_step_diverges_at_the_first_bad_rung() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
-      let contract = realization_contract(
-        specimen: hole_ladder_specimen(l: l),
-        ladder: ladder_realization(declaration: l)
-      )
+      let contract = realization_contract(declaration: l)
       let wrong = fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], init: [], f: fn(acc, i) {
         concat(acc, [micrometer(count: 3000 + i * 50)])
       })
@@ -75,15 +66,17 @@ test fn w_a_handler_using_the_wrong_step_diverges_at_the_first_bad_rung() -> Boo
     _ => false
   }
 }
-// WITNESS 4 — THE MINT DERIVES RATHER THAN ACCEPTS. The contract's rungs are not a parameter, so a
-// caller cannot supply a declaration and a disagreeing rung list. This asserts the derived rungs
-// equal the declaration's own derivation, which is what makes any later divergence attributable to
-// the handler rather than to a forged contract.
-test fn w_the_contract_derives_its_own_rungs_from_the_declaration() -> Bool {
+// WITNESS 4 — THE PAIRING IS UNWRITABLE. Replaces a witness that asserted the contract's sidecar rung
+// list equalled its own derivation — a check that tested only itself, and whose subject this change
+// deleted. What matters now is that the specimen cannot come from a different declaration than the
+// one the contract carries, so this asserts the contract's holes are the declaration's rungs. There
+// is no second argument the mint could disagree with, which is why this reads as a tautology: that
+// is the point, and it was NOT one before, when specimen and ladder arrived independently.
+test fn w_the_contract_specimen_derives_from_its_own_declaration() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
-      let r = ladder_realization(declaration: l)
-      match compare_rungs(modeled: r.derived_rungs, realized: ladder_rungs(l: l)) {
+      let c = realization_contract(declaration: l)
+      match compare_rungs(modeled: specimen_hole_diameters(s: c.specimen), realized: ladder_rungs(l: c.declaration)) {
         ContractConforms => true
         _ => false
       }

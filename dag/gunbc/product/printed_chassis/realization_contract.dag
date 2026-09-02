@@ -4,6 +4,7 @@ import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
   specimen_hole_diameters,
+  hole_ladder_specimen,
   LengthLadder,
   CouponSpecimen,
   CouponOperation,
@@ -76,45 +77,41 @@ data contract_schema_version: NonEmptyStr = "v0"
 // because the contract has no field in which to express one, which is construction rather than
 // validation. Adding a second law is then a modeling act that splits this type, with review, rather
 // than a handler edit.
-// THE DERIVED VALUES TRAVEL ALONGSIDE THE DECLARATION THAT PRODUCES THEM, and this deliberately
-// carries the same fact twice.
+// ONE DECLARATION IN, ONE CONTRACT OUT — AND THE TWO DEFECTS THIS REPLACED WERE BOTH REAL.
 //
-// Ordinarily that is the horizontal redundancy §2 forbids. It is admitted here for one reason: the
-// two copies are produced in DIFFERENT TRUST DOMAINS. The declaration plus derivation identity is
-// what the handler recomputes from; the derived list is what this side computed. They are not two
-// authored spellings of one value that can silently disagree — a disagreement is precisely the
-// signal being bought, and it is checked rather than assumed.
+// DEFECT 1, UNBOUND PAIRING, found in review. The mint used to take a specimen and a ladder
+// realization as SEPARATE parameters, so a specimen built from ladder A could be paired with a
+// realization built from ladder B. Conformance would then compare B's rungs against A's holes, or
+// worse agree by coincidence, while the contract claimed a coherence it had never checked. Nothing
+// refused, because nothing related the two arguments.
 //
-// The distinction from ordinary duplication is that neither copy is authored. Both are derived, by
-// the same named law, from one authored declaration. If the handler's implementation of
-// LadderArithmeticSeries drifts from this module's, the contract refuses at the boundary instead of
-// producing a part whose holes are in the wrong places and whose measurement then miscalibrates
-// every later tolerance.
+// DEFECT 2, THE ORPHANED SIDECAR, which this branch created itself. LadderRealization carried a
+// derived_rungs list beside the declaration, argued for as a cross-trust-domain checksum. Then the
+// conformance repair moved the comparison onto specimen_hole_diameters — the artifact — which is
+// correct, and left derived_rungs with NO production consumer at all. Its only remaining reader was
+// a witness asserting that the field equalled the derivation it was built from: a check that tests
+// only itself. A duplicate whose consumer is a test of the duplicate is not a checksum, it is dead
+// data with a green light on it.
 //
-// PROVISIONAL: whether this is a legitimate boundary checksum or a redundancy violation wearing a
-// checksum's clothes is out with the design thread. If it comes back as redundancy, the derived list
-// leaves and the handler becomes the sole computer of the rungs, with output conformance as the only
-// check. The declaration and the derivation identity stay either way.
-type LadderRealization sole_constructor {
-  declaration: LengthLadder
-  derived_rungs: List<Micrometer>
-}
+// Both dissolve into the same construction. The contract takes ONE authored declaration and derives
+// the specimen from it. The pairing is unwritable rather than checked — there is no second argument
+// to disagree with — and the rung list is gone because the specimen's own holes are the artifact
+// conformance reads. The declaration remains because the handler needs the law it is realizing, not
+// merely the result.
 type RealizationContract sole_constructor {
   schema_version: NonEmptyStr
+  declaration: LengthLadder
   specimen: CouponSpecimen
-  ladder: LadderRealization
 }
-// THE MINT RECOMPUTES RATHER THAN ACCEPTING. A caller cannot hand in a declaration and a rung list
-// that disagree, because the rungs are not a parameter — they are derived here from the declaration
-// the caller supplied. That makes the disagreement unwritable ON THIS SIDE, so the only disagreement
-// the boundary check can ever find is a genuine handler divergence, which is the fault it exists to
-// catch. Accepting both as parameters would have made this mint the very forgery point it guards.
-fn ladder_realization(declaration: LengthLadder) -> LadderRealization {
-  LadderRealization { declaration: declaration, derived_rungs: ladder_rungs(l: declaration) }
+
+fn realization_contract(declaration: LengthLadder) -> RealizationContract {
+  RealizationContract {
+    schema_version: contract_schema_version,
+    declaration: declaration,
+    specimen: hole_ladder_specimen(l: declaration),
+  }
 }
-fn realization_contract(specimen: CouponSpecimen, ladder: LadderRealization) -> RealizationContract {
-  RealizationContract { schema_version: contract_schema_version, specimen: specimen, ladder: ladder }
-}
+
 // THE HANDLER-SIDE CHECK, expressed here so both sides read the same law. The handler recomputes the
 // rungs from the declaration under the named derivation and compares. A length mismatch and a value
 // mismatch are separate causes because they fail for different reasons: a length mismatch means the
