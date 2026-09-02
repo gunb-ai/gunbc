@@ -19,6 +19,10 @@ import std.measure {
   ByteSize, byte_size, byte_size_count,
   TokenCount, token_count, token_count_value,
   TokensPerSecond, tokens_per_second_count,
+  PositiveSlotCount, positive_slot_count_value,
+}
+import extdeps.ollama.server_env {
+  ollama_context_length_env_assignment, ollama_num_parallel_env_assignment,
 }
 
 // CHOOSING WHAT TO SERVE, as a function rather than as an argument.
@@ -180,17 +184,17 @@ fn serving_runtime_equal(a: ServingRuntimeIdentity, b: ServingRuntimeIdentity) -
 // carries the fixed ones; the bind address is deployment identity and is deliberately absent,
 // because it cannot change fit; and the models root is artifact-resolution provenance, already
 // subsumed once the loaded artifact digest is joined.
-type OllamaEffectiveConfiguration sole_constructor {
-  context_ceiling: TokenCount
+type ObservedOllamaLaunchConfiguration sole_constructor {
+  server_default_context: TokenCount
   serving_slots: PositiveSlotCount
 }
 
-fn ollama_effective_configuration(
-  context_ceiling: TokenCount,
+fn observed_ollama_launch_configuration(
+  server_default_context: TokenCount,
   serving_slots: PositiveSlotCount,
-) -> OllamaEffectiveConfiguration {
-  OllamaEffectiveConfiguration {
-    context_ceiling: context_ceiling,
+) -> ObservedOllamaLaunchConfiguration {
+  ObservedOllamaLaunchConfiguration {
+    server_default_context: server_default_context,
     serving_slots: serving_slots,
   }
 }
@@ -200,13 +204,13 @@ type ExactRuntimeConfigurationIdentity sole_constructor {
 }
 
 fn exact_runtime_configuration_identity(
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> ExactRuntimeConfigurationIdentity {
   ExactRuntimeConfigurationIdentity {
     wire_digest: content_hash_combine_structural(
       left: content_hash_atom(
         value: ollama_context_length_env_assignment(
-          default_context: configuration.context_ceiling)),
+          default_context: configuration.server_default_context)),
       right: content_hash_atom(
         value: ollama_num_parallel_env_assignment(slots: configuration.serving_slots))),
   }
@@ -224,11 +228,11 @@ fn exact_runtime_configuration_equal(
 // of the canonical wire admits it. A host whose lines do not match any candidate is not coerced into
 // one -- it has no configuration identity here, which is the fail-closed answer.
 fn observed_configuration_matches(
-  candidate: OllamaEffectiveConfiguration,
+  candidate: ObservedOllamaLaunchConfiguration,
   observed_context_assignment: NonEmptyStr,
   observed_parallel_assignment: NonEmptyStr,
 ) -> Bool {
-  (ollama_context_length_env_assignment(default_context: candidate.context_ceiling) as String)
+  (ollama_context_length_env_assignment(default_context: candidate.server_default_context) as String)
     == (observed_context_assignment as String)
     && (ollama_num_parallel_env_assignment(slots: candidate.serving_slots) as String)
       == (observed_parallel_assignment as String)
@@ -350,7 +354,7 @@ fn realization_comparison_fold<T>(
 // count is not a footprint at another, and the ceiling bounds what either could have been asked.
 fn observation_configuration_matches(
   o: OllamaRunnerMemoryObservation,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> Bool {
   exact_runtime_configuration_equal(
     a: exact_runtime_configuration_identity(configuration: o.configuration),
@@ -359,7 +363,7 @@ fn observation_configuration_matches(
 
 fn prefill_configuration_matches(
   o: FreshPrefillObservation,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> Bool {
   exact_runtime_configuration_equal(
     a: exact_runtime_configuration_identity(configuration: o.configuration),
@@ -448,7 +452,7 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 // on one node does not describe another. Both now join.
 type FreshPrefillObservation sole_constructor {
   realization: ServingRealizationIdentity
-  configuration: OllamaEffectiveConfiguration
+  configuration: ObservedOllamaLaunchConfiguration
   node: HostIdentity
   concurrent_sessions: Nat
   depth: TokenCount
@@ -460,28 +464,24 @@ fn observed_fresh_prefill(
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
   runtime: ServingRuntimeIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
   node: HostIdentity,
-  concurrent_sessions: Nat,
-  depth: TokenCount,
+  receipt: ExecutedRequestReceipt,
   rate: TokensPerSecond,
 ) -> FreshPrefillObservation? {
-  if point_within_configuration(
-    configuration: configuration,
-    context_depth: depth,
-    concurrent_sessions: concurrent_sessions) {
-    Present { value: FreshPrefillObservation {
-      realization: serving_realization_identity(
-        release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
-        runtime: runtime),
-      configuration: configuration,
-      node: node,
-      concurrent_sessions: concurrent_sessions,
-      depth: depth,
-      rate: rate,
-    } }
-  } else {
-    none
+  match exercised_attempt_point(configuration: configuration, receipt: receipt) {
+    Absent => none
+    Present { value: point } =>
+      Present { value: FreshPrefillObservation {
+        realization: serving_realization_identity(
+          release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
+          runtime: runtime),
+        configuration: configuration,
+        node: node,
+        concurrent_sessions: point.concurrent_sessions,
+        depth: point.context_depth,
+        rate: rate,
+      } }
   }
 }
 
@@ -515,7 +515,7 @@ fn fresh_prefill_at_point(
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> List<FreshPrefillObservation> {
   filter(observations, o =>
     host_identity_eq(a: o.node, b: node)
@@ -558,7 +558,7 @@ fn fresh_prefill_qualification(
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> PrefillQualification {
   match first_prefill_incomparable_axis(
     observations: fresh_prefill_at_point(
@@ -583,7 +583,7 @@ fn prefill_qualification_at_floor(
   hot_sessions: Nat,
   floor: TokenCount,
   regime: ServingRegime,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> PrefillQualification {
   match regime {
     WarmContinuation => PrefillUnmeasured
@@ -602,7 +602,7 @@ fn prefill_rate_at_floor(
   hot_sessions: Nat,
   floor: TokenCount,
   regime: ServingRegime,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> TokensPerSecond? {
   match prefill_qualification_at_floor(
     observations: observations, realization: realization, node: node,
@@ -643,7 +643,7 @@ fn slowest_fresh_rate_at_floor(
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> TokensPerSecond? {
   let deep = filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
@@ -717,7 +717,7 @@ type RunnerAttemptOutcome
 
 type OllamaRunnerMemoryObservation sole_constructor {
   realization: ServingRealizationIdentity
-  configuration: OllamaEffectiveConfiguration
+  configuration: ObservedOllamaLaunchConfiguration
   node: HostIdentity
   instrument: NonEmptyStr
   context_depth: TokenCount
@@ -746,41 +746,114 @@ fn observed_memory_attempt(
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
   runtime: ServingRuntimeIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
   node: HostIdentity,
   instrument: NonEmptyStr,
-  context_depth: TokenCount,
-  concurrent_sessions: Nat,
+  receipt: ExecutedRequestReceipt,
   outcome: RunnerAttemptOutcome,
 ) -> OllamaRunnerMemoryObservation? {
-  if point_within_configuration(
-    configuration: configuration,
-    context_depth: context_depth,
-    concurrent_sessions: concurrent_sessions) {
-    Present { value: OllamaRunnerMemoryObservation {
-      realization: serving_realization_identity(
-        release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
-        runtime: runtime),
-      configuration: configuration,
-      node: node,
-      instrument: instrument,
-      context_depth: context_depth,
-      concurrent_sessions: concurrent_sessions,
-      outcome: outcome,
+  match exercised_attempt_point(configuration: configuration, receipt: receipt) {
+    Absent => none
+    Present { value: point } =>
+      Present { value: OllamaRunnerMemoryObservation {
+        realization: serving_realization_identity(
+          release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
+          runtime: runtime),
+        configuration: configuration,
+        node: node,
+        instrument: instrument,
+        context_depth: point.context_depth,
+        concurrent_sessions: point.concurrent_sessions,
+        outcome: outcome,
+      } }
+  }
+}
+
+// A BOUND IS NOT A RECEIPT, AND THE NAME NOW SAYS SO. `OLLAMA_CONTEXT_LENGTH` is the server's
+// DEFAULT context, not a ceiling: a model's own options or a request's `num_ctx` may replace it.
+// `OLLAMA_NUM_PARALLEL` is the CONFIGURED slot count, not the number of requests that were actually
+// in flight while somebody measured. So the launch wires establish what a point is PERMITTED to be;
+// they establish nothing about what any particular attempt exercised.
+//
+// The gap that closes here is exact: under a 1M / 4-slot unit the predecessor's bound check admitted
+// an authored (1,000,000 tokens, 4 sessions) point for a measurement that was really a short prompt
+// on one request. Both inequalities pass, and a one-request success then masquerades as a
+// four-session success and generalizes downward through the memory rule.
+//
+// So the authored point is DELETED as an input rather than checked. An observation's point is
+// derived from an execution receipt -- the prompt token count the runtime reported back, and the
+// concurrency a named instrument established -- and the bound is applied to that receipt. A caller
+// cannot state a point at all, so a point the attempt did not exercise has no constructor.
+type RequestContextOverrideEvidence
+  = NoModelOrRequestContextOverride
+  | RequestContextOverrideObserved { effective_context: TokenCount }
+
+// The effective context for one attempt: the server default unless the model or the request replaced
+// it, in which case the replacement is the bound. This is why the launch field may not be called a
+// ceiling -- the override may be LARGER.
+fn effective_context_for_attempt(
+  configuration: ObservedOllamaLaunchConfiguration,
+  override: RequestContextOverrideEvidence,
+) -> TokenCount {
+  match override {
+    NoModelOrRequestContextOverride => configuration.server_default_context
+    RequestContextOverrideObserved { effective_context: c } => c
+  }
+}
+
+// WHAT AN EXECUTION ACTUALLY REPORTED BACK. `prompt_eval_count` is the runtime's own count of the
+// tokens it evaluated -- the fleet's 308,005-token reading is one of these -- and
+// `concurrent_requests` is what the named instrument established was in flight, never what the slot
+// count permits.
+type ExecutedRequestReceipt sole_constructor {
+  prompt_eval_count: Nat
+  concurrent_requests: Nat
+  instrument: NonEmptyStr
+  context_override: RequestContextOverrideEvidence
+}
+
+fn executed_request_receipt(
+  prompt_eval_count: Nat,
+  concurrent_requests: Nat,
+  instrument: NonEmptyStr,
+  context_override: RequestContextOverrideEvidence,
+) -> ExecutedRequestReceipt {
+  ExecutedRequestReceipt {
+    prompt_eval_count: prompt_eval_count,
+    concurrent_requests: concurrent_requests,
+    instrument: instrument,
+    context_override: context_override,
+  }
+}
+
+type ExercisedAttemptPoint sole_constructor {
+  context_depth: TokenCount
+  concurrent_sessions: Nat
+  instrument: NonEmptyStr
+}
+
+// The mint stays partial, and the partiality now means something stronger: a receipt reporting more
+// evaluated tokens than the effective context, more in-flight requests than the unit has slots, or
+// zero requests, describes an execution this configuration could not have performed -- so the
+// instrument disagrees with the unit and the reading is refused rather than reconciled.
+fn exercised_attempt_point(
+  configuration: ObservedOllamaLaunchConfiguration,
+  receipt: ExecutedRequestReceipt,
+) -> ExercisedAttemptPoint? {
+  if receipt.prompt_eval_count
+      <= token_count_value(t: effective_context_for_attempt(
+        configuration: configuration, override: receipt.context_override))
+    && receipt.concurrent_requests
+      <= positive_slot_count_value(slots: configuration.serving_slots)
+    && receipt.concurrent_requests >= 1 {
+    Present { value: ExercisedAttemptPoint {
+      context_depth: token_count(count: receipt.prompt_eval_count),
+      concurrent_sessions: receipt.concurrent_requests,
+      instrument: receipt.instrument,
     } }
   } else {
     none
   }
-}
-
-fn point_within_configuration(
-  configuration: OllamaEffectiveConfiguration,
-  context_depth: TokenCount,
-  concurrent_sessions: Nat,
-) -> Bool {
-  token_count_value(t: context_depth)
-    <= token_count_value(t: configuration.context_ceiling)
-    && concurrent_sessions <= positive_slot_count_value(slots: configuration.serving_slots)
 }
 
 // WHAT THE QUALIFYING ATTEMPTS SAY, reconciled by TYPE rather than by byte magnitude.
@@ -828,7 +901,7 @@ fn served_qualifying_observations(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
@@ -845,7 +918,7 @@ fn refused_at_exact_point(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
@@ -864,7 +937,7 @@ fn failed_otherwise_at_exact_point(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
@@ -1030,7 +1103,7 @@ fn deciding_incomparable_axis(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> NonEmptyStr? {
   let relevant = filter(observations, o =>
     host_identity_eq(a: o.node, b: node)
@@ -1211,7 +1284,7 @@ fn memory_fit_evidence(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> MemoryFitEvidence {
   match deciding_incomparable_axis(
     observations: observations, realization: realization,
@@ -1229,7 +1302,7 @@ fn decidable_memory_fit_evidence(
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
-  configuration: OllamaEffectiveConfiguration,
+  configuration: ObservedOllamaLaunchConfiguration,
 ) -> MemoryFitEvidence {
   let served = served_qualifying_observations(
     observations: observations, realization: realization,
@@ -1267,7 +1340,7 @@ type ServingConstraints {
   hot_sessions: Nat
   prefill_floor: TokensPerSecond
   prefill_regime: ServingRegime
-  configuration: OllamaEffectiveConfiguration
+  configuration: ObservedOllamaLaunchConfiguration
 }
 
 // ============================ THE DECISION ============================
