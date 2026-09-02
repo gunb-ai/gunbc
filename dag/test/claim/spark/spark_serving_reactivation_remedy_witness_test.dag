@@ -6,9 +6,12 @@ import gunbc.spark.serving_realization {
   SparkServingReactivationVerdict,
   ReactivationRequired,
   ReactivationNotRequired,
+  ReactivationNotApplicable,
   ReactivationUndecidable,
   SparkServingRunningDefinition,
   RunningDefinitionObserved,
+  RunningDefinitionUnstamped,
+  RunningDefinitionNotRunning,
   RunningDefinitionUnobserved,
   ServingReactivationEffect,
   RestartSystemUnitForChangedDefinition,
@@ -30,9 +33,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the definition it was started from exists. So these claims establish that the SELECTOR is correct,
 // and they establish nothing about a live host.
 
-data desired_digest: NonEmptyStr = "sha256:desired-unit-definition" as NonEmptyStr
+data desired_digest: NonEmptyStr = "sha256:desired-unit-spec-identity" as NonEmptyStr
 
-data stale_digest: NonEmptyStr = "sha256:stale-unit-definition" as NonEmptyStr
+data stale_digest: NonEmptyStr = "sha256:stale-unit-spec-identity" as NonEmptyStr
 
 fn verdict_is_restart_of(
   verdict: SparkServingReactivationVerdict,
@@ -41,6 +44,7 @@ fn verdict_is_restart_of(
   match verdict {
     ReactivationRequired { effect: e } => e == want
     ReactivationNotRequired => false
+    ReactivationNotApplicable { cause: _ } => false
     ReactivationUndecidable { cause: _ } => false
   }
 }
@@ -49,6 +53,7 @@ fn verdict_is_not_required(verdict: SparkServingReactivationVerdict) -> Bool {
   match verdict {
     ReactivationNotRequired => true
     ReactivationRequired { effect: _ } => false
+    ReactivationNotApplicable { cause: _ } => false
     ReactivationUndecidable { cause: _ } => false
   }
 }
@@ -57,6 +62,7 @@ fn verdict_is_undecidable(verdict: SparkServingReactivationVerdict) -> Bool {
   match verdict {
     ReactivationUndecidable { cause: _ } => true
     ReactivationNotRequired => false
+    ReactivationNotApplicable { cause: _ } => false
     ReactivationRequired { effect: _ } => false
   }
 }
@@ -68,16 +74,16 @@ test fn w_a_changed_definition_selects_the_restart_for_its_realization() -> Bool
   verdict_is_restart_of(
     verdict: spark_serving_reactivation_remedy(
       realization: UserUnitRealization,
-      running: RunningDefinitionObserved { content_digest: stale_digest },
-      desired_content_digest: desired_digest,
+      running: RunningDefinitionObserved { definition_identity: stale_digest },
+      desired_definition_identity: desired_digest,
     ),
     want: RestartUserUnitForChangedDefinition,
   )
     && verdict_is_restart_of(
       verdict: spark_serving_reactivation_remedy(
         realization: SystemUnitRealization,
-        running: RunningDefinitionObserved { content_digest: stale_digest },
-        desired_content_digest: desired_digest,
+        running: RunningDefinitionObserved { definition_identity: stale_digest },
+        desired_definition_identity: desired_digest,
       ),
       want: RestartSystemUnitForChangedDefinition,
     )
@@ -91,8 +97,8 @@ test fn w_an_unchanged_definition_selects_no_restart() -> Bool {
   verdict_is_not_required(
     verdict: spark_serving_reactivation_remedy(
       realization: UserUnitRealization,
-      running: RunningDefinitionObserved { content_digest: desired_digest },
-      desired_content_digest: desired_digest,
+      running: RunningDefinitionObserved { definition_identity: desired_digest },
+      desired_definition_identity: desired_digest,
     ),
   )
 }
@@ -107,7 +113,7 @@ test fn w_an_unobserved_running_definition_refuses_rather_than_deciding() -> Boo
     verdict: spark_serving_reactivation_remedy(
       realization: UserUnitRealization,
       running: RunningDefinitionUnobserved { cause: "no probe reports the running invocation's definition" as NonEmptyStr },
-      desired_content_digest: desired_digest,
+      desired_definition_identity: desired_digest,
     ),
   )
 }
@@ -119,8 +125,73 @@ test fn w_a_realization_without_a_reactivation_remedy_refuses() -> Bool {
   verdict_is_undecidable(
     verdict: spark_serving_reactivation_remedy(
       realization: RootlessContainerRealization,
-      running: RunningDefinitionObserved { content_digest: stale_digest },
-      desired_content_digest: desired_digest,
+      running: RunningDefinitionObserved { definition_identity: stale_digest },
+      desired_definition_identity: desired_digest,
     ),
   )
+}
+
+fn verdict_is_not_applicable(verdict: SparkServingReactivationVerdict) -> Bool {
+  match verdict {
+    ReactivationNotApplicable { cause: _ } => true
+    ReactivationNotRequired => false
+    ReactivationRequired { effect: _ } => false
+    ReactivationUndecidable { cause: _ } => false
+  }
+}
+
+// AN UNSTAMPED RUNNING PROCESS IS STALE, AND THIS IS THE STATE THE SPARKS ARE MOST LIKELY IN. A
+// process carrying no definition identity was started before the identity existed, which is a
+// positive reading and not a failure to read -- so it selects a restart rather than the refusal the
+// unobserved arm gets.
+test fn w_an_unstamped_running_process_selects_a_restart() -> Bool {
+  verdict_is_restart_of(
+    verdict: spark_serving_reactivation_remedy(
+      realization: UserUnitRealization,
+      running: RunningDefinitionUnstamped,
+      desired_definition_identity: desired_digest,
+    ),
+    want: RestartUserUnitForChangedDefinition,
+  )
+}
+
+// AND IT IS DISTINGUISHED FROM NOT HAVING READ, which is the pair that makes the arm worth having:
+// same realization, same desired identity, one arm restarts and the other refuses. Collapsing them
+// either way loses a remedy or invents one.
+test fn w_unstamped_and_unobserved_do_not_reach_the_same_verdict() -> Bool {
+  verdict_is_restart_of(
+    verdict: spark_serving_reactivation_remedy(
+      realization: UserUnitRealization,
+      running: RunningDefinitionUnstamped,
+      desired_definition_identity: desired_digest,
+    ),
+    want: RestartUserUnitForChangedDefinition,
+  )
+    && verdict_is_undecidable(
+      verdict: spark_serving_reactivation_remedy(
+        realization: UserUnitRealization,
+        running: RunningDefinitionUnobserved { cause: "MainPID had no environ readable" as NonEmptyStr },
+        desired_definition_identity: desired_digest,
+      ),
+    )
+}
+
+// A UNIT THAT IS NOT RUNNING IS NOT A CONVERGED ONE. There is no definition it was started from, so
+// this question does not apply -- and the answer must not be the one a converged host gets, or a
+// stopped host reads as fine. The remedy it needs belongs to the activity address.
+test fn w_a_unit_that_is_not_running_is_not_applicable_rather_than_converged() -> Bool {
+  verdict_is_not_applicable(
+    verdict: spark_serving_reactivation_remedy(
+      realization: UserUnitRealization,
+      running: RunningDefinitionNotRunning,
+      desired_definition_identity: desired_digest,
+    ),
+  )
+    && !verdict_is_not_required(
+      verdict: spark_serving_reactivation_remedy(
+        realization: UserUnitRealization,
+        running: RunningDefinitionNotRunning,
+        desired_definition_identity: desired_digest,
+      ),
+    )
 }

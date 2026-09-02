@@ -545,11 +545,46 @@ fn serving_reactivation_effect_wire(effect: ServingReactivationEffect) -> String
 // as "the process is stale" -- the observed-imports-the-desired error serving_observed_members
 // records against itself.
 //
+// THE TWO SIDES MUST BE ONE IDENTITY DOMAIN, AND THE DOMAIN IS THE SPEC, NOT THE RENDERED BYTES.
+//
+// Equality here decides whether a host restarts, so a desired identity taken in one domain and an
+// observed identity taken in another is not an imprecision -- it is a permanent restart loop on a
+// converged host, which is the exact failure the fused unconditional restart already caused.
+//
+// The obvious domain is the rendered unit content, since that is what the registration member uses.
+// It is unavailable to THIS question and the reason is structural: the running invocation can only
+// report an identity that was embedded in the unit it was started from, so an identity over the
+// rendered bytes would be a hash of bytes containing itself. The well-founded domain is the typed
+// SparkServingUserUnitSpec the render is a function OF, which no such fixed point can reach.
+//
+// The field is therefore named for the identity rather than for a digest of content, and any
+// producer of RunningDefinitionObserved owes the same domain the desired side is taken in.
+//
 // NEXT-RUNG TRIGGER for the reactivation class: a host readback that reports the definition identity
 // of the RUNNING invocation, sufficient to mint RunningDefinitionObserved for a real Spark. Until it
 // exists the remedy is undecidable rather than absent, and undecidable REFUSES.
+// FOUR STATES, BECAUSE THE PROBE CAN DISTINGUISH FOUR AND FOLDING ANY PAIR LOSES A REMEDY.
+//
+// `RunningDefinitionUnstamped` is a POSITIVE READING, not a failure to read: the process is running
+// and carries no definition identity at all, which is what a process started before the identity was
+// stamped looks like. Folding it into `Unobserved` would spend real evidence as ignorance and leave
+// exactly the stale process this vocabulary exists to catch permanently undecidable -- and on the
+// two hosts this lane cares about, that is the state they are most likely actually in.
+//
+// THE PREMISE THAT ARM RESTS ON, stated because the conclusion is only as good as it: an unstamped
+// process is stale ONLY BECAUSE the desired definition stamps unconditionally. If a desired spec is
+// ever admitted that does not stamp, an unstamped process could be the desired one and this arm
+// would restart a converged host. That premise belongs to whatever renders the unit; it is named
+// here so its owner is visible rather than assumed.
+//
+// `RunningDefinitionNotRunning` is the absence of the subject. A unit that is not running has no
+// definition it was started from, so the question this type asks does not apply -- which is neither
+// staleness nor ignorance, and is a third thing again from both. Its remedy belongs to the activity
+// address, which already owns start.
 type SparkServingRunningDefinition
-  = RunningDefinitionObserved { content_digest: NonEmptyStr }
+  = RunningDefinitionObserved { definition_identity: NonEmptyStr }
+  | RunningDefinitionUnstamped
+  | RunningDefinitionNotRunning
   | RunningDefinitionUnobserved { cause: NonEmptyStr }
 
 // THE VERDICT HAS THREE ARMS BECAUSE THERE ARE THREE ANSWERS, and the third is the one that keeps a
@@ -559,9 +594,18 @@ type SparkServingRunningDefinition
 // we want. `ReactivationUndecidable` is the absence of that reading. Collapsing the two would make
 // an unobserved host look converged, and collapsing undecidable into required would restart every
 // host on every converge -- which is what the fused effect did, and the reason this function exists.
+// AND THE FOURTH VERDICT IS NOT-APPLICABLE, WHICH IS NOT A POLITE NO.
+//
+// A stopped unit needs no restart, and reporting that as `ReactivationNotRequired` would put this
+// question's answer and another question's answer under one symbol -- the not-applicable-rendered-as-
+// a-verdict form of the state-space conflation the design ledger rosters. They have different
+// owners: not-required means this host is converged on the definition it is serving, while
+// not-applicable means the activity address has a start to plan and nothing here is about it. A
+// consumer reading the first for the second concludes a stopped host is fine.
 type SparkServingReactivationVerdict
   = ReactivationRequired { effect: ServingReactivationEffect }
   | ReactivationNotRequired
+  | ReactivationNotApplicable { cause: NonEmptyStr }
   | ReactivationUndecidable { cause: NonEmptyStr }
 
 fn serving_realization_reactivation_effect(
@@ -580,9 +624,18 @@ fn serving_realization_reactivation_effect(
 fn spark_serving_reactivation_remedy(
   realization: SparkServingRealization,
   running: SparkServingRunningDefinition,
-  desired_content_digest: NonEmptyStr,
+  desired_definition_identity: NonEmptyStr,
 ) -> SparkServingReactivationVerdict {
   match running {
+    RunningDefinitionNotRunning =>
+      ReactivationNotApplicable {
+        cause: "spark_serving_reactivation_remedy: the unit is not running, so it was started from no definition — the activity address owns this" as NonEmptyStr,
+      }
+    RunningDefinitionUnstamped =>
+      spark_serving_reactivation_required(
+        realization: realization,
+        cause: "spark_serving_reactivation_remedy: the running process carries no definition identity, so it predates the desired definition" as NonEmptyStr,
+      )
     RunningDefinitionUnobserved { cause: why } =>
       ReactivationUndecidable {
         cause: join([
@@ -590,21 +643,37 @@ fn spark_serving_reactivation_remedy(
           why as String,
         ], "") as NonEmptyStr,
       }
-    RunningDefinitionObserved { content_digest: d } =>
-      if (d as String) == (desired_content_digest as String) {
+    RunningDefinitionObserved { definition_identity: d } =>
+      if (d as String) == (desired_definition_identity as String) {
         ReactivationNotRequired
       } else {
-        match serving_realization_reactivation_effect(realization: realization) {
-          Present { value: e } => ReactivationRequired { effect: e }
-          Absent =>
-            ReactivationUndecidable {
-              cause: join([
-                "spark_serving_reactivation_remedy: ",
-                realization_label(realization: realization),
-                " has no modeled reactivation remedy",
-              ], "") as NonEmptyStr,
-            }
-        }
+        spark_serving_reactivation_required(
+          realization: realization,
+          cause: "spark_serving_reactivation_remedy: the running process was started from a definition that is not the desired one" as NonEmptyStr,
+        )
+      }
+  }
+}
+
+// ONE PLACE DECIDES WHETHER A REALIZATION HAS A RESTART TO EMIT, so the two arms that establish
+// staleness -- a differing identity and an unstamped process -- cannot drift into disagreeing about
+// which realizations can be reactivated. The cause travels in, because the two arms know different
+// things about WHY the process is stale and a caller reading the refusal should get the one that
+// held.
+fn spark_serving_reactivation_required(
+  realization: SparkServingRealization,
+  cause: NonEmptyStr,
+) -> SparkServingReactivationVerdict {
+  match serving_realization_reactivation_effect(realization: realization) {
+    Present { value: e } => ReactivationRequired { effect: e }
+    Absent =>
+      ReactivationUndecidable {
+        cause: join([
+          cause as String,
+          " — and ",
+          realization_label(realization: realization),
+          " has no modeled reactivation remedy",
+        ], "") as NonEmptyStr,
       }
   }
 }
