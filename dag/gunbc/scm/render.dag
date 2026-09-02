@@ -49,13 +49,6 @@ import std.render {
 }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
 import gunbc.scm.repository_load { repository_load_refusal_lines }
-import gunbc.scm.repository_save {
-  RepositorySave,
-  RepositorySaved,
-  RepositorySaveRefusedByCodec,
-  RepositoryFileUnwritable,
-  RepositoryWriteByteCountUnrepresentable
-}
 import gunbc.scm.log {
   CommitLog,
   NoCommitsYet,
@@ -191,66 +184,3 @@ fn scm_status_cli_response(
     exit: scm_read_exit(result: result),
   )
 }
-
-// A WRITE VERB'S ANSWER. The read verbs answer with a document the repository already contains;
-// a write verb answers with what the write DID, and its four outcomes are not one line with a
-// flag -- each names a different thing that went wrong and a different next action.
-//
-// WHAT THESE LINES DELIBERATELY DO NOT SAY. The codec refusal carries a typed
-// `RepositoryEncodeRefusal` (uncontained target, root not in store, checkout not in commits,
-// duplicated reference, reference outside allocator, parent not in commits) and this renderer
-// does not decompose it, so the operator learns THAT encoding refused and not WHICH invariant
-// failed. That is a real loss and it is named here rather than hidden: rendering it needs a
-// per-arm function over ObjectId and RepositoryCommitRef, which is its own change. The byte
-// count on the success arm is likewise omitted rather than approximated.
-fn repository_save_lines(save: RepositorySave) -> List<String> {
-  match save {
-    RepositorySaved { path: p, written: _ } =>
-      [concat("initialized repository at ", p)]
-    RepositorySaveRefusedByCodec { path: p, cause: _ } =>
-      [
-        concat("cannot encode repository for ", p),
-        "  the envelope did not satisfy its own containment invariants"
-      ]
-    RepositoryFileUnwritable { path: p, error: e } =>
-      [concat("cannot write repository at ", p), concat("  ", e)]
-    RepositoryWriteByteCountUnrepresentable { path: p, reported: _ } =>
-      [
-        concat("wrote repository at ", p),
-        "  but the host reported a byte count that is not a magnitude"
-      ]
-  }
-}
-
-// THE WRITE SUCCEEDED OR IT DID NOT, and the unrepresentable-count arm FAILS even though bytes
-// reached the disk: a write whose reported size is not a magnitude has not been confirmed, and
-// reporting success for it would be the fabricated-plausible-output §5 forbids.
-fn scm_save_exit(save: RepositorySave) -> ProcessExit {
-  match save {
-    RepositorySaved { path: _, written: _ } => ExitSuccess
-    RepositorySaveRefusedByCodec { path: _, cause: _ } =>
-      exit_failure(reason: "repository not encodable")
-    RepositoryFileUnwritable { path: _, error: _ } =>
-      exit_failure(reason: "repository not writable")
-    RepositoryWriteByteCountUnrepresentable { path: _, reported: _ } =>
-      exit_failure(reason: "repository write unconfirmed")
-  }
-}
-
-fn scm_save_document(save: RepositorySave) -> Document {
-  text_lines_document(lines: repository_save_lines(save: save))
-}
-
-fn scm_save_cli_response(
-  save: RepositorySave,
-  target: RenderTarget,
-  capability: RenderCapability
-) -> CliWireResponse {
-  cli_wire_response(
-    doc: scm_save_document(save: save),
-    target: target,
-    capability: capability,
-    exit: scm_save_exit(save: save),
-  )
-}
-

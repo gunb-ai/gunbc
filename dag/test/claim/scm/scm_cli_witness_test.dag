@@ -100,22 +100,3 @@ test fn the_declared_terminal_capability_is_ascii_without_colour_or_cursor_addre
        }
 }
 
-// PROJECTIONS OVER THE WIRE RESPONSE, SHARED BY THE INIT CLAIMS BELOW so that neither of them
-// carries its own copy of the same two-arm match.
-fn wire_refuses(r: CliWireResponse) -> Bool {
-  match r {
-    CliWireUnprintable { cause: _ } => true
-    CliWirePrintable { bytes: _, exit: e } =>
-      match e {
-        ExitSuccess => false
-        ExitFailure { code: _, reason: _ } => true
-      }
-  }
-}
-
-fn wire_bytes(r: CliWireResponse) -> String {
-  match r {
-    CliWireUnprintable { cause: _ } => ""
-    CliWirePrintable { bytes: b, exit: _ } => b
-  }
-}
