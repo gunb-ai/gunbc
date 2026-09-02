@@ -1,0 +1,365 @@
+module extdeps.payroll.contribution
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.nat { Nat, nat_min }
+import std.measure {
+  MoneyAmountMicro, BasisPoint,
+  money_amount_micro, money_amount_micro_count, basis_point_count,
+  measure_scale_fraction_floor,
+}
+import extdeps.currency.currency { CurrencyCode }
+import extdeps.units.dimensionless { parts_per_ten_thousand_unity_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// Statutory payroll contribution, the upstream this module models. A jurisdiction names a rate,
+// the band of earnings that rate applies to, the window over which earnings are assessed, whose
+// earnings are accumulated, and which party bears the result.
+//
+// The kernel knows no jurisdiction and names no country. That is the design constraint: a Country
+// enum here would make adding Germany an edit to the type the United States depends on, which is
+// the fork DESIGN 3 forbids and the one that makes payroll systems unmaintainable.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Payroll_tax"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.payroll.contribution",
+      decl_name: "ContributionSpec",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE ASSESSMENT WINDOW IS REPRESENTED BECAUSE ASSUMING IT WAS MEASURABLY WRONG.
+//
+// An earlier revision of this carrier hardcoded the annual coordinate into its type names -
+// YearToDateWages, annual_limit - and so assumed every jurisdiction assesses over a year. UK
+// Class 1 National Insurance falsifies that assumption directly. HMRC assesses ordinary employees
+// over their EARNINGS PERIOD, normally the interval at which they are paid, and the resulting
+// contribution is not a function of annual earnings at all: a category-A employee paid 8000
+// pounds in one monthly period owes 327.50, while the same 8000 pounds paid across two monthly
+// periods owes 472.32, because each period applies the threshold afresh.
+//
+// The band GEOMETRIES survived that finding; the hardcoded coordinate did not. So the window is
+// now a field a row must state, and a window this kernel does not compute REFUSES. The difference
+// matters exactly because the failure it replaces was silent: an author modeling UK monthly bands
+// as annual ones would previously have produced a plausible wrong number, which is the class
+// DESIGN 5 forbids outright. The invalid state is now representable in order that it can be
+// refused, rather than reachable only by misuse.
+type AssessmentWindow =
+    CalendarYearAssessed
+  | EarningsPeriodAssessed
+
+// FOUR COORDINATES THIS CARRIER STILL ASSUMES, EACH NAMED BY AN ADVERSARIAL REVIEW AGAINST A
+// REAL NEW JERSEY ROW. None is reachable by any authority row that exists today - every row here
+// is a universal federal statutory rate assessed on cash wages - so each is a declared boundary
+// rather than a live defect. All four become live the moment the New Jersey module lands, and
+// that module is the trigger for all of them.
+//
+// 1. RATE APPLICABILITY. rate is a scalar on a row keyed by year, which assumes a rate is a
+//    globally reusable statutory constant. New Jersey employer unemployment rates are
+//    EXPERIENCE-RATED per employer account and assigned on a FISCAL year, 1 July to 30 June,
+//    while the wage cap runs on the calendar year. One effective_year cannot carry both
+//    intervals, and the position carries no payment date with which to select a rate. The
+//    missing coordinate is rate subject plus effective interval plus authority receipt.
+//
+// 2. AGGREGATION SCOPE IS A KIND, NOT AN IDENTITY. The check compares
+//    EmployerWorkerRelationship against EmployerWorkerRelationship and passes; it does not ask
+//    WHICH employer. Harmless while every rate is universal, and a fail-open the moment a rate
+//    belongs to one employer account. Adding an EmployerAccount variant does not repair it -
+//    the cap aggregates per employer-worker relationship while the rate is assigned per
+//    employer account, so one computation needs both coordinates at once.
+//
+// 3. CONTRIBUTION BASE. Omitted here on the grounds that nothing consumed it. New Jersey
+//    refutes that: covered remuneration includes noncash items valued for contribution
+//    purposes and is not the cash-gross figure, and federal Social Security wages and Medicare
+//    wages are themselves distinct bases. A spec meaning one base and a position carrying
+//    another currently agree on every represented field and emit a plausible amount.
+//
+// 4. ROUNDING CONTRACT. Flooring at micro grain is declared below, but the grain is only one
+//    third of the fact: mode, grain and application scope are all statutory. Publication 15
+//    accounts for rounding to the nearest cent per wage payment with a fractions-of-cents
+//    adjustment on the quarterly return, so a floored micro figure is an exact accrual and not
+//    the withholding amount.
+//
+// Rate PRECISION is the one finding that blocks New Jersey outright rather than deferring: the
+// rates are 2.6825, 0.1175, 0.3825 and 0.0425 percent, which are not whole basis points, and
+// BasisPoint counts whole units. Every federal rate here is exact in basis points, so this
+// carrier is honest for its current rows and cannot express the next authority. The repair is
+// not a third dimensionless nickname - std.measure already declares that a third such use case
+// is the trigger to build the unifying Ratio carrier - so it is raised rather than improvised.
+
+// THE CONTRIBUTION BASE IS AN OPEN REGISTRY, DEPLOYED AS AN IDENTIFIER RATHER THAN A COPRODUCT.
+// Federal Social Security wages and Medicare wages are not one universal cash-wages figure, so a
+// spec meaning one base could previously receive a position computed under the other with every
+// represented field agreeing, and emit a plausible number. That is a fail-open at the FEDERAL
+// level and not a New Jersey predecessor, which is where an earlier reading of this carrier was
+// too comfortable.
+//
+// It is a NonEmptyStr and deliberately not a variant list. Assessment window is a closed semantic
+// axis the kernel may own; the set of contribution bases is an open registry each AUTHORITY
+// defines, so enumerating them here would be the generic hub dispatching over concrete products
+// that DESIGN 3 forbids - the same reason there is no Country enum. New Jersey covered
+// remuneration becomes one more authored row and edits nothing here.
+//
+// One consequence for the accrual fold: it applies ONE position to MANY specs, which is only
+// valid while those specs share a base. It is not separately checked, because it does not need to
+// be - a spec whose base differs from the position refuses, and the fold refuses whole on any
+// cause, so a mixed-base spec list cannot produce a number.
+
+// WHOSE earnings accumulate. US OASDI restarts its wage base per employer, so a second employer
+// applies the cap again and the over-withholding is reconciled on the worker's own return; HMRC
+// likewise has each employer compute on what it pays, subject to aggregation for associated
+// employers. This kernel does not compute the accumulation - the caller presents it - so scope is
+// checked for AGREEMENT rather than derived. That is the honest shape: a spec that means
+// per-employer must not silently receive a worker-lifetime position.
+type AggregationScope =
+    EmployerWorkerRelationship
+  | WorkerAcrossEmployers
+
+// Who bears the contribution is a fact about the contribution, not two parallel code paths.
+// Modeling it as a field is what lets employer-borne and worker-borne amounts be derived by one
+// fold, and is what will later make employee-versus-contractor a change of which rows apply
+// rather than a second implementation of payroll.
+type BearingParty = Employer | Worker
+
+// The four real statutory band shapes, closed. Each is an interval over the assessed position,
+// which is why the subject computation below is one subtraction rather than four arms of
+// arithmetic. The names say annual because every band authored against this kernel today is
+// assessed over a calendar year; a band assessed over an earnings period refuses before it
+// reaches these arms, so the names do not currently lie about any row that computes.
+type ContributionBand =
+  | FromFirstDollarUncapped
+  | CappedAtAnnualLimit { annual_limit: MoneyAmountMicro }
+  | AboveAnnualThreshold { annual_threshold: MoneyAmountMicro }
+  | BetweenAnnualBounds { annual_threshold: MoneyAmountMicro, annual_limit: MoneyAmountMicro }
+
+// effective_year is load-bearing, not bookkeeping. Rates and indexed wage bases reset every
+// January, and a model that silently computes this year's payroll from last year's row is exactly
+// the silent wrongness DESIGN 5 forbids - it produces a plausible number, files it, and is
+// discovered by a tax authority rather than by the software. A spec is admitted only against a
+// position from its own year, and a year with no authored row REFUSES.
+//
+// currency is carried because MoneyAmountMicro cannot carry it: that carrier is
+// Measure<Currency, Micro, Nat>, where Currency is the QUANTITY - the dimension - and not a code.
+// Two amounts in different currencies have the same type there and add without complaint. The fix
+// is the one product.fabric.budget already established: bind the code once to the authority that
+// declares it and refuse anything presented against it in another code. There is no converting
+// arm, because a conversion needs a rate, a rate needs a source and a date, and inventing one here
+// would fabricate the very fact the refusal exists to demand.
+type ContributionSpec {
+  name: NonEmptyStr
+  effective_year: Int
+  currency: CurrencyCode
+  rate: BasisPoint
+  band: ContributionBand
+  borne_by: BearingParty
+  assessment_window: AssessmentWindow
+  aggregation_scope: AggregationScope
+  contribution_base: NonEmptyStr
+}
+
+// The position BEFORE this period, and the period's own earnings, as separate fields. This is the
+// most consequential shape decision in the module. A band can only be applied to a cumulative
+// position: a worker who has already crossed the Social Security wage base owes nothing further,
+// and one who crosses it mid-period owes on the portion below it only. A carrier offering just
+// the period's earnings would make that distinction unrepresentable, so the cap would silently
+// apply per period - the classic payroll defect, which overcharges every high earner in exactly
+// the way nobody notices, and which the witness separates by crossing the cap deliberately.
+//
+// The window and scope are stated here too, and must AGREE with the spec's. They are the caller's
+// declaration of what it accumulated; a position assembled under one meaning and consumed under
+// another is a units error that arithmetic cannot detect.
+type AssessedPosition {
+  assessment_window: AssessmentWindow
+  aggregation_scope: AggregationScope
+  effective_year: Int
+  currency: CurrencyCode
+  contribution_base: NonEmptyStr
+  position_before: MoneyAmountMicro
+  this_period: MoneyAmountMicro
+}
+
+fn window_is_calendar_year(w: AssessmentWindow) -> Bool {
+  match w {
+    CalendarYearAssessed => true
+    EarningsPeriodAssessed => false
+  }
+}
+
+fn scope_is_employer_relationship(s: AggregationScope) -> Bool {
+  match s {
+    EmployerWorkerRelationship => true
+    WorkerAcrossEmployers => false
+  }
+}
+
+// A BetweenAnnualBounds row whose threshold is not strictly below its limit denotes an empty
+// interval, and the clamp arithmetic answers zero for every position - internally consistent, and
+// a plausible zero contribution rather than a refusal. That is a fail-open in the authority's own
+// shape rather than in a comparison between spec and position, so no equality check could reach
+// it. Equality of the two bounds is refused too: an accidentally empty band must not acquire
+// meaning from the arithmetic happening to return zero.
+//
+// This is validation where construction was not available - a .dag data row cannot refuse at
+// construction today - so the class sits at mechanically-preventable, not structurally
+// impossible. Its next-rung trigger is a refusing constructor for band rows, at which point this
+// check dissolves and its witness stays enrolled as the regression control.
+fn band_bounds_valid(b: ContributionBand) -> Bool {
+  match b {
+    FromFirstDollarUncapped => true
+    CappedAtAnnualLimit { annual_limit } => true
+    AboveAnnualThreshold { annual_threshold } => true
+    BetweenAnnualBounds { annual_threshold, annual_limit } =>
+      money_amount_micro_count(m: annual_threshold) < money_amount_micro_count(m: annual_limit)
+  }
+}
+
+// Saturating subtraction with no branch and no zero literal: subtracting the MINIMUM of the two is
+// exactly x - lower where that is defined and exactly zero where it is not, so the function is
+// total on the naturals by construction rather than by an if-arm that has to invent a zero.
+fn amount_above(x: Nat, lower: Nat) -> Nat {
+  x - nat_min(a: x, b: lower)
+}
+
+// A cumulative earnings figure, clamped into the band. The band is matched ONCE and each arm is
+// the whole clamp for that shape, so there is no optional ceiling threaded through a helper that
+// then has to ask whether it is present - the four statutory shapes are four total expressions
+// over the naturals, and the absence of an upper bound is the absence of an arm that applies one.
+fn clamped_position(band: ContributionBand, x: Nat) -> Nat {
+  match band {
+    FromFirstDollarUncapped => x
+    CappedAtAnnualLimit { annual_limit } =>
+      nat_min(a: x, b: money_amount_micro_count(m: annual_limit))
+    AboveAnnualThreshold { annual_threshold } =>
+      amount_above(x: x, lower: money_amount_micro_count(m: annual_threshold))
+    BetweenAnnualBounds { annual_threshold, annual_limit } =>
+      amount_above(
+        x: nat_min(a: x, b: money_amount_micro_count(m: annual_limit)),
+        lower: money_amount_micro_count(m: annual_threshold)
+      )
+  }
+}
+
+// The subject earnings are the band-clamped position AFTER this period minus the band-clamped
+// position BEFORE it. One expression covers all four band shapes, and it is correct at every
+// boundary by construction: a period entirely above a cap contributes zero because both clamps
+// saturate to the same value, and a period straddling a cap contributes exactly the portion below.
+fn subject_wage_micros(band: ContributionBand, before: Nat, total: Nat) -> Nat {
+  amount_above(
+    x: clamped_position(band: band, x: total),
+    lower: clamped_position(band: band, x: before)
+  )
+}
+
+type ContributionRefusal =
+  | ContributionBandBoundsInvalid { spec: NonEmptyStr }
+  | AssessmentWindowMismatch { spec: NonEmptyStr }
+  | AssessmentWindowUnmodeled { spec: NonEmptyStr }
+  | AggregationScopeMismatch { spec: NonEmptyStr }
+  | ContributionBaseMismatch {
+      spec: NonEmptyStr,
+      spec_base: NonEmptyStr,
+      presented_base: NonEmptyStr
+    }
+  | EffectiveYearMismatch { spec: NonEmptyStr, spec_year: Int, position_year: Int }
+  | ContributionCurrencyMismatch {
+      spec: NonEmptyStr,
+      spec_currency: CurrencyCode,
+      presented_currency: CurrencyCode
+    }
+
+// The originated arm carries the subject earnings beside the amount. A contribution reported as a
+// bare figure cannot be checked against the authority that produced it: the subject base is the
+// number a reconciliation against a payroll provider actually disagrees on, and dropping it here
+// would leave the divergence with nothing to name.
+type ContributionOutcome =
+  | ContributionOriginated {
+      spec: NonEmptyStr,
+      borne_by: BearingParty,
+      subject_wages: MoneyAmountMicro,
+      amount: MoneyAmountMicro
+    }
+  | ContributionRefused { cause: ContributionRefusal }
+
+// A malformed band is checked FIRST, because a spec whose own bounds are inconsistent cannot be
+// meaningfully compared against anything. Window agreement is then checked before the
+// unmodelled-window arm, so a spec and position that
+// disagree report the disagreement rather than being absorbed into the coarser refusal. Both
+// precede the year and currency checks because a window mismatch makes those comparisons
+// meaningless rather than merely wrong.
+fn contribution_for_period(spec: ContributionSpec, position: AssessedPosition) -> ContributionOutcome {
+  if !band_bounds_valid(b: spec.band) {
+    ContributionRefused { cause: ContributionBandBoundsInvalid { spec: spec.name } }
+  } else if window_is_calendar_year(w: spec.assessment_window) != window_is_calendar_year(w: position.assessment_window) {
+    ContributionRefused { cause: AssessmentWindowMismatch { spec: spec.name } }
+  } else if !window_is_calendar_year(w: spec.assessment_window) {
+    ContributionRefused { cause: AssessmentWindowUnmodeled { spec: spec.name } }
+  } else if scope_is_employer_relationship(s: spec.aggregation_scope) != scope_is_employer_relationship(s: position.aggregation_scope) {
+    ContributionRefused { cause: AggregationScopeMismatch { spec: spec.name } }
+  } else if spec.contribution_base != position.contribution_base {
+    ContributionRefused {
+      cause: ContributionBaseMismatch {
+        spec: spec.name,
+        spec_base: spec.contribution_base,
+        presented_base: position.contribution_base
+      }
+    }
+  } else if spec.effective_year != position.effective_year {
+    ContributionRefused {
+      cause: EffectiveYearMismatch {
+        spec: spec.name,
+        spec_year: spec.effective_year,
+        position_year: position.effective_year
+      }
+    }
+  } else if spec.currency != position.currency {
+    ContributionRefused {
+      cause: ContributionCurrencyMismatch {
+        spec: spec.name,
+        spec_currency: spec.currency,
+        presented_currency: position.currency
+      }
+    }
+  } else {
+    contribution_originated(spec: spec, position: position)
+  }
+}
+
+// WHAT THIS PRODUCES IS AN EXACT ACCRUAL, NOT A SETTLED AMOUNT, AND THE DISTINCTION IS THE WHOLE
+// REASON THE CONSUMER IS NAMED FOR ACCRUAL. The rate product is floored at micro grain. Statutory
+// withholding is not: Publication 15 accounts for rounding to the nearest cent per wage payment
+// with a fractions-of-cents adjustment on the quarterly return, so 100.09 dollars at 6.2 percent
+// accrues 6.205580 here and is withheld as 6.21. Naming a residual carefully does not make a
+// floored micro figure into money withheld - only a resolved rounding contract does, and mode,
+// grain and application scope are all statutory rather than one global choice.
+//
+// So no consumer may treat this output as an amount withheld or paid. Its next-rung trigger is a
+// RoundingContract carried by the authority, at which point a settled amount becomes derivable
+// and the accrual stays as the exact intermediate it already is.
+fn contribution_originated(spec: ContributionSpec, position: AssessedPosition) -> ContributionOutcome {
+  let before = money_amount_micro_count(m: position.position_before)
+  let total = before + money_amount_micro_count(m: position.this_period)
+  let subject = subject_wage_micros(band: spec.band, before: before, total: total)
+  let subject_amount = money_amount_micro(count: subject)
+  return ContributionOriginated {
+    spec: spec.name,
+    borne_by: spec.borne_by,
+    subject_wages: subject_amount,
+    amount: measure_scale_fraction_floor(
+      m: subject_amount,
+      num: basis_point_count(bp: spec.rate),
+      den: parts_per_ten_thousand_unity_count()
+    )
+  }
+}

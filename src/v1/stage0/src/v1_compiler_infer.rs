@@ -77,7 +77,7 @@ pub use crate::std_types::{
     container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
-pub use crate::v1_compiler_coercion::{decl_file_realizes_natively, type_reference_decl_file};
+pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -95,8 +95,8 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    declaration_file_of, effective_visible_binding, empty_symbol_index, empty_type_env_cache,
-    env_with_type_variable_bindings, global_bare_is_ambiguous,
+    declaration_provenance_of_ref, effective_visible_binding, empty_symbol_index,
+    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -274,8 +274,8 @@ pub use crate::v1_std_core::{
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -3030,6 +3030,136 @@ pub fn with_expected_where_refinement_diags(
     }
 }
 
+pub fn arm_body_diverges(mut n: Rc<Node>) -> bool {
+    loop {
+        match (*n.expr_data.clone()).clone() {
+            ExprData::ExprReturn => {
+                break true;
+            }
+            ExprData::ExprBlock => match n.children.clone().last().cloned() {
+                Some(tail) => {
+                    let __tco_0 = tail.clone();
+                    n = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break false;
+                }
+            },
+            _ => {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn match_arm_types_are_disjoint_coproducts(
+    unified_arm_type: Rc<Node>,
+    arm_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let unified_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), unified_arm_type.clone());
+        let arm_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), arm_type.clone());
+        if ((((coproduct_name_is_kernel_or_optional_carrier(unified_name.clone())
+            || coproduct_name_is_kernel_or_optional_carrier(arm_name.clone()))
+            || (unified_arm_type.return_cardinality.clone() == Cardinality::CardOptional))
+            || (arm_type.return_cardinality.clone() == Cardinality::CardOptional))
+            || crate::v1_std_core::type_name_compatible(unified_name.clone(), arm_name.clone()))
+        {
+            false
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                unified_name.clone(),
+            ) {
+                std::option::Option::None => false,
+                Some(unified_decl) => match crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    arm_name.clone(),
+                ) {
+                    std::option::Option::None => false,
+                    Some(arm_decl) => {
+                        let unified_is_concrete_coproduct = (((unified_decl.connective.clone()
+                            == Connective::Disj)
+                            && ((unified_decl.params.clone().len() as i64) == 0))
+                            && ((unified_decl.children.clone().len() as i64) > 0));
+                        let arm_is_concrete_coproduct = (((arm_decl.connective.clone()
+                            == Connective::Disj)
+                            && ((arm_decl.params.clone().len() as i64) == 0))
+                            && ((arm_decl.children.clone().len() as i64) > 0));
+                        let either_is_a_variant_of_the_other = (crate::v1_std_core::has_child_named(
+                            arm_decl.clone(),
+                            crate::v1_std_core::qualified_last_segment(unified_name.clone()),
+                            source_indices.clone(),
+                        )
+                            || crate::v1_std_core::has_child_named(
+                                unified_decl.clone(),
+                                crate::v1_std_core::qualified_last_segment(arm_name.clone()),
+                                source_indices.clone(),
+                            ));
+                        let same_declaration = (node_declaration_identity(
+                            unified_decl.clone(),
+                            source_indices.clone(),
+                        ) == node_declaration_identity(
+                            arm_decl.clone(),
+                            source_indices.clone(),
+                        ));
+                        (((unified_is_concrete_coproduct.clone()
+                            && arm_is_concrete_coproduct.clone())
+                            && (either_is_a_variant_of_the_other.clone() == false))
+                            && (same_declaration.clone() == false))
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub fn match_arm_join_diagnostics(
+    unified_arm_type: Rc<Node>,
+    arm: Rc<ArmInferResult>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
+        Rc::new(vec![])
+    } else {
+        if match_arm_types_are_disjoint_coproducts(
+            unified_arm_type.clone(),
+            arm.body_type.clone(),
+            scope.clone(),
+        ) {
+            Rc::new(vec![inference_error(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "match arms produce disjoint declared coproducts: ".to_string(),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                unified_arm_type.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                        ),
+                        " vs ".to_string(),
+                    ),
+                    crate::v1_compiler_infer_types::node_type_shape(
+                        arm.body_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                ),
+                crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                    .span
+                    .clone(),
+                scope.module_name.clone(),
+            )])
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
 pub fn infer_expr(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -3522,8 +3652,8 @@ pub fn equality_leaf_admission(
 ) -> Option<Rc<EqualityAdmissionRefusal>> {
     {
         let source_indices = scope.type_env.clone().source_indices.clone();
-        if crate::v1_compiler_coercion::decl_file_realizes_natively(
-            crate::v1_compiler_coercion::type_reference_decl_file(peeled.clone()),
+        if crate::v1_compiler_coercion::provenance_realizes_natively(
+            crate::v1_std_core::type_reference_provenance(peeled.clone()),
         ) {
             return std::option::Option::None;
         }
@@ -4564,8 +4694,8 @@ pub fn declared_realizes_as_kernel_numeric(
         if (produced_is_kernel_numeric.clone() == false) {
             false
         } else {
-            crate::v1_compiler_coercion::decl_file_realizes_natively(
-                crate::v1_compiler_coercion::type_reference_decl_file(declared.clone()),
+            crate::v1_compiler_coercion::provenance_realizes_natively(
+                crate::v1_std_core::type_reference_provenance(declared.clone()),
             )
         }
     }
@@ -8391,8 +8521,8 @@ pub fn literal_boundary_elaboration(
                         } else {
                             std::option::Option::None
                         };
-                        let natively = crate::v1_compiler_coercion::decl_file_realizes_natively(
-                            crate::v1_compiler_infer_env::declaration_file_of(
+                        let natively = crate::v1_compiler_coercion::provenance_realizes_natively(
+                            crate::v1_compiler_infer_env::declaration_provenance_of_ref(
                                 destination.clone(),
                                 scope.type_env.clone(),
                             ),
@@ -10298,6 +10428,21 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 }
                 __result
             });
+            let arm_join_diags = Rc::new({
+                let mut __result = Vec::new();
+                for ar in arm_infer_results.iter().cloned() {
+                    __result.extend(
+                        (*match_arm_join_diagnostics(
+                            unified_arm_type.clone(),
+                            ar.clone(),
+                            scope.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
             let result_type = unified_arm_type.clone();
             let empty_arms_diags = if ((arm_infer_results.clone().len() as i64) == 0) {
                 Rc::new(vec![inference_error(
@@ -10336,7 +10481,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 typed: match_texpr.clone(),
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(scrut_diags.clone(), arm_diags.clone()),
+                        v1_rt::concat(
+                            v1_rt::concat(scrut_diags.clone(), arm_diags.clone()),
+                            arm_join_diags.clone(),
+                        ),
                         empty_arms_diags.clone(),
                     ),
                     exhaustiveness_diags.clone(),

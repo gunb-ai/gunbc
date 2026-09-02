@@ -14,12 +14,13 @@ import std.types { Bool, Int, List }
 import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
+  SemanticNodeTarget, node_target_locator,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision,
   empty_store, copy_object, store_node,
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
   standing_loaded,
 }
 import std.decl_ref { DeclarationRef }
@@ -67,23 +68,29 @@ fn ls_parent() -> Node {
   )
 }
 
-type LsBuilt { store: ObjectStore, root: ObjectId }
+type LsBuilt { store: ObjectStore, root: SemanticNodeTarget }
 
 fn ls_full() -> LsBuilt {
   match store_node(store: empty_store(), n: ls_child()) {
-    LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: empty_store(), root: i }
-    Stored { store: s1, identity: _ } =>
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      LsBuilt { store: empty_store(), root: SemanticNodeTarget { locator: i } }
+    Stored { store: s1, node: _ } =>
       match store_node(store: s1, n: ls_parent()) {
-        LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: empty_store(), root: i }
-        Stored { store: s2, identity: p } => LsBuilt { store: s2, root: p }
+        LocatorCollision { identity: i, existing: _, incoming: _ } =>
+          LsBuilt { store: empty_store(), root: SemanticNodeTarget { locator: i } }
+        Stored { store: s2, node: p } => LsBuilt { store: s2, root: node_target_of(reference: p) }
       }
   }
 }
 
 fn ls_grafted() -> ObjectStore {
   let full = ls_full()
-  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
-    Copied { store: s, identity: _ } => s
+  match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.root),
+  ) {
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -96,7 +103,7 @@ fn ls_grafted() -> ObjectStore {
 // left is the standing, which is what the three tests below vary. A helper that also varied the
 // generation would report false for the wrong reason (DESIGN: a control that does not flip).
 fn ls_slot() -> HeadSlot {
-  HeadSlot { slot: "head", generation: ls_full().root }
+  HeadSlot { slot: "head", generation: node_target_locator(target: ls_full().root) }
 }
 
 fn ls_other_generation() -> ObjectId {
@@ -105,7 +112,7 @@ fn ls_other_generation() -> ObjectId {
 
 fn ls_child_identity() -> ObjectId {
   match store_node(store: empty_store(), n: ls_child()) {
-    Stored { store: _, identity: i } => i
+    Stored { store: _, node: n } => n.locator
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
@@ -118,7 +125,7 @@ fn ls_permits(standing: LoadStanding) -> Bool {
       evidence: observe_generation(
         slot: slot,
         examined_root: slot.generation,
-        schema_identity: "gunbc-scm-commit-closure-v2",
+        schema_identity: "gunbc-scm-commit-closure-v3",
         standing: standing,
         authority: decl_ref(
           module_path: "test.claim.scm_load_standing_witness",
@@ -141,6 +148,7 @@ fn standing_tag(s: LoadStanding) -> Int {
     LoadUnsupportedProtocol => 2
     LoadDocumentMalformed => 3
     LoadIdentityCollision => 4
+    LoadRequiresNodeAtAuthoredSource => 5
   }
 }
 
@@ -166,13 +174,20 @@ test fn a_partial_load_is_never_supersedable() -> Bool {
     && !ls_permits(standing: LoadComplete)
 }
 
-// MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and the three refusals are refused for three
-// different reasons rather than by one rule. If this were the empty set the negative tests above
-// would pass vacuously.
+// MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and each non-permitting standing is refused for its
+// own reason rather than by one rule. If this were the empty set the negative tests above would pass
+// vacuously.
+//
+// THE CLAIM NAMES THE WHOLE POPULATION, SO IT MUST CHECK IT. This said "the three refusals" and
+// checked two, omitting `LoadRequiresNodeAtAuthoredSource` -- which meant the standing added by this
+// very branch could have permitted replacement with the claim still green. LoadComplete and
+// LoadPartial are checked by a_partial_load_is_never_supersedable above; the remaining three are
+// checked here, so the five are covered between the pair rather than by either alone.
 test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
   ls_permits(standing: LoadDocumentMalformed)
     && !ls_permits(standing: LoadUnsupportedProtocol)
     && !ls_permits(standing: LoadIdentityCollision)
+    && !ls_permits(standing: LoadRequiresNodeAtAuthoredSource)
     && !standing_loaded(standing: LoadDocumentMalformed)
 }
 
@@ -212,7 +227,7 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
 test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   let collision = closure_document_load_standing(
     cause: ClosureDocObjectTableRefused {
-      cause: ObjectTableObjectCollision { identity: ls_full().root }
+      cause: ObjectTableObjectCollision { identity: node_target_locator(target: ls_full().root) }
     }
   )
   let malformed = closure_document_load_standing(
