@@ -226,6 +226,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `disagreement_census_blind_to_agreed_wrong`
 - `undecided_fraction_read_as_denominator`
 - `restoration_promise_names_a_route_that_does_not_exist`
+- `alias_resolution_collides_with_kernel_spelling`
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `yaml_inline_comment_ingested_as_scalar_content`
