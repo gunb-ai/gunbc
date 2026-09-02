@@ -119,6 +119,12 @@ fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
         },
         intern.heap_bytes
     );
+    eprintln!(
+        "[interp-stats] canonical-symbol-retention entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+        intern.canonical_entries,
+        intern.canonical_retained_spelling_bytes,
+        intern.canonical_spelling_cap_bytes
+    );
     eprintln!("[interp-stats] retained value accounting (data cache + pure-call memo):");
     eprint!("{}", ctx.account_retained_memory(&[]));
     eprintln!("[interp-stats] process memory:");
@@ -187,6 +193,52 @@ struct ParsedArgs {
 struct DiscoveryConfig {
     scan_dirs: Vec<String>,
     notice_title: String,
+}
+
+fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
+    use v1_compiler::v1_compiler_infer_items::{item_kind, ItemKind};
+
+    for group in entry_groups {
+        if group.functions.is_empty() {
+            continue;
+        }
+        let parsed = v1_compiler::module_path_index::parsed_dag_file::parse_dag_file(
+            std::path::Path::new(&group.entry),
+        )
+        .ok_or_else(|| {
+            eprintln!(
+                "claim_batch: cannot parse --entry {} while validating functions",
+                group.entry
+            );
+            ExitCode::from(2)
+        })?;
+        let declared: std::collections::BTreeSet<String> = parsed
+            .items
+            .iter()
+            .filter(|item| {
+                matches!(
+                    item_kind((*item).clone()),
+                    ItemKind::FnItem | ItemKind::FuncItem
+                )
+            })
+            .map(|item| item.name.clone())
+            .collect();
+        let missing: Vec<&str> = group
+            .functions
+            .iter()
+            .filter(|function| !declared.contains(function.as_str()))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            eprintln!(
+                "claim_batch: --entry {} does not declare requested function(s): {}",
+                group.entry,
+                missing.join(", ")
+            );
+            return Err(ExitCode::from(2));
+        }
+    }
+    Ok(())
 }
 
 fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
@@ -583,6 +635,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
+    // Explicit names are entry-local facts. Refuse stale/typoed argv before the whole-tree
+    // bare-reference warm, output-policy resolution, module-index construction, or entry resolve.
+    // Discovery-produced rows are validated by their producer and join later in this function.
+    validate_explicit_functions(&parsed.entry_groups)?;
+
     // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
     // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
     // required floor it was charged in full to whichever claim resolved an entry first.
@@ -949,7 +1006,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod cli_path_resolution_wiring_tests {
-    use super::parse_args;
+    use super::{parse_args, validate_explicit_functions, EntryGroup};
     use v1_compiler::cli_run::workspace_root;
 
     fn args(v: &[&str]) -> Vec<String> {
@@ -965,7 +1022,7 @@ mod cli_path_resolution_wiring_tests {
         let ws = workspace_root();
         let root = ws.join("dag").to_string_lossy().into_owned();
         let entry = ws
-            .join("dag/test/claim/commit_workflow_witness_test.dag")
+            .join("dag/test/claim/discovery_census_witness_test.dag")
             .to_string_lossy()
             .into_owned();
         let parsed = parse_args(&args(&[
@@ -974,7 +1031,7 @@ mod cli_path_resolution_wiring_tests {
             "--entry",
             &entry,
             "--function",
-            "witness_roster_nonempty",
+            "w_site_label_is_the_module_path_as_package",
         ]))
         .unwrap_or_else(|_| panic!("absolute existing paths must parse"));
         assert_eq!(parsed.source_roots, vec![root]);
@@ -1002,9 +1059,9 @@ mod cli_path_resolution_wiring_tests {
             "--source-root",
             "dag",
             "--entry",
-            "dag/test/claim/commit_workflow_witness_test.dag",
+            "dag/test/claim/discovery_census_witness_test.dag",
             "--function",
-            "witness_roster_nonempty",
+            "w_site_label_is_the_module_path_as_package",
         ]));
         assert_eq!(
             result.is_ok(),
@@ -1013,6 +1070,32 @@ mod cli_path_resolution_wiring_tests {
             cwd.display(),
             workspace_root().display()
         );
+    }
+
+    #[test]
+    fn nonexistent_explicit_function_refuses_before_resolution() {
+        let entry = workspace_root()
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let groups = vec![EntryGroup {
+            entry,
+            functions: vec!["this_function_does_not_exist".to_string()],
+        }];
+        assert!(validate_explicit_functions(&groups).is_err());
+    }
+
+    #[test]
+    fn declared_explicit_function_passes_preflight() {
+        let entry = workspace_root()
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let groups = vec![EntryGroup {
+            entry,
+            functions: vec!["w_site_label_is_the_module_path_as_package".to_string()],
+        }];
+        assert!(validate_explicit_functions(&groups).is_ok());
     }
 }
 

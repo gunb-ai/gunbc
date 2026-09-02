@@ -190,30 +190,26 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
     let glyph = if emoji { "⏳" } else { "◷" };
     format!("{glyph} {}", mirror_ci_hold_cause_text(hold))
 }
-/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_runner_slot_desired`
-/// — the declared per-slot throttle line (field `memory_high`). This constant is a mirror, not
-/// an independent value: it may only move toward its authority row. Joined by
-/// `test.claim.seed_mirror_constant_lens_witness_test`.
+/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_runner_slot_desired` — the declared
+/// per-slot throttle line (field `memory_high`). A mirror, not an independent value: it may only
+/// move toward its authority row. Joined by `test.claim.seed_mirror_constant_lens_witness_test`.
 ///
-/// IT IS NOT A BUDGET SOURCE, and that distinction is what `read_host_budget_bytes` erased
-/// until 2026-08-30. It declares what THIS fleet configures its own self-hosted runner slots
-/// to — true of the machines this repository provisions and of nothing else. Capping a
-/// host-shared MemAvailable reading at it turned it into a claim about an unmeasured third
-/// party's executor, and on BuildBuddy (whose slot exposes no cgroup limit file at all) the
-/// resulting budget got `main_wet` SIGKILLed at rc=137 with no diagnostic. A declared
-/// constant may bound a refusal; it may not stand in for a reading. Its remaining uses are
-/// fixtures that reason about the fleet's own slots.
-/// Authority: `gunbc.host_budget_source` `host_budget_declared_slot_is_not_a_reading_note`.
+/// IT IS NOT A BUDGET SOURCE — the distinction `read_host_budget_bytes` erased until 2026-08-30.
+/// It declares what THIS fleet configures its own self-hosted runner slots to, true of nothing
+/// else. Capping a host-shared MemAvailable reading at it made a claim about an unmeasured third
+/// party's executor; on BuildBuddy (whose slot exposes no cgroup limit file) the resulting budget
+/// got `main_wet` SIGKILLed at rc=137 with no diagnostic. A declared constant may bound a
+/// refusal, never stand in for a reading. Remaining uses: fixtures about the fleet's own slots.
+/// Authority: `gunbc.host_budget_source` the `host_budget_declared_slot_is_not_a_reading_note` annotation.
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16106127360;
 
 /// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
 /// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
 /// arm-time floor refusal when the governor budget is below the measured minimum viable
-/// footprint — a crowded slot whose cgroup limit is genuinely low would otherwise start a
-/// doomed ~30min walk (runs 29834380839, 29845210061). The witnesses behind it were taken
-/// when an uncapped host could still be admitted on a low MemAvailable reading; that arm is
-/// gone (such a host now refuses outright), so what this constant still guards is a small
-/// but READABLE bound — a tight cgroup limit or a low operator override.
+/// footprint, else a crowded slot with a genuinely low cgroup limit starts a doomed ~30min walk
+/// (runs 29834380839, 29845210061). Its witnesses were taken when an uncapped host could still
+/// be admitted on a low MemAvailable reading; that arm is gone (such a host refuses outright),
+/// so it now guards a small but READABLE bound — a tight cgroup limit or a low operator override.
 /// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
 /// (self-host frontier row for `memory_governor` cgroup-budget readers); re-measure when
 /// bright-seal #6999 fill-deferral cuts mature index residency.
@@ -239,92 +235,76 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 
 /// Measured whole-tree compile demand — the threshold a whole-corpus compile is admitted
 /// against. SCAFFOLD (§7 seed-retained HAND-RUST; authority
-/// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measured_peak_demand`),
-/// the same shape and the same reason as `DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES`
-/// above: the decision runs before any `.dag` value could exist, because it is the decision
-/// about whether resolving the corpus may begin.
+/// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measured_peak_demand`), same
+/// shape and reason as `DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES`: the decision runs
+/// before any `.dag` value could exist, being the decision whether resolving the corpus may begin.
 ///
-/// Basis: two dated, uncensored whole-corpus peaks taken ON THE COMPILE ROUTE ITSELF
-/// (2026-08-28, session clever-tern-899, srv1), against a clean tree staged at
-/// `91c05c1b344d29f97a363eaff34843177d552a99` with a binary BUILT FROM THAT SAME SHA —
-/// `--target dag` peaked at 13008052 kB and `--target rust` at 13005964 kB, both EXIT=1
-/// (completed and refused on diagnostics, not killed), with 271 GiB still free on the host at
-/// exit so neither peak is a throttle pin. A scoped positive control ran first and returned
-/// EXIT=0 with a file emitted, so the harness produces both outcomes. The declared figure is
-/// the higher reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up
-/// refuses the marginal case and rounding down admits it.
+/// Refusing-peak basis: two dated, uncensored whole-corpus peaks ON THE COMPILE ROUTE ITSELF
+/// (2026-08-28, session clever-tern-899, srv1), clean tree staged at
+/// `91c05c1b344d29f97a363eaff34843177d552a99`, binary BUILT FROM THAT SAME SHA — `--target dag`
+/// peaked at 13008052 kB and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused
+/// on diagnostics, not killed), 271 GiB still free at exit so neither is a throttle pin. A scoped
+/// positive control ran first and returned EXIT=0 with a file emitted, so the harness produces
+/// both outcomes.
 ///
-/// The predecessor basis was two 2026-07-21 CI receipts (runs 29828873976 / 29834202745,
-/// ~6.3 and ~6.2 GiB) taken on the FLOOR route rather than this one, declared as a proxy and
-/// as a LOWER bound. Those receipts no longer ground this constant and are named here only as
-/// the superseded basis; the row's own re-measure trigger — a dated uncensored whole-tree peak
-/// on the compile route — is what retired them.
+/// Superseded basis: two 2026-07-21 CI receipts (runs 29828873976 / 29834202745, ~6.3 and
+/// ~6.2 GiB) on the FLOOR route, declared as a proxy and LOWER bound. That 7 GiB proxy sat 43.6%
+/// BELOW the measured 12.41 GiB peak (56.4% of it), so this arm admitted hosts it would then be
+/// killed on. The row's own re-measure trigger — a dated uncensored whole-tree peak on the
+/// compile route — retired them on 2026-08-28.
 ///
-/// This is the seed's copy of `gunbc.whole_corpus_compile_admission`
-/// `whole_corpus_compile_measured_peak_demand`, written as a canonical decimal literal so the
-/// mirror lens can join it to that row — an underscored or arithmetic literal is the same
-/// value written so that no join can reach it.
+/// Written as a canonical decimal literal so the mirror lens can join it to its row — an
+/// underscored or arithmetic literal is the same value no join can reach.
 ///
 /// SEED MIRROR of `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measured_peak_demand`
 ///
-/// The marker was withheld until now for a merge-order reason, recorded here because the
-/// reason is the mechanism rather than an accident: the lens's BACKWARD arm requires marker
-/// occurrences per seed file to equal roster rows homed in that file, and the marker is the
-/// enrollment act, so a marked constant with no roster row reds main for however long the two
-/// land apart. gunbc#8635 and gunbc#8638 have both merged, so the marker and the row land
-/// together here, which is the coupling that was always required.
+/// The marker was withheld for a merge-order reason that is the mechanism: the lens's BACKWARD
+/// arm requires marker occurrences per seed file to equal roster rows homed in that file, and the
+/// marker is the enrollment act, so a marked constant with no roster row reds main until both
+/// land. gunbc#8635 and gunbc#8638 have merged, so marker and row land together here.
 ///
 /// dissolve-on: the emit path that retires this seed's other budget mirrors; re-measure
 /// trigger: a dated uncensored whole-corpus peak on the `gunbc compile` route, taken with a
 /// binary built from the subject sha, that EXCEEDS this figure.
 ///
-/// The 7 GiB predecessor was a PROXY taken on the floor route at an older tree and sat 43.6%
-/// BELOW the measured peak — 7 GiB against 12.41 GiB, or 56.4% of it — so this arm admitted
-/// hosts it would then be killed on. Its own
-/// re-measure trigger fired on 2026-08-28: whole-corpus `--target dag` peaked at 13008052 kB
-/// and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused, not killed) on an
-/// unthrottled host, with the binary built from the tree being compiled.
-///
-/// THIS VALUE IS NOT DERIVED FROM THOSE PEAKS, and the distinction is the whole reason the
-/// figure is 16 GiB rather than 13. All three of those runs REFUSED on diagnostics, so each
-/// peak bounds a run that stopped early; the highest COMPLETING whole-corpus peak measured on
-/// this route is 15871708 kB = 15.14 GiB (`--target dag`, exit 0, attributed to warm-ant-908
-/// and adopted rather than reproduced here). 15.14 GiB rounded UP to whole-gibibyte grain is
-/// 16 GiB = 17179869184 — landing on `memory_max` by arithmetic, not by design.
+/// THIS VALUE IS NOT DERIVED FROM THE REFUSING PEAKS — that is why the figure is 16 GiB rather
+/// than 13. All three of those runs REFUSED on diagnostics, so each peak bounds a run that
+/// stopped early; the highest COMPLETING whole-corpus peak on this route is 15871708 kB =
+/// 15.14 GiB (`--target dag`, exit 0, attributed to warm-ant-908 and adopted rather than
+/// reproduced here). 15.14 GiB rounded UP to whole-gibibyte grain is 16 GiB = 17179869184 —
+/// landing on `memory_max` by arithmetic, not by design.
 ///
 /// Declaring 13 GiB (the refusing peaks rounded up) was this row's state until review 57202 on
-/// gunbc#9545, which observed that it left every budget from 13 to 15.14 GiB admitted with no
-/// evidence it can complete — the same fail-open class this constant exists to close, one band
+/// gunbc#9545, which observed it left every budget from 13 to 15.14 GiB admitted with no
+/// evidence it can complete — the fail-open class this constant exists to close, one band
 /// narrower. Rounding UP is what makes the grain rule fail-closed: for a DEMAND figure it
-/// refuses the marginal case where rounding down would admit it. A threshold must not sit below
-/// the highest peak anyone has measured on this route, whoever measured it.
+/// refuses the marginal case rounding down would admit. A threshold must not sit below the
+/// highest peak anyone has measured on this route.
 ///
 /// The `.dag` authority `gunbc.whole_corpus_compile_admission`
-/// `whole_corpus_compile_measured_demand_note` carries the full adoption argument, what
-/// adoption does and does not assert, and why the CI runner slot is now REFUSED as a
-/// deliberate over-refusal. Keep this paragraph and that note in step: this comment is prose
-/// the seed-mirror lens does not check (it verifies the numeric value only — see
-/// `seed_mirror_reach_note`'s residual), so a stale justification here is exactly the
-/// unaudited-prose drift that residual names, and it recurred in the very diff that repaired
-/// another instance of it.
+/// `whole_corpus_compile_measured_demand_note` carries the full adoption argument, what adoption
+/// does and does not assert, and why the CI runner slot is now REFUSED as a deliberate
+/// over-refusal. Keep this paragraph and that note in step: the seed-mirror lens checks the
+/// numeric value only (see `seed_mirror_reach_note`'s residual), so a stale justification here
+/// is the unaudited-prose drift that residual names — it recurred in the very diff that
+/// repaired another instance of it.
 pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 17179869184;
 
 /// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
 /// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_admission`.
 ///
-/// It exists because the budget was already read and already printed and was joined to
-/// nothing: `cli_run::typed_module_cache_cap` emits `[floor-drain] degraded_budget_source`
-/// and the process then starts a resolve it cannot hold. Measured twice on the BuildBuddy
-/// remote-execution runner (invocations a39713da-8cfb-415d-a8f6-1e0ef150d075 and
-/// 13cf8d2e-173a-42d2-9a56-101bb3332740): SIGKILL, exit 137, no diagnostic — so a harness
-/// grepping the captured output reads a fabricated zero rather than a failure.
+/// Exists because the budget was read and printed but joined to nothing:
+/// `cli_run::typed_module_cache_cap` emits `[floor-drain] degraded_budget_source` and the process
+/// then starts a resolve it cannot hold. Measured twice on the BuildBuddy remote-execution runner
+/// (invocations a39713da-8cfb-415d-a8f6-1e0ef150d075 and 13cf8d2e-173a-42d2-9a56-101bb3332740):
+/// SIGKILL, exit 137, no diagnostic — a harness grepping the captured output reads a fabricated
+/// zero rather than a failure.
 ///
 /// What it does NOT claim: an admitted budget is not certified sufficient. The threshold is a
-/// peak taken on THIS route, at a named sha, with a binary built from it — the "neighbouring
-/// route at an older tree" qualification this comment carried until 2026-08-28 is retired.
-/// What survives is narrower and still true: it is ONE tree's peak, and a demand figure does
-/// not shrink with corpus growth, so admission means "not provably doomed at the tree that was
-/// measured" (mitigatable, §4b), never "will fit".
+/// peak taken on THIS route, at a named sha, with a binary built from it (the "neighbouring
+/// route at an older tree" qualification carried until 2026-08-28 is retired). It is ONE tree's
+/// peak, and a demand figure does not shrink with corpus growth, so admission means "not
+/// provably doomed at the tree that was measured" (mitigatable, §4b), never "will fit".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WholeCorpusCompileAdmission {
     Admitted {
@@ -365,17 +345,15 @@ pub fn whole_corpus_compile_admission(
     }
 }
 
-/// `Some(diagnostic)` on either refusal arm, `None` when admitted. The diagnostic names the
-/// two quantities that disagree, the budget and its source, and the scoped `--entry`
-/// narrowing measured to fit on the same runner — a refusal that proposes no remedy is a
-/// stopped line nobody can restart.
+/// `Some(diagnostic)` on either refusal arm, `None` when admitted. The diagnostic names the two
+/// disagreeing quantities, the budget and its source, and the scoped `--entry` narrowing measured
+/// to fit on the same runner — a refusal proposing no remedy is a stopped line nobody can restart.
 ///
-/// Deliberately a free function rather than an inherent method: `std.decl_ref` `DeclField`
-/// offers `WholeDeclaration` or `NamedField` and neither names a method on an impl block, so
-/// an impl method cannot be cited in the `SeedGrowthJustification` this change owes. The
-/// sibling receipt in `gunbc.stage0_rust_host_observation` carries exactly one such uncitable
-/// item in prose because its `Display` realization had no citable form; this one does, so it
-/// takes it rather than growing that class by one.
+/// Deliberately a free function, not an inherent method: `std.decl_ref` `DeclField` offers
+/// `WholeDeclaration` or `NamedField`, neither naming an impl-block method, so an impl method
+/// cannot be cited in the `SeedGrowthJustification` this change owes. The sibling receipt in
+/// `gunbc.stage0_rust_host_observation` carries one such uncitable item in prose because its
+/// `Display` realization had no citable form; this one has, so it takes it.
 pub fn whole_corpus_compile_refusal_diagnostic(
     admission: &WholeCorpusCompileAdmission,
 ) -> Option<String> {
@@ -407,25 +385,205 @@ pub fn whole_corpus_compile_refusal_diagnostic(
     }
 }
 
-/// The typed budget SOURCE — the seed mirror of `gunbc.host_budget_source`
-/// `HostBudgetSource`. It exists so consumers ask the discriminant rather than scanning the
-/// display label: `cli_run::entry_resolve::typed_module_cache_cap_derivation` decided
-/// "degraded" with `label.contains("memory.max") || label.contains("memory.high")`, which is
-/// one string doing two jobs — a reworded diagnostic silently moved the verdict, and it
-/// classified the operator's own env override as degraded.
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_major_fault_rate_per_minute_threshold`.
+/// POLICY, like the AIMD thresholds above: two orders of magnitude over healthy background
+/// (a warm resolve sustains ~0 majflt/min), an order under the measured treadmill (a
+/// thrashing swapless VM refaults thousands per second — the 2026-08-30 default-VM
+/// specimens, `memory_stall_observed_receipt_note`).
+pub const MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD: u64 = 6000;
+
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_verdict_window_minimum_wall_ms`.
+/// What makes the rate a rate rather than a spike detector: no verdict below this much wall,
+/// so a cold-start refault burst can never refuse a run that then progresses.
+pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
+
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_progress_cpu_share_floor`.
+/// The progress half of the refusal's conjunction, forced by this verdict's own first CI
+/// execution (`memory_stall_admitted_under_pressure_receipt_note`): the floor runner
+/// sustained 12431 majflt/min through a 13-minute CPU-bound typecheck under a memory.high
+/// reclaim throttle — over the rate line and demonstrably completing, so rate alone
+/// over-refuses. A window is a treadmill only if the process's own USER CPU is also below
+/// this share of the wall — utime alone, never stime, because the measured treadmill
+/// (invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4: 178795 majflt/min, utime 0.8% of
+/// wall, stime 34%) shows the kernel billing its reclaim labour to the faulting process
+/// as system time, so a utime+stime share reads a pure treadmill as one-third computing.
+/// Declared in BASIS POINTS (the `std.measure` `BasisPoint` carrier the authority row
+/// uses): 2000 bp = 20%.
+pub const MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS: u64 = 2000;
+
+/// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallObservation`: one windowed
+/// sample of the process's own eviction/readmission behaviour — its major-fault counter
+/// (the kernel's record of this process re-reading its own evicted pages) and its own CPU
+/// time for the same wall, beside the typed cache's own eviction and readmission counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryStallObservation {
+    pub window_wall_ms: u64,
+    pub major_faults_in_window: u64,
+    pub self_user_cpu_ms_in_window: u64,
+    pub cache_evictions_in_window: u64,
+    pub cache_readmissions_in_window: u64,
+}
+
+/// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallVerdict`. Three states, none
+/// conflated: an open window is not evidence in either direction, a computable window with
+/// the fault counter flat is progress however slow the arithmetic (time enters only as the
+/// rate's denominator — never a refusal condition), and a computable window over the line
+/// is the refusal, carrying the whole observation so the diagnostic names what was seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryStallVerdict {
+    StallWindowOpen {
+        window_wall_ms: u64,
+        minimum_wall_ms: u64,
+    },
+    ProgressUnderMemoryAdmissible {
+        major_faults_per_minute: u64,
+        self_cpu_share_basis_points: u64,
+    },
+    StallRefusedPageThrash {
+        major_faults_per_minute: u64,
+        threshold_per_minute: u64,
+        self_cpu_share_basis_points: u64,
+        cpu_share_floor_basis_points: u64,
+        observation: MemoryStallObservation,
+    },
+}
+
+/// Mirror of `memory_stall_major_faults_per_minute`. Callers reach it through
+/// `memory_stall_verdict`, which guards the zero-wall window behind `StallWindowOpen`.
+pub fn memory_stall_major_faults_per_minute(o: &MemoryStallObservation) -> u64 {
+    o.major_faults_in_window.saturating_mul(60000) / o.window_wall_ms.max(1)
+}
+
+/// Mirror of `memory_stall_self_cpu_share` — the progress half of the conjunction, in
+/// basis points of the window's wall (the `BasisPoint` grain of the authority row).
+pub fn memory_stall_self_cpu_share_basis_points(o: &MemoryStallObservation) -> u64 {
+    o.self_user_cpu_ms_in_window.saturating_mul(10_000) / o.window_wall_ms.max(1)
+}
+
+/// Mirror of `gunbc.memory_stall_refusal` `memory_stall_verdict`: the refusal is a
+/// CONJUNCTION — fault rate above its line AND the process's own CPU share of the window
+/// below its floor. Rate alone over-refuses (the CI floor runner sustains 12431 majflt/min
+/// through a CPU-bound typecheck under a memory.high reclaim throttle and completes —
+/// `memory_stall_admitted_under_pressure_receipt_note`); CPU share is what the "not
+/// computing" claim in the refusal actually measures.
+pub fn memory_stall_verdict(o: MemoryStallObservation) -> MemoryStallVerdict {
+    if o.window_wall_ms < MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS {
+        return MemoryStallVerdict::StallWindowOpen {
+            window_wall_ms: o.window_wall_ms,
+            minimum_wall_ms: MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS,
+        };
+    }
+    let rate = memory_stall_major_faults_per_minute(&o);
+    let cpu_share_bp = memory_stall_self_cpu_share_basis_points(&o);
+    if rate > MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD
+        && cpu_share_bp < MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS
+    {
+        MemoryStallVerdict::StallRefusedPageThrash {
+            major_faults_per_minute: rate,
+            threshold_per_minute: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD,
+            self_cpu_share_basis_points: cpu_share_bp,
+            cpu_share_floor_basis_points: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS,
+            observation: o,
+        }
+    } else {
+        MemoryStallVerdict::ProgressUnderMemoryAdmissible {
+            major_faults_per_minute: rate,
+            self_cpu_share_basis_points: cpu_share_bp,
+        }
+    }
+}
+
+/// Mirror of `memory_stall_refusal_pressure_text`: the pressure clause of the refusal —
+/// what was observed, against what line, from which counter, and the remedy. The LOCATION
+/// half (which module, which budget and source) is composed by the consumer that holds
+/// those facts. Non-refusing verdicts render nothing: a consumer logging the clause
+/// unconditionally must not fabricate pressure prose for a window that admitted.
+pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
+    match v {
+        MemoryStallVerdict::StallWindowOpen { .. }
+        | MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. } => String::new(),
+        MemoryStallVerdict::StallRefusedPageThrash {
+            major_faults_per_minute,
+            threshold_per_minute,
+            self_cpu_share_basis_points,
+            cpu_share_floor_basis_points,
+            observation,
+        } => format!(
+            "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages at \
+             {major_faults_per_minute} major faults/minute while computing for only \
+             {}% of the wall, over the last {} ms ({} major faults; \
+             rate line {threshold_per_minute}/minute, CPU-share floor \
+             {}%; source /proc/self/stat majflt and utime; \
+             typed-cache evictions in window {}, readmissions {}). The wall clock is being \
+             spent re-reading resident pages the kernel evicted, not computing: the machine \
+             underneath cannot deliver the admitted budget beside its own page cache, and \
+             with swap disabled this treadmill holds indefinitely instead of failing. \
+             Refusing rather than holding. Remedy: run where the admitted budget is \
+             genuinely available (a larger runner), or scope the compile with --entry to a \
+             smaller closure.",
+            self_cpu_share_basis_points / 100,
+            observation.window_wall_ms,
+            observation.major_faults_in_window,
+            cpu_share_floor_basis_points / 100,
+            observation.cache_evictions_in_window,
+            observation.cache_readmissions_in_window,
+        ),
+    }
+}
+
+/// This process's cumulative major-fault count — `/proc/self/stat` majflt, proc.5 field 12
+/// (index 9 after the comm field, whose parentheses force the split on the LAST `)` —
+/// the same parse discipline as `v1_rt::trace_process_tree_cpu_ms`). `None` where the file
+/// is absent or unparsable (Darwin has no procfs): the stall check is inert for that
+/// sample, never a fabricated zero — the documented `MemorySignals` discipline above.
+pub fn self_major_faults() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit(')').next()?;
+    after_comm.split_whitespace().nth(9)?.parse().ok()
+}
+
+/// This process's own cumulative USER-CPU milliseconds — utime alone (`/proc/self/stat`
+/// field 14, index 11 after comm). Deliberately WITHOUT stime: the measured treadmill
+/// runs 34% stime while computing nothing, because the kernel bills reclaim and
+/// fault-handling labour to the faulting process as system time — utime is the only
+/// component that measures this program's own instructions retiring. And deliberately
+/// WITHOUT the reaped-child fields `v1_rt::trace_process_tree_cpu_ms` adds: a child's CPU
+/// landing at reap time would spike the share of a window the parent spent waiting. Same
+/// `None`-when-unreadable discipline as `self_major_faults`.
+pub fn self_user_cpu_ms() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit(')').next()?;
+    after_comm
+        .split_whitespace()
+        .nth(11)?
+        .parse::<u64>()
+        .ok()
+        .map(|t| t * 1000 / 100)
+}
+
+/// The typed budget SOURCE — seed mirror of `gunbc.host_budget_source` `HostBudgetSource`.
+/// Consumers ask the discriminant rather than scanning the display label:
+/// `cli_run::entry_resolve::typed_module_cache_cap_derivation` decided "degraded" with
+/// `label.contains("memory.max") || label.contains("memory.high")` — one string doing two jobs,
+/// so a reworded diagnostic silently moved the verdict, and the operator's own env override was
+/// classified degraded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostBudgetSource {
-    EnvOverride,
     CgroupMemoryHigh { cgroup_dir: String },
     CgroupMemoryMax { cgroup_dir: String },
     DarwinPhysicalMemory,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostBudgetObservation {
+    pub source: HostBudgetSource,
+    pub bytes: u64,
 }
 
 impl HostBudgetSource {
     /// Mirror of `host_budget_source_label`.
     pub fn label(&self) -> String {
         match self {
-            HostBudgetSource::EnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES".to_string(),
             HostBudgetSource::CgroupMemoryHigh { cgroup_dir } => {
                 format!("cgroup memory.high ({cgroup_dir})")
             }
@@ -440,17 +598,16 @@ impl HostBudgetSource {
     /// something THIS process cannot exceed, rather than a fact about the machine.
     pub fn bounds_this_process(&self) -> bool {
         match self {
-            HostBudgetSource::EnvOverride
-            | HostBudgetSource::CgroupMemoryHigh { .. }
-            | HostBudgetSource::CgroupMemoryMax { .. } => true,
-            HostBudgetSource::DarwinPhysicalMemory => false,
+            HostBudgetSource::CgroupMemoryMax { .. } => true,
+            HostBudgetSource::CgroupMemoryHigh { .. } | HostBudgetSource::DarwinPhysicalMemory => {
+                false
+            }
         }
     }
 
-    /// Mirror of `host_budget_source_is_degraded` — the complement of `bounds_this_process`,
-    /// asserted as a partition by `test.claim.host_budget_source_witness`.
+    /// Mirror of `host_budget_source_is_degraded`.
     pub fn is_degraded(&self) -> bool {
-        !self.bounds_this_process()
+        matches!(self, HostBudgetSource::DarwinPhysicalMemory)
     }
 }
 
@@ -459,10 +616,19 @@ impl HostBudgetSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostBudgetResolution {
     Resolved {
-        source: HostBudgetSource,
-        bytes: u64,
+        effective_bytes: u64,
+        requested_bytes: Option<u64>,
+        observation: HostBudgetObservation,
     },
     Unreadable {
+        reason: String,
+    },
+    /// An operator requested a planning ceiling, but no independently observed limit
+    /// establishes what this process can actually consume.  The declaration is retained
+    /// as a usable planning input for consumers that only derive cache entry count or
+    /// concurrency; the distinct variant prevents promotion into an observed/enforced limit.
+    DeclaredUnverified {
+        requested_bytes: u64,
         reason: String,
     },
 }
@@ -471,7 +637,12 @@ impl HostBudgetResolution {
     /// Mirror of `host_budget_resolution_bytes`.
     pub fn bytes(&self) -> Option<u64> {
         match self {
-            HostBudgetResolution::Resolved { bytes, .. } => Some(*bytes),
+            HostBudgetResolution::Resolved {
+                effective_bytes, ..
+            } => Some(*effective_bytes),
+            HostBudgetResolution::DeclaredUnverified {
+                requested_bytes, ..
+            } => Some(*requested_bytes),
             HostBudgetResolution::Unreadable { .. } => None,
         }
     }
@@ -480,8 +651,24 @@ impl HostBudgetResolution {
     /// logs the label never fabricates a provenance for a read that did not happen.
     pub fn label(&self) -> String {
         match self {
-            HostBudgetResolution::Resolved { source, .. } => source.label(),
+            HostBudgetResolution::Resolved {
+                effective_bytes,
+                requested_bytes,
+                observation,
+            } => match requested_bytes {
+                Some(requested) => format!(
+                    "effective planning minimum {effective_bytes} bytes (env request {requested}; observed {}={} bytes)",
+                    observation.source.label(), observation.bytes
+                ),
+                None => observation.source.label(),
+            },
             HostBudgetResolution::Unreadable { reason } => format!("unreadable: {reason}"),
+            HostBudgetResolution::DeclaredUnverified {
+                requested_bytes,
+                reason,
+            } => format!(
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={requested_bytes}; {reason}"
+            ),
         }
     }
 
@@ -489,23 +676,26 @@ impl HostBudgetResolution {
     /// only honest answer is that there is nothing to grade — callers refuse instead.
     pub fn degraded_source(&self) -> Option<bool> {
         match self {
-            HostBudgetResolution::Resolved { source, .. } => Some(source.is_degraded()),
-            HostBudgetResolution::Unreadable { .. } => None,
+            HostBudgetResolution::Resolved { observation, .. } => {
+                Some(observation.source.is_degraded())
+            }
+            HostBudgetResolution::Unreadable { .. }
+            | HostBudgetResolution::DeclaredUnverified { .. } => None,
         }
     }
 }
 
-/// The refusal reason. Mirror of `host_budget_unreadable_on_kernel`, and the whole remedy a
-/// stopped operator gets: what was unreadable, and the declaration that supplies the bound.
+/// The refusal reason. Mirror of `host_budget_unreadable_on_kernel`: an operator declaration
+/// cannot repair a missing observation because it supplies a planning request, not enforcement.
 pub fn host_budget_unreadable_reason() -> String {
     format!(
         "no cgroup memory.high or memory.max binds this process and GUNBC_MEMORY_BUDGET_BYTES \
-         is unset (target_os={}), so the admission bound is UNKNOWN. Refusing rather than \
+         cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than \
          admitting against the widest signal available: a host-shared reading is a number \
          about the MACHINE, not about this slot, and admitting against one is the rc=137 \
          SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
-         gunbc.host_budget_source host_budget_unreadable_cgroup_receipt_note). Declare this \
-         slot's bound with GUNBC_MEMORY_BUDGET_BYTES.",
+         gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must \
+         expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
         std::env::consts::OS
     )
 }
@@ -514,35 +704,49 @@ pub fn host_budget_unreadable_reason() -> String {
 /// reachable from a test on any machine. `read_host_budget_resolution` is this function
 /// applied to the real reads; nothing else composes the precedence.
 ///
-/// Precedence: operator override -> cgroup memory.high -> cgroup memory.max -> Darwin
-/// physical memory -> refuse. There is no meminfo arm, and its absence is the change:
-/// MemAvailable and MemTotal describe a MACHINE, and on a kernel that can express a private
-/// limit, substituting one for the limit this process failed to read is DESIGN §5's
-/// absorbing fallback — the mechanism cannot compute its answer, so it answers with a
-/// superset. Authority: `gunbc.host_budget_source`
-/// `host_budget_source_admissible_as_bound_on_kernel`.
+/// The effective planning ceiling is the minimum of the operator request and every observed
+/// applicable cgroup line. An operator request alone is `DeclaredUnverified`: an integer in an
+/// environment variable constrains no allocation and is not evidence of executor provisioning.
+/// There is no meminfo arm: MemAvailable and MemTotal describe a MACHINE, and
+/// on a kernel that can express a private limit, substituting one for the limit this process
+/// failed to read is DESIGN §5's absorbing fallback (answering with a superset). Authority:
+/// `gunbc.host_budget_source` `host_budget_source_admissible_as_bound_on_kernel`.
 pub fn resolve_host_budget(
     env_override: Option<u64>,
     cgroup_high: Option<(String, u64)>,
     cgroup_max: Option<(String, u64)>,
     darwin_physical: Option<u64>,
 ) -> HostBudgetResolution {
-    if let Some(bytes) = env_override {
+    let observation = match (cgroup_high, cgroup_max) {
+        (Some(high), Some(max)) => Some(if high.1 <= max.1 {
+            (
+                HostBudgetSource::CgroupMemoryHigh { cgroup_dir: high.0 },
+                high.1,
+            )
+        } else {
+            (
+                HostBudgetSource::CgroupMemoryMax { cgroup_dir: max.0 },
+                max.1,
+            )
+        }),
+        (Some((cgroup_dir, bytes)), None) => {
+            Some((HostBudgetSource::CgroupMemoryHigh { cgroup_dir }, bytes))
+        }
+        (None, Some((cgroup_dir, bytes))) => {
+            Some((HostBudgetSource::CgroupMemoryMax { cgroup_dir }, bytes))
+        }
+        (None, None) => None,
+    };
+    if let Some((source, observed_bytes)) = observation {
         return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::EnvOverride,
-            bytes,
-        };
-    }
-    if let Some((cgroup_dir, bytes)) = cgroup_high {
-        return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::CgroupMemoryHigh { cgroup_dir },
-            bytes,
-        };
-    }
-    if let Some((cgroup_dir, bytes)) = cgroup_max {
-        return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::CgroupMemoryMax { cgroup_dir },
-            bytes,
+            effective_bytes: env_override
+                .map(|requested| requested.min(observed_bytes))
+                .unwrap_or(observed_bytes),
+            requested_bytes: env_override,
+            observation: HostBudgetObservation {
+                source,
+                bytes: observed_bytes,
+            },
         };
     }
     // Darwin only. `darwin_physical_memory_bytes` is `None` on every other target, so this
@@ -551,8 +755,20 @@ pub fn resolve_host_budget(
     // serve as the budget only where no private-limit mechanism exists.
     if let Some(bytes) = darwin_physical {
         return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::DarwinPhysicalMemory,
-            bytes,
+            effective_bytes: env_override
+                .map(|requested| requested.min(bytes))
+                .unwrap_or(bytes),
+            requested_bytes: env_override,
+            observation: HostBudgetObservation {
+                source: HostBudgetSource::DarwinPhysicalMemory,
+                bytes,
+            },
+        };
+    }
+    if let Some(requested_bytes) = env_override {
+        return HostBudgetResolution::DeclaredUnverified {
+            requested_bytes,
+            reason: "no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string(),
         };
     }
     HostBudgetResolution::Unreadable {
@@ -560,9 +776,9 @@ pub fn resolve_host_budget(
     }
 }
 
-/// The host memory budget to admit against, as a typed resolution. Single authority shared
+/// The host memory planning ceiling, as a typed resolution. It does not cap RSS. Single authority shared
 /// by the MemoryGovernor (which SCHEDULES against it), the typed-module cache cap (which
-/// BOUNDS resolution with it) and the P4 realize advisory (which PREDICTS against it) — no
+/// bounds an estimated ENTRY COUNT with it) and the P4 realize advisory (which PREDICTS against it) — no
 /// consumer may re-read a partial version of this precedence (§3 single authority).
 pub fn read_host_budget_resolution() -> HostBudgetResolution {
     let env_override = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
@@ -680,14 +896,13 @@ pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
 
 /// Total physical RAM in bytes from Darwin's `sysctl` MIB `hw.memsize`.
 ///
-/// Authority: `dag/extdeps/darwin/sysctl.dag` (`HwMemsize`), cited to Apple's sysctl.3.
-/// This is Darwin's answer to `/proc/meminfo` MemTotal and it is denominated in BYTES,
-/// where meminfo's fields are kibibytes — the one detail a shared parser would get wrong
-/// by 1024x. Observed live on macOS 15: 17179869184 (exactly 16 GiB).
+/// Authority: `dag/extdeps/darwin/sysctl.dag` (`HwMemsize`), cited to Apple's sysctl.3. Darwin's
+/// answer to `/proc/meminfo` MemTotal, denominated in BYTES where meminfo's fields are kibibytes
+/// — the detail a shared parser would get wrong by 1024x. Observed live on macOS 15:
+/// 17179869184 (exactly 16 GiB).
 ///
-/// Exists because the governor previously had NO source on Darwin and fell back to the
-/// most permissive cap it could name. macOS is not a platform without memory facts; its
-/// memory facts were never asked for.
+/// Exists because the governor previously had NO source on Darwin and fell back to the most
+/// permissive cap it could name; macOS's memory facts were never asked for.
 #[cfg(target_os = "macos")]
 pub fn darwin_physical_memory_bytes() -> Option<u64> {
     let name = c"hw.memsize";
@@ -743,16 +958,15 @@ mod tests {
         );
     }
 
-    /// THE DISCRIMINATING RED for the 2026-08-30 BuildBuddy SIGKILL: every observation
-    /// absent — which is exactly what that runner presents, `/proc/self/cgroup` reading
-    /// `0::/` with no `memory.max` or `memory.high` anywhere under `/sys/fs/cgroup` — must
-    /// refuse and carry NO number. Before this change the same observations produced a
-    /// budget: MemAvailable (a reading about the host) capped at the fleet's own declared
-    /// slot line (a declaration about different machines).
+    /// THE DISCRIMINATING RED for the 2026-08-30 BuildBuddy SIGKILL: every observation absent
+    /// — what that runner presents, `/proc/self/cgroup` reading `0::/` with no `memory.max` or
+    /// `memory.high` anywhere under `/sys/fs/cgroup` — must refuse and carry NO number. Before
+    /// this change the same observations produced a budget: MemAvailable (a host reading)
+    /// capped at the fleet's declared slot line (a declaration about different machines).
     ///
-    /// The refusal is asserted to name both halves of the remedy, because a stopped line
-    /// that does not say how to restart is a stop nobody can analyze: what was unreadable,
-    /// and the env var that supplies the bound.
+    /// The refusal must name what was unreadable and explain that the env var can only narrow
+    /// an observation — since a stop that does not say how to restart cannot be
+    /// analyzed.
     #[test]
     #[allow(non_snake_case)]
     fn RED_no_readable_bound_refuses_and_carries_no_number() {
@@ -766,17 +980,19 @@ mod tests {
         assert!(label.contains("GUNBC_MEMORY_BUDGET_BYTES"), "{label}");
     }
 
-    /// THE POSITIVE CONTROLS, without which the RED above is satisfied by a resolver that
-    /// refuses everything. Each readable bound is admitted, at its own value, attributed to
-    /// its own source — and the precedence is asserted rather than assumed: an operator
-    /// override outranks a cgroup limit, and `memory.high` (the throttle the kernel reclaims
-    /// at) outranks `memory.max` (the kill line).
+    /// THE POSITIVE CONTROLS, without which the RED above is satisfied by a resolver refusing
+    /// everything. Observed lines are admitted at the tightest applicable value; an operator
+    /// request can narrow that value but cannot widen it or establish one by itself.
     #[test]
     fn a_readable_bound_is_admitted_at_its_own_value_and_source() {
         let env = resolve_host_budget(Some(10_737_418_240), None, None, None);
+        assert!(matches!(
+            env,
+            HostBudgetResolution::DeclaredUnverified { .. }
+        ));
+        // The request remains usable by planning consumers (cache entry count and
+        // concurrency); the variant prevents any consumer from calling it observed or enforced.
         assert_eq!(env.bytes(), Some(10_737_418_240));
-        assert_eq!(env.degraded_source(), Some(false));
-        assert_eq!(env.label(), "env GUNBC_MEMORY_BUDGET_BYTES");
 
         let high = resolve_host_budget(
             None,
@@ -797,15 +1013,24 @@ mod tests {
         assert_eq!(max.bytes(), Some(9_663_676_416));
         assert!(max.label().contains("memory.max"));
 
-        // An override outranks a cgroup limit: the operator is declaring the bound the
-        // executor knows and this process cannot see, which is the BuildBuddy case.
+        // A declaration cannot widen an observed throttle.
         let both = resolve_host_budget(
             Some(10_737_418_240),
             Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
             None,
             None,
         );
-        assert_eq!(both.bytes(), Some(10_737_418_240));
+        assert_eq!(both.bytes(), Some(8_589_934_592));
+
+        // It can request a narrower planning ceiling once an observed limit verifies the
+        // process is actually bounded.
+        let narrowed = resolve_host_budget(
+            Some(5_368_709_120),
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
+            None,
+            None,
+        );
+        assert_eq!(narrowed.bytes(), Some(5_368_709_120));
     }
 
     /// Darwin's physical-memory read stays a source and stays DEGRADED, and it is the only
@@ -819,18 +1044,17 @@ mod tests {
         assert_eq!(darwin.degraded_source(), Some(true));
         assert_eq!(darwin.label(), "sysctl hw.memsize");
         assert!(!HostBudgetSource::DarwinPhysicalMemory.bounds_this_process());
-        for bounding in [
-            HostBudgetSource::EnvOverride,
-            HostBudgetSource::CgroupMemoryHigh {
-                cgroup_dir: "/sys/fs/cgroup".to_string(),
-            },
-            HostBudgetSource::CgroupMemoryMax {
-                cgroup_dir: "/sys/fs/cgroup".to_string(),
-            },
-        ] {
+        for bounding in [HostBudgetSource::CgroupMemoryMax {
+            cgroup_dir: "/sys/fs/cgroup".to_string(),
+        }] {
             assert!(bounding.bounds_this_process(), "{bounding:?}");
             assert!(!bounding.is_degraded(), "{bounding:?}");
         }
+        let high = HostBudgetSource::CgroupMemoryHigh {
+            cgroup_dir: "/sys/fs/cgroup".to_string(),
+        };
+        assert!(!high.bounds_this_process());
+        assert!(!high.is_degraded());
     }
 
     /// No arm reports a `/proc` path it did not read. The fabricated-provenance bug this
@@ -840,7 +1064,6 @@ mod tests {
     #[test]
     fn no_source_label_names_a_file_the_resolver_did_not_read() {
         for source in [
-            HostBudgetSource::EnvOverride,
             HostBudgetSource::CgroupMemoryHigh {
                 cgroup_dir: "/sys/fs/cgroup".to_string(),
             },
@@ -856,23 +1079,22 @@ mod tests {
             .contains("/proc/meminfo"));
     }
 
-    /// The discriminating RED: the budget the BuildBuddy runner actually answered with on
-    /// the run that was SIGKILLed (recovered from its own `cap=1675` line — see
+    /// The discriminating RED: the budget the BuildBuddy runner answered with on the SIGKILLed
+    /// run (recovered from its own `cap=1675` line — see
     /// `gunbc.whole_corpus_compile_admission`), paired with the fleet runner slot's declared
-    /// `memory.high`, which is what the machine CI runs this instrument on reports. Both
-    /// arms stand on independently measured machines, so each fails for its own reason.
+    /// `memory.high`, which the machine CI runs this instrument on reports. Both arms stand on
+    /// independently measured machines, so each fails for its own reason.
     ///
-    /// THE SECOND ARM WAS INVERTED 2026-08-28 AND NOT EDITED TO STAY GREEN. It asserted that
-    /// the CI runner slot is ADMITTED. Adopting the highest measured COMPLETING peak as the
-    /// demand (review 57202 on gunbc#9545) put the threshold above the slot's reported
-    /// `memory.high`, so the slot is now refused — deliberately: the budget a host reports is
-    /// the budget it has agreed to give, and admitting on the grounds that the run will breach
-    /// it and survive on swap below `memory.max` is admitting a known breach. The alternative
-    /// was to lower the threshold until this assertion stayed true, which derives a safety
-    /// literal from a wanted outcome. Its `.dag` twin
+    /// THE SECOND ARM WAS INVERTED 2026-08-28 AND NOT EDITED TO STAY GREEN. It asserted the CI
+    /// runner slot is ADMITTED. Adopting the highest measured COMPLETING peak as the demand
+    /// (review 57202 on gunbc#9545) put the threshold above the slot's reported `memory.high`,
+    /// so the slot is now refused — deliberately: the budget a host reports is what it agreed
+    /// to give, and admitting because the run will breach it and survive on swap below
+    /// `memory.max` admits a known breach. The alternative — lowering the threshold until the
+    /// assertion stayed true — derives a safety literal from a wanted outcome. Its `.dag` twin
     /// (`test.claim.whole_corpus_compile_admission_witness_test`
     /// `the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand`) is inverted in
-    /// lockstep, and `runner_slot_refusal_note` there carries the full argument.
+    /// lockstep; the `runner_slot_refusal_note` annotation there carries the full argument.
     #[test]
     fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner() {
         // The SIGKILLed run's budget, carried under a label the resolver can still produce:
@@ -917,8 +1139,150 @@ mod tests {
         assert!(whole_corpus_compile_refusal_diagnostic(&one_short).is_some());
     }
 
+    /// THE DISCRIMINATING RED for the 2026-08-30 default-VM treadmill: a window shaped like
+    /// the measured specimen — two minutes of wall spent almost entirely refaulting — must
+    /// refuse with the typed class name, the observed rate against the declared line, the
+    /// counter it was read from, and the remedy. Before this change no arm existed: the
+    /// budget was readable and admitted, and the run held for hours with no diagnostic.
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_a_treadmill_window_refuses_and_names_the_pressure() {
+        let verdict = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 120_000,
+            major_faults_in_window: 120_000,
+            self_user_cpu_ms_in_window: 4_800,
+            cache_evictions_in_window: 4_213,
+            cache_readmissions_in_window: 388,
+        });
+        assert!(matches!(
+            verdict,
+            MemoryStallVerdict::StallRefusedPageThrash {
+                major_faults_per_minute: 60_000,
+                self_cpu_share_basis_points: 400,
+                ..
+            }
+        ));
+        let text = memory_stall_refusal_pressure_text(&verdict);
+        assert!(text.contains("MemoryStallRefusedPageThrash"), "{text}");
+        assert!(text.contains("/proc/self/stat"), "{text}");
+        assert!(text.contains("--entry"), "{text}");
+        assert!(text.contains("readmissions 388"), "{text}");
+    }
+
+    /// The measured specimen the rate-only form of this verdict wrongly refused on its own
+    /// first CI execution (run 33319823294, required-witnesses-floor): 163296 major faults
+    /// over 788140 ms — 12431/minute, over the rate line — during one 13-minute CPU-bound
+    /// typecheck under srv3's memory.high reclaim throttle, a configuration that completes
+    /// green on main daily. It must ADMIT, or the floor's own slow phases red every
+    /// crowded runner.
+    #[test]
+    fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() {
+        let verdict = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 788_140,
+            major_faults_in_window: 163_296,
+            self_user_cpu_ms_in_window: 552_000,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert_eq!(
+            verdict,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible {
+                major_faults_per_minute: 12_431,
+                self_cpu_share_basis_points: 7003,
+            }
+        );
+    }
+
+    /// THE POSITIVE CONTROLS, without which the RED is satisfied by a verdict that refuses
+    /// everything — and the acceptance distinction itself: a slow-but-progressing resolve
+    /// (an hour of wall, fault counter flat) and a thrashing one are different states, and
+    /// no amount of elapsed time alone may refuse. A burst below the minimum window is an
+    /// OPEN window, not a verdict in either direction; the line is tight at the declared
+    /// rate (at the line admits, one more refuses); non-refusing arms carry no pressure
+    /// prose.
+    #[test]
+    fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() {
+        let slow = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 3_600_000,
+            major_faults_in_window: 60,
+            self_user_cpu_ms_in_window: 3_200_000,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert_eq!(
+            slow,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible {
+                major_faults_per_minute: 1,
+                self_cpu_share_basis_points: 8888,
+            }
+        );
+        assert_eq!(memory_stall_refusal_pressure_text(&slow), "");
+
+        let burst = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS - 1,
+            major_faults_in_window: 1_000_000,
+            self_user_cpu_ms_in_window: 0,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(burst, MemoryStallVerdict::StallWindowOpen { .. }));
+        assert_eq!(memory_stall_refusal_pressure_text(&burst), "");
+    }
+
+    /// Tight at BOTH declared lines: with CPU share pinned to zero, a fault count at the
+    /// rate line admits and one more refuses; with the rate pinned far over its line, a
+    /// CPU share at the floor admits and one point under refuses.
+    #[test]
+    fn the_refusal_is_tight_at_both_declared_lines() {
+        let at_rate_line = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 60_000,
+            major_faults_in_window: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD,
+            self_user_cpu_ms_in_window: 0,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            at_rate_line,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. }
+        ));
+        let over_rate_line = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 60_000,
+            major_faults_in_window: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD + 1,
+            self_user_cpu_ms_in_window: 0,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            over_rate_line,
+            MemoryStallVerdict::StallRefusedPageThrash { .. }
+        ));
+        let at_cpu_floor = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 100_000,
+            major_faults_in_window: 100_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS * 10,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            at_cpu_floor,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. }
+        ));
+        let under_cpu_floor = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 100_000,
+            major_faults_in_window: 100_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS * 10
+                - 10,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            under_cpu_floor,
+            MemoryStallVerdict::StallRefusedPageThrash { .. }
+        ));
+    }
+
     /// An unreadable budget refuses rather than admitting against the widest cap available —
-    /// the arm `host_budget_source_no_fallback_arm_note` records as having OOM-killed the
+    /// the arm the `host_budget_source_no_fallback_arm_note` annotation records as having OOM-killed the
     /// witness corpus twice when it was a `.unwrap_or(CEIL)`.
     #[test]
     fn whole_corpus_compile_unreadable_budget_refuses_rather_than_widening() {

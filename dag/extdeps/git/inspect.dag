@@ -12,7 +12,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this same inspection authority for revision-addressed Rust-source observation. No second Git inspection surface remains in extdeps.git."
+// Read-only repository-root, revision, and tree inspection operations are de-fused from the broad
+// git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and
+// ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this
+// same inspection authority for revision-addressed Rust-source observation. No second Git
+// inspection surface remains in extdeps.git.
 
 // `--no-optional-locks` IS WHAT MAKES `readonly` TRUE, AND ITS ABSENCE MADE THIS DECLARATION FALSE.
 // Measured: running this operation's own argv without the flag against a repository CHANGES the index
@@ -118,6 +122,21 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 // matching is pinned in the argv because the patterns callers pass are qualified identity names
 // full of `.`, which a regular expression would read as wildcards -- a silently WIDER match, and
 // therefore a silently WRONG present-at-this-revision answer.
+// GrepMatchesAtRevision READS A REVISION'S CONTENT WITHOUT CHECKING IT OUT, which is the property
+// that makes it distinct from every filesystem read: the subject is a tree that is not the worktree.
+//
+// IT PUBLISHES exit_code AND NOT A success BOOL, and here that is not a style choice inherited from
+// ls_remote_reports_termination_not_success_note -- it is load-bearing. git grep exits 1 for NO
+// MATCHES, which is a perfectly good answer, and 128 for a bad revision, which is not an answer at
+// all. A Bool collapses those two into one false, so a caller could not tell an empty population from
+// an unreadable one -- the empty-observation narrow, arriving through the operation's own output
+// shape.
+//
+// THE PATTERN AND PATHSPEC ARE PARAMETERS because an operation carrying either would be a model of one
+// caller's question rather than of git's content search. `-o` is pinned rather than parameterised: it
+// makes the output the MATCHED TEXT instead of whole lines, and a caller who needs whole lines is
+// asking a different question with a different output size. The prefix `<ref>:<path>:` that git puts
+// on each match is the reason a caller gets the path for free rather than joining for it.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -211,6 +230,22 @@ service git.Inspect {
     transport shell { argv: ["git", "ls-tree", "-rz", "--name-only", "{ref}"] }
     exit {
       0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation GrepMatchesAtRevision {
+    input { pattern: String, ref: GitRef, pathspec: String }
+    output {
+      matches: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "grep", "-o", "-E", "{pattern}", "{ref}", "--", "{pathspec}"] }
+    exit {
+      0 => Unit
+      1 => Unit
       128 => String "Invalid ref or not a git repository"
     }
   }
@@ -418,7 +453,6 @@ fn merge_tree_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeTr
     }
   }
 }
-
 
 // A CONFIG KEY THAT IS UNSET IS AN ANSWER, NOT A FAILURE, which is why the exit table above declares
 // 1 as its own arm: `git config --get` exits 1 when the key has no value, and a caller comparing

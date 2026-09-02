@@ -1,6 +1,6 @@
 module gunbc.fleet_desired_admission
 
-import std.types { String, Bool, FilePath, NonEmptyStr }
+import std.types { String, Bool, FilePath, GitRef, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store {
@@ -44,6 +44,8 @@ import gunbc.fleet_revision_acceptance {
   required_ci_refusal_message,
   default_branch_refusal_message,
 }
+import extdeps.git.plumbing { GitWorktreeAt }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, observe_required_ci_epoch_at_commit }
 import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, observe_local_tree_revision }
 import gunbc.fleet_main_revision {
   FleetDesiredAdvanceInput,
@@ -94,7 +96,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // ordinary spawn". Advancing desired to whatever last landed makes that comparison agree
 // unconditionally, so the gate passes silently. Gating the advance is what gives the
 // dispatch gate something real to compare against.
-data fleet_desired_admission_note: String = "The live consumer of gunbc.fleet_main_revision decide_fleet_desired_advance. See the annotation above it."
+// The live consumer of gunbc.fleet_main_revision decide_fleet_desired_advance. See the annotation
+// above it.
 
 // The floor run's event payload, copied to a modeled path by the workflow step so the
 // decision reads a path this module names rather than an environment variable it cannot
@@ -167,8 +170,17 @@ type FleetDesiredAcceptedRevision
 
 // The evidence both propositions carry is the run id: both facts are read from ONE delivered
 // event, so claiming two independent provenances would be a lie about where they came from.
-fn fleet_desired_accepted_from_event(event: WorkflowRunEvent) -> FleetDesiredAcceptedRevision {
-  match accept_required_ci_workflow_run(event: event, evidence: event.run_id) {
+// THE OBSERVED EPOCH IS THREADED IN RATHER THAN READ HERE, and that is deliberate. This fold is
+// pure over a delivered event, which is what lets its witnesses hand it exact fixture events; making
+// it perform a Git read would trade that for an effect at the one seam where every fleet admission
+// decision is composed. The exact-commit read is the caller's effect, and the two halves are
+// evidenced separately -- a Git-backed reader test over two real commits, and this seam exercised
+// with the observations those commits produce.
+fn fleet_desired_accepted_from_event(
+  event: WorkflowRunEvent,
+  observed_epoch: RequiredCiEpochObservation,
+) -> FleetDesiredAcceptedRevision {
+  match accept_required_ci_workflow_run(event: event, evidence: event.run_id, observed_epoch: observed_epoch) {
     RequiredCiRefused { cause: why } =>
       FleetDesiredRevisionRefused {
         cause: concat("fleet_desired_admission: ", required_ci_refusal_message(cause: why)),
@@ -376,7 +388,13 @@ fn fleet_desired_advance_input_wet(
 func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
   match workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
     WorkflowRunEventObserved { event: event } =>
-      match fleet_desired_accepted_from_event(event: event) {
+      match fleet_desired_accepted_from_event(
+        event: event,
+        observed_epoch: observe_required_ci_epoch_at_commit(
+          address: GitWorktreeAt { path: fleet_desired_admission_repo_root },
+          head_sha: event.head_sha as GitRef,
+        ),
+      ) {
         FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
         FleetDesiredRevisionAccepted { accepted: accepted } =>
           match fleet_desired_action_from_decision(

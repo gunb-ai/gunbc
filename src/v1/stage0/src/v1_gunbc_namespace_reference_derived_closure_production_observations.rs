@@ -44,24 +44,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn namespace_reference_derived_closure_production_observations_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "N3-A production observers for namespace-reference-derived-closure clauses (a-d), and the closing production for roadmap node namespace-structural-observations. Every observer takes ONE parsed subject: the four clauses are read out of a single ordinary compiled file, never out of four sources shaped one per clause. Observation production returns neutral std.reference_binding_observation carriers; the capability judgement is delegated, unchanged, to the one assessment authority (gunbc.namespace_reference_derived_closure_admission), and the module path each admission carries is the one THE PARSE DECLARED.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn namespace_reference_derived_closure_production_one_subject_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE FOUR HARD-CODED FIXTURE SOURCES ARE DELETED, and the deletion is the point rather than tidying. They were four independent strings, one per clause, and their own note recorded that they did NOT satisfy the namespace-structural-observations closing contract because that row asks for ONE ORDINARY COMPILED FILE. Keeping them beside a subject-parameterized producer would have left two ways to answer one question, and the easier one would have been the one that cannot close the row. The per-clause red control the deleted note describes is preserved and strengthened: a caller mutates the ONE subject so that exactly one rule breaks, and the assessment refuses exactly that capability. The subject and its probe spellings are supplied by the caller (gunbc.namespace_structural_observations_contract), so this module knows no fixture text.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NrdfcParsed {
@@ -117,11 +99,11 @@ pub fn same_file_neighbour_observation(
     gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
 }),
     NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), neighbour_name.clone()) {
-    None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), neighbour_name.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(neighbour) => Rc::new(ReferenceBindingObservation::SameFileNeighbourObservation {
@@ -157,15 +139,15 @@ pub fn sibling_branch_observation(
                     branch_binder_name.clone(),
                 );
             match branch_declarations.clone().first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(then_branch_binder) => match v1_rt::reverse(branch_declarations.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(else_branch_binder) => match v1_rt::reverse(branch_references.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
     own_branch_declaration: else_branch_binder.occurrence.clone(),
     sibling_branch_declaration: then_branch_binder.occurrence.clone(),
     resolution: Rc::new(StructuralBindingResolution::StructuralBindingProductionRefused {
@@ -193,11 +175,11 @@ pub fn later_declaration_observation(
     gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
 }),
     NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), later_name.clone()) {
-    None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), later_name.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(later_declaration) => Rc::new(ReferenceBindingObservation::LaterDeclarationObservation {
@@ -230,7 +212,7 @@ pub fn distinct_homonym_observation(
         .first()
         .cloned()
         {
-            None => Rc::new(
+            std::option::Option::None => Rc::new(
                 ReferenceBindingObservation::DistinctHomonymProductionRefused {
                     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
                 },
@@ -241,11 +223,11 @@ pub fn distinct_homonym_observation(
                     homonym_name.clone(),
                 );
                 match homonyms.clone().first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(first_homonym) => match v1_rt::reverse(homonyms.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(second_homonym) => Rc::new(ReferenceBindingObservation::DistinctHomonymObservation {
@@ -290,15 +272,6 @@ pub fn namespace_structural_binding_observations_a_through_d(
         later_name.clone(),
         homonym_name.clone(),
     )
-}
-
-pub fn namespace_structural_observation_admission_module_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE COMPILED MODULE AND THE ADMISSIONS ARE TWO EXPORTS OF ONE SUBJECT, and the split is forced rather than chosen. A single export pairing them needs a record whose field is a ReferenceDerivedClosureAdmission, and that coproduct carries a sole_constructor receipt, which the v1 emitter renders Serialize-only with a private field -- so any record embedding it fails to derive serde::Deserialize and the seed does not compile. Measured, not predicted: E0277 on the emitted OrdinaryCompileStructuralAdmission, E0616 on the receipt's field. Both exports are pure functions of (file, source), so a caller passing one pair of strings to both cannot pair a module path with admissions from a different subject; the join is mechanical, never a decision. The module path itself is READ OUT OF THE PARSE (ParsedOccurrenceBindingSourceReady.module_path), never echoed from the caller's file argument -- which is what makes the closing check's single-subject clause falsifiable, since a source declaring a different module reports that module and a source that does not parse reports no module at all.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> Rc<StructuralObservationSubjectModule> {

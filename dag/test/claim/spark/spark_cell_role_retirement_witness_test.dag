@@ -35,10 +35,7 @@ import gunbc.spark.serving_converge_plan {
   SparkServingRoleScopedDesiredReady,
   SparkServingRoleScopedDesiredRefused,
   spark_serving_role_scoped_desired_members,
-  SparkServingPlanArtifactVerdict,
-  SparkServingPlanArtifactReady,
-  SparkServingPlanArtifactRefused,
-  spark_serving_fleet_converge_plan_artifact,
+  spark_serving_axis_for_observation,
   fleet_converge_spark_serving_action_at,
 }
 import gunbc.spark.serving_execution_schedule {
@@ -65,7 +62,6 @@ import gunbc.spark.serving_membership {
   spark_serving_role_scoped_members,
   spark_serving_baseline_members,
   spark_serving_membership_reconcile,
-  spark_serving_user_unit_state_digest,
 }
 import gunbc.spark.serving_member_realization {
   spark_serving_retirement_effects_for_address,
@@ -93,25 +89,17 @@ import gunbc.spark.serving_converge_apply {
   SparkServingFrozenApplyRefused,
   spark_serving_apply_reads_frozen_typed_rows,
 }
-import std.content_hash { serialize_content_hash }
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservation,
-  RuntimeMaterializationComplete,
-  ModelStoreObservation,
-  ModelStoreComplete,
-  ModelStoreObservationRefused,
-  ollama_runtime_materialization_identity_for_required_release,
-}
-import gunbc.spark.serving_observed_members {
-  SparkServingObservedMemberProjection,
-  UserUnitStateObserved,
-  UserUnitManagerEnabled,
-  UnitActivityRunning,
-  LingerObservedEnabled,
-  spark_serving_observed_members,
 }
 import gunbc.fleet_converge_plan {
   FleetConvergeSparkServingTypedAction,
+  FleetConvergePlanArtifactOutcome,
+  FleetConvergePlanArtifactReady,
+  FleetConvergePlanArtifactRefused,
+  SparkAxisPlanningRefused,
+  fleet_converge_plan_artifact,
+  fleet_converge_plan_artifact_refusal_text,
   fleet_converge_plan_artifact_hash,
   fleet_converge_spark_serving_row_effects,
   SparkServingPlannedEffect,
@@ -127,8 +115,15 @@ import gunbc.membership_reconcile {
   MemberRemovalRefused,
   MemberRosterDuplicateKeyRefused,
 }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }
+import gunbc.spark.serving_observed_members { LingerObservedEnabled }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 
-data spark_cell_role_retirement_witness_note: String = "SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement. Every claim here is written so that reverting the role assignment, or restoring the empty removal remedy, turns it red — an assertion that passes under both the old and the new model would be measuring nothing."
+// SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement.
+// Every claim here is written so that reverting the role assignment, or restoring the empty removal
+// remedy, turns it red — an assertion that passes under both the old and the new model would be
+// measuring nothing.
 
 fn w_serving_addresses() -> List<SparkServingResourceAddress> {
   [
@@ -536,48 +531,39 @@ test fn w_the_planner_refuses_a_host_with_no_spark_role() -> Bool {
 // freeze. Each is a real production function, and together they are not the production path -- a
 // regression that pointed `spark_serving_full_membership_plan` back at the unscoped
 // `spark_serving_desired_members` would leave all of them green, because none of them is what the
-// converge actuator calls. `spark_serving_fleet_converge_plan_artifact` is, so the closing claim
-// enters there and reads the frozen artifact back.
-fn w_complete_store() -> ModelStoreObservation {
-  match spark_serving_desired_admission {
-    SparkServingDesiredRefused { cause: _ } =>
-      ModelStoreObservationRefused { cause: "w: no admitted release" as NonEmptyStr }
-    SparkServingDesiredAdmitted { serving_release: r } =>
-      ModelStoreComplete {
-        manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
-        blob_closure_count: 1,
+// converge actuator calls. The generic `fleet_converge_plan_artifact` is, so the closing claim
+// enters there -- with the Spark axis arriving as one disposition beside the others, exactly as in
+// production -- and reads the frozen artifact back.
+// The artifact comes from the GENERIC route, with the Spark axis entering as one disposition among
+// the others -- which is the whole point of the cut: there is no Spark-shaped door into the artifact
+// that the converge actuator does not also walk through.
+fn w_artifact(host: HostIdentity) -> FleetConvergePlanArtifactOutcome {
+  match hermetic_converged_observation(host: host, linger: LingerObservedEnabled) {
+    Absent =>
+      FleetConvergePlanArtifactRefused {
+        refusal: SparkAxisPlanningRefused {
+          host: host,
+          cause: "w-fixture: the capture set produced no observation",
+        },
       }
+    Present { value: o } =>
+      fleet_converge_plan_artifact(
+        host: host as NonEmptyStr,
+        prior_generation: 0,
+        observed_timers: [],
+        observed_caps: [],
+        spark_axis: spark_serving_axis_for_observation(observation: o),
+        observed_slots: [],
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
+        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      )
   }
-}
-
-fn w_observed_serving_projection(host: HostIdentity) -> SparkServingObservedMemberProjection {
-  spark_serving_observed_members(
-    host: host,
-    runtime: RuntimeMaterializationComplete {
-      identity: ollama_runtime_materialization_identity_for_required_release(),
-    },
-    store: w_complete_store(),
-    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-    enablement: UserUnitManagerEnabled,
-    activity: UnitActivityRunning,
-    linger: LingerObservedEnabled,
-  )
-}
-
-fn w_artifact(host: HostIdentity) -> SparkServingPlanArtifactVerdict {
-  spark_serving_fleet_converge_plan_artifact(
-    host: host as NonEmptyStr,
-    prior_generation: 0,
-    observed_timers: [],
-    observed_caps: [],
-    projection: w_observed_serving_projection(host: host),
-  )
 }
 
 fn w_artifact_rows(host: HostIdentity) -> List<FleetConvergeSparkServingTypedAction> {
   match w_artifact(host: host) {
-    SparkServingPlanArtifactReady { artifact: a } => scheduled_rows_list(scheduled: a.spark_serving_typed_actions)
-    SparkServingPlanArtifactRefused { cause: _ } => []
+    FleetConvergePlanArtifactReady { artifact: a } => scheduled_rows_list(scheduled: a.spark_serving_typed_actions)
+    FleetConvergePlanArtifactRefused { refusal: _ } => []
   }
 }
 
@@ -626,8 +612,9 @@ test fn w_the_production_retirement_touches_no_baseline_address() -> Bool {
 // predicate that used to answer first and would have rejected a newly assigned Spark cell.
 test fn w_the_production_artifact_refuses_a_host_with_no_role() -> Bool {
   match w_artifact(host: "srv1" as HostIdentity) {
-    SparkServingPlanArtifactRefused { cause: c } => string_contains(c, "no Spark cell role")
-    SparkServingPlanArtifactReady { artifact: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: r } =>
+      string_contains(fleet_converge_plan_artifact_refusal_text(r: r), "no Spark cell role")
+    FleetConvergePlanArtifactReady { artifact: _ } => false
   }
 }
 
@@ -679,9 +666,9 @@ test fn w_a_plan_carrying_only_refusals_refuses_instead_of_freezing_empty() -> B
 // through the real apply reader and counts what it would actually run.
 fn w_retirement_apply(host: HostIdentity) -> SparkServingFrozenApplyResult {
   match w_artifact(host: host) {
-    SparkServingPlanArtifactRefused { cause: c } =>
-      SparkServingFrozenApplyRefused { reason: c }
-    SparkServingPlanArtifactReady { artifact: a } =>
+    FleetConvergePlanArtifactRefused { refusal: r } =>
+      SparkServingFrozenApplyRefused { reason: fleet_converge_plan_artifact_refusal_text(r: r) }
+    FleetConvergePlanArtifactReady { artifact: a } =>
       match fleet_converge_plan_artifact_hash(artifact: a) {
         Absent => SparkServingFrozenApplyRefused { reason: "w: artifact carries no bundle hash" }
         Present { value: hex } =>

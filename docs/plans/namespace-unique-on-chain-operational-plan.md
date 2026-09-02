@@ -81,11 +81,10 @@ Visibility is structural:
 - An alias is an ordinary declaration node and participates by the same rule.
 
 Structural visibility may exclude off-chain declarations. It may **not** select the
-nearest declaration from two same-category declarations exposed by two scopes that
-are both on-chain.
-That distinction corrects the phrase “structural rung before cardinality” in the P1
-charter: structural admissibility defines one population; cardinality is then folded
-once over the full admitted population.
+nearest declaration from two same-category declarations exposed by two on-chain
+scopes. That distinction corrects the phrase “structural rung before cardinality” in
+the P1 charter: structural admissibility defines one population; cardinality is then
+folded once over the full admitted population.
 
 ### Sibling-arm example — legal and unique
 
@@ -226,12 +225,11 @@ identity without claiming a winner for the ambiguous reference.
 successor is the first production v1 consumer of `std.occurrence_binding`.
 
 **These requirements are unchanged, but they are NOT one node's work.** An earlier
-revision of this section listed them as a single "canonical resolver" obligation,
-which contradicted the roadmap boundaries and would have directed an implementer
-straight back into the broad node those boundaries dissolve (`review 45670`). They
-are subdivided below by the node that owns each, with nothing added and nothing
-dropped. Where this list and the roadmap node text disagree, the roadmap node is
-the authority.
+revision listed them as a single "canonical resolver" obligation, contradicting the
+roadmap boundaries and directing an implementer straight back into the broad node
+those boundaries dissolve (`review 45670`). They are subdivided below by owning
+node, nothing added and nothing dropped. Where this list and the roadmap node text
+disagree, the roadmap node is the authority.
 
 **`namespace-reference-derived-closure` — the candidate producer.** Everything that
 decides *which declarations are in view*:
@@ -388,7 +386,7 @@ rules.
 
 The shadowing defect is one instance of a broader migration problem: the compiler
 still contains several structures that can independently answer “what does this
-name mean?” A map or cache is not automatically a second authority. It becomes one
+name mean?” A map or cache is not automatically a second authority; it becomes one
 when a consumer can use it to choose a declaration without consuming the accepted
 `OccurrenceBindingResult`.
 

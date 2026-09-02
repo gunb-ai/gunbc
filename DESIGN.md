@@ -33,11 +33,15 @@ Redundancy is removed along two directions — one move seen two ways:
 - **Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use. At the right layer there is nothing fundamentally different between scales, so the same concept spans nanosecond memoization and broad infra deployment. *e.g.* `dag/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows — one axis, not 10 types.
 - **Deep — every concept decomposed to grounded atoms.** Nothing is opaque that is not *genuinely* atomic. The move is `decompress → map → reduce`: reveal the structure the source names, map each part onto the concept that already exists (DFS the concept DAG first), reduce duplicates. A `String` leaf hiding named parts is anemic modeling. *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }`, where the number is a grounded `Int` rather than a fresh enum.
 
+**Minimize the demand graph before materializing its answers.** A repeated computation is first evidence about why the same semantic fact is demanded again, not yet a cache obligation. When several demands have a shared-state least common ancestor, the repetition is authored duplication: carry, rewire, or share the first value — caching a later request only makes redundant work cheap and suppresses the signal that would make it rank for deletion. One undeclared pure demand may recompute; isolated consumers, declared replay, or unbounded future siblings instead create one reuse obligation at their least common visible ancestor. One computation identity must join those demands to a provider whose scope reaches that ancestor, whose coverage includes the identity, whose key represents every declared input the result depends on, and whose retention spans the obligated lifetime; otherwise refuse with a typed cause. Demand minimization decides whether another production may exist, and cache purity decides whether a materialized value denotes the same fact. Only after both hold does §6 choose the economically optimal realization: unavoidable recurrence may explicitly recompute below the cost floor, and a provider is an optimization only when measured total serving cost is below recomputation. The structural authority is `std.materialization_ladder`; a cache may discharge unavoidable recurrence, and may never excuse authored duplication.
+
 The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is a failed decomposition.
 
 ## 3. Single authority (what keeps §2 from being undone)
 
 Minimization holds only if each fact lives in exactly one place. The recurring violation is **nicknaming — a second name for one concept** — which duplicates work at the meaning layer and, since we generate from concepts, duplicates it again in everything derived. A fork always gets consolidated later, so it is a correctness concern, not a style one. Until it is enforceable this is diligence: faithfully model the accepted universal frameworks (classical logic, set theory, algebra), and in `extdeps/` the real upstream spec — cite the source, keep its real names, declare its version, model what the API actually returns.
+
+Single authority applies to meaning, not only to code symbols. Nicknaming gives one meaning two names; its dual, a **meaning fork**, gives one name two materially different meanings. Product names, service names, tier names, status names, and terms in every layer are semantic carriers: within one naming surface and one declared effective version or epoch, holding the name constant may not silently change the obligations, quality floor, refusal behavior, billing consequence, or remedy — while the same spelling in explicitly distinct scopes, or across a declared version transition, is legitimate reuse. A materially different contract needs a materially different name.
 
 Two corollaries. The import graph's only structural law is **acyclicity**: the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions, not a direction rule. And a fact's home is its *layer*, not its file — paths are discriminators, not gospel.
 
@@ -108,15 +112,22 @@ Four meta-obligations make the ladder operational:
 3. **No silent regression.** A change may lower a rung only by declaring previous rung, temporary rung, reason, bounded population, and restoration trigger. A compatibility exemption is not bootstrap glue; it is a visible safety regression with a finite runway. **The trigger must name the CAPABILITY, not an artifact that would contribute to one** — a declared drop is retired by its trigger and by nothing else, so a trigger naming less than the capability it restores will be satisfied while the capability stays dead. Where a trigger names an artifact, the row must state what that artifact must be SUFFICIENT FOR. The review tell is a grain mismatch between the loss sentence and the trigger sentence: a plural loss with a singular trigger, a corpus loss with a per-module trigger, a route loss with a single-call trigger.
 4. **Dissolution on climb — production handling only, never the evidence.** A climb deletes the redundant lower-rung *production* machinery it obsoletes, but the class's discriminating RED and positive control **remain enrolled** as the executing evidence that the higher rung stays real. An expecting-red probe that greens when its wall lands flips to a permanent regression control; it does not retire.
 
+At a service boundary, rung honesty has a commercial consequence: a dimension may remain opaque only above a falsifiable quality floor with a named consequence. A claim that can change billing, trigger a remedy, or require refusal is a contract; without such a consequence it is marketing and establishes no rung. Delivery below the floor must refuse or discharge the remedy; a materially different delivery may be admitted only as its own named and priced product — a different contract subject, not a declared drop of the premium one; and a temporary loss of the ability to verify or enforce a floor is a §4b(3) declared drop on that same subject, which may force the commercial path to refuse and never authorizes silent below-floor delivery. Deviation is allowed; silence is refused.
+
 Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-ledgers.md](docs/design-ledgers.md), authority `gunbc.rung_drop`. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The ones standing today:
 
+- **Stable per-claim cost qualification under a shared execution envelope** — declared 2026-09-01
+- **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
+- **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
-- **Regen candidate-tree producer** — declared 2026-08-20
-- **Cited-symbol resolution as a required check** — declared 2026-08-23
 - **Blocking emit-stage diagnostics on main** — declared 2026-08-25
 - **Corpus-wide lens enforcement censuses** — declared 2026-08-11
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
+- **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
+- **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
+- **Arity agreement between a declared builtin parameter name and its derived algebra template** — declared 2026-09-01
+- **n-ary concat call sites judged against concat's binary declared signature** — declared 2026-09-01
 
 **The floor first, the differentiator above it.** gunbc must first hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and a failure there is a below-baseline safety regression, never compensated by higher-order capability. The differentiating claim begins above that floor: because the substrate carries causal, cardinality, algebraic, effect, ownership, cost, and realization facts structurally, the same ladder applies to classes ordinary compilers leave to tests, review, profiling, or production postmortems — a possibly-empty collection flowing into a nonempty consumer, recursion without a descent proof, a non-idempotent effect under automatic retry, a computation exceeding its declared complexity bound, a realization that does not preserve modeled behavior.
 
@@ -143,6 +154,8 @@ The deepest trap is **specification-without-execution**: a typecheck and a `.con
 The same demand for an independent referent governs a test's oracle. **A merge-blocking test may compare a live repository population to a numeric literal only when that literal is grounded in a controlled fixture, external or versioned authority, explicit policy budget, or a monotone debt contract over a closed subject universe. A measurement copied from the same current tree is not an oracle. Completeness is an identity join, not a count equality.** A monotone debt contract is legitimate only when the subject universe is independently discovered and closed, membership is checked at identity grain rather than by count, and every removal carries a typed disposition. Review tell: if automating the literal's update collapses the assertion to `measure() == measure()`, the manual update was the test's entire content — a change detector, not a check.
 
 A third named trap, the subtlest because it wears this section's own name: **the absorbing fallback — degradation is disguised fail-open.** When a mechanism cannot compute its precise answer, the tempting arm substitutes the *superset*: can't compute the affected set → rerun everything; cache key uncertain → scan all keys. Nothing is missed, so the arm gets labeled fail-closed — but it is **⊤-as-answer conflated with ⊤-as-ignorance**, and it fails open twice. On safety: absorption destroys the only signal that the precise mechanism has a deficit, so the deficit never ranks for fixing and the anemia compounds. On cost: the fallback is denominated in the *corpus*, not the *change*, so it grows until the budget breaks instead of the build. The confidence threshold that selects such an arm is a smuggled heuristic, so its existence *locates* the anemic modeling it papers over. **The rule, and the review tell: a failure arm must refuse, never widen** — every degradation a typed, located, countable diagnostic. Two neighbors are not this pattern: a structural over-approximation computed *as* the answer, and a deliberate interim fallback that is loud, budget-bounded, and lands with its dissolution trigger.
+
+When §2's deferred cost is moved from the actor that accepted or caused it onto another principal, it becomes **externalization**. A risk intermediary or cost-causing actor fails open across an accountability boundary when it quietly re-exports an accepted risk or leaves a caused cost unpriced while preserving the apparent name, price, or contract — onto customers, employees, sellers, liquidation buyers, neighbors, or future maintainers. There are only two honest arms: absorb the risk and reserve for it, or expose the transfer as a separately named and priced contract; a materially degraded service is therefore its own product. Keeping the old name, price, or contract while another principal bears the changed burden is **externalized degradation**.
 
 A corollary on the refusal itself: **no escape hatches** — a toggle whose only effect is "proceed as if the refusal had not fired" re-opens the arm §5 just closed. The operative discipline is the **factory model**, a merge requirement rather than a preference: a deficit stops the line; the stopped line is analyzed before it restarts; the only sanctioned second mode is a stopped-line audit that replays the run to ledger every deficit for that analysis — it reports, it does not green. **Review bar:** a diff that lands a non-fail-closed failure arm — a silent widen, a fabricated default, an uncounted degradation, an escape hatch — is a **hard reject**, regardless of what else it delivers. The reviewer's three questions: does the line stop? is the stop typed and located? does analysis precede restart?
 
@@ -173,6 +186,9 @@ The payoff is that **language design itself opens up.** It is normally locked by
 
 One row per class, each carrying its recognition rule and its receipts, in [docs/design-ledgers.md](docs/design-ledgers.md) — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one, so the section grows without bound while this document's sections are fixed by §1. The index below is the classes; the ledger is the content.
 
+- `censored_estimator_drops_its_own_tail`
+- `selection_view_read_as_population`
+- `unlanded_citation_indistinguishable_at_the_citing_end`
 - `hollow_alias`
 - `state_space_conflation`
 - `absorbing_fallback`
@@ -193,6 +209,30 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `remediation_mutated_view`
 - `diagnostic_name_mechanism_silent`
 - `identity_absent_graph_traversal`
+- `generated_binding_shadows_bare_render`
+- `resolved_reference_outside_execution_closure`
+- `surface_shorthand_preempts_resolved_identity`
+- `meaning_fork`
+- `externalized_degradation`
+- `mistyped_body_radiates_nonlocal_diagnostics`
+- `instrument_output_read_as_subject_content`
+- `executed_conjunct_discriminates_nothing`
+- `unbacked_execution_claim`
+- `admitted_module_without_judged_standing`
+- `mitigation_injected_where_judgment_declined`
+- `transport_close_read_as_completion`
+- `merge_region_excludes_shared_tail`
+- `sealing_property_erases_structure`
+- `disagreement_census_blind_to_agreed_wrong`
+- `undecided_fraction_read_as_denominator`
+- `restoration_promise_names_a_route_that_does_not_exist`
+- `restored_bytes_reviewed_as_authorship`
+- `review_summary_inverts_roles_and_affirms_the_join`
+- `yaml_inline_comment_ingested_as_scalar_content`
+- `accepted_source_emits_uncompilable_target`
+- `incidental_denominator_as_wall`
+- `compensating_errors_cancel_in_the_aggregate`
+- `one_refusal_two_destinations`
 
 ## Building & checks
 

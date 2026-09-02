@@ -45,7 +45,14 @@ import v2.extdeps.languages.rust {
   rust_whitespace_trivia_rule
 }
 
-data rust_test_fixtures_rust_import_unstrip_note: String = "Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated import elsewhere in the assembled closure dragged rust.dag in. Enrollment changes on the N3-A branch collapsed that accidental coverage; thirty-one discovery witnesses then failed at runtime with no such function on rust_selection_policy_node, rust_operator_realizations_catalog_node, rust_grammar_terminal, and rust_inhabitant_atom. The explicit import block above is the closure-independent binding fix DESIGN's import-strip Class B blocker requires; dissolve-on when bare-reference closure binding is construction-backed repo-wide."
+// Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
+// resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated
+// import elsewhere in the assembled closure dragged rust.dag in. Enrollment changes on the N3-A
+// branch collapsed that accidental coverage; thirty-one discovery witnesses then failed at runtime
+// with no such function on rust_selection_policy_node, rust_operator_realizations_catalog_node,
+// rust_grammar_terminal, and rust_inhabitant_atom. The explicit import block above is the
+// closure-independent binding fix DESIGN's import-strip Class B blocker requires; dissolve-on when
+// bare-reference closure binding is construction-backed repo-wide.
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -2450,7 +2457,11 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
   )
 }
 
-data rust_family_dispatch_note: String = "Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per witness family — the family main is DERIVED from member arm rows (member_id -> i32 result expression), never a hand-written N+1th main. Member selection is a run-time argv parameter (cargo's `--` separator is this transport's convention, owned here); the derived match is fail-closed — an unknown member id exits 2, a refused run, never fabricated octets."
+// Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per
+// witness family — the family main is DERIVED from member arm rows (member_id -> i32 result
+// expression), never a hand-written N+1th main. Member selection is a run-time argv parameter
+// (cargo's `--` separator is this transport's convention, owned here); the derived match is
+// fail-closed — an unknown member id exits 2, a refused run, never fabricated octets.
 
 type RustEmitHostFamilyMember {
   member_id: String,
@@ -2539,7 +2550,16 @@ fn rust_logic_family_target_model_staging() -> TargetModel {
   }
 }
 
-data rust_selected_bundle_direct_call_note: String = "SCAFFOLD / bounded host-runtime wrapper (native-selected-witness-bundle first slice): the bundle main is derived from the same ordered logic-family member roster as the argv dispatcher, but emits every result expression as a direct call in ONE process. The only medium-as-string residue introduced here is the one fn-main wrapper plus fixed-width stdout framing; member bodies remain products of the canonical TargetModel emission path, so this is not a second semantic Rust emitter. There is no run-time member selection and no one-binary-per-function path. feature:rust-target-host-entrypoint-grammar. dissolve-on: the Rust TargetModel grammar-row inverse represents host entrypoints, ordered direct-call statements, and byte-framed stdout; then rust_selected_bundle_direct_call, rust_selected_bundle_direct_calls, and rust_selected_bundle_main_suffix delete and this runtime row consumes that structure."
+// SCAFFOLD / bounded host-runtime wrapper (native-selected-witness-bundle first slice): the bundle
+// main is derived from the same ordered logic-family member roster as the argv dispatcher, but
+// emits every result expression as a direct call in ONE process. The only medium-as-string residue
+// introduced here is the one fn-main wrapper plus fixed-width stdout framing; member bodies remain
+// products of the canonical TargetModel emission path, so this is not a second semantic Rust
+// emitter. There is no run-time member selection and no one-binary-per-function path.
+// feature:rust-target-host-entrypoint-grammar. dissolve-on: the Rust TargetModel grammar-row
+// inverse represents host entrypoints, ordered direct-call statements, and byte-framed stdout; then
+// rust_selected_bundle_direct_call, rust_selected_bundle_direct_calls, and
+// rust_selected_bundle_main_suffix delete and this runtime row consumes that structure.
 
 fn rust_selected_bundle_direct_call(member: RustEmitHostFamilyMember) -> String {
   concat(
@@ -4007,13 +4027,6 @@ fn rust_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   }
 }
 
-fn rust_string_literal_escape(spelling: String) -> String {
-  replace(replace(spelling, "\\", "\\\\"), "\"", "\\\"")
-}
-
-fn rust_string_literal_spelling(spelling: String) -> String {
-  concat("\"", concat(rust_string_literal_escape(spelling: spelling), "\""))
-}
 
 fn rust_emit_directive_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -4063,8 +4076,26 @@ fn rust_emit_directive_message_spellings(d: EmitDirective) -> Map<Symbol, String
   map_insert(empty_map(), ^emit_directive_message, d.message)
 }
 
-fn rust_emit_directive_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
-  map_insert(empty_map(), ^rust_token_str_lit, rust_string_literal_spelling)
+fn rust_string_literal_transform() -> TokenClassEmitTransform {
+  EmitSpellingQuote {
+    prefix: "",
+    open: "\"",
+    close: "\"",
+    escapes: [
+      EmitSpellingEscape { from: "\\", to: "\\\\" },
+      EmitSpellingEscape { from: "\"", to: "\\\"" }
+    ]
+  }
+}
+
+// Derived from the same transform row the emit map carries, so the directive text builder and the
+// token-class rendering cannot disagree on the escape encoding.
+fn rust_string_literal_spelling(spelling: String) -> String {
+  apply_emit_spelling_transform(transform: rust_string_literal_transform(), spelling: spelling)
+}
+
+fn rust_emit_directive_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  map_insert(empty_map(), ^rust_token_str_lit, rust_string_literal_transform())
 }
 
 fn rust_emit_directive_target_model(d: EmitDirective) -> TargetModel {
@@ -4164,7 +4195,21 @@ fn rust_type_alias_decl_structural_target_model() -> TargetModel {
   }
 }
 
-data rust_filesystem_read_family_note: String = "filesystem_read native family (neat-carp-312, Task 1): the emitted crate's cargo run subprocess has its cwd forced to a /tmp/gunbc_emit_on_demand_* cache workspace (v1_interpreter.rs emit_host_run_transport_in_workspace), disconnected from the git checkout -- there is no .dag-callable builtin exposing cwd/repo-root (confirmed absent: grep of the v1 builtin dispatch table near filesystem_read's own registration turned up nothing, and std.effect_axes.region_repo_root is a symbolic NamespacePosition, never a literal path). Rather than hand-hardcoding an absolute path that would only resolve on one machine (explicitly disallowed), the REAL file content is read once via the real filesystem_read builtin at .dag construction time (correctly resolved against the interpreter's own workspace_root() convention, the same mechanism dag/test/claim/filesystem_read_hermetic_witness.dag already relies on) and carried into the emitted crate as an extra WorkspaceFile (FixedText) placed inside the workspace the native process's cwd IS rooted at; the native fn filesystem_read(path: &str) then reads that workspace-relative path for real via std::fs::read_to_string, so both legs perform a genuine disk read of independently-obtained bytes, and the native leg never receives a baked machine-specific path."
+// filesystem_read native family (neat-carp-312, Task 1): the emitted crate's cargo run subprocess
+// has its cwd forced to a /tmp/gunbc_emit_on_demand_* cache workspace (v1_interpreter.rs
+// emit_host_run_transport_in_workspace), disconnected from the git checkout -- there is no
+// .dag-callable builtin exposing cwd/repo-root (confirmed absent: grep of the v1 builtin dispatch
+// table near filesystem_read's own registration turned up nothing, and
+// std.effect_axes.region_repo_root is a symbolic NamespacePosition, never a literal path). Rather
+// than hand-hardcoding an absolute path that would only resolve on one machine (explicitly
+// disallowed), the REAL file content is read once via the real filesystem_read builtin at .dag
+// construction time (correctly resolved against the interpreter's own workspace_root() convention,
+// the same mechanism dag/test/claim/filesystem_read_hermetic_witness.dag already relies on) and
+// carried into the emitted crate as an extra WorkspaceFile (FixedText) placed inside the workspace
+// the native process's cwd IS rooted at; the native fn filesystem_read(path: &str) then reads that
+// workspace-relative path for real via std::fs::read_to_string, so both legs perform a genuine disk
+// read of independently-obtained bytes, and the native leg never receives a baked machine-specific
+// path.
 
 data rust_filesystem_read_family_prelude: String = "\n\nfn filesystem_read(path: &str) -> String { std::fs::read_to_string(path).expect(\"read file\") }"
 
@@ -4243,7 +4288,28 @@ fn rust_filesystem_read_family_target_model_staging(fixture_content: String) -> 
   }
 }
 
-data rust_shell_exec_run_family_note: String = "shell_exec_run native family (neat-carp-312, Task 2): a SEPARATE family from filesystem_read (not folded in), because its host-effect is a process spawn (bottom transport), a genuinely different confinement class from a file read, and keeping them separate keeps the effect roster (Task 4) legible per-effect-kind rather than per-PR-lane. Unlike Task 1, this family has NO cwd/repo-path problem: the two argv literals baked into the generated Rust prelude are derived by calling shell_materialize_operation_argv against dag/extdeps/shell/exec.dag's shell.Exec.Run operation AT .dag CONSTRUCTION TIME, in the INTERPRETER's own process (whose relative-path resolution is the same workspace_root() convention Task 1's fixture read already uses) -- not inside the emitted native binary -- so no embedded-fixture trick is needed here. This is real single-authority derivation, not a hand-typed literal kept in sync by convention: if shell.Exec.Run's transport block ever changes argv, this family's emitted argv changes with it at .dag build time, with no Rust edit required. No bindings are passed because shell.Exec.Run's transport argv is the fixed literal [\"bash\", \"-s\"], which references no declared input at all -- and since the materializer now binds an operation's OWN declared inputs (v2.std.operation_argv), passing any name here would be refused as UndeclaredInputBound rather than silently ignored, which is why the empty binding list is the honest spelling. The refusal arm yields a single marker token rather than an empty argv: an empty list would be a fabricated plausible argv that emits a silently broken prelude, while the marker can never equal \"bash\", so the shell_exec_run_eval_argv_is_bash_dash_s witness reds instead (DESIGN 5). The arm is spelled inline rather than through v2.std.operation_argv's helper because this module declares no imports and resolves bare references from the assembled pool -- adding an import block here switches it to import-scoped resolution and breaks every other bare reference in the file, proven by execution."
+// shell_exec_run native family (neat-carp-312, Task 2): a SEPARATE family from filesystem_read (not
+// folded in), because its host-effect is a process spawn (bottom transport), a genuinely different
+// confinement class from a file read, and keeping them separate keeps the effect roster (Task 4)
+// legible per-effect-kind rather than per-PR-lane. Unlike Task 1, this family has NO cwd/repo-path
+// problem: the two argv literals baked into the generated Rust prelude are derived by calling
+// shell_materialize_operation_argv against dag/extdeps/shell/exec.dag's shell.Exec.Run operation AT
+// .dag CONSTRUCTION TIME, in the INTERPRETER's own process (whose relative-path resolution is the
+// same workspace_root() convention Task 1's fixture read already uses) -- not inside the emitted
+// native binary -- so no embedded-fixture trick is needed here. This is real single-authority
+// derivation, not a hand-typed literal kept in sync by convention: if shell.Exec.Run's transport
+// block ever changes argv, this family's emitted argv changes with it at .dag build time, with no
+// Rust edit required. No bindings are passed because shell.Exec.Run's transport argv is the fixed
+// literal ["bash", "-s"], which references no declared input at all -- and since the materializer
+// now binds an operation's OWN declared inputs (v2.std.operation_argv), passing any name here would
+// be refused as UndeclaredInputBound rather than silently ignored, which is why the empty binding
+// list is the honest spelling. The refusal arm yields a single marker token rather than an empty
+// argv: an empty list would be a fabricated plausible argv that emits a silently broken prelude,
+// while the marker can never equal "bash", so the shell_exec_run_eval_argv_is_bash_dash_s witness
+// reds instead (DESIGN 5). The arm is spelled inline rather than through v2.std.operation_argv's
+// helper because this module declares no imports and resolves bare references from the assembled
+// pool -- adding an import block here switches it to import-scoped resolution and breaks every
+// other bare reference in the file, proven by execution.
 
 data rust_shell_exec_run_family_dag_path: String = "dag/extdeps/shell/exec.dag"
 

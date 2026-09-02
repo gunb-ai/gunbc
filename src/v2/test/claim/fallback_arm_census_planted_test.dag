@@ -22,7 +22,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data fallback_arm_planted_note: String = "W2 fallback-arm census planted fixtures (docs/plans/fallback-arm-census.md): AnswersOnOpen / Refuses / ClassifierUnknown mechanism REDs on synthetic Match nodes — no host, no corpus walk. Corpus grain enrolls separately on falsifier_substrate_long_lane."
+// W2 fallback-arm census planted fixtures (docs/plans/fallback-arm-census.md): AnswersOnOpen /
+// Refuses / ClassifierUnknown mechanism REDs on synthetic Match nodes — no host, no corpus walk.
+// Corpus grain enrolls separately on falsifier_substrate_long_lane.
 
 test fn planted_answers_on_open_is_defect_holds() -> Bool {
   let c = classify_last_arm_of_planted_match(

@@ -1,9 +1,15 @@
 module v2.workflow.required_regen
 
+import v2.workflow.regen_convergence_transaction {
+  RegenConvergenceTransactionReceipt,
+  RegenConvergenceRefusal,
+  RegenFixedPointReached,
+  RegenFixedPointRefused
+}
+
 import v2.std.algebra { Cons, Empty, fold_list, length, list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { String }
 
 // ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
@@ -123,6 +129,7 @@ type RequiredRegenRefusal
   | EmptyEmitResult
   | CandidateTreeAbsent { reason: String }
   | FormatterUnavailable { reason: String }
+  | AffectedSetUnlocatable { paths: List<String>, reason: String }
 
 // The emitter's product, named by where the author finds it. `produced_paths` are the
 // generated surfaces actually written under `root`, which is the population a first
@@ -401,6 +408,146 @@ fn required_regen_sync_admission(
       hand_outcomes: hand_outcomes,
       authority_digest: authority_digest
     }
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE AFFECTED-SET BOUND, CONSUMED: WHICH MIRRORS' BYTES THIS ROUND ADJUDICATES.
+//
+// Every lane pays a whole-corpus regen per edit, and gunbc.regen_affected_set already answers
+// which committed mirrors ONE edit can change -- as a BOUND, a structural over-approximation
+// computed as the answer, never an exact set. This carrier is where that answer becomes a
+// selection the run acts on, so the bound stops being a report and starts being consumed.
+//
+// THE SPLIT THAT MAKES THE SELECTION SAFE, and it is the whole design: a round asks two
+// different questions of the compared population, and only ONE of them may be scoped.
+//
+//   * POPULATION IDENTITY -- which mirrors EXIST on each side. EmittedNotCommitted,
+//     CommittedNotEmitted and the hand-maintained shadow are identity joins over rosters; they
+//     read no bytes, normalize nothing, and cost nothing worth saving. They stay WHOLE
+//     POPULATION under every scope. Scoping them would make a newly emitted surface invisible
+//     exactly when the author is introducing it, which is the state MirrorMissingForEmittedSurface
+//     exists to name.
+//   * BYTE ADJUDICATION -- whether each committed mirror equals what emit produced for it. This
+//     is the expensive half (a read, a rustfmt normalization and a comparison per member), and it
+//     is what the bound scopes.
+//
+// So the scope bounds which mirrors' BYTES are compared. It never bounds which mirrors exist.
+//
+// WHY A SCOPED ROUND STILL CONVERGES, stated because the bound over-approximates and a reader is
+// owed the argument rather than the assurance. Convergence means: the compiler rebuilt from the
+// installed mirrors regenerates the selected mirrors with an empty diff. That is sufficient for
+// the WHOLE tree under two facts and one PRECONDITION, all three of which are separately
+// checkable and none of which this carrier assumes silently.
+//
+//   1. The bound never under-emits. Every module whose emitted bytes can change under this edit
+//      is in the reverse closure, plus the declared bootstrap products. Over-emission is free
+//      (a member that did not drift simply matches); under-emission is the only unsound
+//      direction, and the planted-edit control -- an affected-scoped round's resulting tree
+//      compared BYTE FOR BYTE, at identity grain over every committed mirror, against a
+//      whole-population round's -- is what puts that claim on the executed path rather than in
+//      this comment.
+//   2. A mirror outside the selection is therefore emitted with exactly the bytes it already
+//      carries, so not rewriting it leaves the tree in the state a whole-population round would
+//      have left it in -- and leaves its mtime alone, which is what keeps cargo's fingerprint
+//      from recompiling a crate nothing changed.
+//   3. THE PRECONDITION: the tree the round starts from was already a fixed point for this seed.
+//      A scoped round cannot discover that a mirror OUTSIDE the selection was committed stale --
+//      hand-edited, or landed by a merge that took one side -- because it never compares that
+//      mirror's bytes. This is not a widening and not a silent one: the unscoped adjudication is
+//      what the required CI phase runs, on every push and every pull request, over the whole
+//      population, and it is the thing that establishes the precondition for the next author's
+//      scoped round. A scope is therefore an author-round selection over a gate-verified tree,
+//      and the gate is never itself scoped.
+//
+// AND THE THIRD ARM REFUSES. When the edited set cannot be located as modules the bound answers
+// EditedSetUnlocatable, and the round REFUSES under AffectedSetUnlocatable rather than falling
+// back to the whole population. "Regenerate everything" and "the selection could not answer" are
+// different states; collapsing them would erase the only signal the locator has a deficit, which
+// is the absorbing fallback DESIGN section 5 names by that name -- and it would do it in the one
+// place whose failure arm is denominated in the corpus rather than the change.
+// ---------------------------------------------------------------------------------------------
+type RegenEmissionScope
+  = WholePopulationScope
+  | AffectedScope { members: List<String> }
+  | ScopeUnlocatable { paths: List<String>, reason: String }
+
+// The selection, or the refusal that replaces it. There is no arm carrying both, and no arm
+// carrying neither: a caller cannot reach a compared population without the scope having answered.
+type RegenScopeSelection
+  = ScopeSelected { selected: List<String> }
+  | ScopeSelectionRefused { cause: RequiredRegenRefusal }
+
+fn regen_scope_lists(members: List<String>, member: String) -> Bool {
+  fold_list(xs: members, empty: false, cons: fn(acc, m) { if acc { true } else { m == member } })
+}
+
+// AN AFFECTED SCOPE SELECTS BY INTERSECTION WITH THE COMMITTED POPULATION, not by taking the
+// bound's list as the population. The bound names mirrors it derived from the module graph and
+// the declared bootstrap edges; the committed population is what is on disk. Taking the bound
+// verbatim would let a member the tree does not carry enter the compared set, where it reads as
+// a missing file rather than as what it is -- a selection naming something outside the tree.
+// A SELECTION IS A FILTER, and saying so is what keeps the answer a List.
+//
+// The affected arm was twice written as list CONSTRUCTION and twice wrong. `Cons` inside an `if`
+// did not resolve at all -- the taken branch is a coproduct and the untaken one is the
+// `List<String>` the accumulator carried. `list_append` then resolved, type-checked, and `length`
+// read it, and still handed the host a `Cons` chain where a flat list was expected ("Variant
+// where a List was expected"). Both were one mistake: building a list where the question is which
+// members of an EXISTING list survive a predicate.
+fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> RegenScopeSelection {
+  match scope {
+    WholePopulationScope => ScopeSelected { selected: committed }
+    ScopeUnlocatable { paths: paths, reason: reason } =>
+      ScopeSelectionRefused {
+        cause: AffectedSetUnlocatable { paths: paths, reason: reason }
+      }
+    AffectedScope { members: members } =>
+      ScopeSelected {
+        selected: filter(
+          xs: committed,
+          predicate: fn(name) { regen_scope_lists(members: members, member: name) }
+        )
+      }
+  }
+}
+
+// AN EMPTY SELECTION IS NOT A REFUSAL AND NOT A DEFECT. An edit that touches no module in the
+// compared population -- a .dag under no mirror, a docs-only round -- selects nothing, and the
+// honest round for it adjudicates nothing and installs nothing. The whole-population arm cannot
+// reach this state (an empty committed population is EmptyCommittedPopulation, a different
+// refusal about a different subject), so the count below is the scope's own answer and is
+// reported rather than defended.
+fn regen_scope_line(scope: RegenEmissionScope) -> String {
+  match scope {
+    WholePopulationScope => "regen-scope: WholePopulationScope"
+    AffectedScope { members: members } =>
+      concat("regen-scope: AffectedScope members=", to_string(length(xs: members)))
+    ScopeUnlocatable { paths: paths, reason: reason } =>
+      concat(
+        concat("regen-scope: ScopeUnlocatable paths=", to_string(length(xs: paths))),
+        concat(" reason=", reason)
+      )
+  }
+}
+
+// The selection as the host reads it back, in the same two-call shape
+// `gunbc.regen_affected_set` already uses: one line for the arm and its count, one list for the
+// members. The host runs BOTH on every scoped round and holds its own selection to this answer,
+// so this fold is a live consumer rather than a spelling of one.
+fn regen_scope_selection_line(sel: RegenScopeSelection) -> String {
+  match sel {
+    ScopeSelected { selected: selected } =>
+      concat("regen-scope-selection: ScopeSelected selected=", to_string(length(xs: selected)))
+    ScopeSelectionRefused { cause: cause } => "regen-scope-selection: ScopeSelectionRefused"
+  }
+}
+
+fn regen_scope_selection_members(sel: RegenScopeSelection) -> List<String> {
+  match sel {
+    ScopeSelected { selected: selected } => selected
+    ScopeSelectionRefused { cause: cause } => no_string_paths
   }
 }
 

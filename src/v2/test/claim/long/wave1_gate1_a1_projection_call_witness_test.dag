@@ -10,7 +10,12 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wave1_gate1_a1_projection_call_witness_note: String = "Stage B cross-decl execution witnesses (long lane): helper.step projection lowers to Transform; normalize accepts; bare field access still refuses. Exceeds per-PR 5s fast-lane eval budget. Classification witness: long/accumulator_copy_fold_analysis_test projection_call_carrier_is_classified. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag --functions <csv>."
+// Stage B cross-decl execution witnesses (long lane): helper.step projection lowers to Transform;
+// normalize accepts; bare field access still refuses. Exceeds per-PR 5s fast-lane eval budget.
+// Classification witness: long/accumulator_copy_fold_analysis_test
+// projection_call_carrier_is_classified. Local recipe: claim_batch --source-root dag --source-root
+// src/v2 --entry src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag --functions
+// <csv>.
 
 test fn wave1_gate1_a1_projection_call_lowers_witness_holds() -> Bool {
   body_lowering_projection_lowers_to_transform()

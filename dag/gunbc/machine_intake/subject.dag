@@ -1,0 +1,383 @@
+module gunbc.machine_intake_subject
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  Fnv1a64Structural,
+  compare_content_hash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  serialize_content_hash,
+}
+import extdeps.bmc.endpoint { BmcEndpoint }
+
+// THE SUBJECT BEING QUALIFIED (machine-intake ruling 2026-08-29 §1). Board serial is the
+// durable fleet identity, and it is NOT enough to key a qualification: a repaired machine
+// keeps its board serial while every DIMM changes. So the admission subject is UnitKey ×
+// AssemblyManifestDigest × FirmwareManifestDigest, and a run carries a separate attempt
+// identity. The consequences this construction buys, each executed by
+// test.claim.machine_intake_subject: a BMC IP change is no identity change (the endpoint is
+// not an input to the key); one DIMM change is a new assembly subject, so the previous
+// admission cannot apply; a BIOS/BMC change is a new firmware subject; a motherboard change is
+// a new unit key; and a board serial that is absent, duplicated across units or contradictory
+// between sources REFUSES — no fleet key is fabricated from a label, a hostname or an IP. The
+// chassis part number is retained as a first-class identity fact because it is a platform-
+// variant discriminator, but it is deliberately not the unit key.
+// Where a board serial reading came from. The provisional bind uses bootstrap
+// BMC access; the Linux intake agent repeats the read from the host side; the
+// platform row says what the seller claimed. Agreement across sources is what
+// IdentityBindProvisional and InventoryConform establish.
+type BoardSerialSource
+  = BmcFru
+  | HostSmbios
+  | PlatformExpectation
+
+type BoardSerialObservation {
+  source: BoardSerialSource
+  serial: NonEmptyStr
+}
+
+type UnitKey = NonEmptyStr where brand("UnitKey")
+
+type UnitKeyRefusalCause
+  = BoardSerialAbsent
+  | BoardSerialDuplicatedAcrossUnits { serial: NonEmptyStr }
+  | BoardSerialContradictory { observations: List<BoardSerialObservation> }
+
+type UnitKeyStanding
+  = UnitKeyBound { key: UnitKey }
+  | UnitKeyRefused { cause: UnitKeyRefusalCause }
+
+// Everything identity binding may read. The BMC endpoint is carried so the
+// attempt can be addressed, and it is NOT read by bind_unit_key — that
+// non-dependence is the 'BMC IP changes: same unit' row, made structural
+// rather than promised.
+type UnitIdentityInputs {
+  bmc_endpoint: BmcEndpoint
+  board_serial_observations: List<BoardSerialObservation>
+}
+
+// Total in the refusing direction on all three failure shapes. `other_units`
+// is the set of unit keys ALREADY bound to other physical units in the fleet
+// ledger: a serial that keys one of them is a duplicate, and two boxes claiming
+// one serial is an identity fault to hold, not a second row to mint.
+fn bind_unit_key_from_first(
+  observations: List<BoardSerialObservation>,
+  first: NonEmptyStr,
+  other_units: List<UnitKey>,
+) -> UnitKeyStanding {
+  if (observations |> all(o => o.serial == first)) == false {
+    UnitKeyRefused { cause: BoardSerialContradictory { observations: observations } }
+  } else if other_units |> any(k => (k as NonEmptyStr) == first) {
+    UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: first } }
+  } else {
+    UnitKeyBound { key: first as UnitKey }
+  }
+}
+
+fn bind_unit_key(inputs: UnitIdentityInputs, other_units: List<UnitKey>) -> UnitKeyStanding {
+  let observations = inputs.board_serial_observations
+  match observations.first() {
+    Absent => UnitKeyRefused { cause: BoardSerialAbsent }
+    Present { value: head } => bind_unit_key_from_first(observations: observations, first: head.serial, other_units: other_units)
+  }
+}
+
+type ComponentKind
+  = ChassisComponent
+  | CpuComponent
+  | DimmComponent
+  | AcceleratorComponent
+  | StorageComponent
+  | NicComponent
+  | PsuComponent
+
+// THE LABEL IS THE STABLE FINGERPRINT IDENTITY, DELIBERATELY DECOUPLED FROM
+// THE VARIANT SPELLING (review 57621, non-blocking observation). It is the
+// only form the identity can take: atom_identity_hash and content_hash_atom
+// take a NonEmptyStr, so no .dag-authorable construction hashes a coproduct
+// variant directly today, and this fold is where the variant becomes hashable.
+// What that buys, once said out loud: a stored assembly digest survives a
+// variant RENAME, because the fingerprint is a function of these strings and
+// not of the constructor names. The reverse is the real hazard -- editing a
+// string here silently re-keys every previously admitted assembly manifest, so
+// these seven values are wire identities and are not renamed with the variant
+// they name. A rename cannot desynchronize them by accident: the match is
+// exhaustive, so it stops compiling until the author visits this exact site.
+fn component_kind_label(kind: ComponentKind) -> NonEmptyStr {
+  match kind {
+    ChassisComponent => "chassis"
+    CpuComponent => "cpu"
+    DimmComponent => "dimm"
+    AcceleratorComponent => "accelerator"
+    StorageComponent => "storage"
+    NicComponent => "nic"
+    PsuComponent => "psu"
+  }
+}
+
+// One electronically read component identity: an SPD serial, a CPU PPIN, an
+// NVMe serial, a permanent MAC, a PSU serial. `slot` is where it was observed,
+// so a swap between two slots changes the manifest even when the part set does
+// not — a population interaction is a different assembly.
+type ComponentIdentity {
+  kind: ComponentKind
+  slot: NonEmptyStr
+  identity: NonEmptyStr
+}
+
+type AssemblyManifest {
+  chassis_part_number: NonEmptyStr
+  components: List<ComponentIdentity>
+}
+
+fn component_identity_atom(component: ComponentIdentity) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    content_hash_atom(value: component_kind_label(kind: component.kind)),
+    content_hash_combine_structural(
+      content_hash_atom(value: component.slot),
+      content_hash_atom(value: component.identity),
+    ),
+  )
+}
+
+// The digest is over the component sequence in the order the inventory
+// producer enumerates it, which the producer fixes as slot order; it is the
+// same producer on every attempt, so the order is a stable part of the
+// canonical form rather than a source of spurious change.
+fn assembly_manifest_digest(manifest: AssemblyManifest) -> ContentHash {
+  content_hash_tagged(
+    tag: "AssemblyManifest",
+    payload: fold(
+      manifest.components,
+      init: content_hash_atom(value: manifest.chassis_part_number),
+      f: (acc, c) => content_hash_combine_structural(acc, component_identity_atom(component: c)),
+    ),
+  )
+}
+
+type FirmwareEntry {
+  component: NonEmptyStr
+  version: NonEmptyStr
+}
+
+// BMC implementation/version, BIOS/UEFI, CPLD/SCP/other platform firmware,
+// and the digests of the configuration the qualification depends on (fan
+// policy, BIOS attribute set). A configuration digest is a firmware-subject
+// fact because a changed fan policy changes what a soak measured.
+type FirmwareManifest {
+  entries: List<FirmwareEntry>
+  configuration_digests: List<ContentHash>
+}
+
+fn content_hash_structural_atom(hash: ContentHash) -> Fnv1a64Structural {
+  content_hash_atom(value: serialize_content_hash(hash: hash))
+}
+
+fn firmware_manifest_digest(manifest: FirmwareManifest) -> ContentHash {
+  let entries = fold(
+    manifest.entries,
+    init: content_hash_atom(value: "FirmwareManifest"),
+    f: (acc, e) => content_hash_combine_structural(
+      acc,
+      content_hash_combine_structural(content_hash_atom(value: e.component), content_hash_atom(value: e.version)),
+    ),
+  )
+  content_hash_tagged(
+    tag: "FirmwareManifest",
+    payload: fold(
+      manifest.configuration_digests,
+      init: entries,
+      f: (acc, d) => content_hash_combine_structural(acc, content_hash_structural_atom(hash: d)),
+    ),
+  )
+}
+
+type QualificationSubject {
+  unit_key: UnitKey
+  assembly_manifest_digest: ContentHash
+  firmware_manifest_digest: ContentHash
+}
+
+fn qualification_subject_of(
+  unit_key: UnitKey,
+  assembly: AssemblyManifest,
+  firmware: FirmwareManifest,
+) -> QualificationSubject {
+  QualificationSubject {
+    unit_key: unit_key,
+    assembly_manifest_digest: assembly_manifest_digest(manifest: assembly),
+    firmware_manifest_digest: firmware_manifest_digest(manifest: firmware),
+  }
+}
+
+// THE ONE DIGEST-EQUALITY DECISION FOR THIS LAYER (review 57612). It was
+// authored twice -- here and again in gunbc.machine_intake_receipt -- which is
+// two names for one predicate and the hollow_alias class DESIGN section 3
+// names. It is homed here because the qualification subject is what the
+// digests identify and every other machine-intake module already imports this
+// one. std.content_hash deliberately offers no union-level Bool: the
+// cross-family arm is a DECISION, and this layer makes it once, in the
+// refusing direction -- two digests from different families are never the same
+// subject, so they cannot be treated as unchanged.
+fn content_hash_equal(left: ContentHash, right: ContentHash) -> Bool {
+  match compare_content_hash(left: left, right: right) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// Which axes moved between an admitted subject and the one observed now. All
+// three are reported, not the first: a repair that changed a DIMM and flashed
+// the BIOS is two invalidations with two different re-qualification scopes.
+// THE AXES THEMSELVES, NOT THREE PARALLEL BOOLEANS (review 57612). The
+// previous shape was a hand-rolled sum: three Bool fields whose consumers read
+// them with `== false`, so `{ unit_changed: false, assembly_changed: false,
+// firmware_changed: false }` was an authorable SubjectStale that means
+// SubjectCurrent -- a state the coproduct already forbids and the record
+// re-admitted. The list carries exactly which axes moved and cannot be empty
+// in a well-constructed stale standing, because the sole constructor below
+// returns SubjectCurrent when no axis moved.
+type StaleAxis
+  = UnitKeyStale
+  | AssemblyManifestStale
+  | FirmwareManifestStale
+
+// SEALED AND SPLIT-FIELD: TWO DIFFERENT INVALID STATES, TWO DIFFERENT WALLS
+// (review 57612 and the corrections that followed it). Carrying
+// `axes: List<StaleAxis>` on the variant made the empty list unreachable only
+// along this module's constructor -- any module could author
+// `SubjectStale { axes: [] }`, a stale standing naming nothing, which is
+// SubjectCurrent wearing the other variant and the same defect the three
+// parallel Booleans had. It could equally author a duplicated or
+// out-of-roster-order list. Those are separate classes and neither one wall
+// closes both.
+//
+// EMPTINESS is closed by the SHAPE: std has no generic NonEmptyList carrier,
+// so this is the form the corpus already uses for a nonempty population
+// (extdeps.external_authority external_model_scope_citations_shape_note, the
+// gunbc.doc_graph_roots precedent) -- one required head plus the rest, so the
+// empty population has no constructor anywhere, this module included.
+//
+// DUPLICATION AND ORDER are closed by SEALING: StaleAxes is sole_constructor,
+// so the only mints are in this module, both of which derive their population
+// by filtering stale_axes_all and therefore cannot repeat an axis or reorder
+// one. A cross-module record literal refuses with SoleConstructorViolation.
+// SubjectCurrency itself stays open, because SubjectCurrent carries nothing
+// and sealing it would route a harmless construction through this authority
+// for no wall.
+type StaleAxes sole_constructor {
+  first_axis: StaleAxis
+  further_axes: List<StaleAxis>
+}
+
+type SubjectCurrency
+  = SubjectCurrent
+  | SubjectStale { axes: StaleAxes }
+
+// The two directions across the split, so no consumer re-derives either.
+// subject_currency_of_axes is the ONE place a filtered axis population becomes
+// a standing, and it is what makes an empty population SubjectCurrent instead
+// of a stale standing with nothing in it.
+fn stale_axis_items(axes: StaleAxes) -> List<StaleAxis> {
+  concat([axes.first_axis], axes.further_axes)
+}
+
+// THE MINT CANONICALIZES ITS OWN INPUT, because sealing confines who may WRITE
+// the record and says nothing about what the sanctioned mint ACCEPTS. This
+// function is importable exactly as stale_axis_items and merge_subject_currency
+// are, so before this it was a pass-through: a caller outside this module could
+// hand it [FirmwareManifestStale, AssemblyManifestStale, AssemblyManifestStale]
+// and receive a sealed StaleAxes carrying a duplicate in caller order, with no
+// cross-module record literal anywhere for SoleConstructorViolation to refuse.
+// Reducing the argument through stale_axes_all makes membership the only thing
+// a caller controls: order and multiplicity come from the roster, so the same
+// axis set has exactly one representation whoever asks for it. This is the ONE
+// executable home of that canonicalization -- merge_subject_currency hands its
+// two populations here unreduced rather than filtering a second time.
+fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
+  let canonical = stale_axes_all |> filter(a => axes |> any(candidate => candidate == a))
+  match canonical.first() {
+    Absent => SubjectCurrent
+    Present { value: head } =>
+      SubjectStale { axes: StaleAxes { first_axis: head, further_axes: canonical.skip(n: 1) } }
+  }
+}
+
+// THE CANONICAL AXIS POPULATION AND ITS ORDER, declared once and reduced
+// against in exactly one place: subject_currency_of_axes. Every standing --
+// freshly compared, merged, or minted by any caller at all -- carries this
+// roster's order and one occurrence per axis, because the mint filters this
+// list rather than preserving what it was handed. A union computed by
+// concatenating two populations would order by which side was measured first,
+// which is a fact about the caller and not about the machine; that is why the
+// merge concatenates and delegates rather than filtering a second time here.
+data stale_axes_all: List<StaleAxis> = [UnitKeyStale, AssemblyManifestStale, FirmwareManifestStale]
+
+fn compare_qualification_subject(admitted: QualificationSubject, observed: QualificationSubject) -> SubjectCurrency {
+  let unit_changed = (admitted.unit_key as NonEmptyStr) != (observed.unit_key as NonEmptyStr)
+  let assembly_changed = content_hash_equal(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
+  let firmware_changed = content_hash_equal(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
+  subject_currency_of_axes(axes: stale_axes_all |> filter(a => match a {
+    UnitKeyStale => unit_changed
+    AssemblyManifestStale => assembly_changed
+    FirmwareManifestStale => firmware_changed
+  }))
+}
+
+// THE SECOND LEGITIMATE MINT, AND IT LIVES BESIDE THE FIRST (review 57612
+// follow-up). Merging two standings for one subject is a union over the axis
+// identity: both populations go to the mint unreduced, and the mint's
+// canonicalization against stale_axes_all is what drops the duplicate an axis
+// present on both sides would otherwise produce and what orders the result by
+// the roster rather than by which side was measured first. The union is not
+// computed a second time here -- one canonicalization, one home. It cannot live
+// in the consuming module now that StaleAxes is sealed, and it should not have:
+// a mint is a fact about the carrier.
+fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
+  match left {
+    SubjectCurrent => right
+    SubjectStale { axes: la } =>
+      match right {
+        SubjectCurrent => left
+        SubjectStale { axes: ra } =>
+          subject_currency_of_axes(
+            axes: concat(stale_axis_items(axes: la), stale_axis_items(axes: ra)),
+          )
+      }
+  }
+}
+
+type IntakeAttemptId = NonEmptyStr where brand("IntakeAttemptId")
+
+// What every receipt identifies: the exact subject plus the attempt that
+// produced it. A receipt for a different subject is a receipt about a
+// different machine, whatever its board serial says.
+type MachineIntakeSubject {
+  subject: QualificationSubject
+  attempt_id: IntakeAttemptId
+}
+
+// A physical DIMM label cannot stand alone; it is bound to the electronic
+// identity, and where the SPD serial is absent or duplicated that limitation
+// is preserved as a standing rather than the label being promoted to an
+// identity it is not.
+type SpdSerialStanding
+  = SpdSerialRead { serial: NonEmptyStr }
+  | SpdSerialAbsent
+  | SpdSerialDuplicated { serial: NonEmptyStr }
+
+type PhysicalDimmLabelBinding {
+  operator_label: NonEmptyStr
+  spd_serial: SpdSerialStanding
+  part_number: NonEmptyStr
+  observed_slot: NonEmptyStr
+  observed_at: EpochMs
+}
+

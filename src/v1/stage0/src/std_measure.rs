@@ -8,6 +8,7 @@ use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
+use self::PositiveSlotCount::*;
 use self::Quantity::*;
 use self::Scale::*;
 pub use crate::extdeps_currency_currency::CurrencyCode;
@@ -291,22 +292,22 @@ pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) ->
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, i64>> {
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<Time, S, i64>> {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub type ByteSize = Rc<Measure<(), (), i64>>;
+pub type ByteSize = Rc<Measure<Memory, One, i64>>;
 
-pub type Kibibyte = Rc<Measure<(), (), i64>>;
+pub type Kibibyte = Rc<Measure<Memory, Kibi, i64>>;
 
-pub type Mebibyte = Rc<Measure<(), (), i64>>;
+pub type Mebibyte = Rc<Measure<Memory, Mebi, i64>>;
 
-pub type Gibibyte = Rc<Measure<(), (), i64>>;
+pub type Gibibyte = Rc<Measure<Memory, Gibi, i64>>;
 
-pub type Gigabyte = Rc<Measure<(), (), i64>>;
+pub type Gigabyte = Rc<Measure<Memory, Giga, i64>>;
 
 pub fn gigabyte(count: Nat) -> Gigabyte {
     Rc::new(Measure {
@@ -360,59 +361,59 @@ pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
     byte_size((kibibyte_count(k.clone()) * kibi_factor()))
 }
 
-pub type BitWidth = Rc<Measure<(), (), i64>>;
+pub type BitWidth = Rc<Measure<Information, One, i64>>;
 
 pub fn bits_per_byte() -> Nat {
     crate::extdeps_units_iec_80000_13::octet_bit_count()
 }
 
-pub type Hertz = Rc<Measure<(), (), i64>>;
+pub type Hertz = Rc<Measure<Frequency, One, i64>>;
 
-pub type MegatransfersPerSecond = Rc<Measure<(), (), i64>>;
+pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, i64>>;
 
-pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
+pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
 
-pub type CharacterCount = Rc<Measure<(), (), i64>>;
+pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
-pub type TokenCount = Rc<Measure<(), (), i64>>;
+pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
-pub type Millicore = Rc<Measure<(), (), i64>>;
+pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
-pub type Watt = Rc<Measure<(), (), i64>>;
+pub type Watt = Rc<Measure<Power, One, i64>>;
 
-pub type Milliwatt = Rc<Measure<(), (), i64>>;
+pub type Milliwatt = Rc<Measure<Power, Milli, i64>>;
 
-pub type VoltAmpere = Rc<Measure<(), (), i64>>;
+pub type VoltAmpere = Rc<Measure<ApparentPower, One, i64>>;
 
-pub type Volt = Rc<Measure<(), (), i64>>;
+pub type Volt = Rc<Measure<ElectricPotentialDifference, One, i64>>;
 
-pub type Millivolt = Rc<Measure<(), (), i64>>;
+pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, i64>>;
 
-pub type Ampere = Rc<Measure<(), (), i64>>;
+pub type Ampere = Rc<Measure<ElectricCurrent, One, i64>>;
 
-pub type Micrometer = Rc<Measure<(), (), i64>>;
+pub type Micrometer = Rc<Measure<Length, Micro, i64>>;
 
-pub type Millimeter = Rc<Measure<(), (), i64>>;
+pub type Millimeter = Rc<Measure<Length, Milli, i64>>;
 
-pub type SquareMillimeter = Rc<Measure<(), (), i64>>;
+pub type SquareMillimeter = Rc<Measure<Area, Micro, i64>>;
 
-pub type CubicMillimeter = Rc<Measure<(), (), i64>>;
+pub type CubicMillimeter = Rc<Measure<Volume, Nano, i64>>;
 
-pub type SquareMeter = Rc<Measure<(), (), i64>>;
+pub type SquareMeter = Rc<Measure<Area, One, i64>>;
 
-pub type SquareFoot = Rc<Measure<(), (), i64>>;
+pub type SquareFoot = Rc<Measure<Area, SquareFootArea, i64>>;
 
-pub type CubicMeter = Rc<Measure<(), (), i64>>;
+pub type CubicMeter = Rc<Measure<Volume, One, i64>>;
 
-pub type Arcsecond = Rc<Measure<(), (), i64>>;
+pub type Arcsecond = Rc<Measure<PlaneAngle, ArcsecondAngle, i64>>;
 
-pub type ArcsecondDisplacement = Rc<Measure<(), (), i64>>;
+pub type ArcsecondDisplacement = Rc<Measure<PlaneAngle, ArcsecondAngle, i64>>;
 
-pub type Degree = Rc<Measure<(), (), i64>>;
+pub type Degree = Rc<Measure<PlaneAngle, DegreeAngle, i64>>;
 
-pub type Turn = Rc<Measure<(), (), i64>>;
+pub type Turn = Rc<Measure<PlaneAngle, TurnAngle, i64>>;
 
-pub type SignedSquareMillimeter = Rc<Measure<(), (), i64>>;
+pub type SignedSquareMillimeter = Rc<Measure<Area, Micro, i64>>;
 
 pub fn square_meter(count: Nat) -> SquareMeter {
     Rc::new(Measure {
@@ -491,21 +492,21 @@ pub fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> i64 {
     measure_count(a.clone())
 }
 
-pub type RackUnit = Rc<Measure<(), (), i64>>;
+pub type RackUnit = Rc<Measure<Length, RackUnitHeight, i64>>;
 
-pub type Joule = Rc<Measure<(), (), i64>>;
+pub type Joule = Rc<Measure<Energy, One, i64>>;
 
-pub type Celsius = Rc<Measure<(), (), i64>>;
+pub type Celsius = Rc<Measure<Temperature, One, i64>>;
 
-pub type CelsiusDelta = Rc<Measure<(), (), i64>>;
+pub type CelsiusDelta = Rc<Measure<TemperatureDifference, One, i64>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PositiveMeasureCount {
-    PositiveMeasureSuccessor { predecessor: Nat },
+    PositiveMeasureSuccessor { predecessor: i64 },
 }
 impl PositiveMeasureCount {
-    pub fn predecessor(&self) -> Nat {
+    pub fn predecessor(&self) -> i64 {
         match self {
             PositiveMeasureCount::PositiveMeasureSuccessor {
                 predecessor: __val, ..
@@ -572,7 +573,33 @@ impl PositiveCelsiusDelta {
     }
 }
 
-pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PositiveSlotCount {
+    PositiveSlotCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveSlotCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveSlotCount::PositiveSlotCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub type RevolutionsPerMinute = Rc<Measure<RotationalSpeed, One, i64>>;
+
+pub type EventsPerMinute = Rc<Measure<Frequency, Sixty, i64>>;
+
+pub fn events_per_minute(count: Nat) -> EventsPerMinute {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+    measure_count(r.clone())
+}
 
 pub fn watt(count: Nat) -> Watt {
     Rc::new(Measure {
@@ -703,6 +730,20 @@ pub fn celsius_delta_count(delta: CelsiusDelta) -> i64 {
     measure_count(delta.clone())
 }
 
+pub fn positive_slot_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveSlotCount> {
+    Rc::new(PositiveSlotCount::PositiveSlotCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_slot_count_value(slots: Rc<PositiveSlotCount>) -> i64 {
+    match (*slots.clone()).clone() {
+        PositiveSlotCount::PositiveSlotCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
+}
+
 pub fn positive_celsius_delta(count: Rc<PositiveMeasureCount>) -> Rc<PositiveCelsiusDelta> {
     Rc::new(PositiveCelsiusDelta::PositiveCelsiusDeltaValue {
         count: count.clone(),
@@ -728,9 +769,9 @@ pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
     measure_count(r.clone())
 }
 
-pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
+pub type MoneyAmount<S> = Rc<Measure<Currency, S, i64>>;
 
-pub type MoneyAmountMicro = MoneyAmount<()>;
+pub type MoneyAmountMicro = MoneyAmount<Micro>;
 
 pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
     Rc::new(Measure {
@@ -741,15 +782,6 @@ pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
 
 pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m.clone())
-}
-
-pub fn money_rate_billing_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers — never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a derived projection at read time, never a stored catalog field.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -794,15 +826,6 @@ pub type MoneyPerKilowattHour = Rc<MoneyRate<PerKilowattHour>>;
 
 pub type MoneyPerSquareFootYear = Rc<MoneyRate<PerSquareFootYear>>;
 
-pub fn money_rate_carrier_representation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn money_rate_micros<P>(q: Rc<MoneyRate<P>>) -> Nat {
     money_amount_micro_count(q.amount.clone())
 }
@@ -841,24 +864,6 @@ pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
 
 pub fn billing_month_as_hour_count() -> Nat {
     730
-}
-
-pub fn billing_month_as_hour_count_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn billing_month_as_hour_count_representation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
@@ -937,15 +942,6 @@ pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t.clone())
 }
 
-pub fn character_count_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same axis HardwareThreadCount already instantiates, with a different thing being counted. It lives here rather than as a std.types brand because the consumers compare and order these budgets, and measure_le is where that ordering already lives (review 44089).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn character_count(count: Nat) -> CharacterCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -955,15 +951,6 @@ pub fn character_count(count: Nat) -> CharacterCount {
 
 pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
-}
-
-pub fn token_count_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn token_count(count: Nat) -> TokenCount {
@@ -988,7 +975,7 @@ pub fn millicore_count(m: Millicore) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Bandwidth = Rc<Measure<(), (), i64>>;
+pub type Bandwidth = Rc<Measure<DataRate, One, i64>>;
 
 pub fn bandwidth(count: Nat) -> Bandwidth {
     Rc::new(Measure {
@@ -1001,7 +988,7 @@ pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b.clone())
 }
 
-pub type Nanosecond = Rc<Measure<(), (), i64>>;
+pub type Nanosecond = Rc<Measure<Time, Nano, i64>>;
 
 pub fn nanosecond(count: Nat) -> Nanosecond {
     Rc::new(Measure {
@@ -1014,7 +1001,7 @@ pub fn nanosecond_count(n: Nanosecond) -> Nat {
     measure_count(n.clone())
 }
 
-pub type Microsecond = Rc<Measure<(), (), i64>>;
+pub type Microsecond = Rc<Measure<Time, Micro, i64>>;
 
 pub fn microsecond(count: Nat) -> Microsecond {
     Rc::new(Measure {
@@ -1027,7 +1014,7 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Millisecond = Rc<Measure<(), (), i64>>;
+pub type Millisecond = Rc<Measure<Time, Milli, i64>>;
 
 pub fn millisecond(count: Nat) -> Millisecond {
     Rc::new(Measure {
@@ -1079,16 +1066,7 @@ pub fn nanosecond_to_millisecond_floor(n: Nanosecond) -> Millisecond {
     millisecond((nanosecond_count(n.clone()) / nanoseconds_per_millisecond()))
 }
 
-pub fn nanosecond_millisecond_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Nanosecond is the canonical exact elapsed-time carrier. Millisecond remains a policy and presentation scale. Converting Millisecond to Nanosecond is exact; converting Nanosecond to Millisecond is explicitly floor-only and may be used only at a named presentation, wire, or signed-policy boundary. Measurement, ordering, joining, and attribution must retain Nanosecond.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub type Second = Rc<Measure<(), (), i64>>;
+pub type Second = Rc<Measure<Time, One, i64>>;
 
 pub fn second(count: Nat) -> Second {
     Rc::new(Measure {
@@ -1120,7 +1098,7 @@ pub fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -
     volt_ampere((volt_count(supply_voltage.clone()) * ampere_count(rated_current.clone())))
 }
 
-pub type Minute = Rc<Measure<(), (), i64>>;
+pub type Minute = Rc<Measure<Time, Sixty, i64>>;
 
 pub fn minute(count: Nat) -> Minute {
     Rc::new(Measure {
@@ -1137,7 +1115,7 @@ pub fn minute_to_millisecond(m: Minute) -> Millisecond {
     millisecond(((minute_count(m.clone()) * seconds_per_minute()) * milliseconds_per_second()))
 }
 
-pub type Percent = Rc<Measure<(), (), i64>>;
+pub type Percent = Rc<Measure<Dimensionless, One, i64>>;
 
 pub fn percent(count: Nat) -> Percent {
     Rc::new(Measure {
@@ -1148,15 +1126,6 @@ pub fn percent(count: Nat) -> Percent {
 
 pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
-}
-
-pub fn permyriad_scale_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as basis_point_unity_count).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {
@@ -1176,7 +1145,7 @@ pub fn percent_from_computed_int_frontier() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub type BasisPoint = Rc<Measure<(), (), i64>>;
+pub type BasisPoint = Rc<Measure<Dimensionless, One, i64>>;
 
 pub fn basis_point(count: Nat) -> BasisPoint {
     Rc::new(Measure {
@@ -1193,16 +1162,7 @@ pub fn basis_point_unity_count() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
 }
 
-pub fn basis_point_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub type AmortizationMonths = Rc<Measure<(), (), i64>>;
+pub type AmortizationMonths = Rc<Measure<Count, One, i64>>;
 
 pub fn amortization_months(count: Nat) -> AmortizationMonths {
     Rc::new(Measure {
@@ -1213,15 +1173,6 @@ pub fn amortization_months(count: Nat) -> AmortizationMonths {
 
 pub fn amortization_months_count(m: AmortizationMonths) -> Nat {
     measure_count(m.clone())
-}
-
-pub fn amortization_months_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI duration (cf. billing_month_as_hour_count for the hourly divisor convention only).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -1267,15 +1218,6 @@ pub fn clock_basis_authority_reachability_note() -> String {
     thread_local! {
         static CACHED: String = {
             "WHY THIS CARRIER LIVES IN std.measure AND NOT WHERE IT WAS FIRST DECLARED, generalized because the same authority hit the same wall twice in one day (2026-08-05). ClockBasis was minted in std.observation, the module whose events first needed it. Within hours it failed to be an authority twice, for two different reasons that look unrelated and are not. First it was internal, and gunbc's migration-policy carrier could not state its own basis without it being EXPORTED. Then std.realization_schedule -- which carried a forked second spelling, WitnessCostClock, that this lane was dissolving -- turned out to be UPSTREAM of std.observation through std.effect_grant and std.effects, so importing the authority created a cycle and the compiler refused it outright. A single authority that half the corpus cannot import is not a single authority. REACHABILITY IS PART OF WHAT MAKES SOMETHING AN AUTHORITY, not a deployment detail discovered afterwards, and it is the part nobody checks when minting one: declaring a concept once is assumed to settle it, when what actually settles it is every consumer being able to name it. The home is therefore chosen by who must reach it, not by who first needed it -- and here that answer is also the honest one on the merits, since which clock a duration was read from is a fact about the MEASUREMENT rather than about the observation event that happens to carry one, this module already owns the magnitudes the basis qualifies, and extdeps.pricing.object_storage ByteBasis is in-repo precedent for a basis living beside its magnitude. A METHOD NOTE, because the cycle was nearly missed: it was checked for by grepping the two files' direct imports, which showed no edge. That is a LOCAL instrument answering a question that is only decidable GLOBALLY, and it returned a confident wrong answer. Only the compiler could see it. When the question is transitive, only a transitive instrument answers it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn measure_clock_basis_seed_entry_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the clock is never recovered from a label string; the function name is a symbol the seed selects, not prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's trigger — when a realized runner enforces the deadline, it constructs the outcome here directly and has nothing to marshal.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

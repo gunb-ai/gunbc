@@ -27,7 +27,12 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
   hosts.length() > 0
     && plan_derived_run_total(p: live_plan()) == fold(hosts, init: 0, f: (n, h) => n + h.runner_count)
     && all(hosts, h =>
-        h.runner_count == declared_runner_count_for(host: h.identity)
+        h.runner_count == gunbc_runner_slots_per_host(host: h.identity)
+          && h.runner_count <= host_memory_admitted_width(host: h.identity)
+          && (match host_cpu_admitted_width(host: h.identity) {
+               CpuAdmitsWidth { slots: c } => h.runner_count <= c
+               CpuWidthUnresolved { cause: _ } => false
+             })
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget_for(host: h.identity))
           && hardware_thread_count_value(t: h.build_tokens) > 0
@@ -55,7 +60,7 @@ test fn witness_live_session_plan_fail_closed() -> Bool {
 // to accept that unsoundness would have made it green without exercising srv3 at all.
 test fn witness_live_effective_runners_derives_declared_count() -> Bool {
   match runner_host_deployment_for(p: live_plan(), host: operator_host_srv3) {
-    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == declared_runner_count_for(host: operator_host_srv3)
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == gunbc_runner_slots_per_host(host: operator_host_srv3)
     HostRunnerDeploymentRefused { refusal: _ } => false
   }
 }
@@ -186,12 +191,12 @@ test fn the_live_manifest_json_reports_incompleteness_and_names_the_refused_host
 // OVERSUBSCRIBED host from an UNCHARGEABLE one, and gunbc.ci_runner_placement previously projected
 // both to false through host_allocation_conserves and rendered one string for the pair: "host
 // allocation over-committed ... exceeds host RAM". Both paths refuse, so the collapse read as
-// cautious -- but the two have OPPOSITE remedies. Over-committed means take capacity away;
-// unchargeable means go and measure the resident. Reporting the first when the second is true sends
-// the reader to shrink a pool that was never the problem.
+// cautious -- but the two have OPPOSITE remedies: over-committed means take capacity away;
+// unchargeable means go and measure the resident. Reporting the first when the second is true
+// sends the reader to shrink a pool that was never the problem.
 // A witness asserting only that an unmeasured claim refuses would have passed against the defect,
-// because the defective code also refused. The pair is what discriminates: each arm must produce
-// its OWN cause and must NOT produce the other's.
+// because the defective code also refused. The pair discriminates: each arm must produce its OWN
+// cause and NOT the other's.
 fn control_plane_unmeasured_placement() -> FabricControlPlanePlacement {
   ControlPlaneStaticPinned {
     host: operator_host_srv1,
@@ -233,12 +238,12 @@ test fn an_oversized_control_plane_reports_over_commitment_and_not_unmeasured() 
 }
 
 // AN UNPLACED CONTROL PLANE ADDS NO REFUSAL OF ITS OWN, which is what this row has always meant.
-// It used to say so by asserting the whole fleet reason is empty, and that stopped being a
-// statement about the control plane the moment per-host refusal let a host decline for an unrelated
-// cause: srv2 now refuses because its session reservation is unestablished, under every placement,
-// so the old form reds on a fact it was never testing. The claim is restated RELATIVELY -- the
-// unplaced arm refuses exactly what the baseline already refuses -- which isolates the control
-// plane's contribution instead of requiring the rest of the fleet to be clean.
+// It used to assert the whole fleet reason is empty, which stopped being a statement about the
+// control plane once per-host refusal let a host decline for an unrelated cause: srv2 now refuses
+// because its session reservation is unestablished, under every placement, so the old form reds
+// on a fact it never tested. The claim is restated RELATIVELY -- the unplaced arm refuses exactly
+// what the baseline already refuses -- isolating the control plane's contribution instead of
+// requiring the rest of the fleet to be clean.
 test fn the_unplaced_control_plane_adds_no_refusal_of_its_own() -> Bool {
   let unplaced = plan_reason_under(p: ControlPlaneUnplaced)
   !unplaced.contains("unchargeable")
@@ -247,24 +252,24 @@ test fn the_unplaced_control_plane_adds_no_refusal_of_its_own() -> Bool {
 }
 
 // THIS IS THE CONTROL, AND IT IS WRITTEN AS AN INEQUALITY ON PURPOSE. The two witnesses above each
-// assert a substring, and a substring assertion can pass for the wrong reason -- if some unrelated
-// edit made every refusal recite both words, both would still be green. What the collapsed code
-// actually did was emit ONE string for two causes, so the property that falsifies it directly is
-// that the two causes are DISTINGUISHABLE AT ALL. Under host_allocation_conserves these two reasons
-// were byte-identical and this witness returns false; it is the red that the pair above cannot be
-// green without, and it stays enrolled rather than retiring now that the arm is split (DESIGN 4b:
-// a climb dissolves the production machinery it obsoletes, never the evidence that the rung is real).
+// assert a substring, which can pass for the wrong reason -- if an unrelated edit made every
+// refusal recite both words, both would still be green. The collapsed code emitted ONE string for
+// two causes, so the property that falsifies it directly is that the two causes are
+// DISTINGUISHABLE AT ALL. Under host_allocation_conserves these two reasons were byte-identical
+// and this witness returns false; it is the red the pair above cannot be green without, and it
+// stays enrolled now that the arm is split (DESIGN 4b: a climb dissolves the production machinery
+// it obsoletes, never the evidence that the rung is real).
 test fn the_two_control_plane_refusals_do_not_share_one_reason() -> Bool {
   plan_reason_under(p: control_plane_unmeasured_placement())
     != plan_reason_under(p: control_plane_oversized_placement())
 }
 
-// THE DIRECT RED FOR THE DEFECT THIS CARRIER REPLACES. On the shape that preceded it, srv2's
+// THE DIRECT RED FOR THE DEFECT THIS CARRIER REPLACES. On the preceding shape, srv2's
 // unestablished session reservation set one fleet-level unsound_reason and runner_deployment_plan
-// discarded EVERY host that had derived correctly -- 44 witnesses across six files went red, nine of
-// them existing only to verify srv3. This asserts the two facts together: srv2 refuses for its own
-// reason, and srv3 derives ANYWAY. On the old carrier the second half was unwritable, because there
-// was no derived srv3 left in the result to ask about.
+// discarded EVERY host that had derived correctly -- 44 witnesses across six files went red, nine
+// existing only to verify srv3. This asserts both facts: srv2 refuses for its own reason, and srv3
+// derives ANYWAY. On the old carrier the second half was unwritable, because no derived srv3 was
+// left in the result to ask about.
 test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
   let srv2_refused = match runner_host_deployment_for(p: live_plan(), host: operator_host_srv2) {
     HostRunnerDeploymentRefused { refusal: r } =>
@@ -277,6 +282,9 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         HostAllocationOversubscribedOnHost { cause: _ } => false
         HostAllocationUnchargeableOnHost { cause: _ } => false
         ZeroRunnerWidth => false
+        JobserverCitationAbsent { cause: _ } => false
+        HostCpuAllocationUnchargeable { cause: _ } => false
+        RunnerCoreRatioUnresolved { cause: _ } => false
         HostNotEnrolledInFleet => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false

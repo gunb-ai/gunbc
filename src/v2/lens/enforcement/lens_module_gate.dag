@@ -605,6 +605,14 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
+    UndecidableVerdictCollapse => LensInvariantSurface {
+      module: module,
+      lens_id: id,
+      projection: ProjectionNodeDag,
+      verdict_authority: VerdictLensVerdict,
+      remedy: RemedyConstructionWall,
+      admission: GenuinelyNewInvariant
+    }
   }
 }
 
@@ -639,7 +647,13 @@ data lens_module_gate_consolidated_surfaces: List<LensInvariantSurface> = [
   }
 ]
 
-data lens_module_gate_redundancy_key_note: String = "A verdict carrier and remedy classify how an invariant reports and repairs; a module can own several independently repaired invariants. Neither identifies the invariant. The registry entry's LensIdV0 is the canonical invariant identity, so it joins the reporting pair here. ComplexityDerivedKernel and ComplexityOptimality therefore remain distinct by construction even though both bind v2.lens.complexity. Cross-module sharing remains explicit in LensModuleAdmission.HandlerOnKernel instead of being guessed from coincidentally equal reporting metadata."
+// A verdict carrier and remedy classify how an invariant reports and repairs; a module can own
+// several independently repaired invariants. Neither identifies the invariant. The registry entry's
+// LensIdV0 is the canonical invariant identity, so it joins the reporting pair here.
+// ComplexityDerivedKernel and ComplexityOptimality therefore remain distinct by construction even
+// though both bind v2.lens.complexity. Cross-module sharing remains explicit in
+// LensModuleAdmission.HandlerOnKernel instead of being guessed from coincidentally equal reporting
+// metadata.
 
 fn lens_module_gate_surfaces() -> List<LensInvariantSurface> {
   let enrolled = fold_list(

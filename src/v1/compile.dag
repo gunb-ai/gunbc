@@ -65,7 +65,7 @@ import v1.compiler.infer_types { algebra_field_kind_name }
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics }
 
-import v1.compiler.emit_rust { emit_rust }
+import v1.compiler.emit_rust { emit_rust_selected }
 
 import v1.compiler.emit_python { emit_python }
 
@@ -84,7 +84,7 @@ import std.termination {
 
 import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 
-import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
+import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan, selected_artifact_plan, RustModuleRenderSelection, RenderEveryModule }
 
 import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
 
@@ -103,7 +103,10 @@ type PipelineResult {
   newline_indices: List<NewlineIndex>
 }
 
-data frontend_result_authored_note: String = "The authored source annotation graph rides beside the semantic result rather than inside it. Every existing consumer reads the fields it already read and is unaffected; annotation-aware machinery reads the graph. Refusals are carried too, because a graph without them cannot distinguish prose that was never written from prose that was dropped."
+// The authored source annotation graph rides beside the semantic result rather than inside it.
+// Every existing consumer reads the fields it already read and is unaffected; annotation-aware
+// machinery reads the graph. Refusals are carried too, because a graph without them cannot
+// distinguish prose that was never written from prose that was dropped.
 
 type FrontendResult {
   graph: ModuleGraph?
@@ -201,7 +204,11 @@ type CompilePipelineOptions {
   census_only_sources: List<SourceFile>
 }
 
-data census_only_sources_note: String = "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class)."
+// Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup,
+// never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the
+// compile closure resolve against these; compiling them here instead would subject them to this
+// invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344
+// diagnostics, the Empty/Cons poisoning class).
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
   CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
@@ -233,7 +240,7 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     return EmitResult { files: [], diagnostics: unmodeled_transports }
   }
   match artifact.target {
-    Rust => emit_rust(typed: typed)
+    Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)
     Python => emit_python(typed: typed)
     Go => emit_go(typed: typed)
     Dag => emit_dag_artifact(typed: typed)
@@ -250,7 +257,6 @@ fn json_optional_string(value: String?) -> String {
     Absent => "null"
   }
 }
-
 
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
   make_error_node(
@@ -637,6 +643,8 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
     NoExprData => "{\"kind\": \"NoExprData\"}"
     ExprLiteral { value: value } =>
       concat("{\"kind\": \"ExprLiteral\", \"value\": ", serialize_literal(value: value), "}")
+    ExprElaboratedLiteral { value: value, elaboration: _ } =>
+      concat("{\"kind\": \"ExprElaboratedLiteral\", \"value\": ", serialize_literal(value: value), "}")
     ExprError { kind: kind, message: message } =>
       concat(
         "{\"kind\": \"ExprError\", \"error_kind\": ", json_quote(s: expr_error_kind_name(value: kind)),
@@ -1101,7 +1109,11 @@ type CensusFillParse {
   annotations: SourceAnnotationGraph
 }
 
-data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
+// Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
+// imports live in the compile closure or a different tree view; resolving against a fill-only pool
+// fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse
+// errors only — those are load-bearing (a broken-parse module contributes no names to the census)
+// and must surface, never be skipped.
 
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   let prepared = sources |> map(s =>
@@ -1186,6 +1198,18 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
     sources: sources,
     target: target,
     options: default_compile_pipeline_options()
+  )
+}
+
+// THE CHANGE-DENOMINATED ENTRY. Same pipeline, same resolved graph, same diagnostics -- the
+// selection reaches emission only, where it decides which modules are RENDERED. A caller that
+// supplies RenderEveryModule here has written `compile_sources` the long way, which is why that
+// wrapper stays the name for the whole-closure question.
+fn compile_sources_selected(sources: List<SourceFile>, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
+  emit_resolved_for_target_selected(
+    resolved: compile_to_resolved_with_options(sources: sources, options: default_compile_pipeline_options()),
+    target: target,
+    selection: selection
   )
 }
 
@@ -1309,6 +1333,25 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
 }
 
 fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
+  emit_resolved_for_target_selected(resolved: resolved, target: target, selection: RenderEveryModule)
+}
+
+// WHY THE REFUSAL PRECONDITION A SCOPED ROUND RESTS ON LIVES HERE, one binding down.
+//
+// Under RenderSelectedMirrors the emitter observes import refusals only for the modules it
+// rendered, so a reader is owed why that is EXACT rather than merely cheaper. It is exact
+// because of `final_files` below: an emit carrying one error diagnostic returns NO FILES AT ALL.
+// A committed mirror is therefore a file some emit returned, and no emit returns a file while
+// any module in the closure refuses. So a tree that exists is a tree whose whole closure emitted
+// clean, and the modules a scope declined to render had nothing to say.
+//
+// This is a construction rather than a claim about it: the `if` below is what makes the
+// implication true, and `an_emit_that_refuses_hands_back_no_files` in
+// `v1_compiler.required_regen_host` is its discriminating execution -- a fixture whose emit
+// refuses, asserted to produce zero files rather than the ones that did render. It runs in the
+// required unit step, so deleting the `if` goes red there, which is the only form this argument
+// can take that a later reader can check.
+fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {
@@ -1321,9 +1364,10 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
       }
     Present { value: emittable } => {
       let typed = emittable.graph
-      let artifact_plan = default_artifact_plan(
+      let artifact_plan = selected_artifact_plan(
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
-        target: target
+        target: target,
+        selection: selection
       )
       let _ = trace_mark("compile.emit.begin")
       let emit_result = emit_from_artifact_plan(emittable: emittable, artifact_plan: artifact_plan)

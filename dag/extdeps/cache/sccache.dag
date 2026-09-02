@@ -43,7 +43,6 @@ import std.types { NonEmptyStr, String, List }
 import extdeps.toolchain.types {
   ToolchainCapability,
   SharedHomeAcrossJobs,
-  CtrlBuild,
   Architecture,
   Aarch64,
   X86_64,
@@ -77,7 +76,20 @@ type SccacheBinaryRelease {
   digest_x86_64: Digest
 }
 
-data sccache_binary_artifact_grain_note: String = "For multi-artifact releases the pin SUBJECT is the ARTIFACT (release x platform), not the release row alone (review 44662, feature:pin-artifact-grain). SccacheBinaryRelease carries two cited digests because one GitHub release publishes two musl tarballs; Pin.expected_identity is one ContentHash, so Pin<SccacheBinaryRelease> was ambiguous about which tarball it pinned. SccacheBinaryArtifact is the release x published-musl-arch product: one cited digest per row, projected from the release's named digest_aarch64 / digest_x86_64 fields — never re-minted. SccachePublishedMuslArch is a CLOSED two-arm coproduct (SccacheMuslAarch64 | SccacheMuslX86_64) so unsupported extdeps.toolchain.types.Architecture variants are UNWRITABLE on the carrier rather than admitted and refused later (review 44866, DESIGN section 5 construction). Distinct variant names avoid the typechecker fork where reusing Aarch64 | X86_64 as a separate coproduct collided with Architecture; sccache_published_musl_arch_of is the Architecture→SccachePublishedMuslArch projection (Present only for published musl arches) used by sccache_binary_artifact_for_arch and sccache_release_digest consumers. CpuArchitecture and TargetArchitecture in std are byte-identical forks (DESIGN section 3) and are deliberately NOT imported here."
+// For multi-artifact releases the pin SUBJECT is the ARTIFACT (release x platform), not the release
+// row alone (review 44662, feature:pin-artifact-grain). SccacheBinaryRelease carries two cited
+// digests because one GitHub release publishes two musl tarballs; Pin.expected_identity is one
+// ContentHash, so Pin<SccacheBinaryRelease> was ambiguous about which tarball it pinned.
+// SccacheBinaryArtifact is the release x published-musl-arch product: one cited digest per row,
+// projected from the release's named digest_aarch64 / digest_x86_64 fields — never re-minted.
+// SccachePublishedMuslArch is a CLOSED two-arm coproduct (SccacheMuslAarch64 | SccacheMuslX86_64)
+// so unsupported extdeps.toolchain.types.Architecture variants are UNWRITABLE on the carrier rather
+// than admitted and refused later (review 44866, DESIGN section 5 construction). Distinct variant
+// names avoid the typechecker fork where reusing Aarch64 | X86_64 as a separate coproduct collided
+// with Architecture; sccache_published_musl_arch_of is the Architecture→SccachePublishedMuslArch
+// projection (Present only for published musl arches) used by sccache_binary_artifact_for_arch and
+// sccache_release_digest consumers. CpuArchitecture and TargetArchitecture in std are
+// byte-identical forks (DESIGN section 3) and are deliberately NOT imported here.
 
 type SccachePublishedMuslArch = SccacheMuslAarch64 | SccacheMuslX86_64
 
@@ -148,7 +160,6 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
   name: "sccache",
   version: "0.15.0",
   env_isolation: SharedHomeAcrossJobs,
-  build_wrapper: Present { value: CtrlBuild },
   linked_cache_interface: Present { value: sccache_local_id },
 }
 
@@ -167,7 +178,14 @@ data sccache_install_dissolution_trigger: DissolutionCondition = retires_dissolu
   ref: decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_install_script")
 )
 
-data sccache_installed_binary_path_note: String = "Single authority for WHERE the cited release lands on a host. sccache_install_script writes it and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with ExecStart=/usr/bin/sccache while this module installed the pinned v0.15.0 tarball to /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version, digest verification AND path, both firing on the same host (P1:runner-deploy-slot then P1b:build-cache-provision)."
+// Single authority for WHERE the cited release lands on a host. sccache_install_script writes it
+// and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow
+// read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before
+// this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with
+// ExecStart=/usr/bin/sccache while this module installed the pinned v0.15.0 tarball to
+// /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version,
+// digest verification AND path, both firing on the same host (P1:runner-deploy-slot then
+// P1b:build-cache-provision).
 
 data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
 
@@ -192,7 +210,11 @@ fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: 
   ], "\n")
 }
 
-data sccache_release_arch_selection_note: String = "The release row carries per-arch digests as two named fields, so selecting one by hand is how a caller pins an arch (runner_host_sccache_provision_aarch64). These two selectors make the choice a total function of the modeled Architecture coproduct instead: every arch the cited release does NOT publish a musl tarball for returns Absent, so an unsupported host REFUSES rather than silently receiving an aarch64 binary. Fail-closed by construction (§5) — there is no default arm."
+// The release row carries per-arch digests as two named fields, so selecting one by hand is how a
+// caller pins an arch (runner_host_sccache_provision_aarch64). These two selectors make the choice
+// a total function of the modeled Architecture coproduct instead: every arch the cited release does
+// NOT publish a musl tarball for returns Absent, so an unsupported host REFUSES rather than
+// silently receiving an aarch64 binary. Fail-closed by construction (§5) — there is no default arm.
 
 fn sccache_release_arch_token(arch: Architecture) -> NonEmptyStr? {
   match arch {
@@ -226,9 +248,26 @@ fn sccache_release_digest(rel: SccacheBinaryRelease, arch: Architecture) -> Dige
   }
 }
 
-data sccache_server_process_model_doc: String = "sccache is a client/server tool: the client auto-spawns a server on first use if none is listening, the server survives the client that spawned it, and CACHE MISSES ARE COMPILED BY THE SERVER — rustc runs as a CHILD OF THE SERVER PROCESS, not of the invoking client. Consequence (load-bearing for host budgeting): the server's cgroup IS the cgroup every cache-miss compile on the host executes in, so a server that was lazily spawned inside some job's cgroup makes that job's memory caps bound EVERY subsequent compile on the host, including compiles issued by other jobs. SCCACHE_IDLE_TIMEOUT=0 disables the idle shutdown, so such a mis-placed server survives indefinitely."
+// sccache is a client/server tool: the client auto-spawns a server on first use if none is
+// listening, the server survives the client that spawned it, and CACHE MISSES ARE COMPILED BY THE
+// SERVER — rustc runs as a CHILD OF THE SERVER PROCESS, not of the invoking client. Consequence
+// (load-bearing for host budgeting): the server's cgroup IS the cgroup every cache-miss compile on
+// the host executes in, so a server that was lazily spawned inside some job's cgroup makes that
+// job's memory caps bound EVERY subsequent compile on the host, including compiles issued by other
+// jobs. SCCACHE_IDLE_TIMEOUT=0 disables the idle shutdown, so such a mis-placed server survives
+// indefinitely.
 
-data sccache_server_endpoint_doc: String = "The SERVER is identified positively as the process HOLDING THE LISTEN on the configured endpoint — never by process name. The sccache binary is both client and server, so under RUSTC_WRAPPER every in-flight compile also runs a process named 'sccache'; selecting by name samples a transient client and reads the WRONG cgroup. Upstream exposes two mutually exclusive endpoint realizations: SCCACHE_SERVER_PORT (loopback TCP, default 4226) and SCCACHE_SERVER_UDS (a Unix-domain socket path). Modeling only the port would be a nickname for one realization (DESIGN section 3): the gunbc fleet configures the UDS form, so a port-only probe finds no listener at all. Observed live on srv1 2026-08-01: no TCP 4226 listener exists, while /var/lib/ctrl/sccache-ci/server.sock is held LISTEN by the CI server and /var/lib/ctrl/sccache/server.sock by the session server — endpoint ownership is what distinguished them."
+// The SERVER is identified positively as the process HOLDING THE LISTEN on the configured endpoint
+// — never by process name. The sccache binary is both client and server, so under RUSTC_WRAPPER
+// every in-flight compile also runs a process named 'sccache'; selecting by name samples a
+// transient client and reads the WRONG cgroup. Upstream exposes two mutually exclusive endpoint
+// realizations: SCCACHE_SERVER_PORT (loopback TCP, default 4226) and SCCACHE_SERVER_UDS (a
+// Unix-domain socket path). Modeling only the port would be a nickname for one realization (DESIGN
+// section 3): the gunbc fleet configures the UDS form, so a port-only probe finds no listener at
+// all. Observed live on srv1 2026-08-01: no TCP 4226 listener exists, while
+// /var/lib/ctrl/sccache-ci/server.sock is held LISTEN by the CI server and
+// /var/lib/ctrl/sccache/server.sock by the session server — endpoint ownership is what
+// distinguished them.
 
 data sccache_server_default_tcp_port: Int = 4226
 
@@ -302,7 +341,12 @@ data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
 
 data sccache_failed_to_execute_compile_log_fragment: String = "sccache: error: failed to execute compile"
 
-data sccache_misconfigured_log_fragments_note: String = "The cited roster of stdout/stderr fragments that mean 'the daemon answered, but it is misconfigured' — as a LIST, so a consumer classifying an observation folds over it. The three rows above were previously read one-by-one by a hand-unrolled if/elif chain in the host-standup provisioning emitter, which meant citing a fourth fragment here required an edit there too (the emitter naming a concept it does not own). Consumers iterate this roster; adding a row costs zero emitter edits."
+// The cited roster of stdout/stderr fragments that mean 'the daemon answered, but it is
+// misconfigured' — as a LIST, so a consumer classifying an observation folds over it. The three
+// rows above were previously read one-by-one by a hand-unrolled if/elif chain in the host-standup
+// provisioning emitter, which meant citing a fourth fragment here required an edit there too (the
+// emitter naming a concept it does not own). Consumers iterate this roster; adding a row costs zero
+// emitter edits.
 
 data sccache_misconfigured_log_fragments: List<String> = [
   sccache_fatal_error_log_fragment,
@@ -310,7 +354,31 @@ data sccache_misconfigured_log_fragments: List<String> = [
   sccache_failed_to_execute_compile_log_fragment,
 ]
 
-data sccache_server_lifetime_note: String = "sccache's server EXITS ON ITS OWN. Three environment knobs, all documented by the module's cited authority extdeps_external_authority_anchor (github.com/mozilla/sccache/blob/main/docs/Configuration.md), decide the process lifetime a supervisor sees, and they are modeled here because they are facts about SCCACHE — not about systemd, and not about gunbc. Before 2026-07-25 the P1b unit emitter spelled SCCACHE_START_SERVER=1 / SCCACHE_NO_DAEMON=1 as bare literals of its own, which made gunbc.host_build_cache_provision_script a SECOND authority for sccache's environment vocabulary (§3) — and the knob that was missing from that second authority is exactly the one that broke: SCCACHE_IDLE_TIMEOUT. Cited text: 'how long the local daemon process waits for more client requests before exiting, in seconds. Set to 0 to run sccache permanently.' The default is 600 seconds, confirmed by execution rather than read off the doc: on srv3 2026-07-25 the foreground-supervised unit started at 06:28:47 UTC, served no compile request, and EXITED 0 after `Duration: 10min 8.215s`, leaving `inactive (dead)` — Restart=on-failure could not fire because the exit was a success. Consequence for any supervisor: a Type=simple unit whose ExecStart is sccache is only durable when the idle timeout is disabled; otherwise it dies on the first quiet ten minutes and the host reverts to sccache's own unsupervised per-invocation auto-start (the very no-op state the foreground form was introduced to remove). Whether the srv1/srv2 production ctrl-sccache.service sets this knob is UNVERIFIED — neither host is reachable from a session container today, and the only in-tree description of that unit (#7206's note) lists SCCACHE_START_SERVER and SCCACHE_NO_DAEMON and no idle-timeout line, which is an absence in a summary, not evidence of absence in the file. What its month-plus uptime does NOT establish is that the unit is durable: those hosts run CI continuously, so traffic keeps the daemon below the idle threshold whether or not the timer is disabled — the uptime is consistent with both. This row therefore stands on the cited doc plus the srv3 receipt as a DEDUCTION; it is explicitly NOT claimed as a swap toward a production form nobody has read."
+// sccache's server EXITS ON ITS OWN. Three environment knobs, all documented by the module's cited
+// authority extdeps_external_authority_anchor
+// (github.com/mozilla/sccache/blob/main/docs/Configuration.md), decide the process lifetime a
+// supervisor sees, and they are modeled here because they are facts about SCCACHE — not about
+// systemd, and not about gunbc. Before 2026-07-25 the P1b unit emitter spelled
+// SCCACHE_START_SERVER=1 / SCCACHE_NO_DAEMON=1 as bare literals of its own, which made
+// gunbc.host_build_cache_provision_script a SECOND authority for sccache's environment vocabulary
+// (§3) — and the knob that was missing from that second authority is exactly the one that broke:
+// SCCACHE_IDLE_TIMEOUT. Cited text: 'how long the local daemon process waits for more client
+// requests before exiting, in seconds. Set to 0 to run sccache permanently.' The default is 600
+// seconds, confirmed by execution rather than read off the doc: on srv3 2026-07-25 the
+// foreground-supervised unit started at 06:28:47 UTC, served no compile request, and EXITED 0 after
+// `Duration: 10min 8.215s`, leaving `inactive (dead)` — Restart=on-failure could not fire because
+// the exit was a success. Consequence for any supervisor: a Type=simple unit whose ExecStart is
+// sccache is only durable when the idle timeout is disabled; otherwise it dies on the first quiet
+// ten minutes and the host reverts to sccache's own unsupervised per-invocation auto-start (the
+// very no-op state the foreground form was introduced to remove). Whether the srv1/srv2 production
+// ctrl-sccache.service sets this knob is UNVERIFIED — neither host is reachable from a session
+// container today, and the only in-tree description of that unit (#7206's note) lists
+// SCCACHE_START_SERVER and SCCACHE_NO_DAEMON and no idle-timeout line, which is an absence in a
+// summary, not evidence of absence in the file. What its month-plus uptime does NOT establish is
+// that the unit is durable: those hosts run CI continuously, so traffic keeps the daemon below the
+// idle threshold whether or not the timer is disabled — the uptime is consistent with both. This
+// row therefore stands on the cited doc plus the srv3 receipt as a DEDUCTION; it is explicitly NOT
+// claimed as a swap toward a production form nobody has read.
 
 data sccache_start_server_env_var: String = "SCCACHE_START_SERVER"
 
@@ -318,7 +386,11 @@ data sccache_no_daemon_env_var: String = "SCCACHE_NO_DAEMON"
 
 data sccache_idle_timeout_env_var: String = "SCCACHE_IDLE_TIMEOUT"
 
-data sccache_idle_timeout_never_value_note: String = "The value whose MEANING is 'never exit', which is why it is a named row rather than a literal inside the assignment: '0' is not an ordinary duration on this axis (a zero-second idle timeout would mean the opposite), it is the cited doc's sentinel for running permanently. A future consumer that wants a bounded lifetime supplies its own seconds value; a consumer that wants a supervised daemon reads THIS row."
+// The value whose MEANING is 'never exit', which is why it is a named row rather than a literal
+// inside the assignment: '0' is not an ordinary duration on this axis (a zero-second idle timeout
+// would mean the opposite), it is the cited doc's sentinel for running permanently. A future
+// consumer that wants a bounded lifetime supplies its own seconds value; a consumer that wants a
+// supervised daemon reads THIS row.
 
 data sccache_idle_timeout_never_value: String = "0"
 

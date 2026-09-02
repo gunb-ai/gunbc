@@ -1,0 +1,82 @@
+module gunbc.stage0_partition_package_graph
+
+import std.types { String, List, Bool }
+import gunbc.stage0_executable_assembly_generated {
+  generated_host_shell_package_name,
+  generated_host_shell_partition_dependencies,
+  generated_next_pass_bin_name
+}
+import gunbc.stage0_crate_partition_generated {
+  GeneratedEmitCoreCrate,
+  GeneratedFoundationCrate,
+  GeneratedLayeredCoreCrate,
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+
+// THE PACKAGE DEPENDENCY GRAPH OF THE STAGE0 PARTITION, in one place, as package NAMES.
+//
+// Two consumers ask the same question and must not answer it twice. v1.compiler.stage0_crates
+// renders each partition crate's Cargo manifest from these edges, and
+// gunbc.stage0_partition_rebuild_scope walks them in reverse to decide which packages one changed
+// mirror forces cargo to recompile. If the renderer kept its own copy, the selector could compute
+// a closure over edges cargo was never handed -- and the failure direction is the dangerous one:
+// a missing edge NARROWS the closure, so a package that must recompile is skipped and the next
+// pass runs stale code. One authority makes that state unwritable rather than checked.
+//
+// NAMES, NOT MANIFEST ROWS, because the two consumers need different things from an edge: the
+// renderer needs a LocalPathDep carrying the sibling path it resolves from the row's crate_dir,
+// and the selector needs only the identity of the package on the other end. Publishing the
+// manifest row here would push the renderer's transport into the graph (DESIGN section 3:
+// interface, realization and policy are three facts), and publishing the path would make the
+// selector carry a directory it has no use for.
+//
+// THE KIND DECIDES THE EDGES, and each arm is the rule the partition already lives by:
+// a foundation crate is the bottom of the layering and depends on no partition package; a
+// layered core crate depends on exactly the packages it re-exports, which is what makes the
+// `crate::` references in its included mirrors keep resolving; and the emit shell re-exports a
+// SURFACE assembled from every module-bearing package, so it depends on all of them regardless
+// of which modules it names.
+fn stage0_partition_row_is_module_bearing_package(row: GeneratedPartitionCrateRow) -> Bool {
+  match row.kind {
+    GeneratedEmitCoreCrate => false
+    GeneratedFoundationCrate => true
+    GeneratedLayeredCoreCrate => true
+  }
+}
+
+fn stage0_partition_module_bearing_package_names() -> List<String> {
+  generated_partition_crate_rows
+    |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
+    |> map(row => row.package_name)
+}
+
+fn stage0_partition_package_dependency_names(row: GeneratedPartitionCrateRow) -> List<String> {
+  match row.kind {
+    GeneratedFoundationCrate => []
+    GeneratedLayeredCoreCrate => row.reexport_packages
+    GeneratedEmitCoreCrate => stage0_partition_module_bearing_package_names()
+  }
+}
+
+// THE NODE ABOVE THE PARTITION. The host shell package is not a partition crate -- it owns no
+// emitted mirror the partition owns, and it is never rendered by v1.compiler.stage0_crates -- but
+// it IS a node of the same package graph: it depends on the top module-bearing package, so cargo
+// relinks it whenever any package below it recompiles, and the executable the second generation
+// runs is its binary target. Leaving it out of this module would force the rebuild selector to
+// carry its own edge for the one package that matters most, which is the parallel-authority
+// failure the header above rejects for every other edge.
+//
+// The identities come from gunbc.stage0_executable_assembly_generated, the projection of
+// v2.compiler.self_host.stage0_executable_assembly; nothing about the shell is decided here.
+fn stage0_host_shell_package_name() -> String {
+  generated_host_shell_package_name
+}
+
+fn stage0_host_shell_dependency_names() -> List<String> {
+  generated_host_shell_partition_dependencies
+}
+
+fn stage0_next_pass_executable_bin_name() -> String {
+  generated_next_pass_bin_name
+}

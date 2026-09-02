@@ -1,0 +1,250 @@
+module test.claim.machine_intake_subject_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { content_hash_of_value }
+import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  BmcFru,
+  BoardSerialAbsent,
+  BoardSerialContradictory,
+  BoardSerialDuplicatedAcrossUnits,
+  BoardSerialObservation,
+  ComponentIdentity,
+  CpuComponent,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  HostSmbios,
+  PhysicalDimmLabelBinding,
+  SpdSerialAbsent,
+  SpdSerialDuplicated,
+  SpdSerialRead,
+  SubjectCurrency,
+  SubjectCurrent,
+  SubjectStale,
+  StaleAxis,
+  StaleAxes,
+  stale_axis_items,
+  merge_subject_currency,
+  subject_currency_of_axes,
+  UnitKeyStale,
+  AssemblyManifestStale,
+  FirmwareManifestStale,
+  QualificationSubject,
+  UnitIdentityInputs,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  bind_unit_key,
+  compare_qualification_subject,
+  qualification_subject_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data serial_a: NonEmptyStr = "BRD-000123"
+
+data endpoint_one: BmcEndpoint = BmcEndpoint { host: "192.168.1.50", protocol: Redfish }
+data endpoint_two: BmcEndpoint = BmcEndpoint { host: "10.0.0.50", protocol: Redfish }
+
+data agreeing_serials: List<BoardSerialObservation> = [
+  BoardSerialObservation { source: BmcFru, serial: serial_a },
+  BoardSerialObservation { source: HostSmbios, serial: serial_a },
+]
+
+data assembly_before: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-1U-ALT",
+  components: [
+    ComponentIdentity { kind: CpuComponent, slot: "CPU0", identity: "PPIN-1" },
+    ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-OLD" },
+    ComponentIdentity { kind: DimmComponent, slot: "E1", identity: "SPD-E1" },
+  ],
+}
+
+data assembly_after_dimm_swap: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-1U-ALT",
+  components: [
+    ComponentIdentity { kind: CpuComponent, slot: "CPU0", identity: "PPIN-1" },
+    ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-NEW" },
+    ComponentIdentity { kind: DimmComponent, slot: "E1", identity: "SPD-E1" },
+  ],
+}
+
+data firmware_v1: FirmwareManifest = FirmwareManifest {
+  entries: [
+    FirmwareEntry { component: "bmc", version: "3.22.00" },
+    FirmwareEntry { component: "bios", version: "3.10" },
+  ],
+  configuration_digests: [content_hash_of_value(value: "fan-policy-v1")],
+}
+
+data firmware_v2: FirmwareManifest = FirmwareManifest {
+  entries: [
+    FirmwareEntry { component: "bmc", version: "3.22.00" },
+    FirmwareEntry { component: "bios", version: "3.11" },
+  ],
+  configuration_digests: [content_hash_of_value(value: "fan-policy-v1")],
+}
+
+// CONTROL 1 — same board serial, one DIMM changed: the prior admission's
+// subject is stale on exactly the assembly axis.
+test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
+  let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+  let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
+  match compare_qualification_subject(admitted: admitted, observed: observed) {
+    SubjectStale { axes: axes } =>
+      list_length(items: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
+    SubjectCurrent => false
+  }
+}
+
+// Positive control for control 1: the same manifests re-observed are current.
+test fn unchanged_manifests_are_current() -> Bool {
+  let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+  let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+  compare_qualification_subject(admitted: admitted, observed: observed) == SubjectCurrent
+}
+
+test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
+  let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+  let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
+  match compare_qualification_subject(admitted: admitted, observed: observed) {
+    SubjectStale { axes: axes } =>
+      list_length(items: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
+    SubjectCurrent => false
+  }
+}
+
+// CONTROL 2 — a changed BMC IP does not create a new unit: two identity
+// inputs differing only in endpoint bind the same key.
+test fn changed_bmc_endpoint_binds_the_same_unit() -> Bool {
+  let one = bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [])
+  let two = bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_two, board_serial_observations: agreeing_serials }, other_units: [])
+  match one {
+    UnitKeyBound { key: a } =>
+      match two {
+        UnitKeyBound { key: b } => (a as NonEmptyStr) == (b as NonEmptyStr) && (a as NonEmptyStr) == serial_a
+        UnitKeyRefused { cause: _ } => false
+      }
+    UnitKeyRefused { cause: _ } => false
+  }
+}
+
+// CONTROL 3 — absent, contradictory, or duplicated board serial refuses; no
+// key is fabricated from the endpoint or anything else.
+test fn absent_board_serial_refuses() -> Bool {
+  match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: [] }, other_units: []) {
+    UnitKeyRefused { cause: c } => c == BoardSerialAbsent
+    UnitKeyBound { key: _ } => false
+  }
+}
+
+test fn contradictory_board_serial_refuses() -> Bool {
+  let observations = [
+    BoardSerialObservation { source: BmcFru, serial: serial_a },
+    BoardSerialObservation { source: HostSmbios, serial: "BRD-000999" },
+  ]
+  match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: observations }, other_units: []) {
+    UnitKeyRefused { cause: c } =>
+      match c {
+        BoardSerialContradictory { observations: o } => list_length(items: o) == 2
+        _ => false
+      }
+    UnitKeyBound { key: _ } => false
+  }
+}
+
+test fn board_serial_already_keying_another_unit_refuses() -> Bool {
+  match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [serial_a as UnitKey]) {
+    UnitKeyRefused { cause: c } =>
+      match c {
+        BoardSerialDuplicatedAcrossUnits { serial: s } => s == serial_a
+        _ => false
+      }
+    UnitKeyBound { key: _ } => false
+  }
+}
+
+// A hand-written DIMM label without an SPD serial is not an electronic
+// identity, and the binding says so rather than promoting the label.
+test fn dimm_label_without_spd_serial_is_not_electronically_bound() -> Bool {
+  let unbound = PhysicalDimmLabelBinding { operator_label: "stick-3", spd_serial: SpdSerialAbsent, part_number: "M386A4G40DM0-CPB", observed_slot: "A1", observed_at: 1788000000000 }
+  let bound = PhysicalDimmLabelBinding { operator_label: "stick-3", spd_serial: SpdSerialRead { serial: "SPD-A1-OLD" }, part_number: "M386A4G40DM0-CPB", observed_slot: "A1", observed_at: 1788000000000 }
+  let unbound_electronic = match unbound.spd_serial {
+    SpdSerialRead { serial: _ } => true
+    SpdSerialAbsent => false
+    SpdSerialDuplicated { serial: _ } => false
+  }
+  let bound_electronic = match bound.spd_serial {
+    SpdSerialRead { serial: _ } => true
+    SpdSerialAbsent => false
+    SpdSerialDuplicated { serial: _ } => false
+  }
+  unbound_electronic == false && bound_electronic
+}
+
+// THE MERGE LAW ITSELF, WHICH THE CONTROLS ABOVE DO NOT REACH (review 57612
+// follow-up). Every control above compares two subjects that already differ on
+// the axes asserted, so merge_subject_currency is never the thing under test:
+// a raw concatenation, a duplicate-retaining union, or a caller-order-dependent
+// one all satisfy them. This merges two INDEPENDENTLY DERIVED one-axis
+// standings and requires the canonical ordered population in BOTH argument
+// orders, so caller-order dependence goes red; requires a self-merge to stay
+// at cardinality one, so duplicate retention goes red; and requires
+// SubjectCurrent to be the identity on both sides.
+data merge_base: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+data merge_assembly_moved: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
+data merge_firmware_moved: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
+
+fn is_assembly_then_firmware(currency: SubjectCurrency) -> Bool {
+  match currency {
+    SubjectCurrent => false
+    SubjectStale { axes: axes } =>
+      stale_axis_items(axes: axes) == [AssemblyManifestStale, FirmwareManifestStale]
+  }
+}
+
+test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool {
+  let assembly_only = compare_qualification_subject(admitted: merge_base, observed: merge_assembly_moved)
+  let firmware_only = compare_qualification_subject(admitted: merge_base, observed: merge_firmware_moved)
+  is_assembly_then_firmware(currency: merge_subject_currency(left: assembly_only, right: firmware_only))
+    && is_assembly_then_firmware(currency: merge_subject_currency(left: firmware_only, right: assembly_only))
+    && match merge_subject_currency(left: assembly_only, right: assembly_only) {
+      SubjectCurrent => false
+      SubjectStale { axes: axes } =>
+        list_length(items: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
+    }
+    && merge_subject_currency(left: SubjectCurrent, right: assembly_only) == assembly_only
+    && merge_subject_currency(left: assembly_only, right: SubjectCurrent) == assembly_only
+}
+
+// THE MINT'S OWN BOUNDARY, WHICH THE SEAL DOES NOT COVER (review follow-up).
+// sole_constructor confines who may WRITE a StaleAxes literal; it says nothing
+// about what the sanctioned mint ACCEPTS, and subject_currency_of_axes is
+// importable. A pass-through mint therefore hands any caller a sealed carrier
+// in the caller's own order carrying the caller's duplicates, with no record
+// literal anywhere for SoleConstructorViolation to refuse. This calls the mint
+// DIRECTLY with the adversarial population -- reversed order, one axis twice --
+// and requires the roster's order and one occurrence each. A pass-through
+// implementation returns [firmware, assembly, assembly] and goes red on both
+// halves. The merge-law witness above ALSO goes red on that mutation, because
+// the merge now delegates its union to this mint rather than reducing first --
+// measured, not assumed. The two controls are still not redundant: this one
+// pins the PUBLIC MINT BOUNDARY that any importer can reach, where the merge
+// witness pins the merge law THROUGH that boundary, and only this one fails if
+// the mint is weakened while every internal caller keeps reducing.
+test fn the_mint_canonicalizes_whatever_a_caller_supplies() -> Bool {
+  let noncanonical = subject_currency_of_axes(
+    axes: [FirmwareManifestStale, AssemblyManifestStale, AssemblyManifestStale],
+  )
+  let duplicated_single = subject_currency_of_axes(axes: [UnitKeyStale, UnitKeyStale])
+  is_assembly_then_firmware(currency: noncanonical)
+    && match duplicated_single {
+      SubjectCurrent => false
+      SubjectStale { axes: axes } =>
+        list_length(items: axes.further_axes) == 0 && axes.first_axis == UnitKeyStale
+    }
+    && subject_currency_of_axes(axes: [] as List<StaleAxis>) == SubjectCurrent
+}

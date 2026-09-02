@@ -1,0 +1,725 @@
+module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE IS ONE COMPLETE FACT POPULATION; EVERY RED CONTROL REPLACES EXACTLY ONE MEMBER and
+// proves the join becomes Incomplete with that member named (RLM-2 ruling, "Superseding RLM-2a
+// acceptance bar"). The positive control is the unreplaced population, which must be Complete --
+// otherwise every red below would be red by vacancy.
+
+data rlm_fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
+data rlm_fixture_other_r: String = "89abcdef0123456789abcdef0123456789abcdef"
+data rlm_fixture_tree: String = "fedcba9876543210fedcba9876543210fedcba98"
+data rlm_fixture_other_tree: String = "0000000000000000000000000000000000000001"
+data rlm_fixture_surface: String = "0011223344556677"
+data rlm_fixture_plan_hash: String = "a1b2c3d4e5f60718"
+data rlm_fixture_deploy_completed_at: String = "2026-08-30T12:00:00Z"
+data rlm_fixture_tick_observed_at: String = "2026-08-30T12:01:00Z"
+data rlm_fixture_now: String = "2026-08-30T12:01:30Z"
+
+fn rlm_run(run_id: String, revision: String) -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: run_id,
+    run_revision: revision,
+  }
+}
+
+fn rlm_service_principal() -> String {
+  deployment_spec_srv1().service.service_user as String
+}
+
+fn rlm_subject() -> RoadmapLaunchDeploymentSubject {
+  RoadmapLaunchDeploymentSubject {
+    rlm1_merge_commit: rlm1_merge_commit,
+    rlm1_contract_digest: rlm1_contract_digest_frozen,
+    revision: rlm_fixture_r,
+    candidate_tree_oid: rlm_fixture_tree,
+    host: "srv1",
+    active_instance: "srv1-live",
+    service_principal: rlm_service_principal(),
+    repository: "gunb-ai/gunbc",
+    workflow_path: rlm_workflow_file_path(),
+    plan_run_id: "1001",
+    apply_run_id: "1002",
+    dashboard_run_id: "1003",
+    receipt_run_id: "1004",
+  }
+}
+
+fn rlm_plan(run: ActionsRunBinding, host: String) -> FleetConvergePlanReceipt {
+  rlm_plan_at_scope(run: run, host: host, scope_wire: fleet_converge_scope_wire(scope: LaunchEnvironment))
+}
+
+// THE FIXTURE USED TO CARRY `scope_wire: "full_host"` -- not merely the wrong scope but a string
+// that is not a wire at all, since the real spelling is `scope:full-host`. Nothing objected,
+// because until plan_scope_blockers landed the RLM fold never read this field. That is the defect
+// the scope requirement exists for, sitting in this file's own fixture: a plan of any scope, or of
+// no decodable scope, satisfied the whole transaction.
+fn rlm_plan_at_scope(run: ActionsRunBinding, host: String, scope_wire: String) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: run,
+    observed_host: host,
+    scope_wire: scope_wire,
+    member_set_fingerprint_hex: "fnv1a64:0011223344556677",
+    plan_artifact_hash: rlm_fixture_plan_hash,
+    observed_baseline_hex: "1122334455667788",
+    prior_generation: 4,
+    planned_generation: 5,
+    lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+    lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 5,
+    apply_terminal: FullyApplied,
+  }
+}
+
+fn rlm_fixture_plan() -> FleetConvergePlanReceipt {
+  rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+}
+
+fn rlm_plan_identity() -> String {
+  fleet_converge_plan_receipt_identity_hex(r: rlm_fixture_plan())
+}
+
+fn rlm_fixture_apply() -> FleetConvergeApplyReceipt {
+  rlm_apply(run: rlm_run(run_id: "1002", revision: rlm_fixture_r), plan_identity: rlm_plan_identity())
+}
+
+fn rlm_apply_identity() -> String {
+  fleet_converge_apply_receipt_identity_hex(r: rlm_fixture_apply())
+}
+
+fn rlm_apply(run: ActionsRunBinding, plan_identity: String) -> FleetConvergeApplyReceipt {
+  FleetConvergeApplyReceipt {
+    run: run,
+    plan_run_id: "1001",
+    plan_receipt_identity: plan_identity,
+    plan_artifact_hash: rlm_fixture_plan_hash,
+    observed_host: "srv1",
+    prior_generation: 4,
+    planned_generation: 5,
+    expected_revision_admitted: rlm_fixture_r,
+    terminal: FullyApplied,
+    locked_apply_exit_code: 0,
+  }
+}
+
+fn rlm_dashboard(run: ActionsRunBinding, expected: String) -> LiveDeployApplyReceipt {
+  LiveDeployApplyReceipt {
+    run: run,
+    target: "srv1",
+    expected_revision: expected,
+    candidate_revision: expected,
+    candidate_surface_identity: rlm_fixture_surface,
+    candidate_tree_oid: rlm_fixture_tree,
+    target_decision: DecisionProceed,
+    apply_outcome: LiveDeployApplyConverged,
+    readiness: LiveDeployReadinessObserved { revision: expected, surface: rlm_fixture_surface },
+    provenance: LiveDeployFleetProvenance {
+      plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
+      plan_receipt_identity: rlm_plan_identity(), apply_receipt_identity: rlm_apply_identity(),
+    },
+    completed_at: rlm_fixture_deploy_completed_at,
+  }
+}
+
+fn rlm_tick(instance_id: String, revision: String, mode: SpawnMode, observed_at: String) -> BeltTickReceipt {
+  BeltTickReceipt {
+    observed_at: observed_at,
+    execution: TickExecuted { instance_id: instance_id, deployed_revision: revision, spawn_mode: mode },
+    launches: [],
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassRecorded,
+    publish_pass: BeltPassRecorded,
+  }
+}
+
+fn rlm_tick_fact(t: BeltTickReceipt) -> TickFact {
+  TickObserved { receipt: t, freshness: belt_tick_freshness(observed_at: t.observed_at, deploy_completed_at: rlm_fixture_deploy_completed_at, now: rlm_fixture_now) }
+}
+
+fn rlm_units(timer: BeltTimerStanding, oneshot: BeltOneshotStanding) -> LaunchUnitStanding {
+  LaunchUnitStanding {
+    dashboard: DashboardServiceConverged { unit: "gunbc-roadmap.service" },
+    timer: timer,
+    oneshot: oneshot,
+  }
+}
+
+fn rlm_release_binding(revision_hex: String) -> DeployedReleaseBinding {
+  match git_object_id_from_untagged_hex(hex: revision_hex) {
+    Present { value: oid } => ReleaseBoundToTree { revision: oid, surface: Fnv1a64Structural { digest: rlm_fixture_surface as Fnv1a64StructuralDigestHex } }
+    Absent => ReleaseBindingUnobserved { cause: "fixture revision undecodable" }
+  }
+}
+
+fn rlm_predecessor(run_id: String) -> PredecessorRunProvenance {
+  PredecessorRunProvenance {
+    run_id: run_id,
+    conclusion_wire: "success",
+    head_sha: rlm_fixture_r,
+    workflow_path: rlm_workflow_file_path(),
+  }
+}
+
+fn rlm_provenance() -> RunProvenanceFact {
+  RunProvenanceObserved {
+    receipt_repository: "gunb-ai/gunbc",
+    plan: rlm_predecessor(run_id: "1001"),
+    apply: rlm_predecessor(run_id: "1002"),
+    dashboard: rlm_predecessor(run_id: "1003"),
+    receipt_workflow_ref: ReceiptWorkflowRefNamesFile,
+  }
+}
+
+fn rlm_snapshot() -> WindowSnapshot {
+  WindowSnapshot {
+    main_hex: rlm_fixture_r,
+    desired_hex: rlm_fixture_r,
+    deployed_revision_hex: rlm_fixture_r,
+    deployed_tree_hex: rlm_fixture_tree,
+    running_release_hex: rlm_fixture_r,
+    transition: "permitted",
+    active_instance: "srv1-live",
+  }
+}
+
+fn rlm_complete_facts() -> RoadmapLaunchDeploymentFacts {
+  let plan = rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+  let tick = rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at)
+  RoadmapLaunchDeploymentFacts {
+    desired_revision: DesiredRevisionObserved { main_hex: rlm_fixture_r, desired_hex: rlm_fixture_r },
+    plan_receipt: PlanReceiptRead { receipt: plan },
+    apply_receipt: ApplyReceiptRead { receipt: rlm_apply(run: rlm_run(run_id: "1002", revision: rlm_fixture_r), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan)) },
+    dashboard_receipt: DashboardReceiptRead { receipt: rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_r), expected: rlm_fixture_r) },
+    deployed_tree: DeployedRootTreeMatches { tree_hex: rlm_fixture_tree },
+    release_binding: rlm_release_binding(revision_hex: rlm_fixture_r),
+    readiness: ReadinessServed { revision: rlm_fixture_r, surface: rlm_fixture_surface },
+    transition: ActuationPermitted,
+    unit_standing: rlm_units(timer: BeltTimerConverged { unit: "gunbc-belt.timer" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" }),
+    tick_standing: rlm_tick_fact(t: tick),
+    footprint: FootprintAdmitted,
+    provider_preflight: ProviderPreflightOk,
+    dispatch_preflight: DispatchPreflightAdmittedFact { instance_id: "srv1-live", revision_hex: rlm_fixture_r },
+    workflow_endpoint: WorkflowServedFact { observe_refused: false, tick: BeltTickReceiptPresent { receipt: tick } },
+    instance_endpoint: InstanceServedFact { instance_id: "srv1-live", host_identity: "srv1", actuation: "actuating", repo_root: "/opt/gunbc/gunbc" },
+    principal: PrincipalObserved { name: rlm_service_principal() },
+    observed_host: HostObserved { name: "srv1" },
+    observation_window: observation_window_fact(opened: rlm_snapshot(), closed: rlm_snapshot()),
+    run_provenance: rlm_provenance(),
+  }
+}
+
+// One substituted member, one named blocker. The helper returns true only when the verdict is
+// Incomplete AND its first blocker names the expected member.
+fn incomplete_at(facts: RoadmapLaunchDeploymentFacts, member: String) -> Bool {
+  match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: facts) {
+    DeploymentComplete { subject: _, facts: _, proof: _ } => false
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: b, further_blockers: _ } => b.member == member
+  }
+}
+
+fn with_plan(f: RoadmapLaunchDeploymentFacts, plan: PlanReceiptFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: plan, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_apply(f: RoadmapLaunchDeploymentFacts, apply: ApplyReceiptFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: apply, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_dashboard(f: RoadmapLaunchDeploymentFacts, d: DashboardReceiptFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: d, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_tree(f: RoadmapLaunchDeploymentFacts, t: DeployedRootTreeStanding) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: t, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_transition(f: RoadmapLaunchDeploymentFacts, t: ActuationStanding) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: t, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_units(f: RoadmapLaunchDeploymentFacts, u: LaunchUnitStanding) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: u, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_tick(f: RoadmapLaunchDeploymentFacts, t: TickFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: t, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_footprint(f: RoadmapLaunchDeploymentFacts, a: BeltFootprintAdmission) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: a, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_provider(f: RoadmapLaunchDeploymentFacts, p: BeltProviderPreflight) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: p, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_workflow(f: RoadmapLaunchDeploymentFacts, w: WorkflowEndpointFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: w, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_principal(f: RoadmapLaunchDeploymentFacts, p: PrincipalFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: p, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_host(f: RoadmapLaunchDeploymentFacts, h: HostFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: h, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+fn with_release_binding(f: RoadmapLaunchDeploymentFacts, b: DeployedReleaseBinding) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: b, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+
+fn with_window(f: RoadmapLaunchDeploymentFacts, w: ObservationWindowFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: w, run_provenance: f.run_provenance }
+}
+fn with_run_provenance(f: RoadmapLaunchDeploymentFacts, rp: RunProvenanceFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: rp }
+}
+
+fn with_desired(f: RoadmapLaunchDeploymentFacts, d: DesiredRevisionFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: d, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+
+// ---------------------------------------------------------------- POSITIVE CONTROL
+
+test fn witness_complete_population_is_complete() -> Bool {
+  match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts()) {
+    DeploymentComplete { subject: _, facts: _, proof: p } => string_length(s: p.receipt_identity) == 16
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } => false
+  }
+}
+
+test fn witness_complete_receipt_document_names_its_verdict_and_identity() -> Bool {
+  let v = roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts())
+  let doc = roadmap_launch_deployment_receipt_document(v: v)
+  string_contains(s: doc, pattern: "\"verdict\": \"DeploymentComplete\"")
+    && string_contains(s: doc, pattern: verdict_receipt_identity(v: v))
+    && string_contains(s: doc, pattern: "\"blockers\": []")
+}
+
+// ---------------------------------------------------------------- RED CONTROLS (one member each)
+
+// plan, apply, dashboard or receipt run at a SHA other than R
+test fn witness_plan_run_at_another_sha_is_incomplete_at_plan_receipt() -> Bool {
+  incomplete_at(facts: with_plan(f: rlm_complete_facts(), plan: PlanReceiptRead { receipt: rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_other_r), host: "srv1") }), member: "plan_receipt")
+}
+
+test fn witness_apply_run_at_another_sha_is_incomplete_at_apply_receipt() -> Bool {
+  let plan = rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+  incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: rlm_apply(run: rlm_run(run_id: "1002", revision: rlm_fixture_other_r), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan)) }), member: "apply_receipt")
+}
+
+test fn witness_dashboard_run_at_another_sha_is_incomplete_at_dashboard_receipt() -> Bool {
+  incomplete_at(facts: with_dashboard(f: rlm_complete_facts(), d: DashboardReceiptRead { receipt: rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_other_r), expected: rlm_fixture_r) }), member: "dashboard_receipt")
+}
+
+// plan run ID substitution
+test fn witness_plan_run_id_substitution_is_incomplete_at_plan_receipt() -> Bool {
+  incomplete_at(facts: with_plan(f: rlm_complete_facts(), plan: PlanReceiptRead { receipt: rlm_plan(run: rlm_run(run_id: "1099", revision: rlm_fixture_r), host: "srv1") }), member: "plan_receipt")
+}
+
+// apply receipt bound to another plan
+test fn witness_apply_bound_to_another_plan_is_incomplete_at_apply_receipt() -> Bool {
+  incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: rlm_apply(run: rlm_run(run_id: "1002", revision: rlm_fixture_r), plan_identity: "deadbeefdeadbeef") }), member: "apply_receipt")
+}
+
+// dashboard receipt bound to another R
+test fn witness_dashboard_bound_to_another_r_is_incomplete_at_dashboard_receipt() -> Bool {
+  incomplete_at(facts: with_dashboard(f: rlm_complete_facts(), d: DashboardReceiptRead { receipt: rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_r), expected: rlm_fixture_other_r) }), member: "dashboard_receipt")
+}
+
+// workflow input srv1 while the observed runner host is not srv1
+test fn witness_plan_observed_on_another_host_is_incomplete_at_plan_receipt() -> Bool {
+  incomplete_at(facts: with_plan(f: rlm_complete_facts(), plan: PlanReceiptRead { receipt: rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv2") }), member: "plan_receipt")
+}
+
+test fn witness_receipt_run_on_another_host_is_incomplete_at_observed_host() -> Bool {
+  incomplete_at(facts: with_host(f: rlm_complete_facts(), h: HostObserved { name: "srv2" }), member: "observed_host")
+}
+
+// candidate/deployed root-tree OID mismatch
+test fn witness_deployed_tree_mismatch_is_incomplete_at_deployed_tree() -> Bool {
+  incomplete_at(facts: with_tree(f: rlm_complete_facts(), t: DeployedRootTreeMismatch { candidate_hex: rlm_fixture_tree, deployed_hex: rlm_fixture_other_tree }), member: "deployed_tree")
+}
+
+// v3, stale, wrong-instance, wrong-revision, or non-ManualReady tick receipt
+test fn witness_stale_tick_is_incomplete_at_tick_standing() -> Bool {
+  incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: "2026-08-30T11:00:00Z"))), member: "tick_standing")
+}
+
+test fn witness_wrong_instance_tick_is_incomplete_at_tick_standing() -> Bool {
+  incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-lab", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at))), member: "tick_standing")
+}
+
+test fn witness_wrong_revision_tick_is_incomplete_at_tick_standing() -> Bool {
+  incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_other_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at))), member: "tick_standing")
+}
+
+test fn witness_automatic_ready_tick_is_incomplete_at_tick_standing() -> Bool {
+  incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: AutomaticReady, observed_at: rlm_fixture_tick_observed_at))), member: "tick_standing")
+}
+
+// The v4 decoder refuses a v3 document; the observer records that as an unreadable tick.
+test fn witness_v3_tick_on_disk_is_incomplete_at_tick_standing() -> Bool {
+  let read = belt_tick_receipt_decode(raw: "{\"schema\":\"roadmap-belt-tick-receipt/v3\",\"observed_at\":\"2026-08-30T12:01:00Z\"}")
+  let fact = match read {
+    BeltTickReceiptUnreadable { reason: r } => TickUnobserved { detail: r }
+    BeltTickReceiptAbsent => TickUnobserved { detail: "absent" }
+    BeltTickReceiptPresent { receipt: t } => rlm_tick_fact(t: t)
+  }
+  (match read { BeltTickReceiptUnreadable { reason: _ } => true  _ => false })
+    && incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: fact), member: "tick_standing")
+}
+
+// disabled timer beside an otherwise fresh, manually fabricated tick
+test fn witness_disabled_timer_beside_fresh_tick_is_incomplete_at_unit_standing() -> Bool {
+  incomplete_at(
+    facts: with_units(f: rlm_complete_facts(), u: rlm_units(timer: BeltTimerRefused { unit: "gunbc-belt.timer", property: "UnitFileState", expected: "enabled", observed: "disabled" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" })),
+    member: "unit_standing",
+  )
+}
+
+// correctly inactive-successful oneshot as a POSITIVE control: the complete fixture carries
+// exactly that (active_state "inactive") and is Complete; an ACTIVE oneshot mid-tick is equally
+// accepted.
+test fn witness_active_oneshot_mid_tick_is_still_complete() -> Bool {
+  match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: with_units(f: rlm_complete_facts(), u: rlm_units(timer: BeltTimerConverged { unit: "gunbc-belt.timer" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "active" }))) {
+    DeploymentComplete { subject: _, facts: _, proof: _ } => true
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } => false
+  }
+}
+
+// wrong effective principal
+test fn witness_wrong_principal_is_incomplete_at_principal() -> Bool {
+  incomplete_at(facts: with_principal(f: rlm_complete_facts(), p: PrincipalObserved { name: "ci-runner" }), member: "principal")
+}
+
+// production state changing during the observation window
+test fn witness_window_change_is_incomplete_at_observation_window() -> Bool {
+  let moved = WindowSnapshot {
+    main_hex: rlm_fixture_other_r, desired_hex: rlm_fixture_r, deployed_revision_hex: rlm_fixture_r, deployed_tree_hex: rlm_fixture_tree,
+    running_release_hex: rlm_fixture_r, transition: "permitted", active_instance: "srv1-live",
+  }
+  incomplete_at(facts: with_window(f: rlm_complete_facts(), w: observation_window_fact(opened: rlm_snapshot(), closed: moved)), member: "observation_window")
+}
+
+// the four destructive falsifiers, run synthetically (never against srv1)
+test fn witness_transition_marker_is_incomplete_at_transition() -> Bool {
+  let record = TransitionRecord { actor: "fixture", invocation: "fixture", repo_root: "/opt/gunbc/gunbc", base_ref: "main", candidate: rlm_fixture_r, phase: TransitionInForce }
+  incomplete_at(facts: with_transition(f: rlm_complete_facts(), t: ActuationInhibited { record: record }), member: "transition")
+}
+
+test fn witness_unwritable_root_is_incomplete_at_footprint() -> Bool {
+  incomplete_at(facts: with_footprint(f: rlm_complete_facts(), a: FootprintRefused { step: "receipt-root", detail: "not writable by the service principal" }), member: "footprint")
+}
+
+test fn witness_missing_provider_credential_is_incomplete_at_provider_preflight() -> Bool {
+  incomplete_at(facts: with_provider(f: rlm_complete_facts(), p: ProviderPreflightRefused { step: "credential", detail: "provider credential absent" }), member: "provider_preflight")
+}
+
+test fn witness_unobservable_attempt_ledger_is_incomplete_at_workflow_endpoint() -> Bool {
+  let tick = rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at)
+  incomplete_at(facts: with_workflow(f: rlm_complete_facts(), w: WorkflowServedFact { observe_refused: true, tick: BeltTickReceiptPresent { receipt: tick } }), member: "workflow_endpoint")
+}
+
+test fn witness_workflow_json_without_a_tick_is_incomplete_at_workflow_endpoint() -> Bool {
+  incomplete_at(facts: with_workflow(f: rlm_complete_facts(), w: WorkflowServedFact { observe_refused: false, tick: BeltTickReceiptAbsent }), member: "workflow_endpoint")
+}
+
+// deploy R-1: release equality refuses (the main/desired read and the running release both name it)
+test fn witness_desired_ref_behind_r_is_incomplete_at_desired_revision() -> Bool {
+  incomplete_at(facts: with_desired(f: rlm_complete_facts(), d: DesiredRevisionObserved { main_hex: rlm_fixture_r, desired_hex: rlm_fixture_other_r }), member: "desired_revision")
+}
+
+// ---------------------------------------------------------------- TOTALITY
+
+// Two substituted members yield two blockers: the first is presented, the second is retained.
+test fn witness_two_substitutions_retain_both_blockers() -> Bool {
+  let facts = with_host(f: with_principal(f: rlm_complete_facts(), p: PrincipalObserved { name: "ci-runner" }), h: HostObserved { name: "srv2" })
+  match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: facts) {
+    DeploymentComplete { subject: _, facts: _, proof: _ } => false
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: b, further_blockers: rest } =>
+      b.member == "principal" && list_length(items: rest) == 1
+        && (match list_head(xs: rest) { HeadFound { value: r } => r.member == "observed_host"  HeadAbsent => false })
+  }
+}
+
+// An Incomplete receipt is serialized with its blockers, so a refusal is evidence, not discarded output.
+test fn witness_incomplete_receipt_document_carries_its_blockers() -> Bool {
+  let v = roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: with_principal(f: rlm_complete_facts(), p: PrincipalObserved { name: "ci-runner" }))
+  let doc = roadmap_launch_deployment_receipt_document(v: v)
+  string_contains(s: doc, pattern: "\"verdict\": \"DeploymentIncomplete\"")
+    && string_contains(s: doc, pattern: "\"member\": \"principal\"")
+    && string_contains(s: doc, pattern: "ci-runner")
+}
+
+// The receipt identity is a function of subject + facts: the same population hashes the same, a
+// different population hashes differently.
+test fn witness_receipt_identity_is_stable_and_discriminating() -> Bool {
+  let a = roadmap_launch_deployment_receipt_identity_hex(subject: rlm_subject(), facts: rlm_complete_facts())
+  let b = roadmap_launch_deployment_receipt_identity_hex(subject: rlm_subject(), facts: rlm_complete_facts())
+  let c = roadmap_launch_deployment_receipt_identity_hex(subject: rlm_subject(), facts: with_host(f: rlm_complete_facts(), h: HostObserved { name: "srv2" }))
+  a == b && a != c
+}
+
+// ---------------------------------------------------------------- review 5061891290 RED CONTROLS
+
+// P0-2: an exit-0 PartiallyApplied fleet apply cannot certify completion.
+test fn witness_partially_applied_exit_zero_is_incomplete_at_apply_receipt() -> Bool {
+  let base = rlm_fixture_apply()
+  let a = FleetConvergeApplyReceipt {
+    run: base.run, plan_run_id: base.plan_run_id, plan_receipt_identity: base.plan_receipt_identity,
+    plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
+    prior_generation: base.prior_generation, planned_generation: base.planned_generation,
+    expected_revision_admitted: base.expected_revision_admitted,
+    terminal: PartiallyApplied { refused_axis_count: 1, detail: "slot=0 cap=0 timer=1 fabric-cell=0 activation=0" },
+    locked_apply_exit_code: 0,
+  }
+  incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: a }), member: "apply_receipt")
+}
+
+// P0-1: an apply whose admitted expected revision is not R cannot certify completion, even when
+// the plan and apply agree with each other.
+test fn witness_apply_admitted_against_q_is_incomplete_at_apply_receipt() -> Bool {
+  let base = rlm_fixture_apply()
+  let a = FleetConvergeApplyReceipt {
+    run: base.run, plan_run_id: base.plan_run_id, plan_receipt_identity: base.plan_receipt_identity,
+    plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
+    prior_generation: base.prior_generation, planned_generation: base.planned_generation,
+    expected_revision_admitted: rlm_fixture_other_r,
+    terminal: FullyApplied,
+    locked_apply_exit_code: 0,
+  }
+  incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: a }), member: "apply_receipt")
+}
+
+// P1-4: each leg of the four-run provenance chain blocks on its own defect.
+fn rlm_provenance_with_plan(p: PredecessorRunProvenance) -> RunProvenanceFact {
+  RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: p, apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref: ReceiptWorkflowRefNamesFile }
+}
+
+test fn witness_predecessor_non_success_conclusion_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: PredecessorRunProvenance { run_id: "1001", conclusion_wire: "failure", head_sha: rlm_fixture_r, workflow_path: rlm_workflow_file_path() })), member: "run_provenance")
+}
+
+test fn witness_predecessor_at_another_sha_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: PredecessorRunProvenance { run_id: "1001", conclusion_wire: "success", head_sha: rlm_fixture_other_r, workflow_path: rlm_workflow_file_path() })), member: "run_provenance")
+}
+
+test fn witness_predecessor_on_another_workflow_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: PredecessorRunProvenance { run_id: "1001", conclusion_wire: "success", head_sha: rlm_fixture_r, workflow_path: ".github/workflows/witnesses.yml" })), member: "run_provenance")
+}
+
+test fn witness_predecessor_run_id_substitution_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: rlm_predecessor(run_id: "1099"))), member: "run_provenance")
+}
+
+test fn witness_receipt_workflow_ref_not_named_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref: ReceiptWorkflowRefForeign { workflow_ref: "fork-owner/gunbc/.github/workflows/other.yml@refs/heads/main" } }), member: "run_provenance")
+}
+
+test fn witness_provenance_unobserved_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceUnobserved { detail: "workflow-runs API unreachable" }), member: "run_provenance")
+}
+
+// P1-4: the dashboard receipt must cite the exact predecessor receipts this join read.
+test fn witness_dashboard_citing_another_plan_receipt_is_incomplete_at_dashboard_receipt() -> Bool {
+  let base = rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_r), expected: rlm_fixture_r)
+  let d = LiveDeployApplyReceipt {
+    run: base.run, target: base.target, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
+    candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
+    target_decision: base.target_decision, apply_outcome: base.apply_outcome, readiness: base.readiness,
+    provenance: LiveDeployFleetProvenance {
+      plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
+      plan_receipt_identity: "9999999999999999", apply_receipt_identity: rlm_apply_identity(),
+    },
+    completed_at: base.completed_at,
+  }
+  incomplete_at(facts: with_dashboard(f: rlm_complete_facts(), d: DashboardReceiptRead { receipt: d }), member: "dashboard_receipt")
+}
+
+// P1-7: the durable document's facts member is a STRUCTURED object -- every frozen-join member is
+// recoverable by JSON navigation, never by parsing prose.
+fn rlm_doc_member(doc: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } => Present { value: v }
+    JsonMemberAbsent => Absent
+    JsonMemberDuplicated { count: _ } => Absent
+    JsonMemberNotAnObject => Absent
+  }
+}
+
+fn rlm_doc_string(doc: JsonValue, key: String) -> String {
+  match json_required_string_member(doc: doc, key: key) {
+    JsonStringMemberFound { value: v } => v
+    JsonStringMemberRefused { reason: r } => join(["<refused: ", r, ">"], "")
+  }
+}
+
+test fn witness_receipt_document_facts_are_machine_readable() -> Bool {
+  let v = roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts())
+  let doc = roadmap_launch_deployment_receipt_document(v: v)
+  match parse_json_document(s: doc) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: root } =>
+      match rlm_doc_member(doc: root, key: "facts") {
+        Absent => false
+        Present { value: facts } =>
+          (match rlm_doc_member(doc: facts, key: "tick_standing") {
+            Absent => false
+            Present { value: tick } =>
+              rlm_doc_string(doc: tick, key: "arm") == "observed"
+                && (match rlm_doc_member(doc: tick, key: "execution") {
+                  Absent => false
+                  Present { value: ex } => rlm_doc_string(doc: ex, key: "deployed_revision") == rlm_fixture_r && rlm_doc_string(doc: ex, key: "spawn_mode") == "manual_ready"
+                })
+          })
+            && (match rlm_doc_member(doc: facts, key: "plan_receipt") {
+              Absent => false
+              Present { value: pr } =>
+                rlm_doc_string(doc: pr, key: "arm") == "read"
+                  && (match rlm_doc_member(doc: pr, key: "receipt") {
+                    Absent => false
+                    Present { value: prr } => rlm_doc_string(doc: prr, key: "receipt_identity") == rlm_plan_identity()
+                  })
+            })
+            && (match rlm_doc_member(doc: facts, key: "run_provenance") {
+              Absent => false
+              Present { value: rp } =>
+                rlm_doc_string(doc: rp, key: "arm") == "observed"
+                  && (match rlm_doc_member(doc: rp, key: "plan") {
+                    Absent => false
+                    Present { value: rpp } => rlm_doc_string(doc: rpp, key: "conclusion") == "success"
+                  })
+            })
+            && (match rlm_doc_member(doc: facts, key: "observation_window") {
+              Absent => false
+              Present { value: w } => rlm_doc_string(doc: w, key: "arm") == "stable"
+            })
+      }
+  }
+}
+
+// Review 5062738052 B2: the receipt run itself must execute in the canonical repository -- a fork
+// spelling fork-owner/gunbc satisfies the workflow-ref prefix check, so this is its own blocker.
+test fn witness_receipt_run_in_another_repository_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "fork-owner/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref: ReceiptWorkflowRefNamesFile }), member: "run_provenance")
+}
+
+// Review 5062738052 B1: the routed endpoint serving R under the WRONG surface refuses at the
+// release binding -- the mixed-locus counterexample (local green, routed wrong) is unwritable now
+// that the binding consumes the routed identity, and this is its discriminating fixture.
+test fn witness_routed_surface_mixed_is_incomplete_at_release_binding() -> Bool {
+  let b = match git_object_id_from_untagged_hex(hex: rlm_fixture_r) {
+    Absent => ReleaseBindingUnobserved { cause: "fixture revision undecodable" }
+    Present { value: oid } => ReleaseSurfaceMixed {
+      revision: oid,
+      expected_surface: Fnv1a64Structural { digest: rlm_fixture_surface as Fnv1a64StructuralDigestHex },
+      process_surface: Fnv1a64Structural { digest: "ffffffffffffffff" as Fnv1a64StructuralDigestHex },
+    }
+  }
+  incomplete_at(facts: with_release_binding(f: rlm_complete_facts(), b: b), member: "release_binding")
+}
+
+// Review 5062738052 B1: the routed running-release member of the observation window changes
+// between open and close -- a route flip during capture is a window change, not a stable window.
+test fn witness_route_change_during_window_is_incomplete_at_observation_window() -> Bool {
+  let closed = WindowSnapshot {
+    main_hex: rlm_fixture_r, desired_hex: rlm_fixture_r, deployed_revision_hex: rlm_fixture_r,
+    deployed_tree_hex: rlm_fixture_tree, running_release_hex: "0000000000000000000000000000000000000001",
+    transition: "permitted", active_instance: "srv1-live",
+  }
+  incomplete_at(facts: with_window(f: rlm_complete_facts(), w: WindowChanged { opened: rlm_snapshot(), closed: closed, changed: ["running_release_hex"] }), member: "observation_window")
+}
+
+// Review 5062738052 B3: tick freshness is a typed-arm object in the durable document -- the
+// observed age and the cadence-derived bound are recovered by JSON navigation, never from prose.
+// Two witnesses (fresh doc, stale doc) so each stays inside the floor's 500ms CPU line: one
+// document build + parse each; the single two-document form was BUDGET-REFUSED on run 33358233304.
+fn rlm_doc_freshness(doc: String) -> JsonValue? {
+  match parse_json_document(s: doc) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: root } =>
+      match rlm_doc_member(doc: root, key: "facts") {
+        Absent => none
+        Present { value: facts } =>
+          match rlm_doc_member(doc: facts, key: "tick_standing") {
+            Absent => none
+            Present { value: tick } => rlm_doc_member(doc: tick, key: "freshness")
+          }
+      }
+  }
+}
+
+test fn witness_receipt_document_fresh_age_is_machine_readable() -> Bool {
+  let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts()))
+  match rlm_doc_freshness(doc: doc) {
+    Absent => false
+    Present { value: fr } => rlm_doc_string(doc: fr, key: "arm") == "fresh" && rlm_doc_string(doc: fr, key: "age_seconds") == "30"
+  }
+}
+
+test fn witness_receipt_document_stale_age_and_bound_are_machine_readable() -> Bool {
+  let stale_tick = rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at)
+  let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(
+    subject: rlm_subject(),
+    facts: with_tick(f: rlm_complete_facts(), t: TickObserved { receipt: stale_tick, freshness: TickStale { age_seconds: second(count: 540), bound_seconds: second(count: 180) } }),
+  ))
+  match rlm_doc_freshness(doc: doc) {
+    Absent => false
+    Present { value: fr } =>
+      rlm_doc_string(doc: fr, key: "arm") == "stale"
+        && rlm_doc_string(doc: fr, key: "age_seconds") == "540"
+        && rlm_doc_string(doc: fr, key: "bound_seconds") == "180"
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// THE TRANSACTION REQUIRES THE LAUNCH-ENVIRONMENT SCOPE, AND THE SCOPE IS FIXED RATHER THAN GIVEN.
+//
+// Every fleet converge scope mints a FleetConvergePlanReceipt of the same type, and each is a
+// perfectly valid receipt of its own plan. These four hold the ENTIRE rest of the fact population
+// complete and vary only the plan receipt's scope, so a red here is attributable to the scope and
+// to nothing else. The green above (witness_complete_population_is_complete) is their positive
+// control: it now runs at the canonical launch-environment wire.
+//
+// THE TERMINAL DOES NOT CATCH ANY OF THESE, which is why the check is needed rather than implied:
+// an allocation-store plan is FullyApplied by the shape of its arm, so the wrong scope arrives
+// already green on the one member a reader would expect to stop it.
+// ---------------------------------------------------------------------------
+
+fn rlm_facts_at_plan_scope(scope_wire: String) -> RoadmapLaunchDeploymentFacts {
+  with_plan(
+    f: rlm_complete_facts(),
+    plan: PlanReceiptRead {
+      receipt: rlm_plan_at_scope(
+        run: rlm_run(run_id: "1001", revision: rlm_fixture_r),
+        host: "srv1",
+        scope_wire: scope_wire,
+      ),
+    },
+  )
+}
+
+test fn witness_a_full_host_plan_cannot_occupy_the_rlm_plan_slot() -> Bool {
+  incomplete_at(
+    facts: rlm_facts_at_plan_scope(scope_wire: fleet_converge_scope_wire(scope: FullHost)),
+    member: "plan_scope",
+  )
+}
+
+test fn witness_a_fabric_cells_plan_cannot_occupy_the_rlm_plan_slot() -> Bool {
+  incomplete_at(
+    facts: rlm_facts_at_plan_scope(scope_wire: fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)),
+    member: "plan_scope",
+  )
+}
+
+test fn witness_an_allocation_store_plan_cannot_occupy_the_rlm_plan_slot() -> Bool {
+  incomplete_at(
+    facts: rlm_facts_at_plan_scope(scope_wire: fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)),
+    member: "plan_scope",
+  )
+}
+
+// AN UNDECODABLE WIRE IS ITS OWN ARM, not folded into the wrong-scope one: a wire this build cannot
+// read is version skew between the plan run and the receipt run, while a wire it reads as another
+// scope is the wrong plan in the slot, and only the first is a build problem. The literal here is
+// the exact string this file's fixture used to carry.
+test fn witness_an_undecodable_plan_scope_wire_blocks_the_transaction() -> Bool {
+  incomplete_at(facts: rlm_facts_at_plan_scope(scope_wire: "full_host"), member: "plan_scope")
+}

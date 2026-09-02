@@ -181,6 +181,14 @@ fn worker_observation_without_provider_probe_for_process(
   }
 }
 
+// spawned != session present != process running != provider ready != agent executing != work
+// completed. WorkerObservation keeps pane/process evidence separate from the configured provider,
+// observed ProviderEvidence, provider readiness, sandbox readiness, and worker phase. A retained
+// tmux session can therefore carry WorkerProcessExited while provider phase or terminal outcome
+// remains refused; a tmux name can report configured_provider=Codex while provider_instance remains
+// Unobserved. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved
+// process, transcript, or terminal outcome remains a named refusal-to-infer.
+
 fn worker_observation_without_provider_probe(instance: ProviderInstance) -> WorkerObservation {
   worker_observation_without_provider_probe_for_process(
     instance: instance,
@@ -189,5 +197,3 @@ fn worker_observation_without_provider_probe(instance: ProviderInstance) -> Work
     },
   )
 }
-
-data worker_lifecycle_separation_note: String = "spawned != session present != process running != provider ready != agent executing != work completed. WorkerObservation keeps pane/process evidence separate from the configured provider, observed ProviderEvidence, provider readiness, sandbox readiness, and worker phase. A retained tmux session can therefore carry WorkerProcessExited while provider phase or terminal outcome remains refused; a tmux name can report configured_provider=Codex while provider_instance remains Unobserved. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved process, transcript, or terminal outcome remains a named refusal-to-infer."

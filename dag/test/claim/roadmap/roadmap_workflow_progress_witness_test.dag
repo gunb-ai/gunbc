@@ -233,7 +233,11 @@ test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
   }
 }
 
-data agent_completion_requires_compatible_exit_note: String = "review 44032 REDs. The Agent obligation's design contract requires a compatible process exit, so turn.completed alone must never paint agent complete. These three witnesses pin the arms that previously preserved ProviderCompleted from incomplete evidence: still-running stays active, absent refuses, unobserved refuses. Each is the discriminating control for one arm — flipping any back to `provider` reds exactly one of them."
+// review 44032 REDs. The Agent obligation's design contract requires a compatible process exit, so
+// turn.completed alone must never paint agent complete. These three witnesses pin the arms that
+// previously preserved ProviderCompleted from incomplete evidence: still-running stays active,
+// absent refuses, unobserved refuses. Each is the discriminating control for one arm — flipping any
+// back to `provider` reds exactly one of them.
 
 test fn completed_event_while_process_runs_is_not_complete() -> Bool {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
@@ -274,7 +278,17 @@ test fn completed_event_with_unobserved_process_refuses() -> Bool {
     }
 }
 
-data admission_receipt_positional_identity_note: String = "review 44032 RED. The admission receipt is READ BACK FROM DISK, so nothing guarantees the bytes came from dispatch_environment_admission_json — a corrupt, truncated, or foreign file is exactly the case the projection must survive. The forgery below is well-formed JSON that declares status refused at the top level while carrying an admitted status in a nested member; the former two-string_contains scan matched both fragments and read it as admitted. Note the emitter's own escaping already prevented the narrower attack (a quoted reason cannot reproduce a raw fragment), which is why the fixture is a raw document rather than a round-trip: the vulnerability was never in the emitter, it was in identifying a document by scanning it. Positional identity refuses this because a nested value cannot occupy the document prefix, and the paired green keeps the real emitter's admitted receipt admitted so the witness discriminates rather than rejecting everything."
+// review 44032 RED. The admission receipt is READ BACK FROM DISK, so nothing guarantees the bytes
+// came from dispatch_environment_admission_json — a corrupt, truncated, or foreign file is exactly
+// the case the projection must survive. The forgery below is well-formed JSON that declares status
+// refused at the top level while carrying an admitted status in a nested member; the former
+// two-string_contains scan matched both fragments and read it as admitted. Note the emitter's own
+// escaping already prevented the narrower attack (a quoted reason cannot reproduce a raw fragment),
+// which is why the fixture is a raw document rather than a round-trip: the vulnerability was never
+// in the emitter, it was in identifying a document by scanning it. Positional identity refuses this
+// because a nested value cannot occupy the document prefix, and the paired green keeps the real
+// emitter's admitted receipt admitted so the witness discriminates rather than rejecting
+// everything.
 
 fn admission_receipt_for(admission: DispatchEnvironmentAdmission) -> String {
   dispatch_environment_admission_json(admission: admission)
@@ -312,7 +326,10 @@ test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
     && receipt_records_admission(receipt: genuine)
 }
 
-data receipt_decode_witness_note: String = "review 44094. The decode splits what the old Bool merged: a receipt that RECORDS a refusal is a different state from a document this reader cannot decode, and each now has its own arm. The truncated fixture is the discriminating one — it carries the admitted prefix verbatim and still fails, because a prefix match alone was never the claim; the whole document must also parse."
+// review 44094. The decode splits what the old Bool merged: a receipt that RECORDS a refusal is a
+// different state from a document this reader cannot decode, and each now has its own arm. The
+// truncated fixture is the discriminating one — it carries the admitted prefix verbatim and still
+// fails, because a prefix match alone was never the claim; the whole document must also parse.
 
 test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
   let refused = admission_receipt_for(admission: EnvironmentRefused {
@@ -543,7 +560,17 @@ test fn roadmap_workflow_progress_keystone_holds() -> Bool {
     && failed_or_refused_stage_is_visible_without_decoding_border_style()
 }
 
-data publication_projection_witness_note: String = "THE VERTICAL SPECIMEN, WITH ITS NEGATIVE HALF, AND THE NEGATIVE HALF IS WHY IT EXISTS. A claim that a bound receipt paints the lamp green proves the happy path and nothing else; it stays green under the exact defect this lane was rewritten to remove, which is a consumer that finds a receipt at a path and trusts what it finds.\\n\\nSO THE SPECIMEN IS ONE RECEIPT READ TWICE. Written for head H, it completes the row whose subject is H, and it does NOT complete the row whose subject is H2 - it refuses there, naming expected_head as the field that differs. That is the review loop's real shape: a worker pushes a correction while a receipt for the earlier head is still on disk, and every downstream obligation is about the new commit.\\n\\nAND THE SUBJECT ITSELF CAN BE MISSING, which is a fifth reading rather than a phrasing of pending. An attempt whose head could not be read has nothing to compare a receipt against, so the lamp refuses and says so - never `pending`, which a reader would take for `not published yet`."
+// THE VERTICAL SPECIMEN, WITH ITS NEGATIVE HALF, AND THE NEGATIVE HALF IS WHY IT EXISTS. A claim
+// that a bound receipt paints the lamp green proves the happy path and nothing else; it stays green
+// under the exact defect this lane was rewritten to remove, which is a consumer that finds a
+// receipt at a path and trusts what it finds.\n\nSO THE SPECIMEN IS ONE RECEIPT READ TWICE. Written
+// for head H, it completes the row whose subject is H, and it does NOT complete the row whose
+// subject is H2 - it refuses there, naming expected_head as the field that differs. That is the
+// review loop's real shape: a worker pushes a correction while a receipt for the earlier head is
+// still on disk, and every downstream obligation is about the new commit.\n\nAND THE SUBJECT ITSELF
+// CAN BE MISSING, which is a fifth reading rather than a phrasing of pending. An attempt whose head
+// could not be read has nothing to compare a receipt against, so the lamp refuses and says so -
+// never `pending`, which a reader would take for `not published yet`.
 
 data pub_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe"
 data pub_other: CommitSha = "d00dd00dd00dd00dd00dd00dd00dd00dd00dd00d"
@@ -673,7 +700,11 @@ test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Boo
     && string_contains(s: detail_at_h2, pattern: "expected_head")
 }
 
-data bound_sentence_names_one_head_note: String = "The completed sentence an operator reads must name the head that was actually judged. ReceiptBound no longer carries a head of its own, so this projection renders subject.expected_head - the single copy in the document. The claim asserts BOTH directions: the judged head appears, and the other fixture sha does not, because a sentence that could name a second head is the same defect one layer out from the one review 46116 found in the carrier."
+// The completed sentence an operator reads must name the head that was actually judged.
+// ReceiptBound no longer carries a head of its own, so this projection renders
+// subject.expected_head - the single copy in the document. The claim asserts BOTH directions: the
+// judged head appears, and the other fixture sha does not, because a sentence that could name a
+// second head is the same defect one layer out from the one review 46116 found in the carrier.
 
 test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
   let detail = publication_segment_of(
@@ -684,7 +715,9 @@ test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
     && !string_contains(s: detail, pattern: pub_other as String)
 }
 
-data unreadable_lamp_is_not_pending_note: String = "A receipt the projection could not READ is not a row nobody has published (review 46148). Pending invites a reader to wait; refused tells them something is broken. Both directions are asserted here because the defect made them the same lamp."
+// A receipt the projection could not READ is not a row nobody has published (review 46148). Pending
+// invites a reader to wait; refused tells them something is broken. Both directions are asserted
+// here because the defect made them the same lamp.
 
 test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published() -> Bool {
   let unreadable = publication_state_at(

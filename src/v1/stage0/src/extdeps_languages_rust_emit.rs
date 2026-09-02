@@ -116,12 +116,9 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: _| {
-            v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, spec: _| {
+        v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
+    })
 }
 
 pub fn rust_reserved() -> Rc<Vec<String>> {
@@ -532,12 +529,12 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    rt_function_registry().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+    rt_function_registry()
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+        })
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
@@ -552,12 +549,9 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
-            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+    })
 }
 
 pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
@@ -572,12 +566,9 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
-            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+    })
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
@@ -594,7 +585,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, String>>, entry: _| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
@@ -607,7 +598,7 @@ pub fn is_rt_function(name: String) -> bool {
 pub fn rt_bridge_name(name: String) -> String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
-        None => name.clone(),
+        std::option::Option::None => name.clone(),
     }
 }
 
@@ -649,15 +640,6 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
         rust_qualified_module_mod_basename(qualified_module.clone()),
         ".rs".to_string(),
     )
-}
-
-pub fn rust_pair_completion_spelling_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -709,15 +691,6 @@ pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
-}
-
-pub fn rust_pair_completion_key_join_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_pair_completion_spelling_for(
@@ -926,7 +899,7 @@ pub fn rust_pair_completion_impl_render(
     } else {
         "(self) -> Self::Output ".to_string()
     }), rust_pair_completion_body_render(row.body.clone())), "}\n".to_string()),
-    None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
+    std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
 }
 }
 

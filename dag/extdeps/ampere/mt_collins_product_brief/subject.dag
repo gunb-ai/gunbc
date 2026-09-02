@@ -4,9 +4,10 @@ import std.types { String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithoutStatedTerms }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
-import extdeps.vendor.ampere { ampere_vendor, ampere_customer_reference_boards_authority }
+import extdeps.vendor.ampere { ampere_vendor }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -15,22 +16,36 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data mt_collins_product_brief_subject_note: String = "PUBLIC MARKETING COLLATERAL ONLY. Mt. Collins is dual-socket 2U reference hardware whose engineering documents are NDA-gated through Customer Connect; this brief is recorded so the lane does not repeat the search. HOW THIS REPOSITORY READ THE LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO mt_collins_public_product_brief, NOT AS A FIELD ON THIS RECORD."
+// PUBLIC MARKETING COLLATERAL. Mt. Collins is dual-socket 2U reference hardware; this brief is
+// recorded so the lane does not repeat the search.
+//
+// THIS MODULE USED TO SAY THE ENGINEERING DOCUMENTS ARE NDA-GATED THROUGH CUSTOMER CONNECT, and
+// carried an EngineeringFactsRoute row and record field saying so. That was over-broad and is
+// retracted: what is access-gated is the reference-BOARD DESIGN PACKAGE - design files, UEFI,
+// OpenBMC and CPLD source - a population extdeps.cpu.ampere_altra_package already names, which is
+// its single authority. The Mt. Collins getting started guide is NOT in it and is publicly
+// retrievable; see extdeps.ampere.mt_collins_getting_started_guide.subject. The route type and
+// field are DELETED rather than narrowed in place, because no module read either and re-exporting
+// a corrected value under the old broad name would preserve the false claim behind its interface.
+//
+// HOW THIS REPOSITORY READ THE LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO
+// mt_collins_public_product_brief, NOT AS A FIELD ON THIS RECORD.
 
 type MtCollinsBrief2022V2 {}
 
 type MtCollinsProductBriefRevision = MtCollinsBrief2022V2
 
-type EngineeringFactsRoute
-  = EngineeringFactsUnderNda { access_route: ExternalAuthority }
-  | EngineeringFactsPubliclyIngested
-
 data mt_collins_product_brief_title: NonEmptyStr = "Mt. Collins 2U product brief"
 
 data mt_collins_product_brief_version_label: NonEmptyStr = "2022 V2"
 
-data mt_collins_engineering_facts_route: EngineeringFactsRoute = EngineeringFactsUnderNda {
-  access_route: ampere_customer_reference_boards_authority,
+// THIS MODULE'S PUBLICATION STATUS, for the 2022 V2 brief itself. The brief is the marketing PDF
+// at the anchor above, reachable without credentials and carrying no licence grant, so it takes the
+// same publicly-published-with-marking arm the getting started guide does. It is declared here
+// because this is the brief's own document module; the guide's status lives on the guide's module,
+// extdeps.ampere.mt_collins_getting_started_guide.subject.
+data mt_collins_product_brief_publication_status: DocumentPublicationStatus = PubliclyPublishedWithoutStatedTerms {
+  absence_basis: "The full text of the artifact at the anchor was extracted and read: 1304 characters, a one-page specifications sheet running from the Model row to the Dimensions row. It contains no occurrence of proprietary, confidential, copyright, trademark, reserved or licence, and no document or issue number. Its embedded metadata records Title 'Microsoft Word - Mt._Collins_2U_2022_V2', Producer 'Microsoft: Print To PDF', created 2022-10-17. sha256 961b98a41971bc5e8d189f795dec3b2a5249268d1845decfb71a7fad802f1c14.",
 }
 
 type MtCollinsPublicProductBrief {
@@ -38,7 +53,6 @@ type MtCollinsPublicProductBrief {
   revision: MtCollinsProductBriefRevision
   version_label: NonEmptyStr
   publisher: Vendor<Hardware>
-  engineering_facts_route: EngineeringFactsRoute
 }
 
 data mt_collins_public_product_brief: MtCollinsPublicProductBrief = MtCollinsPublicProductBrief {
@@ -46,7 +60,6 @@ data mt_collins_public_product_brief: MtCollinsPublicProductBrief = MtCollinsPub
   revision: MtCollinsBrief2022V2 {},
   version_label: mt_collins_product_brief_version_label,
   publisher: ampere_vendor,
-  engineering_facts_route: mt_collins_engineering_facts_route,
 }
 
 data mt_collins_product_brief_model_scope: ExternalModelScope = ExternalModelScope {

@@ -14,7 +14,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data cargo_compile_env: Map<String, String> = empty_map()
 
-data cargo_test_with_cwd_env_note: String = "cargo.Build.TestWithCwdEnv: env composes cwd (-C) and process env vars (leading VAR=val argv words) into ONE argv vector, matching the shell.Find.Files precedent of argv-native env -C workdir substitution — no shell is needed to chain a cd/export prefix onto a cargo invocation (SHELL-DAG dissolution of the interpreter_dispatch_bijection_real_roster_transport retained_foreign multi-line script: set -euo pipefail; cd; export; two cargo test invocations, now two sequential typed calls with caller-side short-circuit)."
+// cargo.Build.TestWithCwdEnv: env composes cwd (-C) and process env vars (leading VAR=val argv
+// words) into ONE argv vector, matching the shell.Find.Files precedent of argv-native env -C
+// workdir substitution — no shell is needed to chain a cd/export prefix onto a cargo invocation
+// (SHELL-DAG dissolution of the interpreter_dispatch_bijection_real_roster_transport
+// retained_foreign multi-line script: set -euo pipefail; cd; export; two cargo test invocations,
+// now two sequential typed calls with caller-side short-circuit).
 
 // PATH-resolved program name, deliberately, for the reason extdeps.exec.command
 // program_spelling_is_an_observation_claim records once: an absolute path is a filesystem
@@ -36,6 +41,7 @@ fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> Ar
   )
 }
 
+
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
   ["--jobs", to_string(count)]
 }
@@ -43,6 +49,8 @@ fn cargo_build_jobs_flag(count: Int) -> List<String> {
 fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
   ["--build-jobs", to_string(count)]
 }
+
+data cargo_check_manifest_messages_note: String = "Cargo's structured check surface is distinct from BuildManifestMessages: check asks rustc for metadata and therefore reaches type checking and borrow checking without codegen."
 
 service cargo.Build {
   operation Build {
@@ -98,6 +106,20 @@ service cargo.Build {
     exit {
       0 => Unit
       101 => String "Compilation failed"
+    }
+  }
+
+  operation CheckManifestMessages {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "check", "--message-format=json", "--manifest-path", "{manifest_path}", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Check failed"
     }
   }
 

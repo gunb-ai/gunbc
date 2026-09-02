@@ -1,0 +1,31 @@
+module extdeps.vendor.ami
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.ami",
+      decl_name: "ami",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The company entity, one file, on the extdeps.vendor.asrock_rack pattern. Its
+// BMC firmware product line is a separately governed upstream and lives in
+// extdeps.bmc.megarac, never here (DESIGN §3 external upstream decomposition).
+data ami: Vendor<Hardware> = Vendor { legal_name: "AMI (American Megatrends International, LLC)" }

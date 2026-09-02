@@ -214,6 +214,7 @@ fn bmc_token_smoke_job() -> Job {
 
 data bmc_token_smoke_workflow: Workflow = {
   name: "bmc-token-smoke",
+  run_name: none,
   on: [
     WorkflowDispatch { inputs: [] }
   ],
@@ -231,8 +232,17 @@ data bmc_token_smoke_workflow: Workflow = {
   jobs: [bmc_token_smoke_job()]
 }
 
+// dissolve-on: the repository-level federation VALUES now have one authority in
+// gunbc.auth.github_gcp_federation, but seven bmc_-prefixed names in this module still stand for
+// concepts that are not BMC facts (the fleet secrets project and number, the pool, provider,
+// issuer, attribute mapping, federated repo). Those names are a residual second naming scheme for
+// one concept -- weaker than the value fork just removed, since no row can now disagree, but still
+// a nickname. DISSOLVES WHEN consumers (bmc_bootstrap_provision, bmc_wif_delegation_chain,
+// bmc_wif_canary_bootstrap and their witnesses) reference the github_gcp_federation symbols
+// directly and these pass-through rows are deleted. Deferred rather than done here because the
+// rename touches BMC production files and their witnesses, and it is separable from the value
+// consolidation this change lands.
+
 fn emit_bmc_token_smoke_workflow_yaml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
 }
-
-data bmc_federation_naming_residue_dissolve_on: String = "dissolve-on: the repository-level federation VALUES now have one authority in gunbc.auth.github_gcp_federation, but seven bmc_-prefixed names in this module still stand for concepts that are not BMC facts (the fleet secrets project and number, the pool, provider, issuer, attribute mapping, federated repo). Those names are a residual second naming scheme for one concept -- weaker than the value fork just removed, since no row can now disagree, but still a nickname. DISSOLVES WHEN consumers (bmc_bootstrap_provision, bmc_wif_delegation_chain, bmc_wif_canary_bootstrap and their witnesses) reference the github_gcp_federation symbols directly and these pass-through rows are deleted. Deferred rather than done here because the rename touches BMC production files and their witnesses, and it is separable from the value consolidation this change lands."

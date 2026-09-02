@@ -37,7 +37,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data training_scope_subject_note: String = "THE SUBJECT IS THE JEDEC DDR4 INITIALIZATION CALIBRATION SEQUENCE — which calibration steps a module must execute, derived from its construction. Grounded on JESD79-4A. The load-reduced steps exist only where a data buffer is interposed, which is what makes the step set a difference in KIND between module classes rather than a reliability preference. NOT platform failure receipts (those are gunbc observations of a board), NOT purchasing policy, NOT the DRAM module catalog shape itself (extdeps.memory.types)."
+// THE SUBJECT IS THE JEDEC DDR4 INITIALIZATION CALIBRATION SEQUENCE — which calibration steps a
+// module must execute, derived from its construction. Grounded on JESD79-4A. The load-reduced steps
+// exist only where a data buffer is interposed, which is what makes the step set a difference in
+// KIND between module classes rather than a reliability preference. NOT platform failure receipts
+// (those are gunbc observations of a board), NOT purchasing policy, NOT the DRAM module catalog
+// shape itself (extdeps.memory.types).
 
 // WHY A TRAINING-STEP MODEL RATHER THAN A BLOCKLIST.
 //
@@ -142,6 +147,18 @@ fn hypothetical_module_at_rank_count(
   }
 }
 
+// The step sets here are the structural claim this model rests on: a load-reduced module interposes
+// a data buffer between the DRAM and the host, so it must calibrate that buffer, and a registered
+// module has no such buffer and therefore cannot fail a buffer-calibration step. That is a
+// difference in KIND, not in reliability, which is what makes it usable as a purchase filter rather
+// than as a probability. It is also why the same failure reproduced on two different modules of one
+// family and never on the registered parts the host ran previously. MREP is the DDR4 data-buffer
+// read-phase calibration step; it is named explicitly because it is the step observed failing on
+// the ALTRAD8UD-1L2T platform, both on gunbc's own hosts and in an independent public report
+// carrying byte-identical controller status words. The PHY steps are listed for completeness and to
+// keep the model honest in the other direction: a PHY-step failure would implicate every module
+// class equally and would NOT support a buffering-based purchase rule.
+
 // Can this capacity be built as an ordinary low-rank registered module in this
 // generation, or does reaching it REQUIRE extra ranks or die stacking?
 fn capacity_reachable_as_dual_rank_registered(
@@ -153,5 +170,3 @@ fn capacity_reachable_as_dual_rank_registered(
     jedec: jedec,
   )
 }
-
-data memory_training_step_note: String = "The step sets here are the structural claim this model rests on: a load-reduced module interposes a data buffer between the DRAM and the host, so it must calibrate that buffer, and a registered module has no such buffer and therefore cannot fail a buffer-calibration step. That is a difference in KIND, not in reliability, which is what makes it usable as a purchase filter rather than as a probability. It is also why the same failure reproduced on two different modules of one family and never on the registered parts the host ran previously. MREP is the DDR4 data-buffer read-phase calibration step; it is named explicitly because it is the step observed failing on the ALTRAD8UD-1L2T platform, both on gunbc's own hosts and in an independent public report carrying byte-identical controller status words. The PHY steps are listed for completeness and to keep the model honest in the other direction: a PHY-step failure would implicate every module class equally and would NOT support a buffering-based purchase rule."

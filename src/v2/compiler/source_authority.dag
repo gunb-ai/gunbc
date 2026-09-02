@@ -123,7 +123,11 @@ type DiscoveredSourceRefsDigest
       cause: DiscoveredSourceRefsDigestUnavailableCause
     }
 
-data discovered_source_refs_digest_ceiling_note: String = "CLOSED (operator ruling 2026-08-04, merge requirement): population identity lives in FrontierProbeDiscoveredClosure — refs and population_digest are sealed together by frontier_probe_discovered_closure_seal and cannot be authored as independent halves. Host manifest consumption binds receipt digest to the sealed closure in frontier_probe_discovered_closure_subject_from_host_manifest before probe execution."
+// CLOSED (operator ruling 2026-08-04, merge requirement): population identity lives in
+// FrontierProbeDiscoveredClosure — refs and population_digest are sealed together by
+// frontier_probe_discovered_closure_seal and cannot be authored as independent halves. Host
+// manifest consumption binds receipt digest to the sealed closure in
+// frontier_probe_discovered_closure_subject_from_host_manifest before probe execution.
 
 type FrontierProbeDiscoveredClosure {
   refs: List<SourceRef>,
@@ -131,7 +135,9 @@ type FrontierProbeDiscoveredClosure {
   entry: SourceRef
 }
 
-data frontier_probe_discovered_closure_note: String = "Closed probe-side closure carrier (operator ruling 2026-08-04): refs, population_digest, and entry are one subject. population_digest is always derived from refs at seal time — never a separate caller input."
+// Closed probe-side closure carrier (operator ruling 2026-08-04): refs, population_digest, and
+// entry are one subject. population_digest is always derived from refs at seal time — never a
+// separate caller input.
 
 fn discovered_source_refs_digest_eq(
   left: DiscoveredSourceRefsDigest,
@@ -195,7 +201,33 @@ fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
   }
 }
 
-data source_root_ref_transport_coverage_note: String = "TWO CARRIERS, TWO COMPLETENESS QUESTIONS, NEITHER ANSWERING FOR THE OTHER. source_root_coverage_is_complete asks whether the INLINE carrier is complete. This asks whether the CLOSURE-REF carrier is, and the two differ on exactly one variant.\n\nSourceRootManifestElided is the host emitter reporting that a declared cap rejected the inline row list (source_root_coverage_arms_note states it in those words). Past that cap the ref population stays complete -- produced_row_count still equals ingest_read_count -- which the manifest carrier note also states. So for a consumer that reads through refs and never touches the inline text, Elided is a fact about a carrier it does not consume, and refusing on it is a wrong-subject check rather than a strict one. It refused every closure over the cap regardless of contents: the compiler's own closure is 107 modules against a cap of 64, so the first executed seven-boundary product receipt refused at boundary 2 for a reason that had nothing to do with its subject.\n\nWHAT THIS PREDICATE STILL REFUSES, and why the arm is narrowed rather than deleted. SourceRootRowsMissing is the in-graph derivation losing rows with no cap involved -- a real deficit for either carrier. SourceRootManifestAbsent is the committed stub, where nothing has been supplied at all; admitting it would be a vacuous truth over zero rows. Deleting the coverage arm outright would LOOK safe, because source_root_closure_ref_transport_complete independently catches RowsMissing (its produced_row_count == ingest_read_count clause is exactly that variant's negation) -- but that makes the guarantee incidental to arm ORDER, and a later reorder would walk a real deficit through. A replacement preserves every required refusal or it has erased a correctness distinction (operator ruling, smart-ram-730, 2026-08-21).\n\nWHY IT LIVES HERE and not as an inline match in the driver: the coverage coproduct is this module's, so a second unnamed answer to its completeness question authored at a call site would be exactly the nicknaming this repository consolidates later at cost."
+// TWO CARRIERS, TWO COMPLETENESS QUESTIONS, NEITHER ANSWERING FOR THE OTHER.
+// source_root_coverage_is_complete asks whether the INLINE carrier is complete. This asks whether
+// the CLOSURE-REF carrier is, and the two differ on exactly one variant.
+//
+// SourceRootManifestElided is the host emitter reporting that a declared cap rejected the inline
+// row list (source_root_coverage_arms_note states it in those words). Past that cap the ref
+// population stays complete -- produced_row_count still equals ingest_read_count -- which the
+// manifest carrier note also states. So for a consumer that reads through refs and never touches
+// the inline text, Elided is a fact about a carrier it does not consume, and refusing on it is a
+// wrong-subject check rather than a strict one. It refused every closure over the cap regardless of
+// contents: the compiler's own closure is 107 modules against a cap of 64, so the first executed
+// seven-boundary product receipt refused at boundary 2 for a reason that had nothing to do with its
+// subject.
+//
+// WHAT THIS PREDICATE STILL REFUSES, and why the arm is narrowed rather than deleted.
+// SourceRootRowsMissing is the in-graph derivation losing rows with no cap involved -- a real
+// deficit for either carrier. SourceRootManifestAbsent is the committed stub, where nothing has
+// been supplied at all; admitting it would be a vacuous truth over zero rows. Deleting the coverage
+// arm outright would LOOK safe, because source_root_closure_ref_transport_complete independently
+// catches RowsMissing (its produced_row_count == ingest_read_count clause is exactly that variant's
+// negation) -- but that makes the guarantee incidental to arm ORDER, and a later reorder would walk
+// a real deficit through. A replacement preserves every required refusal or it has erased a
+// correctness distinction (operator ruling, smart-ram-730, 2026-08-21).
+//
+// WHY IT LIVES HERE and not as an inline match in the driver: the coverage coproduct is this
+// module's, so a second unnamed answer to its completeness question authored at a call site would
+// be exactly the nicknaming this repository consolidates later at cost.
 
 fn source_root_ref_transport_coverage_admits(coverage: SourceRootCoverage) -> Bool {
   match coverage {
@@ -439,7 +471,11 @@ fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
   )
 }
 
-data source_ref_selection_unpinned_note: String = "Selection-grain placeholder hash for declared SourceRef rows (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the eventual pinned authority; selection today keys on storage path resolved through ModuleStorageIndex only."
+// Selection-grain placeholder hash for declared SourceRef rows
+// (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to
+// the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the
+// eventual pinned authority; selection today keys on storage path resolved through
+// ModuleStorageIndex only.
 
 fn source_ref_path(ref: SourceRef) -> String {
   ref.path
@@ -706,9 +742,24 @@ fn module_storage_binding_from_provenance(
   }
 }
 
-data module_storage_located_refusal_note: String = "The name-derivation refusal FORWARDS the derivation's own diagnostics unchanged rather than substituting a port-level source_authority_diagnostic. Substituting would satisfy 'typed' while destroying 'located' (§5 requires both): qualified_name_from_module_node reports at the offending node, whereas source_authority_port locates only the stage. Dropping that is the same loss of signal the silent-drop arm caused, one tier milder — the caller learns THAT a module name failed but not WHERE. This also keeps the authority path identical to the sibling arm in v2.compiler.program_assembly, so one derivation failure does not produce two different diagnostics depending on which entry point ran."
+// The name-derivation refusal FORWARDS the derivation's own diagnostics unchanged rather than
+// substituting a port-level source_authority_diagnostic. Substituting would satisfy 'typed' while
+// destroying 'located' (§5 requires both): qualified_name_from_module_node reports at the offending
+// node, whereas source_authority_port locates only the stage. Dropping that is the same loss of
+// signal the silent-drop arm caused, one tier milder — the caller learns THAT a module name failed
+// but not WHERE. This also keeps the authority path identical to the sibling arm in
+// v2.compiler.program_assembly, so one derivation failure does not produce two different
+// diagnostics depending on which entry point ran.
 
-data module_storage_prepare_once_note: String = "prepare_grammar is hoisted ABOVE the fold, exactly as v2.compiler.program_assembly does (program_assembly_prepare_once_note): the grammar is well-formed-checked, validated, and FIRST/nullable-analyzed ONCE per ingest, then parse_module_prepared reuses the PreparedGrammar for every read. Deriving the binding over a K-module ingest therefore validates the grammar once, not K times — the recompute-per-module cost this dissolves (§6 bare-minimum cost: a proven cost-shape defect is always fixed, and 'K is small here' is not a time-stable fact — K becomes the whole tree once the projections replace the hand tables). Empty ingest is guarded so it never pays the one-time prepare for zero reads, and an invalid grammar fails the whole derivation before any read is parsed, carrying the validation diagnostic — never a per-read silent skip."
+// prepare_grammar is hoisted ABOVE the fold, exactly as v2.compiler.program_assembly does
+// (program_assembly_prepare_once_note): the grammar is well-formed-checked, validated, and
+// FIRST/nullable-analyzed ONCE per ingest, then parse_module_prepared reuses the PreparedGrammar
+// for every read. Deriving the binding over a K-module ingest therefore validates the grammar once,
+// not K times — the recompute-per-module cost this dissolves (§6 bare-minimum cost: a proven
+// cost-shape defect is always fixed, and 'K is small here' is not a time-stable fact — K becomes
+// the whole tree once the projections replace the hand tables). Empty ingest is guarded so it never
+// pays the one-time prepare for zero reads, and an invalid grammar fails the whole derivation
+// before any read is parsed, carrying the validation diagnostic — never a per-read silent skip.
 
 fn module_storage_binding_from_parse_artifact(
   artifact: ParseArtifact,
@@ -786,7 +837,13 @@ fn module_storage_binding_module_dotted(binding: ModuleStorageBinding) -> String
   qualified_name_to_dotted_string(qn: binding.module)
 }
 
-data module_storage_identity_note: String = "Module identity compares STRUCTURALLY on QualifiedName (= FreeMonoid<Symbol>), never through a rendered dotted string. Routing identity through qualified_name_to_dotted_string would allocate two strings per comparison — n per insert, so n^2 string builds over an ingest — to answer a question the symbol list already answers, and it would make a rendering function load-bearing for identity (§6 bare-minimum cost; §3 the dotted form is a projection FOR DISPLAY, not the identity authority). The hand-rolled qualified_name_eq was already dissolved into structural == when QualifiedName became a FreeMonoid alias; this reuses that, it does not re-mint it."
+// Module identity compares STRUCTURALLY on QualifiedName (= FreeMonoid<Symbol>), never through a
+// rendered dotted string. Routing identity through qualified_name_to_dotted_string would allocate
+// two strings per comparison — n per insert, so n^2 string builds over an ingest — to answer a
+// question the symbol list already answers, and it would make a rendering function load-bearing for
+// identity (§6 bare-minimum cost; §3 the dotted form is a projection FOR DISPLAY, not the identity
+// authority). The hand-rolled qualified_name_eq was already dissolved into structural == when
+// QualifiedName became a FreeMonoid alias; this reuses that, it does not re-mint it.
 
 fn module_storage_index_contains_module(
   index: ModuleStorageIndex,
@@ -901,7 +958,12 @@ fn module_storage_bindings_from_ingest(
   )
 }
 
-data module_storage_produced_binding_note: String = "The zero-file case, representable by construction (§2): the body producer already creates modules with no file at all, which is the standing proof that identity cannot be the path. ProducedByBehavior carries the producing behavior instead of an artifact, so such a module enters the binding table honestly rather than being excluded (today source_ir_artifact_provenance_from_model rejects every non-SourceFile artifact, so produced modules cannot enter provenance at all)."
+// The zero-file case, representable by construction (§2): the body producer already creates modules
+// with no file at all, which is the standing proof that identity cannot be the path.
+// ProducedByBehavior carries the producing behavior instead of an artifact, so such a module enters
+// the binding table honestly rather than being excluded (today
+// source_ir_artifact_provenance_from_model rejects every non-SourceFile artifact, so produced
+// modules cannot enter provenance at all).
 
 fn module_storage_produced_binding(
   module: QualifiedName,
@@ -940,9 +1002,24 @@ fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<S
   }
 }
 
-data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance — and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path, which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full Lossless source of every file and are therefore capped at corpus-protection scale). This declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2 Realization; §3's interface/transport split — the transport is not a fact about the binding). The handler carries ZERO independent policy: it records what the one parse pipeline already computed, which is precisely why repointing the host producer and supplying the rows are the SAME motion rather than two derivations to reconcile."
+// THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling
+// 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance —
+// and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path,
+// which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full
+// Lossless source of every file and are therefore capped at corpus-protection scale). This
+// declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2
+// Realization; §3's interface/transport split — the transport is not a fact about the binding). The
+// handler carries ZERO independent policy: it records what the one parse pipeline already computed,
+// which is precisely why repointing the host producer and supplying the rows are the SAME motion
+// rather than two derivations to reconcile.
 
-data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
+// Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses
+// every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of
+// modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and
+// compile-clean scope thousands. The host already knows (module, path) from its own parse, so
+// re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is
+// therefore retained as the ORACLE that pins this transport to the model, never as the consumer
+// path.
 
 data module_storage_supply_unbound_body_note: String = "The body REFUSES rather than recursing. This declaration is an interface whose realization is a host handler; until host-effect emission binds it, an in-graph caller must be told so, loudly and at once.
 
@@ -967,9 +1044,18 @@ data module_storage_bindings_for_source_roots_host_disposition: Disposition = Sc
 
 data module_storage_supply_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: host-effect emission (witness-realization lane). The host handler for module_storage_bindings_for_source_roots is hand-written Rust at the effect boundary TODAY; when host-effect emission lands, the producer is EMITTED from this .dag model instead, and the hand handler retires. Declared here rather than left implicit so the scaffold cannot linger unmarked (§6: every scaffold lands with a named dissolution trigger). Until then the consistency witness is what keeps the handler honest to this interface, in two enrolled halves: the LIVE half (v2.test.long.module_binding_host_consistency, on the module-binding supply gate's wet cadence) asserts host-emitted rows == module_storage_bindings_from_ingest over the same sources, and the DISCRIMINATING half (v2.test.claim.module_storage_binding, per-PR fast lane, zero parse cost) pins the comparator itself with perturbed rows — module_storage_agreement_reports_divergent_on_wrong_module and module_storage_agreement_reports_uncovered_on_missing_row both go RED if module_storage_host_agrees_with_oracle ever regresses to answering ModuleStorageAgrees unconditionally, which is the exact way the live half would go vacuously green (review 39735).")
 
-data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
+// Both requested directions are queries against ONE table (design §2). file → graph region: given a
+// path, the module parsed from it. module → file(s): given a module reference, its current storage
+// — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths.
+// A produced module answers Absent for storage, which is a real answer, not a miss.
 
-data module_storage_agreement_note: String = "After task 4 both the host transport and the in-graph oracle derive module names through parse — the host via v1_compiler_parse at the bootstrap boundary, the oracle via parse_module_prepared in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the binding TABLE (module identity + storage path per row), not two different extraction code paths. Divergence still means a real authority disagreement; coverage gaps still mean the host index lacks a row the oracle carries. The witness remains the pin that keeps the host handler a transport of the modeled op rather than a rival authority (§3)."
+// After task 4 both the host transport and the in-graph oracle derive module names through parse —
+// the host via v1_compiler_parse at the bootstrap boundary, the oracle via parse_module_prepared
+// in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the
+// binding TABLE (module identity + storage path per row), not two different extraction code paths.
+// Divergence still means a real authority disagreement; coverage gaps still mean the host index
+// lacks a row the oracle carries. The witness remains the pin that keeps the host handler a
+// transport of the modeled op rather than a rival authority (§3).
 
 type ModuleStorageAgreement
   = ModuleStorageAgrees
@@ -1092,8 +1178,6 @@ fn source_ir_node_artifact_provenance(
   )
 }
 
-
-
 type NodeArtifactProvenanceFoldState
   = NodeArtifactProvenanceFoldOk {
       provenance: FreeMonoid<NodeArtifactProvenance>
@@ -1188,11 +1272,19 @@ fn source_ast_equal_witness(
   }
 }
 
+// THE PROJECTION OUT OF THE SEALED CARRIER, WHICH THIS CALL SITE OWED SINCE BL-1.
+// `NormalizedTree` was an alias for `Node` until BL-1 sealed it into a sole-constructor record so
+// that wrapper-retention evidence could not reach resolve as a bare `Node`. Sealing it made
+// `NormalizedDagSourceAst.tree` a carrier rather than a node, and `source_authority_node_equal`
+// asks for nodes. The neighbouring `source_ast_equal_witness` reads correctly only because
+// `DagSourceAst.tree` is a `ParseTree`, still an alias -- so the two sites look identical and are
+// not. `.root` is `v2.compiler.normalized_tree`'s own projection out of the carrier, the same one
+// `normalized_tree_roots_to_nodes` uses.
 fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
 ) -> Witness<NormalizedSourceAstEqual> {
-  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+  if source_authority_node_equal(left: original.tree.root, right: reparsed.tree.root) {
     Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {

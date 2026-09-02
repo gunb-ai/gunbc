@@ -10,6 +10,8 @@ import gunbc.guarantee_rung_drop {
   MechanicallyPreventable,
   AwaitsOneGrounding,
   BoundedPopulation,
+  ClimbableButUnbuilt,
+  UncountedNotEnumerable,
 }
 
 // WHY THIS CARRIER EXISTS BESIDE THE WALL RATHER THAN INSIDE THE PLAN IT ENFORCES. The
@@ -20,13 +22,145 @@ import gunbc.guarantee_rung_drop {
 
 data namespace_wave_admission_note: String = "THE REQUIRED WAVE-ADMISSION WALL over closure, subject-membership and occurrence-binding deltas: gunbc.compiler_frontend_program_interlock milestone NamespaceWaveAdmissionEnrolled.\n\nWHAT IT ANSWERS. For one change, at merge-base grain: which modules entered or left each module's subject, what each module's transitive closure gained or lost, and whether any spelling already authored on both sides changed WHICH DECLARATIONS IT ADMITS. Every motion is classified into NamespaceDeltaDisposition and the run is ADMITTED only when the UNADJUDICATED set is empty -- never when the delta is empty, which is the one-word difference the ruling states explicitly and the weaker spelling of which would refuse the cut itself and then be repaired by weakening the wall.\n\nWHERE IT RUNS. As the namespace-wave-admission phase of claim_executor --required-ci, in the witnesses lane, consuming the index the parse phase built. It acquires no second corpus: the base index is the head index with the diff applied in reverse at FILE grain, so only the files a change touched are parsed again, from their base blobs, while closure and binding are recomputed over both whole graphs -- a module whose own text did not move can still have its subject moved by one that did.\n\nTHE CHANGE CLASS IS DERIVED, NOT DECLARED. NamespaceChangeClass splits preparatory work from work that alters membership or binding. Nothing asks an author which they wrote: the delta is measured and the answer falls out, so PreparatoryNoSemanticMotion is a property of a diff rather than a claim in a pull-request body. Construction over validation.\n\nTWO NON-VERDICTS ARE REPORTED UNDER THEIR OWN NAMES AND ONLY ONE PASSES. A push whose baseline IS its own head -- main after a squash merge -- has no diff to adjudicate, and that is NoSubject: nothing was compared and nothing is admitted. A baseline that does not resolve is NotEvaluated, which the ruling puts on the refusing side, because I could not see what changed and nothing changed are different states with different remedies and the second is the empty-observation narrow.\n\nA STALE ADMISSION REFUSES TOO. A transition-admission row matching no delta is a permission standing over nothing; leaving it would let the roster stop being a fact about the corpus and become a list nobody pruned."
 
-data namespace_wave_admission_grain_note: String = "WHY THE GRAIN IS AUTHORED CONTAINMENT IDENTITY AND NOT OCCURRENCE IDENTITY, which is a CLOSED RESULT rather than a shortcut.\n\nv2.workflow.legacy_binding_delta states it for its own subject and the argument transfers unchanged: std.occurrence_identity's scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, and an OccurrenceId is a monotone counter consumed in walk order, so it ENCODES POSITION and shifts under any edit above it. A cross-compile correspondence is therefore something a TRANSFORMATION EMITS -- a function knows which output came from which input -- and between a merge base and a pull-request head there is no transformation to emit one. So an occurrence-grain delta between two arbitrary trees is not a better key waiting to be found; it is unavailable by construction.\n\nWHAT THE WALL USES INSTEAD is the identity legacy_binding_observation legacy_subject_identity already folds for its own subjects, read at the grain a cross-tree join can carry: module path, enclosing declaration, and the LEAF SEGMENT of the reference rather than its whole spelling. A row's VALUE is the SET of declaring identities that leaf admits, never a winner -- so a local declaration arriving beside an imported one WIDENS the set to two and reports NewAmbiguity, rather than silently picking the nearer one, which is the mechanism the namespace authority exists to delete.\n\nTHE LEAF RATHER THAN THE SPELLING IS AN INVARIANT OF THE OPERATION THE CUT PERFORMS, NOT A LUCKY FIXTURE. A requalification wave prepends the declarer's path to a reference and leaves the declarer fixed, so it changes the authored SPELLING and leaves the last segment unchanged BY CONSTRUCTION -- the key does not merely happen to survive the cut, it is invariant under exactly the transformation the cut applies. The reduction is not coined here either: v1.05_emit_rust rust_fn_sig_leaf_name_dotted_note names qualified_last_segment as THE single authority for taking an authored spelling to its last segment, and records a real defect from a site that skipped it and emitted dots into Rust output. Stated as an invariant rather than as a finding because a finding invites re-litigation and an invariant does not (measured against the carriers by snappy-dove-250, 2026-08-26). Keyed on the whole spelling instead, requalifying a reference reads as NewUnresolvedness, and the wall would refuse the only program it exists to admit -- which is how this was found, by a fixture going red rather than by review.\n\nTHE CONVERSE IS THE WALL WORKING AND IS NOT TO BE SOFTENED. If a cut ever repoints a reference to a DIFFERENT declaration whose leaf differs, the key moves and the wall refuses. The owning program has bound itself to splitting that out rather than asking for tolerance: a wave that both requalifies and moves a symbol is two change classes in one diff, and TargetChanged firing on it is the wall reporting a mis-shaped wave. No per-row exemption, threshold or allowance is admitted for that case -- a confidence threshold selecting a softer arm is the smuggled heuristic DESIGN rules out, and it would convert the one signal that catches a mis-shaped wave into silence.\n\nTHE CEILING, STATED SO IT IS NOT MISREAD AS COVERAGE: two occurrences of one spelling inside one declaration share a row, so WHICH occurrence took which member of the set is not observable here. ANYONE READING THE MILESTONE AS COVERING OCCURRENCE GRAIN WILL BE READING MORE THAN EXISTS, and that sentence is carried here rather than only in a pull-request body because a body is not an authority and the overclaim it prevents is the kind that recurs. The milestone NamespaceWaveAdmissionEnrolled delivers two adjudicated walls -- subject membership and binding at authored containment grain -- a MEASURED closure blast radius attributed to its generators, and this declared stall. It does not deliver a third wall over closure, and it does not deliver occurrence grain.\n\nNEXT-RUNG TRIGGER: a projector-emitted correspondence (legacy_binding_delta ProjectionProvenanceEntry) reaching a base/head pair, at which point the row key descends to the occurrence and this note is deleted rather than amended."
+// WHY THE GRAIN IS AUTHORED CONTAINMENT IDENTITY AND NOT OCCURRENCE IDENTITY, which is a CLOSED
+// RESULT rather than a shortcut.
+//
+// v2.workflow.legacy_binding_delta states it for its own subject and the argument transfers
+// unchanged: std.occurrence_identity's scope law forbids filename, SourceSpan, authored name,
+// structural Node equality and content hash as identity inputs, and an OccurrenceId is a monotone
+// counter consumed in walk order, so it ENCODES POSITION and shifts under any edit above it. A
+// cross-compile correspondence is therefore something a TRANSFORMATION EMITS -- a function knows
+// which output came from which input -- and between a merge base and a pull-request head there is
+// no transformation to emit one. So an occurrence-grain delta between two arbitrary trees is not a
+// better key waiting to be found; it is unavailable by construction.
+//
+// WHAT THE WALL USES INSTEAD is the identity legacy_binding_observation legacy_subject_identity
+// already folds for its own subjects, read at the grain a cross-tree join can carry: module path,
+// enclosing declaration, and the LEAF SEGMENT of the reference rather than its whole spelling. A
+// row's VALUE is the SET of declaring identities that leaf admits, never a winner -- so a local
+// declaration arriving beside an imported one WIDENS the set to two and reports NewAmbiguity,
+// rather than silently picking the nearer one, which is the mechanism the namespace authority
+// exists to delete.
+//
+// THE LEAF RATHER THAN THE SPELLING IS AN INVARIANT OF THE OPERATION THE CUT PERFORMS, NOT A LUCKY
+// FIXTURE. A requalification wave prepends the declarer's path to a reference and leaves the
+// declarer fixed, so it changes the authored SPELLING and leaves the last segment unchanged BY
+// CONSTRUCTION -- the key does not merely happen to survive the cut, it is invariant under exactly
+// the transformation the cut applies. The reduction is not coined here either: v1.05_emit_rust
+// rust_fn_sig_leaf_name_dotted_note names qualified_last_segment as THE single authority for taking
+// an authored spelling to its last segment, and records a real defect from a site that skipped it
+// and emitted dots into Rust output. Stated as an invariant rather than as a finding because a
+// finding invites re-litigation and an invariant does not (measured against the carriers by
+// snappy-dove-250, 2026-08-26). Keyed on the whole spelling instead, requalifying a reference reads
+// as NewUnresolvedness, and the wall would refuse the only program it exists to admit -- which is
+// how this was found, by a fixture going red rather than by review.
+//
+// THE CONVERSE IS THE WALL WORKING AND IS NOT TO BE SOFTENED. If a cut ever repoints a reference to
+// a DIFFERENT declaration whose leaf differs, the key moves and the wall refuses. The owning
+// program has bound itself to splitting that out rather than asking for tolerance: a wave that both
+// requalifies and moves a symbol is two change classes in one diff, and TargetChanged firing on it
+// is the wall reporting a mis-shaped wave. No per-row exemption, threshold or allowance is admitted
+// for that case -- a confidence threshold selecting a softer arm is the smuggled heuristic DESIGN
+// rules out, and it would convert the one signal that catches a mis-shaped wave into silence.
+//
+// THE CEILING, STATED SO IT IS NOT MISREAD AS COVERAGE: two occurrences of one spelling inside one
+// declaration share a row, so WHICH occurrence took which member of the set is not observable here.
+// ANYONE READING THE MILESTONE AS COVERING OCCURRENCE GRAIN WILL BE READING MORE THAN EXISTS, and
+// that sentence is carried here rather than only in a pull-request body because a body is not an
+// authority and the overclaim it prevents is the kind that recurs. The milestone
+// NamespaceWaveAdmissionEnrolled delivers two adjudicated walls -- subject membership and binding
+// at authored containment grain -- a MEASURED closure blast radius attributed to its generators,
+// and this declared stall. It does not deliver a third wall over closure, and it does not deliver
+// occurrence grain.
+//
+// NEXT-RUNG TRIGGER: a projector-emitted correspondence (legacy_binding_delta
+// ProjectionProvenanceEntry) reaching a base/head pair, at which point the row key descends to the
+// occurrence and this note is deleted rather than amended.
 
-data namespace_wave_admission_reference_channel_note: String = "WHY THE BINDING CHANNEL IS NOT THE IMPORT CHANNEL, which is the load-bearing design choice.\n\nA wall reading bindings only through import members would observe the import-name universe being deleted and then see NOTHING AT ALL -- blind on precisely the change it gates, in the first wave it exists to govern. So the channel is every authored NAME OCCURRENCE in a module's own parsed tree, resolved independently: a dotted spelling by its longest module prefix, a bare spelling against the module's own declarations and its import claims, following a re-export chain to the module that actually DECLARES the name. It survives the cut because it never depended on the construct being cut, and the FUNCTION is the same on both sides, so a base measured before a cut and a head measured after it are measured by one instrument.\n\nIT IS PARSE-THEN-DERIVE AND NOT A TEXT SCANNER. DESIGN's namespace-cut correction ruled the raw-text scanner family -- referenced_module_paths_in_text and kin -- a heuristic that cannot distinguish a reference from prose, with the in-tree receipt of the English word edge binding to fn edge. This reads the Node tree. What it does NOT do is resolve: a parameter name, a field name and a let binder land in the same set as a genuine reference, because telling them apart is the resolver's job. That over-collection is SYMMETRIC across two trees, which is the only property the delta needs -- a spelling denoting nothing on both sides contributes no row.\n\nWHERE THAT IS CONSERVATIVE AND IN WHICH DIRECTION, because an approximation whose direction is unstated is a hole. On the BINDING channel it can only produce rows about spellings that are not references, and such a row is a delta only if its candidate set actually moved -- so the direction is toward refusing, never toward admitting. On the MEMBERSHIP-SUPPORT question -- does any name in this module reach into the target -- it is toward admitting, and that is deliberate: refusing an added dependency because the reader could not see the reference would make ordinary work an adjudication, and a wall paid for in false refusals is a wall that gets weakened."
+// WHY THE BINDING CHANNEL IS NOT THE IMPORT CHANNEL, which is the load-bearing design choice.
+//
+// A wall reading bindings only through import members would observe the import-name universe being
+// deleted and then see NOTHING AT ALL -- blind on precisely the change it gates, in the first wave
+// it exists to govern. So the channel is every authored NAME OCCURRENCE in a module's own parsed
+// tree, resolved independently: a dotted spelling by its longest module prefix, a bare spelling
+// against the module's own declarations and its import claims, following a re-export chain to the
+// module that actually DECLARES the name. It survives the cut because it never depended on the
+// construct being cut, and the FUNCTION is the same on both sides, so a base measured before a cut
+// and a head measured after it are measured by one instrument.
+//
+// IT IS PARSE-THEN-DERIVE AND NOT A TEXT SCANNER. DESIGN's namespace-cut correction ruled the
+// raw-text scanner family -- referenced_module_paths_in_text and kin -- a heuristic that cannot
+// distinguish a reference from prose, with the in-tree receipt of the English word edge binding to
+// fn edge. This reads the Node tree. What it does NOT do is resolve: a parameter name, a field name
+// and a let binder land in the same set as a genuine reference, because telling them apart is the
+// resolver's job. That over-collection is SYMMETRIC across two trees, which is the only property
+// the delta needs -- a spelling denoting nothing on both sides contributes no row.
+//
+// WHERE THAT IS CONSERVATIVE AND IN WHICH DIRECTION, because an approximation whose direction is
+// unstated is a hole. On the BINDING channel it can only produce rows about spellings that are not
+// references, and such a row is a delta only if its candidate set actually moved -- so the
+// direction is toward refusing, never toward admitting. On the MEMBERSHIP-SUPPORT question -- does
+// any name in this module reach into the target -- it is toward admitting, and that is deliberate:
+// refusing an added dependency because the reader could not see the reference would make ordinary
+// work an adjudication, and a wall paid for in false refusals is a wall that gets weakened.
 
-data namespace_wave_admission_closure_note: String = "WHAT THE WALL DOES WITH CLOSURE, AND THE ARM IT DELIBERATELY DOES NOT AUTHOR.\n\nClosure is a pure function of membership, so the closure moved and no membership moved is not a state any fixture can author. An arm for it would be permanently green by construction -- the decoration DESIGN 4b calls worse than absent, because it gets cited as coverage. Closure is therefore MEASURED and ATTRIBUTED rather than separately adjudicated: every moved closure row is grouped under the membership delta that generates it, and each delta carries the number of modules whose subject it moves, so a refusal names its blast radius. The adjudication happens at the generators, which is where the decision is; adjudicating the consequence as well would be a second representation of one fact.\n\nSO THE THREE DELTAS THE MILESTONE NAMES ARE NOT THREE WALLS. Two are adjudicated and the third is the derived consequence of one of them, reported beside it. Saying so here is the difference between a scope statement and an inflated one."
+// WHAT THE WALL DOES WITH CLOSURE, AND THE ARM IT DELIBERATELY DOES NOT AUTHOR.
+//
+// Closure is a pure function of membership, so the closure moved and no membership moved is not a
+// state any fixture can author. An arm for it would be permanently green by construction -- the
+// decoration DESIGN 4b calls worse than absent, because it gets cited as coverage. Closure is
+// therefore MEASURED and ATTRIBUTED rather than separately adjudicated: every moved closure row is
+// grouped under the membership delta that generates it, and each delta carries the number of
+// modules whose subject it moves, so a refusal names its blast radius. The adjudication happens at
+// the generators, which is where the decision is; adjudicating the consequence as well would be a
+// second representation of one fact.
+//
+// SO THE THREE DELTAS THE MILESTONE NAMES ARE NOT THREE WALLS. Two are adjudicated and the third is
+// the derived consequence of one of them, reported beside it. Saying so here is the difference
+// between a scope statement and an inflated one.
 
-data namespace_wave_admission_admission_grain_note: String = "THE TRANSITION-ADMISSION ROSTER IS EMPTY AT LANDING, AND THAT IS THE CORRECT STATE: no wave has run, so no transition has been authorised. A row names one exact subject under one exact disposition, and a row matching no delta refuses as stale, so the roster can only shrink toward its subject.\n\nWHAT THE FIRST WAVE WILL NEED, RECORDED NOW AND NOT BUILT NOW. The import/namespace program's owning session measured the expected magnitude against the import-strip receipts: THOUSANDS of transitions, dominated by one class. That figure is STALE AS A POPULATION -- the same anchor recipe re-run on 2026-08-26 returns a different corpus hash than the receipts record, so the receipts describe no current tree -- and it is quoted here ONLY as an order of magnitude, which is the part that decides a design question. A per-row roster at that scale is unreviewable, and an unreviewable roster is rubber-stamped, which converts this wall into a formality.\n\nSO A CLASS ADMISSION MUST BE BOUNDED BY ENUMERATED IDENTITY AND NEVER BY PREDICATE. These exact bindings, taken from the pre-deletion baseline observation, become unresolved is admissible; unresolvedness is expected during the wave is not, because it admits everything and zeroes the wall's deficit frequency by construction -- the absorbing fallback wearing the wave's clothes. The distinction is the whole difference between a wall that survives its own transition and one that is switched off for its duration.\n\nTHE POPULATION ARRIVES ONE GRAIN DOWN FROM THIS WALL'S ROWS, AND THE PROJECTION IS THE RECEIVING END'S JOB. Measured on the carrier rather than assumed: std.legacy_binding_observation LegacyBindingObservationRow carries exactly two fields, an occurrence identity and an outcome -- no module, no enclosing declaration, no leaf. So a class admission enumerated from the baseline observation cannot hand this wall its key directly. The route down is the leaf from the validated occurrence transport's index entries, whose OccurrenceProjection authored_name is the authored spelling; the enclosing declaration from the occurrence containment path's ancestors joined against that transport's declarations; and the module from the containment root.\n\nONE TRAP ON THAT ROUTE, NAMED BECAUSE IT FAILS SILENTLY. authored_name CARRIES DOTS -- v1.02_parse populates it from the raw node name and every consumption site applies qualified_last_segment to reduce it. Keying on authored_name raw reproduces exactly the spelling hazard the grain note above rejects, and reproduces it INVISIBLY, because on an unqualified reference the spelling and the leaf are identical and every naturally-written test passes. The reduction is not optional and is not this module's to re-coin.\n\nWHY THE COARSE CARRIER IS NOT AUTHORED HERE. It would be a mechanism with no consumer until a wave needs it, and a new artifact with no final consumer is the experimental residue DESIGN 6 names. What is fixed today is the CONSTRAINT on its shape, not the shape itself; the population it enumerates comes from the milestone NamespaceBaselineObservationComplete, and where that baseline is unavailable for the base being gated, the honest disposition is NotEvaluated refusing rather than a predicate substituted for a missing enumeration."
+// THE TRANSITION-ADMISSION ROSTER IS EMPTY AT LANDING, AND THAT IS THE CORRECT STATE: no wave has
+// run, so no transition has been authorised. A row names one exact subject under one exact
+// disposition, and a row matching no delta refuses as stale, so the roster can only shrink toward
+// its subject.
+//
+// WHAT THE FIRST WAVE WILL NEED, RECORDED NOW AND NOT BUILT NOW. The import/namespace program's
+// owning session measured the expected magnitude against the import-strip receipts: THOUSANDS of
+// transitions, dominated by one class. That figure is STALE AS A POPULATION -- the same anchor
+// recipe re-run on 2026-08-26 returns a different corpus hash than the receipts record, so the
+// receipts describe no current tree -- and it is quoted here ONLY as an order of magnitude, which
+// is the part that decides a design question. A per-row roster at that scale is unreviewable, and
+// an unreviewable roster is rubber-stamped, which converts this wall into a formality.
+//
+// SO A CLASS ADMISSION MUST BE BOUNDED BY ENUMERATED IDENTITY AND NEVER BY PREDICATE. These exact
+// bindings, taken from the pre-deletion baseline observation, become unresolved is admissible;
+// unresolvedness is expected during the wave is not, because it admits everything and zeroes the
+// wall's deficit frequency by construction -- the absorbing fallback wearing the wave's clothes.
+// The distinction is the whole difference between a wall that survives its own transition and one
+// that is switched off for its duration.
+//
+// THE POPULATION ARRIVES ONE GRAIN DOWN FROM THIS WALL'S ROWS, AND THE PROJECTION IS THE RECEIVING
+// END'S JOB. Measured on the carrier rather than assumed: std.legacy_binding_observation
+// LegacyBindingObservationRow carries exactly two fields, an occurrence identity and an outcome --
+// no module, no enclosing declaration, no leaf. So a class admission enumerated from the baseline
+// observation cannot hand this wall its key directly. The route down is the leaf from the validated
+// occurrence transport's index entries, whose OccurrenceProjection authored_name is the authored
+// spelling; the enclosing declaration from the occurrence containment path's ancestors joined
+// against that transport's declarations; and the module from the containment root.
+//
+// ONE TRAP ON THAT ROUTE, NAMED BECAUSE IT FAILS SILENTLY. authored_name CARRIES DOTS --
+// v1.02_parse populates it from the raw node name and every consumption site applies
+// qualified_last_segment to reduce it. Keying on authored_name raw reproduces exactly the spelling
+// hazard the grain note above rejects, and reproduces it INVISIBLY, because on an unqualified
+// reference the spelling and the leaf are identical and every naturally-written test passes. The
+// reduction is not optional and is not this module's to re-coin.
+//
+// WHY THE COARSE CARRIER IS NOT AUTHORED HERE. It would be a mechanism with no consumer until a
+// wave needs it, and a new artifact with no final consumer is the experimental residue DESIGN 6
+// names. What is fixed today is the CONSTRAINT on its shape, not the shape itself; the population
+// it enumerates comes from the milestone NamespaceBaselineObservationComplete, and where that
+// baseline is unavailable for the base being gated, the honest disposition is NotEvaluated refusing
+// rather than a predicate substituted for a missing enumeration.
 
 // THE RUNG, AND WHAT IT DOES NOT REACH. The class is a namespace change merging with its
 // closure, membership or binding motion unexamined. It was OUTSIDE THE LADDER -- not
@@ -34,6 +168,32 @@ data namespace_wave_admission_admission_grain_note: String = "THE TRANSITION-ADM
 // a required phase, armed on every push and pull request, whose RED is authorable at the
 // FIXTURE boundary and is authored there. It is not structurally guaranteed and this row does
 // not claim it: the motion stays perfectly writable and safety depends on the phase executing.
+
+// WHY THE CLOSURE CLAUSE IS ABSENT ON A BINDING ROW RATHER THAN ZERO.
+//
+// The paragraph above states that closure is a pure function of MEMBERSHIP, so a moved closure row
+// groups under the membership delta generating it. The consequence for the carrier is that only a
+// membership row can answer the closure question at all, and a binding row is not a row whose
+// closure motion is zero -- it is a row that was never asked.
+//
+// Those two states shared one spelling until the field became optional. A binding delta was
+// constructed with a literal zero and the renderer appended the same bracketed clause to every
+// row, so an unasked question and a measured zero were byte-identical in the output. That is the
+// shape DESIGN 5 forbids: the run emitted a measurement where it had performed none, and the zero
+// was available to be read as evidence that a rebinding was contained. The field now carries the
+// absence, and the renderer omits the clause rather than rendering a number for it.
+//
+// SO THE RULE A READER NEEDS: the presence of the clause is what says the question was asked. Its
+// absence on a binding row is the honest answer, and no zero should be inferred from it.
+//
+// THE GUARANTEE THIS REACHES, STATED HONESTLY: mechanically preventable, not structural. The
+// invalid state is narrower than it was -- a binding site can no longer default into a measured
+// zero, because the not-asked case has its own constructor -- but writing a measured zero at a
+// binding site remains authorable. It becomes unwritable when the radius moves onto the membership
+// subject itself, which the delta identity cannot carry today: DeltaSubject is the ordered identity
+// a transition admission matches against, and a measurement inside an identity would make one
+// subject compare unequal to itself across two runs.
+
 data namespace_wave_admission_occurrence_grain_stall: GuaranteeStall = GuaranteeStall {
   subject: "v1_compiler.namespace_wave_admission -- WHICH occurrence of a spelling took which member of its declaring-candidate set, where one declaration carries two occurrences of one spelling",
   current: Mitigatable,
@@ -279,3 +439,239 @@ data namespace_wave_admission_bindings: List<DeclarationRef> = [
     field: WholeDeclaration
   },
 ]
+
+// WHY A VERIFICATION OUTCOME IS A CARRIER AND NOT A SENTENCE. The seventeen rows this joins to were
+// reported as sound, and fifteen of them are. UNVERIFIABLE is a THIRD VALUE -- not a soft yes and
+// not a refutation -- and a value that only exists in prose cannot be enumerated, counted, or
+// refused by anything. The partition below is the one a reader most needs and the one an
+// instrument's silence most easily erases.
+//
+// THE JOIN KEY IS module_path PLUS in_declaration, which is the AdmissionSubject::Binding shape the
+// admitted rows carry, so this roster names its subjects at the grain they exist at rather than by
+// position or by count. The rows themselves are held in the seed and are not editable from here;
+// this is the verdict ABOUT them, which is a receipt in the observing layer rather than a field the
+// observed roster owns.
+
+type AdmissionVerificationOutcome
+  = VerifiedByExecution { instrument: String, position_kind: String }
+  | Unverifiable { instrument: String, why: String }
+  | Refuted { instrument: String, what_disagreed: String }
+
+type AdmissionVerification {
+  module_path: String
+  in_declaration: String
+  spelling: String
+  target: String
+  outcome: AdmissionVerificationOutcome
+}
+
+// THE CAVEAT BELOW APPLIES TO THE VERIFIED FIFTEEN AS MUCH AS TO THE UNVERIFIABLE TWO, which is why
+// it is carried beside the whole roster rather than on the two rows that failed. The verified ones
+// are exactly as re-derivable at the wrong position kind as the unverifiable ones, so without this
+// the roster's own strongest claim is the one most likely to be overturned by a careless re-check.
+//
+// THE INSTRUMENT resolves a qualified alias at fn_signature_param onto the alias declaration's own
+// name -- which for v2.std.text is the spelling String, because that module declares
+// `type String = FreeMonoid<Char>` -- and attributes the result to the kernel String. IT DOES NOT
+// FAIL TO ANSWER; IT ANSWERS CONFIDENTLY AND WRONGLY, naming the exact carrier the requalification
+// was written to move away from. Measured on covered ground: two functions on adjacent lines with
+// identical position kind, differing only in alias-versus-concrete, where the concrete one reports
+// IdentityUnavailable and the alias-qualified one reports Agrees at <kernel:String>.
+//
+// SO ANY RE-DERIVATION OF THESE SEVENTEEN ROWS THAT READS fn_signature_param WILL CONCLUDE THE
+// QUALIFICATION DID NOT TAKE, which is false. Every outcome below names the position kind it was
+// measured at for that reason. The mechanism is rostered as gunbc.recurring_failure_mode
+// alias_resolution_collides_with_kernel_spelling.
+
+data structural_text_admission_verifications: List<AdmissionVerification> = [
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "DelimitedState",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexMatchResult",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexMatchThunk",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexRuleApply",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "LexWalkAcc",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "RepeatState",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_match_char_pred",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_match_prefix",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_strip_prefix",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_try_compiled",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_try_rule",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_try_rules",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_walk",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_walk_artifact",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.compiler.tokenize",
+    in_declaration: "lex_walk_init",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: VerifiedByExecution {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      position_kind: "declaration_field",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.std.compilers.lexing",
+    in_declaration: "LexPattern",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: Unverifiable {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      why: "THE INSTRUMENT RETURNS NO ROWS FOR THIS MODULE AT ALL while reporting success. Over 1320 .dag files the census prints subjects=1320 -- files INGESTED, not modules CENSUSED -- and produces rows for 845 modules; v2.std.compilers.lexing is one of the 475 it omits, while four of its siblings are present. So this is not a disagreement to adjudicate: nothing was measured. Reading the silence as agreement is the empty-observation narrow, and this module's zero is an ABSENCE, not a zero. The row was admitted on the same reading of the authored source that produced the fifteen verified ones -- the requalification is visible in the text -- but source read by a human is the VALIDATION rung, not the EXECUTION rung, and reporting the two under one number is the inflation section 4b(1) names. The census's selection rule was not determined and is deliberately not guessed here.",
+    },
+  },
+  AdmissionVerification {
+    module_path: "v2.std.compilers.lexing",
+    in_declaration: "LexPatternFold",
+    spelling: "String",
+    target: "v2.std.text",
+    outcome: Unverifiable {
+      instrument: "v1.tests.claim.carrier_realization_census",
+      why: "THE INSTRUMENT RETURNS NO ROWS FOR THIS MODULE AT ALL while reporting success. Over 1320 .dag files the census prints subjects=1320 -- files INGESTED, not modules CENSUSED -- and produces rows for 845 modules; v2.std.compilers.lexing is one of the 475 it omits, while four of its siblings are present. So this is not a disagreement to adjudicate: nothing was measured. Reading the silence as agreement is the empty-observation narrow, and this module's zero is an ABSENCE, not a zero. The row was admitted on the same reading of the authored source that produced the fifteen verified ones -- the requalification is visible in the text -- but source read by a human is the VALIDATION rung, not the EXECUTION rung, and reporting the two under one number is the inflation section 4b(1) names. The census's selection rule was not determined and is deliberately not guessed here.",
+    },
+  },
+]
+
+// WHY THIS STALL AND NOT A SENTENCE SAYING THE REPORT IS MISSING. GuaranteeStall is the carrier this
+// module already uses for a question it cannot answer yet, and minting a second shape for the same
+// concept is the re-invention section 2 prices as a failed decomposition. What is missing here is
+// not a document -- it is a RUNG, and a rung that nothing names does not rank for climbing.
+//
+// STATED SO IT IS NOT MISREAD IN THE OTHER DIRECTION: this is an ABSENCE OF EVIDENCE about the
+// board, not a finding that the cut is clean at board grain. Nothing was measured, so nothing is
+// claimed either way.
+
+data namespace_wave_admission_board_grain_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.namespace_wave_admission -- WHETHER THE STRUCTURAL-TEXT CUT COST EMISSION ANYWHERE, at board grain: for every module on the emission board, whether the cut left it unchanged, changed it and it still emits, or changed it and it no longer emits. The row-grain verdict in structural_text_admission_verifications does not answer this and must not be read as answering it: seventeen sound rows are compatible with a board module that stopped emitting.",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable {
+    reason: "THE POPULATION IS THE EMISSION BOARD, WHICH IS ITSELF UNAVAILABLE TO THIS LANE, so its members cannot be listed here without inventing them. Rendering it as an empty list would read as nothing is affected -- bottom-as-answer conflated with bottom-as-ignorance, the narrow this type's third arm exists to refuse. The obstacle is measured, not assumed: emitting a single entry costs a fixed multi-GiB floor regardless of subject, and the corpus run refuses at the host-budget arm rather than admitting against a machine-wide reading, so a per-module sweep is a CI job and not a session job.",
+  },
+  next_rung_trigger: "A BASE-VERSUS-HEAD EMISSION VERDICT PER BOARD MODULE, produced in ONE dispatch so that build and execution share a tree, with the two sides distinguished by a MARKER CARRIED IN THE OUTPUT rather than by run order, and joined at MODULE IDENTITY rather than by rank or count. What does NOT close this is an entry point that emits one module on demand: the question is a population question, and a per-call instrument answers it only if something sweeps the population and joins the two sides. Until such a verdict exists, the strongest claim available about this cut is the row-grain one -- fifteen verified, two unverifiable, zero refuted -- and NO board-grain claim in either direction is authorized by it."
+}

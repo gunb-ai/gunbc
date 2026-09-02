@@ -34,7 +34,41 @@ import gunbc.replacement_cut {
 // it is router-specific with no terminal role once attachment authority lands. Leaving it behind
 // would preserve a dead X vocabulary and the fixture population that keeps that vocabulary looking
 // active. Measured: outside its defining module it is reached only from the witness carrier.
-data endpoint_authority_cut_note: String = "Slice 0A of the router-authority migration. THIS PLAN IS EXPECTED TO REFUSE, and the refusal is the deliverable rather than a defect: every surviving consumer is RetainChangedContract with CoverageOpen, because Y -- the attachment-backed endpoint authority -- does not exist yet. Naming a coverage authority anyway would be the fallback-wearing-a-disposition move the carrier refuses. Per the Slice 0 ruling, PlanRefused with pinned CoverageOpen causes is a valid 0A result; weakening the plan to make it admit would destroy the point of the carrier. THE POPULATION IS NOT EXACT AND THIS ROW DOES NOT CLAIM IT IS: the honest 0A standing is an exact-GRAIN authored prior with population observation UNAVAILABLE, since the join that would establish exactness is 0B and does not exist.\n\nCENSUS GRAIN: consuming DECLARATION x consumed-authority DECLARATION, measured on the tree rather than surveyed at module grain. The measurement found three things a module-grain read reports wrongly. FIRST, gunbc.fleet_multi_principal_probe and gunbc.spark.managed_access_apply each contain FOUR and TWO consuming declarations respectively -- one module is not one consumer, which is exactly why the relation is keyed at declaration grain. SECOND, two apparent hits in gunbc.spark.serving_converge_slice_wet are not consumers at all: spark_serving_converge_slice_wet_note names the authority in prose, and spark_serving_converge_slice_emit_receipt embeds the literal text `address_authority=fleet_probe_endpoint_for` inside a RENDERED RECEIPT LINE. Neither is a dependency edge; both are non-graph residue, and the receipt line is the more interesting one because after the cut it would go on printing a claim about an authority that no longer decides the address. THIRD, gunbc.host_reach_identity_probe imported fleet_probe_endpoint_for and never called it -- a dead import that reads as a consumer at module grain and is not one at declaration grain. It is deleted rather than dispositioned, because an unused import has no enclosing declaration and so cannot inhabit this relation at all; modelling around dead code instead of removing it would have put an unrepresentable row into the carrier's first exact census.\n\nWHAT THIS CENSUS IS NOT: it is an AUTHORED prior, not an observed population. The exact join that would make it PopulationExact is Slice 0B and does not exist, so an omitted consumer remains undetectable here exactly as the carrier's model note says. The region is expected to be declaration-binding observable -- its two members are ordinary function declarations, and the SlotAssigned/SlotUnassigned selectors inside spark_endpoint_for_binding point OUTWARD to DgxSparkRouterBinding, which is outside the region and therefore not an inbound selector use of a covered declaration -- but that expectation is pending the boundary producer and is not claimed as established."
+// Slice 0A of the router-authority migration. THIS PLAN IS EXPECTED TO REFUSE, and the refusal is
+// the deliverable rather than a defect: every surviving consumer is RetainChangedContract with
+// CoverageOpen, because Y -- the attachment-backed endpoint authority -- does not exist yet. Naming
+// a coverage authority anyway would be the fallback-wearing-a-disposition move the carrier refuses.
+// Per the Slice 0 ruling, PlanRefused with pinned CoverageOpen causes is a valid 0A result;
+// weakening the plan to make it admit would destroy the point of the carrier. THE POPULATION IS NOT
+// EXACT AND THIS ROW DOES NOT CLAIM IT IS: the honest 0A standing is an exact-GRAIN authored prior
+// with population observation UNAVAILABLE, since the join that would establish exactness is 0B and
+// does not exist.
+//
+// CENSUS GRAIN: consuming DECLARATION x consumed-authority DECLARATION, measured on the tree rather
+// than surveyed at module grain. The measurement found three things a module-grain read reports
+// wrongly. FIRST, gunbc.fleet_multi_principal_probe and gunbc.spark.managed_access_apply each
+// contain FOUR and TWO consuming declarations respectively -- one module is not one consumer, which
+// is exactly why the relation is keyed at declaration grain. SECOND, two apparent hits in
+// gunbc.spark.serving_converge_slice_wet are not consumers at all:
+// spark_serving_converge_slice_wet_note names the authority in prose, and
+// spark_serving_converge_slice_emit_receipt embeds the literal text
+// `address_authority=fleet_probe_endpoint_for` inside a RENDERED RECEIPT LINE. Neither is a
+// dependency edge; both are non-graph residue, and the receipt line is the more interesting one
+// because after the cut it would go on printing a claim about an authority that no longer decides
+// the address. THIRD, gunbc.host_reach_identity_probe imported fleet_probe_endpoint_for and never
+// called it -- a dead import that reads as a consumer at module grain and is not one at declaration
+// grain. It is deleted rather than dispositioned, because an unused import has no enclosing
+// declaration and so cannot inhabit this relation at all; modelling around dead code instead of
+// removing it would have put an unrepresentable row into the carrier's first exact census.
+//
+// WHAT THIS CENSUS IS NOT: it is an AUTHORED prior, not an observed population. The exact join that
+// would make it PopulationExact is Slice 0B and does not exist, so an omitted consumer remains
+// undetectable here exactly as the carrier's model note says. The region is expected to be
+// declaration-binding observable -- its two members are ordinary function declarations, and the
+// SlotAssigned/SlotUnassigned selectors inside spark_endpoint_for_binding point OUTWARD to
+// DgxSparkRouterBinding, which is outside the region and therefore not an inbound selector use of a
+// covered declaration -- but that expectation is pending the boundary producer and is not claimed
+// as established.
 
 data endpoint_authority_cut_identity: ReplacementCutId = "cut-router-endpoint-authority" as ReplacementCutId
 
@@ -137,11 +171,6 @@ fn external_consumers() -> List<BoundaryConsumer> {
       module_path: "gunbc.spark.serving_converge_slice_wet",
       decl_name: "spark_serving_converge_slice_wet_host_report",
       justification: "wet slice host report addressing",
-    ),
-    endpoint_consumer(
-      module_path: "gunbc.spark.serving_observe",
-      decl_name: "spark_serving_probe_leg",
-      justification: "serving observation probe endpoint",
     ),
   ]
 }

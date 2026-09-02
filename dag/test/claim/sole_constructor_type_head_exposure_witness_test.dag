@@ -1,0 +1,111 @@
+module test.claim.sole_constructor_type_head_exposure_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import std.types { Bool, Int, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
+
+// THE DISCRIMINATING PAIR IS THE WHOLE ARGUMENT, so the six sources below differ on exactly one
+// axis at a time and on nothing else. sc_sealed_at_payload_red and sc_plain_at_payload_red are
+// identical to the TOKEN except for the word `sole_constructor` on the actual's declaration: same
+// callee, same formal, same call form, same field, same field type. Before the exposure repair the
+// sealed one compiled with zero diagnostics while the plain one refused, which is what establishes
+// that the silence is a property of SEALING and not of the shape, the module name, or the harness.
+//
+// A SEALED CARRIER IS NOT A DIFFERENT TYPE FROM ITS PAYLOAD ONLY BY CONVENTION. `type Wrapped
+// sole_constructor { root: Inner }` and `Inner` are two declarations, and binding one where the
+// other is declared is the ordinary-floor violation DESIGN section 4b names as exact application
+// bijection. The compiler could not see it because `sole_constructor` is carried as a PROPERTY on
+// the declaration node and v1.compiler.infer exposure_view_for_node opaqued any node carrying any
+// property -- so sealing a carrier ERASED its structural head, and the climb BL-1 made on the
+// wrapper-retention axis silently dropped a rung on the application-binding axis.
+//
+// THE RED IS AUTHORABLE, which is the question DESIGN section 4b puts before any top-rung check:
+// no Accepted program should contain these bindings, but a FIXTURE hands the compiler the source
+// directly, and a compiler's regression probes are invalid programs. So the refusal is enrollable
+// here and declining it would be specification-without-execution.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sc_census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn sc_refuses_inhabitance(source: String) -> Bool {
+  match census_blocking_count_for_class(census: sc_census_of(source: source), wanted: "DeclaredTypeNotInhabited") {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+fn sc_has_zero_blocking(source: String) -> Bool {
+  match sc_census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// RED 1 -- the reported shape: a sealed carrier bound where its own payload type is declared.
+data sc_sealed_at_payload_red: String = "module probe_sc_sealed_at_payload_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: Wrapped) -> Int { takes_inner(x: w) }\n"
+
+// RED 2 -- the reverse direction: the payload bound where the sealed carrier is declared. Named
+// separately because a repair that only taught the PRODUCED side to expose its head would leave
+// this one silent, and a one-direction wall would read as covering the class.
+data sc_payload_at_sealed_red: String = "module probe_sc_payload_at_sealed_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_wrapped(x: Wrapped) -> Int { 0 }\nfn f(i: Inner) -> Int { takes_wrapped(x: i) }\n"
+
+// RED 3 -- a sealed carrier at a KERNEL formal, which this repair does NOT close. Measured on the
+// repaired compiler, in the same run that shows the two record positions above now refusing:
+// record_at_scalar_needs_identity reads the exposure this change repairs, so the head is now
+// visible and something ELSE declines the judgment at this position; what that is has not been
+// established and is not guessed at here. This probe asserts the REFUSAL the floor requires, not
+// the accepting answer the compiler gives today, and is therefore enrolled in
+// v2.workflow.floor_expected_red -- where it still executes and is still asserted, its failure
+// counts as agreement, and it REDS THE BUILD the moment it starts passing, naming itself for
+// removal. An earlier revision asserted `!sc_refuses_inhabitance` instead; that made the defective
+// answer required green behaviour, which DESIGN section 4b(4) forbids.
+data sc_sealed_at_kernel_red: String = "module probe_sc_sealed_at_kernel_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
+
+// THE NO-FORK CONTROL. Identical to RED 1 except the actual's declaration is not sealed. It
+// refused BEFORE the repair and must keep refusing after it: if this ever goes silent the repair
+// has widened opacity rather than narrowed it.
+data sc_plain_at_payload_red: String = "module probe_sc_plain_at_payload_red\ntype Inner { v: Int }\ntype PlainW { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: PlainW) -> Int { takes_inner(x: w) }\n"
+
+// THE POSITIVE CONTROL. A conforming binding through the sealed carrier's own payload. Without it
+// a compiler that refused EVERY argument would satisfy all three reds alike.
+data sc_conforming_green: String = "module probe_sc_conforming_green\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_inner(x: Inner) -> Int { x.v }\nfn f(w: Wrapped) -> Int { takes_inner(x: w.root) }\n"
+
+// THE SEALING-STILL-WORKS CONTROL. sole_constructor's own guarantee -- that no site outside the
+// declaring module constructs the carrier by record literal -- is a DIFFERENT judgment from head
+// exposure, and a repair that reached it would be a regression dressed as a fix. A conforming
+// in-module construction must stay clean.
+data sc_construction_green: String = "module probe_sc_construction_green\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn make(i: Inner) -> Wrapped { Wrapped { root: i } }\nfn f(i: Inner) -> Int { make(i: i).root.v }\n"
+
+test fn sealed_carrier_at_payload_formal_refuses() -> Bool {
+  sc_refuses_inhabitance(source: sc_sealed_at_payload_red)
+}
+
+test fn payload_at_sealed_carrier_formal_refuses() -> Bool {
+  sc_refuses_inhabitance(source: sc_payload_at_sealed_red)
+}
+
+test fn sealed_carrier_at_kernel_formal_refuses() -> Bool {
+  sc_refuses_inhabitance(source: sc_sealed_at_kernel_red)
+}
+
+test fn unsealed_twin_still_refuses() -> Bool {
+  sc_refuses_inhabitance(source: sc_plain_at_payload_red)
+}
+
+test fn conforming_projection_through_sealed_carrier_is_clean() -> Bool {
+  sc_has_zero_blocking(source: sc_conforming_green)
+}
+
+test fn sole_constructor_construction_is_unaffected() -> Bool {
+  sc_has_zero_blocking(source: sc_construction_green)
+}

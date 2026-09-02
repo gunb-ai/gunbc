@@ -26,7 +26,11 @@ import std.occurrence_binding_resolve {
 }
 import std.types { Bool, FilePath, Int, List, String }
 
-data reference_binding_observation_note: String = "Neutral structural-binding observation carrier (N3-A). Carries reference occurrence, P2a+P1 resolution (including typed index-build refusals — never collapsed to UnknownOccurrenceIdentity), and clause-local containment anchors. Carries NO ReferenceDerivedClosureCapability, ScenarioFailure, or roadmap trigger vocabulary — capability projection lives in gunbc.namespace_reference_derived_closure_admission."
+// Neutral structural-binding observation carrier (N3-A). Carries reference occurrence, P2a+P1
+// resolution (including typed index-build refusals — never collapsed to UnknownOccurrenceIdentity),
+// and clause-local containment anchors. Carries NO ReferenceDerivedClosureCapability,
+// ScenarioFailure, or roadmap trigger vocabulary — capability projection lives in
+// gunbc.namespace_reference_derived_closure_admission.
 
 type StructuralBindingResolution
   = StructuralBindingResolved {

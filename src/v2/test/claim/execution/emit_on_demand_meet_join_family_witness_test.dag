@@ -42,7 +42,15 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): PURE receipts only — grain/closure key sensitivity, store hit/miss materialization, interpreter role bound, packed-width budget refusal. Native execution for meet/join MIGRATED to family grain (merry-pike-487 follow-on, std.emit_on_demand witness_family_build_grain_ruling): the executing consumer is emit_on_demand_family_crate_witness_test (one-build members-warm, eval-anchored member agreements, all-alt wrong-fixture octet flips) — the per-witness cold/warm/wrong-fixture crate builds formerly here are deleted, never rebuilt per witness. Residue is pure; the LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on (not flipped in the migration PR to keep the selection-safety change separately reviewable)."
+// Witness-realization fan-out lane 4 (meet_join): PURE receipts only — grain/closure key
+// sensitivity, store hit/miss materialization, interpreter role bound, packed-width budget refusal.
+// Native execution for meet/join MIGRATED to family grain (merry-pike-487 follow-on,
+// std.emit_on_demand witness_family_build_grain_ruling): the executing consumer is
+// emit_on_demand_family_crate_witness_test (one-build members-warm, eval-anchored member
+// agreements, all-alt wrong-fixture octet flips) — the per-witness cold/warm/wrong-fixture crate
+// builds formerly here are deleted, never rebuilt per witness. Residue is pure; the
+// LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on (not flipped in the
+// migration PR to keep the selection-safety change separately reviewable).
 
 data meet_join_family_emitter: String = "v2.compiler.emit"
 data meet_join_family_provider: CacheProvider = provider_row(

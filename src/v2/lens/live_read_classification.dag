@@ -14,7 +14,6 @@ import v2.lens.module_graph {
   path_matches_touched
 }
 
-
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
@@ -136,42 +135,31 @@ fn callee_text_is_known_carrier(text: String) -> Bool {
   contains(xs: live_read_carrier_callee_symbols_v0, item: text, eq: string_eq)
 }
 
-type AtomCollectState {
-  node: Node
-  atoms: List<Symbol>
-}
-
-fn atom_collect_init(n: Node) -> AtomCollectState {
-  AtomCollectState { node: n, atoms: empty_symbol_list }
-}
-
-fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
-  let atoms = match node_atom_identity_optional(node: child.node) {
-    Present { value: sym } =>
-      if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
-        acc.atoms
-      } else {
-        list_snoc_item(xs: acc.atoms, item: sym)
-      }
-    Absent => acc.atoms
-  }
-  AtomCollectState { node: acc.node, atoms: atoms }
-}
-
-fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
-  NodeFold { init: atom_collect_init, step: atom_collect_step }
-}
-
+// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
+// children — the fold_node it once ran recursed the whole subtree while its step discarded
+// every child's collected atoms, so the descent computed results nothing consumed
+// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
+// below is extensionally the same function at the cost of one probe per child.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
-  let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  let from_children = fold(node.children, init: empty_symbol_list, f: fn(acc, e) {
+    match node_atom_identity_optional(node: e.target) {
+      Present { value: sym } =>
+        if contains(xs: acc, item: sym, eq: symbol_eq) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: sym)
+        }
+      Absent => acc
+    }
+  })
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
-      if contains(xs: from_descendants, item: sym, eq: symbol_eq) {
-        from_descendants
+      if contains(xs: from_children, item: sym, eq: symbol_eq) {
+        from_children
       } else {
-        list_snoc_item(xs: from_descendants, item: sym)
+        list_snoc_item(xs: from_children, item: sym)
       }
-    Absent => from_descendants
+    Absent => from_children
   }
 }
 
@@ -693,7 +681,19 @@ fn classification_is_local_read(c: LiveReadClassification) -> Bool {
   }
 }
 
-data partial_subject_never_decides_law: String = "PARTIAL POSITIVE EVIDENCE IS NOT A DECIDING CLASSIFICATION, and the earlier asymmetric gate got this exactly backwards on the arm that mattered. It refused LocalRead on a partial subject — correctly, since absence cannot be established from an incomplete view — and ACCEPTED RuntimeRead, on the reasoning that a carrier found is a carrier found. That reasoning holds for the EXISTENCE of a runtime read and fails for the SET of paths it reads, which is the fact selection actually consumes. A complete closure reading LiteralPath a.dag and LiteralPath b.dag, viewed partially, still classifies RuntimeRead while exposing only a.dag; a diff touching b.dag then misses the carrier set and licenses a skip. The accepted arm was therefore the under-selection direction wearing a safe-looking label — worse than the LocalRead arm it was paired against, because RuntimeRead reads as the cautious answer. So the law is one-sided: only a subject established complete for the exact tree may decide, and every partial, unbound, or mismatched subject refuses. The classification survives INSIDE the refusal as diagnostic payload, which is what keeps this a refusal carrying what it knew rather than an erasure."
+// PARTIAL POSITIVE EVIDENCE IS NOT A DECIDING CLASSIFICATION, and the earlier asymmetric gate got
+// this exactly backwards on the arm that mattered. It refused LocalRead on a partial subject —
+// correctly, since absence cannot be established from an incomplete view — and ACCEPTED
+// RuntimeRead, on the reasoning that a carrier found is a carrier found. That reasoning holds for
+// the EXISTENCE of a runtime read and fails for the SET of paths it reads, which is the fact
+// selection actually consumes. A complete closure reading LiteralPath a.dag and LiteralPath b.dag,
+// viewed partially, still classifies RuntimeRead while exposing only a.dag; a diff touching b.dag
+// then misses the carrier set and licenses a skip. The accepted arm was therefore the
+// under-selection direction wearing a safe-looking label — worse than the LocalRead arm it was
+// paired against, because RuntimeRead reads as the cautious answer. So the law is one-sided: only a
+// subject established complete for the exact tree may decide, and every partial, unbound, or
+// mismatched subject refuses. The classification survives INSIDE the refusal as diagnostic payload,
+// which is what keeps this a refusal carrying what it knew rather than an erasure.
 
 fn classification_diagnostic_label(c: LiveReadClassification) -> String {
   match c {
@@ -961,7 +961,21 @@ fn g2_implies_reads_live_tree(classification: LiveReadClassification) -> Bool {
   classification_has_runtime_read(classification: classification)
 }
 
-data g2_root_binding_law: String = "THE ROOT IS ONE BOUND DECLARATION, NOT THREE INDEPENDENTLY WRITABLE STRINGS. The earlier request carried entry_path, entry_module and fn_name side by side, and nothing related them: the dependency closure walked from the PATH while declaration seeding used the separately supplied MODULE and NAME, so a request naming module A's path, module B, and a function in B was constructible and would answer about a graph position it never occupied. The zero and many cases were worse than the mismatch, because both looked like success — zero matching declarations seeded an empty walk that reaches no carrier and therefore classifies LocalRead, which is the strongest answer the lens can give and the one that licenses a skip; many same-named declarations were all seeded and silently unioned, so an unrelated homonym's carrier reach could be attributed to this root, or conceal that the intended one was never found. Both are the empty-observation narrow: an observation that could not express what it was asked about, rendered as a verdict about it. So the binder is a chain of exact transitions — entry path to exactly one ModuleDeclarationFact, its module to exactly one FnArrowDecl — and zero or many at either step REFUSES with the count named. The module is DERIVED from the path rather than supplied, which is what makes the mismatch unwritable rather than merely detected."
+// THE ROOT IS ONE BOUND DECLARATION, NOT THREE INDEPENDENTLY WRITABLE STRINGS. The earlier request
+// carried entry_path, entry_module and fn_name side by side, and nothing related them: the
+// dependency closure walked from the PATH while declaration seeding used the separately supplied
+// MODULE and NAME, so a request naming module A's path, module B, and a function in B was
+// constructible and would answer about a graph position it never occupied. The zero and many cases
+// were worse than the mismatch, because both looked like success — zero matching declarations
+// seeded an empty walk that reaches no carrier and therefore classifies LocalRead, which is the
+// strongest answer the lens can give and the one that licenses a skip; many same-named declarations
+// were all seeded and silently unioned, so an unrelated homonym's carrier reach could be attributed
+// to this root, or conceal that the intended one was never found. Both are the empty-observation
+// narrow: an observation that could not express what it was asked about, rendered as a verdict
+// about it. So the binder is a chain of exact transitions — entry path to exactly one
+// ModuleDeclarationFact, its module to exactly one FnArrowDecl — and zero or many at either step
+// REFUSES with the count named. The module is DERIVED from the path rather than supplied, which is
+// what makes the mismatch unwritable rather than merely detected.
 
 data empty_module_declaration_fact_list: List<ModuleDeclarationFact> = []
 
@@ -987,7 +1001,6 @@ fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationF
     TailAbsent => empty_module_declaration_fact_list
   }
 }
-
 
 fn bind_g2_root(
   entry_path: String,

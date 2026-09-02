@@ -10,7 +10,13 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation {
+  CoresPerSlotResolved,
+  CoresPerSlotUnresolved,
+  gunbc_runner_slot_desired,
+  gunbc_runner_slots_per_host,
+  gunbc_runner_cores_per_slot,
+}
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -26,7 +32,6 @@ import gunbc.fleet_host_budget {
   HostAllocationConserves,
   HostAllocationOversubscribed,
   HostAllocationUnchargeable,
-  declared_runner_count_for,
   oomd_actuation_floor,
   CompilePoolResolution,
   CompilePoolDerived,
@@ -43,7 +48,12 @@ import gunbc.fabric_control_plane_charge {
   FabricControlPlanePlacement,
   HostFabricControlPlaneClaim,
 }
-import extdeps.jobserver { jobserver_config }
+import extdeps.jobserver {
+  jobserver_config,
+  derive_jobserver_tokens,
+  JobserverCited,
+  JobserverAbsent,
+}
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
   HostUsableRam,
@@ -92,6 +102,81 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // the ConvergeTarget.PerSlotMemoryCap → PerSlotUnitProperty P3 axis rework (a std.measure
 // TaskCount, the HardwareThreadCount shape), which also retires the to_string() re-serialization
 // at the host_converge knob seam.
+// WHAT A RUNNER SLOT IS ENTITLED TO ON THE CPU, AS A CONTRACT AND NOT A HINT.
+//
+// systemd offers two different promises here and they are not aliases. CPUWeight= is a RELATIVE
+// share against sibling cgroups: under contention it decides who yields first and guarantees no
+// amount of anything. CPUQuota= is an ABSOLUTE ceiling on CPU time per wall second. AllowedCPUs=
+// is a third thing again -- a pinning of the unit to named CPUs.
+//
+// CapacityQuota is the no-overcommit contract this fleet adopts: each slot may consume at most
+// cores_per_slot threads' worth of CPU time, and the sum of the runner, compile-pool and host
+// reserve ceilings must fit the machine. Pinning each slot to a pairwise-disjoint SET of named CPUs
+// is a stronger contract again, and this fleet does not make it; the block below records why it has
+// no constructor rather than a variant.
+//
+// THE ARM THIS TYPE REPLACES WAS NEITHER OF THEM. cores_per_slot was consumed to decide how many
+// units to create and then dropped, so the width was CPU-derived while the units it created carried
+// no CPU directive at all -- srv1 and srv2 show MemoryMax as their only resource line, CPUWeight
+// unset and CPUQuota infinity. Admission without confinement: the arithmetic said six threads per
+// slot and the host was never told.
+// THE PINNING CONTRACT HAS NO CONSTRUCTOR, AND THAT IS THE POINT RATHER THAN AN OMISSION.
+//
+// An earlier revision carried a DisjointCpuSet arm so the promise this fleet does NOT make would have
+// a name. Review 57675 was right that naming it that way cost more than it bought: nothing produced
+// it, extdeps.systemd carries no AllowedCPUs= to render it, and the emitter answered it with an empty
+// knob list -- so a deployment carrying that boundary converged SUCCESSFULLY while the host was never
+// told any CPU ceiling at all. A variant whose only realization is silence is a fail-open path
+// (DESIGN 5), and labelling it "unemitted" in a manifest does not make the operational path refuse.
+//
+// So the arm is DELETED rather than answered with a refusal. Both remedies close the hole, and DESIGN
+// 4b ranks them: construction over proof. A typed refusal would leave the invalid state writable and
+// depend on the refusal executing; deleting the constructor means no Accepted program can carry a
+// boundary this emitter cannot realize, which is the higher rung and the smaller change.
+//
+// The distinction it recorded survives as this annotation, which is where a promise nobody can
+// construct belongs. CapacityQuota is a no-overcommit ceiling: each slot may consume at most its
+// threads' worth of CPU time, and nothing pins it to particular CPUs. Pairwise-disjoint CPU sets are
+// a STRONGER contract and a different systemd directive.
+//
+// TRIGGER for reinstating it as a variant: an AllowedCPUs directive in extdeps.systemd AND a producer
+// that assigns disjoint sets -- both, since either alone reproduces exactly the unrealizable state
+// this deletion removes.
+type RunnerCpuBoundary
+  = CapacityQuota { threads: HardwareThreadCount }
+
+type RunnerCpuBoundaryResolution
+  = RunnerCpuBoundaryDerived { boundary: RunnerCpuBoundary }
+  | RunnerCpuBoundaryUnchargeable { reason: String }
+
+// THE PER-SLOT CPU CEILING IS A FUNCTION OF WHERE COMPILER WORK IS CHARGED, AND cores_per_slot
+// ALONE DOES NOT DETERMINE IT. Under CompilePoolInRunnerSlots the compiler children of a job run
+// inside that job's own runner boundary, so the slot's ceiling is exactly its share and the host
+// sum is runner_width * cores_per_slot + reserve. Under CompilePoolSliceDeclared those children are
+// charged to a separate host pool instead, and the host sum gains a third term -- so the SAME
+// per-slot number that conserves under the first topology over-commits under the second.
+//
+// On this fleet that is not a margin: 21 slots at 6 threads is 126 of 128, which leaves two threads
+// for a pool that would then carry every cache-miss rustc on the host.
+//
+// So the arm REFUSES rather than emitting the quota it cannot justify. compile_pool_bytes_for
+// charges the pool in BYTES and there is no CPU charge for it anywhere in the tree, so under the
+// declared-slice topology this producer has no conserving allocation to state. The refusal is the
+// point: it makes the topology flip impossible to land WITHOUT rederiving the width, rather than
+// letting a quota authored under one topology survive silently into the other.
+//
+// NEXT-RUNG TRIGGER: a compile-pool CPU charge in the host allocation, at which point this arm
+// derives a rebalanced width and ceiling instead of refusing.
+fn runner_cpu_boundary_for(placement: CompilePoolPlacement, per_slot: HardwareThreadCount) -> RunnerCpuBoundaryResolution {
+  match placement {
+    CompilePoolInRunnerSlots => RunnerCpuBoundaryDerived { boundary: CapacityQuota { threads: per_slot } }
+    CompilePoolSliceDeclared { slice_unit: u } =>
+      RunnerCpuBoundaryUnchargeable {
+        reason: concat("compile pool is a declared host slice and carries no modeled CPU charge, so a per-slot CPU ceiling derived from cores_per_slot alone would commit the host past its threads once that pool runs: rederive runner width and the per-slot ceiling together with the pool's CPU charge. Slice: ", u)
+      }
+  }
+}
+
 type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
@@ -100,6 +185,7 @@ type RunnerHostDeployment {
   per_runner_memory_swap_cap: ByteSize
   per_runner_memory_high_cap: ByteSize
   per_runner_tasks_max: Int
+  per_runner_cpu_boundary: RunnerCpuBoundary
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -127,6 +213,9 @@ type HostRunnerDeploymentRefusal
   | HostAllocationOversubscribedOnHost { cause: String }
   | HostAllocationUnchargeableOnHost { cause: String }
   | ZeroRunnerWidth
+  | JobserverCitationAbsent { cause: String }
+  | HostCpuAllocationUnchargeable { cause: String }
+  | RunnerCoreRatioUnresolved { cause: String }
   | HostNotEnrolledInFleet
 
 type RefusedHostDeployment {
@@ -221,24 +310,77 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
   }
 }
 
-fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
+// build_tokens IS A DERIVED COMPILE-POOL BUDGET AND NOT THE HOST'S THREAD COUNT. This parameter was
+// `nproc` and was stored raw, so the compile concurrency written into the jobserver's configuration
+// was every hardware thread on the machine -- 128 on this fleet -- while extdeps.jobserver already
+// carried the installed daemon's own formula, cited term for term from its defaults:
+// min(cores - margin, floor((MemTotal - reserve) / mib_per_job)).
+//
+// TWO PRODUCERS FOR ONE NUMBER IS THE DEFECT, not the size of either. The compile pool could be
+// sized from the derivation while the host was converged to nproc, and nothing joined them. The
+// derivation is the one that survives, because it is the one that charges memory: a purely
+// core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
+// own header records as the reason the memory bound exists.
+fn conservation_host_deployment(offer: ComputeOffer, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: declared_runner_count_for(host: offer.supply.physical.identity),
+    runner_count: gunbc_runner_slots_per_host(host: offer.supply.physical.identity),
     runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
     per_runner_tasks_max: gunbc_runner_slot_desired().tasks_max,
-    build_tokens: nproc,
+    per_runner_cpu_boundary: cpu_boundary,
+    build_tokens: build_tokens,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
 }
 
-data host_session_slice_source_note: String = "WHICH HOSTS OWE A SESSIONS RESERVATION comes from gunbc.session_residency, the authority for where interactive session containers actually live. It does NOT come from the build-cache roster, and the correction is recorded because the proxy came within one cleanup of causing the bug this charge exists to prevent.\n\nThe original derivation asked whether gunbc.build_cache_instance listed an InteractiveSessionCompiles instance for the host. That correlated with session residency and nothing more. When ctrl-sccache.service was deleted from srv1 and srv2 on 2026-08-06 as provably dead — 29MB in 45 days, zero connections, zero writes in a week, because containers cache to their own in-container path — the obvious follow-up of dropping those roster rows would have stopped charging both hosts their 20GiB reservation, and the conservation wall would then have admitted 7 slots each and overcommitted them by ~17GiB while returning true.\n\nSessions consume host RAM whether or not a shared build cache exists for them; srv1 and srv2 were each running 19 session containers at the moment their session cache was found dead. The charge follows residency.\n\nTHE RESERVATION SIZE IS NOW A PER-HOST QUESTION WITH A PER-HOST ANSWER, and the paragraph this replaces described the fleet-wide row that answered it before. That row -- gunbc_ci_session_reservation_mode, a Regime-2 aggregate of exactly 21474836480 bytes, a round power of two with no derivation from the thirteen measured per-session samples beside it -- is DELETED. gunbc.session_reservation_policy answers per host from observed evidence, and the sentence is rewritten rather than annotated because a note describing a deleted authority in the present tense is premise contamination whichever direction it points."
+// WHICH HOSTS OWE A SESSIONS RESERVATION comes from gunbc.session_residency, the authority for
+// where interactive session containers actually live. It does NOT come from the build-cache roster,
+// and the correction is recorded because the proxy came within one cleanup of causing the bug this
+// charge exists to prevent.
+//
+// The original derivation asked whether gunbc.build_cache_instance listed an
+// InteractiveSessionCompiles instance for the host. That correlated with session residency and
+// nothing more. When ctrl-sccache.service was deleted from srv1 and srv2 on 2026-08-06 as provably
+// dead — 29MB in 45 days, zero connections, zero writes in a week, because containers cache to
+// their own in-container path — the obvious follow-up of dropping those roster rows would have
+// stopped charging both hosts their 20GiB reservation, and the conservation wall would then have
+// admitted 7 slots each and overcommitted them by ~17GiB while returning true.
+//
+// Sessions consume host RAM whether or not a shared build cache exists for them; srv1 and srv2 were
+// each running 19 session containers at the moment their session cache was found dead. The charge
+// follows residency.
+//
+// THE RESERVATION SIZE IS NOW A PER-HOST QUESTION WITH A PER-HOST ANSWER, and the paragraph this
+// replaces described the fleet-wide row that answered it before. That row --
+// gunbc_ci_session_reservation_mode, a Regime-2 aggregate of exactly 21474836480 bytes, a round
+// power of two with no derivation from the thirteen measured per-session samples beside it -- is
+// DELETED. gunbc.session_reservation_policy answers per host from observed evidence, and the
+// sentence is rewritten rather than annotated because a note describing a deleted authority in the
+// present tense is premise contamination whichever direction it points.
 
-data host_session_slice_refuses_rather_than_charging_zero_note: String = "AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this change exists to remove, re-entering through a different door. The first draft of this function returned byte_size(0) whenever the reservation mode could not produce a number — SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving the HOW MUCH silently zero would have moved the defect rather than closed it.\n\nThe distinction the arms preserve: a host with NO session instance genuinely owes nothing, and SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different states and one of them is safe.\n\nTHE REFUSAL IS NO LONGER DORMANT, and that is the change the host-keyed policy made rather than a defect it introduced. The fleet-wide row resolved for every host by construction, so SessionSliceUnsized was unreachable; srv2's reservation is now UNESTABLISHED on measured evidence -- its session denominator is incomplete -- so this arm fires on a real host today. A conservation plan that includes srv2 refuses, which is the correct reading of not knowing the largest non-runner claim on this machine, and is exactly what the arm was written for."
+// AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this
+// change exists to remove, re-entering through a different door. The first draft of this function
+// returned byte_size(0) whenever the reservation mode could not produce a number —
+// SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads
+// as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as
+// though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving
+// the HOW MUCH silently zero would have moved the defect rather than closed it.
+//
+// The distinction the arms preserve: a host with NO session instance genuinely owes nothing, and
+// SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not
+// free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different
+// states and one of them is safe.
+//
+// THE REFUSAL IS NO LONGER DORMANT, and that is the change the host-keyed policy made rather than a
+// defect it introduced. The fleet-wide row resolved for every host by construction, so
+// SessionSliceUnsized was unreachable; srv2's reservation is now UNESTABLISHED on measured evidence
+// -- its session denominator is incomplete -- so this arm fires on a real host today. A
+// conservation plan that includes srv2 refuses, which is the correct reading of not knowing the
+// largest non-runner claim on this machine, and is exactly what the arm was written for.
 
 type HostSessionSliceResolution
   = SessionSliceCharged { bytes: ByteSize }
@@ -278,7 +420,52 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
   }
 }
 
-data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL. compute_host_ram_bytes_total sums the populated modules -- nominal capacity -- while the OS sees less after firmware and kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts that must not be conflated. The margin decides admissions rather than being academic: at the 128 GiB nominal / 125 GiB usable population this fleet carried until 2026-08-22, an eighth 14 GiB slot summed to 125.6 GiB, which PASSED against nominal and FAILED against usable -- so checking the nominal figure would admit a width the machine cannot carry, by spending memory that does not exist.\n\nTHE UNIFORM-POPULATION PREMISE HAS NOW ACTUALLY FALSIFIED, AND THIS PARAGRAPH IS THE THIRD REVISION OF THAT CLAIM -- which is itself the finding. The premise was: every host on the same board at the same population, so one figure stands in for all four. It was declared falsified once on an in-flight report of a DIMM replacement, then RESTORED when that replacement was reported failed (operator, 2026-08-12), with a note saying that marking a true statement historical is the same defect as leaving a false one live. Both of those were correct at the time. Both are now superseded by measurement: srv3 and srv4 were each read at 512 GiB over BMC Redfish on 2026-08-22 (8 x Samsung M393A8G40D40-CRB, one per channel), srv1 was upgraded to the same population on operator report, and srv2's identical attempt failed memory training and was reverted to 8 x 16 GiB Hynix. The fleet is HETEROGENEOUS as of that date and the premise is dead for the first time in this note's history.\n\nWHAT THAT DOES NOT LICENSE, because it is the move this note has always existed to forbid: the 512 GiB figure is NOMINAL DIMM CAPACITY read from a management controller. It is NOT OS-usable RAM and must not be written into gunbc_ci_host_usable_ram_for. The gap was closed on two hosts the only way it can be: srv3 and srv4 now carry MEASURED usable RAM from /proc/meminfo reads taken over SSH on 2026-08-22, about 502.25 GiB each -- roughly 10 GiB BELOW their nominal 512, which is exactly the firmware-and-kernel reservation this note exists to preserve. THAT GAP IS NOW CLOSED ON ALL FOUR HOSTS AND THIS PARAGRAPH'S PREVIOUS REVISION WAS STALE RATHER THAN WRONG-AT-THE-TIME. It read that srv1 and srv2 had taken no such read and that their rows remained conservative lower bounds; both took ordinary /proc/meminfo reads over SSH on 2026-08-23, so gunbc.ci_floor_measurement now carries HostUsableRamMeasured for every host and gunbc_ci_conservative_lower_bound_retired_note records the borrowed bound's deletion. The correction matters beyond tidiness: a reader sizing srv1 against the retired 125 GiB figure would under-admit a host with about four times that much, and a reader who believed the bound was still live would look for a measurement obligation that no longer exists. srv2's read is the sharper receipt -- it landed about 96 MiB ABOVE the bound it replaced, so that bound was not merely loose but on the wrong side, and a lower bound that is too high is not conservative at all. Neither read promotes a Redfish nominal number, which stays inadmissible here for the reason fleet_host_memory_nominal_vs_usable_note gives.\n\nWHAT THE PER-HOST GRAIN RESTS ON is therefore still not this trigger, and the heterogeneity does not retroactively justify the grain. It is that this wall folded over per-host offers and then read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed rather than refused -- see gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note. A per-host fact belonged at per-host grain when the hosts were identical; it merely became visible when they stopped being."
+// CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL. compute_host_ram_bytes_total
+// sums the populated modules -- nominal capacity -- while the OS sees less after firmware and
+// kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists
+// specifically to say these are two facts that must not be conflated. The margin decides admissions
+// rather than being academic: at the 128 GiB nominal / 125 GiB usable population this fleet carried
+// until 2026-08-22, an eighth 14 GiB slot summed to 125.6 GiB, which PASSED against nominal and
+// FAILED against usable -- so checking the nominal figure would admit a width the machine cannot
+// carry, by spending memory that does not exist.
+//
+// THE UNIFORM-POPULATION PREMISE HAS NOW ACTUALLY FALSIFIED, AND THIS PARAGRAPH IS THE THIRD
+// REVISION OF THAT CLAIM -- which is itself the finding. The premise was: every host on the same
+// board at the same population, so one figure stands in for all four. It was declared falsified
+// once on an in-flight report of a DIMM replacement, then RESTORED when that replacement was
+// reported failed (operator, 2026-08-12), with a note saying that marking a true statement
+// historical is the same defect as leaving a false one live. Both of those were correct at the
+// time. Both are now superseded by measurement: srv3 and srv4 were each read at 512 GiB over BMC
+// Redfish on 2026-08-22 (8 x Samsung M393A8G40D40-CRB, one per channel), srv1 was upgraded to the
+// same population on operator report, and srv2's identical attempt failed memory training and was
+// reverted to 8 x 16 GiB Hynix. The fleet is HETEROGENEOUS as of that date and the premise is dead
+// for the first time in this note's history.
+//
+// WHAT THAT DOES NOT LICENSE, because it is the move this note has always existed to forbid: the
+// 512 GiB figure is NOMINAL DIMM CAPACITY read from a management controller. It is NOT OS-usable
+// RAM and must not be written into gunbc_ci_host_usable_ram_for. The gap was closed on two hosts
+// the only way it can be: srv3 and srv4 now carry MEASURED usable RAM from /proc/meminfo reads
+// taken over SSH on 2026-08-22, about 502.25 GiB each -- roughly 10 GiB BELOW their nominal 512,
+// which is exactly the firmware-and-kernel reservation this note exists to preserve. THAT GAP IS
+// NOW CLOSED ON ALL FOUR HOSTS AND THIS PARAGRAPH'S PREVIOUS REVISION WAS STALE RATHER THAN
+// WRONG-AT-THE-TIME. It read that srv1 and srv2 had taken no such read and that their rows remained
+// conservative lower bounds; both took ordinary /proc/meminfo reads over SSH on 2026-08-23, so
+// gunbc.ci_floor_measurement now carries HostUsableRamMeasured for every host and
+// gunbc_ci_conservative_lower_bound_retired_note records the borrowed bound's deletion. The
+// correction matters beyond tidiness: a reader sizing srv1 against the retired 125 GiB figure would
+// under-admit a host with about four times that much, and a reader who believed the bound was still
+// live would look for a measurement obligation that no longer exists. srv2's read is the sharper
+// receipt -- it landed about 96 MiB ABOVE the bound it replaced, so that bound was not merely loose
+// but on the wrong side, and a lower bound that is too high is not conservative at all. Neither
+// read promotes a Redfish nominal number, which stays inadmissible here for the reason
+// fleet_host_memory_nominal_vs_usable_note gives.
+//
+// WHAT THE PER-HOST GRAIN RESTS ON is therefore still not this trigger, and the heterogeneity does
+// not retroactively justify the grain. It is that this wall folded over per-host offers and then
+// read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed
+// rather than refused -- see gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note. A
+// per-host fact belonged at per-host grain when the hosts were identical; it merely became visible
+// when they stopped being.
 
 // The grain here is per host, and the reason is not that the hosts differ. This wall folds over
 // per-host offers and charges each host its own overhead and session slice, then read RAM from a
@@ -292,7 +479,6 @@ data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE R
 type HostUsableRamResolution
   = HostUsableRamResolved { bytes: ByteSize }
   | HostUsableRamUnresolved { reason: String }
-
 
 fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsableRamResolution {
   match r {
@@ -323,7 +509,18 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
     ZeroRunnerWidth => "zero_runner_width"
+    JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
+    HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
+    RunnerCoreRatioUnresolved { cause: t } => concat("runner_core_ratio_unresolved ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
+  }
+}
+
+fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) -> HostRunnerDeploymentStanding {
+  if dep.runner_count == 0 {
+    refuse_host(host: host_id, cause: ZeroRunnerWidth)
+  } else {
+    HostRunnerDeploymentDerived { deployment: dep }
   }
 }
 
@@ -398,14 +595,39 @@ fn host_standing_with_session_slice(
               refuse_host(host: host_id, cause: HostAllocationUnchargeableOnHost {
                 cause: concat(concat("host allocation unchargeable on ", host_id), concat(": ", c))
               })
-            HostAllocationConserves => {
-              let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
-              if dep.runner_count == 0 {
-                refuse_host(host: host_id, cause: ZeroRunnerWidth)
-              } else {
-                HostRunnerDeploymentDerived { deployment: dep }
+            HostAllocationConserves =>
+              match jobserver_config {
+                JobserverAbsent =>
+                  refuse_host(host: host_id, cause: JobserverCitationAbsent {
+                    cause: concat("no cited jobserver configuration, so the compile-token budget has no derivation and the host cannot be told a bound it did not compute: ", host_id)
+                  })
+                JobserverCited { config: jcfg, provenance: _ } =>
+                  match gunbc_runner_cores_per_slot() {
+                    CoresPerSlotUnresolved { cause: rc } =>
+                      refuse_host(host: host_id, cause: RunnerCoreRatioUnresolved { cause: rc })
+                    CoresPerSlotResolved { threads: per_slot_threads } =>
+                      match runner_cpu_boundary_for(
+                        placement: gunbc_compile_pool_placement,
+                        per_slot: per_slot_threads
+                      ) {
+                        RunnerCpuBoundaryUnchargeable { reason: cr } =>
+                          refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
+                        RunnerCpuBoundaryDerived { boundary: cpub } =>
+                          admit_or_refuse_zero_width(
+                            dep: conservation_host_deployment(
+                              offer: offer,
+                              build_tokens: derive_jobserver_tokens(
+                                nproc: cpu_facts_threads(cpu: cpu),
+                                mem_total: host_ram,
+                                cfg: jcfg
+                              ),
+                              cpu_boundary: cpub
+                            ),
+                            host_id: host_id
+                          )
+                      }
+                  }
               }
-            }
           }
       }
   }
@@ -563,7 +785,6 @@ data gunbc_ci_count_field_measure_followup: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
-
 
 type OperatingPointRow {
   per_session_cap: ByteSize

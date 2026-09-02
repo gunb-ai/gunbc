@@ -9,8 +9,10 @@ import std.dissolution {
 import std.algebra {
   Cons,
   Empty,
-  FreeMonoid
+  FreeMonoid,
+  FreeSemigroup
 }
+import v2.std.text { string_replace }
 import v2.std.algebra {
   Equal,
   Greater,
@@ -571,11 +573,27 @@ fn produced_decl_render_from_rows(
   )
 }
 
+// THE TRANSFORM IS DECLARED ROWS, NOT A FUNCTION VALUE -- the same dissolution the render
+// closure field underwent (ServeCacheValueNotPortable): a fn value is origin-bound, cannot be
+// serialized, compared, or carried by an emitted mirror, and every transform in the corpus
+// decomposes into this four-arm spelling algebra. Escapes apply in list order (a backslash rule
+// must precede the rules that introduce backslashes).
+type EmitSpellingEscape {
+  from: String
+  to: String
+}
+
+type TokenClassEmitTransform
+  = EmitSpellingIdentity
+  | EmitSpellingConstant { value: String }
+  | EmitSpellingWrap { prefix: String, suffix: String }
+  | EmitSpellingQuote { prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape> }
+
 type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
@@ -595,13 +613,13 @@ fn target_model_selection_priority(target: TargetModel) -> Outcome<Node> {
   )
 }
 
-data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
+data target_model_emit_transforms_empty: Map<Symbol, TokenClassEmitTransform> = empty_map()
 
 fn target_model_make_with_emit_transforms(
   bundle: Node,
   lex: LexRules,
   binding_spellings: Map<Symbol, String>,
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>,
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>,
   authority_source_text: String,
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
@@ -967,11 +985,37 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
+// The needle is handed to string_replace as the nonempty carrier it demands; an escape row whose
+// `from` is empty names no occurrence (the same reasoning that makes string_split's delimiter a
+// FreeSemigroup), so the fold passes the spelling through unchanged. Below ceiling: the rung-4
+// shape declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb
+// trigger is char-level literal sugar in the .dag realization, without which producers cannot
+// author the nonempty carrier from an escape row's quoted spelling.
+fn apply_emit_spelling_escapes(spelling: String, escapes: List<EmitSpellingEscape>) -> String {
+  fold_list(
+    xs: escapes,
+    empty: spelling,
+    cons: fn(acc, rule) {
+      match rule.from {
+        Cons { head: h, tail: t } =>
+          string_replace(source: acc, needle: FreeSemigroup { head: h, tail: t }, replacement: rule.to)
+        Empty => acc
+      }
+    }
+  )
+}
+
 fn apply_emit_spelling_transform(
-  transform: fn(String) -> String,
+  transform: TokenClassEmitTransform,
   spelling: String
 ) -> String {
-  transform(spelling)
+  match transform {
+    EmitSpellingIdentity => spelling
+    EmitSpellingConstant { value: v } => v
+    EmitSpellingWrap { prefix: p, suffix: s } => concat(p, concat(spelling, s))
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
+      concat(p, concat(o, concat(apply_emit_spelling_escapes(spelling: spelling, escapes: es), c)))
+  }
 }
 
 // A FIXED TOKEN'S SPELLING IS ITS LEXEME, THEN THE TARGET'S EMIT TRANSFORM. The transform map was
@@ -2106,7 +2150,6 @@ fn conditional_delimiting_edges(delimiting: ConditionalDelimiting) -> List<Edge>
   }
 }
 
-
 // An unrecognised discriminant REFUSES. It does not fall back to self-delimiting,
 // because the two states differ exactly where it matters: a target that closes and
 // was decoded as self-delimiting emits a construct one token short and the defect
@@ -2138,7 +2181,6 @@ fn decode_conditional_delimiting(bundle: Node) -> Outcome<ConditionalDelimiting>
     }
   )
 }
-
 
 fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalShape> {
   bind_outcome(
@@ -3725,7 +3767,7 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
       if c == ^char_kernel_type_atom {
         optional_absent()
       } else {
-        optional_present(source_atom_char(codepoint: code_point(s: c)))
+        optional_present(source_atom_char(codepoint: code_point(c: c)))
       }
     _ => optional_absent()
   }
@@ -3973,7 +4015,13 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
         target_model_named_edge(
           name: ^target_value_expression_field_codepoint,
           target: Node {
-            kind: TypeNode { connective: Atom { identity: codepoint } },
+            kind: TypeNode {
+              connective: Atom {
+                identity: symbol_intern_lexeme(
+                  lexeme: list_snoc_item(xs: Empty, item: codepoint)
+                )
+              }
+            },
             children: [],
             occurrence_id: OccurrenceSynthetic
 }
@@ -9927,11 +9975,26 @@ data target_derive_supplemental_generic_bound_requirement_field_authority: Symbo
 data target_external_authority_field_uri_scheme: Symbol = ^target_external_authority_field_uri_scheme
 data target_external_authority_field_uri_locator: Symbol = ^target_external_authority_field_uri_locator
 
-
 type TargetCapabilityKey = Symbol where brand("TargetCapabilityKey")
 
-data target_capability_key_fork_state_note: String = "TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared HERE, in v2.std.compilers.target_model. B1 collapsed TargetDeriveTraitKey into it -- that brand was not an independent authority, every value of it came from one producer, so it was the section 3 nickname pair and it is gone. THE BRAND WAS BRIEFLY MOVED DOWN INTO std.trait_derive_shape AND MOVED BACK, and the round trip is recorded because the reason is structural rather than a change of mind. The brand carrier is Symbol, which is declared only in src/v2/std/node.dag; std.trait_derive_shape is inside the src/v1 regen import closure, whose roots are hardcoded to src/v1 and dag (cli_run.rs regen_source_roots), so a Symbol-carried brand cannot live there. required-regen refused before comparing any bytes, while zero blocking errors under three source roots and a 9687-witness green floor run all reported success. std now names NO carrier at all: its shape table and completeness predicate are parameterized on K, instantiated at TargetCapabilityKey by v2 consumers and at RustCapability by the seed path. That is stronger than moving the declaration -- a type parameter removes the dependency rather than relocating it, so the closure boundary is not something std can violate. THE SECTION 3 PROPERTY SURVIVES THE ROUND TRIP: one declaration, here, imported by everything that needs it. An intermediate revision additionally left a LOCAL declaration here while ALSO importing the identical one from std -- two byte-identical brand declarations, one shadowing the other in a single module. It compiled clean and was removed on sight, and nothing measured shows it caused any runtime failure."
-
+// TargetCapabilityKey is the SINGLE brand for a named target capability and it is declared HERE, in
+// v2.std.compilers.target_model. B1 collapsed TargetDeriveTraitKey into it -- that brand was not an
+// independent authority, every value of it came from one producer, so it was the section 3 nickname
+// pair and it is gone. THE BRAND WAS BRIEFLY MOVED DOWN INTO std.trait_derive_shape AND MOVED BACK,
+// and the round trip is recorded because the reason is structural rather than a change of mind. The
+// brand carrier is Symbol, which is declared only in src/v2/std/node.dag; std.trait_derive_shape is
+// inside the src/v1 regen import closure, whose roots are hardcoded to src/v1 and dag (cli_run.rs
+// regen_source_roots), so a Symbol-carried brand cannot live there. required-regen refused before
+// comparing any bytes, while zero blocking errors under three source roots and a 9687-witness green
+// floor run all reported success. std now names NO carrier at all: its shape table and completeness
+// predicate are parameterized on K, instantiated at TargetCapabilityKey by v2 consumers and at
+// RustCapability by the seed path. That is stronger than moving the declaration -- a type parameter
+// removes the dependency rather than relocating it, so the closure boundary is not something std
+// can violate. THE SECTION 3 PROPERTY SURVIVES THE ROUND TRIP: one declaration, here, imported by
+// everything that needs it. An intermediate revision additionally left a LOCAL declaration here
+// while ALSO importing the identical one from std -- two byte-identical brand declarations, one
+// shadowing the other in a single module. It compiled clean and was removed on sight, and nothing
+// measured shows it caused any runtime failure.
 
 type TargetCapabilityRequirement {
   representation_parameter: Symbol
@@ -9946,7 +10009,6 @@ type TargetCapabilityEligibilityRow {
   capability_key: TargetCapabilityKey
   eligibility: TargetCapabilityElementEligibility
 }
-
 
 type TargetDeriveSupplementalGenericBoundRequirementAuthority {
   authority: ExternalAuthority
@@ -10006,7 +10068,21 @@ type TargetDeriveSupplementalGenericBoundContractCatalog {
   contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
-data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with the reflective coproduct_nullary_inhabitant_by_discriminant (since replaced by v2.std.node_query nullary_inhabitant_by_discriminant, which reads a declared inhabitant roster instead of the host type index). TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
+// There is no key-to-wire projection here and there is deliberately no function for one. When the
+// capability key was a closed coproduct this module carried
+// target_grounding_derive_trait_discriminant (discriminant of the variant) and
+// target_capability_key_for_derive_trait (a second name for the same call), and the node decoder
+// recovered the variant with the reflective coproduct_nullary_inhabitant_by_discriminant (since
+// replaced by v2.std.node_query nullary_inhabitant_by_discriminant, which reads a declared
+// inhabitant roster instead of the host type index). TargetCapabilityKey is now a branded Symbol,
+// so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT
+// A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling
+// discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry;
+// under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a
+// free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose
+// closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as
+// a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly
+// rather than only when called. Section 5: a typecheck is not a consumer.
 
 fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
@@ -11718,6 +11794,33 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> TargetUseSiteOwnershipCatalogLookup {
+  match acc {
+    TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+    TargetUseSiteOwnershipCatalogMissing =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipMissing, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+    TargetUseSiteOwnershipCatalogUnique { row: r } =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipUnique { row: r }, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+    TargetUseSiteOwnershipCatalogAmbiguous =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipAmbiguous, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+  }
+}
+
+fn target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+  acc: TargetUseSiteOwnershipLookup,
+  row_node: Node,
+  display_name: Symbol,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipCatalogLookup {
   match target_use_site_ownership_row_from_node(
     row_node: row_node,
     display_name: display_name,
@@ -11725,21 +11828,13 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
   ) {
     Accepted { value: row, diagnostics: _ } =>
       match target_use_site_ownership_lookup_step(
-        acc: match acc {
-          TargetUseSiteOwnershipCatalogMissing => TargetUseSiteOwnershipMissing
-          TargetUseSiteOwnershipCatalogUnique { row: r } =>
-            TargetUseSiteOwnershipUnique { row: r }
-          TargetUseSiteOwnershipCatalogAmbiguous => TargetUseSiteOwnershipAmbiguous
-          TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
-        },
+        acc: acc,
         row: row,
         source_carrier: source_carrier,
         use_site: use_site
       ) {
-        TargetUseSiteOwnershipMissing =>
-          TargetUseSiteOwnershipCatalogMissing
-        TargetUseSiteOwnershipUnique { row: row } =>
-          TargetUseSiteOwnershipCatalogUnique { row: row }
+        TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipCatalogMissing
+        TargetUseSiteOwnershipUnique { row: row } => TargetUseSiteOwnershipCatalogUnique { row: row }
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
@@ -13233,7 +13328,12 @@ fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<S
   }
 }
 
-data target_value_expr_int_literal_emit_scaffold_note: String = "🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps only magnitudes 1/2 to legacy pick-lit bindings for existing emit round-trip witnesses; magnitudes 3+ refuse transform_shape_invalid until target int-literal emission lowers through a general decimal/text path (same authority as integer_lexeme_to_int / dag_int_literal_node_from_lexeme). DISSOLVES WHEN target_value_expr_project_int_literal_atom emits arbitrary magnitudes without per-value binding rows."
+// 🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps only magnitudes 1/2 to legacy
+// pick-lit bindings for existing emit round-trip witnesses; magnitudes 3+ refuse
+// transform_shape_invalid until target int-literal emission lowers through a general decimal/text
+// path (same authority as integer_lexeme_to_int / dag_int_literal_node_from_lexeme). DISSOLVES WHEN
+// target_value_expr_project_int_literal_atom emits arbitrary magnitudes without per-value binding
+// rows.
 
 fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValueExpression> {
   match target_value_expr_int_literal_magnitude_node_optional(node: node) {

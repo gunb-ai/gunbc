@@ -12,7 +12,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data llvm_ir_language_subject_note: String = "LLVM IR, cited to the LLVM Language Reference Manual (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'LLVM Language Reference Manual' and self-describes as 'a reference manual for the LLVM assembly language', documenting the human-readable notation of LLVM's three equivalent forms (in-memory IR, bitcode, assembly). SUBJECT SCOPE: the intermediate representation as documented by the LLVM project. LLVM IR is explicitly NOT a stable standard across releases, which is why the subject carries no revision — per external_model_scope_revision_grain_note a specific LLVM release is a fact on a release row, not a property of this subject."
+// LLVM IR, cited to the LLVM Language Reference Manual (verified live 2026-08-04 by fetching the
+// cited locator and confirming its title and publisher from the response, per the D0
+// verify-or-refuse rule): the fetched document is titled 'LLVM Language Reference Manual' and
+// self-describes as 'a reference manual for the LLVM assembly language', documenting the
+// human-readable notation of LLVM's three equivalent forms (in-memory IR, bitcode, assembly).
+// SUBJECT SCOPE: the intermediate representation as documented by the LLVM project. LLVM IR is
+// explicitly NOT a stable standard across releases, which is why the subject carries no revision —
+// per external_model_scope_revision_grain_note a specific LLVM release is a fact on a release row,
+// not a property of this subject.
 
 type LlvmIr
   = | LlvmIrTarget

@@ -19,7 +19,7 @@ import v1.std.core {
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
   ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprElaboratedLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
@@ -60,17 +60,26 @@ import v1.compiler.infer_env {
 // The contract is unchanged: exactly one visible unit variant with this name resolves; zero or
 // several refuse. Duplicate variant names within one coproduct keep count > 1 and refuse, as
 // the scan's multiple appended matches did.
-fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
-  match map_get(env.unit_variant_index, variant_name) {
-    Present { value: contribs } =>
-      let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
-      if total == 1 {
-        match filter(contribs |> map_values, c => c.count == 1) |> first {
-          Present { value: single } => Present { value: single.variant }
-          Absent => none
-        }
-      } else { none }
-    Absent => none
+type UnitVariantPhantomLookup
+  = UnitVariantPhantomPresent { variant: Node }
+  | UnitVariantPhantomAbsent
+  | UnitVariantPhantomEvidenceUnavailable
+
+fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitVariantPhantomLookup {
+  if !env.unit_variant_index_observed {
+    UnitVariantPhantomEvidenceUnavailable
+  } else {
+    match map_get(env.unit_variant_index, variant_name) {
+      Present { value: contribs } =>
+        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+        if total == 1 {
+          match filter(contribs |> map_values, c => c.count == 1) |> first {
+            Present { value: single } => UnitVariantPhantomPresent { variant: single.variant }
+            Absent => UnitVariantPhantomAbsent
+          }
+        } else { UnitVariantPhantomAbsent }
+      Absent => UnitVariantPhantomAbsent
+    }
   }
 }
 
@@ -366,7 +375,11 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
 
 data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
 
-data type_ref_hit_ne_bind_measure_resolve_note: String = "N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on: gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger."
+// N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host
+// bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType
+// via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the
+// UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on:
+// gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.
 
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
   if depth > 100 {
@@ -629,11 +642,16 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
-              Present { value: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
-              Absent =>
+              UnitVariantPhantomPresent { variant: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
+              UnitVariantPhantomAbsent =>
                 NodeResolveResult {
                   resolved: n,
                   diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
+                }
+              UnitVariantPhantomEvidenceUnavailable =>
+                NodeResolveResult {
+                  resolved: n,
+                  diagnostics: [make_error_node(diagnostic: UnitVariantPhantomIdentityEvidenceUnavailable { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
                 }
             }
           }
@@ -844,6 +862,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprElaboratedLiteral { value: _, elaboration: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
     ExprError { kind: kind, message: message } =>
       ExprResolveResult {
         expr: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: kind, message: message, span: texpr.span),
@@ -962,11 +981,11 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = el_results |> map(r => r.expr)
       let all_diags = flat_map(el_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprListLit, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
-    ExprBinOp { op: op, algebra_field: af } =>
+    ExprBinOp { op: op, algebra_field: af, operand: od } =>
       let ch = texpr.children
       let lr = match ch |> first { Present { value: l } => resolve_expr_types(texpr: l, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let rr = match ch |> skip(1) |> first { Present { value: r } => resolve_expr_types(texpr: r, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: af }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
+      ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: af, operand: od }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
     ExprUnaryOp { op: op } =>
       let r = match texpr.children |> first { Present { value: o } => resolve_expr_types(texpr: o, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }

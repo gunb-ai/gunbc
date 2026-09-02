@@ -44,7 +44,18 @@ data charset_registry_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data media_type_note: String = "Cited upstream: a media type is type \"/\" subtype with optional \"; \" parameters (RFC 9110 section 8.3.1 media-type grammar; the Content-Type header carries exactly one). The top-level type is a CLOSED registry (RFC 6838 section 4.2 + the IANA media-types registry: application/audio/example/font/image/message/model/multipart/text/video); the subtype is an upstream-spelled string (each its own IANA registration); parameters are name=value pairs, of which charset (value from the IANA character-sets registry, utf-8 per RFC 3629) is the one this served stack uses. The WIRE STRING is a SERIALIZATION of this structure (DESIGN section 2, decompress the string): the fused HttpContentType enum that hid media-type x charset inside variant NAMES is deleted, media_type_wire_label is the sole serializer, and ApplicationOctetStream's charset-less form falls out as an EMPTY parameter list rather than a special variant. Forward reading (parsing an incoming Content-Type through these same rows) is the NAMED later direction (DESIGN section 4, one grammar both ways), not built here."
+// Cited upstream: a media type is type "/" subtype with optional "; " parameters (RFC 9110 section
+// 8.3.1 media-type grammar; the Content-Type header carries exactly one). The top-level type is a
+// CLOSED registry (RFC 6838 section 4.2 + the IANA media-types registry:
+// application/audio/example/font/image/message/model/multipart/text/video); the subtype is an
+// upstream-spelled string (each its own IANA registration); parameters are name=value pairs, of
+// which charset (value from the IANA character-sets registry, utf-8 per RFC 3629) is the one this
+// served stack uses. The WIRE STRING is a SERIALIZATION of this structure (DESIGN section 2,
+// decompress the string): the fused HttpContentType enum that hid media-type x charset inside
+// variant NAMES is deleted, media_type_wire_label is the sole serializer, and
+// ApplicationOctetStream's charset-less form falls out as an EMPTY parameter list rather than a
+// special variant. Forward reading (parsing an incoming Content-Type through these same rows) is
+// the NAMED later direction (DESIGN section 4, one grammar both ways), not built here.
 
 type MediaTopLevel
   = TopLevelApplication

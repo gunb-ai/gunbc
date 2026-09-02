@@ -24,7 +24,7 @@ import gunbc.systemctl_show_read {
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_host_budget { declared_runner_count_for }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
@@ -60,17 +60,23 @@ data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
 // Operator ruling 2026-08-13: MemoryMax single authority is deploy-time drop-in authoring
 // (gunbc.host_axis_caps). Convergence must not re-apply it.
 //
-// TWO `data ...: Bool = true` FLAGS USED TO SIT HERE and they are deleted rather than moved.
-// They claimed the converge-side apply was suppressed; their only readers were two witnesses
-// asserting the literals, so what executed was `true && true`. Nothing in any production path
-// consulted them, and the arm they described stayed wired the whole time
-// (gunbc.host_converge_realize interpreted a PerSlotMemoryCap knob into a shell body and
-// host_effect_realize ran it). The hold is now carried by the absence of that code path, which
-// is the construction move the flags were standing in for — see
-// gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason.
-data host_converge_slice1_memory_max_deploy_authority_note: String = "MemoryMax is authored at deploy through gunbc.host_axis_caps cap membership reconcile and drop-in upsert — not re-applied by gunbc converge. Dual authority (deploy drop-in vs converge set-property) is forbidden."
+// TWO `data ...: Bool = true` FLAGS USED TO SIT HERE and are deleted rather than moved. They
+// claimed the converge-side apply was suppressed; their only readers were two witnesses
+// asserting the literals, so what executed was `true && true`. No production path consulted
+// them, and the arm they described stayed wired the whole time (gunbc.host_converge_realize
+// interpreted a PerSlotMemoryCap knob into a shell body and host_effect_realize ran it). The
+// hold is now carried by the absence of that code path, the construction move the flags stood
+// in for — see gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason.
+// MemoryMax is authored at deploy through gunbc.host_axis_caps cap membership reconcile and drop-in
+// upsert — not re-applied by gunbc converge. Dual authority (deploy drop-in vs converge
+// set-property) is forbidden.
 
-data host_converge_slice1_control_shadow_converge_note: String = "Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering is author derived drop-ins from gunbc.runner_slot_allocation THEN systemctl revert MemoryMax MemoryHigh — modeled in gunbc.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises effective caps to the superseded regime."
+// Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and
+// 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering
+// is author derived drop-ins from gunbc.runner_slot_allocation THEN systemctl revert MemoryMax
+// MemoryHigh — modeled in gunbc.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc
+// converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises
+// effective caps to the superseded regime.
 
 data host_converge_slice1_cap_author_before_shadow_revert_enforced: Bool = true
 
@@ -86,16 +92,15 @@ data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
 data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 
-// TasksMax (gunbc.runner_slot_allocation gunbc_runner_slot_desired, 16384 — the
-// 2026-06-21 incident REPAIR value; 512 was the diagnosed EAGAIN outage value, per the
-// operator ruling on PR 8045) is the second knob realized on this circuit: same typed
-// systemctl show/set-property transports, same fail-closed order (live read -> Drifted
-// verdict -> pre-apply TasksCurrent guard -> apply -> independent read-back ->
-// reapply-noop), a pids-controller count instead of a byte size. The guard refuses when
-// live TasksCurrent meets or exceeds the target cap (>=: equality means zero headroom,
-// so the next clone() would EAGAIN) — lowering TasksMax below live usage would not kill
-// tasks but would starve every new clone(), the compute_envelope_model failure class —
-// typed and retryable, never applied past it.
+// TasksMax (gunbc.runner_slot_allocation gunbc_runner_slot_desired, 16384 — the 2026-06-21
+// incident REPAIR value; 512 was the diagnosed EAGAIN outage value, per the operator ruling on
+// PR 8045) is the second knob realized on this circuit: same typed systemctl show/set-property
+// transports, same fail-closed order (live read -> Drifted verdict -> pre-apply TasksCurrent
+// guard -> apply -> independent read-back -> reapply-noop), a pids-controller count instead of
+// a byte size. The guard refuses when live TasksCurrent meets or exceeds the target cap (>=:
+// equality means zero headroom, so the next clone() would EAGAIN) — lowering TasksMax below
+// live usage would not kill tasks but would starve every new clone(), the
+// compute_envelope_model failure class — typed and retryable, never applied past it.
 type HostConvergeSlice1TasksMaxReceipt {
   host: HostIdentity
   unit: NonEmptyStr
@@ -267,12 +272,13 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
 }
 
 // Count equality is a postcondition after RunnerSlotProvision, not a pre-refuse on under-count.
-// Observed < declared means slots are missing — converge existing units' caps; provision adds the delta.
+// Observed < declared means slots are missing — converge existing units' caps; provision adds the
+// delta.
 fn host_converge_slice1_enumeration_mismatch(
   host: HostIdentity,
   units: List<NonEmptyStr>,
 ) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = declared_runner_count_for(host: host)
+  let declared = gunbc_runner_slots_per_host(host: host)
   if length(units) == declared {
     none
   } else {
@@ -287,7 +293,7 @@ fn host_converge_slice1_enumeration_mismatch(
 }
 
 fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = declared_runner_count_for(host: host)
+  let declared = gunbc_runner_slots_per_host(host: host)
   let observed_count = length(units)
   if observed_count > declared {
     host_converge_slice1_enumeration_mismatch(host: host, units: units)
@@ -439,14 +445,14 @@ fn host_converge_slice1_tasks_read_limit(unit: NonEmptyStr) -> SystemdCgroupTask
   }
 }
 
-// The reapply-noop second write intentionally bypasses the TasksCurrent guard: it is only
-// reachable after an independent read proved the effective TasksMax already equals the
-// desired value, and re-applying the effective value cannot lower headroom (TasksCurrent
-// is always <= the effective cap at the moment of the read). The read-back and this
-// second write are NOT atomic — concurrent task creation can raise TasksCurrent between
-// them — but the EAGAIN-starvation class the guard exists for requires setting the cap
-// BELOW current, which re-applying the already-effective value cannot cause regardless
-// of concurrent spawns (review 50754 wording). Mirrors the memory circuit's reapply-noop.
+// The reapply-noop second write intentionally bypasses the TasksCurrent guard: it is reachable
+// only after an independent read proved the effective TasksMax already equals the desired value,
+// and re-applying the effective value cannot lower headroom (TasksCurrent is always <= the
+// effective cap at the moment of the read). The read-back and this write are NOT atomic —
+// concurrent task creation can raise TasksCurrent between them — but the EAGAIN-starvation class
+// the guard exists for requires setting the cap BELOW current, which re-applying the
+// already-effective value cannot cause regardless of concurrent spawns (review 50754 wording).
+// Mirrors the memory circuit's reapply-noop.
 fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
   if !host_converge_slice1_apply_tasks_max(unit: unit, value: knob.desired) {
     Present {

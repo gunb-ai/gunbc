@@ -5,9 +5,9 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
-  AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, RunnerHostSudoersArtifact, PlanArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
-  Stage0CratePartitionGeneratedDagArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
   artifact_path,
   committed_generated_artifacts
@@ -27,7 +27,6 @@ import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.install_server_emit { install_server_dnsmasq_conf }
 import gunbc.runner_host_grants { runner_host_sudoers_content }
 import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
 import gunbc.plan { expected_plan_md }
@@ -37,6 +36,9 @@ import gunbc.stage0_crate_layout_emit {
 }
 import gunbc.stage0_crate_partition_emit {
   expected_stage0_crate_partition_generated_dag
+}
+import gunbc.stage0_executable_assembly_emit {
+  expected_stage0_executable_assembly_generated_dag
 }
 import gunbc.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs,
@@ -82,13 +84,13 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
     Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
     Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_partition_generated_dag())
+    Stage0ExecutableAssemblyGeneratedDagArtifact => artifact_generated(content: expected_stage0_executable_assembly_generated_dag())
     V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
       V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
       V1InterpreterDispatchGenerationRefused { reason } =>
         ArtifactGenerationRefused { reason: reason }
     }
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
-    ProxyDhcpDnsmasqArtifact { spec } => artifact_generated(content: install_server_dnsmasq_conf(spec: spec))
     RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
       RunnerHostDeployFound { deploy } =>
         artifact_generated(
@@ -109,7 +111,15 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   }
 }
 
-data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED generation outcome rather than calling artifact_generate itself. The two variants whose extra check depends on generation success (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO artifact_generate calls per artifact for those two variants, contradicting gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller now supplies the outcome it already produced (observe_generated_artifact reuses its own match result); no second entry point to generation remains."
+// P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED
+// generation outcome rather than calling artifact_generate itself. The two variants whose extra
+// check depends on generation success (Stage0EmitPlanGeneratedDagArtifact,
+// V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time
+// here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO
+// artifact_generate calls per artifact for those two variants, contradicting
+// gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller
+// now supplies the outcome it already produced (observe_generated_artifact reuses its own match
+// result); no second entry point to generation remains.
 
 fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
   match a {
@@ -129,12 +139,12 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
+    Stage0ExecutableAssemblyGeneratedDagArtifact => true
     V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
     AutoinstallUserDataArtifact { spec: _ } => true
-    ProxyDhcpDnsmasqArtifact { spec: _ } => true
     RunnerHostSudoersArtifact { host: _ } => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false

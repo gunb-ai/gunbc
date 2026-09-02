@@ -62,7 +62,7 @@ pub fn is_typed_service_call_receiver(
                     .cloned()
                 {
                     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
-                    None => false,
+                    std::option::Option::None => false,
                 },
                 _ => false,
             }
@@ -149,7 +149,7 @@ pub fn collect_typed_service_calls_into(
                                 })
                             }
                         }
-                        None => acc.clone(),
+                        std::option::Option::None => acc.clone(),
                     }
                 } else {
                     acc.clone()
@@ -159,7 +159,7 @@ pub fn collect_typed_service_calls_into(
         };
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
-            |a: Rc<UniqueAccum>, child: Rc<Node>| {
+            |a: _, child: Rc<Node>| {
                 collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
             },
         );
@@ -190,7 +190,7 @@ pub fn collect_called_func_names_into(
         };
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
-            |a: Rc<UniqueAccum>, child: Rc<Node>| {
+            |a: _, child: Rc<Node>| {
                 collect_called_func_names_into(child.clone(), a, source_indices.clone())
             },
         );
@@ -275,7 +275,7 @@ pub fn expand_transitive_services_once(
     module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    module_callees.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
+    module_callees.iter().cloned().fold(registry.clone(), |reg: _, m: _| m.items.clone().iter().cloned().fold(reg, |reg2: _, entry: _| {
         let item_name = entry.item_name.clone();
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -287,7 +287,7 @@ if has_no_body.clone() {
                     let called = entry.called.clone();
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
-    None => Rc::new(vec![]),
+    std::option::Option::None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let merged = extra.iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
@@ -312,7 +312,7 @@ if same_count.clone() {
 }
             }
 },
-    None => reg2.clone(),
+    std::option::Option::None => reg2.clone(),
 }
 }))
 }
@@ -321,7 +321,7 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
     Rc::new(v1_rt::map_values(&registry))
         .iter()
         .cloned()
-        .fold(0, |acc: i64, info: Rc<ItemInfo>| {
+        .fold(0, |acc: i64, info: _| {
             (acc + (info.service_names.clone().len() as i64))
         })
 }
@@ -386,7 +386,7 @@ pub fn check_service_field_access_node(
                 Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
                     path.clone(),
                 )),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             }
         }
     } else {
@@ -485,10 +485,10 @@ pub fn check_service_method_call_node(
                             }))
                         }
                     }
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             }
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     } else {
         std::option::Option::None

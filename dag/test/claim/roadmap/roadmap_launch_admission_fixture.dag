@@ -20,7 +20,12 @@ import gunbc.roadmap_launch_admission {
   launch_host_halt_transition, launch_host_stage_revision, HostRevisionHalted, HostRevisionConverged,
 }
 
-data launch_fixture_note: String = "Synthetic HOST facts for the launch-admission witnesses (RLM-1). The admission is pure over LaunchHostStanding, so a witness fabricates exactly the host it wants to talk about -- an actuating instance, a clear transition, a converged (or drifted, or unobserved) revision, a chosen live-session set, a capacity and a spawn mode -- and the graph it wants, and asks the same decision production asks. Nothing here touches a host; the two object ids are literal hex pinned by the fixture, never read from git."
+// Synthetic HOST facts for the launch-admission witnesses (RLM-1). The admission is pure over
+// LaunchHostStanding, so a witness fabricates exactly the host it wants -- an actuating instance, a
+// clear transition, a converged (or drifted, or unobserved) revision, a chosen live-session set, a
+// capacity and a spawn mode -- and the graph it wants, and asks the same decision production asks.
+// Nothing here touches a host; the two object ids are literal hex pinned by the fixture, never read
+// from git.
 
 fn launch_fixture_instance_id() -> NonEmptyStr { "fixture-actuating-instance" as NonEmptyStr }
 
@@ -118,7 +123,10 @@ fn launch_fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Roa
   }
 }
 
-data launch_fixture_contract_note: String = "A closing execution contract for fixture nodes that must pass the contract gate: the same producer the canary binds (gunbc_claim_execution_contract), pointed at a fixture claim identity. The entry is not read by the admission -- contract_closure only asks whether validations exist -- so the fixture never runs it."
+// A closing execution contract for fixture nodes that must pass the contract gate: the same
+// producer the canary binds (gunbc_claim_execution_contract), pointed at a fixture claim identity.
+// The entry is not read by the admission -- contract_closure only asks whether validations exist --
+// so the fixture never runs it.
 
 fn launch_fixture_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -140,7 +148,11 @@ fn launch_fixture_with_contract(rn: RoadmapNode) -> RoadmapNode {
   }
 }
 
-data launch_fixture_staged_note: String = "Staged standings for the real-driver controls (review 5059520727 finding 2): the halted arms are built by the SAME producers the production observer uses (launch_host_halt_transition, launch_host_stage_revision), so a witness that hands one to belt_tick_launch_pass runs the timer's real decision on a standing the observer could have produced -- and a standing that has no later fields, which is the effect-order claim itself."
+// Staged standings for the real-driver controls (review 5059520727 finding 2): the halted arms are
+// built by the SAME producers the production observer uses (launch_host_halt_transition,
+// launch_host_stage_revision), so a witness handing one to belt_tick_launch_pass runs the timer's
+// real decision on a standing the observer could have produced -- one with no later fields, which
+// is the effect-order claim itself.
 
 fn launch_fixture_standing_halt_transition() -> LaunchHostStanding {
   launch_host_halt_transition(instance_id: launch_fixture_instance_id(), reason: "fixture: deployment transition in force")

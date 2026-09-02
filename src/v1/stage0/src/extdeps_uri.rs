@@ -201,15 +201,6 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     }
 }
 
-pub fn uri_component_encode_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -934,18 +925,18 @@ pub fn uri_percent_encode_outcomes_first_refusal(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
     outcomes.iter().cloned().fold(
-        None,
+        std::option::Option::None,
         |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
          outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
-            None => match (*outcome.clone()).clone() {
+            std::option::Option::None => match (*outcome.clone()).clone() {
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
                     cause: cause,
                     ..
                 } => Some(cause.clone()),
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded {
                     wire: _, ..
-                } => None,
+                } => std::option::Option::None,
             },
         },
     )
@@ -988,9 +979,11 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
                 Some(cause) => Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
                     cause: cause.clone(),
                 }),
-                None => Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
-                    uri_percent_encode_outcome_wires(outcomes.clone()).join(&"".to_string()),
-                )),
+                std::option::Option::None => {
+                    Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
+                        uri_percent_encode_outcome_wires(outcomes.clone()).join(&"".to_string()),
+                    ))
+                }
             }
         }
     }

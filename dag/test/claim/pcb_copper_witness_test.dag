@@ -59,14 +59,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sig: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
 data gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
-data core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+data fr4_core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
 
 // Top signal, then ground, then signal: three copper layers, ordinals 0, 1, 2.
 data three_layer: Stackup = Stackup {
   top: sig,
   plies: [
-    StackupPly { dielectric: core, copper: gnd },
-    StackupPly { dielectric: core, copper: sig },
+    StackupPly { dielectric: fr4_core, copper: gnd },
+    StackupPly { dielectric: fr4_core, copper: sig },
   ],
 }
 
@@ -75,9 +75,9 @@ data three_layer: Stackup = Stackup {
 data four_layer: Stackup = Stackup {
   top: sig,
   plies: [
-    StackupPly { dielectric: core, copper: gnd },
-    StackupPly { dielectric: core, copper: sig },
-    StackupPly { dielectric: core, copper: gnd },
+    StackupPly { dielectric: fr4_core, copper: gnd },
+    StackupPly { dielectric: fr4_core, copper: sig },
+    StackupPly { dielectric: fr4_core, copper: gnd },
   ],
 }
 
@@ -92,25 +92,25 @@ data gnd_net: NetIdentity = net_identity(design: fixture_design, local_identity:
 data absent_net: NetIdentity = net_identity(design: fixture_design, local_identity: "SPI_CLK")
 
 // THE FIXTURE IS A BARE NET ROSTER, AND THAT IS THE POINT. Copper takes the nets, not a circuit
-// intent, so this witness hands it a roster belonging to no analog article at all. If the carrier
-// still required an AnalogCircuitIntent this file would not compile, which makes the decoupling a
-// fact the suite depends on rather than a claim in a comment.
+// intent, so this witness hands it a roster belonging to no analog article. If the carrier still
+// required an AnalogCircuitIntent this file would not compile, so the decoupling is a fact the suite
+// depends on rather than a claim in a comment.
 data board_nets: List<ElectricalNet> = [
   ElectricalNet { identity: vcc, members: [] },
   ElectricalNet { identity: gnd_net, members: [] },
 ]
 
-// A SECOND, DIFFERENT BOARD. Same layer count and same functions at every ordinal, differing only
-// in copper thickness and in the declaration admission judged - so an ordinal alone cannot tell the
-// two apart, which is exactly the confusion the binding has to catch.
+// A SECOND, DIFFERENT BOARD. Same layer count and functions at every ordinal, differing only in
+// copper thickness and in the declaration admission judged - so an ordinal alone cannot tell them
+// apart, which is exactly the confusion the binding has to catch.
 data thick: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 35) }
 data thick_gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 35) }
 
 data other_board: Stackup = Stackup {
   top: thick,
   plies: [
-    StackupPly { dielectric: core, copper: thick_gnd },
-    StackupPly { dielectric: core, copper: thick },
+    StackupPly { dielectric: fr4_core, copper: thick_gnd },
+    StackupPly { dielectric: fr4_core, copper: thick },
   ],
 }
 
@@ -138,9 +138,9 @@ fn admitted_three_layer_selection(ordinal: Int) -> Bool {
   }
 }
 
-// A layer reference reports the ordinal asked for AND the function of the layer that is actually
-// there — the second is what makes the reference a read of the stackup rather than a restatement of
-// the request. Ordinal 1 is the ground plane, and the reference knows it.
+// A layer reference reports the ordinal asked for AND the function of the layer actually there —
+// the second makes the reference a read of the stackup rather than a restatement of the request.
+// Ordinal 1 is the ground plane, and the reference knows it.
 test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
   match admit_stackup(s: three_layer, authority: board_authority) {
     StackupRefused { causes: _ } => false
@@ -319,8 +319,8 @@ test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool {
 }
 
 // RED control: THE CROSS-STACKUP CLASS. Both boards have three layers with identical functions at
-// every ordinal, so the layer reference selected against other_board is indistinguishable from one
-// selected against three_layer by ordinal or function - only the bound declaration separates them.
+// every ordinal, so a layer reference selected against other_board is indistinguishable by ordinal
+// or function from one selected against three_layer - only the bound declaration separates them.
 // Admitting it against three_layer must refuse, or the seal proved the ref came from SOME admitted
 // stackup and never which one.
 test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
@@ -492,10 +492,10 @@ test fn w_red_a_via_selected_against_another_stackup_is_refused() -> Bool {
   }
 }
 
-// RED control: TWO CONDUCTORS ON ONE LAYER, WITH A VIA PRESENT. This is the case the split refusal
-// stopped catching when it narrowed to via-reachability: both rows sit on layer 0, a vcc via touches
-// layer 0, so every realized layer IS via-reached and the routing question is satisfied. It is still
-// two rows claiming one net on one layer. Confirmed admitted by a probe before this refusal existed.
+// RED control: TWO CONDUCTORS ON ONE LAYER, WITH A VIA PRESENT. The case the split refusal stopped
+// catching when it narrowed to via-reachability: both rows sit on layer 0, a vcc via touches layer
+// 0, so every realized layer IS via-reached and the routing question is satisfied. It is still two
+// rows claiming one net on one layer. Confirmed admitted by a probe before this refusal existed.
 test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
@@ -532,10 +532,10 @@ test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool 
 
 // THE CASE THE WEAK FORM ADMITTED. VCC realized on all four layers, joined 0-1 and 2-3: every
 // realized layer is touched by a connection of its own net, so the previous reachability question
-// answered yes, and the board admitted with two electrically separate VCC islands. This asserts the
-// refusal, and w_islands_joined_into_one_conductor_admits asserts the same population admits once
-// the two halves are bridged — both directions in one run, so a refusal that stopped firing cannot
-// read as success.
+// answered yes and the board admitted with two electrically separate VCC islands. This asserts the
+// refusal; w_islands_joined_into_one_conductor_admits asserts the same population admits once the
+// halves are bridged — both directions in one run, so a refusal that stopped firing cannot read as
+// success.
 test fn w_two_islands_of_one_net_refuse() -> Bool {
   match admitted_board(s: four_layer, authority: board_authority) {
     Absent => false
@@ -633,9 +633,9 @@ test fn w_islands_joined_into_one_conductor_admits() -> Bool {
 }
 
 // THE EVIDENCE MUST SURVIVE ADMISSION. Two connection populations that both admit must produce
-// admitted values that DIFFER, or the carrier has dropped the evidence it judged. Asserting the
-// count alone would be satisfied by a carrier that stored the number and discarded the rows, so this
-// also reads a connection back out and checks it names the net it was authored with.
+// admitted values that DIFFER, or the carrier dropped the evidence it judged. A count alone would
+// be satisfied by a carrier that stored the number and discarded the rows, so this also reads a
+// connection back out and checks it names the net it was authored with.
 test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
@@ -663,10 +663,10 @@ test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool {
 }
 
 // AN ENDPOINT ON A LAYER THE NET DOES NOT OCCUPY. VCC is realized on 0 and 2 and the connection runs
-// 0 to 1 — layer 1 exists on this board and the connection names a real net, so every stackup and
-// identity check it faces passes. What it does not do is land on VCC copper, and before this refusal
-// the board admitted. The net is still split, so the connectivity refusal fires too; this asserts
-// the endpoint cause specifically, which is the one that names WHERE the hole goes nowhere.
+// 0 to 1 — layer 1 exists and the connection names a real net, so every stackup and identity check
+// passes. It does not land on VCC copper, and before this refusal the board admitted. The net is
+// still split, so the connectivity refusal fires too; this asserts the endpoint cause specifically,
+// the one that names WHERE the hole goes nowhere.
 test fn w_a_connection_endpoint_with_no_conductor_refuses() -> Bool {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false

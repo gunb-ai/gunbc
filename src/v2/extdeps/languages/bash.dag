@@ -23,6 +23,11 @@ import v2.std.compilers.lexing {
 }
 import v2.std.compilers.target_model {
   BoundToken,
+  EmitSpellingEscape,
+  EmitSpellingQuote,
+  EmitSpellingWrap,
+  TokenClassEmitTransform,
+  apply_emit_spelling_transform,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
@@ -37,7 +42,10 @@ import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.posix.shell_command_language {
+  posix_single_quote_delimiter,
+  posix_single_quote_escape_encoding
+}
 import v2.std.node {
   Atom,
   Conj,
@@ -703,20 +711,33 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
   map_insert(m9, ^bash_binding_exit_code_0, "0")
 }
 
-data bash_single_quote_provenance_note: String = "Single-quote wrap-and-escape moved to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): it is a POSIX shell command language fact, not a bash-specific one -- Bash and gunbc.remote_shell_command both cite IEEE 1003.1-2017 section 2.2.2 for the same encoding, so the rule has one home matching its one cited authority. bash_single_quote_spaced calls the imported posix_single_quote directly rather than through a bash-local re-export."
+// Single-quote wrap-and-escape is a POSIX shell command language fact, not a bash-specific one --
+// Bash and gunbc.remote_shell_command both cite IEEE 1003.1-2017 section 2.2.2 for the same
+// encoding, so the delimiter and escape encoding rows live in
+// extdeps.posix.shell_command_language and this transform row derives from them rather than
+// re-spelling the encoding here.
 
+fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform {
+  EmitSpellingQuote {
+    prefix: prefix,
+    open: posix_single_quote_delimiter,
+    close: posix_single_quote_delimiter,
+    escapes: [
+      EmitSpellingEscape { from: posix_single_quote_delimiter, to: posix_single_quote_escape_encoding }
+    ]
+  }
+}
+
+// Derived from the same transform row the emit map carries, so the directive text builders and
+// the token-class rendering cannot disagree on the encoding.
 fn bash_single_quote_spaced(spelling: String) -> String {
-  concat(" ", posix_single_quote(spelling: spelling))
+  apply_emit_spelling_transform(transform: bash_posix_single_quote_transform(prefix: " "), spelling: spelling)
 }
 
-fn bash_var_ref_spelling(spelling: String) -> String {
-  concat("\"$", concat(spelling, "\""))
-}
-
-fn bash_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
-  let m0 = map_insert(empty_map(), ^bash_token_lit, posix_single_quote)
-  let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_single_quote_spaced)
-  map_insert(m1, ^bash_token_var_ref, bash_var_ref_spelling)
+fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  let m0 = map_insert(empty_map(), ^bash_token_lit, bash_posix_single_quote_transform(prefix: ""))
+  let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))
+  map_insert(m1, ^bash_token_var_ref, EmitSpellingWrap { prefix: "\"$", suffix: "\"" })
 }
 
 fn bash_serialize_source_node(
@@ -1162,7 +1183,6 @@ fn retry_eagain_bash_lex() -> LexRules {
     span(text: retry_eagain_seg_h4(), class: ^bash_token_retry_seg_h4)
   ]))
 }
-
 
 fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -2276,7 +2296,14 @@ fn bash_stmt_if_target_model(cond: String, body: String) -> Outcome<TargetModel>
   )
 }
 
-data bash_stmt_if_block_note: String = "Same If semantics as bash_stmt_if_tokens, spelled with real newlines around the then-body instead of the single-line \"; then \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when the then_ Pipeline carries more than one step: the single-line row is bash-valid even then (newline is an ordinary statement separator, verified — this is not a correctness fix), but a newline-joined multi-statement body glued into the single-line row byte-diverges from a human's block-formatted expectation. Reusing bash_stmt_if_cond/bash_stmt_if_body as binding keys — same fields, a formatting realization, not a second fact."
+// Same If semantics as bash_stmt_if_tokens, spelled with real newlines around the then-body instead
+// of the single-line "; then "/"; fi" join. Selected by orch_emit_if_step
+// (05_emit_orchestration.dag) when the then_ Pipeline carries more than one step: the single-line
+// row is bash-valid even then (newline is an ordinary statement separator, verified — this is not a
+// correctness fix), but a newline-joined multi-statement body glued into the single-line row
+// byte-diverges from a human's block-formatted expectation. Reusing
+// bash_stmt_if_cond/bash_stmt_if_body as binding keys — same fields, a formatting realization, not
+// a second fact.
 
 fn bash_stmt_if_block_tokens() -> List<ConcreteSyntaxToken> {
   [

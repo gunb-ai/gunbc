@@ -143,6 +143,15 @@ type DeclarationBodyStanding
   | DeclaredWithBody
   | DeclarationSourceUnresolved { attempted: String }
 
+// The declaration scan's own state. It exists because the body question cannot be answered from the
+// declaration line alone: a line ending after the name is undecided until the following non-blank
+// line is read, and `Optional<DeclarationBodyStanding>` cannot express "matched, still undecided"
+// without conflating it with "not found".
+type OpaqueDeclarationScan
+  = OpaqueScanSeeking
+  | OpaqueScanAwaitingBody
+  | OpaqueScanDecided { standing: DeclarationBodyStanding }
+
 type OpaqueSubjectRow {
   declaring_file: String
   source_module: String
@@ -219,7 +228,7 @@ fn edge_is_boundary(edge: String) -> Bool {
   if edge == "" {
     true
   } else {
-    !is_identifier_code_point(cp: code_point(ch: edge))
+    !is_identifier_code_point(cp: code_point(c: edge))
   }
 }
 
@@ -603,44 +612,99 @@ fn module_candidate_paths(source_module: String, roots: List<String>) -> List<St
   )
 }
 
-// A declaration is OPAQUE when its `type X` line carries no body. THE STANDING IS READ FROM THE
-// DECLARATION LINE ALONE, and that is a stated boundary rather than a completeness claim: a
-// coproduct whose first `|` sits on a following line and whose `type X` line ends after the name
-// would read as opaque here. No such spelling occurs in this corpus today, so the reading is exact
-// for the corpus it is run over and would need the successor line the day one is authored.
+// A declaration is OPAQUE when its `type X` declaration carries no body.
+//
+// THIS ANNOTATION PREVIOUSLY ASSERTED THAT THE MULTI-LINE BODY SPELLING DOES NOT OCCUR IN THIS
+// CORPUS, AND THAT WAS FALSE BY FIVE THOUSAND OCCURRENCES. It read: "a coproduct whose first `|`
+// sits on a following line and whose `type X` line ends after the name would read as opaque here.
+// No such spelling occurs in this corpus today, so the reading is exact for the corpus it is run
+// over." Measured 2026-09-01 over `dag/`, `src/v1/` and `src/v2/`: 5194 declarations end after the
+// name, and 5132 of them carry `=` or `|` on the FOLLOWING line. The genuinely bodyless population
+// is 62 by that spelling (69 counting parameterized declarations). So the stated boundary was not a
+// narrow exception -- it was 99% of the matches, and a reader trusting this annotation would have
+// taken a 5194-row answer for a 69-row one. An annotation asserting a falsified fact is the same
+// defect as the code being wrong, one layer up, which is why it is rewritten here rather than
+// footnoted: it was cited as coverage.
+//
+// THE SCAN THEREFORE READS THE FOLLOWING NON-BLANK LINE when the declaration line ends after the
+// name. `=`, `|` or `{` there means the body is simply on the next line; anything else (a new
+// declaration, an annotation, end of file) means the declaration is genuinely bodyless.
+//
+// AND IT MATCHES THE NAME AT A BOUNDARY. `starts_with(line, "type " + name)` alone lets a LONGER
+// same-prefix name decide a shorter name's standing -- `type FooBar = ...` answers for `Foo`, and
+// because the leftover `Bar = ...` contains `=`, `Foo` is reported as having a body it does not
+// have. The whole file already owns the authority for this question: `edge_is_boundary` /
+// `is_identifier_code_point`, written for exactly the reason its own annotation gives -- "`String`
+// occurring inside `NonEmptyString` is not an occurrence of `String`". This function was the one
+// place that did not ask it. It does now; the fix is a call, not a new rule (DESIGN section 3 --
+// one authority, consulted everywhere, rather than a second boundary notion invented here).
+//
 // A MODIFIER SUCH AS `nominal_opaque` OR `sole_constructor` SITS BETWEEN THE NAME AND THE BODY, so
-// the last arm decides the body question by what follows the modifier on the same line rather than
-// by the character immediately after the name.
+// the same-line arm decides the body question by what follows the modifier rather than by the
+// character immediately after the name.
+//
+// DELIBERATELY UNCHANGED, so the repair is two bugs and not three: a PARAMETERIZED declaration
+// (`type MachineWidth<bits>` with no body) is still answered `DeclaredWithBody` by the `<` arm.
+// That is a population-definition question -- whether a type with parameters but no body is opaque
+// -- and moving it would change what this instrument counts rather than fixing what it gets wrong.
+// It is named here so the next reader meets it as a decision rather than as an oversight.
+fn declaration_body_standing_same_line(rest: String) -> DeclarationBodyStanding {
+  if starts_with(s: rest, prefix: "=")
+    || starts_with(s: rest, prefix: "|")
+    || starts_with(s: rest, prefix: "{")
+    || starts_with(s: rest, prefix: "<") {
+    DeclaredWithBody
+  } else {
+    if string_contains(s: rest, pattern: "=") || string_contains(s: rest, pattern: "|") {
+      DeclaredWithBody
+    } else {
+      DeclaredOpaque
+    }
+  }
+}
+
 fn declaration_body_standing_in(content: String, name: String) -> DeclarationBodyStanding? {
   let header = concat("type ", name)
-  fold(
+  let scan = fold(
     text_lines(text: content),
-    init: none,
+    init: OpaqueScanSeeking,
     f: (acc, line) =>
       match acc {
-        Present { value: v } => Present { value: v }
-        Absent =>
-          if !starts_with(s: line, prefix: header) {
-            none
+        OpaqueScanDecided { standing: s } => OpaqueScanDecided { standing: s }
+        OpaqueScanAwaitingBody =>
+          let continuation = trim_spaces(s: line)
+          if continuation == "" {
+            OpaqueScanAwaitingBody
+          } else if starts_with(s: continuation, prefix: "=")
+            || starts_with(s: continuation, prefix: "|")
+            || starts_with(s: continuation, prefix: "{") {
+            OpaqueScanDecided { standing: DeclaredWithBody }
           } else {
-            let rest = trim_spaces(s: after_prefix(line: line, prefix: header))
-            if rest == "" {
-              Present { value: DeclaredOpaque }
-            } else if starts_with(s: rest, prefix: "=")
-              || starts_with(s: rest, prefix: "|")
-              || starts_with(s: rest, prefix: "{")
-              || starts_with(s: rest, prefix: "<") {
-              Present { value: DeclaredWithBody }
+            OpaqueScanDecided { standing: DeclaredOpaque }
+          }
+        OpaqueScanSeeking =>
+          if !starts_with(s: line, prefix: header) {
+            OpaqueScanSeeking
+          } else {
+            let raw = after_prefix(line: line, prefix: header)
+            if !edge_is_boundary(edge: first_char(s: raw)) {
+              OpaqueScanSeeking
             } else {
-              if string_contains(s: rest, pattern: "=") || string_contains(s: rest, pattern: "|") {
-                Present { value: DeclaredWithBody }
+              let rest = trim_spaces(s: raw)
+              if rest == "" {
+                OpaqueScanAwaitingBody
               } else {
-                Present { value: DeclaredOpaque }
+                OpaqueScanDecided { standing: declaration_body_standing_same_line(rest: rest) }
               }
             }
           }
       }
   )
+  match scan {
+    OpaqueScanDecided { standing: s } => Present { value: s }
+    OpaqueScanAwaitingBody => Present { value: DeclaredOpaque }
+    OpaqueScanSeeking => none
+  }
 }
 
 fn declaration_body_standing(source_module: String, name: String, roots: List<String>) -> DeclarationBodyStanding {

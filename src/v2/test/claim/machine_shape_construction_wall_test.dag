@@ -1,4 +1,4 @@
-module test.claim.machine_shape_construction_wall
+module v2.test.claim.machine_shape_construction_wall
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.machine_shape { machine_shape_compile_gate }
@@ -20,7 +20,9 @@ import v2.std.witness { Witness }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data machine_shape_wall_witness_note: String = "RED/GREEN controls for MachineShape single-constructor compile gate (synthetic fixtures). A Transform call with callee Atom ^MachineShape is unsanctioned outside std.machine_shape and extdeps.*.machine_shape; ^shape_from_catalog is the sanctioned producer path."
+// RED/GREEN controls for MachineShape single-constructor compile gate (synthetic fixtures). A
+// Transform call with callee Atom ^MachineShape is unsanctioned outside std.machine_shape and
+// extdeps.*.machine_shape; ^shape_from_catalog is the sanctioned producer path.
 
 fn ms_atom(id: Symbol) -> Node {
   Node {
@@ -85,4 +87,3 @@ test fn gate_red_synthetic_machine_shape_call() -> Bool {
 test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
   gate_accepts(o: machine_shape_compile_gate(node: shape_from_catalog_call_fixture()))
 }
-

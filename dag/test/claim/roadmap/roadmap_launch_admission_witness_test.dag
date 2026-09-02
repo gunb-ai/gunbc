@@ -71,7 +71,19 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data roadmap_launch_admission_witness_note: String = "RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md section 3, RLM-1 falsifiers), each enrolled as a permanent regression control over the RLM-0 synthetic canary graph and the fixture host: (a) the blocked child is refused DependenciesBlocked and the tick fold over it produces no actuation outcome at all -- SpawnNotAdmitted is the only arm a refusal can reach, and Spawned / SpawnFailed are what actuation returns, so their absence IS the effect-ordering receipt; POST /dispatch shares the same LaunchAdmitted guard (gunbc.roadmap_belt_actuate belt_dispatch_node_for_instance); (b) a Timer in ManualReady over a Ready node is CauseNotPermitted and the fold starts nothing; (c) the mutation control: the blocked child's ledger with its dependency verdict replaced by GatePassed ADMITS, so the dependency gate is the load-bearing one; (d) revision drift refuses the page action and the backend outcome with one label and one reason; (e) a second Operator admission beside a running session is AlreadyLive. Every refusal here is a value the pure decision produced from fabricated facts; no witness reaches a host."
+// RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md section 3, RLM-1 falsifiers), each
+// enrolled as a permanent regression control over the RLM-0 synthetic canary graph and the fixture
+// host: (a) the blocked child is refused DependenciesBlocked and the tick fold over it produces no
+// actuation outcome at all -- SpawnNotAdmitted is the only arm a refusal can reach, and Spawned /
+// SpawnFailed are what actuation returns, so their absence IS the effect-ordering receipt; POST
+// /dispatch shares the same LaunchAdmitted guard (gunbc.roadmap_belt_actuate
+// belt_dispatch_node_for_instance); (b) a Timer in ManualReady over a Ready node is
+// CauseNotPermitted and the fold starts nothing; (c) the mutation control: the blocked child's
+// ledger with its dependency verdict replaced by GatePassed ADMITS, so the dependency gate is the
+// load-bearing one; (d) revision drift refuses the page action and the backend outcome with one
+// label and one reason; (e) a second Operator admission beside a running session is AlreadyLive.
+// Every refusal here is a value the pure decision produced from fabricated facts; no witness
+// reaches a host.
 
 fn graph() -> LaunchGraphStanding {
   launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]))
@@ -471,7 +483,18 @@ test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
     && count(launch_gate_names()) == 9
 }
 
-data review_5059520727_controls_note: String = "Controls for the four production-boundary findings of review 5059520727 on #9696, each enrolled RED FIRST against the head the review named. (1) three Ready rows against one slot: the timer's fold reaches the admission for ALL of them -- AutomaticReady admits the first and answers LaunchNoCapacity for the rest, ManualReady answers LaunchCauseNotPermitted for all three; the reconcile no longer truncates. (2) the real timer decision (belt_tick_launch_pass) over STAGED host standings built by the production observer's own producers: a transition halt, a revision drift and an unobservable session set each refuse every desired node through the shared vocabulary, with the page and the route naming the same label and reason; a halted standing has no later fields, so the effect order is structural. (3) a present-but-unobserved session occupies its slot; a proven-exited or process-absent one frees it. (4) page, POST and timer bind one identity (node, mode, instance, revision), differing only in cause; the route's JSON and the durable tick receipt carry it whole and the receipt round-trips."
+// Controls for the four production-boundary findings of review 5059520727 on #9696, each enrolled
+// RED FIRST against the head the review named. (1) three Ready rows against one slot: the timer's
+// fold reaches the admission for ALL of them -- AutomaticReady admits the first and answers
+// LaunchNoCapacity for the rest, ManualReady answers LaunchCauseNotPermitted for all three; the
+// reconcile no longer truncates. (2) the real timer decision (belt_tick_launch_pass) over STAGED
+// host standings built by the production observer's own producers: a transition halt, a revision
+// drift and an unobservable session set each refuse every desired node through the shared
+// vocabulary, with the page and the route naming the same label and reason; a halted standing has
+// no later fields, so the effect order is structural. (3) a present-but-unobserved session occupies
+// its slot; a proven-exited or process-absent one frees it. (4) page, POST and timer bind one
+// identity (node, mode, instance, revision), differing only in cause; the route's JSON and the
+// durable tick receipt carry it whole and the receipt round-trips.
 
 fn rlm_ready_node(id: String) -> RoadmapNode {
   canary_node(
@@ -734,6 +757,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
   let id = launch_fixture_identity(node_id: parent_id(), cause: Timer, mode: AutomaticReady)
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-30T00:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
     launches: [id],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
@@ -749,7 +773,11 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
   }
 }
 
-data pre_session_stage_note: String = "Review 5059681676 finding 2: the decision is staged so session observation sits behind the node, contract and dependency gates. A PENDING session set answers every model-only refusal WITHOUT sessions (LaunchStageDecided), answers LaunchStageNeedsSessions only for a node that passed every pre-session gate, and a pending standing that reaches the full decision refuses fail-closed at the live gate rather than reading pending as empty."
+// Review 5059681676 finding 2: the decision is staged so session observation sits behind the node,
+// contract and dependency gates. A PENDING session set answers every model-only refusal WITHOUT
+// sessions (LaunchStageDecided), answers LaunchStageNeedsSessions only for a node that passed every
+// pre-session gate, and a pending standing that reaches the full decision refuses fail-closed at
+// the live gate rather than reading pending as empty.
 
 fn staged(standing: LaunchHostStanding, g: LaunchGraphStanding, node_id: String) -> LaunchStagedAdmission {
   launch_admission_staged(cause: Operator, standing: standing, graph: g, merged: [], node_id: node_id, reserved: 0)
@@ -793,7 +821,10 @@ test fn witness_pending_sessions_reaching_full_decision_refuses_live_gate() -> B
   refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: parent_id()), label: "gate_not_evaluated")
 }
 
-data stage_boundary_mutation_note: String = "Review 5060354380 mutation control: the session-observation boundary in the frozen contract is a projection of the typed LaunchGateRow.stage marks over the canonical row roster, so reclassifying one row across the boundary, or reordering the roster, changes the serialized contract (and therefore the digest). A literal could not fail this."
+// Review 5060354380 mutation control: the session-observation boundary in the frozen contract is a
+// projection of the typed LaunchGateRow.stage marks over the canonical row roster, so reclassifying
+// one row across the boundary, or reordering the roster, changes the serialized contract (and
+// therefore the digest). A literal could not fail this.
 
 fn flip_stage(row: LaunchGateRow) -> LaunchGateRow {
   LaunchGateRow {

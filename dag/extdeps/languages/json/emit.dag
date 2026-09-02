@@ -60,7 +60,6 @@ fn json_object(members: List<JsonKeyValue>) -> JsonValue {
   JsonObject { members: members }
 }
 
-
 fn json_unicode_escape_hex4(cp: Int) -> String {
   let h = int_to_upper_hex(n: cp)
   let len = h.length()
@@ -112,7 +111,12 @@ fn serialize_json_object_members(members: List<JsonKeyValue>) -> String {
   })
 }
 
-data json_object_prefix_note: String = "serialize_json_object_prefix is the canonical serialization of an object's OPENING plus its leading members, with no closing brace — the exact byte prefix every document beginning with those members must carry. It exists so a consumer can identify a document by its leading members POSITIONALLY (starts_with) instead of scanning the serialized text for a fragment: a nested value can carry any fragment a scan looks for, but no nested value can occupy the document's prefix. serialize_json_object is defined as this prefix plus the closing brace, so the two cannot drift."
+// serialize_json_object_prefix is the canonical serialization of an object's OPENING plus its
+// leading members, no closing brace — the exact byte prefix every document beginning with those
+// members must carry. A consumer can thus identify a document by its leading members POSITIONALLY
+// (starts_with) instead of scanning for a fragment: a nested value can carry any fragment a scan
+// looks for, but none can occupy the document's prefix. serialize_json_object is defined as this
+// prefix plus the closing brace, so the two cannot drift.
 
 fn serialize_json_object_prefix(members: List<JsonKeyValue>) -> String {
   concat("{", serialize_json_object_members(members: members))

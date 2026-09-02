@@ -4,7 +4,17 @@ import std.keyed_roster { KeyedRosterBuild }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, frontier_units, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-data non_fold_residue_authority_note: String = "Single authority for the non-fold-residue roster (DESIGN §6 census; group-of-units re-home per gunbc.roster_registry, operator ruling 2026-07-22 — formerly the NON_FOLD_RESIDUE_ROSTER const in src/v1/stage0/src/cli_run.rs). Each row asserts a corpus site (a path::fn key) whose match over a closed-coproduct param carries a top-level wildcard arm, with its reason and dissolution trigger as typed fields — shared class strings below, per-row receipts where a dated landing receipt existed in the Rust const's comments. The census SCAN stays host-side (nfr_residue_sites in cli_run.rs) and reads these rows through non_fold_residue_units_from_module_source, so rows must stay DIRECT record literals (a helper-fn call would blind the host reader); the scan and reader fold together into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364). Detection-only: never auto-delete rows — greening a site deletes its row by hand with the receipt on the PR."
+// Single authority for the non-fold-residue roster (DESIGN §6 census; group-of-units re-home per
+// gunbc.roster_registry, operator ruling 2026-07-22 — formerly the NON_FOLD_RESIDUE_ROSTER const in
+// src/v1/stage0/src/cli_run.rs). Each row asserts a corpus site (a path::fn key) whose match over a
+// closed-coproduct param carries a top-level wildcard arm, with its reason and dissolution trigger
+// as typed fields — shared class strings below, per-row receipts where a dated landing receipt
+// existed in the Rust const's comments. The census SCAN stays host-side (nfr_residue_sites in
+// cli_run.rs) and reads these rows through non_fold_residue_units_from_module_source, so rows must
+// stay DIRECT record literals (a helper-fn call would blind the host reader); the scan and reader
+// fold together into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364).
+// Detection-only: never auto-delete rows — greening a site deletes its row by hand with the receipt
+// on the PR.
 
 data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-removal receipt (carried over from the Rust const): create_double_init_collapsible and create_effect_is_dedupable were rostered AND declared kernel-permanent in cla_is_kernel_permanent_fn, so the analyzer never reports them as live sites and the rows could only ever count as stale. DESIGN §6 makes the classes mutually exclusive — a non-fold residue is either a named irreducible kernel or un-migrated modeling, there is no third — so a declared kernel must not also carry a burn-down row; the kernel declaration is the authority. Attribution (checked, not assumed): main was already red on non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale before #6848 merged — the scheduled cold falsifier failed exactly those witnesses at 2026-07-20T14:12Z on main at 73eea76dd7 (#6914); per-PR ci stayed green because affected-set selection did not run the corpus-read nfr witnesses for those diffs (the masking class the dated reason strings below describe)."
 
@@ -102,9 +112,7 @@ data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependen
 
 data nfr_dissolve_pool_independence_projection: DissolutionCondition = unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
 
-data nfr_reason_floor_component_receipt_validation: String = "receipt alert validation predicate (match on ComponentOutcomeRead with nested match on FloorComponentFailureMode; the NOT-CONCLUDED arm whitelists only ModeRunIncomplete and ModeUnrecorded, returning false for every other mode via an off-variant wildcard) landed with the floor progress/terminal receipt split (#8239); declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_floor_component_receipt_validation: DissolutionCondition = unbound_dissolution(description: "the writer-side pair projection becomes derived from inhabitance (total match over the NOT-CONCLUDED × failure-mode combinations the receipt can actually carry) and the wildcard arm deletes with its row")
 
 data nfr_reason_collision_population_predicate: String = "subset predicate over CollisionPopulation (PoolMeasured answers true; the off-variant wildcard answers false for WholeTreeUpperBound, the coproduct's only other arm) — the same shape as the resolve-realization predicate rows; landed with the emit-summary-map consumer partition (#8850, 2026-08-22) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
@@ -956,11 +964,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/fleet/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
     reason: nfr_reason_mint_era,
     dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/floor/floor_component_receipt_document.dag::component_outcome_agrees_with_failure_mode" },
-    reason: nfr_reason_floor_component_receipt_validation,
-    dissolution: nfr_dissolve_floor_component_receipt_validation,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },

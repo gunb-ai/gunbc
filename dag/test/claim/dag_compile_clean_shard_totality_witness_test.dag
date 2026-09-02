@@ -6,22 +6,22 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // THIS FILE IS NOW SINGLE-GRAIN: ONE TEST FN, AND IT GENUINELY READS THE TREE.
 //
 // Its closure reaches tools.dag_compile_clean_shard_totality_transport run_live_dag_entry_glob and
-// through it git.Inspect.Toplevel, so ReadsLiveTree is this file's own property rather than a value
-// forced on it by a neighbour. A SubstrateInputsOnly row is predict-skip-eligible and a wrongly
-// skipped live-tree row is a selection fail-open, so the stamp stays.
+// through it git.Inspect.Toplevel, so ReadsLiveTree is this file's own property, not forced by a
+// neighbour. A SubstrateInputsOnly row is predict-skip-eligible and a wrongly skipped live-tree row
+// is a selection fail-open, so the stamp stays.
 //
-// WHAT CHANGED, AND WHY THE PREVIOUS NOTE HERE WAS WRONG ON ITS FACTS. The 2026-07-29 correction
-// note this replaces reached the right verdict by the wrong route: it said the file's closure
-// reaches "the live-read carrier home tools.dag_compile_clean_shard_roster". That module contains
-// no live read at all -- measured by call-reachability, it has zero shell effects, as does
-// tools.dag_compile_clean_partition. The live read was always in the totality transport named above.
-// The note's two-grain diagnosis was correct and its carrier attribution was not, and because it sat
-// beside the code asserting a mechanism, two readers took it as evidence and neither reached for the
-// call graph. A prose row naming the wrong carrier is more expensive than no note.
+// WHY THE PREVIOUS NOTE HERE WAS WRONG ON ITS FACTS. The 2026-07-29 correction note it replaces
+// reached the right verdict by the wrong route: it said the closure reaches "the live-read carrier
+// home tools.dag_compile_clean_shard_roster". Measured by call-reachability that module has zero
+// shell effects, as does tools.dag_compile_clean_partition; the live read was always in the
+// totality transport named above. The two-grain diagnosis was correct, the carrier attribution
+// was not, and because it sat beside the code asserting a mechanism, two readers took it as
+// evidence and neither reached for the call graph. A prose row naming the wrong carrier costs more
+// than no note.
 //
 // The nine assertions that shared this file and needed no live tree now live in
 // test.claim.dag_compile_clean_shard_hermetic_witness under SubstrateInputsOnly. They were
-// discovered, counted and never executed for as long as they were stamped by their neighbour.
+// discovered, counted and never executed while stamped by their neighbour.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // NOT A PER-PR ROW: falsifier-rehomed (gunbc.ci_layer_roots falsifier frontier). The rehoming

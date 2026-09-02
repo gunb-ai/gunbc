@@ -40,11 +40,9 @@ import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark.serving_membership { SparkServingMember, SparkServingMemberAt }
 import gunbc.spark.serving_converge_plan {
+  spark_serving_axis_for_observation,
   fleet_converge_spark_serving_action_at,
-  spark_serving_fleet_converge_plan_artifact,
   spark_serving_linger_membership_plan,
-  SparkServingPlanArtifactReady,
-  SparkServingPlanArtifactRefused,
 }
 import gunbc.spark.serving_observed_members {
   spark_serving_observed_members,
@@ -57,12 +55,17 @@ import gunbc.spark.serving_terminal_health {
   spark_serving_residency_wire,
 }
 import gunbc.spark.serving_observe {
+  spark_serving_linger_probe_words,
   spark_serving_observe_terminal_health,
   spark_serving_observe_residency,
   spark_serving_observe_host_via_locus,
-  spark_serving_observe_user_unit_pair,
-  spark_serving_observe_runtime_materialization,
-  spark_serving_observe_model_store,
+  spark_serving_observed_facts_via_locus,
+  SparkServingPlanObservation,
+  SparkServingPostApplyObservation,
+  SparkServingObservationPhase,
+  SparkServingObservationProvenance,
+  SparkServingObservedFactsReady,
+  SparkServingObservedFactsRefused,
   spark_serving_observed_members_for_unit,
 }
 import gunbc.remote_operation {
@@ -97,21 +100,15 @@ import gunbc.membership_reconcile {
   MemberRosterDuplicateKeyRefused,
 }
 
-data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.spark.dgx_procurement OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host was observed."
+// Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint
+// from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.spark.dgx_procurement
+// OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply
+// argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host
+// was observed.
 
 data spark_serving_converge_slice_wet_receipt_path: String = "target/spark-serving-converge-slice-wet-receipt.txt"
 
 data spark_serving_converge_slice_wet_hosts: List<HostIdentity> = [operator_host_srv5, operator_host_srv6]
-
-fn spark_serving_linger_probe_words() -> List<String> {
-  [
-    "loginctl",
-    "show-user",
-    spark_serving_automation_principal_login() as String,
-    "-p",
-    "Linger",
-  ]
-}
 
 fn spark_serving_linger_enabled_from_stdout(stdout: String) -> Bool? {
   let line = trim(s: stdout)
@@ -315,39 +312,80 @@ type SparkServingReplanRows
   = SparkServingReplanRowsReady { rows: List<FleetConvergeSparkServingTypedAction> }
   | SparkServingReplanRowsRefused { cause: String }
 
+// THE REPLAN READS LINGER FROM ITS OWN TRANSACTION AND ACCEPTS NO OBSERVED STATE BESIDE IT.
+//
+// This took linger_enabled: Bool, acquired a transaction, and then IGNORED that transaction's linger
+// capture in favour of the Bool -- so the post-apply verdict planned against a loginctl reading
+// taken before the transaction, spliced into facts taken during it. Exactly the splice the carrier
+// exists to eliminate, surviving in the one path that had a Bool in its signature.
+//
+// Deleting the parameter is what makes it unwritable rather than merely wrong: there is no longer
+// anywhere to put an independently observed value. The phase is a parameter because the SAME
+// function serves the plan-time and post-apply readings, and those must be different observations.
+// THE REPLAN ASKS THE AXIS, NOT AN ARTIFACT.
+//
+// This used to assemble a whole FleetConvergePlanArtifact -- timers, caps, slots, fabric cells, a
+// generation, a baseline digest -- in order to ask one question: does Spark still owe rows? Every
+// one of those was supplied empty or unobserved, so the artifact was a wrapper around the only field
+// read back out of it.
+//
+// Worse, it reached the artifact through the BARE-PROJECTION route, rebuilding a projection from
+// five loose facts and pairing it with a provenance it also carried separately. That jumped around
+// the privilege boundary rather than crossing it: an artifact minted over a projection that could
+// have been hermetic or independently assembled. The observation now travels whole and goes through
+// spark_serving_axis_for_observation, which is the only route that binds a plan, so the post-apply
+// question is asked of a bound axis or it is not asked at all.
+//
+// The local linger guard is GONE, and its deletion is a section 2 consolidation rather than a lost
+// wall. The row producer already refuses an unobserved linger, with its own located cause, for the
+// same reason -- planning against a probe that never answered selects the privileged enable-linger
+// effect off nothing. Two arms answering one question is the fork; the producer owns it, and the
+// axis route surfaces its refusal here unchanged.
 fn spark_serving_replan_rows(
   context: FleetSshExecutionContext,
   host: HostIdentity,
-  linger_enabled: Bool,
+  phase: SparkServingObservationPhase,
 ) -> SparkServingReplanRows {
-  match spark_serving_fleet_converge_plan_artifact(
-    host: host as NonEmptyStr,
-    prior_generation: 0,
-    observed_timers: [],
-    observed_caps: [],
-    projection: spark_serving_observed_members_for_unit(
-      host: host,
-      runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
-      store: spark_serving_observe_model_store(context: context, host: host),
-      observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
-      linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
-    ),
-  ) {
-    SparkServingPlanArtifactRefused { cause: why } =>
-      SparkServingReplanRowsRefused { cause: why }
-    SparkServingPlanArtifactReady { artifact: replanned } =>
-      SparkServingReplanRowsReady {
-        rows: scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions),
-      }
+  match spark_serving_observed_facts_via_locus(context: context, host: host, phase: phase) {
+    SparkServingObservedFactsRefused { cause: why } =>
+      SparkServingReplanRowsRefused { cause: why as String }
+    SparkServingObservedFactsReady { observation: observation } =>
+      spark_serving_replan_rows_for(observation: observation)
   }
 }
 
+// One observation in, rows out. There is no host parameter for the observation to disagree with, and
+// no projection parameter at all.
+fn spark_serving_replan_rows_for(
+  observation: SparkServingHostObservation,
+) -> SparkServingReplanRows {
+  match spark_serving_axis_for_observation(observation: observation) {
+    SparkServingAxisRefused { host: _, cause: why } =>
+      SparkServingReplanRowsRefused { cause: why }
+    SparkServingAxisNotApplicable { host: h } =>
+      SparkServingReplanRowsRefused {
+        cause: join(["replan-refused non-spark-host host=", h as String], ""),
+      }
+    SparkServingAxisUnobserved { host: h } =>
+      SparkServingReplanRowsRefused {
+        cause: join(["replan-refused unobserved host=", h as String], ""),
+      }
+    SparkServingAxisPlanned { plan: bound } =>
+      SparkServingReplanRowsReady { rows: scheduled_rows_list(scheduled: bound.rows) }
+  }
+}
+
+// THE POST-APPLY READING IS ITS OWN TRANSACTION UNDER ITS OWN PHASE.
+//
+// Plan-time and post-apply are two observations of one host inside one SSH attempt, and they are
+// EXPECTED to differ -- that difference is the whole content of a post-apply verdict. Sharing the
+// plan-time transaction would compare the host to itself; sharing the plan-time phase identity would
+// make the two indistinguishable in any receipt that recorded them.
 fn spark_serving_applied_replan_verdict(
   context: FleetSshExecutionContext,
   host: HostIdentity,
-  linger_enabled: Bool,
 ) -> String {
-  match spark_serving_replan_rows(context: context, host: host, linger_enabled: linger_enabled) {
+  match spark_serving_replan_rows(context: context, host: host, phase: SparkServingPostApplyObservation) {
     SparkServingReplanRowsRefused { cause: why } =>
       join(["wet-applied-replan-refused ", why], "")
     SparkServingReplanRowsReady { rows: rows } =>
@@ -463,11 +501,7 @@ fn spark_serving_converge_slice_exec_verdict(
                         join(["wet-applied-readback-refused stdout=", trim(s: post.stdout)], "")
                       Present { value: enabled } =>
                         if enabled {
-                          spark_serving_applied_replan_verdict(
-                            context: context,
-                            host: host,
-                            linger_enabled: enabled,
-                          )
+                          spark_serving_applied_replan_verdict(context: context, host: host)
                         } else {
                           "wet-applied-readback-mismatch lingering-still-no"
                         }
@@ -486,8 +520,8 @@ fn spark_serving_converge_slice_wet_host_report(
 ) -> SparkServingSliceHostReport {
   let endpoint = fleet_probe_endpoint_for(host: host as String)
   let transport = fleet_locus_transport(context: context, host: host)
-  match spark_serving_probe_linger(transport: transport) {
-    TypedArgvExecRefused { reason: probe_refusal } =>
+  match spark_serving_observed_facts_via_locus(context: context, host: host, phase: SparkServingPlanObservation) {
+    SparkServingObservedFactsRefused { cause: why } =>
       spark_serving_converge_slice_host_line(
         host: host,
         endpoint: endpoint,
@@ -495,49 +529,48 @@ fn spark_serving_converge_slice_wet_host_report(
         typed_row_count: 0,
         apply_effect_count: 0,
         apply_command_count: 0,
-        verdict: join(["observation-refused ", probe_refusal], ""),
+        verdict: join(["observation-refused ", why as String], ""),
       )
-    TypedArgvExecConverged { result: probe } =>
-      if probe.success == false {
-        spark_serving_converge_slice_host_line(
-          host: host,
-          endpoint: endpoint,
-          observed_linger: LingerUnobserved,
-          typed_row_count: 0,
-          apply_effect_count: 0,
-          apply_command_count: 0,
-          verdict: join([
-            "observation-refused exit=", to_string(probe.exit_code),
-            " stderr=", probe.stderr,
-          ], ""),
-        )
-      } else {
-        match spark_serving_linger_enabled_from_stdout(stdout: probe.stdout) {
-          Absent =>
-            spark_serving_converge_slice_host_line(
-              host: host,
-              endpoint: endpoint,
-              observed_linger: LingerUnobserved,
-              typed_row_count: 0,
-              apply_effect_count: 0,
-              apply_command_count: 0,
-              verdict: join(["observation-refused stdout=", trim(s: probe.stdout)], ""),
-            )
-          Present { value: linger_enabled } =>
-            match spark_serving_fleet_converge_plan_artifact(
+    SparkServingObservedFactsReady { observation: observation } =>
+      spark_serving_slice_report_for(
+        context: context,
+        host: host,
+        endpoint: endpoint,
+        execute_apply: execute_apply,
+        transport: transport,
+        observation: observation,
+      )
+  }
+}
+
+// LINGER IS READ FROM THE TRANSACTION'S CAPTURE, NOT PROBED AGAIN HERE.
+//
+// This body used to open the report with its own loginctl leg and then acquire a transaction that
+// captured ProbeLinger as well: two readings, two instants, and a report whose printed
+// observed_linger could disagree with the linger the projection planned against. Same class as the
+// is_active double read, arriving from the caller's side while the carrier was being built.
+fn spark_serving_slice_report_for(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  endpoint: String,
+  execute_apply: Bool,
+  transport: HostEffectTransport,
+  observation: SparkServingHostObservation,
+) -> SparkServingSliceHostReport {
+  let linger_enabled = spark_serving_projection_linger_enabled(
+    projection: observation.projection,
+  )
+  match fleet_converge_plan_artifact(
               host: host as NonEmptyStr,
               prior_generation: 0,
               observed_timers: [],
               observed_caps: [],
-              projection: spark_serving_observed_members_for_unit(
-                host: host,
-                runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
-                store: spark_serving_observe_model_store(context: context, host: host),
-                observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
-                linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
-              ),
+              spark_axis: spark_serving_axis_for_observation(observation: observation),
+              observed_slots: [],
+              observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
+              observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
             ) {
-              SparkServingPlanArtifactRefused { cause: why } =>
+              FleetConvergePlanArtifactRefused { refusal: r } =>
                 spark_serving_converge_slice_host_line(
                   host: host,
                   endpoint: endpoint,
@@ -545,9 +578,9 @@ fn spark_serving_converge_slice_wet_host_report(
                   typed_row_count: 0,
                   apply_effect_count: 0,
                   apply_command_count: 0,
-                  verdict: why,
+                  verdict: fleet_converge_plan_artifact_refusal_text(r: r),
                 )
-              SparkServingPlanArtifactReady { artifact: artifact } =>
+              FleetConvergePlanArtifactReady { artifact: artifact } =>
                 match fleet_converge_plan_artifact_hash(artifact: artifact) {
                   Absent =>
                     spark_serving_converge_slice_host_line(
@@ -604,10 +637,7 @@ fn spark_serving_converge_slice_wet_host_report(
                     }
                 }
             }
-        }
-      }
-  }
-}
+            }
 
 func spark_serving_converge_slice_wet() -> ProcessExit
   uses net: Network

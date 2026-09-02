@@ -29,8 +29,8 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_literal_elaboration::LiteralElaboration;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_occurrence_identity::OccurrenceId;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
     InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
@@ -44,6 +44,7 @@ pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
     OccurrenceTransportRefusal,
 };
+pub use crate::std_operator_realization::OperandDeclaration;
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -301,6 +302,10 @@ pub enum ExprData {
     ExprLiteral {
         value: Rc<LiteralValue>,
     },
+    ExprElaboratedLiteral {
+        value: Rc<LiteralValue>,
+        elaboration: Rc<LiteralElaboration>,
+    },
     ExprError {
         kind: ExprErrorKind,
         message: String,
@@ -328,6 +333,7 @@ pub enum ExprData {
     ExprBinOp {
         op: BinOp,
         algebra_field: Option<AlgebraFieldKind>,
+        operand: Option<Rc<OperandDeclaration>>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,
@@ -429,6 +435,10 @@ pub enum CompilerDiagnostic {
         span: Rc<SourceSpan>,
     },
     UnresolvedType {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
+    UnitVariantPhantomIdentityEvidenceUnavailable {
         name: String,
         span: Rc<SourceSpan>,
     },
@@ -650,6 +660,16 @@ pub enum CompilerDiagnostic {
         argument: String,
         span: Rc<SourceSpan>,
     },
+    EqualityOnFunctionMember {
+        type_name: String,
+        member: String,
+        span: Rc<SourceSpan>,
+    },
+    EqualityMemberUnjudgeable {
+        type_name: String,
+        member: String,
+        span: Rc<SourceSpan>,
+    },
     TypeArgumentArityMismatch {
         type_name: String,
         supplied: i64,
@@ -692,15 +712,6 @@ pub struct ErrorDAG {
     pub errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn occurrence_transport_refusal_span_absence_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn occurrence_transport_refusal_diagnostic_span(
     refusal: Rc<OccurrenceTransportRefusal>,
 ) -> Option<Rc<SourceSpan>> {
@@ -725,7 +736,9 @@ pub fn occurrence_transport_refusal_diagnostic_span(
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
-        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
+        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => {
+            std::option::Option::None
+        }
     }
 }
 
@@ -748,6 +761,9 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
+        CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
+            s.clone()
+        }
         CompilerDiagnostic::TypeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
@@ -793,12 +809,14 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalDeficit { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EqualityOnFunctionMember { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EqualityMemberUnjudgeable { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
             Some(span) => span.clone(),
-            None => no_span(),
+            std::option::Option::None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
@@ -812,6 +830,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
     CompilerDiagnostic::VariantNotFound { variant: v, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
@@ -855,6 +874,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
     CompilerDiagnostic::CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': missing required argument '".to_string()), p.clone()), "' (".to_string()), (s.clone()).to_string()), " of ".to_string()), (r.clone()).to_string()), " required argument(s) supplied)".to_string()),
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
+    CompilerDiagnostic::EqualityOnFunctionMember { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': member '".to_string()), m.clone()), "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='".to_string()),
+    CompilerDiagnostic::EqualityMemberUnjudgeable { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality admission for '".to_string(), t.clone()), "' cannot be judged: ".to_string()), m.clone()), " — '==' is refused rather than admitted on an unjudged member".to_string()),
     CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
@@ -875,7 +896,7 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
 pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. FOURTH LANE, FOURTH EXPANSION (duplicate-declaration wall, 2026-08-27). DuplicateDeclaration is a NINTH variant, added so that v1.compiler.resolve check_duplicate_declarations can refuse a module declaring one name twice -- a state the compiler previously ACCEPTED with zero diagnostics while the symbol index silently kept the last declaration. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 890 was that lane's base, this lane's base is 895. THIS LANE CHANGES THE RECEIPT'S NAMED COMMANDS, AND THE REASON IS THIS ROW'S OWN ARGUMENT TURNED ON ITSELF (codex review 56644). Every prior lane wrote `origin/main` as the comparison base. A DIFF HAS TWO SIDES AND ONLY ONE OF THEM IS THIS BRANCH: origin/main moves under other people's merges, so a receipt keyed to the MOVING ref reports a figure that changes without anyone touching the change it certifies. Measured here rather than argued: this lane's diff was 2 added / 0 removed when authored, and hours later the same `git diff --numstat origin/main` command answered 6 added / 64 removed -- the 64 removals being main's work, not this branch's, and the figure now describing a diff nobody authored. That is exactly the rot this row exists to make visible, arriving through the ref rather than through the number, which is why it survived three lanes: each author re-measured honestly and the command was already wrong. THE REPAIR IS A STABLE BASE: every figure below is measured against `$(git merge-base origin/main HEAD)`, which is this branch's own fork point and does not move, and the base commit is NAMED so the reading is reproducible after a later merge -- ddb7f533e4. RE-MEASURED ON THIS HEAD against that base: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 895 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 895, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 2 lines are this variant's two arms, one per total match, each short enough that rustfmt renders it on one line -- which is why the per-arm line count differs from the prior lane's and is measured rather than inherited. THE EARLIER LANES' FIGURES ARE NOT RE-BASED OR AMENDED: they were correct against the main they named at the time, and rewriting them would destroy the evidence that a receipt keyed to a moving ref decays, which is the whole finding here. What changes is the command the NEXT lane runs. THE NEW VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- a duplicate declaration must stop the line, since every realization downstream of it is built on whichever definition happened to survive. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one. FOURTH LANE, FOURTH EXPANSION (codex review 56887). ModuleFilenameCollision is a NINTH variant, added by the module-filename-collision lane so that two modules whose names differ only by a dot-versus-underscore refuse at emit instead of overwriting one emitted file silently. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives: 890 was that lane's base, this lane's base is 896, and editing an earlier number in place would destroy the evidence that a figure moves per lane. RE-MEASURED ON THIS HEAD against origin/main 9538523a3c, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896 at origin/main and 896 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match; both render on a single line, which is why this lane's line count is 2 where the third lane's four arms cost 8 -- the difference is rustfmt's wrapping of longer variant names, not added capability. THE VARIANT IS BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and ModuleFilenameCollision is not listed as an exception, which is correct -- a collision silently overwrites an emitted file, and an advisory would be the fail-open the diagnostic exists to close. DISSOLUTION: this lane mints NO separate trigger and inherits the one this row already carries -- the arms are the mechanical consequence of the .dag coproduct gaining a member, they cannot live anywhere but the seed's projection of it, and they disappear exactly when the seed does, at the ROADMAP row v1-zero-hand-maintained-rust. FIFTH LANE, FIFTH EXPANSION (type-argument-arity wall, 2026-08-27). TypeArgumentArityMismatch is a TENTH variant, added so that v1.compiler.infer refuses a generic application whose supplied type-argument count disagrees with the declaration's parameter count -- a state alias_chain_type_arg_subst previously absorbed in BOTH directions with no diagnostic anywhere, so a correct application and an arity-wrong one compiled identically at the floor band. It forces one arm in each of the same two total matches. THE PRIOR LANES' FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives. RE-MEASURED ON THIS HEAD against the STABLE base `$(git merge-base origin/main HEAD)`, which the fourth lane's repair installed and which is 42eed29357 here: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 896 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match, each rendered on one line. THE VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- an application bound at the wrong arity leaves a declared type parameter standing for nothing, and every judgment downstream of it is made against a hole. The advisory-allowlist obligation this row records therefore does not fire. DISSOLUTION: inherited, not minted, exactly as the fourth lane's.".to_string()
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. FOURTH LANE, FOURTH EXPANSION (duplicate-declaration wall, 2026-08-27). DuplicateDeclaration is a NINTH variant, added so that v1.compiler.resolve check_duplicate_declarations can refuse a module declaring one name twice -- a state the compiler previously ACCEPTED with zero diagnostics while the symbol index silently kept the last declaration. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 890 was that lane's base, this lane's base is 895. THIS LANE CHANGES THE RECEIPT'S NAMED COMMANDS, AND THE REASON IS THIS ROW'S OWN ARGUMENT TURNED ON ITSELF (codex review 56644). Every prior lane wrote `origin/main` as the comparison base. A DIFF HAS TWO SIDES AND ONLY ONE OF THEM IS THIS BRANCH: origin/main moves under other people's merges, so a receipt keyed to the MOVING ref reports a figure that changes without anyone touching the change it certifies. Measured here rather than argued: this lane's diff was 2 added / 0 removed when authored, and hours later the same `git diff --numstat origin/main` command answered 6 added / 64 removed -- the 64 removals being main's work, not this branch's, and the figure now describing a diff nobody authored. That is exactly the rot this row exists to make visible, arriving through the ref rather than through the number, which is why it survived three lanes: each author re-measured honestly and the command was already wrong. THE REPAIR IS A STABLE BASE: every figure below is measured against `$(git merge-base origin/main HEAD)`, which is this branch's own fork point and does not move, and the base commit is NAMED so the reading is reproducible after a later merge -- ddb7f533e4. RE-MEASURED ON THIS HEAD against that base: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 895 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 895, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 2 lines are this variant's two arms, one per total match, each short enough that rustfmt renders it on one line -- which is why the per-arm line count differs from the prior lane's and is measured rather than inherited. THE EARLIER LANES' FIGURES ARE NOT RE-BASED OR AMENDED: they were correct against the main they named at the time, and rewriting them would destroy the evidence that a receipt keyed to a moving ref decays, which is the whole finding here. What changes is the command the NEXT lane runs. THE NEW VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- a duplicate declaration must stop the line, since every realization downstream of it is built on whichever definition happened to survive. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one. FOURTH LANE, FOURTH EXPANSION (codex review 56887). ModuleFilenameCollision is a NINTH variant, added by the module-filename-collision lane so that two modules whose names differ only by a dot-versus-underscore refuse at emit instead of overwriting one emitted file silently. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives: 890 was that lane's base, this lane's base is 896, and editing an earlier number in place would destroy the evidence that a figure moves per lane. RE-MEASURED ON THIS HEAD against origin/main 9538523a3c, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896 at origin/main and 896 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match; both render on a single line, which is why this lane's line count is 2 where the third lane's four arms cost 8 -- the difference is rustfmt's wrapping of longer variant names, not added capability. THE VARIANT IS BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and ModuleFilenameCollision is not listed as an exception, which is correct -- a collision silently overwrites an emitted file, and an advisory would be the fail-open the diagnostic exists to close. DISSOLUTION: this lane mints NO separate trigger and inherits the one this row already carries -- the arms are the mechanical consequence of the .dag coproduct gaining a member, they cannot live anywhere but the seed's projection of it, and they disappear exactly when the seed does, at the ROADMAP row v1-zero-hand-maintained-rust. FIFTH LANE, FIFTH EXPANSION (type-argument-arity wall, 2026-08-27). TypeArgumentArityMismatch is a TENTH variant, added so that v1.compiler.infer refuses a generic application whose supplied type-argument count disagrees with the declaration's parameter count -- a state alias_chain_type_arg_subst previously absorbed in BOTH directions with no diagnostic anywhere, so a correct application and an arity-wrong one compiled identically at the floor band. It forces one arm in each of the same two total matches. THE PRIOR LANES' FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives. RE-MEASURED ON THIS HEAD against the STABLE base `$(git merge-base origin/main HEAD)`, which the fourth lane's repair installed and which is 42eed29357 here: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 896 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match, each rendered on one line. THE VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- an application bound at the wrong arity leaves a declared type parameter standing for nothing, and every judgment downstream of it is made against a hole. The advisory-allowlist obligation this row records therefore does not fire. DISSOLUTION: inherited, not minted, exactly as the fourth lane's. SIXTH LANE, SIXTH EXPANSION (equality admission wall, XL-0E, 2026-08-30). EqualityOnFunctionMember and EqualityMemberUnjudgeable are an ELEVENTH and TWELFTH variant, added so that '==' and '!=' refuse at acceptance when an operand's complete resolved type transitively carries a function member (or a member the walk cannot judge) -- a state infer_binop_type_node previously answered with bool_type for EVERY left type, so the refusal lived below the floor as rustc E0369 in the emitted crate, in the wrong compiler and the wrong phase. Each forces one arm in each of the same two total matches. THE TOTAL MATCHES HAVE MOVED FILES since the fifth lane wrote its commands: compile_clean_diagnostic_histogram_key and its name extractor now live in src/v1/stage0/src/cli_run/compile_clean.rs, so the fifth lane's cli_run.rs commands measure the wrong file and this lane's commands name the real one -- the same citation-rot this row keeps finding, arriving through a file split this time. RE-MEASURED ON THIS HEAD against the STABLE base `$(git merge-base origin/main HEAD)`, which is c3e5bde5e4 here: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run/compile_clean.rs | grep -cE '^(pub |pub\\(crate\\) )?fn '` is 38 and the same grep over the working file is 38, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run/compile_clean.rs` is 4 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run/compile_clean.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- each rendered on one line. BOTH VARIANTS ARE BLOCKING and carry no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and neither is listed as an exception, which is the intended reading -- an equality with no denotation must stop the line, and EqualityMemberUnjudgeable blocking is precisely the refused-not-admitted arm for a member the walk cannot ground. The advisory-allowlist obligation this row records therefore does not fire. DISSOLUTION: inherited, not minted, exactly as the fourth lane's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -909,15 +930,6 @@ pub fn diagnostic_frontier_occurrence_key(
     }
 }
 
-pub fn diagnostic_frontier_occurrence_key_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
@@ -931,15 +943,6 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         }
         _ => true,
     }
-}
-
-pub fn reference_derived_import_refusal_severity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "owner: v1.compiler.emit_rust (reference_derived_use_line_plan's per-candidate disposition). TWO DIAGNOSTICS, ONE WIRED AND BLOCKING, ONE DECLARED AND PRODUCED BY NOTHING -- and which is which was decided by measurement, not by preference. ReferenceDerivedImportExportUnproven is emitted from CandidateExportProofFailed: the provider is present in the closure and its export could not be established, and the remedy is NOT an import -- the provider is already here -- but making the emitter able to prove an export it may already hold. IT IS ADVISORY, AND IT WAS BLOCKING FOR ONE CI RUN -- THE FLIP WAS APPROVED, EXECUTED, AND REFUTED BY ITS OWN FIRST EXECUTION OVER A SECOND CLOSURE, recorded here rather than repointed because a trigger that survives its own falsification inherits credibility a dead prediction no longer has. THE FLIP CONDITION WAS: an arm flips when its population over a NAMED CLOSURE is zero AND a discriminating RED is authorable. Both halves held and the conclusion was still wrong, which is the finding. The named closure was the regen seed closure (SeedV1 + DagCorpus), where the population is zero. The required build lane ALSO runs a v2-emission phase over a DIFFERENT closure -- entry:src/v2/compiler/00_compile.dag, 169 modules -- and there the population is EIGHTY-SEVEN, measured on run 33111325404 at b331e24cf7d, which refused the phase and reddened the required check. So the zero was a property of THE CLOSURE and not of the arm, and flipping globally on a single-closure measurement is the denominator error this very carrier already names one clause down for the sibling arm (registry-absent is ENTRY-RELATIVE rather than a fixed target). The same reasoning was available for this arm and was not applied to it. THE CORRECTED CONDITION, which is what the flip should have required: the population must be zero over EVERY closure a required phase compiles, not over one named closure -- a per-closure zero is a fact about that entry and licenses nothing about another. AND THE CLOSURES MUST BE NAMED HERE RATHER THAN DESCRIBED, because the phrase every-closure-a-required-phase-compiles names a set that MOVES: it grew when #9035 added the v2-emission phase and again when that phase's subject was widened from dag/std/abi.dag to the v2 pipeline root, and it grows whenever a phase is added or an entry roster widens. A described set leaves that to whoever remembers; a named one makes a phase addition visibly re-open this question. AS OF 2026-08-27 THE SET IS THREE, each with its own authority: the regen seed closure (v1.compiler.cli_run regen_source_roots, SeedV1 + DagCorpus), the v2-emission entries (gunbc.ci_layer_roots required_v2_emission_entries), and the emit-compile entries (gunbc.ci_layer_roots required_emit_compile_entries). Only the first two have been measured for this arm -- 0 and 87 -- and the third is UNMEASURED, so even the corrected condition is not currently evaluable and any future flip must measure it rather than assume it follows the seed. This warning was delivered before the flip rather than after it: deep-ant-102 stated that the zero was 0 over that closure and not over all closures, and that with every provider selected in the proof gate is the easy case; it was acknowledged in writing and not carried into the condition. It is recorded as a dropped warning rather than as a missing insight, because the two have different remedies. The bounded sequence ruled for this work said count == 0 flips and count > 0 IS THE BURNDOWN ROSTER AT IDENTITY GRAIN; the terminal event has now fired with the second answer, so the 87 is that roster and the arm stays advisory until it burns down. The population is NOT a stable number and must not be quoted as one: it is 0 over the seed closure and 87 over the v2 compiler entry, and no closure has been enumerated beyond those two. THE DIAGNOSTIC IS STILL TYPED, LOCATED AND COUNTED, which is the whole of what the brief asked -- the silent omission is closed either way; severity decides whether the line stops, not whether the omission is visible. A sample of what it reports, and the reason 87 is a real roster rather than noise: std.determinism references std.perturbation.PerturbationVerdict whose provider is in the closure with its export unestablished, and v2.lens.complexity_accumulator_copy.analyze accounts for a large share of the rest against providers that are likewise present. Under the previous condition: an arm flips when its population over a NAMED CLOSURE is zero AND A DISCRIMINATING RED IS AUTHORABLE. A zero alone is never sufficient, because an observation of zero on an arm that has never fired is indistinguishable in a count from an arm that CANNOT fire, and flipping the latter yields a permanently-green check cited as coverage, which 4b rates worse than absent. BOTH HALVES HELD AT THE TIME: the population is zero over the regen seed closure (claim_executor --required-regen --source-root dag --source-root src/v2, whose subject is regen_input_sources grown to a joint fixpoint over import, dotted-reference and bare-reference edges), and the RED is authorable and AUTHORED at the fixture boundary in v1.tests.claim.reference_derived_disposition_census_witness_test, which builds a CandidateExportProofFailed row and asserts the diagnostic. The emission still produces its files beside the diagnostic rather than returning none: production precedes adjudication, so the candidate tree survives the refusal and the refusal is what stops the line. ReferenceDerivedImportProviderUnknown is DECLARED HERE AND PRODUCED BY NOTHING. Its arm, CandidateRegistryAbsent, was instrumented and measured over the same closure and returned 473 rows over 63 names across 110 modules. THAT POPULATION IS MIXED, AND AN EARLIER REVISION OF THIS NOTE CALLED IT ALL TARGET VOCABULARY -- corrected 2026-08-27 after deep-ant-102 pushed back on the census SCOPE. Two classes are conflated inside it. (a) EXTINGUISHED -- Vec 88, bool 73, i64 48, BTreeSet: no .dag declaration exists anywhere and none can, because the PRODUCER is collect_item_realized_surface_names, which is rust_identifier_tokens over render_rust_type and so emits target-language SPELLINGS by construction (attribution corrected by clever-boar-140, who owns the coproduct: the candidate filter's emitted-source disjunct is an admission GATE over an already-proposed list and cannot itself propose anything, so narrowing it would delete genuine emitter-attested candidates and leave the real source untouched). reference_is_host_realized_builtin misses these because it is keyed on .dag vocabulary -- is_container_type reads std.types container_type_arity -- so Vec and BTreeSet, the RUST spellings of List and Set, pass a filter that exists precisely to remove host-realized names. (b) OUT-OF-CLOSURE -- empty_map 33 (v2.std.collection), Optional 25 (v2.std.optional), and its VARIANTS Present 47 and Absent 13: REAL .dag names whose providers exist and were not selected in. The variant half is not a detail: a consumer key that reads a declaration index's `declared` field alone reports no-provider-anywhere for every variant name in the corpus, because a variant is not a top-level declaration and such an index holds variants in a separate field -- so the key must read declared UNION variants, and two of these four names are the instance that proves it (clever-boar-140, who then settled it STRUCTURALLY rather than from this sample: build_item_info in v1.compiler.infer produces one ItemInfo per TOP-LEVEL ITEM and no arm descends into a coproduct's children, and the single item_registry insert is keyed on that name, so a variant name is absent from the registry under EVERY closure -- verified here against both sites). THAT FACT AND THIS ARM'S ORDERING COMPOSE, and the composition is why these two names appear under (b) rather than under (a): CandidateVariantDelegatedToParent is tested BEFORE the registry lookup, so a variant whose parent is IN closure is delegated and never reaches the registry at all, and the registry's structural inability to hold variants surfaces only when the parent is OUT of closure and type_summaries therefore cannot recognise the name as a variant. So Present and Absent are registry-absent HERE because Optional was out of closure, and would be delegated with it in -- which is exactly why this sample cannot discriminate the two readings, and why the structural argument above was needed instead. THE PROPORTION IS UNMEASURED IN BOTH DIRECTIONS, and the two ways of counting point OPPOSITE ways, which is the whole reason this population was misread twice. BY ROW the immovable names dominate: Vec 88 + bool 73 + Option 50 + i64 48 out of 473, each verified to have no .dag declaration anywhere. BY DISTINCT NAME the examined sample is 4 of 63 and ALL FOUR ARE MOVABLE. High-count immovable names at the head, movable names in the tail with small counts -- which is exactly the structure that hid the signal, and exactly why reading a sorted head answered the wrong question: empty_map's 33 rows were the third-largest count and were still classified as target vocabulary on the first pass. FIFTY-NINE NAMES ARE UNEXAMINED BY ANYONE. Neither the row-dominance nor the 4-of-4 may be quoted as a proportion; both are directional facts about different denominators. WHY (b) IS THERE AT ALL is a trap worth carrying: the census invocation passes --source-root dag --source-root src/v2, but the SUBJECT is regen_input_sources, whose roots are SeedV1 and DagCorpus and exclude src/v2 entirely -- stage0 IS the v1 seed, and a seed reaching into src/v2 would depend on the successor it bootstraps toward. The source-root FLAGS and the regen SUBJECT are not the same thing. So class (b) is precisely the closure-conditioned population this change exists to make visible, sitting inside the rows that had been written off, and registry-absent is ENTRY-RELATIVE rather than a fixed target: a reader who takes the number as stable has made the denominator error. THE 473 IS NOT A ROSTER OF UNFIXABLE ROWS. Wiring a diagnostic to it would still print a permanently-false report on every class-(a) row -- which is why the arm stays unwired even though part of the population is movable -- and the reason that is worse than shipping nothing is that IT TRAINS READERS TO IGNORE THE CHANNEL: a diagnostic nobody reads is worth less than an absent one, because the absent one is honest about its coverage. The variant stays declared because the class is real and its shape is settled; the trigger for wiring it is that class (a) leave the arm -- the candidate walk ceasing to propose target-language vocabulary -- after which the residue is class (b) and is exactly the closure-conditioned population worth reporting. A witness asserts zero diagnostics from that arm and fails the moment anyone wires it. THE TWO ARE SEPARATE DIAGNOSTICS RATHER THAN ONE WITH A CAUSE FIELD, because the question is upstream of severity: registry-absent is fixed by authoring an import, export-proof-failed by proving an export that already exists -- opposite remedies, different owners, different populations, different reachability -- and 4b files one row per class. That the two turned out to need different TREATMENT rather than merely different severity is the strongest evidence the split was right. A REFUTED PREDICTION, recorded rather than quietly repointed. Registry-absent was predicted to overlap heavily with UnlistedImportUse, both being described as 'referenced but never imported', and the prediction was made because closure membership is driven by imports. Measured on one run: 63 registry-absent names, 36 UnlistedImportUse names, INTERSECTION ZERO. UnlistedImportUse names .dag types masked at RESOLVE time; registry-absent is dominated by Rust tokens that never reached the resolver. The reasoning was wrong at the MECHANISM, not merely the magnitude. ProviderUnknown's trigger therefore does NOT point at the family-closure-SVN burndown as this carrier previously stated, and the falsification is recorded here rather than the trigger being silently repointed -- a repointed trigger would inherit the credibility of a prediction that just died, so whatever that trigger eventually becomes is argued fresh.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn where_refinement_deferral_reason_scaffold_note() -> String {
@@ -1055,7 +1058,7 @@ pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<Sourc
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
         Some(s) => s.clone(),
-        None => n.span.clone(),
+        std::option::Option::None => n.span.clone(),
     }
 }
 
@@ -1186,7 +1189,7 @@ pub fn make_arg_node(
     {
         let arg_name = match name.clone() {
             Some(n) => n.clone(),
-            None => "".to_string(),
+            std::option::Option::None => "".to_string(),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1222,7 +1225,7 @@ pub fn make_arm_node(
     {
         let children = match guard.clone() {
             Some(g) => Rc::new(vec![g.clone(), body.clone()]),
-            None => Rc::new(vec![body.clone()]),
+            std::option::Option::None => Rc::new(vec![body.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1288,7 +1291,7 @@ pub fn resource_use_name_at(
 pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed resource-use: missing resource".to_string(),
@@ -1367,7 +1370,7 @@ pub fn field_binding_name_at(
 pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     match n.match_pattern.clone() {
         Some(p) => p.clone(),
-        None => Rc::new(MatchPattern::Wildcard),
+        std::option::Option::None => Rc::new(MatchPattern::Wildcard),
     }
 }
 
@@ -1442,7 +1445,7 @@ pub fn make_param_node(
     {
         let children = match default_value.clone() {
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
+            std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1480,7 +1483,7 @@ pub fn make_resolved_param_node(
     {
         let children = match default_value.clone() {
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
+            std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1536,7 +1539,7 @@ pub fn authored_name_at(
                     text.clone()
                 }
             }
-            None => {
+            std::option::Option::None => {
                 if ((v1_rt::string_length(&span.file.clone()) > 8)
                     && (v1_rt::substring(&span.file.clone(), 0, 8) == "<kernel:".to_string()))
                 {
@@ -1550,7 +1553,7 @@ pub fn authored_name_at(
                 }
             }
         },
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
@@ -1572,7 +1575,7 @@ pub fn find_child_named(
     .cloned()
     {
         Some(ch) => Some(ch.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1596,7 +1599,7 @@ pub fn has_child_named(
 pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed param: missing type_expr".to_string(),
@@ -1630,7 +1633,7 @@ pub fn make_field_node(
     {
         let children = match default_value.clone() {
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
+            std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1666,7 +1669,7 @@ pub fn field_node_name_at(
 pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed field: missing type_expr".to_string(),
@@ -1697,7 +1700,7 @@ pub fn field_node_from_key(
         source_indices.clone(),
     ) {
         Some(p) => Some(authored_name_at(source_indices.clone(), p.clone())),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1913,7 +1916,7 @@ pub fn is_tree_size_preserving(func_name: String) -> bool {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1923,7 +1926,7 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
             FunctionSizeEffect::TreeSizeReducing => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1933,7 +1936,7 @@ pub fn is_property_contraction(func_name: String) -> bool {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1947,7 +1950,7 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
         .next()
     {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             v1_rt::concat("malformed node: missing ".to_string(), role.clone()),
@@ -1973,7 +1976,7 @@ pub fn arg_name_at(
 pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed arg: missing value".to_string(),
@@ -1985,7 +1988,7 @@ pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
 pub fn arm_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     match n.match_pattern.clone() {
         Some(p) => p.clone(),
-        None => Rc::new(MatchPattern::Wildcard),
+        std::option::Option::None => Rc::new(MatchPattern::Wildcard),
     }
 }
 
@@ -2000,7 +2003,7 @@ pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
 pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().last().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed arm: missing body".to_string(),
@@ -2019,7 +2022,7 @@ pub fn field_init_node_name_at(
 pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed field-init: missing value".to_string(),
@@ -2051,7 +2054,7 @@ pub fn call_named_arg_string_optional(
         for a in call.children.clone().iter().cloned() {
             if match arg_name_at(a.clone(), source_indices.clone()) {
                 Some(n) => (n.clone() == arg_name.clone()),
-                None => false,
+                std::option::Option::None => false,
             } {
                 __result.push(a);
             }
@@ -2062,7 +2065,7 @@ pub fn call_named_arg_string_optional(
     .cloned()
     {
         Some(arg) => expr_literal_string_optional(arg_value(arg.clone())),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2094,9 +2097,9 @@ pub fn decl_ref_coords_from_call_expr(
                     module_path: mp.clone(),
                     decl_name: dn.clone(),
                 })),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -2113,9 +2116,11 @@ pub fn admit_callers_entries_from_list(
                     Some(coords) => Rc::new(AdmitCallersEntry::AdmitCallersEntryCoords {
                         coords: coords.clone(),
                     }),
-                    None => Rc::new(AdmitCallersEntry::AdmitCallersEntryUninterpretable {
-                        span: e.span.clone(),
-                    }),
+                    std::option::Option::None => {
+                        Rc::new(AdmitCallersEntry::AdmitCallersEntryUninterpretable {
+                            span: e.span.clone(),
+                        })
+                    }
                 },
             );
         }
@@ -2143,7 +2148,7 @@ pub fn fn_admit_callers(
             field_init_node_value(p.clone()).children.clone(),
             source_indices.clone(),
         )),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2292,7 +2297,7 @@ pub fn field_access_spine(
                             field_access_field_at(texpr.clone(), source_indices.clone()),
                         ),
                     })),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             }
             _ => std::option::Option::None,
@@ -2671,7 +2676,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let path_props = match path.clone() {
             Some(p) => Rc::new(vec![make_field_init_node(
@@ -2681,7 +2686,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let query_props = match query.clone() {
             Some(q) => Rc::new(vec![make_field_init_node(
@@ -2691,7 +2696,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let body_props = match request_body.clone() {
             Some(b) => Rc::new(vec![make_field_init_node(
@@ -2701,7 +2706,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let rf_props = match response_format.clone() {
             Some(rf) => Rc::new(vec![make_field_init_node(
@@ -2711,7 +2716,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let props = v1_rt::concat(
             v1_rt::concat(
@@ -2783,7 +2788,7 @@ pub fn shell_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
         Rc::new(Node {
@@ -2835,7 +2840,7 @@ pub fn file_transport_node(
                     no_span(),
                 ),
             ]),
-            None => Rc::new(vec![path_field.clone()]),
+            std::option::Option::None => Rc::new(vec![path_field.clone()]),
         };
         make_transport_node(
             occurrence_identity.clone(),
@@ -2865,7 +2870,7 @@ pub fn find_property(
     .cloned()
     {
         Some(fi) => Some(field_init_node_value(fi.clone())),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2876,7 +2881,7 @@ pub fn find_property_string(
 ) -> Option<String> {
     match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
         Some(n) => expr_literal_string_optional(n.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2887,12 +2892,16 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
                 LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
                 _ => std::option::Option::None,
             },
+            ExprData::ExprElaboratedLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
+                _ => std::option::Option::None,
+            },
             ExprData::ExprUnaryOp {
                 op: UnaryOpKind::Neg,
                 ..
             } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
                 Some(v) => Some((0 - v.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
             _ => std::option::Option::None,
         }
@@ -2930,6 +2939,9 @@ pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
                     break true;
                 }
             },
+            ExprData::ExprElaboratedLiteral { .. } => {
+                break true;
+            }
             ExprData::ExprUnaryOp {
                 op: UnaryOpKind::Neg,
                 ..
@@ -2971,9 +2983,9 @@ pub fn record_lit_named_field_value_optional(
         .cloned()
         {
             Some(fi) => Some(field_init_node_value(fi.clone())),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -3132,7 +3144,7 @@ pub fn transport_has_auth(
         source_indices.clone(),
     ) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -3240,7 +3252,7 @@ pub fn transport_tls_posture(
         source_indices.clone(),
     ) {
         Some(n) => Some(authored_name_at(source_indices.clone(), n.clone())),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -3397,6 +3409,7 @@ pub fn expr_has_non_tail_self_call(
                 binding_kind: _, ..
             } => false,
             ExprData::ExprLiteral { value: _, .. } => false,
+            ExprData::ExprElaboratedLiteral { .. } => false,
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {
@@ -3450,7 +3463,7 @@ pub fn expr_has_non_tail_self_call(
                         in_tail.clone(),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 };
                 ((cond_bad.clone() || then_bad.clone()) || else_bad.clone())
             }
@@ -3492,7 +3505,7 @@ pub fn expr_has_non_tail_self_call(
                         in_tail.clone(),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 };
                 (val_bad.clone() || body_bad.clone())
             }
@@ -3546,7 +3559,7 @@ pub fn expr_has_non_tail_self_call(
                                 in_tail.clone(),
                                 source_indices.clone(),
                             ),
-                            None => false,
+                            std::option::Option::None => false,
                         };
                         (init_bad.clone() || last_bad.clone())
                     }
@@ -3671,7 +3684,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let auth_input_prop = match auth_input.clone() {
             Some(ai) => Rc::new(vec![make_field_init_node(
@@ -3681,7 +3694,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let auth_source_prop = match auth_source.clone() {
             Some(src) => Rc::new(vec![make_field_init_node(
@@ -3691,7 +3704,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let rate_prop = match rate_limit.clone() {
             Some(r) => Rc::new(vec![make_field_init_node(
@@ -3701,7 +3714,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::concat(
             v1_rt::concat(
@@ -4276,7 +4289,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
                 .next()
             {
                 Some(o) => (o.clone() + 1),
-                None => 0,
+                std::option::Option::None => 0,
             }
         };
         let col = ((clamped.clone() - line_start.clone()) + 1);
@@ -4302,7 +4315,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
                 .next()
             {
                 Some(o) => (o.clone() + 1),
-                None => src_len.clone(),
+                std::option::Option::None => src_len.clone(),
             }
         };
         let line_end = match index
@@ -4314,7 +4327,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             .next()
         {
             Some(o) => o.clone(),
-            None => src_len.clone(),
+            std::option::Option::None => src_len.clone(),
         };
         v1_rt::chars_to_string(
             &index.char_codes.clone(),
@@ -4374,7 +4387,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
             table: table.clone(),
             id: id.clone(),
         }),
-        None => {
+        std::option::Option::None => {
             let id = table.next_id.clone();
             Rc::new(InternResult {
                 table: Rc::new(InternTable {
@@ -4392,21 +4405,21 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
 pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
     match table.strings.clone().get((id.clone()) as usize).cloned() {
         Some(s) => s.clone(),
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
 pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Some(id.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => id.clone(),
-        None => 0,
+        std::option::Option::None => 0,
     }
 }
 
@@ -4552,7 +4565,7 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
 pub fn qualified_last_segment(name: String) -> String {
     match module_path_segments(name.clone()).last().cloned() {
         Some(s) => s.clone(),
-        None => name.clone(),
+        std::option::Option::None => name.clone(),
     }
 }
 
@@ -4569,7 +4582,7 @@ pub fn known_container_leaf(name: String) -> Option<String> {
         let leaf = qualified_last_segment(name.clone());
         match crate::std_types::container_expected_arity(leaf.clone()) {
             Some(_) => Some(leaf.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -4579,11 +4592,11 @@ pub fn container_spelling_verdict(name: String) -> Rc<ContainerSpellingVerdict> 
         Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
             arity: arity.clone(),
         }),
-        None => match known_container_leaf(name.clone()) {
+        std::option::Option::None => match known_container_leaf(name.clone()) {
             Some(leaf) => Rc::new(ContainerSpellingVerdict::ContainerSpellingUnknown {
                 container_leaf: leaf.clone(),
             }),
-            None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
+            std::option::Option::None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
         },
     }
 }
@@ -4595,9 +4608,9 @@ pub fn type_node_name_is_authored(
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(_) => true,
-            None => false,
+            std::option::Option::None => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -4615,7 +4628,7 @@ pub fn authored_container_spelling_verdict(
             Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
                 arity: arity.clone(),
             }),
-            None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
+            std::option::Option::None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
         }
     }
 }

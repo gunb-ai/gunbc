@@ -2,155 +2,141 @@ module v2.workflow.floor_expected_red
 
 import v2.std.algebra { Cons, Empty, filter, list_flat_map }
 import v2.std.collection { List }
-import v2.std.text { String }
 
-// 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT, which is a fact about
-// this mechanism rather than about those rows, so it is recorded at the top where the next
-// author enrolling something will read it.
+// 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
+// mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
 //
-// They were reclassified into `v2.workflow.floor_route_gap`. Every one of them was already
-// executing every run, already reaching a HERMETIC REFUSAL — a host effect the hermetic route
-// has no arm for — and because that refusal arrived as a `TypeError` carrying prose rather than
-// as a typed outcome, `ExpectedRedArm` could only read it as an ordinary failure and HELD it as
-// agreement. So this roster asserted "this witness runs and fails, and someone is fixing it"
-// about 101 identities that NEVER REACHED THEIR SUBJECT. Nothing was fixing them, because there
-// was nothing to fix: they needed a ROUTE, not a REPAIR.
+// They were reclassified into `v2.workflow.floor_route_gap`. Each already executed every run and
+// reached a HERMETIC REFUSAL — a host effect the hermetic route has no arm for — and because that
+// refusal arrived as a `TypeError` carrying prose rather than a typed outcome, `ExpectedRedArm`
+// read it as an ordinary failure and HELD it as agreement. So this roster asserted "runs, fails,
+// someone is fixing it" about 101 identities that NEVER REACHED THEIR SUBJECT. Nothing was fixing
+// them: they needed a ROUTE, not a REPAIR.
 //
-// THE ARITHMETIC IS WHAT MAKES IT A FINDING RATHER THAN A SUSPICION. Floor run 32345970386
-// carried 308 enrolled identities and held 207; the 101 difference is exactly the set of
-// enrolled identities that route-gapped. Not approximately — the same set.
+// THE ARITHMETIC MAKES IT A FINDING RATHER THAN A SUSPICION. Floor run 32345970386 carried 308
+// enrolled identities and held 207; the 101 difference is exactly — not approximately — the set
+// of enrolled identities that route-gapped.
 //
-// THE LESSON FOR THIS ROSTER, and it is the one this header did not previously state: ENROLLING
-// AN IDENTITY ASSERTS THAT IT REACHES ITS SUBJECT AND ANSWERS. A row that cannot run is not
-// debt this roster can carry, and it is the more dangerous mistake, because a genuine red is
-// loud when someone finally looks at it while a never-executed row looks identical to progress.
-// `ExpectedRedArm` now refuses to hold `HostEffectRefused`, `HostToolUnresolved`, and an
-// interrupted budget outcome for exactly this reason — three ways of producing no verdict, none
-// of them agreement.
+// THE LESSON, previously unstated here: ENROLLING AN IDENTITY ASSERTS THAT IT REACHES ITS SUBJECT
+// AND ANSWERS. A row that cannot run is not debt this roster can carry, and it is the more
+// dangerous mistake: a genuine red is loud once someone looks, while a never-executed row looks
+// identical to progress. `ExpectedRedArm` now refuses to hold `HostEffectRefused`,
+// `HostToolUnresolved`, and an interrupted budget outcome — three ways of producing no verdict,
+// none of them agreement.
 //
 // THE EXPECTED-RED ROSTER: identities this branch KNOWS fail, enrolled by exact qualified name.
 //
-// This is NOT a skip list and the distinction is the whole justification for it. Every identity
-// here still EXECUTES in the fold and its outcome is still asserted; what the roster changes is
-// which outcome counts as agreement. A row that fails as enrolled is agreement. A row that is
-// NOT enrolled and fails reds the build. A row that IS enrolled and PASSES also reds the build,
-// naming itself and asking to be removed — so a fix is counted the moment it lands rather than
-// being absorbed into a green run.
+// This is NOT a skip list, and that distinction is its whole justification. Every identity here
+// still EXECUTES in the fold and its outcome is still asserted; the roster only changes which
+// outcome counts as agreement. Enrolled and fails: agreement. NOT enrolled and fails: reds the
+// build. Enrolled and PASSES: also reds the build, naming itself for removal — so a fix is
+// counted the moment it lands instead of being absorbed into a green run.
 //
-// That last arm is what makes this monotone. A skip list grows quietly and its members rot,
-// because nothing observes them and nothing notices when they start working. This roster can
-// only shrink under an honest run, and its length is the debt.
+// That last arm makes this monotone. A skip list grows quietly and rots, because nothing
+// observes its members or notices when they start working. This roster can only shrink under an
+// honest run, and its length is the debt.
 //
-// WHY IT EXISTS. The floor cut replaced an evaluator that ran a selected subset per PR with one
-// that folds the whole discovered roster through a single prepared subject. The replacement is
-// faster end to end than the floor it replaces and runs strictly more rows, and it fails a
-// population the old one did not — some because this branch broke them, some because the old
-// floor never executed them. Holding the whole branch until every one is repaired keeps everyone
-// on the slower, less complete floor in the meantime. Enrolling them keeps the new floor's
-// verdict honest while they are worked.
+// WHY IT EXISTS. The floor cut replaced an evaluator running a selected subset per PR with one
+// folding the whole discovered roster through a single prepared subject. The replacement is
+// faster end to end, runs strictly more rows, and fails a population the old one did not — some
+// this branch broke, some the old floor never executed. Holding the branch until all are repaired
+// keeps everyone on the slower, less complete floor; enrolling them keeps the new floor's verdict
+// honest while they are worked.
 //
 // WHAT IT MUST NOT BECOME. A row belongs here only while someone is fixing it. It is not a
-// disposition: it names no executing consumer other than this floor, it establishes no coverage,
-// and an identity that sits here indefinitely is a defect nobody owns wearing a receipt. The
-// roster is admissible because it is temporary, visible at identity grain, and self-emptying —
-// remove any of those three and it is the skip list it is carefully not.
+// disposition: it names no executing consumer other than this floor, establishes no coverage,
+// and an identity sitting here indefinitely is a defect nobody owns wearing a receipt. The roster
+// is admissible because it is temporary, visible at identity grain, and self-emptying — remove
+// any of the three and it is the skip list it is carefully not.
 //
-// THE PRESENT POPULATION IS NOT WRITTEN HERE, AND THAT IS THE CORRECTION RATHER THAN AN
-// OMISSION. It is `floor_expected_red_roster()` -- the fold over the chunks below -- and that
-// fold is the only authority for it. A transcribed total is a SECOND representation of a fact
-// this module already computes (DESIGN 2/3): nothing derives from the sentence, so nothing
-// refuses when it goes stale, and it goes stale on the roster's own removal path, which is
-// designed to fire without anyone editing this header.
+// THE PRESENT POPULATION IS NOT WRITTEN HERE, AND THAT IS THE CORRECTION, NOT AN OMISSION. It is
+// `floor_expected_red_roster()` — the fold over the chunks below — and that fold is the only
+// authority. A transcribed total is a SECOND representation of a fact this module computes
+// (DESIGN 2/3): nothing derives from the sentence, so nothing refuses when it goes stale, and it
+// goes stale on the roster's own removal path, which fires without anyone editing this header.
 //
-// It had already gone stale twice over, in the way that makes the class worth naming: this
-// block carried TWO current-state totals at once -- `311` here and `306` immediately below --
-// each correct when written, neither correct together, and the roster they both described had
-// moved on from both. Two accounts of one population in one comment is the same defect as two
-// authorities for one fact; the repair is to delete both rather than to reconcile them into a
-// third number that will rot on the same schedule.
+// It had already gone stale twice over: this block carried TWO current-state totals — `311` here
+// and `306` immediately below — each correct when written, neither correct together, and the
+// roster had moved on from both. Two accounts of one population in one comment is two
+// authorities for one fact; the repair is to delete both, not reconcile them into a third number
+// that rots on the same schedule.
 //
-// WHAT SURVIVES, and why the distinction is not cosmetic: a DATED MEASUREMENT bound to a named
-// run is a receipt -- it says what was observed on a tree that still exists, and it stays true
-// forever because its subject is fixed. A BARE PRESENT-TENSE TOTAL is a claim about the live
-// roster, and the live roster is exactly what this file already computes. So the derivations,
-// the run ids, the 429/313 partition and the removal history below all remain untouched; only
-// the two sentences asserting a current count are gone.
+// WHAT SURVIVES: a DATED MEASUREMENT bound to a named run is a receipt — its subject is a fixed
+// tree, so it stays true forever. A BARE PRESENT-TENSE TOTAL is a claim about the live roster,
+// which this file already computes. So the derivations, run ids, the 429/313 partition and the
+// removal history below remain untouched; only the two sentences asserting a current count are
+// gone.
 //
-// The five rows added 2026-08-22 are the previously-INVISIBLE rows described at chunk_20 --
-// they enter this roster from marker-less files rather than from a regression, which is a route
-// this roster had not carried before, and that route is the reason they are called out here.
+// The five rows added 2026-08-22 are the previously-INVISIBLE rows described at chunk_20 — they
+// enter from marker-less files rather than from a regression, a route this roster had not carried
+// before, which is why they are called out here.
 //
 // The derivation below is a receipt and is unchanged: the declared rung drop took 111 out by
-// relocation and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306
-// as of that run). Those 52
-// reported STALE-QUARANTINE -- enrolled as expected-red and PASSED -- which is this roster's own
-// removal path, not a roster edit: they pass because that branch closed two emitter roots (a
-// builtin answering a call the program had already bound to a lexical binding, and a bare closure
-// emitted where an arrow return was declared), so witnesses red against those defects now agree.
-// That run named 57; the other 5 had already been removed on main by the time it landed. The count is NOT the whole population affected, and the rest is stated
-// exactly here rather than left to the waves: 38 modules were relocated carrying 429 `test fn`
-// declarations. THE PARTITION MUST BE DISJOINT, and an earlier revision of this block was not:
-// it read "111 enrolled, 111 over-budget, 207 healthy", which sums to 429 only by counting the
-// 102 rows that are BOTH enrolled here AND over budget on both sides of the sum. Enrolment and
-// cost are independent axes, so the partition is taken on enrolment and the cost facts are
-// stated inside each part:
+// relocation and run 32189201111 (PR #8460) observed 52 more PASSING (469 -> 361 -> 358 -> 306 as
+// of that run). Those 52 reported STALE-QUARANTINE — enrolled as expected-red and PASSED — the
+// roster's own removal path, not a roster edit: they pass because that branch closed two emitter
+// roots (a builtin answering a call the program had already bound to a lexical binding, and a
+// bare closure emitted where an arrow return was declared), so witnesses red against those
+// defects now agree. That run named 57; the other 5 were already removed on main when it landed.
+// The count is NOT the whole affected population; the rest is stated exactly here: 38 modules
+// were relocated carrying 429 `test fn` declarations. THE PARTITION MUST BE DISJOINT, and an
+// earlier revision read "111 enrolled, 111 over-budget, 207 healthy", which sums to 429 only by
+// counting the 102 rows BOTH enrolled AND over budget on both sides. Enrolment and cost are
+// independent axes, so the partition is taken on enrolment with the cost facts inside each part:
 //
 //   111 enrolled here and removed (the 469 -> 358 delta), which the pre-quarantine run
 //       32177951514 partitions exactly -- 469 = 367 held red + 97 budget-refused + 5 passed
 //       over budget -- so the 111 are 9 held red, 97 budget-refused, and all 5 passed-over-budget.
 //     5 unenrolled and budget-refused.
 //
-//   97 AND 102 ARE BOTH CORRECT AND NAME DIFFERENT SETS, which is what made the earlier
-//   accounts read as contradictory; neither may be written as a bare `budget_refused`:
+//   97 AND 102 ARE BOTH CORRECT AND NAME DIFFERENT SETS, which made earlier accounts read as
+//   contradictory; neither may be written as a bare `budget_refused`:
 //     budget-interrupted identities, global                    102
 //       enrolled here AND budget-interrupted                    97
 //       unenrolled AND budget-interrupted                        5
 //     enrolled here AND completed-over-budget (stale_quarantine)  5
-//   313 passing when they were relocated, enrolled nowhere, counted by no number in this file.
-//       NINE of those later tipped over the ceiling once wave 1 removed the slow head (8 in
-//       32186963581, 1 straggler in 32193032348), so 304 have never been observed over budget.
-//       THE EIGHT ARE 32186963581, not 32189985063, and the counters decide it without reading
-//       any prose: 32186963581 failed=8 known_red_held=361, 32189985063 failed=1
-//       known_red_held=358, 32193032348 failed=1 known_red_held=358. Only one run observed
-//       eight. The wrong id survived three rewrites of this block including mine, while the
-//       SECOND WAVE paragraph below named the right one the whole time -- one file, two
-//       accounts of one population, which is why the run counters and not the neighbouring
-//       sentence are the authority here.
+//   313 passing when relocated, enrolled nowhere, counted by no number in this file. NINE later
+//       tipped over the ceiling once wave 1 removed the slow head (8 in 32186963581, 1 straggler
+//       in 32193032348), so 304 have never been observed over budget. THE EIGHT ARE 32186963581,
+//       not 32189985063; the counters decide it without prose: 32186963581 failed=8
+//       known_red_held=361, 32189985063 failed=1 known_red_held=358, 32193032348 failed=1
+//       known_red_held=358. Only one run observed eight. The wrong id survived three rewrites
+//       of this block while the SECOND WAVE paragraph below named the right one throughout --
+//       one file, two accounts of one population, which is why the run counters and not the
+//       neighbouring sentence are the authority.
 //
 //   111 + 5 + 313 = 429. Independently: `grep -c '^test fn'` over the 38 relocated modules is
 //   also 429, and differencing the two floor runs gives the same split (below).
 //
-// THE PROBLEM POPULATION IS NOT ONE NUMBER EITHER, which is why several circulated at once:
-// 107 rows were over budget or failing at quarantine time (102 budget-refused + 5 passed over
-// budget), and 116 including the 9 that tipped afterwards. 102 is the interrupted rows alone.
+// THE PROBLEM POPULATION IS NOT ONE NUMBER EITHER: 107 rows were over budget or failing at
+// quarantine time (102 budget-refused + 5 passed over budget), 116 including the 9 that tipped
+// afterwards, and 102 is the interrupted rows alone.
 //
-// The figures above are checkable against the tree and the run counters, and they are stated
-// because the earlier revision of this line said 361 while the roster carried 358, said 108
-// where the delta is 111, and described its collateral as "roughly 200". A bounded population
-// is the one thing a rung drop must not round: sharp-raven-273's monotone-shrink wall reads
-// this carrier as its baseline, so a stale count here is load-bearing for work that is not
-// mine. The 358/111 corrections are tidy-lark-471's external review; the disjointness and the
-// per-part cost split are royal-hawk-392's.
+// These figures are checkable against the tree and the run counters, and are stated because the
+// earlier revision said 361 while the roster carried 358, said 108 where the delta is 111, and
+// called its collateral "roughly 200". A bounded population is the one thing a rung drop must not
+// round: sharp-raven-273's monotone-shrink wall reads this carrier as its baseline, so a stale
+// count here is load-bearing for work that is not mine. The 358/111 corrections are
+// tidy-lark-471's external review; the disjointness and per-part cost split are royal-hawk-392's.
 //
-// HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
-// run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
-// removal path working exactly as designed rather than a roster edit. 164 more were removed once
-// prepared-floor scopes began binding bare helper names by precedence instead of corpus order, and
-// 33 more after run 32162750949 observed them PASSING on the merge ref — the same removal path,
-// twice more. EVERY removal here is an OBSERVED pass, never an inference: a row reported
-// BUDGET-REFUSED is UNDECIDED and stays enrolled, because the floor's own diagnostic is right that
-// removing it would not help when it is not passing either.
-// The count is a fact about that exact tree and nothing else — this branch's diagnostic
-// sensitivity is not monotone across trees, so these names may not be comparable to a count taken
-// on main or on an earlier head. Each is enrolled at exact qualified-name grain, never by prefix,
-// module, or directory, so enrolling one row can never silently enroll a neighbour.
+// HISTORY: cut at 820 on tree 380c242c79a; 25 removed after the first complete run on main
+// (611fd027708) observed them PASSING and red the build naming themselves — the removal path
+// working as designed. 164 more removed once prepared-floor scopes began binding bare helper
+// names by precedence instead of corpus order, and 33 more after run 32162750949 observed them
+// PASSING on the merge ref — the same path, twice more. EVERY removal is an OBSERVED pass, never
+// an inference: a row reported BUDGET-REFUSED is UNDECIDED and stays enrolled, because the
+// floor's own diagnostic is right that removing it would not help when it is not passing either.
+// The count is a fact about that exact tree only — this branch's diagnostic sensitivity is not
+// monotone across trees, so these names may not be comparable to a count on main or an earlier
+// head. Each is enrolled at exact qualified-name grain, never by prefix, module, or directory,
+// so enrolling one row can never silently enroll a neighbour.
 //
 // DECLARED RUNG DROP (DESIGN 4b), 2026-08-18, operator-directed, temporary.
 //
 // PREVIOUS RUNG: 469 enrolled identities, every one executing on the required floor each run.
-// TEMPORARY RUNG: 361. One hundred and eight enrollments were removed here, not because any
-// row was observed passing -- the ONLY removal reason this roster otherwise admits -- but
-// because their modules were relocated to long/ homes and no longer execute at all.
+// TEMPORARY RUNG: 361. One hundred and eight enrollments were removed here, not because any row
+// was observed passing — the ONLY removal reason this roster otherwise admits — but because
+// their modules were relocated to long/ homes and no longer execute at all.
 //
 // REASON: 102 witnesses could not finish inside required_floor_claim_budget_ms (1552ms), and
 // reported across two channels that both exit nonzero (budget_refused, stale_quarantine). The
@@ -159,10 +145,10 @@ import v2.std.text { String }
 // BOUNDED POPULATION, both halves, because neither is visible to any mechanism in this tree:
 //   108 enrollments removed here, being every identity in the 21 relocated modules. That is
 //       NOT 102: exactly 102 are the cost rows (verified by identity join against main run
-//       32177951514 -- all 102 removed, none missed), and SIX are enrolled rows that were
-//       behaving exactly as enrolled (known_red_held) and leave only because they share a
-//       module with a relocated row. Naming them, because a population described as 102 while
-//       being 108 is not bounded at the grain it claims:
+//       32177951514 -- all 102 removed, none missed), and SIX are enrolled rows behaving exactly
+//       as enrolled (known_red_held) that leave only because they share a module with a
+//       relocated row. Named, because a population described as 102 while being 108 is not
+//       bounded at the grain it claims:
 //         gunbc.test.claim.realization_sweep_test.witness_canonical_identities_join_own_enrolled_roster
 //         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_direct_runtime_holds
 //         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_generality_executes_holds
@@ -170,100 +156,99 @@ import v2.std.text { String }
 //         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_produced_add_body_executes_holds
 //         v2.test.execution.add_arrow_eval_by_execution.add_arrow_eval_source_driven_add_executes_holds
 //       These six are a THIRD collateral class, distinct from the 78: those are unenrolled and
-//       passing, these were enrolled and correctly red. Both leave for the same reason -- a
-//       module is the unit of relocation -- and both return when their module does.
-//    78 healthy, fast, PASSING witnesses that left the floor as collateral, because a module
-//       is the unit of relocation and they share a file with a slow row. Worst offenders:
-//       roadmap_page_witness 29, live_read_classification 17, add_arrow_eval_by_execution 13.
+//       passing, these were enrolled and correctly red. Both leave because a module is the unit
+//       of relocation, and both return when their module does.
+//    78 healthy, fast, PASSING witnesses that left the floor as collateral, sharing a file with a
+//       slow row. Worst offenders: roadmap_page_witness 29, live_read_classification 17,
+//       add_arrow_eval_by_execution 13.
 // Nothing refuses on their absence. Nothing counts them. That is why they are written here.
 //
 // A JOIN AGAINST THE DEFERRAL FREEZE, AND THE INFERENCE I DREW FROM IT WAS WRONG (recorded
 // 2026-08-19, corrected the same day by still-wolf-510 against a live run). The join is real:
 // this roster and gunbc.witness_deferral_freeze name the same identities in 38-40 places
-// depending on the head. What I concluded from it -- that those rows can never leave, because
-// nothing executes them, so the self-emptying rule can never fire -- IS FALSE, and it was an
-// assumption about a mechanism I did not read.
+// depending on the head. My conclusion — that those rows can never leave because nothing
+// executes them, so the self-emptying rule can never fire — IS FALSE, an assumption about a
+// mechanism I did not read.
 //
-// The required floor excludes by AUTHORED MODULE NAME via required_floor long_home_prefixes.
-// It does not consult the freeze at all. The freeze is an ADMISSION standing -- whether a row
-// may remain without an executing consumer -- and the floor gate tolerates
-// LegacyFrozenPathDeferral; it never suppresses execution. So a frozen path and a discovered
-// module are independent facts, and an identity can be both.
+// The required floor excludes by AUTHORED MODULE NAME via required_floor long_home_prefixes and
+// does not consult the freeze at all. The freeze is an ADMISSION standing — whether a row may
+// remain without an executing consumer — and the floor gate tolerates LegacyFrozenPathDeferral;
+// it never suppresses execution. A frozen path and a discovered module are independent facts,
+// and an identity can be both.
 //
 // MEASURED, on green main run 32201531653: planned=9022 executed=9022 passed=8664
-// known_red_held=358 failed=0, and the intersection's own members appear in that run's output
-// -- test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel reports FAILED in 13640ns, which
-// is a row executing and being held exactly as enrolled. These rows are evaluated every run and
-// can leave the moment they pass.
+// known_red_held=358 failed=0, and the intersection's own members appear in that output —
+// test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel reports FAILED in 13640ns, a row
+// executing and held exactly as enrolled. These rows are evaluated every run and can leave the
+// moment they pass.
 //
-// SO THE DEFECT IS THE OTHER WAY ROUND, and it is smaller and mechanical: the freeze rows are
-// STALE. They assert path-deferral for identities that have an executing consumer -- the
-// required floor itself -- so the honest disposition is to retire those freeze rows with a
-// receipt, not to find the roster rows a cadence. The construction wall still earns its place,
-// because the intersection is a contradiction whichever way it is resolved and nothing detects
-// it today.
+// SO THE DEFECT IS THE OTHER WAY ROUND, smaller and mechanical: the freeze rows are STALE. They
+// assert path-deferral for identities that have an executing consumer — the required floor — so
+// the honest disposition is to retire those freeze rows with a receipt, not to find the roster
+// rows a cadence. The construction wall still earns its place: the intersection is a
+// contradiction whichever way it is resolved, and nothing detects it today.
 //
 // KEPT RATHER THAN QUIETLY REWRITTEN because the error is this document's own subject: I joined
 // two carriers correctly and then read one carrier's meaning off its name instead of its
-// mechanism, which is exactly the stale-citation class DESIGN section 3 names, committed while
-// correcting three other people's counts in the same file.
+// mechanism — exactly the stale-citation class DESIGN section 3 names — while correcting three
+// other people's counts in the same file.
 //
-// WHAT THIS IS NOT, stated because the shape is dangerous: this is NOT the self-emptying rule.
-// Every other removal from this roster came from OBSERVING a pass. These rows were removed by
-// relocation, and a roster that silently went 469 -> 361 is indistinguishable, to every
-// mechanism in the tree, from the defect that dropped 197 identities on 2026-08-18 and went
-// unnoticed for an hour. An empty roster now refuses; a shrinking one still does not.
+// WHAT THIS IS NOT, because the shape is dangerous: NOT the self-emptying rule. Every other
+// removal came from OBSERVING a pass. These rows were removed by relocation, and a roster that
+// silently went 469 -> 361 is indistinguishable, to every mechanism in the tree, from the defect
+// that dropped 197 identities on 2026-08-18 and went unnoticed for an hour. An empty roster now
+// refuses; a shrinking one still does not.
 //
-// NOT A PRECEDENT, and this sentence exists because the next reader will see a contradiction
-// that is not there. `required_floor` states that relocating a file does not discharge a budget
-// refusal, and that remains true and unweakened: an AUTHOR moving their own over-budget witness
-// to a long home deletes the coverage while retaining the source, which is the gunbc#7762
-// specimen the 2026-08-04 admission ruling exists for. What happened here is a different act --
-// an operator-ruled, bounded, declared rung-drop with a named population and a restoration
-// trigger, which DESIGN 4b permits explicitly. The distinction is declaration and reversibility,
-// never the directory. So this quarantine is not grounds to revert that comment or that refusal,
-// and a relocation offered WITHOUT these five declared fields is still the unsanctioned move.
+// NOT A PRECEDENT, because the next reader will see a contradiction that is not there.
+// `required_floor` states that relocating a file does not discharge a budget refusal, and that
+// stands unweakened: an AUTHOR moving their own over-budget witness to a long home deletes the
+// coverage while retaining the source — the gunbc#7762 specimen the 2026-08-04 admission ruling
+// exists for. This is a different act: an operator-ruled, bounded, declared rung-drop with a
+// named population and a restoration trigger, which DESIGN 4b permits explicitly. The
+// distinction is declaration and reversibility, never the directory. So this quarantine is not
+// grounds to revert that comment or that refusal, and a relocation offered WITHOUT these five
+// declared fields is still the unsanctioned move.
 //
-// SECOND WAVE, 2026-08-18, operator-directed at a 1000ms line, plus one measured straggler.
-// The first wave quarantined what was RED. Run 32186963581 then proved both budget channels
-// clear (stale_quarantine=0, budget_refused=0) and surfaced EIGHT rows that had been passing
-// under the ceiling and tipped over it once the slow head was gone -- the marginal population,
-// measured rather than predicted. Sixteen more modules leave here: the fifteen over 1000ms, and
-// test.claim.e0308_mechanical_trio_test at 774ms, which is below the line but FAILED on that
-// run, so it is quarantined on evidence rather than on threshold. Three more enrolled rows
-// retire with them (roster 361 -> 358; then 358 -> 306 on the #8460 passes above), and further healthy siblings leave under the same
-// module-grain rule as the 78 above -- counted exactly in the POPULATION block, never rounded. The ceiling is 1552ms and it was calibrated as
-// measured-max-plus-one-quantum from a SINGLE 1527ms observation, so rows within a few hundred
-// ms of it are not stably green on a shared runner; that is the real reason this wave exists.
+// SECOND WAVE, 2026-08-18, operator-directed at a 1000ms line, plus one measured straggler. The
+// first wave quarantined what was RED. Run 32186963581 then proved both budget channels clear
+// (stale_quarantine=0, budget_refused=0) and surfaced EIGHT rows that had been passing under the
+// ceiling and tipped over once the slow head was gone — the marginal population, measured rather
+// than predicted. Sixteen more modules leave: the fifteen over 1000ms, and
+// test.claim.e0308_mechanical_trio_test at 774ms, below the line but FAILED on that run, so
+// quarantined on evidence rather than threshold. Three more enrolled rows retire with them
+// (roster 361 -> 358; then 358 -> 306 on the #8460 passes above), and further healthy siblings
+// leave under the same module-grain rule as the 78 — counted exactly in the POPULATION block,
+// never rounded. The ceiling is 1552ms, calibrated as measured-max-plus-one-quantum from a SINGLE
+// 1527ms observation, so rows within a few hundred ms of it are not stably green on a shared
+// runner; that is the real reason this wave exists.
 //
 // THIRD ROW, 2026-08-18: test.claim.emitted_lib_rs_module_declaration_witness_test, at 42545ms.
-// This one is worth naming separately because of HOW it was missed. My cost table was built from
-// a run where the 30s wall interrupted the longest rows, so every censored row reported its
-// deadline rather than its cost -- 30000ms, not 42545ms. The table therefore under-reported
-// exactly the rows that most needed quarantining, and this module fell outside a 1000ms cut it
-// exceeds by 42x. The measurement was a lower bound and I read it as a value. Its 3 witnesses
-// leave with it; no roster row named it, so the relocation left the roster at 358 (306 after the #8460 removals).
+// Named separately because of HOW it was missed: my cost table came from a run where the 30s
+// wall interrupted the longest rows, so every censored row reported its deadline, not its cost —
+// 30000ms, not 42545ms. The table under-reported exactly the rows most needing quarantine, and
+// this module fell outside a 1000ms cut it exceeds by 42x. The measurement was a lower bound and
+// I read it as a value. Its 3 witnesses leave with it; no roster row named it, so the relocation
+// left the roster at 358 (306 after the #8460 removals).
 //
 // THE SECOND DERIVATION, kept because a coverage-loss figure asserted once is exactly what this
 // declaration exists to prevent. Differencing the two floor runs on main reproduces the split
-// above from run counters alone, without reading the tree:
+// from run counters alone, without reading the tree:
 //   pre  32177951514 @59653f569e  planned=9420 passed=8951 known_red=367 stale_quarantine=5 budget_refused=102
 //   post 32193032348 @6f3d374de0  planned=8997 passed=8638 known_red=358 stale_quarantine=0 budget_refused=0
 //   passed 313 + known_red 9 + budget_refused 102 + passed-over-budget 5 = 429.
 // The 6-identity gap against `planned` (9420 - 8997 = 423, not 429) is six identities that
-// LANDED between the two runs, in the three commits separating those heads. It is not a
-// discrepancy in this population, and it is stated so the next reader does not read 423 as the
-// answer.
+// LANDED between the runs, in the three commits separating those heads — not a discrepancy in
+// this population, stated so 423 is not read as the answer.
 //
-// WHAT IS STILL NOT DERIVED, named rather than left to be assumed: which INDIVIDUAL identities
-// make up the 313. The figures above are exact in aggregate and unavailable at identity grain,
-// because the floor reports per-identity outcomes only as log lines and a scraped log is not an
-// oracle. Closing that needs the floor to emit an identity-grained receipt, not a better scrape.
-// So this block is SUPPORTING EVIDENCE for that receipt, not a substitute for it.
+// WHAT IS STILL NOT DERIVED: which INDIVIDUAL identities make up the 313. The figures are exact
+// in aggregate and unavailable at identity grain, because the floor reports per-identity outcomes
+// only as log lines and a scraped log is not an oracle. Closing that needs the floor to emit an
+// identity-grained receipt, not a better scrape; this block is SUPPORTING EVIDENCE for that
+// receipt, not a substitute.
 //
-// AND `budget_refused=0` ON THE POST RUN IS NOT THE POPULATION DISAPPEARING. It means the floor
-// stopped executing it. The 116 identities that were ever observed over budget or failing are
-// still owed a remeasurement, at identity grain, against a cause -- not a green counter.
+// AND `budget_refused=0` ON THE POST RUN IS NOT THE POPULATION DISAPPEARING — the floor stopped
+// executing it. The 116 identities ever observed over budget or failing are still owed a
+// remeasurement, at identity grain, against a cause, not a green counter.
 //
 // A COST FIGURE HERE IS NOT A PROPERTY OF ITS WITNESS WHEN AN UNREPORTED LAZY SHARED FILL IS IN
 // PLAY, and this quarantine proved it by accident.
@@ -276,80 +261,74 @@ import v2.std.text { String }
 //
 // THE LAW IS NARROW, and stating it wider was this note's own first error (operator ruling,
 // 2026-08-18): a restoration receipt is confounded WHEN CHANGING THE POPULATION CHANGES WHICH
-// CLAIM PAYS AN UNREPORTED LAZY SHARED FILL. It is NOT that every restoration is confounded
-// until every subject is prepared. Preparation is the remedy for THIS class -- process-scoped
-// lazy first-touch construction -- and #8470 already applied it to the concrete instance above
-// by paying the module-path index in floor preparation. It is not the remedy for closure
-// pollution, fixture/live-index coupling, repeated end-to-end crossings, duplicate coverage,
-// true whole-tree censuses, or genuinely size-scaling algorithmic cost, which are separate
-// classes with separate owning layers. The remaining members of the lazy-fill class are what
-// #8464's process-scoped cold-fill inventory is for, and they are the only ones this paragraph
-// speaks about.
+// CLAIM PAYS AN UNREPORTED LAZY SHARED FILL — NOT that every restoration is confounded until
+// every subject is prepared. Preparation is the remedy for THIS class — process-scoped lazy
+// first-touch construction — and #8470 already applied it to the instance above by paying the
+// module-path index in floor preparation. It is not the remedy for closure pollution,
+// fixture/live-index coupling, repeated end-to-end crossings, duplicate coverage, true whole-tree
+// censuses, or genuinely size-scaling algorithmic cost — separate classes with separate owning
+// layers. The remaining lazy-fill members are what #8464's process-scoped cold-fill inventory is
+// for, and they are the only ones this paragraph speaks about.
 //
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
-// the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
-// in 70-85ms in isolation, and a 12s row in 31ms.
+// the cost is the EVALUATION CONTEXT, not the witnesses — a row taking 71s on the floor runs in
+// 70-85ms in isolation, and a 12s row in 31ms.
 //
 // ONE CLAUSE OF THAT PARAGRAPH IS REFUTED BY EXECUTION (quiet-bee-353, 2026-08-19, gunbc#8478,
 // remote executor, release claim_batch). It read: "dag_arrow_lambda rebuilds a 6,230-line
 // grammar once per witness for 3-line sources because each claim gets a fresh frame by design."
-// Folding that file from nineteen grammar builds to two DID NOT PAY -- 210.9s for the two
-// folded claims against ~208s for the fourteen they replaced -- so the fold was reverted and
-// the file left byte-identical. Solving the terms out of those runs: a `dag_grammar()`
-// construction is ~0.5s and a single three-line parse through the interpreted frontend is ~12s.
-// The apparatus is not the cost; the parse is. The arrow row must therefore NOT be planned as a
-// witness-side repair, and twelve seconds to parse three lines is a frontend cost-shape defect
-// that is plausibly the real subject behind several rows in this quarantine rather than an
-// evaluation-context tax.
+// Folding that file from nineteen grammar builds to two DID NOT PAY — 210.9s for the two folded
+// claims against ~208s for the fourteen they replaced — so the fold was reverted and the file
+// left byte-identical. Solving the terms out: a `dag_grammar()` construction is ~0.5s and a
+// single three-line parse through the interpreted frontend is ~12s. The parse is the cost, not
+// the apparatus. The arrow row must NOT be planned as a witness-side repair; twelve seconds to
+// parse three lines is a frontend cost-shape defect plausibly behind several rows in this
+// quarantine rather than an evaluation-context tax.
 //
-// SO "no witness has yet been found that is genuinely slow" IS NO LONGER ESTABLISHED, and this
-// line is corrected rather than deleted because the claim was load-bearing for how the whole
-// lane was planned: it licensed treating every relocated row as an apparatus problem. What is
-// still true is that the two measured extremes above are apparatus. What is not established is
-// that the residue is. When a module's cost is repaired it
-// returns to the floor WHOLE and its healthy siblings return with it, so the collateral
-// dissolves with work already scheduled rather than needing its own cleanup. This declaration
-// is deleted when the relocated population reaches zero.
+// SO "no witness has yet been found that is genuinely slow" IS NO LONGER ESTABLISHED, corrected
+// rather than deleted because it was load-bearing for how the lane was planned: it licensed
+// treating every relocated row as an apparatus problem. Still true: the two measured extremes
+// above are apparatus. Not established: that the residue is. When a module's cost is repaired it
+// returns to the floor WHOLE with its healthy siblings, so the collateral dissolves with work
+// already scheduled. This declaration is deleted when the relocated population reaches zero.
 //
 // FIRST RESTORATION DECISION, 2026-08-19: NOT YET, and the module returns WHOLE when it does.
-// Recorded here because the session that declared this trigger is archived, so the next reader
-// would otherwise find a trigger with no one holding it and no account of what was already
-// decided against.
+// Recorded because the session that declared this trigger is archived, so the next reader would
+// otherwise find a trigger nobody holds and no account of what was already decided against.
 //
 // The evidence offered was dag_arrow_lambda_witness_test, the densest parse-bearing module in
-// the relocated population: same instrument, same flags, same budget, merge base 2c65eeacf32
-// against a sync-token change. 12 of its 14 rows go 12237-14143ms to 193-555ms, 24x to 69x; the
-// module total goes 228167ms to 27876ms; rows under the 1552ms ceiling go 0 of 14 to 12 of 14.
-// The BEFORE column is the finding rather than the AFTER: fourteen rows parsing fourteen
-// DIFFERENT sources agreed within 14% of each other, which is not fourteen expensive witnesses,
-// it is one defect wearing fourteen names.
+// the relocated population: same instrument, flags and budget, merge base 2c65eeacf32 against a
+// sync-token change. 12 of its 14 rows go 12237-14143ms to 193-555ms, 24x to 69x; the module
+// total goes 228167ms to 27876ms; rows under the 1552ms ceiling go 0 of 14 to 12 of 14. The
+// BEFORE column is the finding: fourteen rows parsing fourteen DIFFERENT sources agreed within
+// 14% — not fourteen expensive witnesses but one defect wearing fourteen names.
 //
 // Refused on two grounds, neither of them doubt about that measurement.
 //
 // FIRST, the AFTER column was measured on an unmerged branch head. Restoring against it would
-// baseline the roster on a tree that does not exist, and if that branch changes before it lands
-// the restoration rests on numbers nothing can reproduce. The trigger is repaired cost, and
-// cost is repaired when the repair is IN main.
+// baseline the roster on a tree that does not exist, and if the branch changes before landing
+// the restoration rests on numbers nothing can reproduce. The trigger is repaired cost, and cost
+// is repaired when the repair is IN main.
 //
-// SECOND, and this one is the trigger's own words: a module "returns to the floor WHOLE". Two
-// of the fourteen are still over budget -- the first row pays the surviving preparation, and
-// pre_repair pays two because it builds a MODIFIED grammar and so legitimately owes a second.
-// Restoring twelve would split one file across two homes and mint a second module whose only
-// membership rule is a cost threshold, which is the directory deciding an admission question
-// (the 2026-08-04 ruling this file already cites). The correct wait is for the first-row
-// constant to fall, after which all fourteen clear together and the module moves once.
+// SECOND, the trigger's own words: a module "returns to the floor WHOLE". Two of the fourteen
+// are still over budget — the first row pays the surviving preparation, and pre_repair pays two
+// because it builds a MODIFIED grammar and legitimately owes a second. Restoring twelve would
+// split one file across two homes and mint a second module whose only membership rule is a cost
+// threshold — the directory deciding an admission question (the 2026-08-04 ruling this file
+// cites). The correct wait is for the first-row constant to fall, after which all fourteen clear
+// together and the module moves once.
 //
-// AND THE MEASUREMENT THAT SHOULD PRECEDE THE NEXT ONE, for the other 37 modules rather than
-// this one: at least nine of the 38 were free riders that merely touched a shared corpus fill
-// first, so quarantining them relocated the bill to the next module instead of removing it --
-// watched changing hands on one cache key at identity grain. Floor observation noise is
-// RELATIVE and flat at 4-5%, p95 13.5%, so the audit question for a quarantine decision is
-// whether its observation sat within ~13.5% of the ceiling. Both decision runs behind the
-// second wave clear that test by a wide margin, at 27x and 30x the ceiling.
+// AND THE MEASUREMENT THAT SHOULD PRECEDE THE NEXT ONE, for the other 37 modules: at least nine
+// of the 38 were free riders that merely touched a shared corpus fill first, so quarantining
+// them relocated the bill to the next module instead of removing it — watched changing hands on
+// one cache key at identity grain. Floor observation noise is RELATIVE and flat at 4-5%, p95
+// 13.5%, so the audit question for a quarantine decision is whether its observation sat within
+// ~13.5% of the ceiling. Both decision runs behind the second wave clear that by a wide margin,
+// at 27x and 30x the ceiling.
 
-// The rows are carried in fixed-size chunks and flattened, because one Cons chain 820 deep is a
-// parse-depth hazard, not because the chunk boundaries mean anything. They do not: a chunk is a
-// slice of an alphabetical list and nothing reads it.
+// Rows are carried in fixed-size chunks and flattened because one Cons chain 820 deep is a
+// parse-depth hazard, not because chunk boundaries mean anything: a chunk is a slice of an
+// alphabetical list and nothing reads it.
 fn floor_expected_red_chunk_00() -> List<String> {
   Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     Empty {} }
 }
@@ -379,50 +358,44 @@ fn floor_expected_red_chunk_06() -> List<String> {
 }
 
 // SEVENTEEN generated_conformance_floor ROWS LEFT THIS ROSTER BECAUSE THE FIX THIS BRANCH CARRIES
-// MADE THEM PASS, WHICH IS THIS ROSTER'S OWN REMOVAL PATH RATHER THAN A ROSTER EDIT. They were
-// among the identities the required floor reported as KNOWN-RED-RUNTIME-ERRORED -- enrolled as
-// expected-red but throwing rather than failing, so producing no verdict at all -- and every one
-// of them threw for the same reason this branch repairs: the reference-closure collector narrowed
-// on binding metadata its own producer never populates, so a name that was genuinely declared
-// resolved to nothing and the call threw `no such function`.
+// MADE THEM PASS — THIS ROSTER'S OWN REMOVAL PATH, NOT A ROSTER EDIT. They were among the
+// identities the required floor reported as KNOWN-RED-RUNTIME-ERRORED — enrolled as expected-red
+// but throwing rather than failing, so producing no verdict — and every one threw for the reason
+// this branch repairs: the reference-closure collector narrowed on binding metadata its own
+// producer never populates, so a genuinely declared name resolved to nothing and the call threw
+// `no such function`.
 //
-// Once the closure is derived from lexical binders instead, the calls resolve and the witnesses
-// answer. Every one of them answered PASS, and the floor duly reported them STALE-QUARANTINE --
-// which IS gating (claim_executor `required_floor_outcome_is_clean` lists seven causes and
-// includes it), unlike the runtime-errored arm, which is reported and deliberately NOT gating. So
-// the fix moved rows from a non-gating arm into a gating one, and this removal is the remedy the
-// floor's own message names.
+// With the closure derived from lexical binders instead, the calls resolve and the witnesses
+// answer PASS, so the floor reported them STALE-QUARANTINE — which IS gating (claim_executor
+// `required_floor_outcome_is_clean` lists seven causes and includes it), unlike the
+// runtime-errored arm, which is reported and deliberately NOT gating. The fix moved rows from a
+// non-gating arm into a gating one, and this removal is the remedy the floor's own message names.
 //
-// THE POPULATION IS 82, NOT THE SEVENTEEN AN EARLIER REVISION OF THIS BLOCK NAMED, and the
-// correction is recorded here rather than silently swapped because the two numbers are two
-// measurements of one fact and the stale one was load-bearing. Seventeen was measured before this
-// branch carried main; the roster it was measured against no longer exists. Run 32670979986
-// reports `stale_quarantine=82`, and all 82 are removed here.
+// THE POPULATION IS 82, NOT THE SEVENTEEN AN EARLIER REVISION NAMED, recorded rather than silently
+// swapped because the two numbers are two measurements of one fact and the stale one was
+// load-bearing. Seventeen was measured before this branch carried main, against a roster that no
+// longer exists. Run 32670979986 reports `stale_quarantine=82`, and all 82 are removed here.
 //
 // THE FOUR generated_coproduct_exhaustiveness_* ROWS ARE PART OF THAT 82 AND ARE REMOVED WITH IT.
-// An earlier revision of this block retained them and called the pair the discriminating half of
-// the edit, on the ground that they sat in the same generated module and were NOT reported
-// passing. That was true of the measurement it was written against and is false of this one: the
-// same run names all four explicitly as STALE-QUARANTINE. Retaining them on the strength of the
-// older reading would enrol four rows this branch makes pass, which is the gating failure the
-// removal exists to avoid -- so the retention is withdrawn, and the claim that this edit carries a
-// same-module discriminating half is withdrawn with it rather than left standing unsupported.
+// An earlier revision retained them as the discriminating half of the edit, because they sat in
+// the same generated module and were NOT reported passing. True of that measurement, false of
+// this one: the same run names all four as STALE-QUARANTINE. Retaining them would enrol four rows
+// this branch makes pass — the gating failure the removal exists to avoid — so the retention is
+// withdrawn, and with it the claim that this edit carries a same-module discriminating half.
 //
-// SUPERSEDED BY THE MERGE THAT CARRIES THIS BLOCK, and the block is kept rather than deleted because
-// it records a measurement (run 32670979986, stale_quarantine=82) that nothing else carries. Measured
-// at this merge: main's roster is a strict SUBSET of this branch's -- every identity this branch
-// removed is already absent from main, which removed 127 against this branch's 99 -- so the merged
-// roster is main's 65 and THIS BRANCH NO LONGER PERFORMS A REMOVAL. Resolved by set algebra rather
-// than by choosing a side: base 192, ours 93, theirs 65, additions on neither side, and
-// `comm -13 ours theirs` is empty, which is what establishes the subset and therefore that taking
-// main's rows loses nothing this branch had removed.
+// SUPERSEDED BY THE MERGE THAT CARRIES THIS BLOCK; kept because it records a measurement (run
+// 32670979986, stale_quarantine=82) nothing else carries. Measured at this merge: main's roster is
+// a strict SUBSET of this branch's — every identity this branch removed is already absent from
+// main, which removed 127 against this branch's 99 — so the merged roster is main's 65 and THIS
+// BRANCH NO LONGER PERFORMS A REMOVAL. Resolved by set algebra, not by choosing a side: base 192,
+// ours 93, theirs 65, additions on neither side, and `comm -13 ours theirs` is empty, which
+// establishes the subset and that taking main's rows loses nothing this branch had removed.
 //
-// ONE QUESTION THIS LEAVES OPEN rather than answering, because asserting either way would be
-// invention: the 82 above left because THIS branch's fix made them pass, and main removed them
-// without that fix. Either they pass for an independent reason, or main's larger removal has a
-// different warrant. Both are consistent with what is measured here, and nothing in this merge
-// distinguishes them. The floor run on the merged head is what decides it -- if any of the 82
-// re-appears as a fresh red, this note is where to start.
+// ONE QUESTION LEFT OPEN, because asserting either way would be invention: the 82 left because
+// THIS branch's fix made them pass, and main removed them without that fix. Either they pass for
+// an independent reason, or main's larger removal has a different warrant; both are consistent
+// with what is measured and nothing in this merge distinguishes them. The floor run on the merged
+// head decides it — if any of the 82 re-appears as a fresh red, this note is where to start.
 
 fn floor_expected_red_chunk_07() -> List<String> {
   Empty {}
@@ -445,28 +418,26 @@ fn floor_expected_red_chunk_11() -> List<String> {
 }
 
 fn floor_expected_red_chunk_12() -> List<String> {
-  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.manual.english_emit_add.english_emit_add_ingest_round_trip_holds", tail: Empty {} } } }
+  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Empty {} } }
 }
 
-// Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is
-// permanent (dissolve-on: none, DESIGN §4b executing evidence for #8592), but the RED is
-// not -- it is red for one dated, owned reason (the .dag-authority fix is not yet in the
-// stage0 Rust mirror the required floor executes) and this roster's own self-emptying arm
-// (an enrolled row that PASSES also reds the build, naming itself for removal) makes the
-// dissolve event -- the stage0 mirror regen -- self-announcing rather than something anyone
-// has to remember. See dag/test/claim/method_arg_declared_contract_witness_test.dag and
-// gunbc.explicit_witness_admission's known_red_probe row for this identity, which documents
-// the same red but (per the same ruling) does not itself gate the required floor.
+// Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is permanent
+// (dissolve-on: none, DESIGN §4b executing evidence for #8592), but the RED is not — it is red
+// for one dated, owned reason (the .dag-authority fix is not yet in the stage0 Rust mirror the
+// required floor executes), and this roster's self-emptying arm (an enrolled row that PASSES reds
+// the build, naming itself for removal) makes the dissolve event — the stage0 mirror regen —
+// self-announcing. See dag/test/claim/method_arg_declared_contract_witness_test.dag and
+// gunbc.explicit_witness_admission's known_red_probe row for this identity, which documents the
+// same red but (per the same ruling) does not itself gate the required floor.
 fn floor_expected_red_chunk_13() -> List<String> {
   Cons { head: "test.claim.method_arg_declared_contract_witness_test.w_method_arg_infers_against_declared_contract_not_element_type_test", tail: Empty {} }
 }
 
-// TWO ARMS OF THE DIRECT-CALL INHABITANCE WITNESS, ENROLLED BECAUSE THE WALL THEY ASSERT
-// DOES NOT EXIST AND NEVER DID -- NOT BECAUSE THIS BRANCH BROKE IT. Both arms assert that a
-// value at a direct-call argument is REFUSED. Both are red. The control that settles who
-// caused it was run on 2026-08-23: identical probe sources, identical dispatch, gunbc built
-// from origin/main 907f19c2cc7 and from the branch head, and main returns the same answer at
-// every point.
+// TWO ARMS OF THE DIRECT-CALL INHABITANCE WITNESS, ENROLLED BECAUSE THE WALL THEY ASSERT DOES NOT
+// EXIST AND NEVER DID — NOT BECAUSE THIS BRANCH BROKE IT. Both assert that a value at a
+// direct-call argument is REFUSED; both are red. The control settling who caused it was run on
+// 2026-08-23: identical probe sources and dispatch, gunbc built from origin/main 907f19c2cc7 and
+// from the branch head, and main returns the same answer at every point.
 //
 //   probe                       branch      main        verdict
 //   kernel 5 at the Peano Nat   accepted    accepted    no change
@@ -474,9 +445,9 @@ fn floor_expected_red_chunk_13() -> List<String> {
 //   40 at std.nat.Nat           accepted    accepted    no change
 //
 // So the refusals were ASSERTED, not broken. The gap is in the consumed predicate
-// v1.compiler.infer kernel_value_declared_type_mismatch, and it is older than this branch and
-// WIDER than these two rows. Measured 2026-08-23 by five probes varying only the declared
-// type's shape, one String argument at every one:
+// v1.compiler.infer kernel_value_declared_type_mismatch, older than this branch and WIDER than
+// these two rows. Measured 2026-08-23 by five probes varying only the declared type's shape, one
+// String argument at each:
 //
 //   Int                                      kernel primitive   REFUSED
 //   NatLike = CommutativeSemiring<Magnitude> 1-arg application  admitted
@@ -484,55 +455,55 @@ fn floor_expected_red_chunk_13() -> List<String> {
 //   TwoArg  = Map<String, Int>               2-arg application  admitted
 //   Closed  = ZzA | ZzB { v: Int }           coproduct          REFUSED
 //
-// A KERNEL VALUE IS ADMITTED AT ANY TYPE APPLICATION -- not merely an algebraic one, and not
-// as a function of arity: the two-argument Map is admitted exactly as List<Int> is. So the
-// legible specimen is a String reaching a List<Int> parameter unremarked, which is the ordinary
-// compiler floor DESIGN requires before any differentiating claim, and Nat is one instance of it.
-// The class is "total at the level examined, blind one level down": the judgment is exhaustive
-// over primitive / coproduct / application and the application arm never asks what the
-// application EXPANDS TO, so there is no missing arm for exhaustiveness checking or review to see.
-// Located, with a reproducing input; the admitting branch has NOT been read and no line is named.
+// A KERNEL VALUE IS ADMITTED AT ANY TYPE APPLICATION — not merely an algebraic one, and not as a
+// function of arity: the two-argument Map is admitted exactly as List<Int> is. The legible
+// specimen is a String reaching a List<Int> parameter unremarked — the ordinary compiler floor
+// DESIGN requires before any differentiating claim — and Nat is one instance. The class is "total
+// at the level examined, blind one level down": the judgment is exhaustive over primitive /
+// coproduct / application and the application arm never asks what the application EXPANDS TO, so
+// there is no missing arm for exhaustiveness checking or review to see. Located, with a
+// reproducing input; the admitting branch has NOT been read and no line is named.
 //
 // NEXT-RUNG TRIGGER, TWO PARTS. The mechanical one: that predicate repaired so a kernel value at
-// a type application refuses. The MODEL one, which is what the durable repair looks like and is
-// recorded here so the interim is never cited as the design:
+// a type application refuses. The MODEL one, the durable repair, recorded so the interim is never
+// cited as the design:
 //
 // declared_realizes_as_kernel_numeric decides that 40 inhabits Nat by consulting
-// v1.compiler.coercion decl_file_realizes_natively -- i.e. because Nat's DECLARING MODULE is
-// kernel-backed. That is a REALIZATION fact standing in for a TYPING fact, and it amounts to
-// peeling the applied type until a scalar appears. It is not unsound: it fails closed on unknown
-// identity, and the admit is measured behaviour-preserving-or-narrowing against main. It is
-// UNDER-SPECIFIC. It answers "this module's numerics are kernel-backed" where the question is
-// "does this type admit this literal", and it therefore grants literal syntax module-wide
-// permission to inhabit anything whose implementation eventually mentions a numeric carrier.
-// The two answers coincide today for Nat and Int and stop coinciding the moment a module
-// declares a numeric type that should NOT take bare literals.
+// v1.compiler.coercion decl_file_realizes_natively — i.e. because Nat's DECLARING MODULE is
+// kernel-backed. That is a REALIZATION fact standing in for a TYPING fact, amounting to peeling
+// the applied type until a scalar appears. Not unsound: it fails closed on unknown identity, and
+// the admit is measured behaviour-preserving-or-narrowing against main. It is UNDER-SPECIFIC: it
+// answers "this module's numerics are kernel-backed" where the question is "does this type admit
+// this literal", granting literal syntax module-wide permission to inhabit anything whose
+// implementation eventually mentions a numeric carrier. The answers coincide today for Nat and
+// Int and stop coinciding the moment a module declares a numeric type that should NOT take bare
+// literals.
 //
 // THE DURABLE MODEL IS AN EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT: 40 inhabits Nat
 // because Nat SUPPLIES A NUMERAL INTRODUCTION, not because its module realizes natively. Lean is
-// the worked precedent -- numerals elaborate against the expected type through an OfNat
-// obligation, and literal introduction is kept separate from coercion insertion. When that lands,
+// the worked precedent — numerals elaborate against the expected type through an OfNat
+// obligation, with literal introduction separate from coercion insertion. When that lands,
 // declared_realizes_as_kernel_numeric and its consumption of decl_file_realizes_natively dissolve;
 // they are the interim, and this row is their dissolution trigger.
 //
-// TWO CONSTRAINTS ON WHOEVER BUILDS IT, both live in this repository rather than hypothetical.
-// A judgment that peels a declared type to its representation defeats abstraction walls that
-// already hold: TransparentAlias may be exposed; OpaqueType, SoleConstructorCarrier, Refinement
-// and Brand MAY NOT -- sole_constructor is a real, executing construction wall and a peeling
-// judgment walks through it silently. And exposure must derive a canonical view ONCE per type
-// identity and cache it, with cycle detection and a measured expansion budget: recursive aliases
-// can loop, renormalizing at every use site is expensive, and this corpus is already living on a
-// per-witness cost line. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
-// reds the build and names them for removal, at which point they become permanent regression
-// controls under DESIGN 4b(4) rather than being deleted. The flip is EXPECTED and is not a
-// regression; it is the dissolution event.
+// TWO CONSTRAINTS ON WHOEVER BUILDS IT, both live in this repository. A judgment that peels a
+// declared type to its representation defeats abstraction walls that already hold:
+// TransparentAlias may be exposed; OpaqueType, SoleConstructorCarrier, Refinement and Brand MAY
+// NOT — sole_constructor is a real, executing construction wall and a peeling judgment walks
+// through it silently. And exposure must derive a canonical view ONCE per type identity and cache
+// it, with cycle detection and a measured expansion budget: recursive aliases can loop,
+// renormalizing at every use site is expensive, and this corpus already lives on a per-witness
+// cost line. When it lands, BOTH rows here go green, this roster's self-emptying arm reds the
+// build naming them for removal, and they become permanent regression controls under DESIGN
+// 4b(4) rather than being deleted. The flip is EXPECTED — the dissolution event, not a
+// regression.
 //
 // THE MECHANICAL HALF OF THAT TRIGGER HAS FIRED (2026-08-27, gunbc#9464), AND ONLY THAT HALF, SO
-// ONE ROW LEAVES AND ONE STAYS. `v1.compiler.infer` kernel_value_declared_type_mismatch now FOLLOWS
-// what a declared name references: an alias binds to a bare nominal reference carrying the target's
-// `name` and no children, the judgment read the reference and never what it named, and it now
-// re-enters itself at the referenced name. The five-probe table above was RE-MEASURED on that branch,
-// one String argument at every one, and it no longer discriminates -- every row refuses:
+// ONE ROW LEAVES AND ONE STAYS. `v1.compiler.infer` kernel_value_declared_type_mismatch now
+// FOLLOWS what a declared name references: an alias binds to a bare nominal reference carrying
+// the target's `name` and no children, the judgment read the reference and never what it named,
+// and it now re-enters itself at the referenced name. The five-probe table was RE-MEASURED on
+// that branch, one String argument at each, and no longer discriminates — every row refuses:
 //
 //   Int                                      kernel primitive   REFUSED   (unchanged)
 //   Nat = CommutativeSemiring<Magnitude>     1-arg application  REFUSED   (was admitted)
@@ -541,57 +512,63 @@ fn floor_expected_red_chunk_13() -> List<String> {
 //   Closed  = ZzA | ZzB { v: Int }           coproduct          REFUSED   (unchanged)
 //
 // So "a kernel value is admitted at ANY type application" is no longer true of this corpus, and
-// w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused PASSES. Per DESIGN 4b(4) it is
-// REMOVED FROM THIS ROSTER AND KEPT AS A WITNESS -- a probe that greens when its wall lands becomes a
-// permanent regression control, it does not retire.
+// w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused PASSES. Per DESIGN 4b(4) it
+// is REMOVED FROM THIS ROSTER AND KEPT AS A WITNESS — a probe that greens when its wall lands
+// becomes a permanent regression control, it does not retire.
 //
 // WHY THE SIBLING ROW STAYS RED AND THIS IS NOT A PARTIAL CLEANUP. w_kernel_numeric_at_the_peano_nat
-// _is_refused is `kernel 5` at the Peano Nat, which the table above already recorded as
-// accepted/accepted/no change -- it is admitted by declared_realizes_as_kernel_numeric, an arm that
-// runs AHEAD of this predicate in declared_type_inhabitance and never reaches it. So it is untouched
-// by construction, not missed. It is the MODEL half of the trigger stated above -- the
-// expected-type-directed literal introduction judgment -- and that half is NOT built. This row and
-// its dissolution obligation for declared_realizes_as_kernel_numeric stand unchanged.
+// _is_refused is `kernel 5` at the Peano Nat, already recorded above as accepted/accepted/no
+// change — admitted by declared_realizes_as_kernel_numeric, an arm that runs AHEAD of this
+// predicate in declared_type_inhabitance and never reaches it. Untouched by construction, not
+// missed. It is the MODEL half of the trigger — the expected-type-directed literal introduction
+// judgment — and that half is NOT built. This row and its dissolution obligation for
+// declared_realizes_as_kernel_numeric stand unchanged.
 //
-// THE PROSE ABOVE PREDICTED BOTH ROWS WOULD GO GREEN TOGETHER. That prediction was wrong in a way
-// worth leaving on the record rather than editing out: it read the two halves of its own trigger as
-// one event. The mechanical repair and the literal-introduction model are independent, and only the
-// first is a predicate repair.
+// THE PROSE ABOVE PREDICTED BOTH ROWS WOULD GO GREEN TOGETHER. Wrong, and left on the record: it
+// read the two halves of its own trigger as one event. The mechanical repair and the
+// literal-introduction model are independent, and only the first is a predicate repair.
+// RETIRED BY ITS TRIGGER (XL-0N, adhoc-aec65f93-b00): the expected-type-directed literal
+// introduction judgment is std.literal_elaboration, consumed by v1.compiler.infer at every typed
+// boundary, and the ruling (2026-08-30) admits the kernel numeral at the Peano Nat THROUGH its
+// declared homomorphism rather than refusing it. The row's witness is renamed to the ruled claim
+// (w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism) and stays enrolled as
+// a permanent control beside the emitted-bytes falsifier in
+// test.claim.self_host_peano_literal_operator_realization_witness_test. The chunk stays so the
+// roster's shape is unchanged; it carries nothing.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Empty {} }
+  Empty {}
 }
 
 // THE LIST-ELEMENT ARM OF THE DIRECT-CALL INHABITANCE WITNESS. It asserts that a wrong element
-// type inside a list at a direct-call argument is refused. It is not. Its PAIRED CONTROL --
-// w_the_same_wrong_pair_directly_at_the_argument_is_refused, deliberately NOT enrolled -- passes
+// type inside a list at a direct-call argument is refused. It is not. Its PAIRED CONTROL —
+// w_the_same_wrong_pair_directly_at_the_argument_is_refused, deliberately NOT enrolled — passes
 // the identical two types at the identical position without the list, and must stay green: if it
 // ever reds, the probe has stopped measuring lists and this enrolment is meaningless.
 //
-// WHY IT IS ENROLLED RATHER THAN FIXED HERE: the gap was discovered as a live wrong argument in
+// WHY ENROLLED RATHER THAN FIXED HERE: the gap was discovered as a live wrong argument in
 // dag/gunbc/heal_revalidation.dag (List<Fnv1a64Structural> into required_gates: List<ContentHash>),
-// and the relation's SILENCE was the only evidence of it. DESIGN 4b(4) puts the evidence in a
-// probe and the repair in production, not the reverse, so the evidence lives here where anyone
-// can reproduce it.
+// and the relation's SILENCE was the only evidence. DESIGN 4b(4) puts the evidence in a probe and
+// the repair in production, so the evidence lives here where anyone can reproduce it.
 //
 // THE PRODUCTION SITE WAS REPAIRED TWICE AND ONLY THE SECOND WAY WAS RIGHT. Lifting the argument
-// through as_content_hash_structural DOUBLE-WRAPPED a value that was already the union -- the
+// through as_content_hash_structural DOUBLE-WRAPPED a value that was already the union — the
 // witness passes Fnv1a64(content_hash_atom(...)) and check_coverage_admits takes ContentHash, so
 // heal_revalidation's own two parameters were the ONLY things in the chain declaring the family
-// member. Lifting made the comparison Fnv1a64(Fnv1a64(x)) against Fnv1a64(x) and reddened
-// heal_revalidation_witness only_exact_healed_head_complete_coverage_admits, a witness that had
-// been green. The chain is now ContentHash end to end and the lifts are gone. Reading the CALLEE
-// is half the discriminator; the CALLER is the other half, and a declaration sandwiched between
-// two that agree with each other is the one that is wrong.
+// member. Lifting compared Fnv1a64(Fnv1a64(x)) against Fnv1a64(x) and reddened
+// heal_revalidation_witness only_exact_healed_head_complete_coverage_admits, previously green.
+// The chain is now ContentHash end to end and the lifts are gone. Reading the CALLEE is half the
+// discriminator; the CALLER is the other half, and a declaration sandwiched between two that
+// agree with each other is the wrong one.
 //
 // NEXT-RUNG TRIGGER: declared_type_inhabitance descending into a list's element type at a
-// direct-call argument. When it lands this row goes green and the roster's self-emptying arm
-// names it for removal, at which point it becomes a permanent regression control.
-// DELIBERATELY EMPTY, AND PERMANENTLY SO -- THE ROW THAT WAS HERE ASSERTED A GAP THAT DOES NOT
+// direct-call argument. When it lands this row goes green, the self-emptying arm names it for
+// removal, and it becomes a permanent regression control.
+// DELIBERATELY EMPTY, AND PERMANENTLY SO — THE ROW THAT WAS HERE ASSERTED A GAP THAT DOES NOT
 // EXIST. w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused was enrolled while
 // its paired control was RED; the control's red proved the pair measured "records are never
-// judged" rather than anything about lists. Rebuilt on a kernel String and left UNENROLLED so a
-// red would show loudly, it PASSES (run 32667623528, failed=0). The relation descends into a
-// list literal's elements at a direct-call argument and always did.
+// judged", not anything about lists. Rebuilt on a kernel String and left UNENROLLED so a red
+// would show loudly, it PASSES (run 32667623528, failed=0). The relation descends into a list
+// literal's elements at a direct-call argument and always did.
 //
 // The arm stays in the witness file as a permanent regression control over that fact. Nothing is
 // enrolled here because there is nothing red to enrol.
@@ -607,60 +584,66 @@ fn floor_expected_red_chunk_17() -> List<String> {
   Empty {}
 }
 
+// ENROLLED 2026-09-01 with the sealed-carrier head-exposure repair, and enrolled BECAUSE of it.
+// The repair makes a sealed carrier's head visible, which closes the two record positions; the
+// KERNEL position stays accepted for a different reason -- record_at_scalar_needs_identity
+// declines the judgment for want of a declaration identity at the binding edge, the class already
+// filed as the direct-call record-to-scalar row. The probe was first authored asserting the
+// ACCEPTING answer so the hole stayed visible; that turns a below-floor defect into required green
+// behaviour, so it asserts the required REFUSAL instead and the debt is carried here, where the
+// fix is counted the moment it lands.
 fn floor_expected_red_chunk_18() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.sole_constructor_type_head_exposure_witness_test.sealed_carrier_at_kernel_formal_refuses", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_19() -> List<String> {
   Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
 }
 
-// FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
-// before: they were not failing rows that someone broke, they were rows the floor COULD NOT SEE.
-// Both files declared their assertions as plain `fn`, so floor discovery -- which keys on the
-// literal `test fn ` marker -- enrolled nothing from either. Marking them is what made these
-// failures observable at all, and unmarking them again would be the same silence wearing a
-// different justification, so they are enrolled here instead.
+// FIVE IDENTITIES ENROLLED 2026-08-22, by a route this roster has not carried before: not rows
+// someone broke, but rows the floor COULD NOT SEE. Both files declared their assertions as plain
+// `fn`, so floor discovery — keyed on the literal `test fn ` marker — enrolled nothing from
+// either. Marking them made these failures observable at all; unmarking them again would be the
+// same silence under a different justification, so they are enrolled here instead.
 //
 // The four bootstrap_footprint rows fail identically: `atom_identity_hash requires exactly one
-// string argument`. The cause is stated by the file itself, which DEMOTED them on 2026-08-19 by
-// removing their markers -- every bootstrap_footprint path hashes a closure embedding
+// string argument`. The file itself states the cause, having DEMOTED them on 2026-08-19 by
+// removing their markers — every bootstrap_footprint path hashes a closure embedding
 // rust_target_model().bundle, whose semantic-decl bundles store char CODE POINTS in
-// Atom.identity, and content_hash's atom fold routes that into an intrinsic that requires a
-// string. That is a substrate gap, not a defect in these rows, and the file names its own
-// repair trigger: the code-point encoding carries a string identity, or content_hash gains a
-// non-symbol atom arm.
+// Atom.identity, and content_hash's atom fold routes that into an intrinsic requiring a string.
+// A substrate gap, not a defect in these rows, and the file names its own repair trigger: the
+// code-point encoding carries a string identity, or content_hash gains a non-symbol atom arm.
 //
-// nominal_distinct_control_compiles_ok returns false: the CONTROL fixture -- the one whose call
-// site is type-correct -- does not compile through compile_ingest_staging today. gunbc#8505 held
-// this class back from promotion for exactly this reason ("35 parse-reaching claims declared as
-// residue"), so the red is a known frontier fact rather than news.
+// nominal_distinct_control_compiles_ok returns false: the CONTROL fixture — the type-correct call
+// site — does not compile through compile_ingest_staging today. gunbc#8505 held this class back
+// from promotion for exactly this reason ("35 parse-reaching claims declared as residue"), so the
+// red is a known frontier fact, not news.
 //
-// WHAT IS HONEST TO SAY ABOUT THEM, since this roster's header asks: nobody is actively fixing
-// these five. What the enrolment buys over the demotion it replaces is the stale-quarantine arm
-// -- when the substrate arm lands, these rows PASS, and a passing enrolled row reds the build
-// naming itself. The file's prose trigger could not do that; this roster does it mechanically.
+// WHAT IS HONEST TO SAY, since this roster's header asks: nobody is actively fixing these five.
+// What enrolment buys over the demotion it replaces is the stale-quarantine arm — when the
+// substrate arm lands, these rows PASS and red the build naming themselves. The file's prose
+// trigger could not do that; this roster does it mechanically.
 fn floor_expected_red_chunk_20() -> List<String> {
   Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } }
 }
 
-// THREE IDENTITIES ENROLLED 2026-08-23, and they are the first rows here that were AUTHORED red
-// rather than discovered red. They are compiler control fixtures: each hands the v1 compile path a
-// program the host refuses at evaluation and asserts that the refusal happens at COMPILE. All three
-// return false today, measured by execution at head 907f19c2cc.
+// THREE IDENTITIES ENROLLED 2026-08-23, the first rows here AUTHORED red rather than discovered
+// red. They are compiler control fixtures: each hands the v1 compile path a program the host
+// refuses at evaluation and asserts the refusal happens at COMPILE. All three return false today,
+// measured by execution at head 907f19c2cc.
 //
-// WHY THEY WERE AUTHORED. Required-floor run 32633501354 reported known_red_runtime_errored=164 --
-// programs the compiler accepted and the interpreter could not evaluate -- and that counter is the
-// class's only observer. It falls to zero as the 164 witnesses are repaired, taking the evidence
-// with it, so the class needed evidence that does not live in the specimens. Eleven of the 164 are
-// this family: a host primitive's argument list is not checked at compile in any direction.
+// WHY AUTHORED. Required-floor run 32633501354 reported known_red_runtime_errored=164 — programs
+// the compiler accepted and the interpreter could not evaluate — and that counter is the class's
+// only observer. It falls to zero as the 164 are repaired, taking the evidence with it, so the
+// class needed evidence that does not live in the specimens. Eleven of the 164 are this family:
+// a host primitive's argument list is not checked at compile in any direction.
 //
 // WHY THEY BELONG IN A ROSTER WHOSE HEADER SAYS A ROW BELONGS HERE ONLY WHILE SOMEONE IS FIXING IT.
-// Nobody is fixing this one today, and the enrolment is still the honest home rather than a
-// demotion: the roster's stale-quarantine arm is exactly what these rows need, because the day the
-// argument contract is checked at compile they PASS and red the build naming themselves. That arm
-// is the whole point of authoring them as reds instead of as assertions of today's behaviour, which
-// would have been a change detector pointing the wrong way.
+// Nobody is fixing this today, and enrolment is still the honest home rather than a demotion: the
+// stale-quarantine arm is exactly what these rows need — the day the argument contract is checked
+// at compile they PASS and red the build naming themselves. That arm is the point of authoring
+// them as reds instead of as assertions of today's behaviour, which would be a change detector
+// pointing the wrong way.
 //
 // THE THREE ROWS STAY ENROLLED HERE AS THE AUTHORED REDS THEY ARE. Their home currently declares
 // ReadsLiveTree and is declined before execution, so floor_expected_red_is_live excludes them from
@@ -672,32 +655,31 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // ONE IDENTITY ENROLLED 2026-08-26 with a per-row reason, because a row without one is how a
 // thrown claim gets filed as a semantic red. THE CLASS: a lexical binding holding a NON-CALLABLE
 // value, called at its own spelling, still falls through to the module free function sharing that
-// spelling and returns ITS answer -- a plausible wrong value with no diagnostic. It is the
+// spelling and returns ITS answer — a plausible wrong value with no diagnostic. It is the
 // unrepaired half of the local-binding-shadow class whose callable half landed the same day; the
 // witness's own annotation carries the two-tier disagreement that makes it legible (the compile
 // sibling already refuses a labeled call through this exact binding, naming the callee a function
 // value, while dispatch walks past it). THE ROW ASSERTS THE DESIRED LAW, so it reds now and greens
-// on repair, and its single conjunct returns a Bool and never throws -- an OBSERVED semantic red,
+// on repair, and its single conjunct returns a Bool and never throws — an OBSERVED semantic red,
 // never no-verdict debt. NEXT-RUNG TRIGGER: the census of non-callable lexical bindings whose
-// spelling collides with a builtin or module free function; the gate is widened against a measured
-// population, never speculatively.
+// spelling collides with a builtin or module free function; the gate is widened against a
+// measured population, never speculatively.
 fn floor_expected_red_chunk_21() -> List<String> {
   Cons { head: "v2.test.claim.local_binding_shadow.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: Empty {} } } } } }
 }
 
-// THE SHADOW CHUNK IS DELETED AND THE ROSTER IS RENUMBERED RATHER THAN LEFT WITH A HOLE. The
-// chunk that carried
-// `v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches`
-// was the last one when it was enrolled; the resolver repair made that row PASS, so its enrolment
-// is deleted -- leaving it would be the stale-quarantine arm firing on a red that no longer
-// exists, which is exactly what an enrolment must not outlive. THE WITNESS IS NOT DELETED WITH IT
-// (DESIGN 4b(4)): the probe stays in the ordinary roster as a permanent regression control, beside
-// the three green controls it always carried. A chunk authored against that same last index on
-// main is renumbered into the vacancy below, so the chunk sequence stays contiguous and
-// `floor_expected_red_chunks` names every index it reaches.
+// THE SHADOW CHUNK IS DELETED AND THE ROSTER IS RENUMBERED RATHER THAN LEFT WITH A HOLE. The chunk
+// carrying `v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches`
+// was the last one when enrolled; the resolver repair made that row PASS, so its enrolment is
+// deleted — leaving it would be the stale-quarantine arm firing on a red that no longer exists,
+// which an enrolment must not outlive. THE WITNESS IS NOT DELETED WITH IT (DESIGN 4b(4)): the
+// probe stays in the ordinary roster as a permanent regression control, beside the three green
+// controls it always carried. A chunk authored against that same last index on main is renumbered
+// into the vacancy below, so the sequence stays contiguous and `floor_expected_red_chunks` names
+// every index it reaches.
 //
-// OBSERVED RED, 2026-08-25 at parked/twin-source-standing-blocked 62d6de284c1 after restoring
-// the roster gate's missing execution-closure imports. The sanctioned-reader snippet reaches
+// OBSERVED RED, 2026-08-25 at parked/twin-source-standing-blocked 62d6de284c1 after restoring the
+// roster gate's missing execution-closure imports. The sanctioned-reader snippet reaches
 // SourceFindingsEstablished and the analyzer then emits a Suspect for that unchanged canonical
 // safe shape (last fixture-content edit: 6f3d374de0c). Owner and dissolution live on the exact
 // admission row in gunbc.explicit_witness_admission; this polarity row is deliberately the same
@@ -707,27 +689,26 @@ fn floor_expected_red_chunk_22() -> List<String> {
   Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
-// chunk_23 CARRIES ONE ROW AND IT ENTERS THIS ROSTER BY A ROUTE THE HEADER DOES NOT DESCRIBE, so
-// the route is written here rather than left for the next reader to infer from the identity.
+// chunk_23 CARRIES ONE ROW THAT ENTERS BY A ROUTE THE HEADER DOES NOT DESCRIBE, so the route is
+// written here rather than left for the next reader to infer from the identity.
 //
-// THE MEASUREMENT IS CARRIED HERE RATHER THAN CITED, deliberately: a row that has told an
-// assertion not to assert is exactly where a reader most needs the reason, and a pointer to a
-// pull request is worthless to them if that request has not landed (or never does). The four
-// facts, standalone:
+// THE MEASUREMENT IS CARRIED HERE RATHER THAN CITED: a row that has told an assertion not to
+// assert is where a reader most needs the reason, and a pointer to a pull request is worthless if
+// that request has not landed (or never does). The four facts, standalone:
 //
 //   1. WHAT THE WITNESS ASSERTS. `FreeMonoid<Node>` passed to a parameter declared
 //      `FreeMonoid<NormalizedTree>` -- a container-element type mismatch at a direct call
 //      argument -- must be REFUSED. The witness holds `!compile_dag_rust_emit_check(...)`, so it
 //      passes only when the embedded fixture fails to compile.
-//   2. IT IS ACCEPTED, AND THE CONTROLS ARE WHAT ESTABLISH IT. Two fixtures carrying the IDENTICAL
+//   2. IT IS ACCEPTED, AND THE CONTROLS ESTABLISH IT. Two fixtures carrying the IDENTICAL
 //      container-element mismatch, built from a locally declared record with no `Node`, no
-//      `v2.std.node` and no occurrence identity anywhere in them -- one reusing the wrapper name
+//      `v2.std.node` and no occurrence identity anywhere -- one reusing the wrapper name
 //      `NormalizedTree`, one using a corpus-unique wrapper name -- BOTH COMPILE CLEAN ON MAIN
 //      (@ ddb7f533e4e), zero blocking diagnostics. They share nothing with the occurrence-identity
-//      cut, so the acceptance is a property of the compiler and not of this branch.
+//      cut, so the acceptance is a property of the compiler, not of this branch.
 //   3. THE PREVIOUS GREEN WAS NOT ITS OWN ASSERTION. On main the real fixture refuses with exactly
 //      `UnresolvedType std.occurrence_identity.OccurrenceId` x2 and `ScopedOccurrenceRef` x1, and
-//      carries NO type-mismatch diagnostic at all. `v2.std.node` referenced those two types fully
+//      carries NO type-mismatch diagnostic. `v2.std.node` referenced those two types fully
 //      qualified WITHOUT importing that module, so every closure importing `v2.std.node` inherited
 //      them. This branch adds the import, they resolve, and the accidental refusal goes with them.
 //   4. NEXT-RUNG TRIGGER. `container_element_nominal_brand_mismatch` reaching the
@@ -737,13 +718,13 @@ fn floor_expected_red_chunk_22() -> List<String> {
 // `compile_dag_diagnostic_census`, over both corpora, 2026-08-27.
 //
 // Every other row here names a witness that FAILS and that someone is repairing. This one names a
-// witness whose SUBJECT was never guarded, and the repair it waits on is not a repair to the
-// witness -- it is a compiler wall that does not exist yet. The header's rule (a row belongs here
-// only while someone is fixing it) is stated so this roster cannot become a skip list, and this
-// row is admitted against the letter of that rule with the tension named rather than hidden: it
-// has a trigger, it is at identity grain, and it is on the same self-emptying path as everything
-// else -- the moment the wall lands, the witness passes, this roster reds the build naming this
-// row, and the row is deleted. What it does NOT have is an owner mid-repair today.
+// witness whose SUBJECT was never guarded, and the repair it waits on is a compiler wall that does
+// not exist yet, not a witness repair. The header's rule (a row belongs here only while someone
+// is fixing it) exists so this roster cannot become a skip list; this row is admitted against its
+// letter with the tension named: it has a trigger, it is at identity grain, and it is on the same
+// self-emptying path as everything else -- the moment the wall lands, the witness passes, this
+// roster reds the build naming this row, and the row is deleted. What it does NOT have is an owner
+// mid-repair today.
 //
 // THE CLASS IS RUNG INFLATION, DESIGN 4b(1) -- NOT a 4b(3) rung drop, and the distinction decides
 // what a reader may do with this row. Nothing regressed. The container-element mismatch judgment
@@ -752,14 +733,14 @@ fn floor_expected_red_chunk_22() -> List<String> {
 // `v2.std.node` referenced `std.occurrence_identity.OccurrenceId` and `ScopedOccurrenceRef` fully
 // qualified WITHOUT importing that module, so every closure importing `v2.std.node` inherited two
 // `UnresolvedType` diagnostics and refused for THAT reason. Measured on main @ ddb7f533e4e with the
-// witness's own oracle, the fixture's refusal is exactly those two diagnostics and carries no
-// type-mismatch diagnostic at all; the same container-element mismatch built from a locally
-// declared record, with no `Node` and no `v2.std.node` in it, COMPILES CLEAN ON MAIN. This branch
-// adds the import that resolves them, and the accidental refusal goes with them.
+// witness's own oracle, the fixture's refusal is exactly those two diagnostics with no
+// type-mismatch diagnostic; the same mismatch built from a locally declared record, with no `Node`
+// and no `v2.std.node`, COMPILES CLEAN ON MAIN. This branch adds the import that resolves them,
+// and the accidental refusal goes with them.
 //
-// SO THE ROW A READER MUST NOT WRITE is "restore the previous behaviour". The previous behaviour
-// was an accident, and re-adding unresolved references to buy back the red would be manufacturing
-// a refusal from a defect -- which is what this roster exists to make visible, not to launder.
+// SO THE ROW A READER MUST NOT WRITE is "restore the previous behaviour". It was an accident, and
+// re-adding unresolved references to buy back the red would manufacture a refusal from a defect --
+// what this roster exists to make visible, not to launder.
 //
 // A witness green on a defect in its own closure is NEGATIVE coverage, not weak coverage: it is
 // cited as evidence the wall is live, so the class never ranks for climbing. The nominal sibling
@@ -769,12 +750,12 @@ fn floor_expected_red_chunk_22() -> List<String> {
 //
 // The class row and its ceiling are ALSO filed in
 // `docs/plans/compiler-guarantee-recovery-gap-analysis.md` (gunbc#9457, against main, because the
-// finding is about main) -- in ADDITION to the four facts above, never instead of them, because
-// merge order is not this branch's to control and that row may land after this one or not at all.
-// THE ENROLMENT COULD NOT LAND THERE and the reason is mechanical: on main
-// this witness still PASSES, `required_floor_outcome_is_clean` requires `stale_quarantine` to be
-// empty, and an enrolled row that passes reds the build -- so enrolling it on main would red
-// main's own required floor. It fails here, which is the only tree where it is honestly enrollable.
+// finding is about main) -- in ADDITION to the four facts above, never instead, because merge
+// order is not this branch's to control and that row may land after this one or not at all.
+// THE ENROLMENT COULD NOT LAND THERE, mechanically: on main this witness still PASSES,
+// `required_floor_outcome_is_clean` requires `stale_quarantine` to be empty, and an enrolled row
+// that passes reds the build -- so enrolling it on main would red main's own required floor. It
+// fails here, the only tree where it is honestly enrollable.
 //
 // REMOVAL TRIGGER: `container_element_nominal_brand_mismatch` reaching the direct-call-argument
 // position -- i.e. `nominal_call_arg_brand_mismatch` admitting two distinct nominal element types
@@ -784,121 +765,117 @@ fn floor_expected_red_chunk_23() -> List<String> {
   Cons { head: "test.claim.record_literal_call_arg_handoff_witness.record_literal_container_element_mismatch_at_call_arg_still_refuses", tail: Empty {} }
 }
 
-// THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding
-// rather than the bookkeeping. The local-binding-shadow repair -- a call site spelling a name held
-// by both a local binding and a module-level free function now reaches the LOCAL -- was enrolled
-// with ONE row of its own. On the first required run after it landed, thirteen OTHER enrolled reds
-// across five unrelated modules passed: test.claim.host_phase_status (2),
-// test.claim.interpreter_replacement_cut_witness_test (2), test.claim.srv3_subsumption (6),
-// v2.test.claim.staging (2) and v2.test.emit.produced_decl_support_preserved (1). None of them was
-// authored as a shadow probe and none names the class; they were filed as ordinary reds against
-// their own subjects, which is exactly what a SILENT wrong value looks like from the consumer's
-// side -- the fold returns a plausible answer, the assertion disagrees with it, and the row gets
-// written against the assertion. So this list was carrying thirteen symptoms of one cause, and the
-// cause was legible from none of them.
+// THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding. The
+// local-binding-shadow repair -- a call site spelling a name held by both a local binding and a
+// module-level free function now reaches the LOCAL -- was enrolled with ONE row of its own. On the
+// first required run after it landed, thirteen OTHER enrolled reds across five unrelated modules
+// passed: test.claim.host_phase_status (2), test.claim.interpreter_replacement_cut_witness_test
+// (2), test.claim.srv3_subsumption (6), v2.test.claim.staging (2) and
+// v2.test.emit.produced_decl_support_preserved (1). None was authored as a shadow probe or names
+// the class; they were filed as ordinary reds against their own subjects, which is exactly what a
+// SILENT wrong value looks like from the consumer's side -- the fold returns a plausible answer,
+// the assertion disagrees, and the row gets written against the assertion. This list was carrying
+// thirteen symptoms of one cause, legible from none of them.
 //
-// THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every one of those claims stays
-// enrolled and now passes, which is what keeps the repair's reach measured rather than asserted:
-// if the gate regresses, thirteen independent modules go red before the shadow fixture does.
+// THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every one stays enrolled and now
+// passes, which keeps the repair's reach measured rather than asserted: if the gate regresses,
+// thirteen independent modules go red before the shadow fixture does.
 
 // THE LIVE-TREE-ADMISSION CHUNK -- THE OTHER HALF OF gunbc#9106, a completion rather than a new
 // admission.
 //
-// IT IS NOT NUMBERED, AND THE REASON IS A DEFECT THAT WAS ABOUT TO LAND RATHER THAN A STYLE
-// PREFERENCE. Three open branches each mint a `floor_expected_red_chunk_24` into this file:
-// gunbc#9591 (this one), gunbc#9587 (one add-slice row) and gunbc#9569 (six
-// `sole_constructor_completeness_audit_probe_test` rows, which are also six of the 47 below). The
-// numeric suffix is a SHARED MUTABLE COUNTER whose next value every concurrent lane computes
-// independently from the same base, so collision is not a risk under concurrency -- it is the
-// expected outcome.
+// IT IS NOT NUMBERED, BECAUSE OF A DEFECT THAT WAS ABOUT TO LAND, NOT A STYLE PREFERENCE. Three
+// open branches each mint a `floor_expected_red_chunk_24` into this file: gunbc#9591 (this one),
+// gunbc#9587 (one add-slice row) and gunbc#9569 (six
+// `sole_constructor_completeness_audit_probe_test` rows, also six of the 47 below). The numeric
+// suffix is a SHARED MUTABLE COUNTER whose next value every concurrent lane computes independently
+// from the same base, so collision under concurrency is the expected outcome, not a risk.
 //
-// WHAT MAKES IT WORSE THAN AN ORDINARY CONFLICT, and why a distinct name is the construction
-// rather than the courtesy: two lanes appending a same-named `fn` at DIFFERENT offsets can merge
-// with NO CONFLICT MARKERS, leaving one file carrying two definitions of one name. This
-// repository has measured what happens next -- `test.claim.duplicate_definition_binding_probe_test`
-// exists because a duplicate definition is SILENTLY ACCEPTED and the later binding wins, so the
-// merge would not fail, it would quietly drop one lane's rows and stay green. A position-derived
-// name is a second naming scheme for something the declaration already names (DESIGN section 3),
-// and this is that rule's cost arriving in the merge graph.
+// WHAT MAKES IT WORSE THAN AN ORDINARY CONFLICT, and why a distinct name is the construction rather
+// than the courtesy: two lanes appending a same-named `fn` at DIFFERENT offsets can merge with NO
+// CONFLICT MARKERS, leaving one file with two definitions of one name. This repository has
+// measured what happens next -- `test.claim.duplicate_definition_binding_probe_test` exists
+// because a duplicate definition is SILENTLY ACCEPTED and the later binding wins -- so the merge
+// would not fail; it would quietly drop one lane's rows and stay green. A position-derived name is
+// a second naming scheme for something the declaration already names (DESIGN section 3), and this
+// is that rule's cost arriving in the merge graph.
 //
 // So the chunk is named for WHAT IT ADMITS. A meaning-carrying name cannot be independently
-// derived by two lanes, which makes the collision unrepresentable instead of detected.
+// derived by two lanes, making the collision unrepresentable instead of detected.
 //
-// #9106 deleted the floor's stale live-tree decline. That decline was a FILE-GRAIN PREDICTION
-// that a witness reading the live tree could not participate in the hermetic fold, and it had
-// stopped agreeing with what the interpreter does. Deleting it was correct and it admitted a
-// population that had never executed: on main run 33145062452 (3a8344b5c3) the floor reports
-// failed=47, and these are those 47.
+// #9106 deleted the floor's stale live-tree decline -- a FILE-GRAIN PREDICTION that a witness
+// reading the live tree could not participate in the hermetic fold, which had stopped agreeing
+// with what the interpreter does. Deleting it was correct and admitted a population that had never
+// executed: on main run 33145062452 (3a8344b5c3) the floor reports failed=47, and these are those
+// 47.
 //
-// WHY THEY BELONG HERE AND NOT SOMEWHERE ELSE, which is the question this roster's header says
-// to ask before enrolling anything. Every one of them EXECUTES AND ANSWERS FALSE -- the run
-// classifies each as `FAIL ... returned Bool(false)`, which is the semantic verdict this roster
-// is defined over. None of them route-gaps (no overlap with `v2.workflow.floor_route_gap`), none
-// produces a non-verdict, and none is a budget outcome.
+// WHY THEY BELONG HERE, the question this roster's header says to ask before enrolling anything.
+// Every one EXECUTES AND ANSWERS FALSE -- the run classifies each as `FAIL ... returned
+// Bool(false)`, the semantic verdict this roster is defined over. None route-gaps (no overlap with
+// `v2.workflow.floor_route_gap`), none produces a non-verdict, and none is a budget outcome.
 //
 // AN EARLIER REVISION OF THAT SENTENCE ALSO CLAIMED EACH ROW "REACHES ITS SUBJECT", AND THE RUN
 // DOES NOT ESTABLISH THAT. `Bool` has no spelling for "I could not observe my subject", so an
 // unreached subject and a genuine NO render identically as `returned Bool(false)`. Execution is
-// established; subject-reachability is not, and the difference is exactly the class this
-// document names as execution-provenance loss. The clause is removed rather than softened,
-// because a reader quoting it would have been quoting a property nothing measured. The live
-// candidate is named in the follow-ups below.
-// That last exclusion is load-bearing and it is the reason this chunk closes two of the run's
-// four causes rather than all four. The same run reports 44 `interrupted_before_verdict` and 2
+// established; subject-reachability is not -- exactly the class this document names as
+// execution-provenance loss. The clause is removed rather than softened, because a reader quoting
+// it would be quoting a property nothing measured. The live candidate is named in the follow-ups
+// below.
+// That last exclusion is load-bearing and is why this chunk closes two of the run's four causes
+// rather than all four. The same run reports 44 `interrupted_before_verdict` and 2
 // `completed_over_cost_requirement`, and NONE of them is here.
 //
-// WHY NOT, stated as a refusal rather than as a scope note: an interrupted row produced NO
-// VERDICT. Enrolling it would assert "this witness runs and fails, and someone is fixing it"
-// about an identity that never answered -- which is precisely the 101-row mistake this file's
-// own header opens with, and `ExpectedRedArm` refuses budget outcomes by construction so the
-// enrolment would not even take. The 2 completed-over-cost rows answered, but what they owe is
-// a COST and not a failure; enrolling them would assert an expected FAILURE they do not
-// exhibit. Cost is not a verdict, and the verdict roster cannot carry it.
+// WHY NOT, as a refusal rather than a scope note: an interrupted row produced NO VERDICT.
+// Enrolling it would assert "runs and fails, and someone is fixing it" about an identity that
+// never answered -- precisely the 101-row mistake this file's header opens with -- and
+// `ExpectedRedArm` refuses budget outcomes by construction, so the enrolment would not even take.
+// The 2 completed-over-cost rows answered, but what they owe is a COST, not a failure; enrolling
+// them would assert an expected FAILURE they do not exhibit. Cost is not a verdict, and the
+// verdict roster cannot carry it.
 //
 // THE POPULATION IS BOUNDED AND MEASURED, at identity grain, on the run named above: 44
-// interrupted, all on the CPU clock against `required_floor_claim_cpu_safety_limit_ms`'s
-// 5000ms, concentrated in live-tree corpus witnesses (13 in
+// interrupted, all on the CPU clock against `required_floor_claim_cpu_safety_limit_ms`'s 5000ms,
+// concentrated in live-tree corpus witnesses (13 in
 // `v2.test.claim.enforcement.grammar_coverage_witness`, 6 in
 // `v2.test.claim.enforcement_live_witness`, 6 in
 // `v2.test.claim.complexity.accumulator_copy_roster_gate`, the rest spread across 10 modules);
-// and 2 completed-over-cost, both in `test.claim.transport_script_wall_compile_red`, on the
-// wall clock at 18882ms and 19024ms against 10000ms. Every interrupted figure is a LOWER BOUND
-// -- the deadline preempted the measurement -- so their real cost is unmeasured and the sum is
-// not this population's cost.
+// and 2 completed-over-cost, both in `test.claim.transport_script_wall_compile_red`, on the wall
+// clock at 18882ms and 19024ms against 10000ms. Every interrupted figure is a LOWER BOUND -- the
+// deadline preempted the measurement -- so their real cost is unmeasured and the sum is not this
+// population's cost.
 //
-// WHERE THEY GO, AND IT IS NOT A NEW MECHANISM. `v2.workflow.required_floor` states the
-// remedies exhaustively -- reduce what the witness reaches for, or enrol it in a lane declaring
-// its own dated ceiling -- and names relocation as forbidden. A carrier for exactly this axis is
-// built and open as gunbc#9517 (`v2.workflow.floor_cost_debt`, joined by a `DeclinedCostDebt`
-// arm in `required_floor`). These 46 identities were handed to that lane at identity grain with
-// clock, figure and limit per row, rather than duplicated here: authoring them into a module
-// that is not on main would fork the authority this chunk exists to respect.
+// WHERE THEY GO, AND IT IS NOT A NEW MECHANISM. `v2.workflow.required_floor` states the remedies
+// exhaustively -- reduce what the witness reaches for, or enrol it in a lane declaring its own
+// dated ceiling -- and names relocation as forbidden. A carrier for exactly this axis is built and
+// open as gunbc#9517 (`v2.workflow.floor_cost_debt`, joined by a `DeclinedCostDebt` arm in
+// `required_floor`). These 46 identities were handed to that lane at identity grain with clock,
+// figure and limit per row, rather than duplicated here: authoring them into a module not on main
+// would fork the authority this chunk exists to respect.
 //
-// AN EARLIER REVISION OF THIS PARAGRAPH ASSERTED THAT #9517's ROSTER RETURNS `Empty`, AND SAID
-// SO AS A FIRST-HAND READING. The reading was honest -- `floor_cost_debt_chunks()` on
-// `origin/session/witty-wren-148` was `Empty {}` when it was taken -- and it was WRONG WITHIN
-// THE HOUR, because the branch was moving while I read it. That is this document's own
-// transcribed-measurement class arriving on the shortest possible clock: a bare present-tense
-// claim about ANOTHER LANE'S HEAD is not merely stale-prone, it has no producer on this side of
-// the boundary that could ever re-derive it, so nothing here refuses when it goes false. The
-// sentence is deleted rather than re-pinned to a newer number, because a second number would
-// rot the same way.
+// AN EARLIER REVISION OF THIS PARAGRAPH ASSERTED THAT #9517's ROSTER RETURNS `Empty`, AS A
+// FIRST-HAND READING. The reading was honest -- `floor_cost_debt_chunks()` on
+// `origin/session/witty-wren-148` was `Empty {}` when taken -- and WRONG WITHIN THE HOUR, because
+// the branch was moving while I read it. That is this document's own transcribed-measurement
+// class on the shortest possible clock: a bare present-tense claim about ANOTHER LANE'S HEAD has
+// no producer on this side of the boundary that could re-derive it, so nothing here refuses when
+// it goes false. The sentence is deleted rather than re-pinned, because a second number would rot
+// the same way.
 //
 // WHAT IS KNOWN AND WHAT IS NOT, kept separate: that lane reports the 46 enrolled as a
 // separately-labelled cost population, explicitly NOT claimed to pass, keyed on MARGINAL cpu so
 // that draining a row displaces no shared fill onto its successor. That is their measurement,
-// reported to this lane and not re-derived by it. What THIS module can stand behind is only its
-// own side: these 46 are absent from this roster, deliberately, and the reason is stated above.
+// reported to this lane and not re-derived by it. What THIS module can stand behind is its own
+// side only: these 46 are absent from this roster, deliberately, for the reason stated above.
 //
-// RUNG, DECLARED HONESTLY (DESIGN 4b(3)): on MAIN the cost axis stays BELOW the floor's own bar
-// -- the run still stops on it, so nothing is silently admitted, but 46 identities reach no
-// usable verdict every run and no mechanism ON MAIN holds them. Bounded, identity-grain,
-// re-measurable. RESTORATION TRIGGER: a roster ON MAIN carries these 46 under an O=R admission,
-// at which point they are counted debt on the cost axis instead of an ungoverned cause. The
-// trigger names the CAPABILITY and deliberately not an artifact (DESIGN 4b(3), 2026-08-26): NOT
-// "#9517 merges", because a merge of an empty roster closes none of them, and NOT "that lane
-// enrols them", because an enrolment on an unmerged branch changes nothing about what the
-// required run on main observes.
+// RUNG, DECLARED HONESTLY (DESIGN 4b(3)): on MAIN the cost axis stays BELOW the floor's own bar --
+// the run still stops on it, so nothing is silently admitted, but 46 identities reach no usable
+// verdict every run and no mechanism ON MAIN holds them. Bounded, identity-grain, re-measurable.
+// RESTORATION TRIGGER: a roster ON MAIN carries these 46 under an O=R admission, at which point
+// they are counted debt on the cost axis instead of an ungoverned cause. The trigger names the
+// CAPABILITY and deliberately not an artifact (DESIGN 4b(3), 2026-08-26): NOT "#9517 merges",
+// because a merge of an empty roster closes none of them, and NOT "that lane enrols them",
+// because an enrolment on an unmerged branch changes nothing about what the required run on main
+// observes.
 //
 // THE TREE ALREADY DEMANDED THIS, AND THE RUN CONFIRMED IT BY EXECUTION.
 //
@@ -906,52 +883,51 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // `legacy_test_behavior_unclassified_frontier_is_zero` would satisfy the assertion the
 // `quarantine_probe_disposition_witness_test` claims make ABOUT this roster, so they would stop
 // failing and report STALE-QUARANTINE. Run 33154432928 answered `failed=0 stale_quarantine=3`,
-// naming exactly those three, and they are removed here -- by the roster's own removal path,
-// which is the mechanism working rather than an edit correcting a mistake.
+// naming exactly those three, and they are removed here -- by the roster's own removal path, the
+// mechanism working rather than an edit correcting a mistake.
 //
-// THE PREDICTION SAID FOUR AND THE ANSWER WAS THREE, and the error is recorded because it is
-// the more instructive half. The fourth name was
-// `legacy_test_behavior_unclassified_frontier_is_zero` itself, and it did NOT flip -- correctly.
-// It is the row the join is ABOUT, not a row that passes as a consequence: it still fails on its
-// own subject, and this roster still holds it. Conflating "the identity a witness names" with
-// "an identity that changes state when the witness is satisfied" is what produced the extra row,
-// and a join has both roles in it at once.
+// THE PREDICTION SAID FOUR AND THE ANSWER WAS THREE, recorded because the error is the more
+// instructive half. The fourth name was `legacy_test_behavior_unclassified_frontier_is_zero`
+// itself, and it did NOT flip -- correctly. It is the row the join is ABOUT, not a row that passes
+// as a consequence: it still fails on its own subject, and this roster still holds it. Conflating
+// "the identity a witness names" with "an identity that changes state when the witness is
+// satisfied" produced the extra row, and a join has both roles in it at once.
 //
-// WHY THE ENROLMENT WAS STILL RIGHT FOR ALL THREE. They failed on main and they answer false, so
-// they met this roster's admission when they were added; what removed them is that the same
-// change repaired their subject. A roster that could not hold a row for one run and release it
-// on the next would force the author to predict the repair perfectly before landing it.
+// WHY THE ENROLMENT WAS STILL RIGHT FOR ALL THREE. They failed on main and answer false, so they
+// met this roster's admission when added; what removed them is that the same change repaired
+// their subject. A roster that could not hold a row for one run and release it on the next would
+// force the author to predict the repair perfectly before landing it.
 // `test.claim.quarantine_probe_disposition_witness_test.the_former_live_tree_declined_row_is_now_expected_red`
 // asserts that `test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero`
-// is held by this roster -- it was authored against the post-#9106 world and has been failing
-// since, because the row it names was never added. That witness is itself one of the 47. So
-// four of these rows (the three `quarantine_probe_disposition_witness_test` claims and the
-// `legacy_test_behavior` one they join against) are expected to leave this chunk on the first
-// run after it lands, by this roster's own removal path rather than by an edit.
+// is held by this roster -- authored against the post-#9106 world and failing since, because the
+// row it names was never added. That witness is itself one of the 47. So four of these rows (the
+// three `quarantine_probe_disposition_witness_test` claims and the `legacy_test_behavior` one they
+// join against) are expected to leave this chunk on the first run after it lands, by this
+// roster's own removal path rather than by an edit.
 //
-// THE 47 ARE NOT ONE CAUSE, AND THREE GROUPS INSIDE THEM CARRY A REMEDY THIS ROSTER CANNOT
-// STATE. A row here is a bare identity string with no reason field, so enrolment says exactly
-// one thing -- this is expected to fail -- about rows that fail for at least six distinct
-// causes with different remedies. That is a real limit of the mechanism, not of this chunk, and
-// the three groups are named here so the next reader does not conclude one cause. All three are
-// FOLLOW-UPS rather than reasons to withhold enrolment, because enrolment is a REVERSIBLE
-// HOLDING STATE WITH A LOUD EXIT: the floor refuses on an enrolled row that starts passing and
-// names it, which is the same path by which this very change removes one.
+// THE 47 ARE NOT ONE CAUSE, AND THREE GROUPS INSIDE THEM CARRY A REMEDY THIS ROSTER CANNOT STATE.
+// A row here is a bare identity string with no reason field, so enrolment says exactly one thing
+// -- expected to fail -- about rows that fail for at least six distinct causes with different
+// remedies. That is a limit of the mechanism, not of this chunk, and the three groups are named so
+// the next reader does not conclude one cause. All three are FOLLOW-UPS rather than reasons to
+// withhold enrolment, because enrolment is a REVERSIBLE HOLDING STATE WITH A LOUD EXIT: the floor
+// refuses on an enrolled row that starts passing and names it -- the same path by which this
+// change removes one.
 //
 //   1. THE THREE `guarantee_floor_class_probe_witness` GENERIC-INSTANTIATION ROWS FAIL BECAUSE
 //      A WALL LANDED, NOT BECAUSE THE HOLE IS OPEN. They assert a hole is still open; it is
-//      not. The discriminating evidence is that BOTH of that hole's controls PASS
+//      not. The discriminating evidence: BOTH of that hole's controls PASS
 //      (`floor_generic_instantiation_monomorphic_control_refuses`,
 //      `floor_generic_instantiation_green_control_is_clean`) and the SIBLING hole probe
 //      `floor_field_through_generics_is_still_silently_accepted` also passes -- so the harness
-//      reached the judgment and the other hole is genuinely still open. A harness that saw
+//      reached the judgment and the other hole is genuinely still open; a harness that saw
 //      nothing would have taken the sibling down too. That module's own
 //      `guarantee_floor_class_probe_scope_note` prescribes the remedy verbatim: such a probe
 //      "flip[s] RED on the day the wall lands, which is the signal to rewrite the row as
-//      `ExpectBlockingRefusal` rather than to delete the probe" -- which is DESIGN 4b(4)'s rule
-//      that a greened expecting-red probe becomes a permanent regression control. Enrolment
-//      holds them honestly (they do fail) while recording nothing about WHY, so the rewrite is
-//      owed and the roster's stale-quarantine arm is what will demand it.
+//      `ExpectBlockingRefusal` rather than to delete the probe" -- DESIGN 4b(4)'s rule that a
+//      greened expecting-red probe becomes a permanent regression control. Enrolment holds them
+//      honestly (they do fail) while recording nothing about WHY, so the rewrite is owed and the
+//      stale-quarantine arm will demand it.
 //
 //   2. THE FOUR `sole_constructor_completeness_audit_probe_test` f10 ROWS ANSWERED AN OPEN QUESTION
 //      THE FIRST TIME THEY RAN. Their block annotation states a question rather than a marked
@@ -960,43 +936,43 @@ fn floor_expected_red_chunk_23() -> List<String> {
 //      identical source with the imports swapped, and the two direct probes fail in OPPOSITE
 //      directions, both predicted by last-import-wins. That is the census-AMBIGUOUS resolution
 //      hole DESIGN 4b already records as decidable once scoped. The distinction is decidable in
-//      the file rather than a matter of judgement: f13 and f19, which ARE enrolled here on the
-//      same footing, carry an explicit "Deliberately RED" marking and the f10 four do not.
+//      the file: f13 and f19, enrolled here on the same footing, carry an explicit "Deliberately
+//      RED" marking and the f10 four do not.
 //
 //   3. THE THREE `cost_coverage_witness` ROWS ARE THE SUBJECT-REACHABILITY CANDIDATE. That
-//      module has 10 test fns; the 7 that pass are the ones that survive an empty subject (one
-//      reads `(receipt.files_attempted == 0) || ...`) and the 3 that fail are the ones demanding
-//      non-zero content. That is consistent with a genuine NO and equally consistent with a
-//      subject that was never reached, and no run distinguishes them. Enrolled as failing, which
-//      is what was observed; NOT asserted to be semantic.
+//      module has 10 test fns; the 7 that pass survive an empty subject (one reads
+//      `(receipt.files_attempted == 0) || ...`) and the 3 that fail demand non-zero content.
+//      Consistent with a genuine NO and equally with a subject never reached, and no run
+//      distinguishes them. Enrolled as failing, which is what was observed; NOT asserted to be
+//      semantic.
 //
 // The classification, controls and per-row execution behind all three are crisp-newt-899's
 // triage, verified here against the cited files rather than accepted on report.
 //
-// ONE STALE PREMISE FOUND WHILE CHECKING THE ABOVE, recorded because it is load-bearing for a
-// carrier this chunk overlaps. `gunbc.declined_live_tree_defect_classification` states that it
-// "is not an expected-red enrolment and must never become one: enrolling a row here would assert
-// that the floor runs it and that it fails, and the floor does not run it at all." Eight of the
-// modules it classifies contain rows enrolled here, and the floor DOES now run them -- they are
-// in run 33145062452's FAIL lines. So that clause's REASON has been overtaken by #9106; the
-// clause is not wrong about authority substitution in general, it is premised on a
-// non-execution that no longer holds. Not edited here, because it is that carrier's to correct
-// and a second account of one fact is the defect either way -- reported to its owner instead.
+// ONE STALE PREMISE FOUND WHILE CHECKING THE ABOVE, load-bearing for a carrier this chunk
+// overlaps. `gunbc.declined_live_tree_defect_classification` states that it "is not an
+// expected-red enrolment and must never become one: enrolling a row here would assert that the
+// floor runs it and that it fails, and the floor does not run it at all." Eight of the modules it
+// classifies contain rows enrolled here, and the floor DOES now run them -- they are in run
+// 33145062452's FAIL lines. So that clause's REASON has been overtaken by #9106; it is not wrong
+// about authority substitution in general, but it is premised on a non-execution that no longer
+// holds. Not edited here, because it is that carrier's to correct and a second account of one
+// fact is the defect either way -- reported to its owner instead.
 //
-// WHAT THIS CHUNK IS NOT. It is not a coverage claim and it is not a disposition. Each row is a
-// defect somebody owns, visible at identity grain, and the chunk can only shrink under an
-// honest run -- a member that starts passing reds the build naming itself. Its length is the
-// debt #9106 surfaced, and the debt was always there; what changed is that it is now counted.
-// ONE MEMBER OF THIS CHUNK HAS A PER-ROW MECHANISM, MEASURED BY EXECUTION, and it is written
-// here because the bulk enrolment above establishes THAT the row fails and not WHY -- and for
-// this row the why is what stops the next reader closing it the cheap way.
+// WHAT THIS CHUNK IS NOT: a coverage claim or a disposition. Each row is a defect somebody owns,
+// visible at identity grain, and the chunk can only shrink under an honest run -- a member that
+// starts passing reds the build naming itself. Its length is the debt #9106 surfaced; the debt was
+// always there, and now it is counted.
+// ONE MEMBER OF THIS CHUNK HAS A PER-ROW MECHANISM, MEASURED BY EXECUTION, written here because
+// the bulk enrolment establishes THAT the row fails and not WHY -- and for this row the why is
+// what stops the next reader closing it the cheap way.
 //
 // `v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds`
 // runs `generate_translate_self_emit_candidate` -- `infer` composed with `translate` -- over the
 // dag add slice and holds only on `Accepted`, with the emitted node equal to
 // `dag_emitted_add_fn_node()` and no diagnostic carried.
 //
-// A RECEIPT, AND EXPLICITLY NOT AN INSTRUMENT -- the distinction is stated because DESIGN's
+// A RECEIPT, AND EXPLICITLY NOT AN INSTRUMENT -- stated because DESIGN's
 // name-the-instrument-never-transcribe-its-output ruling reaches this paragraph, and half of it
 // bites here. At main 3a8344b5c, a probe module returning each stage's verdict as a Symbol
 // answered `infer_accepted` for `infer(dag_add_emitted_root)` and `infer_grounding_not_derived`
@@ -1007,16 +983,16 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // standing figure, which rots because the thing it describes moves. This one names a fixed tree,
 // so it stays true of that tree forever -- the dated-receipt half the ruling preserves. What it
 // DOES reach is reproducibility: the probe was a throwaway module and no `.dag` entry point
-// re-derives this, so a reader cannot re-run it. That gap is recorded here rather than papered
-// over, and it is this note's own next-rung trigger: a `.dag` entry returning the per-stage
-// verdicts for one root would let this paragraph name a producer instead of a commit.
+// re-derives this, so a reader cannot re-run it. That gap is this note's own next-rung trigger: a
+// `.dag` entry returning the per-stage verdicts for one root would let this paragraph name a
+// producer instead of a commit.
 //
 // IT IS NOT DELETED IN FAVOUR OF THE STRUCTURAL ACCOUNT BELOW, because that account cannot
-// establish it. Reading the gate tells you translate CAN refuse an underived grounding; it
-// cannot tell you that infer ACCEPTED this input rather than rejecting it earlier, and that is
-// the fact locating the work in the derivation rules rather than in translate. A structural
-// argument that reached the same conclusion without the observation would be the inference this
-// repository keeps recording as a diagnostic name read as a mechanism.
+// establish it. Reading the gate tells you translate CAN refuse an underived grounding; it cannot
+// tell you that infer ACCEPTED this input rather than rejecting it earlier, and that fact locates
+// the work in the derivation rules rather than in translate. A structural argument reaching the
+// same conclusion without the observation would be the inference this repository keeps recording
+// as a diagnostic name read as a mechanism.
 //
 // THE REFUSAL IS THE DECLARED FRONTIER, NOT A DEFECT IN EITHER STAGE. The fixture root is
 // `TypeNode { connective: Arrow }` over `Conj` inhabitants, and `v2.compiler.infer`
@@ -1024,42 +1000,119 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // vocabulary's twelve kinds (Branch, Match, Loop, and Transform in its add shape) and no other.
 // So infer records `GroundingNotDerived`, and `translate_grounding_derived_gate_subtree` routes
 // that variant through `canonical_grounding_from_inferred_facts` and refuses with the frontier's
-// own typed reason. The gate is doing what it was built to do on a tree the frontier has not
-// reached.
+// own typed reason. The gate does what it was built to do on a tree the frontier has not reached.
 //
-// AND NO REPAIR TO THE GATE ALONE WOULD GREEN THIS ROW, so a reader must not read the refusal as
+// AND NO REPAIR TO THE GATE ALONE WOULD GREEN THIS ROW, so the refusal must not be read as
 // locating the work in translate: `inferred_facts_not_derived` returns the frontier diagnostic on
 // infer's ACCEPTED path, so even an accepting translate leaves the witness's `d == None` conjunct
 // false. Both conjuncts fail for the one cause.
 //
-// WHY THE CHEAP GREEN IS FORBIDDEN, which is the whole reason this note exists. The sibling
-// witnesses in `v2.test.execution.dag_add_emit_round_trip` pass on the SAME fixture because they
-// build their `InferredTree` from a hand-authored facts lookup answering `DerivedGrounding`.
-// Making `infer` answer that way for connective nodes generally is precisely the `root == root`
-// grounding `node_grounding_frontier_note` records as the defect the frontier carrier REPLACED --
-// every node typed as itself, read downstream as an established judgment. The honest repair is a
-// derivation rule for the kinds this slice uses, which is v2 self-host lane work and not a
-// witness edit.
+// WHY THE CHEAP GREEN IS FORBIDDEN, the whole reason this note exists. The sibling witnesses in
+// `v2.test.execution.dag_add_emit_round_trip` pass on the SAME fixture because they build their
+// `InferredTree` from a hand-authored facts lookup answering `DerivedGrounding`. Making `infer`
+// answer that way for connective nodes generally is precisely the `root == root` grounding
+// `node_grounding_frontier_note` records as the defect the frontier carrier REPLACED -- every node
+// typed as itself, read downstream as an established judgment. The honest repair is a derivation
+// rule for the kinds this slice uses: v2 self-host lane work, not a witness edit.
 //
-// ITS REMOVAL TRIGGER IS NOT RESTATED HERE AND DELIBERATELY SO: it is already modeled, with its
-// population and blocker, in `gunbc.guarantee_rung_drop`
-// `self_host_candidate_generation_add_slice_stall`. Copying those fields into a comment would
-// fork that authority into prose that drifts on its own (DESIGN 2/3, and 4c's rule that an
-// annotation must not restate what a declaration says), and no `Accepted` program can read a
-// comment, so the copy could never be the thing that is checked. What this roster owns is the
-// RELATION: this row is that stall's executing consumer, so when the stall's trigger is met the
-// witness passes, stale quarantine reds the build naming the row, and the two delete together.
+// ITS REMOVAL TRIGGER IS NOT RESTATED HERE, DELIBERATELY: it is already modeled, with population
+// and blocker, in `gunbc.guarantee_rung_drop` `self_host_candidate_generation_add_slice_stall`.
+// Copying those fields into a comment would fork that authority into prose that drifts on its own
+// (DESIGN 2/3, and 4c's rule that an annotation must not restate what a declaration says), and no
+// `Accepted` program can read a comment, so the copy could never be the thing that is checked.
+// What this roster owns is the RELATION: this row is that stall's executing consumer, so when the
+// stall's trigger is met the witness passes, stale quarantine reds the build naming the row, and
+// the two delete together.
+// TWO ARMS OF THE EXPECTED-TYPE PATH WITNESS, ENROLLED BECAUSE THE WALL THEY ASSERT DOES NOT HOLD
+// ON THAT PATH AND WAS NOT BROKEN BY THE BRANCH THAT FOUND IT. Both assert that a generic
+// application reaching a declared return it does not inhabit produces a blocking diagnostic. It
+// does not. The specimen is not synthetic in origin: gunbc.runner_slot_allocation
+// gunbc_runner_memory_per_core carried exactly that shape, typechecked, and yielded
+// Measure { count: 3 } -- three BYTES per core -- which drove the entire fleet to
+// deployment=refused cause=zero_runner_width under a diagnostic naming neither the ratio nor the
+// missing conversion.
+//
+// CAUSATION IS SETTLED WITHOUT A MAIN CONTROL BUILD, and the argument is stated so a reader can
+// check it rather than trust it: the branch enrolling these rows changes NO compiler source. Its
+// entire diff against b60fc7dd61 under src/ is empty -- only dag/ corpus rows and this roster move
+// -- so no edit on it can have opened a type judgment. The admission predates the fixture.
+//
+// AN EARLIER REVISION OF THIS ROW ENROLLED ONE IDENTITY AND CARRIED A MEASURED TABLE THAT WAS NOT
+// MEASURING ITS SUBJECT, and it is recorded here because the failure is instructive rather than
+// clerical. That row read a Gibibyte against a declared ByteSize through a source importing
+// std.measure, with the verdict filtered to the diagnostic class DeclaredTypeNotInhabited. Both
+// halves were wrong. The census compiles a SYNTHETIC SINGLE-MODULE source, so corpus imports do not
+// resolve -- a trivially VALID std.measure program produces 92 BLOCKING diagnostics -- and the
+// class filter hid every one of them, which is the only reason the pair ever appeared to work. The
+// old red refused because its imports did not resolve, and its own positive control refused for the
+// identical reason while asserting admission. A class name is a fact about diagnostic QUALITY; only
+// the refusal is the admission fact.
+//
+// THE REPLACEMENT SPECIMENS IMPORT NOTHING AND THE ORACLE COUNTS BLOCKING ROWS, and with that the
+// matrix does not merely locate the defect -- it establishes that the defect is much larger than
+// the row this file used to carry. Measured, all executed:
+//
+//   plain record vs plain record, different fields          ADMITTED  <- this row
+//   generic argument at position zero, phantom parameter    ADMITTED  <- this row
+//   generic argument at position zero, carried in a field   ADMITTED  <- this row
+//   generic argument at the MIDDLE of three                 ADMITTED  <- this row
+//   generic argument at the LAST of three                   ADMITTED  <- this row
+//   different application HEAD, same argument               ADMITTED  <- this row
+//   NESTED argument, at the middle position                 ADMITTED  <- this row
+//   matching application, each of the three forms           admitted  (positive controls)
+//   a PRIMITIVE where an application is declared            refused
+//   a primitive call-result mismatch                        refused
+//   a blatant primitive mismatch                            refused   (liveness)
+//   a valid source                                          admitted  (opposite control)
+//
+// SO THE HONEST STATEMENT IS NOT ABOUT GENERICS. In declared-return position two NOMINAL types are
+// not compared at all; refusal survives only where a PRIMITIVE is on one side. Every generic row is
+// an instance of that, which is why the plain-record row is enrolled in its own right.
+//
+// AN EARLIER REVISION OF THIS ROW CLAIMED THE CONSTRUCTOR HEAD WAS COMPARED and narrowed the defect
+// to the type-argument vector on that basis. Its only evidence was a PRIMITIVE returned where an
+// application was declared, which establishes nothing about comparing two applications. Two
+// different heads are admitted. The claim was a guess wearing a measurement's clothes, and it is
+// the same failure this file already records one paragraph above.
+//
+// SEVEN IDENTITIES, because each names a discrimination a partial repair could miss while greening
+// the others -- and greening them is not harmless, since this roster SELF-EMPTIES on pass. A repair
+// comparing only the first argument would retire the two position-zero rows while the production
+// Measure<Memory, Gibi, Nat> hole, which differs at the MIDDLE argument, stayed open. One comparing
+// heads and arguments pairwise could zip to the shorter vector and miss arity. One comparing only
+// the outermost argument would miss nesting. One confined to applications would miss plain records.
+// A single row could not tell any of those apart.
+//
+// DISSOLVE-ON: the declared-return expected-type comparison rejecting every enrolled mismatch --
+// the plain-record pair by nominal identity, and the same-head same-arity applications at argument
+// positions zero, one and two plus the enrolled nested argument-one case, together with the
+// distinct-head pair. Stated as the positions and shapes actually enrolled rather than as "every
+// argument recursively", because a trigger may not promise a generality no specimen exercises.
+// This roster's
+// self-emptying arm makes that event announce itself: when the wall arrives, this row PASSES,
+// which reds the build and names itself for removal. The witness itself is permanent under
+// DESIGN 4b(4) -- it flips to a regression control rather than retiring.
+fn floor_expected_red_chunk_24() -> List<String> {
+  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_carried_in_a_field_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_middle_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_plain_record_at_a_declared_return_is_refused", tail: Empty {} } } } } } } }
+}
+
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
-  Cons { head: "test.claim.ci_budget_tree_witness.witness_live_is_fail_closed", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv2_symmetric_to_srv1", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.language_source_scaffold_index_test.compiler_tests_rust_blobs_are_all_rostered", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_host_manifest_receipt_holds", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_module_roots_parse_holds", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_overflow_refuses_never_empty_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_receipt_describes_carrier_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_scoped_ingest_module_count_ok_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.ci_budget_tree_witness.witness_live_is_fail_closed", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv2_symmetric_to_srv1", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_host_manifest_receipt_holds", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_module_roots_parse_holds", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_overflow_refuses_never_empty_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_receipt_describes_carrier_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_scoped_ingest_module_count_ok_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
-// Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
-// closure in v2.test.lens_mock_totality. Keep the historical chunk rows for provenance,
-// but exclude the now-green family from the live expected-red roster.
+// Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
+// v2.test.lens_mock_totality. The historical chunk rows stay for provenance; the now-green family
+// is excluded from the live expected-red roster.
 //
 // The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run
 // 32721781133 executed all three and observed the enrolled compile-acceptance holes. The former

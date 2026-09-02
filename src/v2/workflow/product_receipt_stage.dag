@@ -30,7 +30,6 @@ import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Present }
-import v2.std.text { String }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.workflow.body_lowering_retention_census {
@@ -94,21 +93,27 @@ import tools.self_host_curated_seed_linked_harness {
   cssl_v1_compiled_probe_lib_cargo_toml
 }
 
-// THE COMPOSITION, and why it runs HERE rather than in the driver that
-// launched it.
+// THE COMPOSITION, and why it runs HERE rather than in the driver that launched it.
 //
-// Boundary 1 -- the host deriving the manifest -- must happen before this
-// process starts, because the manifest is a SOURCE ROOT this process is
-// resolved against. That is the whole chicken-and-egg the existing gates
-// route around by running each boundary in its own invocation and cleaning
-// up in between. Here the manifest artifact is NOT cleaned: the driver hands
-// this process the transaction directory and the digest of the exact bytes it
-// wrote, and boundary 2 re-hashes the file it was actually resolved against.
-// If those disagree, this run consumed a different artifact from the one the
-// host produced, and the receipt says so instead of reporting six green
-// components.
+// Boundary 1 -- the host deriving the manifest -- must happen before this process starts, because
+// the manifest is a SOURCE ROOT this process is resolved against: the chicken-and-egg the existing
+// gates route around by running each boundary in its own invocation and cleaning up in between.
+// Here the manifest artifact is NOT cleaned: the driver hands this process the transaction
+// directory and the digest of the exact bytes it wrote, and boundary 2 re-hashes the file it was
+// actually resolved against. If those disagree, this run consumed a different artifact from the
+// one the host produced, and the receipt says so instead of reporting six green components.
 
-data product_receipt_stage_double_read_note: String = "DECLARED COST, not an oversight. Boundaries 2 and 3 read the admission through closure_emit_population_admission, and boundary 4 calls drive_compiler_closure_emit, which runs that same admission again -- so every ref is read from disk twice per transaction. The alternative was to call emit_compiler_import_closure_from_ingest directly with the ingest the first admission returned, which halves the reads and is exactly the composition the driver module says its factoring exists to permit. It is not taken here because the boundary-4 standing is supposed to be the DRIVER'S verdict, and reaching past the driver to its emitter would make this receipt report a composition that no production caller performs. The cost is one extra read pass over the closure; the alternative is a receipt about a path nobody runs. Dissolve-on: the driver exposing an arm that takes an already-admitted population and returns the same Outcome, at which point boundaries 2-4 share one read with no layer skipped."
+// DECLARED COST, not an oversight. Boundaries 2 and 3 read the admission through
+// closure_emit_population_admission, and boundary 4 calls drive_compiler_closure_emit, which runs
+// that admission again -- so every ref is read from disk twice per transaction. The alternative,
+// calling emit_compiler_import_closure_from_ingest directly with the ingest the first admission
+// returned, halves the reads and is exactly the composition the driver module says its factoring
+// exists to permit. Not taken because the boundary-4 standing is supposed to be the DRIVER'S
+// verdict, and reaching past the driver to its emitter would make this receipt report a
+// composition no production caller performs. The cost is one extra read pass over the closure;
+// the alternative is a receipt about a path nobody runs. Dissolve-on: the driver exposing an arm
+// that takes an already-admitted population and returns the same Outcome, at which point
+// boundaries 2-4 share one read with no layer skipped.
 
 data product_receipt_stage_manifest_rel: String = "/manifest/host_source_root_ingest_manifest.dag"
 data product_receipt_stage_candidate_rel: String = "/candidate"
@@ -124,18 +129,15 @@ fn stage_identity_from_hex(hex: String, file_count: Int) -> ArtifactIdentity {
   }
 }
 
-// The driver's refusal reason is a Symbol because a Diagnostic carries one.
-// This maps that single authority onto the receipt's closed cause vocabulary
-// rather than re-deriving the admission ladder, so there is still exactly one
-// place that decides whether a population is admissible.
+// The driver's refusal reason is a Symbol because a Diagnostic carries one. This maps that single
+// authority onto the receipt's closed cause vocabulary rather than re-deriving the admission
+// ladder, so exactly one place still decides whether a population is admissible.
 //
-// THE LAST ARM CARRIES THE UNRECOGNISED LEXEME AND DOES NOT GUESS. The ladder
-// enumerates the five reasons the driver has today; if a sixth is added, a
-// terminal arm naming one of the five would attribute the refusal to a cause
-// that did not fire -- a fabricated plausible output at exactly the point a
-// reader trusts the receipt to say what stopped it. Carrying the reason
-// through instead makes the gap visible in the receipt that hits it, and no
-// consumer downstream has to have anticipated it.
+// THE LAST ARM CARRIES THE UNRECOGNISED LEXEME AND DOES NOT GUESS. The ladder enumerates the five
+// reasons the driver has today; if a sixth is added, a terminal arm naming one of the five would
+// attribute the refusal to a cause that did not fire -- a fabricated plausible output at exactly
+// the point a reader trusts the receipt. Carrying the reason through makes the gap visible in the
+// receipt that hits it, and no downstream consumer has to have anticipated it.
 fn stage_admission_cause(reason: Symbol) -> BoundaryRefusalCause {
   if reason == ^closure_emit_driver_empty_population {
     ManifestPopulationEmpty

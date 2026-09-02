@@ -1,8 +1,11 @@
 module extdeps.systemd
 
 import std.types { NonEmptyStr, String, Int }
+import std.types { list_length }
+import std.algebra { trim }
 import std.types { List }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
@@ -45,6 +48,7 @@ type SystemdUnitProperty
   | MemorySwapMax
   | MemoryHigh
   | CPUWeight
+  | CPUQuota
   | MemoryCurrent
   | TasksMax
   | TasksCurrent
@@ -52,6 +56,18 @@ type SystemdUnitProperty
   | ActiveEnterTimestampMonotonic
   | ActiveState
   | MainPID
+  | LoadState
+  | UnitFileState
+  | SubState
+  | Result
+  | ExecMainStatus
+  | ExecStartProperty
+  | User
+  | WorkingDirectoryProperty
+  | Unit
+  | NextElapseUSecMonotonic
+  | AccuracyUSec
+  | TimersMonotonic
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -59,6 +75,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemorySwapMax => "MemorySwapMax" as NonEmptyStr
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
+    CPUQuota => "CPUQuota" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
@@ -66,6 +83,18 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ActiveEnterTimestampMonotonic => "ActiveEnterTimestampMonotonic" as NonEmptyStr
     ActiveState => "ActiveState" as NonEmptyStr
     MainPID => "MainPID" as NonEmptyStr
+    LoadState => "LoadState" as NonEmptyStr
+    UnitFileState => "UnitFileState" as NonEmptyStr
+    SubState => "SubState" as NonEmptyStr
+    Result => "Result" as NonEmptyStr
+    ExecMainStatus => "ExecMainStatus" as NonEmptyStr
+    ExecStartProperty => "ExecStart" as NonEmptyStr
+    User => "User" as NonEmptyStr
+    WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
+    Unit => "Unit" as NonEmptyStr
+    NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
+    AccuracyUSec => "AccuracyUSec" as NonEmptyStr
+    TimersMonotonic => "TimersMonotonic" as NonEmptyStr
   }
 }
 
@@ -79,11 +108,81 @@ data systemd_memory_high_property: NonEmptyStr = systemd_unit_property_wire(prop
 
 data systemd_cpu_weight_property: NonEmptyStr = systemd_unit_property_wire(property: CPUWeight)
 
+// CPUQuota= IS A CEILING AND CPUWeight= IS A SHARE, AND THEY ARE NOT ALIASES.
+// systemd.resource-control(5): CPUWeight assigns a RELATIVE share against sibling cgroups and
+// guarantees no amount of anything; CPUQuota assigns an ABSOLUTE maximum of CPU time per wall
+// second. A boundary that must not be exceeded is expressible in exactly one of them, so
+// carrying only the weight -- as this vocabulary did -- left the ceiling unsayable rather than
+// merely unset.
+data systemd_cpu_quota_property: NonEmptyStr = systemd_unit_property_wire(property: CPUQuota)
+
 data systemd_memory_current_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryCurrent)
 
 data systemd_tasks_max_property: NonEmptyStr = systemd_unit_property_wire(property: TasksMax)
 
 data systemd_tasks_current_property: NonEmptyStr = systemd_unit_property_wire(property: TasksCurrent)
+
+// systemd.time(7) TIME SPAN NORMALIZATION, the smallest slice launch standing needs: a span is one
+// or more whitespace-separated <value><unit> parts (a bare value reads as seconds), and the units
+// below are the documented spellings for the magnitudes systemd renders timer facts in (usec
+// through hours). The result is microseconds, systemd's own internal resolution, so "60s" ==
+// "1min" becomes decidable equality instead of a string comparison. Unknown units, empty input, or
+// a malformed part refuse with Absent -- never a partial sum.
+type SystemdTimeSpanPart {
+  value: Int
+  unit: String
+}
+
+fn systemd_time_span_unit_usec(unit: String) -> Int? {
+  if unit == "usec" || unit == "us" { Present { value: 1 } }
+  else if unit == "msec" || unit == "ms" { Present { value: 1000 } }
+  else if unit == "seconds" || unit == "second" || unit == "sec" || unit == "s" || unit == "" { Present { value: 1000000 } }
+  else if unit == "minutes" || unit == "minute" || unit == "min" || unit == "m" { Present { value: 60000000 } }
+  else if unit == "hours" || unit == "hour" || unit == "hr" || unit == "h" { Present { value: 3600000000 } }
+  else { none }
+}
+
+fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
+  let scan = fold(chars(s: part), init: 0, f: (n, c) =>
+    if n < 0 { n } else if c >= 48 && c <= 57 { n + 1 } else { 0 - n - 1 })
+  let digits = if scan < 0 { 0 - scan - 1 } else { scan }
+  if digits == 0 {
+    none
+  } else {
+    match parse_int(s: substring(s: part, start: 0, end: digits)) {
+      Absent => none
+      Present { value: v } =>
+        Present { value: SystemdTimeSpanPart { value: v, unit: substring(s: part, start: digits, end: string_length(s: part)) } }
+    }
+  }
+}
+
+fn systemd_duration_usec(text: String) -> Microsecond? {
+  let parts = filter(split(s: trim(s: text), delimiter: " "), p => p != "")
+  if list_length(items: parts) == 0 {
+    none
+  } else {
+    let total = fold(parts, init: 0, f: (acc, part) =>
+      if acc < 0 { acc } else {
+        match systemd_time_span_split(part: part) {
+          Absent => 0 - 1
+          Present { value: vu } =>
+            match systemd_time_span_unit_usec(unit: vu.unit) {
+              Absent => 0 - 1
+              Present { value: mult } => acc + vu.value * mult
+            }
+        }
+      })
+    if total < 0 {
+      none
+    } else {
+      match checked_int_magnitude(a: total) {
+        CheckedNatOverflow { cause: _ } => none
+        CheckedNatReady { value: n } => Present { value: microsecond(count: n) }
+      }
+    }
+  }
+}
 
 type SystemdCgroupMemoryLimit
   = MemoryLimitUnbounded

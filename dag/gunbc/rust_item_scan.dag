@@ -52,11 +52,36 @@ import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item
 // what keeps the raw-string defect above from recurring in a new spelling: source inside a raw
 // string literal that reaches a scope boundary is not a recognized structural line, so it refuses
 // instead of minting a phantom item.
-data rust_item_scan_note: String = "Item-grain reader over rustfmt-normalized Rust source. Item keywords are read from extdeps.languages.rust.syntax rust_item_forms and are not re-coined; every structural line the recognizer cannot classify is a typed, located refusal rather than a dropped line. Replaces the deleted scripts/rust_item_census.py, whose regex ITEM_PATTERNS were the second roster this reader refuses to author. THREE CONSTRUCTS ARE RECOGNIZED AS EXTENTS THAT DECLARE NOTHING -- a wrapped use list, a wrapped attribute, and a macro invocation block -- because rustfmt continues each past its first line and a reader that met the continuation at a scope boundary would refuse most of the population it exists to census. A macro block additionally records its REGION: the grammar authority carries no macro item form, so a declaration made by a macro cannot be named here, and a changed line inside one is reported UNATTRIBUTED rather than file-level, because a static added inside thread_local! is hand-Rust growth and file-level is the answer that would admit it silently."
+// Item-grain reader over rustfmt-normalized Rust source. Item keywords are read from
+// extdeps.languages.rust.syntax rust_item_forms and are not re-coined; every structural line the
+// recognizer cannot classify is a typed, located refusal rather than a dropped line. Replaces the
+// deleted scripts/rust_item_census.py, whose regex ITEM_PATTERNS were the second roster this reader
+// refuses to author. THREE CONSTRUCTS ARE RECOGNIZED AS EXTENTS THAT DECLARE NOTHING -- a wrapped
+// use list, a wrapped attribute, and a macro invocation block -- because rustfmt continues each
+// past its first line and a reader that met the continuation at a scope boundary would refuse most
+// of the population it exists to census. A macro block additionally records its REGION: the grammar
+// authority carries no macro item form, so a declaration made by a macro cannot be named here, and
+// a changed line inside one is reported UNATTRIBUTED rather than file-level, because a static added
+// inside thread_local! is hand-Rust growth and file-level is the answer that would admit it
+// silently.
 
-data rust_item_scan_formatting_precondition_note: String = "THE RECOGNIZER'S PRECONDITION IS A REPOSITORY FACT, NOT AN ASSUMPTION. Extents are decided by scope depth: a scope opened at indent 4*d contains structural lines at indent 4*(d+1), and closes at a line that is exactly a closing brace at its own indent. That is rustfmt's normal form, and `cargo fmt --all --check` is a documented check over this tree, so the precondition is one the repository already holds rather than one this reader hopes for. WHERE IT DOES NOT HOLD THE READER REFUSES: a file whose bodies are not so normalized reaches a line it cannot classify and returns RustFileScanRefused naming the line and its text. It never guesses an extent, because a guessed extent silently mis-attributes a changed line to the wrong item -- the one failure mode that would let the admission join report green over an unenumerated addition."
+// THE RECOGNIZER'S PRECONDITION IS A REPOSITORY FACT, NOT AN ASSUMPTION. Extents are decided by
+// scope depth: a scope opened at indent 4*d contains structural lines at indent 4*(d+1), and closes
+// at a line that is exactly a closing brace at its own indent. That is rustfmt's normal form, and
+// `cargo fmt --all --check` is a documented check over this tree, so the precondition is one the
+// repository already holds rather than one this reader hopes for. WHERE IT DOES NOT HOLD THE READER
+// REFUSES: a file whose bodies are not so normalized reaches a line it cannot classify and returns
+// RustFileScanRefused naming the line and its text. It never guesses an extent, because a guessed
+// extent silently mis-attributes a changed line to the wrong item -- the one failure mode that
+// would let the admission join report green over an unenumerated addition.
 
-data rust_item_scan_module_path_note: String = "INLINE MODULES ARE SCOPES, NOT LEAVES, because the citation vocabulary already treats them that way. gunbc.declaration_index_seed_growth cites seven declarations under v1_compiler.cli_run.bare_reference_scanner_tests -- an inline `mod` inside cli_run.rs whose members are cited individually. A reader that recorded the mod as one opaque item would make those seven citations unjoinable, so the scan descends and each item carries the dotted path of its enclosing inline modules. An impl block inside a module nests the same way; a method's impl_subject comes from the nearest enclosing impl, never from a module."
+// INLINE MODULES ARE SCOPES, NOT LEAVES, because the citation vocabulary already treats them that
+// way. gunbc.declaration_index_seed_growth cites seven declarations under
+// v1_compiler.cli_run.bare_reference_scanner_tests -- an inline `mod` inside cli_run.rs whose
+// members are cited individually. A reader that recorded the mod as one opaque item would make
+// those seven citations unjoinable, so the scan descends and each item carries the dotted path of
+// its enclosing inline modules. An impl block inside a module nests the same way; a method's
+// impl_subject comes from the nearest enclosing impl, never from a module.
 
 // FOUR SCOPES THAT RECORD NOTHING SIT BESIDE THE THREE THAT DO, and each exists because rustfmt
 // wraps a construct across lines that this reader would otherwise meet at a scope boundary and
@@ -179,7 +204,7 @@ fn leading_ident_from(s: String, at: Int, acc: String) -> String {
   if at >= string_length(s: s) {
     acc
   } else {
-    let c = char_at(s: s, index: at)
+    let c = char_at(s: s, pos: at)
     if char_is_ident(c: c) {
       leading_ident_from(s: s, at: at + 1, acc: concat(acc, c))
     } else {
@@ -199,7 +224,7 @@ fn drop_prefix_length(s: String, n: Int) -> String {
 fn indent_width_from(s: String, at: Int) -> Int {
   if at >= string_length(s: s) {
     at
-  } else if char_at(s: s, index: at) == " " {
+  } else if char_at(s: s, pos: at) == " " {
     indent_width_from(s: s, at: at + 1)
   } else {
     at
@@ -213,7 +238,7 @@ fn indent_width(s: String) -> Int {
 fn scan_past_char_from(s: String, at: Int, target: String) -> Int {
   if at >= string_length(s: s) {
     at
-  } else if char_at(s: s, index: at) == target {
+  } else if char_at(s: s, pos: at) == target {
     at + 1
   } else {
     scan_past_char_from(s: s, at: at + 1, target: target)
@@ -339,7 +364,7 @@ fn ends_with(s: String, suffix: String) -> Bool {
 fn hash_run_from(s: String, at: Int, acc: Int) -> Int {
   if at >= string_length(s: s) {
     acc
-  } else if char_at(s: s, index: at) == "#" {
+  } else if char_at(s: s, pos: at) == "#" {
     hash_run_from(s: s, at: at + 1, acc: acc + 1)
   } else {
     acc
@@ -368,12 +393,12 @@ fn repeat_hashes(n: Int, acc: String) -> String {
 fn raw_string_open_terminator_from(s: String, at: Int) -> String {
   if at >= string_length(s: s) {
     ""
-  } else if char_at(s: s, index: at) != "r" {
+  } else if char_at(s: s, pos: at) != "r" {
     raw_string_open_terminator_from(s: s, at: at + 1)
   } else {
     let hashes = hash_run_from(s: s, at: at + 1, acc: 0)
     if at + 1 + hashes < string_length(s: s)
-      && char_at(s: s, index: at + 1 + hashes) == "\"" {
+      && char_at(s: s, pos: at + 1 + hashes) == "\"" {
       concat("\"", repeat_hashes(n: hashes, acc: ""))
     } else {
       raw_string_open_terminator_from(s: s, at: at + 1)

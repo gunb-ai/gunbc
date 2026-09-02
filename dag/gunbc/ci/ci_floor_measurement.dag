@@ -17,8 +17,6 @@ data gunbc_ci_width_constants_retired_note: String = "WITHIN-run width constants
 
 data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
 
-
-
 data gunbc_ci_runner_slot_memory_max_live: ByteSize = gunbc_runner_slot_desired().memory_max
 
 data gunbc_ci_runner_slot_memory_high_live: ByteSize = gunbc_runner_slot_desired().memory_high
@@ -39,7 +37,24 @@ data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
   reason: "Operator ruling 2026-07-14: gunbc_ci_runner_slot_memory_max_live derives from gunbc.runner_slot_allocation (no duplicate literal). DECLARED ROW is 14GiB MemoryMax / 13GiB MemoryHigh (2026-08-05 allocation ruling). HONEST RESIDUAL (operator observation 2026-08-13, srv1): deploy drop-ins on disk may still read 16GiB/15GiB while system.control set-property residue pins EFFECTIVE caps at 14GiB/13GiB until live_deploy clears it — gunbc.host_axis_caps control_shadow_reconcile + deploy apply (author derived drop-ins then systemctl revert under ghrunner sudo; converge on briansrls does not run this pipeline). This carrier names the DECLARED allocation row, not the kernel-effective cap; floor width sizing must not assume deploy drop-in authority is in force while shadow residue remains. Post-apply throttle-line evidence is the four floor_peak_post receipts (gunbc_ci_floor_run_peak_receipts). Dissolve-on: direct post-apply memory.max readback on a COMPLETED fleet floor lands as a FloorRunCgroupPeakReceipt with memory_max_observed, then the live row can retire in favor of the receipt-fed authority."
 }
 
-data gunbc_ci_floor_run_peak_receipt_carries_its_own_line_note: String = "AN OBSERVATION IS EVIDENCE ONLY TOGETHER WITH THE CONDITIONS IT WAS TAKEN UNDER, and these four receipts did not carry theirs. Each is a 2026-07-11 floor_peak_post readback pinned at 16106127360 — the throttle line THEN IN FORCE — and the witness over them compared each peak to gunbc_ci_runner_slot_memory_high_live, whichever value that happens to hold today. That coupling made a historical measurement silently re-interpret itself against a later declaration: the 2026-08-05 ruling moved MemoryHigh to 13GiB and four untouched observations from July began asserting something false about a line that did not exist when they were recorded.\n\nThe fix is to record the line beside the peak. armed_memory_high is what the slot's memory.high WAS for that run, so the throttle-line claim stays decidable forever and stays about the right number — the receipts continue to prove exactly what they always proved (the 2026-07-11 caps were applied and the reclaim clamp held within 0.65MiB, zero oom_kills) and they stop being hostage to the current row.\n\nThis is the same shape as the srv2 slice-cap fixture in fleet_show_effective_read_witness_test: a real readback whose relationship to the declaration changed because the declaration moved, where the wrong repairs are editing the observation or reconciling the declaration toward it. Here neither was needed — the receipt was simply missing a field it always implicitly had."
+// AN OBSERVATION IS EVIDENCE ONLY TOGETHER WITH THE CONDITIONS IT WAS TAKEN UNDER, and these four
+// receipts did not carry theirs. Each is a 2026-07-11 floor_peak_post readback pinned at
+// 16106127360 — the throttle line THEN IN FORCE — and the witness over them compared each peak to
+// gunbc_ci_runner_slot_memory_high_live, whichever value that happens to hold today. That coupling
+// made a historical measurement silently re-interpret itself against a later declaration: the
+// 2026-08-05 ruling moved MemoryHigh to 13GiB and four untouched observations from July began
+// asserting something false about a line that did not exist when they were recorded.
+//
+// The fix is to record the line beside the peak. armed_memory_high is what the slot's memory.high
+// WAS for that run, so the throttle-line claim stays decidable forever and stays about the right
+// number — the receipts continue to prove exactly what they always proved (the 2026-07-11 caps were
+// applied and the reclaim clamp held within 0.65MiB, zero oom_kills) and they stop being hostage to
+// the current row.
+//
+// This is the same shape as the srv2 slice-cap fixture in fleet_show_effective_read_witness_test: a
+// real readback whose relationship to the declaration changed because the declaration moved, where
+// the wrong repairs are editing the observation or reconciling the declaration toward it. Here
+// neither was needed — the receipt was simply missing a field it always implicitly had.
 
 type FloorRunCgroupPeakReceipt
   = FloorRunCgroupPeakMeasured {
@@ -113,7 +128,6 @@ fn witness_floor_run_peak_receipts_at_throttle_line() -> Bool {
     && all(gunbc_ci_floor_run_peak_receipts, r => floor_run_peak_receipt_at_throttle_line(receipt: r))
 }
 
-
 type JobCgroupPeakMeasurement
   = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
   | JobCgroupPeakUnmeasured
@@ -128,13 +142,10 @@ data gunbc_ci_job_peaks: List<CiJobPeak> = [
   CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(39728447488) } },
 ]
 
-
 data gunbc_ci_run_count_divisor: ByteSize = byte_size(9985798963)
-
 
 data gunbc_ci_runner_unit_cap_safety_margin_num: Int = 5
 data gunbc_ci_runner_unit_cap_safety_margin_den: Int = 4
-
 
 data gunbc_ci_per_session_peak_samples: List<ByteSize> = [
   byte_size(8879844884),
@@ -152,7 +163,6 @@ data gunbc_ci_per_session_peak_samples: List<ByteSize> = [
   byte_size(300647711),
 ]
 
-
 type SessionOperatingPoint
   = SessionOperatingPointSet { per_session_cap: ByteSize, session_concurrency: Int }
   | SessionOperatingPointUnset
@@ -160,7 +170,6 @@ type SessionOperatingPoint
 type OomdEnforcementEvidence
   = OomdEnforced
   | OomdUnverified
-
 
 type RunnerSliceCapEffectiveness
   = CapEffective { bytes: ByteSize }
@@ -180,9 +189,6 @@ type SessionReservationMode
   = Regime1WorstCase { point: SessionOperatingPoint }
   | SessionReservationModeUnset
 
-
-
-
 data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split, revised 2026-07-12: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run parallelism is governed at run time by the memory governor against the slot's own cgroup budget (the former within-run per-shard-peak carrier and its width fold are retired). Different granularity, different scheduling decision, different consumer. Do not re-fuse them into one authority." }
 
 data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly governor-width x measured per-worker residency + base, so the INTER-run footprint could eventually derive from within-run measured receipts (the executor's [measurement]/[governor] lines) - the real single authority. Held back deliberately: derive only from measured receipts, never from authored predictions (the retired width-fold constants are the cautionary receipt)." }
@@ -192,7 +198,28 @@ type HostFixedOverhead
   | HostFixedOverheadAllowance { bytes: ByteSize, reason: NonEmptyStr }
   | HostFixedOverheadUnmeasured
 
-data gunbc_ci_host_fixed_overhead_kind_note: String = "THREE ARMS BECAUSE THERE ARE THREE FACTS, and the row that stood here fused two of them under the name of the third. gunbc_ci_host_fixed_overhead was a single fleet-wide HostFixedOverheadMeasured carrying exactly 17179869184 bytes — 2^34, a round power of two — and its Scaffold bound to gunbc_ci_per_service_overhead, a declaration that HAS NEVER EXISTED anywhere in the corpus. So the constructor asserted a measurement, the provenance pointed at a row nobody wrote, and no reader could tell the difference between the two. That is rung inflation (DESIGN 4b) in the budget's own input: a carrier named for the top rung while occupying the bottom, and an inflated class never ranks for climbing.\n\nMEASURED means an observation produced it and the row says which one — the provenance field is required, not optional, for exactly the reason the SEC citation rule is: for a measured fact the provenance IS the grounding, so an arm that could omit it is a fail-open invitation. ALLOWANCE means an operator granted headroom for a deployment the model does not describe, which is a DIFFERENT KIND OF FACT, not a weaker measurement — it is honest, it is load-bearing, and it must never be reported as measured. UNMEASURED stays the fail-closed floor.\n\nWhy per-host rather than one fleet number: srv1 and srv2 carry hand-built deployments this corpus never modeled (the session dashboard instances of gunbc.build_cache_instance among them), so their allowance is a real operator judgement about unmodeled residents. srv3 and srv4 were stood up through the modeled path and have an observation. One number could only have been the maximum of the two, which silently taxes the managed hosts for the legacy ones' mess — 10.4 GiB per host of memory the budget refused to spend because two other machines are untidy."
+// THREE ARMS BECAUSE THERE ARE THREE FACTS, and the row that stood here fused two of them under the
+// name of the third. gunbc_ci_host_fixed_overhead was a single fleet-wide HostFixedOverheadMeasured
+// carrying exactly 17179869184 bytes — 2^34, a round power of two — and its Scaffold bound to
+// gunbc_ci_per_service_overhead, a declaration that HAS NEVER EXISTED anywhere in the corpus. So
+// the constructor asserted a measurement, the provenance pointed at a row nobody wrote, and no
+// reader could tell the difference between the two. That is rung inflation (DESIGN 4b) in the
+// budget's own input: a carrier named for the top rung while occupying the bottom, and an inflated
+// class never ranks for climbing.
+//
+// MEASURED means an observation produced it and the row says which one — the provenance field is
+// required, not optional, for exactly the reason the SEC citation rule is: for a measured fact the
+// provenance IS the grounding, so an arm that could omit it is a fail-open invitation. ALLOWANCE
+// means an operator granted headroom for a deployment the model does not describe, which is a
+// DIFFERENT KIND OF FACT, not a weaker measurement — it is honest, it is load-bearing, and it must
+// never be reported as measured. UNMEASURED stays the fail-closed floor.
+//
+// Why per-host rather than one fleet number: srv1 and srv2 carry hand-built deployments this corpus
+// never modeled (the session dashboard instances of gunbc.build_cache_instance among them), so
+// their allowance is a real operator judgement about unmodeled residents. srv3 and srv4 were stood
+// up through the modeled path and have an observation. One number could only have been the maximum
+// of the two, which silently taxes the managed hosts for the legacy ones' mess — 10.4 GiB per host
+// of memory the budget refused to spend because two other machines are untidy.
 
 data gunbc_ci_host_memavailable_observation_note: String = "THE OBSERVATION THAT BOUNDS THE MANAGED-HOST OVERHEAD, and it is a found receipt rather than a fresh probe — worth saying plainly because it changes what the bound is allowed to claim. Before the srv3 cap converge (gunbc.runner_slot_allocation, 2026-07-21) srv3's slots were uncapped, so v1_compiler::memory_governor had no cgroup memory.high to arm against and fell back to /proc/meminfo MemAvailable, printing the host-level figure into every floor job's log. Seventeen such arm-time lines survive from 2026-07-16 across srv3-02/05/08, spanning 104.8 to 119.4 GiB; srv1 and srv2 on the same day printed only their 15 GiB cgroup budget, so the series is srv3 and nothing else.\n\nTHE DIRECTION OF THE BOUND IS THE WHOLE POINT. MemAvailable counts free memory plus reclaimable page cache and slab, so what it EXCLUDES is non-reclaimable anonymous RSS — services, daemons, and whatever runner work was resident at that instant. The MAXIMUM observation therefore corresponds to the QUIETEST moment seen, and host_total - max(MemAvailable) is an UPPER bound on fixed service overhead: at that instant everything non-reclaimable on the box, including any concurrent job, fit inside it. A smaller true overhead is consistent with this receipt; a larger one is not.\n\nWHAT IT IS NOT: a dedicated measurement. Nobody read /proc/meminfo on a quiescent srv3, and this row must not be cited as though someone had. It is admissible because it is an upper bound and the budget spends against it conservatively — the bound refuses to justify more slots than it can carry, which is the direction a fail-closed budget wants. The dissolution trigger is an ordinary quiescent read, which is also a prerequisite of the systemd-oomd verification that gunbc.oomd_install still lacks, so one reach closes both."
 
@@ -226,7 +253,19 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
   reason: "srv1 and srv2 carry hand-built deployments the corpus does not model — the session dashboard instance (gunbc.build_cache_instance session_cache_instance, srv1 and srv2 only), its sccache server, and the residue of the pre-subsumption install path. 16 GiB is the operator's standing allowance for those unmodeled residents (ruling 2026-08-05), carried forward unchanged from the fleet-wide row it replaces so this change moves no number on these two hosts. It is an ALLOWANCE and not a measurement: no observation produced it, and the same MemAvailable receipt that bounds srv3 does not exist for srv1/srv2 because their slots were already capped when the governor stopped reading meminfo. Dissolves when those deployments are modeled — at which point their residents become budget rows and the allowance becomes whatever is left over, if anything.",
 }
 
-data gunbc_ci_host_fixed_overhead_unknown_host_note: String = "THE UNKNOWN ARM REFUSES, and the first draft of this function did not — it ended in a bare else returning the managed measurement, so a host nobody had classified would silently inherit srv3's 5.6 GiB bound and the budget would hand it two extra slots on the strength of another machine's receipt. That is the absorbing fallback (DESIGN 5) sitting in the input to a conservation wall, which is the worst place for one: the wall's arithmetic would be correct and its premise fabricated, exactly the shape gunbc.plans.fleet_subsumption_manual_gaps section C prices — srv4 took fleet work as a member of GitHub's fleet and a ghost of the model, and OOM-killed live CI the next day.\n\nSo an unclassified host derives HostFixedOverheadUnmeasured, which host_fixed_overhead_bytes cannot turn into a number and gunbc.ci_runner_placement refuses on. Adding srv5 therefore fails closed with a located reason rather than quietly succeeding with a borrowed one — the enrollment wall's own shape, applied to the budget's inputs instead of its installer."
+// THE UNKNOWN ARM REFUSES, and the first draft of this function did not — it ended in a bare else
+// returning the managed measurement, so a host nobody had classified would silently inherit srv3's
+// 5.6 GiB bound and the budget would hand it two extra slots on the strength of another machine's
+// receipt. That is the absorbing fallback (DESIGN 5) sitting in the input to a conservation wall,
+// which is the worst place for one: the wall's arithmetic would be correct and its premise
+// fabricated, exactly the shape gunbc.plans.fleet_subsumption_manual_gaps section C prices — srv4
+// took fleet work as a member of GitHub's fleet and a ghost of the model, and OOM-killed live CI
+// the next day.
+//
+// So an unclassified host derives HostFixedOverheadUnmeasured, which host_fixed_overhead_bytes
+// cannot turn into a number and gunbc.ci_runner_placement refuses on. Adding srv5 therefore fails
+// closed with a located reason rather than quietly succeeding with a borrowed one — the enrollment
+// wall's own shape, applied to the budget's inputs instead of its installer.
 
 fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
   if (host as String) == (operator_host_srv1 as String) {
@@ -242,7 +281,28 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
   }
 }
 
-data gunbc_ci_host_fixed_overhead_disposition_split_note: String = "ONE SCAFFOLD BECOMES TWO BECAUSE THE TWO OVERHEADS DISSOLVE ON DIFFERENT EVENTS, and each still binds a successor that DOES NOT YET EXIST — which is what a Scaffold bind is for. v2.lens.disposition_redundancy reads these marks and counts a violation when a bind target is PRESENT: a scaffold whose successor has been written is redundant and must be dissolved. So an absent target is the normal, correct state of outstanding debt, and the lens is the thing that notices when the debt is actually payable.\n\nCORRECTION, recorded because an earlier revision of this change got it backwards and would have shipped the inversion. The row this replaces bound to gunbc_ci_per_service_overhead, and that bind was read here as a defect — 'a dissolve-on pointing at nothing' — on the reasoning that a marker naming a nonexistent declaration can never fire. The reasoning inverts the mechanism. It fires precisely BY that declaration coming into existence, and the first draft's repair (re-binding both scaffolds to rows this module already declares) would have made both of them immediate violations of the redundancy lens, converting two pieces of honest outstanding debt into two false claims that the debt was already paid. The original bind was right; only its single-row grain was wrong.\n\nWhat legitimately changed is the grain. gunbc_ci_per_service_overhead was one successor for one fleet-wide number, and there are now two facts with two different closure conditions: the managed hosts need an observation, the legacy pair need their deployments modeled. Neither successor exists, both name what would replace them, and writing either one fires the lens for that arm alone."
+// ONE SCAFFOLD BECOMES TWO BECAUSE THE TWO OVERHEADS DISSOLVE ON DIFFERENT EVENTS, and each still
+// binds a successor that DOES NOT YET EXIST — which is what a Scaffold bind is for.
+// v2.lens.disposition_redundancy reads these marks and counts a violation when a bind target is
+// PRESENT: a scaffold whose successor has been written is redundant and must be dissolved. So an
+// absent target is the normal, correct state of outstanding debt, and the lens is the thing that
+// notices when the debt is actually payable.
+//
+// CORRECTION, recorded because an earlier revision of this change got it backwards and would have
+// shipped the inversion. The row this replaces bound to gunbc_ci_per_service_overhead, and that
+// bind was read here as a defect — 'a dissolve-on pointing at nothing' — on the reasoning that a
+// marker naming a nonexistent declaration can never fire. The reasoning inverts the mechanism. It
+// fires precisely BY that declaration coming into existence, and the first draft's repair
+// (re-binding both scaffolds to rows this module already declares) would have made both of them
+// immediate violations of the redundancy lens, converting two pieces of honest outstanding debt
+// into two false claims that the debt was already paid. The original bind was right; only its
+// single-row grain was wrong.
+//
+// What legitimately changed is the grain. gunbc_ci_per_service_overhead was one successor for one
+// fleet-wide number, and there are now two facts with two different closure conditions: the managed
+// hosts need an observation, the legacy pair need their deployments modeled. Neither successor
+// exists, both name what would replace them, and writing either one fires the lens for that arm
+// alone.
 
 data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -270,7 +330,6 @@ type HostUsableRam
 data gunbc_ci_host_usable_ram_kind_note: String = "OS-USABLE RAM IS A PER-HOST FACT AND WAS STORED AS A FLEET CONSTANT, which is the same grain defect gunbc_ci_host_fixed_overhead_kind_note repaired for overhead -- so this carrier is deliberately that carrier's shape rather than a new invention.\n\nTHE DIMM-REPLACEMENT CLAIM HAS NOW BEEN WRONG IN BOTH DIRECTIONS AND IS SETTLED BY MEASUREMENT. An earlier revision said a 2026-08-11 replacement had raised memory on part of the fleet; that was written from an in-flight operator report before any observation existed, and it was wrong (the attempt failed, operator 2026-08-12). This revision records the opposite and does so from a read rather than a report: srv3 and srv4 were each observed at 512 GiB over BMC Redfish on 2026-08-22 -- 8 x Samsung M393A8G40D40-CRB at 64 GiB, one per channel, all Enabled/OK -- while srv1 was upgraded to the same 8 x Samsung population on operator report and srv2's identical attempt FAILED memory training and was reverted to 8 x 16 GiB Hynix. The hosts no longer share one nominal population.\n\nTWO ARMS HAVE NOW MOVED AND TWO HAVE NOT, WHICH IS THE GRAIN DOING ITS JOB. srv3 and srv4 carry HostUsableRamMeasured from /proc/meminfo reads taken over SSH on 2026-08-22 (about 502.25 GiB each); srv1 and srv2 still carry HostUsableRamConservativeLowerBound at 125 GiB, because no MemTotal read has been taken on either. What promoted the two was a KERNEL read, never the Redfish 512 GiB figure -- that is NOMINAL DIMM capacity, which this carrier does not hold and must never be fed. A lower bound does not become false when the machine gets bigger; it becomes LOOSE, and srv1's is now loose by roughly 4x while remaining sound. The remedy is unchanged and is now half-applied: one ordinary read per host, taken any time, promoting that host's row and leaving the others untouched.\n\nTHREE ARMS BECAUSE THERE ARE THREE FACTS. MEASURED means a read of THIS host produced the number and the row names the read. CONSERVATIVE LOWER BOUND means no such read exists and the carried figure is known not to exceed the host's real usable RAM, with basis stating why. UNMEASURED is the fail-closed floor for a host nobody classified.\n\nTHE MIDDLE ARM IS A BOUND AND NOT A SUBSTITUTION, and the heterogeneity above is exactly why that distinction was worth paying for in advance. While the fleet was uniform an equivalence argument was also available, and naming the arm for equivalence would have licensed the move the wall cannot survive: carrying a reading from a host with MORE memory onto one with less. That move is now AUTHORABLE for the first time -- srv3 and srv4 are the hosts with more -- and the bound's name is what forbids it. The safety property is monotonicity, and it did not have to be re-argued when the fleet's uniformity ended.\n\nWHY srv1 AND srv2 ARE STILL BOUNDS: no MemTotal read has been taken on either. A NEARBY RECEIPT IS NOT ONE, and it is named because it looks like one: gunbc_ci_srv3_memavailable_high_water, whose host_total is MemTotal-shaped but was captured as an arm-time line from a memory governor rather than a read taken to answer this question, only on srv3, and -- now load-bearing -- against srv3's PREVIOUS 128 GiB population, so it is a receipt about hardware that is no longer in that chassis.\n\nDissolving these is CHEAPER THAN THE FIXED-OVERHEAD ROW BESIDE THEM and must not be confused with it. That row needs a QUIESCENT read because it estimates non-reclaimable residency from MemAvailable, which moves with load. MemTotal does not: the kernel reports total usable RAM after firmware and kernel reservations, so an ordinary read while the host serves work is a complete answer. One read per host, taken any time, promotes that host's row to MEASURED and leaves the others untouched -- which is the entire point of the grain."
 
 data gunbc_ci_conservative_lower_bound_retired_note: String = "THE FLEET-WIDE CONSERVATIVE LOWER BOUND IS DELETED, ITS OBLIGATION DISCHARGED ON EVERY HOST. It held byte_size(134217728000) -- the MemTotal-shaped figure captured on srv3 on 2026-07-16 -- and lent it to whichever hosts had no read of their own, which was at first all four and latterly srv1 and srv2. All four now carry their own /proc/meminfo MemTotal, so it had no consumer left and is removed rather than kept as a value nothing reads.\n\nIT IS DELETED, NOT MARKED HISTORICAL, and the distinction matters because the observation it borrowed still exists: gunbc_ci_srv3_memavailable_high_water is untouched and is still the receipt the managed-host overhead bound rests on. What is gone is the act of LENDING that number to other machines. The row's own text predicted this end -- it said the bound survives a host growing because a lower bound only loosens, and that each host replaces it independently by its own MemTotal read -- and that is what happened, on the last of the four, today.\n\nWHAT SURVIVES AND SHOULD NOT BE MISTAKEN FOR DEAD: the HostUsableRamConservativeLowerBound VARIANT stays in the type and host_usable_ram_or_refusal still handles it. Nothing constructs it today, and an arm that nothing currently occupies is a quiet guard rather than a dead one -- a fifth host enrolled tomorrow with no read of its own is exactly the state it exists to represent, and deleting the arm because its population is momentarily zero would remove the representation along with the occupant."
-
 
 data gunbc_ci_host_usable_ram_disposition_note: String = "REGISTERED AS SCAFFOLD DEBT BECAUSE ITS TWIN IS, and because the debt is PRE-EXISTING rather than introduced here: the fleet-wide constant this carrier replaces was already an unmeasured stand-in, and modeling it is what makes it countable. DESIGN 5 refuses NEW dissolution obligations without an operator verdict; it separately exists so that documenting previously hidden debt never reads as creating it, which is this row.\n\nTHE BIND TARGET IS DELIBERATELY NOT THE OVERHEAD ROW'S. gunbc_ci_managed_host_fixed_overhead_disposition binds a QUIESCENT read, because overhead is estimated from MemAvailable and MemAvailable moves with load. MemTotal does not — the kernel reports total usable RAM after firmware and kernel reservations — so an ordinary read taken while the host serves work discharges this and not that. Two obligations, two observations, two independently removable units, which is the grain DESIGN 5 requires: sharing one trigger is admissible only when neither artifact can survive the other, and these plainly can."
 
@@ -334,7 +393,17 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   }
 }
 
-data host_usable_ram_ceiling_note: String = "THE CEILING PROJECTION LIVES ONCE, BESIDE THE CARRIER. gunbc.ci_budget_tree and gunbc.fleet_host_budget each grew a byte-identical fold over HostUsableRam when they migrated off nominal DIMM capacity, which is the duplication DESIGN 2 forbids and exactly the shape that lets two budget models drift apart again — the defect the migration existed to close.\n\nIt does NOT absorb gunbc.ci_runner_placement host_usable_ram_or_refusal, which folds the same coproduct to a different answer on purpose. That one is LOUD: an unmeasured host yields a typed, located refusal that becomes PlanUnsound. This one is a total ceiling for budget arithmetic, where zero is the fail-closed reading because an unknown ceiling admits nothing. Same input, two honest consumers, two results — collapsing them would force one caller to accept the other's failure semantics."
+// THE CEILING PROJECTION LIVES ONCE, BESIDE THE CARRIER. gunbc.ci_budget_tree and
+// gunbc.fleet_host_budget each grew a byte-identical fold over HostUsableRam when they migrated off
+// nominal DIMM capacity, which is the duplication DESIGN 2 forbids and exactly the shape that lets
+// two budget models drift apart again — the defect the migration existed to close.
+//
+// It does NOT absorb gunbc.ci_runner_placement host_usable_ram_or_refusal, which folds the same
+// coproduct to a different answer on purpose. That one is LOUD: an unmeasured host yields a typed,
+// located refusal that becomes PlanUnsound. This one is a total ceiling for budget arithmetic,
+// where zero is the fail-closed reading because an unknown ceiling admits nothing. Same input, two
+// honest consumers, two results — collapsing them would force one caller to accept the other's
+// failure semantics.
 
 fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
   match gunbc_ci_host_usable_ram_for(host: host) {
@@ -343,7 +412,6 @@ fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
     HostUsableRamUnmeasured => byte_size(0)
   }
 }
-
 
 data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

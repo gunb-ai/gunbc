@@ -17,11 +17,53 @@ import v2.std.text { String }
 //
 // This module is that axis, at file grain, over the stage0 crate.
 
-data seed_retention_frontier_note: String = "SUBJECT, measured rather than asserted (2026-08-24, main at 79e0635e11): 92 .rs files in the stage0 crate, 116,478 lines — 41 percent of the 283,459 lines of Rust the crate contains (227 files) — never enter the required-regen comparison at all. Four disjoint mechanisms put them there and only one of them was ever visible: 36 top-level basenames are excluded by name through HAND_MAINTAINED_STAGE0_FILES; 9 more live inside the two hand-maintained directories, which the committed walk (required_regen_host committed_generated_basenames) never descends into; 31 host binaries live under src/bin, which that same top-level walk cannot see and which the emitter cannot produce because emitted Rust filenames are flat under src/ by construction; and 15 integration tests plus build.rs sit outside the crate's src/ tree entirely. THE GAP THIS CLOSES IS NOT THE EXCLUSION — it is that the excluded population carried no reason and no migration trigger, so it was uncountable and unprioritizable, which is exactly what DESIGN section 7 forbids of a seed-retained module. stage0_crate_layout's registration rows answer a DIFFERENT question (which basenames the crate's mod tree and the copy-into-candidate step must name); they are layout membership, they cover 45 of the 92, and their type asserts nothing about why the file is retained or what retires it. The one family that already carries reason and trigger, emitter_produced_divergent_registrations, is the precedent this roster generalizes."
+// SUBJECT, measured rather than asserted (2026-08-24, main at 79e0635e11): 92 .rs files in the
+// stage0 crate, 116,478 lines — 41 percent of the 283,459 lines of Rust the crate contains (227
+// files) — never enter the required-regen comparison at all. Four disjoint mechanisms put them
+// there and only one of them was ever visible: 36 top-level basenames are excluded by name through
+// HAND_MAINTAINED_STAGE0_FILES; 9 more live inside the two hand-maintained directories, which the
+// committed walk (required_regen_host committed_generated_basenames) never descends into; 31 host
+// binaries live under src/bin, which that same top-level walk cannot see and which the emitter
+// cannot produce because emitted Rust filenames are flat under src/ by construction; and 15
+// integration tests plus build.rs sit outside the crate's src/ tree entirely. THE GAP THIS CLOSES
+// IS NOT THE EXCLUSION — it is that the excluded population carried no reason and no migration
+// trigger, so it was uncountable and unprioritizable, which is exactly what DESIGN section 7
+// forbids of a seed-retained module. stage0_crate_layout's registration rows answer a DIFFERENT
+// question (which basenames the crate's mod tree and the copy-into-candidate step must name); they
+// are layout membership, they cover 45 of the 92, and their type asserts nothing about why the file
+// is retained or what retires it. The one family that already carries reason and trigger,
+// emitter_produced_divergent_registrations, is the precedent this roster generalizes.
 
-data seed_retention_frontier_totality_note: String = "WHY THIS IS NOT A SECOND HAND LIST BESIDE THE FIRST (DESIGN section 2). A roster of retained paths authored by hand counts the files someone remembered to author, which DESIGN section 5 rejects as an oracle. The roster here is joined against an INDEPENDENTLY DISCOVERED, CLOSED universe — every .rs file the stage0 crate contains — and the census refuses in three directions rather than reporting a count: a retained path with no row REFUSES (a new hand-authored seed file cannot be added invisibly), a row naming a path the tree no longer contains REFUSES (a row cannot outlive its file), and a row claiming retention for a path required-regen DOES compare REFUSES (a row cannot silence a live comparison). The census is a pure function of the two observed populations, so its discriminating REDs are authorable as ordinary fixture lists and execute in the required floor; wiring the live observation is a separate arm and is deliberately not what this roster's evidence rests on."
+// WHY THIS IS NOT A SECOND HAND LIST BESIDE THE FIRST (DESIGN section 2). A roster of retained
+// paths authored by hand counts the files someone remembered to author, which DESIGN section 5
+// rejects as an oracle. The roster here is joined against an INDEPENDENTLY DISCOVERED, CLOSED
+// universe — every .rs file the stage0 crate contains — and the census refuses in three directions
+// rather than reporting a count: a retained path with no row REFUSES (a new hand-authored seed file
+// cannot be added invisibly), a row naming a path the tree no longer contains REFUSES (a row cannot
+// outlive its file), and a row claiming retention for a path required-regen DOES compare REFUSES (a
+// row cannot silence a live comparison). The census is a pure function of the two observed
+// populations, so its discriminating REDs are authorable as ordinary fixture lists and execute in
+// the required floor; wiring the live observation is a separate arm and is deliberately not what
+// this roster's evidence rests on.
 
-data seed_retention_reason_undeclared_note: String = "ReasonNotYetDeclared IS THE POINT, not a hole in it. DESIGN section 4b(2) separates cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt, and the honest state of most of these files is the third: nobody has written down why the seed retains them. Fabricating 60 plausible reasons would be the fabricated-plausible-output failure applied to the frontier's own self-description — worse than sitting low, because an invented reason never ranks for repair. So the variant carries no payload, undeclared_reason_rows counts it, and the count is the prioritizable debt. It is NOT a refusal arm and does not widen anything: every such row is still rostered, still joined, still covered by the three refusals above."
+// ReasonNotYetDeclared IS THE POINT, not a hole in it. DESIGN section 4b(2) separates cannot-climb
+// from can-climb-after-one-grounding from can-climb-now-but-unbuilt, and the honest state of most
+// of these files is the third: nobody has written down why the seed retains them. Fabricating 60
+// plausible reasons would be the fabricated-plausible-output failure applied to the frontier's own
+// self-description — worse than sitting low, because an invented reason never ranks for repair. So
+// the variant carries no payload, undeclared_reason_rows counts it, and the count is the
+// prioritizable debt. It is NOT a refusal arm and does not widen anything: every such row is still
+// rostered, still joined, still covered by the three refusals above.
+
+// WHAT THE PARTITION EXECUTABLE CUT DID AND DID NOT CHANGE HERE, recorded because the obvious
+// reading of that change is wrong. The host shell stopped declaring seventy-one EMITTED mirrors,
+// which are compared files and were never rostered here; not one retained path moved, so every row
+// below is untouched and the three refusals answer exactly as before. The fact the cut ADDED is a
+// third one neither this roster nor stage0_crate_layout carried: which package compiles a module.
+// It lives in v2.compiler.self_host.stage0_executable_assembly, which joins this roster by path
+// identity -- a retained module whose row here has gone is refused there rather than silently
+// re-owned, so moving a hand-authored module between packages cannot be spent as retiring it.
+// Membership, retention reason and compiling package stay three facts in three places.
 
 type SeedRetentionCause
   = SeedRetainedIntrinsicSource
@@ -44,7 +86,11 @@ type SeedRetentionFrontierRow {
   reason: SeedRetentionReason
 }
 
-data reason_declared_elsewhere_note: String = "ReasonDeclaredElsewhere carries a DeclarationRef and never a copy of the prose (DESIGN section 3). Five of these rows point at stage0_crate_layout notes that already state the reason and the trigger for their family; restating that text here would fork one fact into two carriers, and the fork is the failure mode this repository consolidates most often. The citation is symbolic — module and declaration name, never a line — per the section 3 standing rule."
+// ReasonDeclaredElsewhere carries a DeclarationRef and never a copy of the prose (DESIGN section
+// 3). Five of these rows point at stage0_crate_layout notes that already state the reason and the
+// trigger for their family; restating that text here would fork one fact into two carriers, and the
+// fork is the failure mode this repository consolidates most often. The citation is symbolic —
+// module and declaration name, never a line — per the section 3 standing rule.
 
 fn retained_reason_undeclared(path: String, cause: SeedRetentionCause) -> SeedRetentionFrontierRow {
   SeedRetentionFrontierRow {
@@ -199,7 +245,16 @@ type SeedRetentionCensus {
   compared_collisions: List<SeedRetentionCensusRow>
 }
 
-data seed_retention_mutation_receipt_note: String = "MUTATION RECEIPT, executed 2026-08-24 on a linux/amd64 runner at branch head, claim_batch over v2.test.claim.self_host.seed_retention_frontier_test. Baseline: all eight witnesses PASS. Treatment: path_in's predicate rewritten from 'candidate == path' to 'candidate == candidate', which makes every membership question answer true and so collapses all three joins at once. Result: the five join probes go FAIL — control totality, control classification, and each of the three planted refusals — while the three roster-only probes (uniqueness, reason split, both populations non-empty) stay PASS, which is correct because none of them reaches path_in. So the refusals are load-bearing rather than green by construction, and the split tells which probe covers which mechanism. The receipt is a per-arm one and not a whole-file one on purpose: a mutation that reds EVERY probe proves only that the file was consulted."
+// MUTATION RECEIPT, executed 2026-08-24 on a linux/amd64 runner at branch head, claim_batch over
+// v2.test.claim.self_host.seed_retention_frontier_test. Baseline: all eight witnesses PASS.
+// Treatment: path_in's predicate rewritten from 'candidate == path' to 'candidate == candidate',
+// which makes every membership question answer true and so collapses all three joins at once.
+// Result: the five join probes go FAIL — control totality, control classification, and each of the
+// three planted refusals — while the three roster-only probes (uniqueness, reason split, both
+// populations non-empty) stay PASS, which is correct because none of them reaches path_in. So the
+// refusals are load-bearing rather than green by construction, and the split tells which probe
+// covers which mechanism. The receipt is a per-arm one and not a whole-file one on purpose: a
+// mutation that reds EVERY probe proves only that the file was consulted.
 
 fn path_in(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(candidate) { candidate == path })
@@ -213,7 +268,14 @@ fn roster_paths(roster: List<SeedRetentionFrontierRow>) -> List<String> {
   )
 }
 
-data census_takes_its_roster_note: String = "THE ROSTER IS A PARAMETER, and that is what makes the three refusals executable rather than specified. A census closed over seed_retention_frontier_roster could only be probed with a fixture that enumerates all 92 live paths — a measurement copied from the current tree, which DESIGN section 5 rejects as an oracle, and which would go red on every unrelated seed edit. Parameterized, the discriminating REDs are authored over a four-row synthetic roster: the probe supplies the world AND the roster, plants exactly one defect, and the assertion has a reachable opposite answer. seed_retention_frontier_census binds the live roster for consumers; nothing about the mechanism differs between the two."
+// THE ROSTER IS A PARAMETER, and that is what makes the three refusals executable rather than
+// specified. A census closed over seed_retention_frontier_roster could only be probed with a
+// fixture that enumerates all 92 live paths — a measurement copied from the current tree, which
+// DESIGN section 5 rejects as an oracle, and which would go red on every unrelated seed edit.
+// Parameterized, the discriminating REDs are authored over a four-row synthetic roster: the probe
+// supplies the world AND the roster, plants exactly one defect, and the assertion has a reachable
+// opposite answer. seed_retention_frontier_census binds the live roster for consumers; nothing
+// about the mechanism differs between the two.
 
 fn seed_retention_census(
   roster: List<SeedRetentionFrontierRow>,
@@ -279,7 +341,10 @@ fn seed_retention_census(
   )
 }
 
-data seed_retention_total_holds_note: String = "The conjunct is the three refusal populations being EMPTY, never a count of the rostered ones. A count equality would be satisfied by two errors cancelling — a path dropped from the tree and a path added to it — and DESIGN section 5 rules that completeness is an identity join, not a count equality. Every disagreement here is at path identity."
+// The conjunct is the three refusal populations being EMPTY, never a count of the rostered ones. A
+// count equality would be satisfied by two errors cancelling — a path dropped from the tree and a
+// path added to it — and DESIGN section 5 rules that completeness is an identity join, not a count
+// equality. Every disagreement here is at path identity.
 
 fn seed_retention_frontier_total_holds(
   roster: List<SeedRetentionFrontierRow>,
@@ -307,7 +372,11 @@ fn seed_retention_frontier_census(
   )
 }
 
-data roster_path_uniqueness_note: String = "A duplicate path would make the roster answer twice for one file with possibly different causes — the fork DESIGN section 3 forbids — and every join above keys on path, so a duplicate is invisible to all three refusals: the path is observed, it is in the roster, and both rows resolve. This is the one property of the LIVE roster a fixture cannot reach, so it is asserted directly over it."
+// A duplicate path would make the roster answer twice for one file with possibly different causes —
+// the fork DESIGN section 3 forbids — and every join above keys on path, so a duplicate is
+// invisible to all three refusals: the path is observed, it is in the roster, and both rows
+// resolve. This is the one property of the LIVE roster a fixture cannot reach, so it is asserted
+// directly over it.
 
 fn roster_path_occurrences(path: String) -> Int {
   fold(

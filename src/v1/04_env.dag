@@ -2,10 +2,12 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -17,7 +19,6 @@ import v1.compiler.infer_occurrence_binding {
   ModulePathBindingMiss,
   ambiguity_labels_from_decide,
 }
-
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -34,6 +35,7 @@ type TypeEnv {
   symbol_index: SymbolIndex
   module_path: String
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
+  unit_variant_index_observed: Bool
 }
 
 type TypeBinding {
@@ -172,7 +174,15 @@ fn build_unit_variant_index(str_bindings: Map<String, TypeBinding>, parents: Lis
 
 data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
 
-data qualified_module_projection_invariant: String = "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics)."
+// Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let
+// type-annotation positions resolves via symbol_index_lookup on the full qualified path (module
+// projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck:
+// lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted
+// variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module
+// item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants
+// also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases);
+// lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on
+// miss — never widens to field-access semantics).
 
 type GlobalBareCandidate {
   module_path: String
@@ -234,7 +244,8 @@ fn empty_type_env() -> TypeEnv {
     intern_table: empty_intern_table(),
     source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: empty_symbol_index(),
-    unit_variant_index: empty_map()
+    unit_variant_index: empty_map(),
+    unit_variant_index_observed: false
   }
 }
 
@@ -324,7 +335,14 @@ type TypeEnvCache {
   variant_locals: Map<String, TypeBinding>
 }
 
-data visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability."
+// B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is
+// fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3
+// reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator
+// ruling: the parent-recurse counter was a parallel representation guarding a fallback; the
+// fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility
+// reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings
+// only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling
+// — env maps become a derived projection of namespace reachability.
 
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
@@ -369,7 +387,20 @@ type GuardedTypeEnvCacheMerge {
   conflicts: List<TypeEnvCacheMergeConflict>
 }
 
-data guarded_cache_union_note: String = "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks."
+// Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not
+// TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a
+// binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying
+// the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the
+// retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via
+// rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT
+// bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order
+// overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so
+// refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts
+// are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never
+// diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate).
+// Positional layers keep overlay-wins outside the guard: the kernel scope layer
+// (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the
+// containment ruling, not peer-merge forks.
 
 fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
   if a.resolved.span == b.resolved.span {
@@ -627,7 +658,11 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   }
 }
 
-data closure_independent_bare_free_call_note: String = "Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator so every importable free fn is registered once with its definer module — not a hand-maintained trim-only list."
+// Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse
+// global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective
+// import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator
+// so every importable free fn is registered once with its definer module — not a hand-maintained
+// trim-only list.
 
 fn bare_free_call_requires_listed_import(name: String) -> Bool {
   name == "trim"
@@ -735,7 +770,14 @@ fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<Global
   }
 }
 
-data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide."
+// namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4
+// default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false =
+// ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing
+// module's ancestor chain — a candidate is on the chain iff its declaring module path is a
+// leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate
+// resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population;
+// zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through
+// module_path_owner_binding_decide.
 
 fn global_bare_chain_candidates(env_module_path: String, candidates: List<GlobalBareCandidate>) -> List<GlobalBareCandidate> {
   let env_segs = module_path_segments(path: env_module_path)
@@ -822,7 +864,15 @@ fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, 
   )
 }
 
-data qualify_declaration_position_invariant: String = "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction."
+// qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a
+// NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's
+// (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be
+// rewritten - renaming them detaches bare patterns/projections from the decl (a projected
+// coproduct's Independent became std.realization.Independent and every bare match arm missed).
+// Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name,
+// qualify the inferred payload (a type expr - reference position), recurse into child declarations.
+// The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority
+// for the declaration/reference distinction.
 
 fn qualify_decl_reference_positions(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
   let inf2 = qualify_borrowed_inferred(inferred: n.inferred, owner_module_path: owner_module_path, env: env, excluded: excluded)
@@ -1006,6 +1056,24 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
   }
 }
 
+// THE KERNEL-IDENTITY FACT EXISTS ONCE (operator ruling on gunbc#9850). Whether a resolved node
+// IS the kernel identity for a queried name is one semantic fact with one authority: exact
+// equality of the node's ident_span file against the kernel span file "<kernel:NAME>" that
+// build_type_env installs for that name. Both the infer-side rewire guard
+// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision consume THIS
+// predicate; neither re-derives it. The emitter's additional condition -- that the kernel node is
+// a host-realized structureless scalar (NoConnective, zero children), which excludes structural
+// kernels like Bool = True | False whose use-line IS the path to the realization -- is a SEPARATE
+// fact composed beside this one, never folded into it. A substring or prefix test here would be a
+// second, weaker authority for the same fact: the defect this predicate exists to repair was two
+// readers giving one environment two meanings.
+fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
+  match node.ident_span {
+    Present { value: sp } => sp.file == concat("<kernel:", concat(name, ">"))
+    Absent => false
+  }
+}
+
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
     Present { value: binding } =>
@@ -1021,9 +1089,14 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   }
 }
 
-data type_ref_hit_ne_bind_measure_active_note: String = "Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set / with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only. Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false = production fail-open. Zero production gates consult this. No .dag body can flip it."
+// Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set /
+// with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only.
+// Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false
+// = production fail-open. Zero production gates consult this. No .dag body can flip it.
 
-data type_ref_measure_binding_authority_fn_note: String = "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm."
+// MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure
+// type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified
+// self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm.
 
 fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> Bool {
   let a_segs = module_path_segments(path: ancestor)
@@ -1144,7 +1217,19 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
   map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
 }
 
-data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc."
+// Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's
+// inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no
+// information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along
+// the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec
+// slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone
+// left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst
+// module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present
+// (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming
+// lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never
+// concat-with-empty), and every list is duplicate-free by induction (local collection is
+// duplicate-free; merges never append a present fact). Genuinely new fields still append in the
+// pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487
+// cut 2); receipts on the throughline doc.
 
 fn recursion_shape_key(shape: RecursionShape) -> String {
   match shape {
@@ -1194,8 +1279,6 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-
-
 fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
@@ -1218,7 +1301,201 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       source_visible_names: map_insert(e.source_visible_names, tp_name, true),
       authored_import_names: e.authored_import_names,
       symbol_index: e.symbol_index,
-      unit_variant_index: updated_index
+      unit_variant_index: updated_index,
+      unit_variant_index_observed: e.unit_variant_index_observed
     }
   )
+}
+
+// THE EXACT PATH, AT ANY CONSUMER (relocated from v1.compiler.emit_rust, XL-0N). A type reference
+// carries its resolved declaration (`inferred: Resolved { node }`); the declaration's module is the
+// containment fact the corpus-wide bare-name census already holds (SymbolIndex.global_bare, one row
+// per declared name with its module_path and the declaration node), so the DeclarationRef is read
+// from that census by identity -- the candidate whose declaration node IS the resolved node, by
+// ident_span -- and never minted from a spelling. Identity the census cannot supply (a kernel mint,
+// a variant alias, an unresolved reference) is absent.
+fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
+  match binding.resolved.ident_span {
+    Present { value: s } => s.file == sp.file && s.start == sp.start
+    Absent => false
+  }
+}
+
+// A reference the resolver leaves IN PLACE -- a recursive type such as v2.std.nat Nat, whose leaf arm
+// answers `resolved: n` with no inferred node (v1.compiler.resolve resolve_node, is_recursive_type_for)
+// -- still names its declaration: the env binding the resolver established for the reference's ident
+// (lookup_type_for) carries the declaration's own ident_span, which is the span the global roster is
+// matched on. Without this arm every recursive destination answered Absent here and fell to the
+// identity-unavailable arms downstream (measured: the Peano literal and ordering rows passed for
+// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler). The ident-keyed lookup is
+// scoped: a parameter's type reference is bound in its function's scope, so this read is correct
+// at inference and NOT at emission, where only the module env survives. A by-name arm was tried
+// here for the emitter and refuted: the module-visible name is answered by pool precedence, so it
+// returned std.nat.Nat for a module that imported v2.std.nat.Nat, and the span match then confirmed
+// that homonym exactly. The reading is therefore done once, at inference, and carried on the typed
+// tree (std.operator_realization OperandDeclaration on ExprBinOp) for emission to consume.
+fn type_reference_declaration(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> OperandDeclaration? {
+  let rt = match n.inferred {
+    Present { value: Resolved { node: r } } => r
+    _ =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } => bound
+        Absent => n
+      }
+  }
+  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
+  if decl_name == "" { return none }
+  match rt.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) {
+            Present { value: OperandDeclaration { declaration: decl_ref(module_path: mp, decl_name: decl_name), decl_file: sp.file } }
+          } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: c.module_path, decl_name: decl_name), decl_file: sp.file } }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
+}
+
+// A QUALIFIED AUTHORED NAME IS ITSELF AN IDENTITY, joined against the census rather than trusted:
+// the resolver qualifies borrowed type names with their owner module path
+// (qualify_borrowed_type_names), so a resolved reference spelled `v2.std.text.String` names its
+// declaring module in its own name. The census row for the bare segment must AGREE -- a prefix
+// with no census row of that module answers none, so nothing is minted from the spelling alone;
+// decl_file is the AGREEING declaration's own file, read from the census binding, never from the
+// reference. This is NOT the refuted by-name arm (which asked pool precedence to pick a homonym):
+// the module prefix is authored on the reference, so there is exactly one census row it can agree
+// with, and a bare (unqualified) spelling takes this arm nowhere -- it answers none.
+fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> OperandDeclaration? {
+  let decl_name = qualified_last_segment(name: qualified)
+  let module_prefix = qualified_all_but_last(name: qualified)
+  if decl_name == "" || module_prefix == "" { return none }
+  match map_get(env.symbol_index.global_bare, decl_name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      if mp == module_prefix {
+        match b.resolved.ident_span {
+          Present { value: ds } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: mp, decl_name: decl_name), decl_file: ds.file } }
+          Absent => none
+        }
+      } else { none }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => c.module_path == module_prefix) |> first {
+        Present { value: c } =>
+          match c.binding.resolved.ident_span {
+            Present { value: ds } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: c.module_path, decl_name: decl_name), decl_file: ds.file } }
+            Absent => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// THE LITERAL-DESTINATION READ keeps the pre-recut hop order (XL-0T): resolved node, then the
+// reference's scoped env binding, then the module-visible NAME binding, each answered only by a
+// census join (span agreement, or an authored QUALIFIED name whose module prefix the census row
+// must equal). The by-name hop is deliberately absent from type_reference_declaration above (the
+// operand read), where it was measured to confirm the wrong homonym for an operand; here it fires
+// only after both exact hops decline, and its answer still has to survive the same census join,
+// so a pool-precedence homonym with a non-agreeing span or prefix answers none rather than wrong.
+fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let authored = authored_name_at(source_indices: source_indices, node: rt)
+  let decl_name = qualified_last_segment(name: authored)
+  if decl_name == "" { return none }
+  let by_span = match rt.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
+  match by_span {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match operand_declaration_from_qualified_name(qualified: authored, env: env) {
+        Present { value: od } => Present { value: od.declaration }
+        Absent => none
+      }
+  }
+}
+
+// THE DECLARING FILE OF AN IDENTIFIED DECLARATION, asked of the census by identity. The native-
+// realization question is a fact about the DESTINATION DECLARATION (v1.compiler.coercion
+// numeric_realization_identity_note), but the reference-site read type_reference_decl_file answers
+// the RESOLVED NODE's ident_span file — and a substituted alias RHS is a kernel-minted node whose
+// pseudo-file `<kernel:std.algebra.FreeMonoid>` string-matches the `<kernel:` row of the native
+// numeric roster, so a peeled structural boundary read as realizing natively (measured: the
+// qualified text probe answered natively=true and took DirectLiteral with the homomorphism row
+// present and matching). This read joins the DeclarationRef back to the census and answers the
+// declaration's OWN file; absent identity answers "", which decl_file_realizes_natively already
+// treats as unknown-hence-structural.
+fn declaration_file_of(d: DeclarationRef, env: TypeEnv) -> String {
+  let want_name = d.decl_name as String
+  let want_module = d.module_path as String
+  match map_get(env.symbol_index.global_bare, want_name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      if mp == want_module {
+        match b.resolved.ident_span {
+          Present { value: s } =>
+            let f = s.file as String
+            f
+          Absent => ""
+        }
+      } else { "" }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => c.module_path == want_module) |> first {
+        Present { value: c } =>
+          match c.binding.resolved.ident_span {
+            Present { value: s } =>
+              let f = s.file as String
+              f
+            Absent => ""
+          }
+        Absent => ""
+      }
+    Absent => ""
+  }
+}
+
+// HOP 0 — THE AUTHORED REFERENCE'S OWN IDENTITY, asked before any resolved substitute. Under the
+// #9813 shared-producer precedence, resolution of a QUALIFIED alias reference (v2.std.text.String)
+// substitutes the alias's RHS (std.algebra.FreeMonoid<Char>), so the resolved-node hop below
+// answers the RHS declaration and the alias identity a DeclarationRef-keyed row is keyed on is
+// gone before it is consulted (measured: the qualified text probe refused by inhabitance with the
+// homomorphism row present). An authored qualified name is itself an identity joined against the
+// census (module prefix must equal the census row's declarer); a BARE authored name answers none
+// here — no prefix, and the occurrence span matches no declaration — so every unqualified
+// destination takes exactly the hops it took before this arm existed.
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let from_authored = declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
+  if from_authored != none { return from_authored }
+  let from_resolved = match n.inferred {
+    Present { value: Resolved { node: r } } => declaration_ref_of_type_node(rt: r, source_indices: source_indices, env: env)
+    _ => none
+  }
+  match from_resolved {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
+        Absent =>
+          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+            Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
+            Absent => declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
+          }
+      }
+  }
 }

@@ -70,11 +70,14 @@ import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.chown { chown_argv }
 import extdeps.tools.chmod { chmod_add_executable_argv }
-import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
 import extdeps.posix.path_ownership {
   PathOwnershipObservation,
   PathOwnerObserved,
   PathOwnerUnobserved,
+  PathModeObservation,
+  PathModeObserved,
+  PathModeUnobserved,
   PathOwnershipDecision,
   OwnershipAlreadySatisfied,
   OwnershipMutationRequired,
@@ -1156,7 +1159,20 @@ fn provision_build_cache_reconcile(
   )
 }
 
-data provision_codex_runtime_typed_step_note: String = "ProvisionCodexRuntime observe/materialize/read-back replaced the concat-built bash body of the now-deleted host_codex_runtime_provision_script.dag with three typed single-command steps: LocalShell dispatches through the existing typed argv services gunbc.WitnessBin.Run (observe/read-back) and gunbc.Cli.Run (materialize) — argv arrays, not a shell string, so there is no branching or receipt-marker text to construct or parse; SshShell/FleetSsh dispatch through run_typed_argv_transport with the same argv shape built by gunbc.host_codex_runtime_provision_verdict codex_runtime_observe_argv and gunbc.cli_invoke gunbc_run_transport_argv. The mkdir-release-parent step the old shell body ran before materialize is dropped: gunbc.package_delivery release_codex_runtime_bundle_immutable already runs shell.Mkdir.Parents on release_parent inside materialize_codex_runtime_bundle's own call chain, so a second mkdir ahead of it was redundant work (DESIGN §2), not preserved behavior. Read-back reuses the observe step verbatim — 'we ran materialize' is never treated as 'it is installed'; only a second successful --version probe that satisfies codex_runtime_version_identity_satisfied converges."
+// ProvisionCodexRuntime observe/materialize/read-back replaced the concat-built bash body of the
+// now-deleted host_codex_runtime_provision_script.dag with three typed single-command steps:
+// LocalShell dispatches through the existing typed argv services gunbc.WitnessBin.Run
+// (observe/read-back) and gunbc.Cli.Run (materialize) — argv arrays, not a shell string, so there
+// is no branching or receipt-marker text to construct or parse; SshShell/FleetSsh dispatch through
+// run_typed_argv_transport with the same argv shape built by
+// gunbc.host_codex_runtime_provision_verdict codex_runtime_observe_argv and gunbc.cli_invoke
+// gunbc_run_transport_argv. The mkdir-release-parent step the old shell body ran before materialize
+// is dropped: gunbc.package_delivery release_codex_runtime_bundle_immutable already runs
+// shell.Mkdir.Parents on release_parent inside materialize_codex_runtime_bundle's own call chain,
+// so a second mkdir ahead of it was redundant work (DESIGN §2), not preserved behavior. Read-back
+// reuses the observe step verbatim — 'we ran materialize' is never treated as 'it is installed';
+// only a second successful --version probe that satisfies codex_runtime_version_identity_satisfied
+// converges.
 
 type CodexRuntimeStepResult
   = CodexRuntimeStepRan { observed: ShellExecObserved }
@@ -1436,8 +1452,27 @@ fn realize_provision_codex_runtime(
   }
 }
 
-data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5). EmitArtifactThenThinRun defers execution to a materialized artifact run elsewhere, so an inline bin-witness probe has no host to observe; refusing here is a permanent boundary of that transport, not unmigrated debt.\\n\\nThe five probe leaves that used to build a concatenated shell command string (bin-witness success, test -x, which-based tool presence, which-based tool bin path, chown) now carry typed operation_argv rows and route SshShell and FleetSsh through typed_argv_exec_over_ssh / typed_argv_exec_over_fleet_ssh (gunbc.typed_argv_exec), the same wall the principal, sudo-probe and grant-list leaves already used. FleetSsh is admitted at realize_os_install_actuator_toolchain_ensure's entry gate.\\n\\nRUNG, STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. The FleetSsh arms are compile-verified only: the match is exhaustive and each arm demonstrably reaches typed dispatch, but NO EXECUTING WITNESS DISCRIMINATES THEM, and the reason is structural rather than an omission. A FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a pure `test fn` cannot construct the transport these arms match on. THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is recorded here rather than paid down by widening the wall, because admitting a test declaration to the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level test harness for the materializer, not a second minter."
-
+// realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry;
+// srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed
+// backstop only — not a silent widen (DESIGN §5). EmitArtifactThenThinRun defers execution to a
+// materialized artifact run elsewhere, so an inline bin-witness probe has no host to observe;
+// refusing here is a permanent boundary of that transport, not unmigrated debt.\n\nThe five probe
+// leaves that used to build a concatenated shell command string (bin-witness success, test -x,
+// which-based tool presence, which-based tool bin path, chown) now carry typed operation_argv rows
+// and route SshShell and FleetSsh through typed_argv_exec_over_ssh / typed_argv_exec_over_fleet_ssh
+// (gunbc.typed_argv_exec), the same wall the principal, sudo-probe and grant-list leaves already
+// used. FleetSsh is admitted at realize_os_install_actuator_toolchain_ensure's entry gate.\n\nRUNG,
+// STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. The FleetSsh arms are compile-verified
+// only: the match is exhaustive and each arm demonstrably reaches typed dispatch, but NO EXECUTING
+// WITNESS DISCRIMINATES THEM, and the reason is structural rather than an omission. A
+// FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is
+// a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a
+// pure `test fn` cannot construct the transport these arms match on. THE SEAL THAT MAKES A FLEET
+// CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is
+// recorded here rather than paid down by widening the wall, because admitting a test declaration to
+// the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG
+// TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level
+// test harness for the materializer, not a second minter.
 
 // THE THREE-VALUED COLLAPSE IS CLOSED. This is where the roster of five collapse sites and six
 // consumers stood, together with its dissolution condition: "DISSOLVES WHEN the sites return an
@@ -1450,7 +1485,6 @@ data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "real
 // That is exactly what the first draft of this cut did, using a Bool projection to satisfy the
 // typechecker at a call site. The projection is gone; the consumers match all three arms, and
 // exhaustiveness is what keeps them matching them.
-
 
 // A host probe answers one of three things, and the third is not a shade of the second:
 // the predicate held, the predicate failed, or the transport could not carry the probe at all.
@@ -1503,8 +1537,13 @@ fn srv3_argv_with_bin(bin_path: String, args: List<String>) -> List<String> {
   list_append(left: [bin_path], right: args)
 }
 
-
-data srv3_transport_witness_bin_nonroot_workdir_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
+// typed_argv_exec_over_{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a
+// non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: "/" (checked
+// at review time), so this arm is unreachable dead debt today -- named rather than folded into the
+// workdir == "/" condition so a non-root workdir renders as a located refusal instead of an
+// indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed
+// remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the
+// signature because no caller ever varies it.
 
 fn srv3_transport_witness_bin_success(
   transport: HostEffectTransport,
@@ -1692,6 +1731,7 @@ type Srv3TokenSubject
   | Srv3EffectiveGroupId
   | Srv3PathOwnerUser { path: String }
   | Srv3PathOwnerGroup { path: String }
+  | Srv3PathMode { path: String }
 
 // The single public token read. The argv never crosses this boundary in either direction: callers
 // hand in a subject and receive a typed observation.
@@ -1717,6 +1757,7 @@ fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
     Srv3EffectiveGroupId => id_gid_argv_absolute()
     Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
     Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
+    Srv3PathMode { path: p } => stat_mode_argv(path: p)
   }
 }
 
@@ -1849,6 +1890,14 @@ fn srv3_observe_path_owner(path: String, transport: HostEffectTransport) -> Path
         Srv3TokenObserved { value: gid_text } =>
           srv3_path_owner_from_texts(uid_text: uid_text, gid_text: gid_text, path: path)
       }
+  }
+}
+
+fn srv3_observe_path_mode(path: String, transport: HostEffectTransport) -> PathModeObservation {
+  match srv3_read_token(subject: Srv3PathMode { path: path }, transport: transport) {
+    Srv3TokenUnobserved { reason: why } => PathModeUnobserved { reason: why }
+    Srv3TokenAbsent => PathModeUnobserved { reason: concat("srv3 mode: `stat -c %a` produced no output for ", path) }
+    Srv3TokenObserved { value: mode_text } => PathModeObserved { mode: mode_text as NonEmptyStr }
   }
 }
 
@@ -2193,7 +2242,6 @@ fn srv3_apt_install_then_reprobe(
       }
   }
 }
-
 
 // THE SEQUENCE IS A VALUE, SO THE EVIDENCE CAN ASSERT WHAT RAN.
 //
@@ -2733,9 +2781,32 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
-data build_cache_install_authority_note: String = "The ensure arm installs sccache by calling the cited authority extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path that install never creates, so the daemon could not start and the read-back refused. Both the install and the unit now read ONE path row, so the two phases cannot disagree."
+// The ensure arm installs sccache by calling the cited authority
+// extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing
+// at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until
+// 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with
+// ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the
+// pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path
+// that install never creates, so the daemon could not start and the read-back refused. Both the
+// install and the unit now read ONE path row, so the two phases cannot disagree.
 
-data build_cache_ensure_scope_swap_note: String = "This ensure body writes a SYSTEM-scope unit (/etc/systemd/system/<intended_unit>, WantedBy=multi-user.target, per render_build_cache_unit) rather than the user-scope unit (~/.config/systemd/user, enable-linger) the deleted gunbc.host_build_cache_provision_script builder used. That earlier form needed `sudo -n loginctl enable-linger \"$USER\"` to survive the provisioning ssh connection closing, which is real shell this render's system scope makes unnecessary — a `systemd --user` manager has no login to outlive when the unit is system-scoped. This is a consequence of the A5 grain swap (EnsureBuildCacheInstance { desired: BuildCacheInstance }), not an independently decided handler choice: BuildCacheInstance.intended_unit is a single row (\"gunbc-build-cache-ci.service\", WantedBy=multi-user.target) already grounded on a live srv1 capture, and the render is the single authority for the unit body, so writing it anywhere but where the render says WantedBy points is a second representation of the same fact. The install/enable/restart sequence reuses gunbc.live_deploy.operations' existing typed-argv-backed command builders (systemctl_daemon_reload_command / systemctl_enable_command / systemctl_restart_command, each privileged: true) rather than hand-spelling new sudo -n systemctl strings, matching the idiom already established in gunbc.live_deploy.emit and gunbc.host_axis_caps — a further §3 de-fork consistent with why this swap exists."
+// This ensure body writes a SYSTEM-scope unit (/etc/systemd/system/<intended_unit>,
+// WantedBy=multi-user.target, per render_build_cache_unit) rather than the user-scope unit
+// (~/.config/systemd/user, enable-linger) the deleted gunbc.host_build_cache_provision_script
+// builder used. That earlier form needed `sudo -n loginctl enable-linger "$USER"` to survive the
+// provisioning ssh connection closing, which is real shell this render's system scope makes
+// unnecessary — a `systemd --user` manager has no login to outlive when the unit is system-scoped.
+// This is a consequence of the A5 grain swap (EnsureBuildCacheInstance { desired:
+// BuildCacheInstance }), not an independently decided handler choice:
+// BuildCacheInstance.intended_unit is a single row ("gunbc-build-cache-ci.service",
+// WantedBy=multi-user.target) already grounded on a live srv1 capture, and the render is the single
+// authority for the unit body, so writing it anywhere but where the render says WantedBy points is
+// a second representation of the same fact. The install/enable/restart sequence reuses
+// gunbc.live_deploy.operations' existing typed-argv-backed command builders
+// (systemctl_daemon_reload_command / systemctl_enable_command / systemctl_restart_command, each
+// privileged: true) rather than hand-spelling new sudo -n systemctl strings, matching the idiom
+// already established in gunbc.live_deploy.emit and gunbc.host_axis_caps — a further §3 de-fork
+// consistent with why this swap exists.
 
 fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
   concat("/etc/systemd/system/", instance.intended_unit as String)
@@ -2771,7 +2842,12 @@ fn build_cache_fragment_words() -> String {
   )
 }
 
-data build_cache_classify_fold_note: String = "The misconfigured-fragment classifier is a FOLD over the cited roster extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment. The roster is data the loop iterates: adding a fragment upstream changes the emitted word list and nothing else. Fragments are single-quoted as shell words, which is total only while no fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the construction check that keeps it so."
+// The misconfigured-fragment classifier is a FOLD over the cited roster
+// extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment.
+// The roster is data the loop iterates: adding a fragment upstream changes the emitted word list
+// and nothing else. Fragments are single-quoted as shell words, which is total only while no
+// fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the
+// construction check that keeps it so.
 
 fn build_cache_classify_failure_body() -> String {
   join([
@@ -2898,7 +2974,14 @@ fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
   )
 }
 
-data provision_build_cache_arch_derivation_note: String = "The provisioning script is a function of the TARGET HOST's architecture, not a constant: the cited release publishes one musl tarball plus one sha256 per arch, so emitting a script at all requires knowing which. Arch comes from the effect target's own ComputeHost (compute_host_primary_cpu -> CpuFacts.architecture) and the token/digest selectors in extdeps.cache.sccache are partial over the Architecture coproduct — a host whose CPU is unreadable, or whose arch the release does not publish, yields NO script and a typed NotConverged. There is no default arch: shipping an aarch64 binary to an unlisted host is precisely the fabricated-plausible-output §5 forbids."
+// The provisioning script is a function of the TARGET HOST's architecture, not a constant: the
+// cited release publishes one musl tarball plus one sha256 per arch, so emitting a script at all
+// requires knowing which. Arch comes from the effect target's own ComputeHost
+// (compute_host_primary_cpu -> CpuFacts.architecture) and the token/digest selectors in
+// extdeps.cache.sccache are partial over the Architecture coproduct — a host whose CPU is
+// unreadable, or whose arch the release does not publish, yields NO script and a typed
+// NotConverged. There is no default arch: shipping an aarch64 binary to an unlisted host is
+// precisely the fabricated-plausible-output §5 forbids.
 
 fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architecture? {
   match effect_intent.target {
@@ -3049,7 +3132,13 @@ fn provision_build_cache_witness_intent() -> HostEffectIntent {
   }
 }
 
-data provision_build_cache_arch_unknown_fixture_note: String = "A host the fleet knows by identity but whose processor inventory is empty — the shape a freshly-racked srvN has before its BMC read lands (srv4 carried exactly this deferral for memory). Realization must REFUSE it, because 'which binary do I install' has no answer. The fixture deliberately does NOT fabricate a CPU catalog row for an arch the cited release omits: minting a machine that does not exist to test a refusal would be its own §3 violation, so the not-published arm is witnessed at the selector (sccache_release_arch_token over Riscv64/Wasm32) instead."
+// A host the fleet knows by identity but whose processor inventory is empty — the shape a
+// freshly-racked srvN has before its BMC read lands (srv4 carried exactly this deferral for
+// memory). Realization must REFUSE it, because 'which binary do I install' has no answer. The
+// fixture deliberately does NOT fabricate a CPU catalog row for an arch the cited release omits:
+// minting a machine that does not exist to test a refusal would be its own §3 violation, so the
+// not-published arm is witnessed at the selector (sccache_release_arch_token over Riscv64/Wasm32)
+// instead.
 
 fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
   ComputeHost {
@@ -3314,7 +3403,11 @@ fn reconcile_ssh_argv_exec_outcome(
   }
 }
 
-data run_typed_argv_transport_authority_note: String = "Executor→target typed remote argv transport binding (codex_runtime_converge_local_shell_locus dissolve-on class; review 51883). SshShell routes through typed_argv_exec_over_ssh on the transport endpoint; FleetSsh routes through typed_argv_exec_over_fleet_ssh with sealed context. LocalShell refuses — remote argv requires a transport that names the target host. Shell script bodies use host_effect_realize run_shell_transport instead."
+// Executor→target typed remote argv transport binding (codex_runtime_converge_local_shell_locus
+// dissolve-on class; review 51883). SshShell routes through typed_argv_exec_over_ssh on the
+// transport endpoint; FleetSsh routes through typed_argv_exec_over_fleet_ssh with sealed context.
+// LocalShell refuses — remote argv requires a transport that names the target host. Shell script
+// bodies use host_effect_realize run_shell_transport instead.
 
 fn run_typed_argv_transport(
   argv: List<String>,
@@ -3656,7 +3749,26 @@ fn realize_nbd_proxy_session_on_host(
   }
 }
 
-data candidate_observation_locus_note: String = "THE CANDIDATE WAS OBSERVED IN THE DEPLOYING CHECKOUT, SO IT MAY ONLY LABEL A TREE THAT IS THAT CHECKOUT. observe_candidate_release reads git HEAD where the deploy program runs. On LocalShell the observation locus and the mutation locus are the same filesystem — the CI job installs from its own workspace — so the revision it read is the revision it installs, and baking that value into ExecStart is a true statement about the resulting process.\\n\\nOver SshShell they are two different machines. The revision came from the LOCAL checkout while the unit is written on the REMOTE host, whose tree arrived by some other path and at some other time; nothing in this fold establishes that they agree. Emitting the local sha there would produce a process that CONFIDENTLY REPORTS a release it may not be running, and readiness would then compare that fabricated label against the expectation that produced it and agree — a self-consistent false green, which is worse than no identity at all because the wrongness is invisible to every downstream check.\\n\\nSo the SSH arm REFUSES rather than labels. This is not a transport allow-list standing in for a model; the admission that is genuinely missing is the agreement between candidate observation locus, source transfer locus, and mutation locus, and until a source transfer is modeled that PROVES the remote tree is this candidate, refusing is the only honest arm (DESIGN section 5: a failure arm must refuse, never widen). EmitArtifactThenThinRun refuses for the same reason, one step further removed.\\n\\nRetract is deliberately not restricted here: it installs no release, carries no candidate, and therefore has no locus to agree about. DISSOLVES WHEN a modeled source transfer establishes remote-tree identity, at which point this arm carries the transferred candidate instead of refusing."
+// THE CANDIDATE WAS OBSERVED IN THE DEPLOYING CHECKOUT, SO IT MAY ONLY LABEL A TREE THAT IS THAT
+// CHECKOUT. observe_candidate_release reads git HEAD where the deploy program runs. On LocalShell
+// the observation locus and the mutation locus are the same filesystem — the CI job installs from
+// its own workspace — so the revision it read is the revision it installs, and baking that value
+// into ExecStart is a true statement about the resulting process.\n\nOver SshShell they are two
+// different machines. The revision came from the LOCAL checkout while the unit is written on the
+// REMOTE host, whose tree arrived by some other path and at some other time; nothing in this fold
+// establishes that they agree. Emitting the local sha there would produce a process that
+// CONFIDENTLY REPORTS a release it may not be running, and readiness would then compare that
+// fabricated label against the expectation that produced it and agree — a self-consistent false
+// green, which is worse than no identity at all because the wrongness is invisible to every
+// downstream check.\n\nSo the SSH arm REFUSES rather than labels. This is not a transport
+// allow-list standing in for a model; the admission that is genuinely missing is the agreement
+// between candidate observation locus, source transfer locus, and mutation locus, and until a
+// source transfer is modeled that PROVES the remote tree is this candidate, refusing is the only
+// honest arm (DESIGN section 5: a failure arm must refuse, never widen). EmitArtifactThenThinRun
+// refuses for the same reason, one step further removed.\n\nRetract is deliberately not restricted
+// here: it installs no release, carries no candidate, and therefore has no locus to agree about.
+// DISSOLVES WHEN a modeled source transfer establishes remote-tree identity, at which point this
+// arm carries the transferred candidate instead of refusing.
 
 fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> String {
   match transport {
@@ -4124,7 +4236,13 @@ type BuildCacheReadResult
   = BuildCacheReadRan { observed: ShellExecObserved }
   | BuildCacheReadRefused { reason: String }
 
-data every_read_is_one_argv_note: String = "EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and must not grow, so an observation added as a concat-built bash body would have grown precisely the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means the observation lands in the direction the dissolve-on points, and the remaining concat-shell body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect does than it was."
+// EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface
+// is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink
+// and must not grow, so an observation added as a concat-built bash body would have grown precisely
+// the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means
+// the observation lands in the direction the dissolve-on points, and the remaining concat-shell
+// body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect
+// does than it was.
 
 // IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason bmc_netboot_run_bmc now does: a
 // List<String> parameter is a place an argv can be hand-spelled, and one of this function's callers
@@ -4194,11 +4312,24 @@ fn build_cache_path_kind_read(
   }
 }
 
-data unread_owner_facts_are_failures_not_blanks_note: String = "WHEN NO OWNER RESOLVES, THE OWNER READS ARE NOT PERFORMED AND SAY SO. The alternative -- issuing cat /proc//cgroup against a pid that does not exist and letting it fail -- would reach the same arms by accident and cost four round trips per pass to do it. Filling them with a positively-named HostReadFailed keeps the decode on one path (gunbc.build_cache_endpoint_observe unreachable_is_a_read_state_not_a_short_circuit_note makes the same move for an unreachable host) while making the reason for the absence readable rather than inferred from a contrived errno."
+// WHEN NO OWNER RESOLVES, THE OWNER READS ARE NOT PERFORMED AND SAY SO. The alternative -- issuing
+// cat /proc//cgroup against a pid that does not exist and letting it fail -- would reach the same
+// arms by accident and cost four round trips per pass to do it. Filling them with a
+// positively-named HostReadFailed keeps the decode on one path (gunbc.build_cache_endpoint_observe
+// unreachable_is_a_read_state_not_a_short_circuit_note makes the same move for an unreachable host)
+// while making the reason for the absence readable rather than inferred from a contrived errno.
 
 data owner_facts_unread_detail: NonEmptyStr = "no single listening owner resolved at the endpoint, so the owner's cgroup, start time, principal and executable were not read"
 
-data tcp_endpoint_observation_is_unmodeled_note: String = "A TCP-ENDPOINT INSTANCE REFUSES RATHER THAN BEING OBSERVED THROUGH THE UNIX CHAIN. /proc/net/unix answers for unix sockets only; the TCP equivalent is /proc/net/tcp with its own hex-encoded address columns and its own decode, which nothing in this repository has modeled. No BuildCacheInstance in the tree carries a TCP endpoint today -- both ci_cache_instance and session_cache_instance are unix sockets -- so this is an unbuilt arm rather than a live gap, and it is a POSITIVE typed refusal so that the day one is authored it stops the line instead of being silently classified through a table that cannot see it. An earlier revision reached ss for both shapes, which appeared to support TCP and was never exercised against one; an untested arm that answers is worse than one that refuses."
+// A TCP-ENDPOINT INSTANCE REFUSES RATHER THAN BEING OBSERVED THROUGH THE UNIX CHAIN. /proc/net/unix
+// answers for unix sockets only; the TCP equivalent is /proc/net/tcp with its own hex-encoded
+// address columns and its own decode, which nothing in this repository has modeled. No
+// BuildCacheInstance in the tree carries a TCP endpoint today -- both ci_cache_instance and
+// session_cache_instance are unix sockets -- so this is an unbuilt arm rather than a live gap, and
+// it is a POSITIVE typed refusal so that the day one is authored it stops the line instead of being
+// silently classified through a table that cannot see it. An earlier revision reached ss for both
+// shapes, which appeared to support TCP and was never exercised against one; an untested arm that
+// answers is worse than one that refuses.
 
 fn build_cache_listen_inode_read(
   instance: BuildCacheInstance,
@@ -4239,7 +4370,12 @@ fn build_cache_fd_holder_read(
   }
 }
 
-data holder_walk_runs_on_the_unlistened_socket_too_note: String = "WHEN THERE IS NO LISTEN ENTRY THE WALK STILL RUNS, against the inode read off the FILE rather than off /proc/net/unix, and that is the whole of clause (3). A socket with no LISTEN entry is either stale (nothing holds it) or held open by a process that is not listening (unlinking severs it). Those two states are indistinguishable without asking whether any descriptor resolves to the file's inode, so skipping the walk here because 'nothing is listening' would collapse them -- and collapse them in the direction that unlinks a live process's socket."
+// WHEN THERE IS NO LISTEN ENTRY THE WALK STILL RUNS, against the inode read off the FILE rather
+// than off /proc/net/unix, and that is the whole of clause (3). A socket with no LISTEN entry is
+// either stale (nothing holds it) or held open by a process that is not listening (unlinking severs
+// it). Those two states are indistinguishable without asking whether any descriptor resolves to the
+// file's inode, so skipping the walk here because 'nothing is listening' would collapse them -- and
+// collapse them in the direction that unlinks a live process's socket.
 
 fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTransport) -> NonEmptyStr? {
   match build_cache_host_read_observed(command: stat_inode_command(path: path as String), transport: transport) {
@@ -4338,7 +4474,14 @@ fn build_cache_reads_without_owner(
   }
 }
 
-data unlink_is_a_separate_admitted_step_note: String = "THE UNLINK RUNS AS ITS OWN COMMAND BEFORE THE ENSURE, WHICH IS WHAT gunbc.build_cache_endpoint_path no_unconditional_execstartpre_note REQUIRES. Folding it into the unit as ExecStartPre would unlink in every path state rather than the one state where unlinking is correct -- harmless under an absent path, destructive under a conflict, and silently fatal under a live listener. Here it is reached only from EndpointClearedByUnlink, which admit_stale_socket_unlink produces only from an observed stale socket under a current boot id, and a failure to remove the file refuses the whole effect rather than proceeding into a bind that error 98 would fail anyway."
+// THE UNLINK RUNS AS ITS OWN COMMAND BEFORE THE ENSURE, WHICH IS WHAT
+// gunbc.build_cache_endpoint_path no_unconditional_execstartpre_note REQUIRES. Folding it into the
+// unit as ExecStartPre would unlink in every path state rather than the one state where unlinking
+// is correct -- harmless under an absent path, destructive under a conflict, and silently fatal
+// under a live listener. Here it is reached only from EndpointClearedByUnlink, which
+// admit_stale_socket_unlink produces only from an observed stale socket under a current boot id,
+// and a failure to remove the file refuses the whole effect rather than proceeding into a bind that
+// error 98 would fail anyway.
 
 fn build_cache_unlink_then_ensure(
   instance: BuildCacheInstance,
@@ -4400,7 +4543,33 @@ fn build_cache_unlink_then_ensure(
   }
 }
 
-data both_authorities_are_consumed_and_neither_is_duplicated_note: String = "TWO AUTHORITIES, TWO DIFFERENT QUESTIONS, ONE EACH SIDE OF THE ACT. gunbc.build_cache_ensure admit_ensure_build_cache_instance is the PRECONDITION -- may this host be written to at all, given who owns the endpoint and what is at the path -- and it runs before the first mutation. gunbc.host_build_cache_provision provision_build_cache_verdict is the POSTCONDITION -- given what the ensure produced, is this host converged -- and it runs after. The shell-to-dag census C-note found both unconsumed and called them one wiring job; they are, and this is that job, but they are not one check applied twice: the precondition can refuse a host the postcondition would never see, and the postcondition catches the case that motivated it, an ensure that reports success while the endpoint ends up owned by something other than the unit just written.\n\nTHE PLACEMENT IN THE POSTCONDITION IS RE-OBSERVED, NOT CARRIED FORWARD FROM THE PREFLIGHT. Reusing the preflight's placement would be asserting a fact measured before the mutation about the state after it, which is the read-back that greens on evidence it produced, one step removed. So the endpoint is surveyed again and the second survey is what the verdict folds -- which is also what makes the check discriminating: the whole point is that the pre-state and the post-state can differ.\n\nONE RESIDUE, NAMED RATHER THAN DISCOVERED IN PRODUCTION: the post-survey races the unit start. systemctl restart returns when the unit is active, and the server binds its endpoint during its own startup, so there is a window in which the endpoint has no listener yet and the post-survey reads ServerPlacementAbsent -- a FALSE RefusalDaemonAbsent. It is bounded in the right direction: the failure is a loud refusal on an idempotent operation, so the next converge pass reads the settled state and converges, and no host is left silently misreported. It is NOT fixed here because fixing it properly means waiting on an observable readiness condition rather than sleeping, and a readiness predicate for this endpoint is its own piece of modeling. DISSOLVE-ON: an endpoint-readiness observation the ensure step can wait on, at which point the post-survey runs after it rather than after systemctl returns."
+// TWO AUTHORITIES, TWO DIFFERENT QUESTIONS, ONE EACH SIDE OF THE ACT. gunbc.build_cache_ensure
+// admit_ensure_build_cache_instance is the PRECONDITION -- may this host be written to at all,
+// given who owns the endpoint and what is at the path -- and it runs before the first mutation.
+// gunbc.host_build_cache_provision provision_build_cache_verdict is the POSTCONDITION -- given what
+// the ensure produced, is this host converged -- and it runs after. The shell-to-dag census C-note
+// found both unconsumed and called them one wiring job; they are, and this is that job, but they
+// are not one check applied twice: the precondition can refuse a host the postcondition would never
+// see, and the postcondition catches the case that motivated it, an ensure that reports success
+// while the endpoint ends up owned by something other than the unit just written.
+//
+// THE PLACEMENT IN THE POSTCONDITION IS RE-OBSERVED, NOT CARRIED FORWARD FROM THE PREFLIGHT.
+// Reusing the preflight's placement would be asserting a fact measured before the mutation about
+// the state after it, which is the read-back that greens on evidence it produced, one step removed.
+// So the endpoint is surveyed again and the second survey is what the verdict folds -- which is
+// also what makes the check discriminating: the whole point is that the pre-state and the
+// post-state can differ.
+//
+// ONE RESIDUE, NAMED RATHER THAN DISCOVERED IN PRODUCTION: the post-survey races the unit start.
+// systemctl restart returns when the unit is active, and the server binds its endpoint during its
+// own startup, so there is a window in which the endpoint has no listener yet and the post-survey
+// reads ServerPlacementAbsent -- a FALSE RefusalDaemonAbsent. It is bounded in the right direction:
+// the failure is a loud refusal on an idempotent operation, so the next converge pass reads the
+// settled state and converges, and no host is left silently misreported. It is NOT fixed here
+// because fixing it properly means waiting on an observable readiness condition rather than
+// sleeping, and a readiness predicate for this endpoint is its own piece of modeling. DISSOLVE-ON:
+// an endpoint-readiness observation the ensure step can wait on, at which point the post-survey
+// runs after it rather than after systemctl returns.
 
 fn build_cache_daemon_observation_of_receipt(
   observed: ShellExecObserved,
@@ -4467,7 +4636,15 @@ fn build_cache_ensure_step(
   }
 }
 
-data already_converged_evidence_is_the_observation_note: String = "THE ALREADY-CONVERGED ARM RETURNS ShellEffectApplied WITH exit_code 0 AND NO SHELL HAVING RUN, and that is worth stating because it looks like a fabricated receipt and is not. HostEffectEvidence has two arms and neither names an observation, so the evidence carrier cannot yet distinguish 'a command ran and succeeded' from 'a read established that nothing needed to run'. What the receipt carries is the observation itself -- the unit found owning the endpoint -- rather than invented command output, so a reader sees WHY it converged. DISSOLVE-ON: a HostEffectEvidence arm for an observation-grounded convergence, at which point this arm names it and the exit_code 0 goes away. Until then the honest thing is to say so here rather than let the zero read as a process exit."
+// THE ALREADY-CONVERGED ARM RETURNS ShellEffectApplied WITH exit_code 0 AND NO SHELL HAVING RUN,
+// and that is worth stating because it looks like a fabricated receipt and is not.
+// HostEffectEvidence has two arms and neither names an observation, so the evidence carrier cannot
+// yet distinguish 'a command ran and succeeded' from 'a read established that nothing needed to
+// run'. What the receipt carries is the observation itself -- the unit found owning the endpoint --
+// rather than invented command output, so a reader sees WHY it converged. DISSOLVE-ON: a
+// HostEffectEvidence arm for an observation-grounded convergence, at which point this arm names it
+// and the exit_code 0 goes away. Until then the honest thing is to say so here rather than let the
+// zero read as a process exit.
 
 // THE COMPILE-POOL SLICE GETS ITS OWN EFFECT RATHER THAN RIDING THE CACHE ENSURE, AND THE SEAM IS THE POINT.
 // gunbc.compile_pool_ensure admit_ensure_compile_pool_slice refuses on TOPOLOGY before it observes anything,

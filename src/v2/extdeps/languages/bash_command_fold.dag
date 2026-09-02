@@ -67,7 +67,10 @@ import v2.std.compilers.lexing {
   TokenRule
 }
 import v2.std.compilers.target_model {
+  EmitSpellingConstant,
+  EmitSpellingIdentity,
   TargetModel,
+  TokenClassEmitTransform,
   target_model_make_with_emit_transforms
 }
 import v2.std.diagnostic {
@@ -818,7 +821,13 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
-data bash_ingest_only_lex_rules_note: String = "INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES. Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac terminal; do is spelled with a REQUIRED leading space so at the d of done its spelling can never be a prefix candidate — do and done do not collide at the same start position, so no maximal-munch arbitration between them is needed). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184)."
+// INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES.
+// Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled
+// control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit
+// stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac
+// terminal; do carries a REQUIRED leading space so at the d of done its spelling is never a prefix
+// candidate — do and done do not collide at one start position, so no maximal-munch arbitration is
+// needed). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184).
 
 fn bash_ingest_only_lex_rules() -> LexRuleSet {
   LexRuleSet {
@@ -848,26 +857,14 @@ fn bash_ingest_lex_rules() -> LexRuleSet {
   }
 }
 
-fn bash_fold_kind_emit_transform(_spelling: String) -> String {
-  ""
-}
-
-fn bash_fold_stmt_kind_tag_emit_transform(_spelling: String) -> String {
-  ""
-}
-
-fn bash_fold_identity_emit_transform(spelling: String) -> String {
-  spelling
-}
-
-fn bash_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+fn bash_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m0 = bash_token_class_emit_transforms()
-  let m1 = map_insert(m0, ^bash_fold_word_kind_lit, bash_fold_kind_emit_transform)
-  let m2 = map_insert(m1, ^bash_fold_word_kind_var, bash_fold_kind_emit_transform)
-  let m3 = map_insert(m2, ^bash_fold_stmt_kind_tag, bash_fold_stmt_kind_tag_emit_transform)
-  let m4 = map_insert(m3, ^bash_fold_word_kind_concat, bash_fold_kind_emit_transform)
-  let m5 = map_insert(m4, ^bash_fold_word_kind_cmdsubst, bash_fold_kind_emit_transform)
-  map_insert(m5, ^bash_token_orch_raw, bash_fold_identity_emit_transform)
+  let m1 = map_insert(m0, ^bash_fold_word_kind_lit, EmitSpellingConstant { value: "" })
+  let m2 = map_insert(m1, ^bash_fold_word_kind_var, EmitSpellingConstant { value: "" })
+  let m3 = map_insert(m2, ^bash_fold_stmt_kind_tag, EmitSpellingConstant { value: "" })
+  let m4 = map_insert(m3, ^bash_fold_word_kind_concat, EmitSpellingConstant { value: "" })
+  let m5 = map_insert(m4, ^bash_fold_word_kind_cmdsubst, EmitSpellingConstant { value: "" })
+  map_insert(m5, ^bash_token_orch_raw, EmitSpellingIdentity)
 }
 
 fn bash_fold_binding_spellings() -> Map<Symbol, String> {

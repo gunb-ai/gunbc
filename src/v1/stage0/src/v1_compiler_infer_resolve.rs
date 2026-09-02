@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_resolve
 
 use self::AliasKind::*;
+use self::UnitVariantPhantomLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -29,9 +30,10 @@ use crate::v1_std_core::CompilerDiagnostic::{
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
-    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -61,39 +63,74 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UnitVariantPhantomLookup {
+    UnitVariantPhantomPresent { variant: Rc<Node> },
+    UnitVariantPhantomAbsent,
+    UnitVariantPhantomEvidenceUnavailable,
+}
+impl UnitVariantPhantomLookup {
+    pub fn variant(&self) -> Rc<Node> {
+        match self {
+            UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: __val, .. } => {
+                __val.clone()
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
+                panic!("no variant on unit variant")
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+                panic!("no variant on unit variant")
+            }
+        }
+    }
+}
+
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
-) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
-        Some(contribs) => {
-            let total = Rc::new(v1_rt::map_values(&contribs))
-                .iter()
-                .cloned()
-                .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
-                    (acc + c.count.clone())
-                });
-            if (total.clone() == 1) {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
-                        if (c.count.clone() == 1) {
-                            __result.push(c);
+) -> Rc<UnitVariantPhantomLookup> {
+    if !env.unit_variant_index_observed.clone() {
+        Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable)
+    } else {
+        match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
+            Some(contribs) => {
+                let total = Rc::new(v1_rt::map_values(&contribs))
+                    .iter()
+                    .cloned()
+                    .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
+                        (acc + c.count.clone())
+                    });
+                if (total.clone() == 1) {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
+                            if (c.count.clone() == 1) {
+                                __result.push(c);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(single) => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomPresent {
+                                variant: single.variant.clone(),
+                            })
+                        }
+                        std::option::Option::None => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
                         }
                     }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(single) => Some(single.variant.clone()),
-                    None => std::option::Option::None,
+                } else {
+                    Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
                 }
-            } else {
-                std::option::Option::None
+            }
+            std::option::Option::None => {
+                Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
             }
         }
-        None => std::option::Option::None,
     }
 }
 
@@ -257,7 +294,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     }
                 }
             }
-            None => n.clone(),
+            std::option::Option::None => n.clone(),
         }
     }
 }
@@ -352,7 +389,7 @@ pub fn resolve_paramless_generic_use_decl_with_children(
         for parent in env.parents.clone().iter().cloned() {
             if match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
                 Some(b) => ((b.resolved.clone().params.clone().len() as i64) > 0),
-                None => false,
+                std::option::Option::None => false,
             } {
                 __result.push(parent);
             }
@@ -364,14 +401,14 @@ pub fn resolve_paramless_generic_use_decl_with_children(
     {
         Some(parent) => match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
             Some(b) => b.resolved.clone(),
-            None => decl,
+            std::option::Option::None => decl,
         },
-        None => {
+        std::option::Option::None => {
             if ((n.name.clone() != "".to_string()) && (n.name.clone() != brand.clone())) {
                 match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), n.name.clone())
                 {
                     Some(structural) => structural.clone(),
-                    None => decl,
+                    std::option::Option::None => decl,
                 }
             } else {
                 decl
@@ -414,11 +451,11 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
                     )
                 }
             }
-            None => {
+            std::option::Option::None => {
                 match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), n.name.clone())
                 {
                     Some(decl) => decl.clone(),
-                    None => n.clone(),
+                    std::option::Option::None => n.clone(),
                 }
             }
         }
@@ -497,7 +534,7 @@ pub fn substitute_type_slots_scoped(
                 crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
             ) {
                 Some(concrete) => concrete.clone(),
-                None => n.clone(),
+                std::option::Option::None => n.clone(),
             }
         } else {
             {
@@ -649,7 +686,7 @@ pub fn resolve_alias_target(
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), target.clone()),
         ) {
             Some(env_target) => env_target.clone(),
-            None => target.clone(),
+            std::option::Option::None => target.clone(),
         },
         AliasKind::AliasPassthrough => target.clone(),
     }
@@ -734,15 +771,6 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     thread_local! {
         static CACHED: String = {
             "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_ref_hit_ne_bind_measure_resolve_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on: gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -933,7 +961,7 @@ pub fn resolve_node_bounded(
                                         diagnostics: base_diags.clone(),
                                     })
                                 }
-                                None => Rc::new(NodeResolveResult {
+                                std::option::Option::None => Rc::new(NodeResolveResult {
                                     resolved: n.clone(),
                                     diagnostics: Rc::new(vec![]),
                                 }),
@@ -1282,7 +1310,7 @@ Rc::new(NodeResolveResult {
                                         slot_name.clone(),
                                         arg.clone(),
                                     ),
-                                    None => acc.clone(),
+                                    std::option::Option::None => acc.clone(),
                                 }
                             },
                         );
@@ -1458,7 +1486,7 @@ Rc::new(NodeResolveResult {
                                 );
                                 let key_child_node = match n.children.clone().first().cloned() {
                                     Some(k) => k.clone(),
-                                    None => unit_type(),
+                                    std::option::Option::None => unit_type(),
                                 };
                                 let val_child_node = match n
                                     .children
@@ -1469,7 +1497,7 @@ Rc::new(NodeResolveResult {
                                     .next()
                                 {
                                     Some(v) => v.clone(),
-                                    None => unit_type(),
+                                    std::option::Option::None => unit_type(),
                                 };
                                 let key_type = crate::v1_compiler_infer_types::child_type_node(
                                     key_child_node.clone(),
@@ -1508,10 +1536,12 @@ Rc::new(NodeResolveResult {
                                         0,
                                     ) {
                                         Some(pn) => pn.clone(),
-                                        None => crate::v1_compiler_infer_env::authored_name(
-                                            env.clone(),
-                                            key_child_node.clone(),
-                                        ),
+                                        std::option::Option::None => {
+                                            crate::v1_compiler_infer_env::authored_name(
+                                                env.clone(),
+                                                key_child_node.clone(),
+                                            )
+                                        }
                                     }
                                 };
                                 let val_param_name = if (val_child_node.inferred.clone()
@@ -1527,10 +1557,12 @@ Rc::new(NodeResolveResult {
                                         1,
                                     ) {
                                         Some(pn) => pn.clone(),
-                                        None => crate::v1_compiler_infer_env::authored_name(
-                                            env.clone(),
-                                            val_child_node.clone(),
-                                        ),
+                                        std::option::Option::None => {
+                                            crate::v1_compiler_infer_env::authored_name(
+                                                env.clone(),
+                                                val_child_node.clone(),
+                                            )
+                                        }
                                     }
                                 };
                                 let resolved_key_child = Rc::new(Node {
@@ -1645,7 +1677,7 @@ Rc::new(NodeResolveResult {
                                                     0,
                                                 ) {
                                                     Some(pn) => pn.clone(),
-                                                    None => {
+                                                    std::option::Option::None => {
                                                         crate::v1_compiler_infer_env::authored_name(
                                                             env.clone(),
                                                             child_node.clone(),
@@ -1707,7 +1739,7 @@ Rc::new(NodeResolveResult {
                                                 diagnostics: el_diags.clone(),
                                             })
                                         }
-                                        None => Rc::new(NodeResolveResult {
+                                        std::option::Option::None => Rc::new(NodeResolveResult {
                                             resolved: n.clone(),
                                             diagnostics: Rc::new(vec![]),
                                         }),
@@ -1833,7 +1865,7 @@ Rc::new(NodeResolveResult {
 }
                                                     }
                                                 }
-                                                None => {
+                                                std::option::Option::None => {
                                                     let n_is_error = if (n.inferred.clone()
                                                         != std::option::Option::None)
                                                     {
@@ -1858,14 +1890,21 @@ Rc::new(NodeResolveResult {
     diagnostics: Rc::new(vec![]),
 })
                                                     } else {
-                                                        match lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone())) {
-    Some(phantom) => Rc::new(NodeResolveResult {
+                                                        match (*lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
+    UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: phantom, .. } => Rc::new(NodeResolveResult {
     resolved: phantom.clone(),
     diagnostics: Rc::new(vec![]),
 }),
-    None => Rc::new(NodeResolveResult {
+    UnitVariantPhantomLookup::UnitVariantPhantomAbsent => Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()), n.span.clone()), module_name.clone())]),
+}),
+    UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable {
+    name: crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()),
+    span: n.span.clone(),
+}), module_name.clone())]),
 }),
 }
                                                     }
@@ -1900,7 +1939,7 @@ pub fn missing_generic_args_diagnostics(
             let type_name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
             let decl = match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
                 Some(d) => d.clone(),
-                None => n.clone(),
+                std::option::Option::None => n.clone(),
             };
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::ArityMismatch {
@@ -2002,11 +2041,11 @@ pub fn resolve_field(
                 env.clone(),
                 module_name.clone(),
             )),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         };
         let default_diags = match default_resolved.clone() {
             Some(result) => result.diagnostics.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         Rc::new(FieldResolveResult {
             field: crate::v1_std_core::make_field_node(
@@ -2016,7 +2055,7 @@ pub fn resolve_field(
                 crate::v1_std_core::field_node_cardinality(field.clone()),
                 match default_resolved.clone() {
                     Some(result) => Some(result.expr.clone()),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 },
                 Rc::new({
                     let mut __result = Vec::new();
@@ -2093,15 +2132,15 @@ pub fn resolve_param(
                 env.clone(),
                 module_name.clone(),
             )),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         };
         let default_diags = match default_resolved.clone() {
             Some(result) => result.diagnostics.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let default_expr = match default_resolved.clone() {
             Some(result) => Some(result.expr.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         };
         Rc::new(ParamResolveResult {
             param: crate::v1_std_core::make_resolved_param_node(
@@ -2212,11 +2251,11 @@ pub fn resolve_match_arm(
                 env.clone(),
                 module_name.clone(),
             )),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         };
         let guard_diags = match guard_result.clone() {
             Some(result) => result.diagnostics.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let body_result = resolve_expr_types(
             crate::v1_std_core::arm_body(arm.clone()),
@@ -2231,7 +2270,7 @@ pub fn resolve_match_arm(
                 crate::v1_std_core::arm_pattern(arm.clone()),
                 match guard_result.clone() {
                     Some(result) => Some(result.expr.clone()),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 },
                 body_expr.clone(),
                 arm.span.clone(),
@@ -2360,7 +2399,7 @@ pub fn resolve_transport_binding(
                         module_name.clone(),
                     )]),
                 },
-                None => Rc::new(vec![]),
+                std::option::Option::None => Rc::new(vec![]),
             };
             Rc::new(TransportResolveResult {
                 transport: crate::v1_std_core::make_transport_node(
@@ -2390,6 +2429,10 @@ pub fn resolve_expr_types(
                 expr: texpr.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
+            ExprData::ExprElaboratedLiteral { .. } => Rc::new(ExprResolveResult {
+                expr: texpr.clone(),
+                diagnostics: Rc::new(vec![]),
+            }),
             ExprData::ExprError { kind, message, .. } => Rc::new(ExprResolveResult {
                 expr: crate::v1_std_core::make_expr_error_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2416,7 +2459,7 @@ pub fn resolve_expr_types(
                     Some(base) => {
                         resolve_expr_types(base.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -2437,7 +2480,7 @@ pub fn resolve_expr_types(
                         __result.push({
                             let val = match arg_node.children.clone().first().cloned() {
                                 Some(v) => v.clone(),
-                                None => arg_node.clone(),
+                                std::option::Option::None => arg_node.clone(),
                             };
                             let vr =
                                 resolve_expr_types(val.clone(), env.clone(), module_name.clone());
@@ -2533,7 +2576,7 @@ pub fn resolve_expr_types(
                                 {
                                     let val = match child.children.clone().first().cloned() {
                                         Some(v) => v.clone(),
-                                        None => child.clone(),
+                                        std::option::Option::None => child.clone(),
                                     };
                                     let vr = resolve_expr_types(
                                         val.clone(),
@@ -2640,10 +2683,12 @@ pub fn resolve_expr_types(
                                                     env.clone(),
                                                     module_name.clone(),
                                                 ),
-                                                None => Rc::new(ExprResolveResult {
-                                                    expr: child.clone(),
-                                                    diagnostics: Rc::new(vec![]),
-                                                }),
+                                                std::option::Option::None => {
+                                                    Rc::new(ExprResolveResult {
+                                                        expr: child.clone(),
+                                                        diagnostics: Rc::new(vec![]),
+                                                    })
+                                                }
                                             };
                                             let body_r = match arm_ch
                                                 .clone()
@@ -2657,17 +2702,21 @@ pub fn resolve_expr_types(
                                                     env.clone(),
                                                     module_name.clone(),
                                                 ),
-                                                None => Rc::new(ExprResolveResult {
-                                                    expr: child.clone(),
-                                                    diagnostics: Rc::new(vec![]),
-                                                }),
+                                                std::option::Option::None => {
+                                                    Rc::new(ExprResolveResult {
+                                                        expr: child.clone(),
+                                                        diagnostics: Rc::new(vec![]),
+                                                    })
+                                                }
                                             };
                                             Rc::new(ExprResolveResult {
                                                 expr: crate::v1_std_core::make_arm_node(
                                                     child.occurrence_identity.clone(),
                                                     match child.match_pattern.clone() {
                                                         Some(p) => p.clone(),
-                                                        None => Rc::new(MatchPattern::Wildcard),
+                                                        std::option::Option::None => {
+                                                            Rc::new(MatchPattern::Wildcard)
+                                                        }
                                                     },
                                                     Some(guard_r.expr.clone()),
                                                     body_r.expr.clone(),
@@ -2687,17 +2736,21 @@ pub fn resolve_expr_types(
                                                     env.clone(),
                                                     module_name.clone(),
                                                 ),
-                                                None => Rc::new(ExprResolveResult {
-                                                    expr: child.clone(),
-                                                    diagnostics: Rc::new(vec![]),
-                                                }),
+                                                std::option::Option::None => {
+                                                    Rc::new(ExprResolveResult {
+                                                        expr: child.clone(),
+                                                        diagnostics: Rc::new(vec![]),
+                                                    })
+                                                }
                                             };
                                             Rc::new(ExprResolveResult {
                                                 expr: crate::v1_std_core::make_arm_node(
                                                     child.occurrence_identity.clone(),
                                                     match child.match_pattern.clone() {
                                                         Some(p) => p.clone(),
-                                                        None => Rc::new(MatchPattern::Wildcard),
+                                                        std::option::Option::None => {
+                                                            Rc::new(MatchPattern::Wildcard)
+                                                        }
                                                     },
                                                     std::option::Option::None,
                                                     body_r.expr.clone(),
@@ -2742,14 +2795,14 @@ pub fn resolve_expr_types(
                 let ch = texpr.children.clone();
                 let cr = match ch.clone().first().cloned() {
                     Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
                 let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(t) => resolve_expr_types(t.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -2760,11 +2813,11 @@ pub fn resolve_expr_types(
                         env.clone(),
                         module_name.clone(),
                     )),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 };
                 let resolved_children = match er.clone() {
                     Some(r) => Rc::new(vec![cr.expr.clone(), tr.expr.clone(), r.expr.clone()]),
-                    None => Rc::new(vec![cr.expr.clone(), tr.expr.clone()]),
+                    std::option::Option::None => Rc::new(vec![cr.expr.clone(), tr.expr.clone()]),
                 };
                 Rc::new(ExprResolveResult {
                     expr: crate::v1_std_core::make_expr_node(
@@ -2778,7 +2831,7 @@ pub fn resolve_expr_types(
                         v1_rt::concat(cr.diagnostics.clone(), tr.diagnostics.clone()),
                         match er.clone() {
                             Some(r) => r.diagnostics.clone(),
-                            None => Rc::new(vec![]),
+                            std::option::Option::None => Rc::new(vec![]),
                         },
                     ),
                 })
@@ -2787,7 +2840,7 @@ pub fn resolve_expr_types(
                 let ch = texpr.children.clone();
                 let vr = match ch.clone().first().cloned() {
                     Some(v) => resolve_expr_types(v.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -2798,11 +2851,11 @@ pub fn resolve_expr_types(
                         env.clone(),
                         module_name.clone(),
                     )),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 };
                 let resolved_children = match br.clone() {
                     Some(r) => Rc::new(vec![vr.expr.clone(), r.expr.clone()]),
-                    None => Rc::new(vec![vr.expr.clone()]),
+                    std::option::Option::None => Rc::new(vec![vr.expr.clone()]),
                 };
                 let anno_resolved = if (texpr.type_annotation.clone() == std::option::Option::None)
                 {
@@ -2875,7 +2928,7 @@ pub fn resolve_expr_types(
                             vr.diagnostics.clone(),
                             match br.clone() {
                                 Some(r) => r.diagnostics.clone(),
-                                None => Rc::new(vec![]),
+                                std::option::Option::None => Rc::new(vec![]),
                             },
                         ),
                         anno_resolved.diagnostics.clone(),
@@ -2891,7 +2944,7 @@ pub fn resolve_expr_types(
                         __result.push({
                             let val = match fi_node.children.clone().first().cloned() {
                                 Some(v) => v.clone(),
-                                None => fi_node.clone(),
+                                std::option::Option::None => fi_node.clone(),
                             };
                             let vr =
                                 resolve_expr_types(val.clone(), env.clone(), module_name.clone());
@@ -2984,19 +3037,20 @@ pub fn resolve_expr_types(
             ExprData::ExprBinOp {
                 op,
                 algebra_field: af,
+                operand: od,
                 ..
             } => {
                 let ch = texpr.children.clone();
                 let lr = match ch.clone().first().cloned() {
                     Some(l) => resolve_expr_types(l.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
                 let rr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(r) => resolve_expr_types(r.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3007,6 +3061,7 @@ pub fn resolve_expr_types(
                         Rc::new(ExprData::ExprBinOp {
                             op: op.clone(),
                             algebra_field: af.clone(),
+                            operand: od.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),
@@ -3018,7 +3073,7 @@ pub fn resolve_expr_types(
             ExprData::ExprUnaryOp { op: op, .. } => {
                 let r = match texpr.children.clone().first().cloned() {
                     Some(o) => resolve_expr_types(o.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3046,7 +3101,7 @@ pub fn resolve_expr_types(
                 );
                 let r = match texpr.children.clone().first().cloned() {
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3087,7 +3142,7 @@ pub fn resolve_expr_types(
                                         diagnostics: r.diagnostics.clone(),
                                     })
                                 }
-                                None => Rc::new(ExprResolveResult {
+                                std::option::Option::None => Rc::new(ExprResolveResult {
                                     expr: part_node.clone(),
                                     diagnostics: Rc::new(vec![]),
                                 }),
@@ -3164,14 +3219,14 @@ pub fn resolve_expr_types(
                     Some(inner) => {
                         resolve_expr_types(inner.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
                 let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(target) => resolve_node(target.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(NodeResolveResult {
+                    std::option::Option::None => Rc::new(NodeResolveResult {
                         resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3191,14 +3246,14 @@ pub fn resolve_expr_types(
                 let ch = texpr.children.clone();
                 let cr = match ch.clone().first().cloned() {
                     Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
                 let br = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3225,7 +3280,7 @@ pub fn resolve_expr_types(
                     Some(base) => {
                         resolve_expr_types(base.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3234,7 +3289,7 @@ pub fn resolve_expr_types(
                     Some(index) => {
                         resolve_expr_types(index.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3256,7 +3311,7 @@ pub fn resolve_expr_types(
                     Some(base) => {
                         resolve_expr_types(base.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3265,7 +3320,7 @@ pub fn resolve_expr_types(
                     Some(start) => {
                         resolve_expr_types(start.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3274,7 +3329,7 @@ pub fn resolve_expr_types(
                     Some(end_e) => {
                         resolve_expr_types(end_e.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -3298,7 +3353,7 @@ pub fn resolve_expr_types(
                     Some(inner) => {
                         resolve_expr_types(inner.clone(), env.clone(), module_name.clone())
                     }
-                    None => Rc::new(ExprResolveResult {
+                    std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),

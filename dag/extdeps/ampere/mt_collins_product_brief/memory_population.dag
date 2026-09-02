@@ -4,13 +4,23 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
-// Table 11 of the Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.00
-// (2025-08-12), fetched via the Customer Connect technical-documents listing. The anchor
-// names the product page because the download URL is a signed per-request API locator,
-// not a stable document address; the document is identified by title and issue below.
+// Tables 10-13 of the Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.05.
+// The anchor names the product page as the durable entry point; the direct download locator and
+// this document's publication status are declared once in the subject module and imported, so one
+// document has one status rather than one per citing module.
+//
+// AN EARLIER REVISION OF THIS COMMENT SAID THE GUIDE WAS FETCHED VIA THE CUSTOMER CONNECT LISTING
+// AND READ AS ACCESS-GATED. That reading was wrong and is retracted rather than quietly edited: it
+// conflated how one author happened to obtain the file with whether the file is public, and the
+// two are different facts. Fetching mt_collins_gsg_authority with no credentials returns the
+// document, and its digest equals the one recorded below. Public availability is the axis
+// gunbc.upstream_document_carriage turns on, so these facts are carriable here; the proprietary
+// and confidential footer is recorded by mt_collins_gsg_publication_status and decides nothing.
+// The barred population remains the reference-board DESIGN PACKAGE, which this module never read.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
@@ -18,13 +28,55 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data memory_population_source_document: NonEmptyStr = "Ampere Altra Platform Series Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.00, file Mt_Collins_DVT_PVT_MP_GSG_v1_00_20250812: Table 11 (DDR4 memory population), Table 10 (supported channel counts), Tables 12-13 (per-socket channel configurations)."
+// WHICH TABLES THIS MODULE READ, pointing at the canonical document rather than re-spelling it.
+// The string this replaces re-authored the guide's title, issue, date, filename and digest beside
+// the module that owns them, which is a second identity for one document: it could drift from the
+// canonical subject while every consumer still typechecked, and nothing read it. What was NOT
+// redundant is the coverage - which tables were read and where they sit - so that survives, as
+// rows rather than prose. The fetch observation the string also carried is a gunbc receipt, not an
+// upstream fact, and does not belong in extdeps at all.
+type MtCollinsSourceTable {
+  label: NonEmptyStr
+  page: Nat
+  content: NonEmptyStr
+}
+
+type MtCollinsMemoryPopulationCoverage {
+  document: DeclarationRef
+  tables: List<MtCollinsSourceTable>
+}
+
+data memory_population_coverage: MtCollinsMemoryPopulationCoverage = MtCollinsMemoryPopulationCoverage {
+  document: DeclarationRef {
+    module_path: "extdeps.ampere.mt_collins_getting_started_guide.subject",
+    decl_name: "mt_collins_getting_started_guide",
+    field: WholeDeclaration,
+  },
+  tables: [
+    MtCollinsSourceTable { label: "Table 10", page: 10, content: "supported channel configurations" },
+    MtCollinsSourceTable { label: "Table 11", page: 11, content: "DDR4 memory population" },
+    MtCollinsSourceTable { label: "Tables 12-13", page: 12, content: "per-socket MCU and DIMM slot configurations" },
+  ],
+}
+
+// WHY THE CITED ISSUE ADVANCED FROM 1.00 TO 1.05. The population rows below were first
+// transcribed from Issue 1.00. The rows were re-read against Issue 1.05 and are unchanged,
+// including the printed 32-DIMM row's omission of J32 recorded as a defect below, so this is
+// a re-citation of identical content and not a silent substitution of one revision's table
+// for another's. The channel rows further down were read only from Issue 1.05, which is why
+// the whole module now cites one issue rather than answering for two.
+data memory_population_revision_basis: NonEmptyStr = "Issue 1.00 was the first cited revision. Every Table 11 sequence was re-read against Issue 1.05 and matches exactly at connector-list grain, J32 omission included (the established fact is equality of the normalized connector sequences, not a comparison of the two source artifacts' bytes); Tables 10 and 12-13 are read from Issue 1.05 only. A single issue is cited so no row answers from a revision the module does not name."
 
 data memory_population_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
 
+
 // DIMM connectors are named J1..J32 on the board: J1..J16 serve socket 0 and J17..J32
-// serve socket 1. Within a socket the odd-numbered connector of each channel pair is the
-// first-DIMM-per-channel position, so 1DPC is exactly the odd connectors.
+// serve socket 1. The supported 1DPC population uses the odd-numbered member of every channel
+// pair. That is derived from the population rows themselves - Table 11's 16-DIMM sequence and
+// the one-per-channel row of Tables 12-13 both select exactly the odd connectors - and it
+// deliberately stops short of calling that member the "first DIMM" position, a semantic label
+// this guide never applies. Which member is populated at 1DPC is carried as its own fact by
+// mt_collins_channel_population_roles, never as an ordering baked into the pair.
 type MtCollinsDimmSocketSpan {
   processor_socket: Nat
   first_connector: Nat
@@ -70,7 +122,8 @@ data mt_collins_population_16_dimms: MtCollinsDimmPopulationRow = MtCollinsDimmP
   connectors: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31],
 }
 
-// The 32-DIMM row AS PRINTED in Issue 1.00: 31 connectors for a 32-DIMM configuration -
+// The 32-DIMM row AS PRINTED in Issue 1.05, unchanged from Issue 1.00: 31 connectors for a
+// 32-DIMM configuration -
 // J32 is absent from the printed sequence. Transcribed verbatim; the upstream authority
 // answers with what upstream states, defect included.
 data mt_collins_population_32_dimms_as_printed: MtCollinsDimmPopulationRow = MtCollinsDimmPopulationRow {
@@ -102,7 +155,212 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
   basis: "Tables 12-13 of the same document populate all sixteen connectors per socket in the full configuration - #17..#32 for socket 1, J32 included - so the printed omission of J32 in Table 11 reads as a printing defect, not a population rule. This completion is gunbc's inference from in-document evidence, not an upstream statement.",
 }
 
-data population_constraint_note: String = "Table 10 constraint carried with the rows: supported channel counts per socket are 1, 2, 4, 6, and 8 - the population sequences above are the only supported shapes, not a fill-in-any-order suggestion. DIMMs on all populated channels of one socket must be identically sized; socket 0 and socket 1 may differ from each other. Max data rate at these populations is the platform row's DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC downclock is unstated by this source rather than absent."
+// Table 10 constraint carried with the rows: supported channel counts per socket are 1, 2, 4, 6,
+// and 8. The rows above are the population sequences ENUMERATED BY TABLE 11, which is not the same
+// set: Table 10 also carries an MCU4-alone one-channel configuration and a six-channel
+// configuration, and Table 11 gives a connector sequence for neither; its two-DIMM row enumerates
+// the MCU0-alone one-channel configuration. So these rows are not a fill-in-any-order suggestion,
+// and equally they are not an exhaustive statement of what Table 10 supports - a width absent here
+// is unenumerated by Table 11, not unsupported. DIMMs on all populated channels of one socket must
+// be identically sized; socket 0 and socket 1 may differ from each other. Max data rate at these
+// populations is the platform row's DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
+// downclock is unstated by this source rather than absent.
+
+// TABLES 12-13: WHICH MEMORY CONTROLLER EACH CONNECTOR PAIR BELONGS TO. The population
+// sequences above say WHICH connectors a configuration fills; they do not say which channel any
+// connector is on, so an active-channel count or a DIMMs-per-channel figure cannot be derived
+// from them alone. That mapping is the per-socket table, and it is transcribed from the RENDERED
+// table geometry rather than from the extracted text stream, because the two disagree and only
+// the geometry is the table: the eight MCU headers are printed at a 57.6pt pitch over sixteen
+// connector columns at a 28.8pt pitch, so each header spans exactly two ADJACENT columns, at a
+// constant 6.6pt offset across all eight. Reading the flattened stream as two eight-item rows
+// and pairing them positionally instead yields {J1,J16}, {J2,J15}, ... - a different physical
+// topology, refuted below.
+//
+// The pair is recorded with NEUTRAL member names. table_left_connector and table_right_connector
+// say only what the rendered row visibly prints, left to right. They carry no claim about
+// installation order, electrical priority, primary versus secondary slot, or first-versus-second
+// DIMM. Consumers that do not need the printed layout may treat the pair as unordered.
+type MtCollinsChannelConnectorPair {
+  processor_socket: Nat
+  memory_controller: Nat
+  table_left_connector: Nat
+  table_right_connector: Nat
+}
+
+data mt_collins_socket0_channel_pairs: List<MtCollinsChannelConnectorPair> = [
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 0, table_left_connector: 1, table_right_connector: 2 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 1, table_left_connector: 3, table_right_connector: 4 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 2, table_left_connector: 5, table_right_connector: 6 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 3, table_left_connector: 7, table_right_connector: 8 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 7, table_left_connector: 16, table_right_connector: 15 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 6, table_left_connector: 14, table_right_connector: 13 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 5, table_left_connector: 12, table_right_connector: 11 },
+  MtCollinsChannelConnectorPair { processor_socket: 0, memory_controller: 4, table_left_connector: 10, table_right_connector: 9 },
+]
+
+data mt_collins_socket1_channel_pairs: List<MtCollinsChannelConnectorPair> = [
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 0, table_left_connector: 17, table_right_connector: 18 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 1, table_left_connector: 19, table_right_connector: 20 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 2, table_left_connector: 21, table_right_connector: 22 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 3, table_left_connector: 23, table_right_connector: 24 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 7, table_left_connector: 32, table_right_connector: 31 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 6, table_left_connector: 30, table_right_connector: 29 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 5, table_left_connector: 28, table_right_connector: 27 },
+  MtCollinsChannelConnectorPair { processor_socket: 1, memory_controller: 4, table_left_connector: 26, table_right_connector: 25 },
+]
+
+data mt_collins_channel_connector_pairs: List<MtCollinsChannelConnectorPair> = concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs)
+
+// POPULATION ROLE IS A SECOND FACT, DERIVED FROM THE POPULATION ROWS - NOT AN ORDERING INSIDE
+// THE PAIR. Table 11's 16-DIMM row is the one-DIMM-per-channel population: it names one member
+// of each pair, and the full row adds the other. That establishes a configuration relation and
+// nothing more, so the fields are named for exactly what was observed. "First" is avoided
+// deliberately: it reads as either temporal installation order or a vendor-defined primary slot,
+// and this guide states neither.
+//
+// Keeping this apart from the pair is what stops a mistaken read of the pair geometry from
+// silently manufacturing an installation-priority claim - the failure this file already made
+// once, in the opposite direction.
+type MtCollinsChannelPopulationRole {
+  processor_socket: Nat
+  memory_controller: Nat
+  connector_used_at_one_dpc: Nat
+  additional_connector_at_two_dpc: Nat
+}
+
+// The role rows are a JOIN, not a second transcription: writing the 16 rows out literally would
+// have been a parallel authority over the same mapping, free to drift from both the pair rows and
+// the population rows.
+//
+// The join REQUIRES that exactly one member of each pair appears in the 16-DIMM row, and it
+// establishes that requirement rather than assuming it. An earlier form of this function tested
+// only the left member and let the else-arm carry every other case, so a pair with NEITHER member
+// in the row, or with BOTH, still produced a plausible role - DESIGN section 5's absorbing
+// fallback, where the failure arm widens instead of refusing. Both states are authorable: they
+// need only a drift in the pair rows or in the 16-DIMM row, and the general helper accepts any
+// pair a caller hands it. So the outcome is a coproduct and the two non-XOR cases refuse with the
+// pair and a typed cause located in them.
+type MtCollinsPopulationRoleRefusalCause
+  = NeitherMemberAtOneDpc
+  | BothMembersAtOneDpc
+
+type MtCollinsPopulationRoleRefusal {
+  processor_socket: Nat
+  memory_controller: Nat
+  table_left_connector: Nat
+  table_right_connector: Nat
+  cause: MtCollinsPopulationRoleRefusalCause
+}
+
+type MtCollinsPopulationRoleOutcome
+  = PopulationRoleResolved { role: MtCollinsChannelPopulationRole }
+  | PopulationRoleRefused { refusal: MtCollinsPopulationRoleRefusal }
+
+fn mt_collins_connector_at_one_dpc(connector: Nat) -> Bool {
+  fold(mt_collins_population_16_dimms.connectors, init: false, f: (acc, c) => acc || (c == connector))
+}
+
+fn mt_collins_population_role_refusal(pair: MtCollinsChannelConnectorPair, cause: MtCollinsPopulationRoleRefusalCause) -> MtCollinsPopulationRoleRefusal {
+  MtCollinsPopulationRoleRefusal {
+    processor_socket: pair.processor_socket,
+    memory_controller: pair.memory_controller,
+    table_left_connector: pair.table_left_connector,
+    table_right_connector: pair.table_right_connector,
+    cause: cause,
+  }
+}
+
+fn mt_collins_population_role_of_pair(pair: MtCollinsChannelConnectorPair) -> MtCollinsPopulationRoleOutcome {
+  let left_at_one_dpc = mt_collins_connector_at_one_dpc(connector: pair.table_left_connector)
+  let right_at_one_dpc = mt_collins_connector_at_one_dpc(connector: pair.table_right_connector)
+  if left_at_one_dpc && right_at_one_dpc {
+    PopulationRoleRefused { refusal: mt_collins_population_role_refusal(pair: pair, cause: BothMembersAtOneDpc) }
+  } else {
+    if left_at_one_dpc {
+      PopulationRoleResolved {
+        role: MtCollinsChannelPopulationRole {
+          processor_socket: pair.processor_socket,
+          memory_controller: pair.memory_controller,
+          connector_used_at_one_dpc: pair.table_left_connector,
+          additional_connector_at_two_dpc: pair.table_right_connector,
+        }
+      }
+    } else {
+      if right_at_one_dpc {
+        PopulationRoleResolved {
+          role: MtCollinsChannelPopulationRole {
+            processor_socket: pair.processor_socket,
+            memory_controller: pair.memory_controller,
+            connector_used_at_one_dpc: pair.table_right_connector,
+            additional_connector_at_two_dpc: pair.table_left_connector,
+          }
+        }
+      } else {
+        PopulationRoleRefused { refusal: mt_collins_population_role_refusal(pair: pair, cause: NeitherMemberAtOneDpc) }
+      }
+    }
+  }
+}
+
+// The AGGREGATE refuses as a whole. A List<MtCollinsChannelPopulationRole> beside a list of
+// refusals would let a consumer read fifteen good roles and never learn the sixteenth pair failed
+// the partition, which is the same widening one level up. So the standing is a coproduct: either
+// every pair resolved, or nobody gets roles and the refusals are what the carrier holds.
+type MtCollinsPopulationRoleTally {
+  roles: List<MtCollinsChannelPopulationRole>
+  refusals: List<MtCollinsPopulationRoleRefusal>
+}
+
+type MtCollinsChannelPopulationRoleStanding
+  = PopulationRolesResolved { roles: List<MtCollinsChannelPopulationRole> }
+  | PopulationRolesRefused { refusals: List<MtCollinsPopulationRoleRefusal> }
+
+fn mt_collins_tally_population_role(tally: MtCollinsPopulationRoleTally, pair: MtCollinsChannelConnectorPair) -> MtCollinsPopulationRoleTally {
+  match mt_collins_population_role_of_pair(pair: pair) {
+    PopulationRoleResolved { role: r } => MtCollinsPopulationRoleTally { roles: concat(tally.roles, [r]), refusals: tally.refusals }
+    PopulationRoleRefused { refusal: f } => MtCollinsPopulationRoleTally { roles: tally.roles, refusals: concat(tally.refusals, [f]) }
+  }
+}
+
+fn mt_collins_population_role_standing(pairs: List<MtCollinsChannelConnectorPair>) -> MtCollinsChannelPopulationRoleStanding {
+  let tally = fold(pairs, init: MtCollinsPopulationRoleTally { roles: [], refusals: [] }, f: (acc, pair) => mt_collins_tally_population_role(tally: acc, pair: pair))
+  if tally.refusals.length() == 0 {
+    PopulationRolesResolved { roles: tally.roles }
+  } else {
+    PopulationRolesRefused { refusals: tally.refusals }
+  }
+}
+
+data mt_collins_channel_population_roles: MtCollinsChannelPopulationRoleStanding = mt_collins_population_role_standing(pairs: mt_collins_channel_connector_pairs)
+
+// HOW THE MAPPING WAS ESTABLISHED, AND THE CHECK THAT DISCRIMINATES IT. An earlier revision of
+// this file recorded a channel-count agreement as corroboration. That check is worthless here
+// and the claim is retracted rather than quietly dropped: the pairing {J1,J2}, {J3,J4}, ...
+// produces the SAME 1/2/4/8 distinct-channel counts as {J1,J16}, {J2,J15}, ..., so counting how
+// many channels a population touches establishes compatibility with many pairings and identifies
+// none. A cardinality that agrees with a hypothesis is not evidence for it when it agrees with
+// the alternatives too.
+//
+// The discriminating check is an exact SET reproduced from a different table: Table 10's
+// four-channel configuration names MCU0, MCU1, MCU4 and MCU5, and Table 11's matching population
+// J1/J3/J9/J11 maps onto exactly that set under the adjacent-pair geometry. The refuted reading
+// yields MCU0/MCU2/MCU4/MCU6 and contradicts Table 10. The same join holds at every width the
+// Tables 12-13 population marks enumerate: the MCU0 one-channel row, the two-channel row, the
+// four-channel row and the eight-channel row all reproduce under this mapping. It is not claimed
+// for Table 10's MCU4-alone one-channel row or its six-channel row, which those population marks
+// do not enumerate.
+type MtCollinsChannelMappingBasis {
+  geometry_basis: NonEmptyStr
+  discriminating_check: NonEmptyStr
+  retracted_check: NonEmptyStr
+}
+
+data mt_collins_channel_mapping_basis: MtCollinsChannelMappingBasis = MtCollinsChannelMappingBasis {
+  geometry_basis: "rendered column geometry of Tables 12-13: MCU headers at 57.6pt pitch over connector columns at 28.8pt pitch, each header spanning two adjacent columns at a constant 6.6pt offset for all eight headers in both sockets. The extracted text stream alone is NOT a sufficient basis for a merged-header table and produced the wrong pairing when used as one.",
+  discriminating_check: "Table 10's four-channel configuration MCU0/MCU1/MCU4/MCU5 is reproduced exactly by Table 11's J1/J3/J9/J11 under this mapping, and the MCU0 one-channel, two-channel and eight-channel rows reproduce likewise from the Tables 12-13 population marks. Table 10's MCU4-alone one-channel row and its six-channel row are not enumerated there and are not claimed. The refuted vertical pairing gives MCU0/MCU2/MCU4/MCU6 and contradicts Table 10.",
+  retracted_check: "RETRACTED: an earlier claim that the 1/2/4/8 distinct-channel counts corroborate this pairing. They do not - pairing J1 with J2, J3 with J4 and so on yields identical counts while disagreeing with every pair here, so the check is non-discriminating and establishes nothing.",
+}
 
 data mt_collins_memory_population_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -113,7 +371,7 @@ data mt_collins_memory_population_model_scope: ExternalModelScope = ExternalMode
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
+  further_citations: [mt_collins_gsg_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_collins_memory_population_model_scope

@@ -17,7 +17,11 @@ import gunbc.publication_policy {
   resolve_disposition_for_path,
 }
 
-data public_projection_note: String = "Derived public projection plan over authored subjects. Requires AdmittedPublicationPolicy from admit_publication_policy — illegal policies are unrepresentable on this path. Never the unrestricted authored tree and never a pathname census: policy resolves each subject's disposition, included_subjects carries only PublishPublic rows, omitted_subjects carries WithholdPrivate rows, and projection_digest fingerprints the admitted set."
+// Derived public projection plan over authored subjects. Requires AdmittedPublicationPolicy from
+// admit_publication_policy — illegal policies are unrepresentable on this path. Never the
+// unrestricted authored tree and never a pathname census: policy resolves each subject's
+// disposition, included_subjects carries only PublishPublic rows, omitted_subjects carries
+// WithholdPrivate rows, and projection_digest fingerprints the admitted set.
 
 type PublicProjectionSubject {
   subject_identity: ContentHash

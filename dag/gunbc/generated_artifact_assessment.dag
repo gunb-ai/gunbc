@@ -2,7 +2,25 @@ module gunbc.generated_artifact_assessment
 
 import gunbc.generated_artifact { GeneratedArtifact, artifact_eq, artifact_path }
 
-data generated_artifact_assessment_note: String = "P0 (operator-directed, 2026-08-05; module-split per loyal-ram-550 review of #7823): purity BY CONSTRUCTION, not by convention — but the construction is the ABSENCE of an import path to the producer, not yet a compiler-enforced wall. This module carries the GeneratedArtifactObservation type, its accessors, and every leaf/group/diagnostic predicate over an already-retained observation population. It imports gunbc.generated_artifact ONLY (for the identity type and artifact_eq); extdeps.filesystem.filesystem_io and gunbc.generated_artifact_emit's artifact_generate/artifact_extra_valid appear nowhere in it. The live producer (observe_generated_artifact / observe_generated_artifact_population) lives in the sibling module gunbc.generated_artifact_observation, which imports this module — never the other direction. Correction (loyal-ram-550 review, 2026-08-05): an earlier revision of this note claimed a bare artifact_generate/Filesystem reference written inside this module without an import 'fails to compile' — that overstates the rung. DESIGN §4b Class B (open thread, #6985) means a bare cross-module reference can still resolve by pool-membership coincidence when an unrelated import elsewhere in the same closure has already dragged the target module in, which is close to guaranteed here since gunbc.generated_artifact_observation imports both this module and the generator. So today the guarantee this split buys is mechanically-preventable-by-convention (no import path exists; a reviewer sees any new import immediately), not structurally-impossible; the stronger claim dissolves on the namespace lane's closure-independent binding fix (Class B), at which point a bare in-module reference to the producer genuinely refuses to resolve."
+// P0 (operator-directed, 2026-08-05; module-split per loyal-ram-550 review of #7823): purity BY
+// CONSTRUCTION, not by convention — but the construction is the ABSENCE of an import path to the
+// producer, not yet a compiler-enforced wall. This module carries the GeneratedArtifactObservation
+// type, its accessors, and every leaf/group/diagnostic predicate over an already-retained
+// observation population. It imports gunbc.generated_artifact ONLY (for the identity type and
+// artifact_eq); extdeps.filesystem.filesystem_io and gunbc.generated_artifact_emit's
+// artifact_generate/artifact_extra_valid appear nowhere in it. The live producer
+// (observe_generated_artifact / observe_generated_artifact_population) lives in the sibling module
+// gunbc.generated_artifact_observation, which imports this module — never the other direction.
+// Correction (loyal-ram-550 review, 2026-08-05): an earlier revision of this note claimed a bare
+// artifact_generate/Filesystem reference written inside this module without an import 'fails to
+// compile' — that overstates the rung. DESIGN §4b Class B (open thread, #6985) means a bare
+// cross-module reference can still resolve by pool-membership coincidence when an unrelated import
+// elsewhere in the same closure has already dragged the target module in, which is close to
+// guaranteed here since gunbc.generated_artifact_observation imports both this module and the
+// generator. So today the guarantee this split buys is mechanically-preventable-by-convention (no
+// import path exists; a reviewer sees any new import immediately), not structurally-impossible; the
+// stronger claim dissolves on the namespace lane's closure-independent binding fix (Class B), at
+// which point a bare in-module reference to the producer genuinely refuses to resolve.
 
 type GeneratedArtifactObservation
   = GeneratedArtifactObserved {
@@ -23,7 +41,25 @@ type GeneratedArtifactObservation
       cause: String
     }
 
-data committed_absent_arm_note: String = "ABSENT IS NOT A REFUSAL, AND THE DISTINCTION IS THE WHOLE REASON THIS ARM EXISTS. The producer previously mapped EVERY unsuccessful read to GeneratedArtifactObservationRefused, so `the observation could not be made` and `the observation was made and the file is not there` shared one arm. They have opposite owners: a refusal names an authority to repair and reached NO verdict, while an absence IS a verdict about the repository tree and asks whether the artifact was ever meant to be committed. DESIGN carries the receipt for getting this wrong -- this gate's first red included a markdown file deleted ON PURPOSE, and the regenerate remedy would have silently resurrected it.\n\nIT IS ALSO DISTINCT FROM ExpectedArtifactObservationMissing, which is the adjacent confusion. That finding says the POPULATION has no row for an expected identity -- a completeness defect in the observer. This arm says the observer ran, produced a row, and the row reports the committed path is not on disk. Different execution provenance, different remedy.\n\nTHE ABSENCE IS ESTABLISHED, NOT INFERRED. It is produced only where a directory LISTING succeeded and did not name the entry, never from a read failing -- because a read's success channel is exactly the channel that cannot separate absent from unreadable. `detail` carries the established absence's own rendering (which directory was listed, which name was not in it), so a consumer can say what it did not find rather than only that it found nothing."
+// ABSENT IS NOT A REFUSAL, AND THE DISTINCTION IS THE WHOLE REASON THIS ARM EXISTS. The producer
+// previously mapped EVERY unsuccessful read to GeneratedArtifactObservationRefused, so `the
+// observation could not be made` and `the observation was made and the file is not there` shared
+// one arm. They have opposite owners: a refusal names an authority to repair and reached NO
+// verdict, while an absence IS a verdict about the repository tree and asks whether the artifact
+// was ever meant to be committed. DESIGN carries the receipt for getting this wrong -- this gate's
+// first red included a markdown file deleted ON PURPOSE, and the regenerate remedy would have
+// silently resurrected it.
+//
+// IT IS ALSO DISTINCT FROM ExpectedArtifactObservationMissing, which is the adjacent confusion.
+// That finding says the POPULATION has no row for an expected identity -- a completeness defect in
+// the observer. This arm says the observer ran, produced a row, and the row reports the committed
+// path is not on disk. Different execution provenance, different remedy.
+//
+// THE ABSENCE IS ESTABLISHED, NOT INFERRED. It is produced only where a directory LISTING succeeded
+// and did not name the entry, never from a read failing -- because a read's success channel is
+// exactly the channel that cannot separate absent from unreadable. `detail` carries the established
+// absence's own rendering (which directory was listed, which name was not in it), so a consumer can
+// say what it did not find rather than only that it found nothing.
 
 fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
   match o {
@@ -41,7 +77,33 @@ fn observation_path(o: GeneratedArtifactObservation) -> String {
   }
 }
 
-data generated_artifact_population_findings_note: String = "THE COMPLETE FAILURE POPULATION, AS A PRODUCT RATHER THAN A CHOICE, AND IT IS THE SOLE ASSESSMENT AUTHORITY. The three top-level conditions the population verdict conjoins can fail SIMULTANEOUSLY, so they are FIELDS of one result and not arms of a coproduct: an expected identity can be missing while an unrelated observation is unknown while a third artifact's bytes differ, and any shape that made these alternatives would report one and hide two.\n\nWHAT THIS REPLACES. The module previously answered one question at TWO INCOMPATIBLE GRAINS: assess_generated_artifact_population folded the whole population to a Bool, while first_failing_diagnostic_path returned ONE path -- priority-ordered across the three classes, each class itself a fold guarded by `if acc == \"\"` keeping only its first hit. Two collapses composed, one WITHIN a class and one ACROSS classes, so a tree carrying both a content drift and an unknown observation reported only the drift and the unknown stayed invisible until the drift was repaired and the gate re-run. At the measured ~187s per run that made a required gate an iterative discovery protocol -- run, repair one named artifact, run, discover the next -- while the gate already HELD the complete evidence and discarded all but one identity at the boundary where an operator needs it. The classes are not variants of one fault: a content difference means regenerate, a missing expected observation points at the observer or the population producer, a duplicate points at population construction or identity aliasing, and an unknown observation means a committed artifact no registry row claims. Different owners, different repairs.\n\nWHY THE BOOLEAN IS SAFE HERE. assess_generated_artifact_population survives as a PROJECTION of this carrier, not as a second computation beside it, so there is no fork that could disagree about which population failed. Findings retain GeneratedArtifact IDENTITY and not only a path, which is what the duplicate and unknown arms need -- a path-only roster is weakest exactly where the identity join is the thing that broke. Nothing here rereads or regenerates: every finding is derived from fields the producer already retained, which is what keeps the gate's measured read-only boundary intact."
+// THE COMPLETE FAILURE POPULATION, AS A PRODUCT RATHER THAN A CHOICE, AND IT IS THE SOLE ASSESSMENT
+// AUTHORITY. The three top-level conditions the population verdict conjoins can fail
+// SIMULTANEOUSLY, so they are FIELDS of one result and not arms of a coproduct: an expected
+// identity can be missing while an unrelated observation is unknown while a third artifact's bytes
+// differ, and any shape that made these alternatives would report one and hide two.
+//
+// WHAT THIS REPLACES. The module previously answered one question at TWO INCOMPATIBLE GRAINS:
+// assess_generated_artifact_population folded the whole population to a Bool, while
+// first_failing_diagnostic_path returned ONE path -- priority-ordered across the three classes,
+// each class itself a fold guarded by `if acc == ""` keeping only its first hit. Two collapses
+// composed, one WITHIN a class and one ACROSS classes, so a tree carrying both a content drift and
+// an unknown observation reported only the drift and the unknown stayed invisible until the drift
+// was repaired and the gate re-run. At the measured ~187s per run that made a required gate an
+// iterative discovery protocol -- run, repair one named artifact, run, discover the next -- while
+// the gate already HELD the complete evidence and discarded all but one identity at the boundary
+// where an operator needs it. The classes are not variants of one fault: a content difference means
+// regenerate, a missing expected observation points at the observer or the population producer, a
+// duplicate points at population construction or identity aliasing, and an unknown observation
+// means a committed artifact no registry row claims. Different owners, different repairs.
+//
+// WHY THE BOOLEAN IS SAFE HERE. assess_generated_artifact_population survives as a PROJECTION of
+// this carrier, not as a second computation beside it, so there is no fork that could disagree
+// about which population failed. Findings retain GeneratedArtifact IDENTITY and not only a path,
+// which is what the duplicate and unknown arms need -- a path-only roster is weakest exactly where
+// the identity join is the thing that broke. Nothing here rereads or regenerates: every finding is
+// derived from fields the producer already retained, which is what keeps the gate's measured
+// read-only boundary intact.
 
 type ExpectedArtifactCardinalityFinding
   = ExpectedArtifactObservationMissing { artifact: GeneratedArtifact, path: String }
@@ -84,7 +146,11 @@ type GeneratedArtifactPopulationFindings {
   observation_failures: List<GeneratedArtifactObservationFinding>
 }
 
-data observation_findings_note: String = "THE LEAF, DESCENDED. The former assess_generated_artifact_observation collapsed a refusal, a byte difference and a failed extra validation into one `false`; each is its own arm here. ONE OBSERVATION MAY YIELD MORE THAN ONE FINDING -- bytes differing and extra validation failing are independent facts about one artifact -- so this returns a list and never stops at the first, which would reintroduce the within-class collapse this cut removes one level down."
+// THE LEAF, DESCENDED. The former assess_generated_artifact_observation collapsed a refusal, a byte
+// difference and a failed extra validation into one `false`; each is its own arm here. ONE
+// OBSERVATION MAY YIELD MORE THAN ONE FINDING -- bytes differing and extra validation failing are
+// independent facts about one artifact -- so this returns a list and never stops at the first,
+// which would reintroduce the within-class collapse this cut removes one level down.
 
 fn observation_findings(o: GeneratedArtifactObservation) -> List<GeneratedArtifactObservationFinding> {
   match o {
@@ -156,7 +222,15 @@ fn generated_artifact_population_findings_empty(f: GeneratedArtifactPopulationFi
   generated_artifact_population_findings_count(f: f) == 0
 }
 
-data assess_generated_artifact_population_note: String = "THE BOOLEAN PROJECTION, DERIVED. `expected` is the identity roster (committed_generated_artifacts(), passed in by the caller -- this module never calls it); `observations` is the retained receipt population. This is ONE CARRIER WITH A BOOLEAN PROJECTION rather than a second representation: it reads the finding population and asks whether it is empty, so pass/fail cannot disagree with the diagnostic about which population failed. The join underneath is by artifact_eq at identity grain, never a bare count equality (DESIGN section 5 oracle-independence ruling) -- a population that lost one artifact and duplicated another would count-match while missing the defect, which is exactly why Missing and Duplicated are separate arms rather than one ExpectedCardinalityWrong."
+// THE BOOLEAN PROJECTION, DERIVED. `expected` is the identity roster
+// (committed_generated_artifacts(), passed in by the caller -- this module never calls it);
+// `observations` is the retained receipt population. This is ONE CARRIER WITH A BOOLEAN PROJECTION
+// rather than a second representation: it reads the finding population and asks whether it is
+// empty, so pass/fail cannot disagree with the diagnostic about which population failed. The join
+// underneath is by artifact_eq at identity grain, never a bare count equality (DESIGN section 5
+// oracle-independence ruling) -- a population that lost one artifact and duplicated another would
+// count-match while missing the defect, which is exactly why Missing and Duplicated are separate
+// arms rather than one ExpectedCardinalityWrong.
 
 fn assess_generated_artifact_population(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> Bool {
   generated_artifact_population_findings_empty(
@@ -203,7 +277,10 @@ fn render_section(title: String, lines: List<String>) -> String {
   }
 }
 
-data generated_artifact_population_findings_rendered_note: String = "RENDERS EVERY NONEMPTY CLASS IN ONE PASS, IN SECTIONS, because the classes carry different remedies and a flat roster would merge three owners into one list. The count prefix is derived from the same carrier the sections are, so a summary that disagrees with the body is unrepresentable rather than merely unlikely."
+// RENDERS EVERY NONEMPTY CLASS IN ONE PASS, IN SECTIONS, because the classes carry different
+// remedies and a flat roster would merge three owners into one list. The count prefix is derived
+// from the same carrier the sections are, so a summary that disagrees with the body is
+// unrepresentable rather than merely unlikely.
 
 fn generated_artifact_population_findings_rendered(f: GeneratedArtifactPopulationFindings) -> String {
   if generated_artifact_population_findings_empty(f: f) { "" } else {

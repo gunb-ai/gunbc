@@ -48,7 +48,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `free_call.map_insert` arm accepting the record shape, or the record shape ceasing to be
 // reachable — and until one of those holds, this gate is a healthy guard being quiet, not a dead
 // one.
-data map_carrier_shape_gate_note: String = "Gate for the map construction delegate. map_insert grounds on the native map shape only; its .dag body is the live arm for record-shaped maps built by Map { lookup: ... } literals. record_shaped_map_reaches_map_insert reds if the delegate lands while any such literal survives."
+// Gate for the map construction delegate. map_insert grounds on the native map shape only; its .dag
+// body is the live arm for record-shaped maps built by Map { lookup: ... } literals.
+// record_shaped_map_reaches_map_insert reds if the delegate lands while any such literal survives.
 
 fn native_map_after_insert() -> Optional<String> {
   let m = empty_map()

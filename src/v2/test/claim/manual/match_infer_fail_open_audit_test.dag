@@ -152,7 +152,10 @@ test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
   }
 }
 
-data match_infer_fail_open_audit_literal_arm_note: String = "literal_arm_accepts (dag_match_if_body_fixture → Accepted/None) was a never-enrolled plain fn on main; umbrella dissolution promoted it to test fn and CI returned Bool(false) (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fn when infer(dag_match_if_body_fixture) is Accepted with empty diagnostics on CI hardware."
+// literal_arm_accepts (dag_match_if_body_fixture → Accepted/None) was a never-enrolled plain fn on
+// main; umbrella dissolution promoted it to test fn and CI returned Bool(false) (run 30223338595).
+// Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fn when
+// infer(dag_match_if_body_fixture) is Accepted with empty diagnostics on CI hardware.
 
 fn classical_not_int_match_arrow_fixture() -> Node {
   dag_arrow_with_body_node(
@@ -233,13 +236,15 @@ test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
   }
 }
 
+// complement infer refuses because match patterns use dag_complement_lit_* (unsupported by
+// infer_bool_literal_pattern_classify — only dag_token_kw_true/false). Refuse is
+// fail-closed-correct for that unsupported shape. Counted deficit: ground complement_lit on the
+// bool-literal authority (post-exit breadth); target witness is then
+// complement_arrow_real_infer_holds.
+
 test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
   match infer(tree: dag_complement_arrow_with_body_fixture) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
-
-data complement_arrow_post_exit_wave1_breadth_note: String = "complement infer refuses because match patterns use dag_complement_lit_* (unsupported by infer_bool_literal_pattern_classify — only dag_token_kw_true/false). Refuse is fail-closed-correct for that unsupported shape. Counted deficit: ground complement_lit on the bool-literal authority (post-exit breadth); target witness is then complement_arrow_real_infer_holds."
-
-

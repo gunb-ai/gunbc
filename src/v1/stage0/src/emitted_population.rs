@@ -36,6 +36,9 @@
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
 // src/gunbc_stage0_emitted_population_manifest.rs
+// src/gunbc_stage0_executable_assembly_generated.rs
+// src/gunbc_stage0_partition_package_graph.rs
+// src/gunbc_structural_realization_bindings.rs
 // src/lib.rs
 // src/main.rs
 // src/std_algebra.rs
@@ -55,8 +58,10 @@
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
+// src/std_interval.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
+// src/std_literal_elaboration.rs
 // src/std_logic.rs
 // src/std_machine_constraints.rs
 // src/std_magnitude.rs
@@ -67,6 +72,7 @@
 // src/std_occurrence_binding_candidates.rs
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
+// src/std_operator_realization.rs
 // src/std_pareto.rs
 // src/std_primitive_projection.rs
 // src/std_process_termination.rs
@@ -137,6 +143,7 @@
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
+// src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs

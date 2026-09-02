@@ -35,11 +35,55 @@ import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.algebra { Cons, Empty }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data explicit_witness_admission_authority_note: String = "THE function-grain authority for exact witness admission. One row per admitted witness, carrying the witness identity, the cadence that executes it, and its own reason and dissolve_on. Everything else about that witness is DERIVED: the cadence roster the scheduler runs, the discovery exclusion, and the consumer manifest all read these rows; none of them is authored beside them. It replaces a DUAL REPRESENTATION carried until 2026-08-03 — a path-substring WitnessExclusionRow classified QuarantineProbeExpectRed (removing a whole FILE from discovery) sitting beside a probe_red(entry, f) roster row (enrolling one FUNCTION on the probe cadence). Those are not the same fact, but they were two hand-kept representations of one admission relationship with nothing deriving either from the other, and the reconciliation that guarded them was weaker than its name: it proved only that some scheduled row's entry CONTAINED the exclusion pattern as a substring. It proved neither exact identity, nor one schedule row per exclusion, nor reverse coverage, nor that every function hidden by the file-level exclusion had a consumer, nor that the pair deleted atomically. The cost was paid in a real merge: #7688 had to delete one exclusion/probe pair while hand-preserving two newly added ones, and taking either side wholesale would have dropped required admission rows with no conflict marker. The exact grain also dissolves the trade that forced the workaround: a green sibling in a quarantined file used to be excluded with it, so an author had to split the file or downgrade its classification and say so in prose (the receipt is the self_host_03_normalize exclusion row, whose reason reads that QuarantineProbeExpectRed on the file would orphan its sibling). A row here reaches exactly one function; siblings are untouched."
+// THE function-grain authority for exact witness admission. One row per admitted witness, carrying
+// the witness identity, the cadence that executes it, and its own reason and dissolve_on.
+// Everything else about that witness is DERIVED: the cadence roster the scheduler runs, the
+// discovery exclusion, and the consumer manifest all read these rows; none of them is authored
+// beside them. It replaces a DUAL REPRESENTATION carried until 2026-08-03 — a path-substring
+// WitnessExclusionRow classified QuarantineProbeExpectRed (removing a whole FILE from discovery)
+// sitting beside a probe_red(entry, f) roster row (enrolling one FUNCTION on the probe cadence).
+// Those are not the same fact, but they were two hand-kept representations of one admission
+// relationship with nothing deriving either from the other, and the reconciliation that guarded
+// them was weaker than its name: it proved only that some scheduled row's entry CONTAINED the
+// exclusion pattern as a substring. It proved neither exact identity, nor one schedule row per
+// exclusion, nor reverse coverage, nor that every function hidden by the file-level exclusion had a
+// consumer, nor that the pair deleted atomically. The cost was paid in a real merge: #7688 had to
+// delete one exclusion/probe pair while hand-preserving two newly added ones, and taking either
+// side wholesale would have dropped required admission rows with no conflict marker. The exact
+// grain also dissolves the trade that forced the workaround: a green sibling in a quarantined file
+// used to be excluded with it, so an author had to split the file or downgrade its classification
+// and say so in prose (the receipt is the self_host_03_normalize exclusion row, whose reason reads
+// that QuarantineProbeExpectRed on the file would orphan its sibling). A row here reaches exactly
+// one function; siblings are untouched.
 
-data explicit_witness_admission_separation_note: String = "SEPARATION FROM PATH POLICY (operator ruling, this lane). Exact witness admission and broad path policy are different kinds of fact and must not share a substring-based representation — that fusion is the root of the substring-overlap weakness above. Directory- and file-wide policies (`test/claim/long/` is the long-test home; `test/manual/` is offline) stay in gunbc.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only: witness_exclusion_row_well_formed REFUSES a QuarantineProbeExpectRed row there, so the fused representation is unwritable for this cadence rather than merely reconciled. PRECEDENCE, and it is total: a function with an exact admission is decided by that admission; path policy applies only to functions with none. That is why a path-offline file may legitimately contain an exact-admitted function (self_host_03_normalize_behavioral_witness_test.dag: the receipt is quarantined here, its sibling is offline by the file's path row) without either fact restating the other. THE REMAINING FUSION IS COUNTED, NOT SILENT: BinWitnessWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane and FalsifierSelfHostWet still author a path row beside their function-grain rosters. Their populations are not the bad state today — every one is either a file-grain roster row (ScheduleWitnessEntry's empty-function form, which covers every function in the entry by construction) or fully enumerated, measured on this change's tree — so they are a migration frontier, not a live defect. Dissolve-on: each cadence's roster moves into explicit_witness_admissions and its path rows delete, at which point witness_exclusion_row_well_formed refuses that cadence too and the last enum arm that can appear in the path carrier is gone."
+// SEPARATION FROM PATH POLICY (operator ruling, this lane). Exact witness admission and broad path
+// policy are different kinds of fact and must not share a substring-based representation — that
+// fusion is the root of the substring-overlap weakness above. Directory- and file-wide policies
+// (`test/claim/long/` is the long-test home; `test/manual/` is offline) stay in
+// gunbc.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only:
+// witness_exclusion_row_well_formed REFUSES a QuarantineProbeExpectRed row there, so the fused
+// representation is unwritable for this cadence rather than merely reconciled. PRECEDENCE, and it
+// is total: a function with an exact admission is decided by that admission; path policy applies
+// only to functions with none. That is why a path-offline file may legitimately contain an
+// exact-admitted function (self_host_03_normalize_behavioral_witness_test.dag: the receipt is
+// quarantined here, its sibling is offline by the file's path row) without either fact restating
+// the other. THE REMAINING FUSION IS COUNTED, NOT SILENT: BinWitnessWet, FalsifierRehomedBinWet,
+// FalsifierSubstrateLongLane and FalsifierSelfHostWet still author a path row beside their
+// function-grain rosters. Their populations are not the bad state today — every one is either a
+// file-grain roster row (ScheduleWitnessEntry's empty-function form, which covers every function in
+// the entry by construction) or fully enumerated, measured on this change's tree — so they are a
+// migration frontier, not a live defect. Dissolve-on: each cadence's roster moves into
+// explicit_witness_admissions and its path rows delete, at which point
+// witness_exclusion_row_well_formed refuses that cadence too and the last enum arm that can appear
+// in the path carrier is gone.
 
-data explicit_witness_admission_axis_note: String = "One row carries all three axes of std.witness_admission independently: cadence (which consumer runs it), budget (how much eval time IT needs, never a property of the batch holding it) and expected (which verdict is agreement, at FUNCTION grain). The row is the single authority for each; the batch rosters, the scheduler ceiling and the expectation the executor matches per result are all DERIVED from it. Before this split a row declaring a long budget had to join a second batch to obtain one — see witness_admission_axis_separation_note for the measurement that produced the correction."
+// One row carries all three axes of std.witness_admission independently: cadence (which consumer
+// runs it), budget (how much eval time IT needs, never a property of the batch holding it) and
+// expected (which verdict is agreement, at FUNCTION grain). The row is the single authority for
+// each; the batch rosters, the scheduler ceiling and the expectation the executor matches per
+// result are all DERIVED from it. Before this split a row declaring a long budget had to join a
+// second batch to obtain one — see witness_admission_axis_separation_note for the measurement that
+// produced the correction.
 
 type ExplicitWitnessAdmission {
   witness: ScheduleWitnessEntry
@@ -88,7 +132,13 @@ fn known_red_probe(
   )
 }
 
-data source_root_ingest_gate_admitted_witness_note: String = "Green exact admission for witnesses excluded from per-PR discovery by OfflineLocalRecipe transport posture but executed on the per-PR floor by v2.workflow.source_root_ingest_gate (run_compiler_closure_ingest_gate and siblings). Cadence is BinWitnessWet as the Wet host-overlay execution class only — these rows are NOT enrolled on gunbc.ci_layer_roots bin_witness_wet_entries; hermetic discovery there would bypass the file exclusion and refuse on an empty manifest. The executing consumer is the gate overlay ClaimRun list in v2.workflow.compiler_closure_ingest_transport."
+// Green exact admission for witnesses excluded from per-PR discovery by OfflineLocalRecipe
+// transport posture but executed on the per-PR floor by v2.workflow.source_root_ingest_gate
+// (run_compiler_closure_ingest_gate and siblings). Cadence is BinWitnessWet as the Wet host-overlay
+// execution class only — these rows are NOT enrolled on gunbc.ci_layer_roots
+// bin_witness_wet_entries; hermetic discovery there would bypass the file exclusion and refuse on
+// an empty manifest. The executing consumer is the gate overlay ClaimRun list in
+// v2.workflow.compiler_closure_ingest_transport.
 
 fn source_root_ingest_gate_admitted_witness(
   entry: NonEmptyStr,
@@ -108,7 +158,14 @@ fn source_root_ingest_gate_admitted_witness(
   }
 }
 
-data known_red_pre_verdict_probe_note: String = "The narrow arm: a witness whose assertion never RUNS, because the run stops in an earlier phase. Its agreement is a typed refusal at the declared phase and cause, not a false verdict, and separating it is what stops an arbitrary corpus resolve failure from reading as every quarantine holding — see std.witness_admission witness_expected_verdict_split_note for the defect and for the bound on how exactly the observed cause is matched today. A row belongs here only when the phase and the cause are BOTH known and named; a witness that merely happens to be failing to resolve for an undiagnosed reason is ordinary known_red_probe, and its resolve failure is an infrastructure fact rather than agreement."
+// The narrow arm: a witness whose assertion never RUNS, because the run stops in an earlier phase.
+// Its agreement is a typed refusal at the declared phase and cause, not a false verdict, and
+// separating it is what stops an arbitrary corpus resolve failure from reading as every quarantine
+// holding — see std.witness_admission witness_expected_verdict_split_note for the defect and for
+// the bound on how exactly the observed cause is matched today. A row belongs here only when the
+// phase and the cause are BOTH known and named; a witness that merely happens to be failing to
+// resolve for an undiagnosed reason is ordinary known_red_probe, and its resolve failure is an
+// infrastructure fact rather than agreement.
 
 fn known_red_pre_verdict_probe(
   entry: NonEmptyStr,
@@ -341,7 +398,12 @@ fn explicit_witness_admission_matches(
     && ((row.witness.function == function) || (row.witness.function == ""))
 }
 
-data explicit_witness_admission_file_grain_note: String = "The empty function is ScheduleWitnessEntry's declared file-grain form (the same authority v1_claim_scoped_witness_batch_note names and expand_explicit_entries realizes for execution): it admits every test declaration in the entry. It is still EXACT — the entry is a path identity, not a substring — which is what separates it from the path policy carrier. Today no known-red row uses it; the arm exists so the derivations stay one fold when a cadence that does use it migrates in."
+// The empty function is ScheduleWitnessEntry's declared file-grain form (the same authority
+// v1_claim_scoped_witness_batch_note names and expand_explicit_entries realizes for execution): it
+// admits every test declaration in the entry. It is still EXACT — the entry is a path identity, not
+// a substring — which is what separates it from the path policy carrier. Today no known-red row
+// uses it; the arm exists so the derivations stay one fold when a cadence that does use it migrates
+// in.
 
 fn explicit_witness_admission_covers_in(
   rows: List<ExplicitWitnessAdmission>,
@@ -413,7 +475,13 @@ fn explicit_witness_admission_duplicate_count() -> Int {
   explicit_witness_admission_duplicate_count_in(rows: explicit_witness_admissions)
 }
 
-data explicit_witness_admission_polarity_source_note: String = "POLARITY IS READ FROM THE EXPECTATION AXIS, NOT THE CADENCE. This predicate matched row.cadence until the axis split: QuarantineProbeExpectRed => true, every other arm false. That made the batch a witness's polarity — an expensive known-red row moved onto a long batch to obtain its budget silently became expected-GREEN, which is exactly how a witness that is red BY DESIGN reached the falsifier alert as a component failure. Reading row.expected instead means moving a row between consumers cannot change what counts as agreement, and a mixed batch is ordinary rather than a trap."
+// POLARITY IS READ FROM THE EXPECTATION AXIS, NOT THE CADENCE. This predicate matched row.cadence
+// until the axis split: QuarantineProbeExpectRed => true, every other arm false. That made the
+// batch a witness's polarity — an expensive known-red row moved onto a long batch to obtain its
+// budget silently became expected-GREEN, which is exactly how a witness that is red BY DESIGN
+// reached the falsifier alert as a component failure. Reading row.expected instead means moving a
+// row between consumers cannot change what counts as agreement, and a mixed batch is ordinary
+// rather than a trap.
 
 fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Bool {
   match row.expected {
@@ -445,7 +513,12 @@ fn explicit_witness_admission_executing_witness_roster() -> List<ScheduleWitness
   ))
 }
 
-data explicit_witness_admission_substrate_long_lane_roster_note: String = "Cadence projection for FalsifierSubstrateLongLane admission rows. falsifier_substrate_long_lane_batch_schedule_entries unions this with the legacy falsifier_substrate_long_lane_rows roster for batch 6 execution; declared-long-budget rows stay off the legacy roster (witness_long_eval_budget_roster sizes the ceiling from admission alone). dissolve-on: every substrate-long witness migrates to explicit admission and falsifier_substrate_long_lane_rows deletes."
+// Cadence projection for FalsifierSubstrateLongLane admission rows.
+// falsifier_substrate_long_lane_batch_schedule_entries unions this with the legacy
+// falsifier_substrate_long_lane_rows roster for batch 6 execution; declared-long-budget rows stay
+// off the legacy roster (witness_long_eval_budget_roster sizes the ceiling from admission alone).
+// dissolve-on: every substrate-long witness migrates to explicit admission and
+// falsifier_substrate_long_lane_rows deletes.
 
 fn explicit_witness_admission_substrate_long_lane_roster() -> List<ScheduleWitnessEntry> {
   reverse(fold(
@@ -467,7 +540,11 @@ fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmi
   }
 }
 
-data explicit_witness_admission_long_budget_roster_note: String = "The budget half of the split, derived. gunbc.ci_layer_roots unions this with the long-lane BATCH roster to give the scheduler its ceiling condition, so a row obtains its required eval time from its own declaration and never by joining a second batch. The union is the whole mechanism: batch membership still routes execution, this roster only sizes the ceiling, and the residual (declared by neither) keeps the fast lane so an undeclared lane reds at 5s rather than running unbounded."
+// The budget half of the split, derived. gunbc.ci_layer_roots unions this with the long-lane BATCH
+// roster to give the scheduler its ceiling condition, so a row obtains its required eval time from
+// its own declaration and never by joining a second batch. The union is the whole mechanism: batch
+// membership still routes execution, this roster only sizes the ceiling, and the residual (declared
+// by neither) keeps the fast lane so an undeclared lane reds at 5s rather than running unbounded.
 
 fn witness_long_eval_budget_roster() -> List<ScheduleWitnessEntry> {
   reverse(fold(
@@ -504,7 +581,14 @@ fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
 
 data known_red_v1_envelope_dag_entries: List<String> = []
 
-data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that envelope; enrolling a row here without the companion clamp row in gunbc_ci_floor_batch_clamp_params fails the ENROLLMENT COUPLING clause in v1_claim_scoped_known_red_probe_batch_note. Dissolve-on when closure-independent binding makes the envelope unnecessary."
+// dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in
+// explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path
+// prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus
+// src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that
+// envelope; enrolling a row here without the companion clamp row in
+// gunbc_ci_floor_batch_clamp_params fails the ENROLLMENT COUPLING clause in
+// v1_claim_scoped_known_red_probe_batch_note. Dissolve-on when closure-independent binding makes
+// the envelope unnecessary.
 
 fn known_red_entry_is_v1_envelope_dag_entry(entry: String) -> Bool {
   fold(
@@ -533,9 +617,33 @@ fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
   ))
 }
 
-data known_red_probe_budget_partition_note: String = "The known-red probe lane partitions into BUDGET-HOMOGENEOUS batches, and the partition is DERIVED from each row's declared budget rather than naming any witness (operator ruling, 2026-08-06). The first shape of the budget separation left the lane one mixed batch and let the eval ceiling be armed for it as a whole, because claim_executor scopes a ceiling to a batch; that raised the ceiling for every fast row sharing the batch with one declared-long row — a real widening, disclosed but still a widening, and the ceiling is the only thing standing between a runaway fast witness and the step budget. Two batches over the same roster remove it: each batch is homogeneous in declared budget, so the ceiling it arms is the budget its rows actually declared and no row is widened by a neighbour. Nothing here is a singleton and nothing names direct_rust — the long population is whatever declares SubstrateLongLaneEvalBudget, so it grows and shrinks with the admission rows and an empty side schedules no batch at all. Dissolve-on is unchanged and shared with witness_long_eval_budget_entries_note: per-witness declared cost envelopes replace the lane ceiling entirely, at which point the partition collapses back to one batch because every row carries its own bound."
+// The known-red probe lane partitions into BUDGET-HOMOGENEOUS batches, and the partition is DERIVED
+// from each row's declared budget rather than naming any witness (operator ruling, 2026-08-06). The
+// first shape of the budget separation left the lane one mixed batch and let the eval ceiling be
+// armed for it as a whole, because claim_executor scopes a ceiling to a batch; that raised the
+// ceiling for every fast row sharing the batch with one declared-long row — a real widening,
+// disclosed but still a widening, and the ceiling is the only thing standing between a runaway fast
+// witness and the step budget. Two batches over the same roster remove it: each batch is
+// homogeneous in declared budget, so the ceiling it arms is the budget its rows actually declared
+// and no row is widened by a neighbour. Nothing here is a singleton and nothing names direct_rust —
+// the long population is whatever declares SubstrateLongLaneEvalBudget, so it grows and shrinks
+// with the admission rows and an empty side schedules no batch at all. Dissolve-on is unchanged and
+// shared with witness_long_eval_budget_entries_note: per-witness declared cost envelopes replace
+// the lane ceiling entirely, at which point the partition collapses back to one batch because every
+// row carries its own bound.
 
-data known_red_probe_expectation_partition_note: String = "The lane partitions on BOTH axes, and the second half was missing until review caught it (cursor review 50216, 2026-08-07). Budget homogeneity alone still let an ExpectTypedPreVerdictRefusal row share a batch with ExpectAssertionFalse rows, and those two cannot coexist: a pre-verdict row stops the whole batch at RESOLVE, so no per-witness outcome exists for anyone, and the Err arm admits that stop only when EVERY entry declared a pre-verdict refusal. One pre-verdict row in a mixed batch therefore reds its siblings, which were holding quarantine correctly — the batch-wide coupling this PR exists to remove, reintroduced one axis over. So the corpus lane splits first by EXPECTATION KIND and then by DECLARED BUDGET: a batch is homogeneous in the fact that decides its verdict AND in the ceiling it needs. Note the pre-verdict batches are non-green by construction today (a declaration classifies a stop, it does not verify it), so the point of isolating them is not to make them pass — it is that their refusal stays THEIR refusal, located and countable, instead of being spread over rows it says nothing about."
+// The lane partitions on BOTH axes, and the second half was missing until review caught it (cursor
+// review 50216, 2026-08-07). Budget homogeneity alone still let an ExpectTypedPreVerdictRefusal row
+// share a batch with ExpectAssertionFalse rows, and those two cannot coexist: a pre-verdict row
+// stops the whole batch at RESOLVE, so no per-witness outcome exists for anyone, and the Err arm
+// admits that stop only when EVERY entry declared a pre-verdict refusal. One pre-verdict row in a
+// mixed batch therefore reds its siblings, which were holding quarantine correctly — the batch-wide
+// coupling this PR exists to remove, reintroduced one axis over. So the corpus lane splits first by
+// EXPECTATION KIND and then by DECLARED BUDGET: a batch is homogeneous in the fact that decides its
+// verdict AND in the ceiling it needs. Note the pre-verdict batches are non-green by construction
+// today (a declaration classifies a stop, it does not verify it), so the point of isolating them is
+// not to make them pass — it is that their refusal stays THEIR refusal, located and countable,
+// instead of being spread over rows it says nothing about.
 
 fn known_red_probe_corpus_assertion_false_roster() -> List<ScheduleWitnessEntry> {
   reverse(fold(
@@ -671,7 +779,13 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
   known_red_probe_roster_of_kind(kind: ExecutionWitnessKind)
 }
 
-data explicit_witness_admission_cadence_wall_note: String = "Only a cadence that EXECUTES may appear on an admission row: an admission is the statement that this witness runs somewhere, so DiscoverySelection (which is the absence of an admission), OfflineLocalRecipe and FixtureExplicitRoster (which are path policies, not executing consumers) and NoConsumer (which is the refusal itself) are all refused here by explicit_witness_admission_cadence_executes. Without that arm an author could write an admission whose cadence runs nothing and satisfy the every-witness-has-a-consumer wall with a row that executes nowhere — the coverage-by-illusion tier, one enum arm away."
+// Only a cadence that EXECUTES may appear on an admission row: an admission is the statement that
+// this witness runs somewhere, so DiscoverySelection (which is the absence of an admission),
+// OfflineLocalRecipe and FixtureExplicitRoster (which are path policies, not executing consumers)
+// and NoConsumer (which is the refusal itself) are all refused here by
+// explicit_witness_admission_cadence_executes. Without that arm an author could write an admission
+// whose cadence runs nothing and satisfy the every-witness-has-a-consumer wall with a row that
+// executes nowhere — the coverage-by-illusion tier, one enum arm away.
 
 fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
   match cadence {
@@ -680,6 +794,7 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
     FalsifierRehomedBinWet => true
     FalsifierSubstrateLongLane => true
     BinWitnessWet => true
+    LocalRepoWetLane => true
     DiscoverySelection => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false

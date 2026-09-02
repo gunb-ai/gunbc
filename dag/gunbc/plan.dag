@@ -16,19 +16,18 @@ type PlanRetirement
 // WHETHER THIS PLAN'S MARKDOWN IS A COMMITTED ARTIFACT AT ALL, declared by the plan and by
 // nothing else.
 //
-// A plan carrier declares a slug, and the generated-artifact registry turned that slug into a
-// committed path unconditionally -- so deleting a plan's markdown left the authority still
-// producing it, and the registry kept offering a path for a file the repository had decided
-// not to commit. That went unnoticed for exactly as long as nothing adjudicated the population.
-// The moment a drift phase does, the absence stops the line and the cheapest way to clear it is
-// to REGENERATE, which recreates content a commit deliberately removed: a dormant registry
-// mistake converted into a standing obligation to resurrect deleted files, green either way.
+// The generated-artifact registry turned every plan slug into a committed path unconditionally,
+// so deleting a plan's markdown left the authority still producing it and the registry offering a
+// path the repository had decided not to commit. Unnoticed until a drift phase adjudicated the
+// population; then the absence stops the line and the cheapest clearance is to REGENERATE content
+// a commit deliberately removed -- a dormant registry mistake turned into a standing obligation
+// to resurrect deleted files, green either way.
 //
-// So the disposition is a declared fact on the plan rather than an inference from the tree.
-// `PlanIsAuthorityOnly` carries the ruling that removed the projection, symbolically, so the
-// row cannot drift from its reason; it is not an exemption list and not a shrink of the
-// registry -- the plan is still rostered, still generated, still refused if generation fails.
-// What changes is only whether its bytes are expected on disk.
+// So the disposition is a declared fact on the plan, not an inference from the tree.
+// `PlanIsAuthorityOnly` carries the ruling that removed the projection, symbolically, so the row
+// cannot drift from its reason; it is not an exemption list and not a shrink of the registry --
+// the plan is still rostered, generated, and refused if generation fails. Only whether its bytes
+// are expected on disk changes.
 type PlanProjection
   = PlanProjectsCommittedMarkdown
   | PlanIsAuthorityOnly { ruling: String }
@@ -61,11 +60,10 @@ fn plan_to_document(p: Plan) -> MarkdownDocument {
   MarkdownDocument { blocks: plan_to_blocks(p: p) }
 }
 
-// Retained deliberately. The payload is now a DissolutionCondition, whose own
-// literal-empty form is refused at construction, but refinement at NON-literal
-// positions is still deferred -- so an empty description can still reach this
-// carrier through that gap and this is the check that refuses it. It dissolves
-// when nonliteral refinement enforcement is real, not before.
+// Retained deliberately. The payload is a DissolutionCondition whose literal-empty form is refused
+// at construction, but refinement at NON-literal positions is still deferred, so an empty
+// description can still reach this carrier through that gap; this check refuses it. Dissolves when
+// nonliteral refinement enforcement is real, not before.
 fn plan_has_retirement(p: Plan) -> Bool {
   match p.retirement {
     PlanRetiresWhen { condition: c } => dissolution_description(condition: c).length() > 0

@@ -11,26 +11,26 @@ import product.fabric.identity {
 import std.types { NonEmptyStr, List, Bool }
 
 // AN AXIS WRAPPER'S SUBJECT DOES NOT VOUCH FOR THE MEMBERS INSIDE IT. The readback binds each of
-// its five populations to the run's Demand/Work subject, which stops a whole population being
-// filed against the wrong run -- and stops nothing about the individual members, because each
-// process, checkpoint, terminal, output and manifest receipt carries a freely supplied execution
-// attempt identity. A member naming an attempt from another run passes every check the readback
-// can perform: the wrapper is honest, the member is foreign, and the subject comparison cannot
-// see one level down.
+// its five populations to the run's Demand/Work subject, which stops a whole population being filed
+// against the wrong run — and stops nothing about individual members, because each process,
+// checkpoint, terminal, output and manifest receipt carries a freely supplied execution attempt
+// identity. A member naming an attempt from another run passes every check the readback can
+// perform: the wrapper is honest, the member is foreign, and the subject comparison cannot see one
+// level down.
 //
 // So membership must be decided against an admitted graph of the attempts this run actually has,
-// and NEVER inferred from a shared materialization path, a similar key, adjacency in time, or the
-// wrapper's own asserted subject. Each of those is a resemblance, and a resemblance admitted as
-// identity is how another run's artifact becomes this run's output.
+// NEVER inferred from a shared materialization path, a similar key, adjacency in time, or the
+// wrapper's asserted subject. Each is a resemblance, and a resemblance admitted as identity is how
+// another run's artifact becomes this run's output.
 type TrainingRunAttemptGraph<P> sole_constructor {
   subject: TrainingRunSubject<P>
   attempts: List<Attempt<P>>
 }
 
 // EVERY WAY THE GRAPH CAN BE WRONG IS ITS OWN NAMED REFUSAL, because the remedies differ. An
-// attempt under a foreign work is a routing defect; an absent predecessor is a lost observation; a
-// duplicate identity is a producer emitting twice; an unrooted chain is a lineage that never
-// reaches the demand and cannot be an attempt at this run at all.
+// attempt under a foreign work is a routing defect; an absent predecessor a lost observation; a
+// duplicate identity a producer emitting twice; an unrooted chain a lineage that never reaches the
+// demand and cannot be an attempt at this run at all.
 type AttemptGraphRefusal<P>
   = AttemptWorkOutsideSubject {
       attempt: FabricIdentity<P, ExecutionAttemptKey>,
@@ -47,9 +47,9 @@ type AttemptGraphRefusal<P>
   | DuplicateAttemptIdentity { attempt: FabricIdentity<P, ExecutionAttemptKey> }
   | AttemptLineageUnrooted { attempt: FabricIdentity<P, ExecutionAttemptKey> }
 
-// THE REFUSAL CARRIES EVERY DEFECT, NOT THE FIRST ONE FOUND. An ordered refusal would make the
-// second defect invisible until the first is repaired, so a graph with three problems would take
-// three round trips to admit. first + more is a non-empty population, not a ranking.
+// THE REFUSAL CARRIES EVERY DEFECT, NOT THE FIRST FOUND. An ordered refusal hides the second defect
+// until the first is repaired, so a graph with three problems would take three round trips to
+// admit. first + more is a non-empty population, not a ranking.
 type AttemptGraphAdmission<P>
   = AttemptGraphAdmitted { graph: TrainingRunAttemptGraph<P> }
   | AttemptGraphRefused {
@@ -134,11 +134,11 @@ fn predecessor_refusals<P>(attempts: List<Attempt<P>>) -> List<AttemptGraphRefus
   )
 }
 
-// A DUPLICATED IDENTITY IS REPORTED ONCE PER OCCURRENCE, and the count is deliberately not
-// reduced to one refusal per repeated identity. Which occurrence is "the original" is not a fact
-// the graph has -- the members arrive as a population with no authored order -- so nominating one
-// as legitimate and the rest as duplicates would be the fold inventing a precedence it cannot
-// establish. Every occurrence of an ambiguous identity is equally unusable.
+// A DUPLICATED IDENTITY IS REPORTED ONCE PER OCCURRENCE, deliberately not reduced to one refusal
+// per repeated identity. Which occurrence is "the original" is not a fact the graph has — members
+// arrive as a population with no authored order — so nominating one as legitimate would be the fold
+// inventing a precedence it cannot establish. Every occurrence of an ambiguous identity is equally
+// unusable.
 fn duplicate_refusals<P>(attempts: List<Attempt<P>>) -> List<AttemptGraphRefusal<P>> {
   let ids = attempts.map(a => a.id)
   attempts.flat_map(a =>
@@ -150,9 +150,9 @@ fn duplicate_refusals<P>(attempts: List<Attempt<P>>) -> List<AttemptGraphRefusal
   )
 }
 
-// first + more is a NON-EMPTY population expressed structurally, so a refusal carrying no defect
-// is unrepresentable. Splitting the head off requires dropping exactly one element, which the fold
-// below does with an explicit accumulator rather than by position.
+// first + more is a NON-EMPTY population expressed structurally, so a refusal carrying no defect is
+// unrepresentable. Splitting the head off drops exactly one element, which the fold below does with
+// an explicit accumulator rather than by position.
 type RefusalSplit<P> {
   head_taken: Bool
   more: List<AttemptGraphRefusal<P>>
@@ -177,12 +177,12 @@ fn refusals_after_head<P>(
 // ROOTEDNESS IS A BOUNDED FIXPOINT, NOT A WALK. An attempt is rooted when its lineage reaches this
 // run's demand: directly, for an initial attempt or a requested re-execution, or through a
 // predecessor that is itself rooted. Each pass roots at least one further attempt or the set has
-// stabilized, so folding over the attempt list -- whose length bounds the longest possible chain --
-// reaches the fixpoint without recursion and without a cycle being able to run forever.
+// stabilized, so folding over the attempt list — whose length bounds the longest chain — reaches
+// the fixpoint without recursion and without a cycle running forever.
 //
-// What remains unrooted after the fixpoint, once absent predecessors have been separately
-// accounted for, is exactly a lineage cycle or a chain rooted in some other demand: either way it
-// is not an attempt at THIS run, which is the fact the graph exists to establish.
+// What stays unrooted after the fixpoint, once absent predecessors are separately accounted for, is
+// exactly a lineage cycle or a chain rooted in another demand: either way not an attempt at THIS
+// run, the fact the graph exists to establish.
 fn directly_rooted<P>(
   subject: TrainingRunSubject<P>,
   attempts: List<Attempt<P>>,
@@ -256,8 +256,8 @@ fn admit_attempt_graph<P>(
   }
 }
 
-// MEMBERSHIP IS DECIDED AGAINST THE ADMITTED GRAPH AND NOTHING ELSE. This is the predicate every
-// readback member must pass before its evidence may be joined at attempt grain.
+// MEMBERSHIP IS DECIDED AGAINST THE ADMITTED GRAPH AND NOTHING ELSE — the predicate every readback
+// member must pass before its evidence may be joined at attempt grain.
 fn graph_admits_attempt<P>(
   graph: TrainingRunAttemptGraph<P>,
   attempt: FabricIdentity<P, ExecutionAttemptKey>,

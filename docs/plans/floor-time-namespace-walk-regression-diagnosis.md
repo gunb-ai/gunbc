@@ -110,7 +110,7 @@ entry** (closure census still built even when all modules hit cache).
 ## 3. Fix (LANDED #6998 + #6999 — perf only, no binding change)
 
 1. **Entry-closure memo** on `MultiEntryIndex`: cache `load_sources_for_entry_with_pool`
-   results keyed by normalized entry path. Witnesses sharing an entry file reuse one closure
+   results keyed by normalized entry path, so witnesses sharing an entry file reuse one closure
    walk (claim_executor already amortizes resolve per entry; this eliminates duplicate walks
    when the loader is re-invoked on the same path within a process).
 
@@ -194,11 +194,11 @@ RSS); `rc_map_insert` quadratic (bold-crane-271) and advisory suppression are se
 
 ## 6. Residual (post-#6999) — thread-local index reset (this PR)
 
-#6999 (§3) fixed the *within-instance* cost (entry-closure memo, reconcile call-order). It did
-**not** touch the *cross-instance* cost: `resolve_entry_graph` routes each resolve through
+#6999 (§3) fixed the *within-instance* cost (entry-closure memo, reconcile call-order), not the
+*cross-instance* cost: `resolve_entry_graph` routes each resolve through
 `process_shared_index`, a `thread_local!` `MultiEntryIndex` keyed by `(thread, canonical
-roots)` — the entry-closure memo and `pool_qualified_fill` cache only pay off for calls landing
-on the **same thread**.
+roots)`, so the entry-closure memo and `pool_qualified_fill` cache pay off only for calls
+landing on the **same thread**.
 
 `claim_executor::run_walk` partitions batch units into `memo_units` (main thread,
 `run_memo_shared_claims`, shared `walk_memo` across the whole run) vs `thread_units` (each
@@ -207,26 +207,26 @@ individually `thread::spawn`'d — cold `MultiEntryIndex` per spawn). Routing is
 coalescing group. `DagCompileCleanGate`, `SourceRootIngestGate`, and `RegenVerifyGate` already
 declared `heavy_whole_tree_resolve: true`; `SelfHostReadsRealBytesGate`,
 `SelfHostStalenessGate`, and `EmitHostGate` (batch 4) did not — so #6999's caches were built and
-then discarded on each of their freshly spawned threads, and batch-4 wall time stayed pinned at
-~18.7min (1123s) after #6999 merged, unchanged from the ~1111s pre-#6999 figure and far off the
-pre-#6848 baseline of 165–342s.
+discarded on each freshly spawned thread, and batch-4 wall stayed pinned at ~18.7min (1123s)
+after #6999 merged, unchanged from the ~1111s pre-#6999 figure and far off the pre-#6848
+baseline of 165–342s.
 
 **Fix:** flip `heavy_whole_tree_resolve: false → true` for the three batch-4 gates in
-`gate_runnable_profile` (`src/v2/workflow/ci_floor_plan.dag`) — aligning them with the
-already-established pattern, not a new mechanism. This routes their resolves onto the
-main-thread memo path; `floor_heavy_resolve_chain_resource_edges` already serializes all
-`heavy_whole_tree_resolve` gates pairwise (`floor_plan_at_most_one_heavy_gate_resolve_per_batch`,
-checked by `witness_plan_serializes_heavy_resolves`), so the three newly-heavy gates each land
-in their own batch rather than co-residing — sequential on the main thread, sharing the process
+`gate_runnable_profile` (`src/v2/workflow/ci_floor_plan.dag`) — the established pattern, not a
+new mechanism. This routes their resolves onto the main-thread memo path;
+`floor_heavy_resolve_chain_resource_edges` already serializes all `heavy_whole_tree_resolve`
+gates pairwise (`floor_plan_at_most_one_heavy_gate_resolve_per_batch`, checked by
+`witness_plan_serializes_heavy_resolves`), so the three newly-heavy gates each land in their
+own batch — sequential on the main thread, sharing the process
 `walk_memo`/`process_shared_index` cache instead of paying a cold walk each.
 
 **Not in scope (unchanged from §3):** resolver semantics, `rc_map_insert` quadratic,
 `UnlistedImportUse` suppression.
 
-**Verification:** no test/lens found asserting `heavy_whole_tree_resolve: false` for these three
-gates (`ci_floor_plan_witness_test.dag` checked); `runnable_excludes_corpus_co_residence` gates
-on `profile.memory`, orthogonal to this flag. Falsifiable claim pending: a real CI floor run
-must show batch-4 wall time drop from the ~18.7min baseline — not yet obtained at PR-open time.
+**Verification:** no test/lens asserts `heavy_whole_tree_resolve: false` for these three gates
+(`ci_floor_plan_witness_test.dag` checked); `runnable_excludes_corpus_co_residence` gates on
+`profile.memory`, orthogonal to this flag. Falsifiable claim pending: a real CI floor run must
+show batch-4 wall drop from the ~18.7min baseline — not yet obtained at PR-open time.
 
 ## 7. The measured root is the ASSEMBLY, not the loader (post-flip lane, 2026-07-25)
 
@@ -241,16 +241,16 @@ real row.
 | PRE-flip (#7137) | `30081341899` | 2310 | 1,358,819ms | **0.6ms** | 1,307,224ms (96.2%) |
 | POST-flip (#7188) | `30142221249` | 2336 | 1,654,155ms | **1.0ms** | 1,583,620ms (95.7%) |
 
-`load` — `load_sources_for_entry_with_pool`, i.e. the both-closure fixpoint §2 names — is
-**1ms across a whole run**. #7056 (`BothClosureEdgeIndex`, per-process edge precompute) and
+`load` — `load_sources_for_entry_with_pool`, the both-closure fixpoint §2 names — is
+**1ms across a whole run**; #7056 (`BothClosureEdgeIndex`, per-process edge precompute) and
 #6999 (entry-closure memo) already took it to zero. The entire post-flip delta
 (+295s of resolve wall, ~+112ms/witness) lands in `reconcile_assembly`: the whole-closure
 `ResolvedGraph` view rebuilt per entry *even at 100% typed-cache hits*.
 
 ### 7.2 Sub-row attribution (this PR's instrument)
 
-`reconcile_assembly` was one undifferentiated number covering ~96% of the wall — the same
-condition `ResolveStageNanos`'s own doc-comment was written to end one level up. This PR
+`reconcile_assembly` was one undifferentiated number covering ~96% of the wall — the condition
+`ResolveStageNanos`'s own doc-comment was written to end one level up. This PR
 splits it into named rows (`schedule`, `probe`, `registry`, `services`, `rewire` — with the
 three `rewire_*` passes separated — and `emit_info`; `reconcile_assembly` keeps the residue)
 and prints them as `[assembly-split]` beside `[resolve-split]` in both `claim_executor`
@@ -272,22 +272,22 @@ Local receipt, 79 discovery entries (`dag/test/claim`, `claim_batch --entry/--fu
 
 ### 7.3 The cost-shape defect
 
-`direct_import_exporter_count(m, name, …)` asked `module_exports_type_name(parent, name)`,
-which was a **linear scan**: `map_values` allocates a `Vec` of every binding in the parent's
-env, then filters by name. It ran once per **(consumer module × inherited key × direct
-import)**, so the pass was O(modules × keys × imports × |parent bindings|). The namespace-only
-flip widened the inherited-key sets, which is why the same pass grew ~20% at #7178 — the flip
-did not add a mechanism, it enlarged the input to one that was already quadratic.
+`direct_import_exporter_count(m, name, …)` asked `module_exports_type_name(parent, name)`, a
+**linear scan**: `map_values` allocates a `Vec` of every binding in the parent's env, then
+filters by name. It ran once per **(consumer module × inherited key × direct import)**, so the
+pass was O(modules × keys × imports × |parent bindings|). The namespace-only flip widened the
+inherited-key sets, which is why the same pass grew ~20% at #7178 — the flip added no
+mechanism, it enlarged the input to one already quadratic.
 
 The set of type names a module exports is **one derived fact**, and it already existed twice
-in the same function: as the caller's per-module `local_names` fold, and as this rescan.
+in the same function: the caller's per-module `local_names` fold and this rescan.
 Fix (`src/v1/04_infer.dag`, regen-emitted to `v1_compiler_infer.rs`): lift
 `module_exported_type_names` as the single authority, build a `module → Set<String>` index
 once per pass, hoist each consumer's direct-import name sets out of the per-key loop, and make
 `direct_import_exporter_count` a membership test — O(direct imports). The predicate is
 unchanged by construction; `module_exports_type_name` is deleted (no remaining consumer).
 
-The same pass carries a second instance of the same shape, fixed with it (§6: fix related
+The same pass carried a second instance of the same shape, fixed with it (§6: fix related
 systems together, never a per-site exception). `export_index_merge_module` recomputed its
 canonical binding as `filter(bindings |> map_values, b => b.name == name) |> first` — a full
 rescan of the module's binding map, with a fresh `Vec`, once per distinct name:
@@ -326,23 +326,23 @@ Three post-fix observations, **295.5 / 319.5 / 347.9s** — mean 321.0s, spread 
 Speed-up on resolve **5.7–6.8×**, on total assembly **7.2–8.3×**, on batch-3 wall **3.3–3.9×**.
 `72272b25` is the first arm on a tree with main merged in, hence the best number.
 
-Two fidelity notes on reading that table, because both are easy to get wrong:
+Two fidelity notes, because both are easy to get wrong:
 
 - **Total assembly, not the `reconcile_assembly` row.** Post-fix, `[resolve-split]`'s
-  `reconcile_assembly` is the *residue* left after the six new `[assembly-split]` rows are
+  `reconcile_assembly` is the *residue* after the six new `[assembly-split]` rows are
   subtracted; main's binary has no sub-rows, so its number is the *whole* assembly. Comparing
-  the two directly reads 18.6×, which is an artefact of the instrumentation, not a measurement
-  — the honest comparison sums the residue back with its sub-rows (7.2–8.3×). An earlier
-  revision of this table quoted the 18.6×; it is wrong and is corrected here.
+  the two directly reads 18.6×, an instrumentation artefact, not a measurement — the honest
+  comparison sums the residue back with its sub-rows (7.2–8.3×). An earlier revision of this
+  table quoted the 18.6×; it is wrong and is corrected here.
 - Batch-3 wall is derived from the `ci`-job timestamps of `claim_executor: batch 3` and
-  `PASS [batch 3] discovery-corpus`, so it includes scheduling and worker spin-up that the
-  resolve number does not — which is why the wall ratio is smaller than the resolve ratio.
+  `PASS [batch 3] discovery-corpus`, so it includes scheduling and worker spin-up the resolve
+  number does not — hence the wall ratio is smaller than the resolve ratio.
 
 Floor green on all three, zero `FAIL [batch` rows — no witness verdict flipped at corpus scale
 either. Batch-3 now sits at **14–17% of the #7204 budget** (2100s) and **18–21% of the
 pre-flip 1680s basis** it was raised from. The `regen` job ran unskipped on each (the diff is
 inside the `[src/v1, dag]` regen input closure) and both `RegenVerifyGate` and
-`SelfHostStalenessGate` passed: the self-host fixed point holds with the change.
+`SelfHostStalenessGate` passed: the self-host fixed point holds.
 
 ### 7.5 Honest residue
 
@@ -351,15 +351,15 @@ is. Post-fix, the remaining ~107s of corpus assembly is attributed by the same s
 (`72272b25`, corpus): `rewire` 43.7s, `residue` 43.2s (the uninstrumented reconcile remainder
 — symbol-index build, variant surfaces, pass-2 assembly), `emit_info` 11.1s, `services` 8.8s,
 `registry`/`probe`/`schedule` together 0.5s. Whatever survives of #6848's class lives in those
-rows; they are the next lane's targets, and they are now *named and counted* rather than
-pooled in one number.
+rows; they are the next lane's targets, now *named and counted* rather than pooled in one
+number.
 
 **Dissolution trigger:** when a post-merge main floor run shows batch-3 back under the
 pre-flip 1680s basis, the #7204 stopgap row (`gunbc.ci_spec`, 2100s) re-tightens by ordinary
-receipt note — that re-tighten is this change's dissolution event. Whoever re-tightens should
-size off all three observations above (295.5 / 319.5 / 347.9s), not the best one: #7204's own
-raise faulted sizing off too few points, and repeating that in the tightening direction is the
-same defect with a worse failure mode.
+receipt note — that re-tighten is this change's dissolution event. Size the re-tighten off all
+three observations above (295.5 / 319.5 / 347.9s), not the best one: #7204's own raise faulted
+sizing off too few points, and repeating that in the tightening direction is the same defect
+with a worse failure mode.
 
 ## 8. Provenance
 

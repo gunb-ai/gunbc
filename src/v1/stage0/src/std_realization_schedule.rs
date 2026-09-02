@@ -27,12 +27,11 @@ pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
 use crate::std_measure::ClockBasis::{CpuClock, WallClock};
-use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{
     byte_size, byte_size_count, clock_basis_eq, measure_count, millisecond_count, second_count,
-    time_measure, watt,
+    time_measure, watt, Time,
 };
-pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantity, Second, Watt};
+pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
@@ -62,7 +61,7 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
+    pub time: Rc<Measure<Time, S, i64>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
@@ -79,7 +78,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<Time, S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: crate::std_measure::byte_size(0),
@@ -114,15 +113,6 @@ pub struct WitnessSeam {
     pub consumer: String,
 }
 
-pub fn witness_cost_clock_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WallClock unless re-measured on thread CPU. THE CARRIER IS std.measure ClockBasis, and this note records why it is not a second one. A local WitnessCostClock = WitnessCostWallEval | WitnessCostThreadCpuEval stood here until 2026-08-05, minted one day before std.measure ClockBasis = CpuClock | WallClock and for the SAME stated reason — the sentence above, that an untagged figure is not comparable to a threshold, appears in both notes. Two carriers, one concept, one argument, two names is the section 3 nicknaming violation exactly, and it duplicates at the meaning layer where everything derived duplicates again. It was also not merely redundant, which is what made it urgent rather than tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure compared against a wall baseline — could not see across the two spellings. A fork that defeats the mechanism written to catch that mistake reports clean while comparing the two quantities it exists to keep apart. Dissolved by IMPORT rather than by re-declaration, so the arms below are the same values the observation side already carries and a cross-clock pair refuses on one comparator.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum WitnessCostBasis {
@@ -144,15 +134,6 @@ impl WitnessCostBasis {
             WitnessCostBasis::EstimatedFromSiblingClass { clock: __val, .. } => __val.clone(),
         }
     }
-}
-
-pub fn scheduled_witness_envelope_typed_consumer_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "path_classification: WitnessConsumerCadence, not a cadence String (C-b, operator brief 2026-08-07, corrected 2026-08-07): the string fused three separate facts — path-policy classification, schedule period, and maximum tolerated staleness — into one field, so a value like \"4h\" answered both which lane classifies this row and how often it runs, and the wire decoder that tried to recover the identity half from the string only ever knew five of WitnessConsumerCadence's nine arms (witness_consumer_cadence_wire_round_trip_witness_test.dag, RED on the archived draft gunbc#7893 / origin/session/swift-wren-710). WitnessConsumerCadence (std.witness_admission) already is the closed, grounded vocabulary for path-policy classification — importing it here is the §3 single-authority move, not a second declaration. The field is named path_classification, not consumer: per src/v2/workflow/witness_admission.dag's commit_roster_enrollment_is_a_consumer_note, WitnessConsumerCadence answers which path policy classifies a row, NOT whether anything executes it — those are two different questions, and naming this field consumer would silently answer the second with the first (the state-space conflation this slice exists to remove). Whether a row has an executing consumer is answered by the separate fold in src/v2/workflow/witness_admission.dag; this envelope does not carry that fact and must not be read as carrying it. max_staleness is Millisecond, the SAME measure wall_budget already uses (std.measure) — reaching for the existing measure is the point; minting a fresh Duration carrier for a concept that already exists would itself be a failed decomposition (§2 net-concepts test). This envelope represents ACTUAL path-policy classification, never DESIRED placement — that is a distinct, later slice with its own types.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -205,29 +186,11 @@ pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
     }
 }
 
-pub fn schedule_witness_entry_function_optional_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "function is OPTIONAL at file grain (umbrella dissolution U3, 2026-07-26): the empty string means Absent — the executor enumerates the entry's test fns through the same path discovery uses (scan_test_decl_names / floor_discovery_scan_test_decl_names). Non-empty keeps fn grain (per-row wet budgets, QuarantineProbeExpectRed probes, roster_registry rows that legitimately stay fn-scoped). CommitWitnessClaim.check_fns: [] projects one ScheduleWitnessEntry with function: \"\". Dissolve-on: Optional<String> when enrollment is derived from discovery (commit_witness_claim_roster_dissolution_trigger).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleWitnessEntry {
     pub entry: String,
     pub function: String,
     pub kind: WitnessKind,
-}
-
-pub fn runnable_memory_class_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Memory class is a structural marker, not a quantity (operator ruling 2026-07-12): the former RunnableMemoryPeak predicted_peak bytes were hand-edited calibration constants — pins freezing derivations, the July OOM regime's root — and the width folds that consumed them are retired. Realization concurrency is now governed adaptively at run time (v1_compiler::memory_governor: AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts), so the model keeps only the honest structural fact: Negligible vs Substantial residency, which co-residence structure keys on. Quantified per-runnable demand returns when it is derivable from the graph (CostAccount.space measured/derived), not as authored literals.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -237,15 +200,6 @@ pub fn runnable_memory_class_note() -> String {
 pub enum RunnableMemoryClass {
     RunnableMemoryNegligible,
     RunnableMemorySubstantial,
-}
-
-pub fn runnable_profile_execution_mode_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "execution_mode is the runnable's declared effect envelope (operator posture 2026-07-11): the runner binds the injector the profile declares — Hermetic replays published mocks/recorded fixtures and refuses unmocked effects with typed diagnostics, Wet dispatches live transports, Record dispatches and captures fixtures. The declaration lives on the profile so every runnable kind (gate claim, discovery batch, execution batch) carries it uniformly, beside its resource siblings (spawns_host_compiler is already an effect-class fact). Fail-closed default: runnable_resource_profile_negligible declares Hermetic, so an undeclared-envelope runnable cannot silently reach live effects — it refuses, loudly, at the effect boundary. Future hardening (named trigger, not built here): an OS-level harness that fail-closes on sensed bypasses (shell spawn / network / out-of-root disk IO) beneath the interpreter seam.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -459,15 +413,6 @@ pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptP
     CACHED.with(|c: &FloorWorkerObservationReceiptPath| c.clone())
 }
 
-pub fn floor_worker_observation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the observation storage projection from FloorWorkerObservation, deleting the seed wire labels while preserving the branded path.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn runnable_memory_negligible() -> RunnableMemoryClass {
     RunnableMemoryClass::RunnableMemoryNegligible
 }
@@ -606,15 +551,6 @@ pub enum OnSuccessRunnableDisposition {
     OnSuccessSubstantialRefused,
 }
 
-pub fn on_success_runnable_disposition_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages. Discovery and kernel workloads have no defined green-only meaning. A whole-tree resolve takes the unadmitted memo lane and leaves its context resident across later stages; host-compiler spawn and substantial residency refuse because success stages declare no resource clamp. A modeled RunnableSingleClaim always carries its full profile — absence or malformation is the strict executor parser's boundary, not a second disposition arm here. The seed executor mirrors this decision until it consumes the v2 model directly; when stage capabilities grow, this function is the one authority that changes.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunnableDisposition {
     match (*runnable.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => {
@@ -738,15 +674,6 @@ impl PreWalkExecution {
     }
 }
 
-pub fn pre_walk_execution_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A WalkPlan may carry one typed execution before its ordinary population. NoPreWalkExecution is explicit absence. TypedClaimSubprocess is a modeled argv-host-effect transport: the executor resolves transport_entry, calls transport_function with the authored source_roots/claim identity, and requires a true result before arming the ordinary floor. The transport function must realize the child through gunbc.WitnessBin.Run (the existing typed bin-invocation service), never through a shell program or an executor-minted command. This placement exists for small identity captures whose result must precede the floor but whose evaluator arena must die with a child address space; a refusal is located to both transport and claim and blocks batch 1.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WalkPlan<F: Clone> {
     pub pre_walk_execution: Rc<PreWalkExecution>,
@@ -762,19 +689,10 @@ pub struct WalkPlan<F: Clone> {
 pub struct WalkPopulationBudgetRefusal {
     pub population: String,
     pub plan_site: String,
-    pub population_index: Nat,
+    pub population_index: i64,
     pub active_unit: String,
     pub elapsed: Millisecond,
     pub budget: Millisecond,
-}
-
-pub fn walk_population_budget_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
@@ -814,15 +732,6 @@ pub fn schedule_generates_same_batch_count<S>(
 pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
     (((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
         && witness_kind_eq(a.kind.clone(), b.kind.clone()))
-}
-
-pub fn schedule_witness_entry_roster_contains_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Roster membership at the ONE identity grain (entry, function, kind), beside the equality it folds, so every consumer joining two witness rosters — the eval-ceiling union, the budget partition of a known-red lane — asks the same question of the same authority. It exists because the first shape of the ceiling union carried its own private membership fold in gunbc.ci_layer_roots and the budget partition was about to author a second one; two folds over one relation is the fork DESIGN 3 names, and a roster join by bare name rather than by identity is the weaker check the schedule-multiplicity wall already refuses.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn schedule_witness_entry_roster_contains(

@@ -44,7 +44,6 @@ import v1.std.core {
   ContainerSpellingUnknown, authored_container_spelling_verdict
 }
 
-
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -311,7 +310,17 @@ type KernelTypeBuild {
   diagnostics: List<ErrorNode>
 }
 
-data kernel_record_type_note: String = "A builtin whose return type is registered as a bare type_variable_node establishes NOTHING about its result, so every field access on that result falls through lookup_field_type_node's Absent arm and the caller fabricates a success-shaped Primitive() in its place. That is this lane's own finding one level down — a missing judgment rendered as an accepted type — and it stayed invisible because the fabricated type propagates silently until some later stage asks a question it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually returns, so the field's type is READ from the declaration rather than invented. It is the same Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a second representation of one (DESIGN §3): the kernel path and the authored path resolve fields through the identical traversal, so a kernel record cannot drift from what an authored record means."
+// A builtin whose return type is registered as a bare type_variable_node establishes NOTHING about
+// its result, so every field access on that result falls through lookup_field_type_node's Absent
+// arm and the caller fabricates a success-shaped Primitive() in its place. That is this lane's own
+// finding one level down — a missing judgment rendered as an accepted type — and it stayed
+// invisible because the fabricated type propagates silently until some later stage asks a question
+// it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually
+// returns, so the field's type is READ from the declaration rather than invented. It is the same
+// Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a
+// second representation of one (DESIGN §3): the kernel path and the authored path resolve fields
+// through the identical traversal, so a kernel record cannot drift from what an authored record
+// means.
 
 fn make_kernel_record_field(field_name: String, field_type: Node) -> Node {
   Node {
@@ -896,7 +905,9 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
-    else { type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right)) }
+    else {
+      type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right))
+    }
   }
 }
 
@@ -954,6 +965,26 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
   }
 }
 
+// WHY THE KERNEL-LEAF-VS-STRUCTURAL-STRING PAIRING IS STILL ACCEPTED HERE (XL-0T, structural
+// text; executed falsification, not a preference). An identity wall was landed in these arms --
+// refuse when one side's resolved declaration is roster-structural (v1.compiler.coercion
+// structural_declaration_modules_for) and the other realizes natively -- and it was REVERTED on
+// its first required-floor execution: the whole-corpus relation judges positions far wider than
+// declared boundaries, and at dag/gunbc/roadmap/roadmap_page.dag script_src_attr an if-branch
+// join of a String-typed field (resolved to the structural std.string_type declaration) against
+// a kernel "" accumulator refused CORRECT code -- correct because the String -> FreeMonoid<Char>
+// identity is GROUNDED (std.coercion grounded_primitive_coproduct_cast_note, operator Ruling 3,
+// 2026-07-15) and the v1 realization of both sides is the host string. A general-relation wall
+// here is therefore a fabricated refusal (DESIGN section 5 forbids it in exactly the way it
+// forbids a fabricated success). The self-host E0308 defect this wall aimed at is repaired at
+// its root instead: a kernel string LITERAL at an exact v2.std.text.String boundary is
+// introduced through the declared homomorphism (std.literal_elaboration, v1.compiler.infer
+// literal_boundary_elaboration) before any comparison runs. The residue -- a NON-literal
+// kernel-String value at an exact structural-text boundary -- stays ACCEPTED by this relation
+// today, and its refusal is blocked on the peeling declared-boundary conformance capability that
+// declared_type_conformance_note (v1.compiler.infer) names as its own dissolve-on: a judgment
+// scoped to declared boundaries can carry the identity discrimination; the corpus-wide equality
+// relation cannot.
 fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0

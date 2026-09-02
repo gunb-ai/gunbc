@@ -65,24 +65,437 @@ type MaintenanceRefusal =
 
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
-data v1_maintenance_standing_ruling_note: String = "OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The v1 seed was carried as 'frozen' under DESIGN section 3's frozen-X carve-out: no new investment, no completion work, quarry-in-place. Work then arrived that is economically correct and that the unqualified word forbids — a measured 177.8s of repeated formal canonicalization on every required-floor run, removable by construction. The honest options were to refuse the work or to state the status accurately; describing v1 as frozen while maintaining it is the rung-inflation failure of section 4b applied to a lifecycle label, and it is worse than either option because it makes the maintenance invisible. THE ECONOMIC BASIS, which is what distinguishes this from ordinary reluctance to delete: 'let it die with v1' is only an argument when some bounded event kills the cost. gunbc#8352 closed unmerged and integration/v1-cut is quarry, so no such event is scheduled and the cost is unbounded in time. Against an eight-hour implementation the payback is 28,800 / 177.8, roughly 162 required-floor runs. THE STANDING DANGER, named so it can be checked: MaintenanceActive is a candidate absorbing arm in exactly the section 5 sense — if every proposed v1 change classifies as admissible, the vocabulary has stopped discriminating and the freeze has been repealed by drift rather than by ruling. The refused list is therefore load-bearing, not decorative, and a proposal that fits no admitted class is refused rather than accommodated by widening the list."
+// OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The
+// v1 seed was carried as 'frozen' under DESIGN section 3's frozen-X carve-out: no new investment,
+// no completion work, quarry-in-place. Work then arrived that is economically correct and that the
+// unqualified word forbids — a measured 177.8s of repeated formal canonicalization on every
+// required-floor run, removable by construction. The honest options were to refuse the work or to
+// state the status accurately; describing v1 as frozen while maintaining it is the rung-inflation
+// failure of section 4b applied to a lifecycle label, and it is worse than either option because it
+// makes the maintenance invisible. THE ECONOMIC BASIS, which is what distinguishes this from
+// ordinary reluctance to delete: 'let it die with v1' is only an argument when some bounded event
+// kills the cost. gunbc#8352 closed unmerged and integration/v1-cut is quarry, so no such event is
+// scheduled and the cost is unbounded in time. Against an eight-hour implementation the payback is
+// 28,800 / 177.8, roughly 162 required-floor runs. THE STANDING DANGER, named so it can be checked:
+// MaintenanceActive is a candidate absorbing arm in exactly the section 5 sense — if every proposed
+// v1 change classifies as admissible, the vocabulary has stopped discriminating and the freeze has
+// been repealed by drift rather than by ruling. The refused list is therefore load-bearing, not
+// decorative, and a proposal that fits no admitted class is refused rather than accommodated by
+// widening the list.
 
-data v1_maintenance_purpose_ruling_note: String = "OPERATOR RULING 2026-08-20, relayed through deep-ant-102 (v2 self host) in direct chat with the operator -- verbatim: 'yes you can change it, we recently unfroze the compiler ish, basically my logic is anything in support of v2 self host is safe.' THE CITATION: there is no PR review, side-chat transcript, or other artifact to point at; deep-ant-102 is the record and this data row is the citation, stated plainly rather than dressed up as pointing at a document that does not exist.\n\nWHY THIS SUPERSEDES THE ADMITTED VOCABULARY RATHER THAN EXTENDING IT: DefectRepairDiagnosticsMayMove, admitted just below and landed the day before this ruling, came from a narrower test given to the fleet before the wider ruling existed -- is the seed doing something incorrect, or failing to do something it never did. That test is now an INSTANCE of the operator's rule, not a statement of it: the governing question is PURPOSE, does this change serve the v2 self-host program, not SHAPE, does this change fit one of four behavior-and-defect-framed buckets. Adding a fifth bucket would have left the same defect one size larger. MaintenanceAdmission is amended to wrap the four existing classes as recorded instances of the purpose test rather than peer tests beside it.\n\nTHE HEDGE THAT SURVIVES: the same operator said, of the same subject, 'it is pretty frozen but fixing issues is fine' (2026-08-18). The freeze is not repealed by this ruling. v1 remains not open for growth; what widened is which shapes of change count as serving the program, not whether the seed may grow features for its own sake.\n\nA READING, ATTRIBUTED TO deep-ant-102 AND NOT TO THE OPERATOR: capability added to the seed for its own sake still fails the test, because it supports v1 rather than v2 -- deep-ant-102 stated this reading to the operator and invited correction; none has come as of this writing, so it is carried here as a stated reading rather than as the ruling's own words.\n\nA DISCRIMINATING RECEIPT, because the vocabulary must still refuse something under the wider rule or it has stopped discriminating: a proposed lane to author missing OperatorSpec and TypeCheckpoint rows so the v1 emitter could render constructs it has no row for was refused the same night as SeedFeatureCompletion. It still fails under this ruling -- it makes the seed more capable and does not advance the v2 self-host frontier -- and MaintenanceRefusal is untouched by this ruling: the five refused classes still dominate every admission exactly as before.\n\nWHY THIS CARRIER EXISTS AT ALL RATHER THAN A FOLLOW-UP TO #8594: the session that authored #8594 was archived after it merged, correctly at the time since its work was done and no ruling was pending. The ruling then moved and the authority had no owner. This amendment is not a correction of #8594's care -- it is a re-amendment because the ruling behind it changed after its author's session ended."
+// OPERATOR RULING 2026-08-20, relayed through deep-ant-102 (v2 self host) in direct chat with the
+// operator -- verbatim: 'yes you can change it, we recently unfroze the compiler ish, basically my
+// logic is anything in support of v2 self host is safe.' THE CITATION: there is no PR review,
+// side-chat transcript, or other artifact to point at; deep-ant-102 is the record and this data row
+// is the citation, stated plainly rather than dressed up as pointing at a document that does not
+// exist.
+//
+// WHY THIS SUPERSEDES THE ADMITTED VOCABULARY RATHER THAN EXTENDING IT:
+// DefectRepairDiagnosticsMayMove, admitted just below and landed the day before this ruling, came
+// from a narrower test given to the fleet before the wider ruling existed -- is the seed doing
+// something incorrect, or failing to do something it never did. That test is now an INSTANCE of the
+// operator's rule, not a statement of it: the governing question is PURPOSE, does this change serve
+// the v2 self-host program, not SHAPE, does this change fit one of four behavior-and-defect-framed
+// buckets. Adding a fifth bucket would have left the same defect one size larger.
+// MaintenanceAdmission is amended to wrap the four existing classes as recorded instances of the
+// purpose test rather than peer tests beside it.
+//
+// THE HEDGE THAT SURVIVES: the same operator said, of the same subject, 'it is pretty frozen but
+// fixing issues is fine' (2026-08-18). The freeze is not repealed by this ruling. v1 remains not
+// open for growth; what widened is which shapes of change count as serving the program, not whether
+// the seed may grow features for its own sake.
+//
+// A READING, ATTRIBUTED TO deep-ant-102 AND NOT TO THE OPERATOR: capability added to the seed for
+// its own sake still fails the test, because it supports v1 rather than v2 -- deep-ant-102 stated
+// this reading to the operator and invited correction; none has come as of this writing, so it is
+// carried here as a stated reading rather than as the ruling's own words.
+//
+// A DISCRIMINATING RECEIPT, because the vocabulary must still refuse something under the wider rule
+// or it has stopped discriminating: a proposed lane to author missing OperatorSpec and
+// TypeCheckpoint rows so the v1 emitter could render constructs it has no row for was refused the
+// same night as SeedFeatureCompletion. It still fails under this ruling -- it makes the seed more
+// capable and does not advance the v2 self-host frontier -- and MaintenanceRefusal is untouched by
+// this ruling: the five refused classes still dominate every admission exactly as before.
+//
+// WHY THIS CARRIER EXISTS AT ALL RATHER THAN A FOLLOW-UP TO #8594: the session that authored #8594
+// was archived after it merged, correctly at the time since its work was done and no ruling was
+// pending. The ruling then moved and the authority had no owner. This amendment is not a correction
+// of #8594's care -- it is a re-amendment because the ruling behind it changed after its author's
+// session ended.
 
-data v1_maintenance_defect_repair_note: String = "OPERATOR RULING 2026-08-19, narrowing the 2026-08-18 ruling above rather than reopening it: 'it is pretty frozen but fixing issues is fine.' The freeze stands; MaintenanceActive under SemanticsFrozen is unchanged. What changed is the admitted vocabulary, by exactly one class. THE GAP THIS CLOSES: the three original admitted classes are all worded behavior-preserving, so a genuine defect repair whose correct fix moves observable diagnostics fell through the vocabulary even though it is squarely inside what the operator admits — a defect is not a behavior worth preserving. THE LINE, stated because it is the entire content of the class and the thing most likely to be eroded later: the seed doing something INCORRECT is admitted, repair it, diagnostics may move; the seed FAILING TO DO something it never did is SeedFeatureCompletion, refused, and refusal dominates this class exactly as it dominates the other three. A proposal that cannot be pinned to a specific incorrect behavior the seed exhibits today, evidenced the way the redundancy-removal population above is evidenced, is not DefectRepairDiagnosticsMayMove. WHY THIS MATTERS BEYOND HOUSEKEEPING: the stale three-class reading had already produced one wrong refusal — a real lane declined on carrier strength alone — before this class existed, which is the standing danger this carrier names elsewhere (an active-maintenance arm that misdescribes itself contaminates every decision made near it, in either direction: too wide repeals the freeze by drift, too narrow refuses admitted work)."
+// OPERATOR RULING 2026-08-19, narrowing the 2026-08-18 ruling above rather than reopening it: 'it
+// is pretty frozen but fixing issues is fine.' The freeze stands; MaintenanceActive under
+// SemanticsFrozen is unchanged. What changed is the admitted vocabulary, by exactly one class. THE
+// GAP THIS CLOSES: the three original admitted classes are all worded behavior-preserving, so a
+// genuine defect repair whose correct fix moves observable diagnostics fell through the vocabulary
+// even though it is squarely inside what the operator admits — a defect is not a behavior worth
+// preserving. THE LINE, stated because it is the entire content of the class and the thing most
+// likely to be eroded later: the seed doing something INCORRECT is admitted, repair it, diagnostics
+// may move; the seed FAILING TO DO something it never did is SeedFeatureCompletion, refused, and
+// refusal dominates this class exactly as it dominates the other three. A proposal that cannot be
+// pinned to a specific incorrect behavior the seed exhibits today, evidenced the way the
+// redundancy-removal population above is evidenced, is not DefectRepairDiagnosticsMayMove. WHY THIS
+// MATTERS BEYOND HOUSEKEEPING: the stale three-class reading had already produced one wrong refusal
+// — a real lane declined on carrier strength alone — before this class existed, which is the
+// standing danger this carrier names elsewhere (an active-maintenance arm that misdescribes itself
+// contaminates every decision made near it, in either direction: too wide repeals the freeze by
+// drift, too narrow refuses admitted work).
 
-data v1_maintenance_vocabulary_shape_note: String = "WHY THERE IS NO VERDICT TYPE HERE, since its absence is deliberate rather than an omission. An earlier draft of this carrier declared a V1ChangeVerdict coproduct pairing the admitted and refused classes. Nothing produces it: no lens reads this module, no gate joins it to a diff, and the rung note below says plainly that classification is authored by a human reviewer rather than derived. A verdict type with no producer is uninhabited generality (DESIGN section 6, model just-in-time) and, worse, it would make this carrier LOOK like a decision procedure in a PR whose entire subject is being honest about what is and is not enforced. The two vocabularies are the whole content: they give a reviewer a closed list to classify against and a name to refuse with. If a mechanical classifier is ever built for the two decidable refused classes named in the rung note, the verdict type is minted THEN, by the thing that produces it.\n\nTWO CORRECTIONS TO THE VOCABULARY ITSELF, both from review, and the first one matters more than its size suggests. A fourth admitted class, ChangeCarryingDeletionTrigger, stood beside the three above and has been REMOVED — not relocated to another axis, removed. A change that carries its own deletion trigger is not thereby semantically admissible, and treating the trigger as an admission reason is exactly the self-authorized-dissolution failure DESIGN section 5 names: a dissolution condition describes how admitted debt ends, it does not authorize creating the debt. Left standing it would have been the widest arm in the list, since almost any v1 change can be narrated as carrying a trigger, and it would have re-opened the freeze through the one door section 5 already closed. A deletion trigger remains a real fact about a change; it is a lifecycle axis carried by std.disposition, and it is not a reason.\n\nSECOND, the two vocabularies are ORDERED rather than peer, because without an order a proposal matching both an admitted and a refused class had no stated outcome — and an unstated outcome is precisely how MaintenanceActive becomes the absorbing arm the ruling note warns about. Any refusal dominates every admission. This ordering is stated and NOT enforced, for the same reason there is no verdict type: nothing here produces a classification, so the dominance is a rule a reviewer applies, at the rung the note below declares."
+// WHY THERE IS NO VERDICT TYPE HERE, since its absence is deliberate rather than an omission. An
+// earlier draft of this carrier declared a V1ChangeVerdict coproduct pairing the admitted and
+// refused classes. Nothing produces it: no lens reads this module, no gate joins it to a diff, and
+// the rung note below says plainly that classification is authored by a human reviewer rather than
+// derived. A verdict type with no producer is uninhabited generality (DESIGN section 6, model
+// just-in-time) and, worse, it would make this carrier LOOK like a decision procedure in a PR whose
+// entire subject is being honest about what is and is not enforced. The two vocabularies are the
+// whole content: they give a reviewer a closed list to classify against and a name to refuse with.
+// If a mechanical classifier is ever built for the two decidable refused classes named in the rung
+// note, the verdict type is minted THEN, by the thing that produces it.
+//
+// TWO CORRECTIONS TO THE VOCABULARY ITSELF, both from review, and the first one matters more than
+// its size suggests. A fourth admitted class, ChangeCarryingDeletionTrigger, stood beside the three
+// above and has been REMOVED — not relocated to another axis, removed. A change that carries its
+// own deletion trigger is not thereby semantically admissible, and treating the trigger as an
+// admission reason is exactly the self-authorized-dissolution failure DESIGN section 5 names: a
+// dissolution condition describes how admitted debt ends, it does not authorize creating the debt.
+// Left standing it would have been the widest arm in the list, since almost any v1 change can be
+// narrated as carrying a trigger, and it would have re-opened the freeze through the one door
+// section 5 already closed. A deletion trigger remains a real fact about a change; it is a
+// lifecycle axis carried by std.disposition, and it is not a reason.
+//
+// SECOND, the two vocabularies are ORDERED rather than peer, because without an order a proposal
+// matching both an admitted and a refused class had no stated outcome — and an unstated outcome is
+// precisely how MaintenanceActive becomes the absorbing arm the ruling note warns about. Any
+// refusal dominates every admission. This ordering is stated and NOT enforced, for the same reason
+// there is no verdict type: nothing here produces a classification, so the dominance is a rule a
+// reviewer applies, at the rung the note below declares.
 
-data v1_maintenance_rung_note: String = "RUNG HONESTY, per DESIGN section 4b, stated because a typed vocabulary is easy to mistake for a wall, and stated again here because the 2026-08-20 purpose ruling made the admission test WIDER and CLEANER and a wider, cleaner rule is precisely the shape that gets mistaken for stronger enforcement. It is not: the rung is unchanged by that ruling. This carrier sits at MITIGATABLE: it is a declared vocabulary consumed by review diligence, and nothing mechanically refuses a v1 change that belongs to a refused class. No lens reads it, no gate joins it to a diff, and the classification is authored rather than derived — so an author who misclassifies is caught by a reviewer or not at all. That is strictly weaker than the frozen-X clause it qualifies, which at least had the virtue of admitting nothing. NEXT-RUNG TRIGGER, which is not a general change-classifier and deliberately so: the refused classes are not all decidable, but two of them are nearly so against the seed's own surface — PublicSurfaceGrowth is a diff over the emitted seed's exported declarations, and NewEscapeHatchOrAdmissionRow is a diff over the host-builtin registry and admission rosters DESIGN section 3 already enumerates as growth surfaces. Those two climb to mechanically preventable as a diff-grain check against the prior seed emission; NewLanguageBehavior and SeedFeatureCompletion are not decidable from a diff and stay review obligations. Nothing here claims the undecidable half will climb."
+// RUNG HONESTY, per DESIGN section 4b, stated because a typed vocabulary is easy to mistake for a
+// wall, and stated again here because the 2026-08-20 purpose ruling made the admission test WIDER
+// and CLEANER and a wider, cleaner rule is precisely the shape that gets mistaken for stronger
+// enforcement. It is not: the rung is unchanged by that ruling. This carrier sits at MITIGATABLE:
+// it is a declared vocabulary consumed by review diligence, and nothing mechanically refuses a v1
+// change that belongs to a refused class. No lens reads it, no gate joins it to a diff, and the
+// classification is authored rather than derived — so an author who misclassifies is caught by a
+// reviewer or not at all. That is strictly weaker than the frozen-X clause it qualifies, which at
+// least had the virtue of admitting nothing. NEXT-RUNG TRIGGER, which is not a general
+// change-classifier and deliberately so: the refused classes are not all decidable, but two of them
+// are nearly so against the seed's own surface — PublicSurfaceGrowth is a diff over the emitted
+// seed's exported declarations, and NewEscapeHatchOrAdmissionRow is a diff over the host-builtin
+// registry and admission rosters DESIGN section 3 already enumerates as growth surfaces. Those two
+// climb to mechanically preventable as a diff-grain check against the prior seed emission;
+// NewLanguageBehavior and SeedFeatureCompletion are not decidable from a diff and stay review
+// obligations. Nothing here claims the undecidable half will climb.
 
-data v1_maintenance_admitted_population_note: String = "WHAT THIS STANDING HAS ADMITTED SO FAR, at exact identity grain, so the population is countable rather than a category. (1) gunbc#8431, BehaviorPreservingRedundancyRemoval: one CallApplicationPlan constructed per direct call, replacing two line-for-line duplicate per-formal prologues at the same seam; measured on a same-host sequential pair with both arms built from real refs, 2900 to 2280 peel calls on gunbc.host_effect_realize and reconcile 8 minutes to 6 minutes -- and that pair is a WHOLE-CORPUS COMPILE measurement, not a required-floor receipt: gunbc#8431 carries no floor before/after receipt and this row is not the authority for one. The distinction is worth keeping because the two numbers would be quoted the same way and only one of them was measured, with 618 of the 620 removed calls (99.7%) being repeats and the distinct-work cost invariant to +0.064%. (2) RULED BUT NOT LANDED, and recorded as such rather than as an admission, because a standing that counts unbuilt work among its admissions is inflating its own record: a memo over the direct-call formal seam. Its ruled shape is an observationally transparent REALIZATION keyed on exact host allocation identity, targeting a narrow pure wrapper at the measured seam -- NOT the semantic formal-instantiation key an earlier revision of this row described, which was considered and declined because its prize is bounded by the 1.3% first-call cost while its soundness proof is made expensive by the non-idempotence recorded below. Subject, scope and retention are declared in v1.compiler.realization_contract; implementation pending, no equivalence receipt. NOT ADMITTED, and recorded here because a refused proposal is evidence the vocabulary discriminates: removing the second peel in direct_call_structured_record_literal_resolved_type_mismatch was proposed as the same class and REFUSED on evidence — a differential control over the whole corpus found peel_nominal_alias_identity is not idempotent, so peel(peel(x)) is not a redundant call and its removal would not be behavior-preserving. The control read zero counterexamples through 240,000 calls before the first appeared, which is why the count was taken to completion rather than sampled: 21 non-idempotent results over 600,000+ calls. A span-blind rerun then classified them, because v1's Node derives equality including span and a span-only difference would have had the opposite consequence: 15 differ only in span, and 6 differ STRUCTURALLY. All six are the same shape, FreeMonoid gaining a child on the second peel (one child becoming two). Since std.string_type grounds String as FreeMonoid<Char>, the doubly-peeled node is an alias expansion that appends a type argument rather than replacing it. That makes the second peel not merely redundant-but-harmless at this seam but structurally wrong for String and FreeMonoid formals, inside a function whose output is type-mismatch diagnostics. It is recorded here and NOT fixed under this standing: repairing it changes observable diagnostics and therefore belongs to a change with its own discriminating witness, not to a behavior-preserving class."
+// WHAT THIS STANDING HAS ADMITTED SO FAR, at exact identity grain, so the population is countable
+// rather than a category. (1) gunbc#8431, BehaviorPreservingRedundancyRemoval: one
+// CallApplicationPlan constructed per direct call, replacing two line-for-line duplicate per-formal
+// prologues at the same seam; measured on a same-host sequential pair with both arms built from
+// real refs, 2900 to 2280 peel calls on gunbc.host_effect_realize and reconcile 8 minutes to 6
+// minutes -- and that pair is a WHOLE-CORPUS COMPILE measurement, not a required-floor receipt:
+// gunbc#8431 carries no floor before/after receipt and this row is not the authority for one. The
+// distinction is worth keeping because the two numbers would be quoted the same way and only one of
+// them was measured, with 618 of the 620 removed calls (99.7%) being repeats and the distinct-work
+// cost invariant to +0.064%. (2) RULED BUT NOT LANDED, and recorded as such rather than as an
+// admission, because a standing that counts unbuilt work among its admissions is inflating its own
+// record: a memo over the direct-call formal seam. Its ruled shape is an observationally
+// transparent REALIZATION keyed on exact host allocation identity, targeting a narrow pure wrapper
+// at the measured seam -- NOT the semantic formal-instantiation key an earlier revision of this row
+// described, which was considered and declined because its prize is bounded by the 1.3% first-call
+// cost while its soundness proof is made expensive by the non-idempotence recorded below. Subject,
+// scope and retention are declared in v1.compiler.realization_contract; implementation pending, no
+// equivalence receipt. NOT ADMITTED, and recorded here because a refused proposal is evidence the
+// vocabulary discriminates: removing the second peel in
+// direct_call_structured_record_literal_resolved_type_mismatch was proposed as the same class and
+// REFUSED on evidence — a differential control over the whole corpus found
+// peel_nominal_alias_identity is not idempotent, so peel(peel(x)) is not a redundant call and its
+// removal would not be behavior-preserving. The control read zero counterexamples through 240,000
+// calls before the first appeared, which is why the count was taken to completion rather than
+// sampled: 21 non-idempotent results over 600,000+ calls. A span-blind rerun then classified them,
+// because v1's Node derives equality including span and a span-only difference would have had the
+// opposite consequence: 15 differ only in span, and 6 differ STRUCTURALLY. All six are the same
+// shape, FreeMonoid gaining a child on the second peel (one child becoming two). Since
+// std.string_type grounds String as FreeMonoid<Char>, the doubly-peeled node is an alias expansion
+// that appends a type argument rather than replacing it. That makes the second peel not merely
+// redundant-but-harmless at this seam but structurally wrong for String and FreeMonoid formals,
+// inside a function whose output is type-mismatch diagnostics. It is recorded here and NOT fixed
+// under this standing: repairing it changes observable diagnostics and therefore belongs to a
+// change with its own discriminating witness, not to a behavior-preserving class.
 
-data v1_maintenance_record_literal_target_retirement_note: String = "A PROPOSED V1 CHANGE RETIRED ON SOURCE EVIDENCE RATHER THAN REFUSED ON CLASS, recorded here because this carrier's population is the record of what was proposed against the frozen seed and because a retirement for the RIGHT reason is easily mistaken later for work someone forgot to do. THE PROPOSAL (operator mandate item (b), ruled 2026-08-19): build one RecordLiteralTarget during record-literal inference, carry it into structured call compatibility, and DELETE the downstream declaration, variant, alias and field rediscovery. THE OPERATOR ATTACHED ITS OWN ESCAPE, which is the arm taken here: if source work proves the downstream path answers a genuinely different question, record that exact finding and retire the item rather than invent a unification to satisfy the checklist.\n\nTHE PREMISE HOLDS AND IS WORTH KEEPING. At a direct-call argument site the record literal IS inferred against the formal: the ExprCall arm's argument fold binds expected to Present of formal_param_type, the substituted formal, so record-literal inference genuinely sees the same formal the downstream check later receives. Anyone revisiting this should not re-derive that; it was the thing most likely to be false and it is true.\n\nWHAT IS FALSE IS THAT THE DOWNSTREAM RECONSTRUCTS THE TARGET. The two sides compute different relations over different inputs, and the difference is not a matter of degree. UPSTREAM, infer_record_lit_structural resolves a STRUCTURAL target through a four-way mutually exclusive cascade -- record_lit_instantiated_fields, then record_lit_fields_from_expected, then record_lit_variant_from_expected, then record_lit_alias_struct_expansion -- and its name test is type_name_compatible (v1.core), a PURE STRING relation: equality, a both-qualified rejection, else last-segment equality. No environment, no declaration lookup, no peel. The fact it produces is a FIELD LIST, and it exists to type the literal's field initializers. DOWNSTREAM, direct_call_structured_record_literal_resolved_type_mismatch asks application_type_names_compatible, a SEMANTIC relation over authored names: application_type_name_identity per name (lookup_type_by_name followed by peel_nominal_alias_identity), dag_can_cast, type_name_transparently_aliases_to in BOTH directions, and brand_grounds_transparently_to against the formal's declaration. The fact it produces is a NAME IDENTITY verdict, and it exists to decide whether to emit a diagnostic.\n\nSO THE CARRIED TARGET CANNOT DISCHARGE THE DOWNSTREAM OBLIGATION: a field list does not answer whether two type names denote the same type through casts, transparent aliases and brand grounding. There is a real overlap band -- names that differ textually but share a last segment, where the upstream cascade DID produce a target and the downstream still resolves both identities -- and even inside that band the carried fact is the wrong fact. Deleting the downstream derivation would not remove a recomputation, it would remove a check, which is the erased-correctness-distinction failure DESIGN section 3's replacement rule names: the minimum replacement must preserve every required refusal.\n\nCLASSIFICATION, so this does not read as an admission by omission. Carrying the target WITHOUT deleting the downstream derivation removes no redundancy and is therefore not BehaviorPreservingRedundancyRemoval; it is a shape change to the seed under a freeze, and refusal dominates. Carrying it WITH the deletion changes observable diagnostics. Neither arm is admissible, and the item is retired rather than re-scoped.\n\nTHE ONE FACT THAT WOULD ACTUALLY BE CARRYABLE, named so the next reader does not have to find it again and does not mistake it for live work: application_type_name_identity is a pure function of (type_name, type_env, module_name) recomputed per call at this seam. That is the memo class, whose implementation is REJECTED and whose draft (gunbc#8452) is closed as quarry with its design record preserved -- including that peel_nominal_alias_identity is not idempotent (21 non-idempotent results over 600,000-plus calls; 6 structural, all FreeMonoid gaining a child), which is why the neighbouring second-peel removal at this same function was already refused above. It is not reopened here."
+// A PROPOSED V1 CHANGE RETIRED ON SOURCE EVIDENCE RATHER THAN REFUSED ON CLASS, recorded here
+// because this carrier's population is the record of what was proposed against the frozen seed and
+// because a retirement for the RIGHT reason is easily mistaken later for work someone forgot to do.
+// THE PROPOSAL (operator mandate item (b), ruled 2026-08-19): build one RecordLiteralTarget during
+// record-literal inference, carry it into structured call compatibility, and DELETE the downstream
+// declaration, variant, alias and field rediscovery. THE OPERATOR ATTACHED ITS OWN ESCAPE, which is
+// the arm taken here: if source work proves the downstream path answers a genuinely different
+// question, record that exact finding and retire the item rather than invent a unification to
+// satisfy the checklist.
+//
+// THE PREMISE HOLDS AND IS WORTH KEEPING. At a direct-call argument site the record literal IS
+// inferred against the formal: the ExprCall arm's argument fold binds expected to Present of
+// formal_param_type, the substituted formal, so record-literal inference genuinely sees the same
+// formal the downstream check later receives. Anyone revisiting this should not re-derive that; it
+// was the thing most likely to be false and it is true.
+//
+// WHAT IS FALSE IS THAT THE DOWNSTREAM RECONSTRUCTS THE TARGET. The two sides compute different
+// relations over different inputs, and the difference is not a matter of degree. UPSTREAM,
+// infer_record_lit_structural resolves a STRUCTURAL target through a four-way mutually exclusive
+// cascade -- record_lit_instantiated_fields, then record_lit_fields_from_expected, then
+// record_lit_variant_from_expected, then record_lit_alias_struct_expansion -- and its name test is
+// type_name_compatible (v1.core), a PURE STRING relation: equality, a both-qualified rejection,
+// else last-segment equality. No environment, no declaration lookup, no peel. The fact it produces
+// is a FIELD LIST, and it exists to type the literal's field initializers. DOWNSTREAM,
+// direct_call_structured_record_literal_resolved_type_mismatch asks
+// application_type_names_compatible, a SEMANTIC relation over authored names:
+// application_type_name_identity per name (lookup_type_by_name followed by
+// peel_nominal_alias_identity), dag_can_cast, type_name_transparently_aliases_to in BOTH
+// directions, and brand_grounds_transparently_to against the formal's declaration. The fact it
+// produces is a NAME IDENTITY verdict, and it exists to decide whether to emit a diagnostic.
+//
+// SO THE CARRIED TARGET CANNOT DISCHARGE THE DOWNSTREAM OBLIGATION: a field list does not answer
+// whether two type names denote the same type through casts, transparent aliases and brand
+// grounding. There is a real overlap band -- names that differ textually but share a last segment,
+// where the upstream cascade DID produce a target and the downstream still resolves both identities
+// -- and even inside that band the carried fact is the wrong fact. Deleting the downstream
+// derivation would not remove a recomputation, it would remove a check, which is the
+// erased-correctness-distinction failure DESIGN section 3's replacement rule names: the minimum
+// replacement must preserve every required refusal.
+//
+// CLASSIFICATION, so this does not read as an admission by omission. Carrying the target WITHOUT
+// deleting the downstream derivation removes no redundancy and is therefore not
+// BehaviorPreservingRedundancyRemoval; it is a shape change to the seed under a freeze, and refusal
+// dominates. Carrying it WITH the deletion changes observable diagnostics. Neither arm is
+// admissible, and the item is retired rather than re-scoped.
+//
+// THE ONE FACT THAT WOULD ACTUALLY BE CARRYABLE, named so the next reader does not have to find it
+// again and does not mistake it for live work: application_type_name_identity is a pure function of
+// (type_name, type_env, module_name) recomputed per call at this seam. That is the memo class,
+// whose implementation is REJECTED and whose draft (gunbc#8452) is closed as quarry with its design
+// record preserved -- including that peel_nominal_alias_identity is not idempotent (21
+// non-idempotent results over 600,000-plus calls; 6 structural, all FreeMonoid gaining a child),
+// which is why the neighbouring second-peel removal at this same function was already refused
+// above. It is not reopened here.
 
-data v1_maintenance_argv_fabrication_finding_note: String = "A SEED FABRICATION FOUND, MEASURED AS UNREACHABLE, AND NOT ADMITTED — recorded because a finding that is real in the code and dead in the tree is exactly the shape that gets rediscovered every year, and because the reason it is not admitted is more useful than the finding.\n\nTHE MECHANISM. v1_interpreter.rs push_shell_argv_tokens ends in two arms that push the format! Display rendering of the value — one for non-monoid Variants, one as the catch-all — so the Display rendering of a value becomes a host argv word. Reading Display for Value gives exactly what reaches a real process: Value::Null becomes the four-character word the four-character word null, Map becomes a brace-wrapped key-value rendering, Set becomes a brace-wrapped member rendering, Record becomes the type name followed by a brace-wrapped field rendering. That is fabricated plausible output in argv position (DESIGN §5) rather than a crash, and the four-character word null is the worst of the four because some tools accept it as a value.\n\nWHY THIS IS NOT A BLANKET FINDING, stated before the accusation rather than after: for Int, Float and Bool the SAME catch-all is correct and wanted — a List<Int> recurses through this arm per element and produces the digits the caller intends. `Delete the format! fallback` would break the good half. Only the four structured kinds fabricate.\n\nREACHABILITY, WHICH IS THE ACTUAL RESULT. No declared argv site in the tree can carry a Null, Map, Set or Record to those arms. All 258 shell-transport operations were enumerated and every argv element classified: 889 string literals, idents typed List<String> / ProcessArgvExpansion / String / NonEmptyStr / FilePath, and call expressions each returning List<String> or String. Nothing else. Both production callers — materialize_operation_argv over declaration.argv and dispatch_shell over transport.children — draw from that same declared population, and the population is entirely inside dag/. The near-miss worth keeping: extdeps.rust.cargo_build Build DOES declare `env`, typed Map of String to String inside a shell-transport operation's input block; it is an ENV input, never an argv element, and a probe matching 'operation has a Map-typed input' rather than 'this ident appears in the argv list' would have reported a live Map fabricator that cannot execute.\n\nTHE LIMIT, AND IT IS NOT DECORATIVE. All of that is at DECLARED-TYPE grain, and declared types are not construction-enforced in this tree — 3939 WhereRefinementUnenforced across 612 files, with no refinement predicate evaluated on any kernel. So this rules out an AUTHOR writing a Map into an argv position; it does not rule out a value declared String arriving as something else. The one such case anyone has actually observed — monoid-encoded string sequences, where the same declared List<String> read as one word or N depending on representation — is already closed: push_shell_argv_tokens REFUSES that ambiguity with a typed diagnostic naming both readings. For the four structured kinds there is no observed specimen and no known mechanism that would produce one, which is why the claim here is unreachable-at-declared-grain and NOT unreachable. A reader who loses that distinction will over-trust this row.\n\nCLASSIFICATION, and this is the part that decides it. The proposed change — make those four arms refuse, leave Int/Float/Bool pushing digits — is NOT ADMITTED under this standing, and it fails the test in both directions rather than squeaking past one. It is not DefectRepairDiagnosticsMayMove: that class requires a specific incorrect behavior the seed exhibits TODAY, evidenced, and an unreachable arm exhibits nothing — the whole content of the measurement above is that it cannot fire. And it fails the 2026-08-20 purpose test, since hardening a dead arm in the seed serves v1 rather than the v2 self-host program. Refusal dominates admission, so it is refused; recorded rather than fixed.\n\nTHE ARGUMENT FOR CLOSING IT ANYWAY, preserved because it is a real argument and the next reader should not have to reconstruct it: closing it is worth doing PRECISELY BECAUSE it is unreachable — the arm is a loaded default for whoever adds argv element 922, and the change converts an unreachable fabricator into an unreachable refusal at near-zero cost. That argument is not sufficient under this standing and is not meant to be; it is what makes this a row worth carrying instead of a note worth dropping.\n\nWHAT WOULD MAKE IT ADMISSIBLE: one reachable specimen. If any declared argv element is ever typed to a structured kind, or a runtime value of one arrives at that seam and is observed, the finding becomes a defect the seed exhibits today and lands squarely in DefectRepairDiagnosticsMayMove. Until then the honest name for the class is dead-code-shaped fabrication, and the honest disposition is refused-and-recorded."
+// A SEED FABRICATION FOUND, MEASURED AS UNREACHABLE, AND NOT ADMITTED — recorded because a finding
+// that is real in the code and dead in the tree is exactly the shape that gets rediscovered every
+// year, and because the reason it is not admitted is more useful than the finding.
+//
+// THE MECHANISM. v1_interpreter.rs push_shell_argv_tokens ends in two arms that push the format!
+// Display rendering of the value — one for non-monoid Variants, one as the catch-all — so the
+// Display rendering of a value becomes a host argv word. Reading Display for Value gives exactly
+// what reaches a real process: Value::Null becomes the four-character word the four-character word
+// null, Map becomes a brace-wrapped key-value rendering, Set becomes a brace-wrapped member
+// rendering, Record becomes the type name followed by a brace-wrapped field rendering. That is
+// fabricated plausible output in argv position (DESIGN §5) rather than a crash, and the
+// four-character word null is the worst of the four because some tools accept it as a value.
+//
+// WHY THIS IS NOT A BLANKET FINDING, stated before the accusation rather than after: for Int, Float
+// and Bool the SAME catch-all is correct and wanted — a List<Int> recurses through this arm per
+// element and produces the digits the caller intends. `Delete the format! fallback` would break the
+// good half. Only the four structured kinds fabricate.
+//
+// REACHABILITY, WHICH IS THE ACTUAL RESULT. No declared argv site in the tree can carry a Null,
+// Map, Set or Record to those arms. All 258 shell-transport operations were enumerated and every
+// argv element classified: 889 string literals, idents typed List<String> / ProcessArgvExpansion /
+// String / NonEmptyStr / FilePath, and call expressions each returning List<String> or String.
+// Nothing else. Both production callers — materialize_operation_argv over declaration.argv and
+// dispatch_shell over transport.children — draw from that same declared population, and the
+// population is entirely inside dag/. The near-miss worth keeping: extdeps.rust.cargo_build Build
+// DOES declare `env`, typed Map of String to String inside a shell-transport operation's input
+// block; it is an ENV input, never an argv element, and a probe matching 'operation has a Map-typed
+// input' rather than 'this ident appears in the argv list' would have reported a live Map
+// fabricator that cannot execute.
+//
+// THE LIMIT, AND IT IS NOT DECORATIVE. All of that is at DECLARED-TYPE grain, and declared types
+// are not construction-enforced in this tree — 3939 WhereRefinementUnenforced across 612 files,
+// with no refinement predicate evaluated on any kernel. So this rules out an AUTHOR writing a Map
+// into an argv position; it does not rule out a value declared String arriving as something else.
+// The one such case anyone has actually observed — monoid-encoded string sequences, where the same
+// declared List<String> read as one word or N depending on representation — is already closed:
+// push_shell_argv_tokens REFUSES that ambiguity with a typed diagnostic naming both readings. For
+// the four structured kinds there is no observed specimen and no known mechanism that would produce
+// one, which is why the claim here is unreachable-at-declared-grain and NOT unreachable. A reader
+// who loses that distinction will over-trust this row.
+//
+// CLASSIFICATION, and this is the part that decides it. The proposed change — make those four arms
+// refuse, leave Int/Float/Bool pushing digits — is NOT ADMITTED under this standing, and it fails
+// the test in both directions rather than squeaking past one. It is not
+// DefectRepairDiagnosticsMayMove: that class requires a specific incorrect behavior the seed
+// exhibits TODAY, evidenced, and an unreachable arm exhibits nothing — the whole content of the
+// measurement above is that it cannot fire. And it fails the 2026-08-20 purpose test, since
+// hardening a dead arm in the seed serves v1 rather than the v2 self-host program. Refusal
+// dominates admission, so it is refused; recorded rather than fixed.
+//
+// THE ARGUMENT FOR CLOSING IT ANYWAY, preserved because it is a real argument and the next reader
+// should not have to reconstruct it: closing it is worth doing PRECISELY BECAUSE it is unreachable
+// — the arm is a loaded default for whoever adds argv element 922, and the change converts an
+// unreachable fabricator into an unreachable refusal at near-zero cost. That argument is not
+// sufficient under this standing and is not meant to be; it is what makes this a row worth carrying
+// instead of a note worth dropping.
+//
+// WHAT WOULD MAKE IT ADMISSIBLE: one reachable specimen. If any declared argv element is ever typed
+// to a structured kind, or a runtime value of one arrives at that seam and is observed, the finding
+// becomes a defect the seed exhibits today and lands squarely in DefectRepairDiagnosticsMayMove.
+// Until then the honest name for the class is dead-code-shaped fabrication, and the honest
+// disposition is refused-and-recorded.
 
-data v1_maintenance_loaded_index_noun_admission_note: String = "THE FIRST ADMISSION RECORDED UNDER THE 2026-08-20 PURPOSE TEST, placed deliberately beside the argv fabrication refusal above because the two split on one axis and neither is readable alone. THE CHANGE, at its full size: one string in v1_interpreter.rs. The InterpError NoSuchFunction Display arm said no such function followed by the name; it now says no declaration named that name in this execution's loaded index, and hedges that the name may be declared in a module this run did not load. No semantic change, no new declaration, no new exported surface.\n\nTHE DEFECT, which is a false claim about the world and not a wording preference. The message asserted that a symbol does not EXIST. The layer minting it can establish only that the name is absent from the LOADED index: the raise site consults ctx.lookup_fn, which reads indexes.fn_nodes, and no whole-pool census was found reachable there. Reading the producer settles why the noun was wrong: PreparedScopeIndexes populates fn_nodes by iterating every item of every walked module with NO ItemKind gate, inserting each under both its bare and its qualified name -- the only kind test in that loop serves a different map. So a data declaration lands in fn_nodes exactly as a fn does, the index NAMED fn_nodes holds every item kind, and the diagnostic inherited its noun from the index's name rather than from the index's contents.\n\nEVIDENCE THAT IT IS EXHIBITED TODAY, which is what DefectRepairDiagnosticsMayMove requires. 170 enrolled witnesses runtime-errored through this message on main, across 77 distinct signatures, a population that only became visible when the seed-vs-carrier disposition join stopped collapsing a witness that THREW into the same count as a witness that failed as predicted. The measured cost is not hypothetical: a session grepped for fn NAME on four sampled symbols that exist as data NAME, concluded four symbols had been deleted, and built and retracted a deletion hypothesis on it, about an hour. A second session independently flagged the same noun as likely to mislead before hearing that it had.\n\nCLASSIFICATION. None of the five refused classes is touched: no semantic change (not NewLanguageBehavior), no compatibility obligation, no escape hatch or admission row, no new exported declaration (not PublicSurfaceGrowth), and the seed already emits this diagnostic rather than lacking a capability it never had (not SeedFeatureCompletion). Admitted as DefectRepairDiagnosticsMayMove, and the purpose test is satisfied rather than narrowly squeaked past: the wrong noun sits inside the primary measuring instrument of the v2 self-host program, whose namespace-cut census reports this same class as function-not-found at 2,065, so the seed was publishing a false subject into the v2 program's own measurement surface.\n\nWHY THIS AND THE ARGV ROW ARE A PAIR. Both are seed defects; one is admitted and one refused, and the axis is REACHABILITY WITH EXHIBITED COST. The argv fabricator cannot fire -- no declared argv site can carry a structured kind to it -- so it exhibits nothing today and hardening it would serve v1. This one fired 170 times in a night and misdirected two sessions working the v2 frontier. A standing whose population is all admissions has stopped discriminating; recording the split explicitly is what keeps the vocabulary readable.\n\nWHAT WAS DELIBERATELY NOT DONE, because a scope note is worth more later than the change itself. (1) NOT a two-reason split. One was proposed -- no declaration anywhere versus resolved to a body outside this closure -- and withdrawn on evidence: the interpreter holds no fact that could decide the first arm, so minting it would have traded one overclaim for a more sophisticated one. The richer message arrives for free upstream once resolution emits the edge it used, in the namespace cut's lane, so there is no separate diagnostic project. (2) ambiguous_bare_function_names, the one closure-domain fact the index does carry, was checked at the miss site and rejected: it is derived from bare_name_counts greater than one among LOADED modules, so a name that is absent has a count of zero and is never a member. It distinguishes nothing exactly where the message is minted.\n\nTHE RESIDUE, named rather than left for rediscovery: the variant is still called NoSuchFunction and the index is still called fn_nodes. The nickname that CAUSED the false noun survives this repair -- the message was corrected, its source was not. Renaming the index to what it holds is the construction fix that would have made this diagnostic honest without anyone writing a message at all, and it is the next repair at this seam, not a completed one."
+// THE FIRST ADMISSION RECORDED UNDER THE 2026-08-20 PURPOSE TEST, placed deliberately beside the
+// argv fabrication refusal above because the two split on one axis and neither is readable alone.
+// THE CHANGE, at its full size: one string in v1_interpreter.rs. The InterpError NoSuchFunction
+// Display arm said no such function followed by the name; it now says no declaration named that
+// name in this execution's loaded index, and hedges that the name may be declared in a module this
+// run did not load. No semantic change, no new declaration, no new exported surface.
+//
+// THE DEFECT, which is a false claim about the world and not a wording preference. The message
+// asserted that a symbol does not EXIST. The layer minting it can establish only that the name is
+// absent from the LOADED index: the raise site consults ctx.lookup_fn, which reads
+// indexes.fn_nodes, and no whole-pool census was found reachable there. Reading the producer
+// settles why the noun was wrong: PreparedScopeIndexes populates fn_nodes by iterating every item
+// of every walked module with NO ItemKind gate, inserting each under both its bare and its
+// qualified name -- the only kind test in that loop serves a different map. So a data declaration
+// lands in fn_nodes exactly as a fn does, the index NAMED fn_nodes holds every item kind, and the
+// diagnostic inherited its noun from the index's name rather than from the index's contents.
+//
+// EVIDENCE THAT IT IS EXHIBITED TODAY, which is what DefectRepairDiagnosticsMayMove requires. 170
+// enrolled witnesses runtime-errored through this message on main, across 77 distinct signatures, a
+// population that only became visible when the seed-vs-carrier disposition join stopped collapsing
+// a witness that THREW into the same count as a witness that failed as predicted. The measured cost
+// is not hypothetical: a session grepped for fn NAME on four sampled symbols that exist as data
+// NAME, concluded four symbols had been deleted, and built and retracted a deletion hypothesis on
+// it, about an hour. A second session independently flagged the same noun as likely to mislead
+// before hearing that it had.
+//
+// CLASSIFICATION. None of the five refused classes is touched: no semantic change (not
+// NewLanguageBehavior), no compatibility obligation, no escape hatch or admission row, no new
+// exported declaration (not PublicSurfaceGrowth), and the seed already emits this diagnostic rather
+// than lacking a capability it never had (not SeedFeatureCompletion). Admitted as
+// DefectRepairDiagnosticsMayMove, and the purpose test is satisfied rather than narrowly squeaked
+// past: the wrong noun sits inside the primary measuring instrument of the v2 self-host program,
+// whose namespace-cut census reports this same class as function-not-found at 2,065, so the seed
+// was publishing a false subject into the v2 program's own measurement surface.
+//
+// WHY THIS AND THE ARGV ROW ARE A PAIR. Both are seed defects; one is admitted and one refused, and
+// the axis is REACHABILITY WITH EXHIBITED COST. The argv fabricator cannot fire -- no declared argv
+// site can carry a structured kind to it -- so it exhibits nothing today and hardening it would
+// serve v1. This one fired 170 times in a night and misdirected two sessions working the v2
+// frontier. A standing whose population is all admissions has stopped discriminating; recording the
+// split explicitly is what keeps the vocabulary readable.
+//
+// WHAT WAS DELIBERATELY NOT DONE, because a scope note is worth more later than the change itself.
+// (1) NOT a two-reason split. One was proposed -- no declaration anywhere versus resolved to a body
+// outside this closure -- and withdrawn on evidence: the interpreter holds no fact that could
+// decide the first arm, so minting it would have traded one overclaim for a more sophisticated one.
+// The richer message arrives for free upstream once resolution emits the edge it used, in the
+// namespace cut's lane, so there is no separate diagnostic project. (2)
+// ambiguous_bare_function_names, the one closure-domain fact the index does carry, was checked at
+// the miss site and rejected: it is derived from bare_name_counts greater than one among LOADED
+// modules, so a name that is absent has a count of zero and is never a member. It distinguishes
+// nothing exactly where the message is minted.
+//
+// THE RESIDUE, named rather than left for rediscovery: the variant is still called NoSuchFunction
+// and the index is still called fn_nodes. The nickname that CAUSED the false noun survives this
+// repair -- the message was corrected, its source was not. Renaming the index to what it holds is
+// the construction fix that would have made this diagnostic honest without anyone writing a message
+// at all, and it is the next repair at this seam, not a completed one.
+
+// THE ADMISSION THAT HAD TO ARGUE AGAINST A REFUSED CLASS RATHER THAN AROUND IT (gunbc#9256). THE
+// CHANGE: `v1_rt::RcStr`, an `Rc<str>` carrying the ASCII fact computed once at construction, and
+// the interpreter's string index / slice / substring / char_at / length arms routed through it
+// instead of testing `s.is_ascii()` per call.
+//
+// THE PURPOSE TEST IS SATISFIED, and not narrowly. The interpreter is the execution engine the v2
+// self-host program runs ON, so its per-call string cost is that program's cost, not v1's. The
+// defect is a cost SHAPE: a left-to-right walk over an ASCII string was O(n^2) because each index
+// re-tested a prefix, and DESIGN section 6's bare-minimum-cost rule states that a proven cost-shape
+// defect is always fixed regardless of realized n. The recorded instance is
+// BehaviorPreservingRedundancyRemoval: the per-call test is duplicated work against a fact the
+// value can carry once, and behavior preservation is proven rather than asserted -- four
+// differential tests compare every carrier method to the free `v1_rt` function it shadows at every
+// index of a 5-byte/4-code-point string, and a perturbation forcing the byte path unconditionally
+// turns four of the five RED with the exact byte-offset signature (`char_at` returning U+00C3 where
+// U+00E9 is correct; length 5 against 4).
+//
+// PUBLICSURFACEGROWTH IS THE HARD QUESTION AND IT IS ANSWERED HERE RATHER THAN OMITTED, because a
+// refusal dominates every admission and an admission that silently skips the dominating class is
+// not a classification. LITERALLY, the emitted seed's exported declarations DO gain one: `pub
+// struct RcStr` and its impls. The rung note above defines this class as a diff over exactly that
+// surface, so the literal reading fires. THE ARGUMENT FOR ADMISSION ANYWAY, stated as the judgment
+// it is: the class exists to stop the seed ACCUMULATING CAPABILITY -- a freeze that still accepts
+// rows is not a freeze -- and no capability is accumulated here. `RcStr::char_at` answers the same
+// question `v1_rt::char_at` already answered and returns the same value at every index,
+// `Value::Str` already exported a string payload, and no operation is expressible after this change
+// that was not expressible before. The exported type is the MECHANISM OF A REMOVAL, not a row on a
+// growth surface, and the alternative shape -- a precomputed flag passed as a parameter -- is the
+// one gunbc#9212 deleted precisely because it had no producer. THE COUNTER-ARGUMENT, preserved
+// because whoever overturns this should not have to reconstruct it: `pub struct` in the seed is
+// exactly what the class names, the distinction between capability growth and mechanism is authored
+// rather than derived, and nothing mechanically holds it.
+//
+// WHO CAN OVERTURN THIS: the classification is authored, at the mitigatable rung this carrier
+// already declares, so it is a reviewer's or the operator's to reject. It is recorded rather than
+// left implicit because the PR's first review approved the change WITHOUT this classification and
+// the second refused it FOR the missing classification -- citing a receipt vocabulary (a deleted
+// scaffold path, a census shrink, a ROADMAP-row deferral) that does not appear in DESIGN.md at all.
+// The obligation was real and the named authority was not, which is why the receipt lands HERE, in
+// the carrier that actually governs v1 admissions.
 
 data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST, recorded in the same PR as the change it admits, because an admission written afterwards is indistinguishable from an author's own classification. THE RULING, verbatim and relayed through the requesting session's parent (snappy-dove-250, import/namespace manager) on 2026-08-25: 'ah yeah - we need to fix the typecheckmoduleresult issue'. There is no PR review or transcript to point at; the relay is the record and this row is the citation, stated plainly rather than dressed up as pointing at a document that does not exist -- the same shape as v1_maintenance_purpose_ruling_note above.\n\nTHE DEFECT, at the grain that makes it a defect rather than an improvement. v1.compiler.infer typecheck_module has an early return: when build_type_env yields error diagnostics it hands back a TypedModule whose items list is EMPTY and never reaches item analysis. The seed therefore renders two different facts as one value -- a module that COMPLETED item checking and legitimately has no items, and a module that was ABANDONED before item checking started. Every downstream reader of TypedModule.items receives the same empty list for both, so a consumer wanting the distinction must infer it from 'items is empty AND there are error diagnostics', and that inference is unreliable in the direction that matters: a module that completed and has item-level errors presents identically. This is the state-space conflation DESIGN names, in the seed, on a carrier read by the whole back end.\n\nWHY THE FIELD LANDS ON TypedModule AND NOT ON TypecheckModuleResult, since the ruling names the result type and the change does not edit it. realize_module destructures the result and inserts only .typed into the module index; a progress field on the result alone would be discarded one line after it was set, which is this same defect one level out. The result type is where the issue was NOTICED; the carrier that survives the destructure is where the fact has to live.\n\nTHE EXHIBITED COST, because a defect with no demonstrated victim is a preference. A demand oracle built in this lane to score resolution producers read TypedModule.items to derive per-module demand, and was found DEAD as a scoring instrument for exactly this reason: an abandoned module reports total_arm1=1, which is indistinguishable from a genuine single-ask module, so the instrument's error is ANTI-CORRELATED with the defect it was built to find -- the modules most likely to abandon are the ones whose demand it most understates. That oracle was discarded rather than repaired, which is the measured price of the conflation and is why this is not speculative hardening.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM, which is the whole admission test. The v2 resolution work this lane exists to do reads seed-produced TypedModule values to measure and compare producers. An instrument that cannot tell 'not checked' from 'nothing to check' cannot score a producer, and the program's next steps (one closure authority, exact denotation) are measurement-gated. This repairs the seed's report of its own progress; it adds no language behavior, no compatibility obligation, no escape hatch, and completes no seed feature.\n\nTHE SCOPE LIMIT, stated because this row will be cited and its limit is the part most likely to be dropped in the citing. THE RULING ADMITS THIS CHANGE ONLY. It does NOT settle whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- this change adds a coproduct and a record field to a type the seed exports, so it sits squarely on that unresolved boundary and was ruled admissible without the boundary being drawn. Nobody may cite this row as the answer to that question. A later proposal that needs the boundary decided must route it for its own ruling; treating this admission as precedent for a general reading of PublicSurfaceGrowth would be the authority-substitution failure DESIGN names -- borrowing one authority's answer to settle a question it never addressed. The five refused classes are untouched and still dominate every admission, including this one."
 
-data v1_maintenance_string_carrier_admission_note: String = "THE ADMISSION THAT HAD TO ARGUE AGAINST A REFUSED CLASS RATHER THAN AROUND IT (gunbc#9256). THE CHANGE: `v1_rt::RcStr`, an `Rc<str>` carrying the ASCII fact computed once at construction, and the interpreter's string index / slice / substring / char_at / length arms routed through it instead of testing `s.is_ascii()` per call.\n\nTHE PURPOSE TEST IS SATISFIED, and not narrowly. The interpreter is the execution engine the v2 self-host program runs ON, so its per-call string cost is that program's cost, not v1's. The defect is a cost SHAPE: a left-to-right walk over an ASCII string was O(n^2) because each index re-tested a prefix, and DESIGN section 6's bare-minimum-cost rule states that a proven cost-shape defect is always fixed regardless of realized n. The recorded instance is BehaviorPreservingRedundancyRemoval: the per-call test is duplicated work against a fact the value can carry once, and behavior preservation is proven rather than asserted -- four differential tests compare every carrier method to the free `v1_rt` function it shadows at every index of a 5-byte/4-code-point string, and a perturbation forcing the byte path unconditionally turns four of the five RED with the exact byte-offset signature (`char_at` returning U+00C3 where U+00E9 is correct; length 5 against 4).\n\nPUBLICSURFACEGROWTH IS THE HARD QUESTION AND IT IS ANSWERED HERE RATHER THAN OMITTED, because a refusal dominates every admission and an admission that silently skips the dominating class is not a classification. LITERALLY, the emitted seed's exported declarations DO gain one: `pub struct RcStr` and its impls. The rung note above defines this class as a diff over exactly that surface, so the literal reading fires. THE ARGUMENT FOR ADMISSION ANYWAY, stated as the judgment it is: the class exists to stop the seed ACCUMULATING CAPABILITY -- a freeze that still accepts rows is not a freeze -- and no capability is accumulated here. `RcStr::char_at` answers the same question `v1_rt::char_at` already answered and returns the same value at every index, `Value::Str` already exported a string payload, and no operation is expressible after this change that was not expressible before. The exported type is the MECHANISM OF A REMOVAL, not a row on a growth surface, and the alternative shape -- a precomputed flag passed as a parameter -- is the one gunbc#9212 deleted precisely because it had no producer. THE COUNTER-ARGUMENT, preserved because whoever overturns this should not have to reconstruct it: `pub struct` in the seed is exactly what the class names, the distinction between capability growth and mechanism is authored rather than derived, and nothing mechanically holds it.\n\nWHO CAN OVERTURN THIS: the classification is authored, at the mitigatable rung this carrier already declares, so it is a reviewer's or the operator's to reject. It is recorded rather than left implicit because the PR's first review approved the change WITHOUT this classification and the second refused it FOR the missing classification -- citing a receipt vocabulary (a deleted scaffold path, a census shrink, a ROADMAP-row deferral) that does not appear in DESIGN.md at all. The obligation was real and the named authority was not, which is why the receipt lands HERE, in the carrier that actually governs v1 admissions."
+// THE EXCESS-FIELD FLOOR ADMISSION, recorded in the same PR as the change it admits, per the
+// typecheck-progress row's own rule: an admission written afterwards is indistinguishable from an
+// author's own classification. It is placed here rather than in the PR body because this carrier
+// governs v1 admissions and a PR body is not an authority.
+//
+// NO OPERATOR RULING IS CITED, and that is stated plainly rather than dressed up. The two
+// admissions above each relay a verbatim operator or parent sentence; this one has none. What it
+// has instead is DOCUMENTARY: DESIGN section 4b names "fields exist" in the ordinary compiler floor
+// v1 must hold, and calls a failure there a below-baseline safety regression never compensated by
+// higher-order capability. A reader who wants an operator sentence here will not find one, and
+// should weigh the row accordingly.
+//
+// NEWLANGUAGEBEHAVIOR IS THE HARD QUESTION AND IT IS ANSWERED HERE RATHER THAN OMITTED, because a
+// refusal dominates every admission. LITERALLY, programs that compiled before this change now
+// refuse, so the seed's accepted language is strictly smaller. THE ARGUMENT FOR ADMISSION: the
+// admitted class is named DefectRepairDiagnosticsMayMove and it contemplates exactly this -- the
+// standing requires a specific incorrect behavior the seed exhibits TODAY, evidenced, which is what
+// separates it from hardening a dead arm (refused above for the argv fabricator, which exhibited
+// nothing). The behavior is exhibited and measured: a record literal on a payload-carrying
+// coproduct arm accepted a field declared NOWHERE in the program, while the byte-identical mistake
+// on a product type refused. No behavior is ADDED; a judgment the floor already performed for
+// product types is extended to the constructor form that was silently skipping it.
+//
+// THE COUNTER-ARGUMENT, preserved because whoever overturns this should not reconstruct it: any
+// refusal-widening shrinks the accepted language, so "no behavior is added" is an authored reading
+// rather than a derived one, and a sufficiently strict reader of NewLanguageBehavior refuses every
+// floor repair -- which would make DESIGN 4b's floor-first mandate unimplementable in the seed.
+// Nothing mechanically holds the distinction.
+//
+// THE OTHER FOUR. NewCompatibilityObligation: no -- nothing is kept working for an old caller; the
+// four corpus literals are repaired, not accommodated. NewEscapeHatchOrAdmissionRow: no, and the
+// direction is opposite -- this adds a wall and adds no flag, env var or mode that skips it.
+// SeedFeatureCompletion: no -- the seed gains no capability and compiles strictly less than before;
+// two functions are DELETED and the emitted mirror shrinks by 68 lines net. PublicSurfaceGrowth:
+// no, and unlike the typecheck-progress row this one does not sit on the unresolved boundary --
+// `field_in_any_variant_named` and `record_lit_construction_field_names` are REMOVED from the
+// emitted seed's exported declarations and nothing is added.
+//
+// WHY IT SERVES THE V2 SELF-HOST PROGRAM. v2 is emitted and checked BY this seed, so a floor the
+// seed does not hold is a floor v2's own sources are not held to: three of the four literals this
+// refused sit in dag/gunbc and the fourth in src/v2/test/claim, each having silently discarded an
+// authored field. A seed that accepts constructions its own corpus meant differently cannot be the
+// instrument that validates the successor.
+//
+// THE SCOPE LIMIT. This row admits THIS change. It does not settle NewLanguageBehavior's boundary
+// for refusal-widening generally, and nobody may cite it as the answer to that question -- routing
+// a later floor repair for its own classification is the cost of not having drawn the boundary
+// here. The five refused classes are untouched and still dominate every admission, including this
+// one.
+
+data v1_maintenance_excess_field_floor_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST for the record-literal excess-field floor repair (lane adhoc-0f99c6bc-193, PR gunbc#9846), recorded in the same PR as the change it admits. INSTANCE: DefectRepairDiagnosticsMayMove. NO OPERATOR RULING IS CITED -- unlike the two admissions above, which relay verbatim sentences, this one rests on DESIGN section 4b naming 'fields exist' in the ordinary compiler floor and calling a failure there a below-baseline safety regression. THE DEFECT, exhibited today and measured rather than read: a record literal naming a payload-carrying coproduct arm received NO excess-field judgment at all, so `Circle { radius: 1, nowhere: 2 }` -- a field declared nowhere in the program -- compiled with zero FieldNotFound, while the byte-identical mistake on a product type refused. The asymmetry that hid it, on ONE literal: the same arm literal omitting a required field reported MissingField == 1 while the invented field reported FieldNotFound == 0, so the construction refused what was ABSENT and accepted what was INVENTED. MECHANISM: variant_arm_type_projection projects an arm out of its owner only when the arm carries no payload, so lookup_type_by_name handed infer_record_lit_structural the owner coproduct, record_lit_construction_field_names required Conj and answered none, and the unknown-field arm's Absent => [] was silence; presence checking never had the hole because it reads the arm through variant_owner_node. THE EXHIBITED COST, because a defect with no demonstrated victim is a preference: four corpus literals had silently discarded an authored field -- two Disposition declarations naming SingleAuthority, which is a NULLARY arm of ConstructionMechanism and not a Disposition arm at all, one Terminal literal carrying an `authority` field the type does not declare, and one BoolWitnessClaim carrying a `label`. Each was analysed and then dropped, which is why nothing downstream ever looked wrong. CLASSIFICATION AGAINST THE FIVE REFUSED CLASSES is carried in the annotation above this row, including the NewLanguageBehavior question and its counter-argument, and is not restated here. SCOPE LIMIT: this row admits THIS change and does not settle NewLanguageBehavior's boundary for refusal-widening generally; a later floor repair routes for its own classification."
+
+// The 2026-09-02 authorized exception. Recorded as ONE declaration, not a category: the first form of
+// this ruling added a fifth MaintenanceAdmissionInstance variant and was reversed by its own author,
+// because a category exemption arriving as a coproduct row is still a category exemption.
+
+data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT AUTHORIZED EXCEPTION UNDER THE 2026-08-20 PURPOSE TEST -- deliberately NOT a new admission category. THE AUTHORIZER: bright-ram-778 (XL-N manager), 2026-09-02, relayed to the authoring session; the relay is the record and this row is the citation. THE EXACT SUBJECT, named rather than described so this row cannot be stretched: the single declaration ct_function_value_adapter_bound_alignment_control_test in v1.compiler.compiler_tests_rust, a regression control asserting that the function-value adapter is emitted exactly where the impl Fn bound is emitted and NOT at a bare type-variable parameter.\n\nWHY NO NEW ADMISSION VARIANT, and this reverses the authorizer's own first instruction. The first form of this ruling added an EvidenceEnrollment variant to MaintenanceAdmissionInstance with prose saying every section 4b(4) climb in v1 has this shape. THAT IS A CATEGORY EXEMPTION ARRIVING AS A COPRODUCT ROW rather than as a sentence -- the very move the same ruling had just declined, because a category never comes up for review again while one exception does. Checked rather than assumed: the four existing instances were all introduced in ONE commit when this carrier was authored (f1f9dd8a07, gunbc#9671), so there is no practice of growing that list per admission, and a fifth would be a new row on a growth surface this carrier names three lines below it -- putting NewEscapeHatchOrAdmissionRow in play on top of the PublicSurfaceGrowth question. One declaration is authorized. No vocabulary is widened.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM. The adapter/bound alignment is an emission property v2 must preserve, and nothing else in the tree would notice a fork in it -- the adapter's predicate and the bound's predicate are one expression on one node today, and this control is what fails if they are ever separated. Section 4b(4) requires that a class's discriminating evidence REMAIN ENROLLED after a climb, so enrolling it is an obligation the design document places on us rather than a discretionary addition.\n\nTHE FIVE REFUSED CLASSES. Four are untouched: no semantic change, no compatibility obligation, no escape hatch or admission row, and the seed is no more capable after it. PUBLICSURFACEGROWTH FIRES LITERALLY AND IS AUTHORIZED ANYWAY, stated plainly rather than argued away -- AND THE AUTHORING CARRIER READS PERMISSIVE HERE, WHICH IS THE TRAP: compiler_tests_rust.dag spells this and all 45 of its declarations as bare `fn`, with zero `pub fn` anywhere, so reading the .dag would say the class does not fire. It does. PublicSurfaceGrowth is a diff over THE EMITTED SEED'S exported declarations, and stage0 emits `pub fn ct_function_value_adapter_bound_alignment_control_test` -- THE EMITTER ADDS THE VISIBILITY. The exception is authorized because the class exists to stop the seed ACCUMULATING CAPABILITY, and a test emitter accumulates none: nothing is expressible after this change that was not expressible before, and the declaration's entire content is evidence about behavior that already exists. This cites the RcStr row's statement of WHAT THE CLASS IS FOR and explicitly NOT its outcome -- it is not 'RcStr was admitted, so this is'.\n\nTHE REVIEW THAT FORCED THIS ROW, and the separation that matters. Reviews 58359 and 58380 refused this change for lacking a hand-Rust receipt -- a deleted scaffold path, a census shrink, or a deferral naming a lane and a concrete ROADMAP row -- citing DESIGN.md as the authority. DESIGN.md contains no such rule; verified against origin/main by the authoring session and independently by the authorizer. THE RULE IS REAL BUT ITS PROVENANCE IS FALSE: it lives in the REVIEW PROMPT owned by gunb-ai/ctrl (scripts/chatgpt-reviewer/prompts/gunbc.md), which states it verbatim and ATTRIBUTES IT TO gunbc's DESIGN.md, and whose stricter form is still scoped to 'v3 hand-Rust' although v3 was removed and migrated into v1. So the class is AUTHORITY SUBSTITUTION IN A REVIEW PROMPT, not provider invention, and its repair belongs to ctrl. Correspondingly the two refusals are NOT two independent sightings: they are two executions of ONE shared prompt, one producer, corroborating nothing about each other. AND NONE OF THAT MAKES THE CHANGE ADMISSIBLE -- the review's authority citation is false and the v1 admission obligation is independently real, which is why this row exists at all.\n\nWHY THE RECEIPT COULD NOT LAND IN THE SCAFFOLD INDEX. gunbc.language_source_scaffold_index carries LanguageSourceScaffoldRow with exactly carrier_module, blob_decl and disposition, and Disposition is a Terminal carrying a reason, or a Scaffold carrying a dissolves_to and a bind. No field a lane or a ROADMAP row could occupy exists, and none of its rows names either; authoring them in as prose would be the section 4c violation of putting commentary into a typed carrier.\n\nTHE SCOPE LIMIT. THIS AUTHORIZES THIS DECLARATION ONLY. It does NOT resolve whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- that boundary is recorded as unresolved above and stays unresolved. It establishes NO category for section 4b(4) evidence in v1: a later control needs its own authorization. Citing this row for either would be the authority-substitution failure DESIGN names, which this row also documents one level out.\n\nTHE COUNTER-ARGUMENT, preserved so whoever overturns this need not reconstruct it: a new exported fn in the emitted seed is exactly what the class names; the capability-versus-evidence distinction is authored rather than derived; and nothing mechanically holds it. WHO CAN OVERTURN IT: the classification is authored, at the mitigatable rung this carrier already declares, so it is a reviewer's or the operator's to reject. It is written to be easy to overturn."

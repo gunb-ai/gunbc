@@ -1,0 +1,619 @@
+module gunbc.machine_intake_receipt
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.content_hash {
+  ContentHash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  Fnv1a64Structural,
+  compare_content_hash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  serialize_content_hash,
+}
+import extdeps.toolchain.types { Architecture }
+import gunbc.boot_artifact { BootArtifact }
+import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey, content_hash_equal }
+import gunbc.machine_intake_phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
+
+// THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized
+// envelope plus references to raw evidence by digest. Required properties, each a field or a
+// function here: canonical content identity (in-substrate today:
+// intake_receipt_structural_fingerprint, a structural fingerprint and not a SHA); attempt
+// identity and exact qualification subject; tool, agent, artifact and policy identities; start
+// and end times; raw evidence references by digest; explicit success or typed refusal with its
+// owner; a hash-chain link whose ordering is checked by validate_intake_receipt_ledger, the
+// sole constructor of the ledger admission reads, under these rules: one genesis, every
+// predecessor link, one subject and attempt, started_at <= ended_at on each receipt,
+// started_at nondecreasing across receipts, phase rank (position in
+// fleet_admission_required_phases) nondecreasing so a phase may be retried immediately or
+// advanced but never re-recorded after a later phase, one policy digest across the attempt,
+// one producer identity across the attempt; executor/staging identity; and NO credentials or
+// one-time callback tokens in durable output — IntakeAttemptNonce has no field on
+// IntakeReceiptEnvelope, and the boot attestation that consumes the nonce is a separate
+// carrier whose durable projection is the envelope, so the exclusion is structural rather than
+// a redaction step. The JSON on the wire (schema gunbc.machine-intake.receipt/v1, the
+// /srv/bmc/intake/attempts/<id>/phase/*.json layout in the design doc) is an OBSERVATION
+// TRANSPORT that ingests into these carriers; it is not a second decision authority.
+type IntakeReceiptSchema = | MachineIntakeReceiptV1
+
+fn intake_receipt_schema_wire(schema: IntakeReceiptSchema) -> NonEmptyStr {
+  match schema {
+    MachineIntakeReceiptV1 => "gunbc.machine-intake.receipt/v1"
+  }
+}
+
+type IntakeProducerIdentity {
+  intake_binary: ContentHash
+  staging_service_identity: NonEmptyStr
+  agent_artifact: ContentHash?
+}
+
+type EvidenceRef {
+  label: NonEmptyStr
+  digest: ContentHash
+}
+
+type IntakeReceiptResult
+  = ReceiptSatisfied
+  | ReceiptRefused { owner: QualificationRefusalOwner, cause: NonEmptyStr }
+
+type IntakeReceiptEnvelope {
+  schema: IntakeReceiptSchema
+  subject: MachineIntakeSubject
+  phase: IntakePhase
+  producer: IntakeProducerIdentity
+  policy_digest: ContentHash
+  started_at: EpochMs
+  ended_at: EpochMs
+  observations: List<EvidenceRef>
+  result: IntakeReceiptResult
+  previous_receipt: ContentHash?
+}
+
+fn hash_atom_of_content_hash(hash: ContentHash) -> Fnv1a64Structural {
+  content_hash_atom(value: serialize_content_hash(hash: hash))
+}
+
+fn hash_atom_of_int(value: Int) -> Fnv1a64Structural {
+  content_hash_atom(value: to_string(value) as NonEmptyStr)
+}
+
+fn receipt_result_atom(result: IntakeReceiptResult) -> Fnv1a64Structural {
+  match result {
+    ReceiptSatisfied => content_hash_atom(value: "satisfied")
+    ReceiptRefused { owner: o, cause: c } =>
+      content_hash_combine_structural(content_hash_atom(value: refusal_owner_label(owner: o)), content_hash_atom(value: c))
+  }
+}
+
+fn receipt_subject_atom(subject: MachineIntakeSubject) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    content_hash_atom(value: subject.subject.unit_key as NonEmptyStr),
+    content_hash_combine_structural(
+      hash_atom_of_content_hash(hash: subject.subject.assembly_manifest_digest),
+      content_hash_combine_structural(
+        hash_atom_of_content_hash(hash: subject.subject.firmware_manifest_digest),
+        content_hash_atom(value: subject.attempt_id as NonEmptyStr),
+      ),
+    ),
+  )
+}
+
+fn receipt_previous_atom(previous: ContentHash?) -> Fnv1a64Structural {
+  match previous {
+    Absent => content_hash_atom(value: "genesis")
+    Present { value: h } => hash_atom_of_content_hash(hash: h)
+  }
+}
+
+// STRUCTURAL FINGERPRINT, NOT A CRYPTOGRAPHIC RECEIPT IDENTITY (ruling
+// 2026-08-29 receipt-spine correction). This folds every field through the
+// compiler's fnv1a64 structural hash so an in-substrate ledger can be checked
+// for linkage; it is not collision-resistant and establishes no security
+// property. The durable producer — the executor writing
+// gunbc.machine-intake.receipt/v1 JSON — emits SHA-256 over canonical bytes and
+// carries Sha256Digest at the chain boundary; a chain link field therefore
+// holds a ContentHash of either family, and validation compares through
+// compare_content_hash, which refuses cross-family pairs rather than reading
+// them as different. Until that executor lands, only structural links exist.
+fn intake_receipt_structural_fingerprint(envelope: IntakeReceiptEnvelope) -> ContentHash {
+  let head = content_hash_combine_structural(
+    content_hash_atom(value: intake_receipt_schema_wire(schema: envelope.schema)),
+    content_hash_combine_structural(
+      receipt_subject_atom(subject: envelope.subject),
+      content_hash_atom(value: intake_phase_label(phase: envelope.phase)),
+    ),
+  )
+  let producer = content_hash_combine_structural(
+    hash_atom_of_content_hash(hash: envelope.producer.intake_binary),
+    content_hash_combine_structural(
+      content_hash_atom(value: envelope.producer.staging_service_identity),
+      receipt_previous_atom(previous: envelope.producer.agent_artifact),
+    ),
+  )
+  let times = content_hash_combine_structural(hash_atom_of_int(value: envelope.started_at), hash_atom_of_int(value: envelope.ended_at))
+  let evidence = fold(
+    envelope.observations,
+    init: content_hash_atom(value: "observations"),
+    f: (acc, e) => content_hash_combine_structural(acc, content_hash_combine_structural(content_hash_atom(value: e.label), hash_atom_of_content_hash(hash: e.digest))),
+  )
+  content_hash_tagged(
+    tag: "IntakeReceiptEnvelope",
+    payload: content_hash_combine_structural(
+      head,
+      content_hash_combine_structural(
+        producer,
+        content_hash_combine_structural(
+          hash_atom_of_content_hash(hash: envelope.policy_digest),
+          content_hash_combine_structural(
+            times,
+            content_hash_combine_structural(
+              evidence,
+              content_hash_combine_structural(receipt_result_atom(result: envelope.result), receipt_previous_atom(previous: envelope.previous_receipt)),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+// A VALIDATED LEDGER IS THE ONLY INPUT TO ADMISSION (ruling 2026-08-29,
+// receipt-spine blocker; ruling 3 §4 lifecycle validity). derive_fleet_admission
+// used to accept a raw list, so a set of disconnected genesis receipts was
+// admissible and the chain validator was decoration. The sole constructor
+// below establishes exactly one genesis, every predecessor link, one exact
+// MachineIntakeSubject including the attempt id, started_at <= ended_at on
+// every receipt, nondecreasing started_at across receipts, nondecreasing phase
+// rank (read from fleet_admission_required_phases — same rank is an immediate
+// retry, advancing is progress, regressing after a later phase is refused, so
+// retrying an earlier phase requires a new attempt), one policy digest and one
+// producer identity across the attempt (both taken from the genesis receipt
+// and carried here). Duplicate same-rank phases are admitted and resolved
+// LAST-WINS in order, so a later refusal supersedes an earlier success (and
+// vice versa on a retried phase): that is the retry semantics, executed by the
+// disposition witness.
+//
+// WHAT THIS VALIDATES, HONESTLY: structural-fingerprint validation of an
+// IN-SUBSTRATE ledger. Every expected predecessor is recomputed with
+// intake_receipt_structural_fingerprint, and compare_content_hash refuses a
+// cross-family pair, so a durable SHA-256-linked ledger written by the
+// executor cannot pass here. That ledger needs an IntakeReceiptRecord
+// { envelope, identity } producer establishing each record's canonical SHA
+// identity, with links validated against the supplied record identities; that
+// producer is not built and this type does not claim to be the durable
+// admission ledger. A .dag record literal can still spell a
+// ValidatedIntakeReceiptLedger — the corpus-wide construction gap — so the
+// guarantee is that no DERIVATION produces one except validate_intake_receipt_ledger.
+type ValidatedIntakeReceiptLedger {
+  subject: MachineIntakeSubject
+  ordered_receipts: List<IntakeReceiptEnvelope>
+  terminal_fingerprint: ContentHash
+  policy_digest: ContentHash
+  producer: IntakeProducerIdentity
+}
+
+type IntakeLedgerRefusalCause
+  = LedgerEmpty
+  | LedgerMultipleGenesis { index: Int }
+  | LedgerBrokenLink { index: Int }
+  | LedgerSubjectMismatch { index: Int }
+  | LedgerNonMonotoneTime { index: Int }
+  | LedgerIntervalInverted { index: Int }
+  | LedgerPhaseUnranked { index: Int }
+  | LedgerPhaseRegression { index: Int }
+  | LedgerPolicyDigestChanged { index: Int }
+  | LedgerProducerChanged { index: Int }
+
+type IntakeLedgerValidation
+  = LedgerValidated { ledger: ValidatedIntakeReceiptLedger }
+  | LedgerRefused { cause: IntakeLedgerRefusalCause }
+
+type LedgerFold {
+  index: Int
+  refusal: IntakeLedgerRefusalCause?
+  previous: ContentHash?
+  last_started: EpochMs
+  last_rank: Int
+}
+
+fn same_optional_content_hash(left: ContentHash?, right: ContentHash?) -> Bool {
+  match left {
+    Absent =>
+      match right {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: l } =>
+      match right {
+        Absent => false
+        Present { value: r } => content_hash_equal(left: l, right: r)
+      }
+  }
+}
+
+fn same_intake_producer(left: IntakeProducerIdentity, right: IntakeProducerIdentity) -> Bool {
+  content_hash_equal(left: left.intake_binary, right: right.intake_binary)
+    && left.staging_service_identity == right.staging_service_identity
+    && same_optional_content_hash(left: left.agent_artifact, right: right.agent_artifact)
+}
+
+fn same_intake_subject(left: MachineIntakeSubject, right: MachineIntakeSubject) -> Bool {
+  (left.attempt_id as NonEmptyStr) == (right.attempt_id as NonEmptyStr)
+    && (left.subject.unit_key as NonEmptyStr) == (right.subject.unit_key as NonEmptyStr)
+    && content_hash_equal(left: left.subject.assembly_manifest_digest, right: right.subject.assembly_manifest_digest)
+    && content_hash_equal(left: left.subject.firmware_manifest_digest, right: right.subject.firmware_manifest_digest)
+}
+
+fn ledger_link_refusal(acc: LedgerFold, r: IntakeReceiptEnvelope) -> IntakeLedgerRefusalCause? {
+  match acc.previous {
+    Absent =>
+      match r.previous_receipt {
+        Absent => none
+        Present { value: _ } => Present { value: LedgerBrokenLink { index: acc.index } }
+      }
+    Present { value: expected } =>
+      match r.previous_receipt {
+        Absent => Present { value: LedgerMultipleGenesis { index: acc.index } }
+        Present { value: got } =>
+          if content_hash_equal(left: expected, right: got) { none } else { Present { value: LedgerBrokenLink { index: acc.index } } }
+      }
+  }
+}
+
+// One receipt against the fold state, refusing in a fixed order so each
+// refusal names the first rule the receipt breaks: subject, interval, time
+// order, phase rank, policy, producer, then the chain link. `head` is the
+// genesis receipt: the subject, policy and producer every later receipt must
+// repeat.
+fn ledger_step(acc: LedgerFold, r: IntakeReceiptEnvelope, head: IntakeReceiptEnvelope) -> LedgerFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => {
+      let rank = match intake_phase_rank(phase: r.phase) {
+        Present { value: k } => k
+        Absent => -1
+      }
+      let refusal = if same_intake_subject(left: head.subject, right: r.subject) == false {
+        Present { value: LedgerSubjectMismatch { index: acc.index } }
+      } else if r.started_at > r.ended_at {
+        Present { value: LedgerIntervalInverted { index: acc.index } }
+      } else if r.started_at < acc.last_started {
+        Present { value: LedgerNonMonotoneTime { index: acc.index } }
+      } else if rank < 0 {
+        Present { value: LedgerPhaseUnranked { index: acc.index } }
+      } else if rank < acc.last_rank {
+        Present { value: LedgerPhaseRegression { index: acc.index } }
+      } else if content_hash_equal(left: head.policy_digest, right: r.policy_digest) == false {
+        Present { value: LedgerPolicyDigestChanged { index: acc.index } }
+      } else if same_intake_producer(left: head.producer, right: r.producer) == false {
+        Present { value: LedgerProducerChanged { index: acc.index } }
+      } else {
+        ledger_link_refusal(acc: acc, r: r)
+      }
+      LedgerFold {
+        index: acc.index + 1,
+        refusal: refusal,
+        previous: Present { value: intake_receipt_structural_fingerprint(envelope: r) },
+        last_started: r.started_at,
+        last_rank: rank,
+      }
+    }
+  }
+}
+
+fn validate_intake_receipt_ledger(receipts: List<IntakeReceiptEnvelope>) -> IntakeLedgerValidation {
+  match receipts.first() {
+    Absent => LedgerRefused { cause: LedgerEmpty }
+    Present { value: head } => {
+      let folded = fold(
+        receipts,
+        init: LedgerFold { index: 0, refusal: none, previous: none, last_started: 0, last_rank: 0 },
+        f: fn(acc, r) { ledger_step(acc: acc, r: r, head: head) },
+      )
+      match folded.refusal {
+        Present { value: cause } => LedgerRefused { cause: cause }
+        Absent =>
+          match folded.previous {
+            Present { value: terminal } =>
+              LedgerValidated {
+                ledger: ValidatedIntakeReceiptLedger {
+                  subject: head.subject,
+                  ordered_receipts: receipts,
+                  terminal_fingerprint: terminal,
+                  policy_digest: head.policy_digest,
+                  producer: head.producer,
+                },
+              }
+            Absent => LedgerRefused { cause: LedgerEmpty }
+          }
+      }
+    }
+  }
+}
+
+// THE NONCE. Each attempt mints a one-time callback token and places it in
+// the boot configuration; the intake agent returns it. It is a distinct
+// branded type from IntakeAttemptId so a durable identifier can never be
+// handed where the secret token is expected, or vice versa.
+type IntakeAttemptNonce = NonEmptyStr where brand("IntakeAttemptNonce")
+
+// THE ISSUANCE CARRIES THE EXACT ARTIFACT, NOT A DESCRIPTION OF ONE. An earlier
+// cut carried artifact_digest and artifact_architecture as sibling fields, which
+// checked the receipt's architecture but left the pair independently authorable:
+// an issuance could name an AArch64 artifact's digest beside X86_64, and an x86
+// agent repeating that digest then passed BOTH checks while the artifact the
+// digest names is AArch64. The field was checked; its relationship to the
+// artifact was not constructed.
+//
+// Carrying the BootArtifact makes digest and architecture two projections of one
+// authority, so they cannot disagree — there is nowhere to write the mismatched
+// pair. gunbc.boot_artifact was extracted for exactly this: delivery already
+// imports this module, so the artifact could not be reached from there without a
+// cycle, and copying its two fields here would have been the fork DESIGN §3
+// forbids.
+type IssuedAttemptNonce {
+  attempt_id: IntakeAttemptId
+  nonce: IntakeAttemptNonce
+  artifact: BootArtifact
+  issued_at: EpochMs
+}
+
+// What the booted intake agent returns. It repeats machine identity from the
+// host side so the attestation binds artifact, attempt AND unit at once.
+type IntakeAgentBootReceipt {
+  attempt_nonce: IntakeAttemptNonce
+  artifact_digest: ContentHash
+  architecture: Architecture
+  board_serial: NonEmptyStr
+  assembly_observation: EvidenceRef
+  firmware_observation: EvidenceRef
+  booted_at: EpochMs
+}
+
+// Activity signals. Useful supporting observations and diagnostic evidence;
+// NONE constructs DiagnosticBootAttested. KVM is optional forensic capture,
+// never the preferred verdict channel.
+type SupportingBootObservation
+  = NfsReadPlateau
+  | ImageRedirectionSessionActive
+  | BmcPowerSignature
+  | ResetCompleted
+  | SolStream
+  | KvmPixels
+  | BootOverrideConsumed
+
+// AgentReceiptAbsent IS GONE, AND ITS ABSENCE IS THE POINT. An empty callback
+// list was being reported as "the agent did not call back", which is a claim
+// about the WORLD; what this module actually observes is that the population it
+// was handed contained nothing. Those coincide only if the population is known
+// complete, and nothing here establishes that. The variant returns with the
+// endpoint producer that can close an acquisition -- as a refusal derived from a
+// closed population, not as a reading of a list's length.
+// TWO NONCE FAILURES, TWO CAUSES. One constructor was answering for both a
+// population presented against an issuance it was not observed for -- an
+// acquisition or binding splice, whose producer is whoever assembled the input --
+// and a callback INSIDE a correctly bound population returning the wrong nonce,
+// which is an agent-content failure. Different producers, different evidence
+// locations, different remedies; one name loses exactly the information the
+// refusal exists to preserve. Neither carries the nonce: it is a secret with no
+// place in durable output, so the cause names WHICH comparison failed and the
+// wrapper's population_evidence locates where to look.
+type BootAttestationRefusal
+  = CallbackPopulationForOtherIssuance
+  | AgentCallbackNonceMismatch
+  | ArtifactDigestMismatch { expected: ContentHash, received: ContentHash }
+  | ArchitectureMismatch { expected: Architecture, received: Architecture }
+  | BoardSerialMismatch { expected: NonEmptyStr, received: NonEmptyStr }
+  | DuplicateAgentCallback { received: Int }
+
+// NAMED FOR WHAT IT IS, NOT FOR WHAT WE WANT IT TO BE. This was called a sealed
+// delivery batch, and the name was doing work the type does not do.
+// sole_constructor stops a caller from writing the record literal; it does not
+// constrain WHO calls the mint, where they got the callbacks, or whether the
+// evidence they pass beside the list actually describes that list. Both of these
+// stayed authorable under the old name:
+//
+//   the acquirer received [r1, r2]; the caller passes [r1] with the evidence for
+//   [r1, r2] -- a real duplicate presented as a singleton;
+//   the caller passes [r1] with evidence from an unrelated acquisition entirely.
+//
+// A name that asserts a property the construction does not hold is a hollow
+// alias, and it is worse than a weak type because every downstream reader
+// inherits the assertion. So the carrier says only what is true: this is a
+// population somebody OBSERVED, with a pointer to the record they observed it
+// in. Callbacks and evidence being independently authorable is exactly why
+// completeness is not established here -- see the trigger on attest_diagnostic_boot.
+//
+// It names the issuance it was observed for, so a population observed under one
+// nonce cannot be presented against another attempt's issuance.
+type ObservedAgentCallbackPopulation sole_constructor {
+  issuance_nonce: IntakeAttemptNonce
+  callbacks: List<IntakeAgentBootReceipt>
+  acquisition_evidence: EvidenceRef
+}
+
+// THE MINT. It records an observation and claims nothing about its completeness;
+// what the reading of that observation may and may not conclude is decided at
+// attest_diagnostic_boot, where the population is actually adjudicated.
+fn observed_agent_callback_population(
+  issuance_nonce: IntakeAttemptNonce,
+  callbacks: List<IntakeAgentBootReceipt>,
+  acquisition_evidence: EvidenceRef,
+) -> ObservedAgentCallbackPopulation {
+  ObservedAgentCallbackPopulation {
+    issuance_nonce: issuance_nonce,
+    callbacks: callbacks,
+    acquisition_evidence: acquisition_evidence,
+  }
+}
+
+// THREE OUTCOMES, BECAUSE THERE ARE THREE, and the third is not a refusal
+// wearing a softer name. A refusal says the boot did not happen; Unestablished
+// says this repository cannot yet tell, and says exactly what it saw and where.
+// Collapsing the third into either of the other two is the state_space_conflation
+// failure: into refusal it would report a boot as failed on a caller's filtering
+// decision, and into attestation it would report a boot as proven on the same.
+//
+// NOTHING IN THIS REPOSITORY CONSTRUCTS DiagnosticBootAttested TODAY. That is not
+// an oversight and it is not a dead variant: it is the terminal the intake
+// transaction requires, held at its honest arity until the acquisition producer
+// named on attest_diagnostic_boot exists to close a population. It is declared
+// here so that producer has one authority to satisfy rather than a shape invented
+// later, and population_evidence is on it because durable provenance is the part
+// of the design that is already settled.
+type DiagnosticBootAttestation
+  = DiagnosticBootAttested {
+      attempt_id: IntakeAttemptId,
+      receipt: IntakeAgentBootReceipt,
+      population_evidence: EvidenceRef,
+    }
+  | DiagnosticBootNotAttested {
+      cause: BootAttestationRefusal,
+      population_evidence: EvidenceRef,
+    }
+  | DiagnosticBootCompletenessUnestablished {
+      observed_callbacks: Int,
+      population_evidence: EvidenceRef,
+      supporting: List<SupportingBootObservation>,
+    }
+
+// WHAT THIS FUNCTION CAN AND CANNOT CONCLUDE FROM A POPULATION IT DID NOT CLOSE.
+// The input is a population somebody OBSERVED, not one anybody closed, so the
+// three readings of its cardinality are not equally sound and it is a §4b rung
+// error to treat them as if they were:
+//
+//   more than one  -- DEFINITE. Hidden extra callbacks can only make a duplicate
+//                     more true, so this refusal is monotone under incompleteness.
+//   exactly one, and it mismatches -- DEFINITE. A mismatching callback is refused
+//                     on its own contents, and any hidden sibling would be a
+//                     duplicate, which is also a refusal. Every completion of the
+//                     population refuses, so the refusal stands.
+//   exactly one, and it matches -- NOT DEFINITE. It proves a matching callback was
+//                     SEEN, never that it was the ONLY one.
+//   none            -- NOT DEFINITE. It proves nothing was seen, never that
+//                     nothing arrived. A caller can prefilter a real singleton to
+//                     zero exactly as easily as a duplicate to one.
+//
+// So the two indefinite readings do not produce a verdict at all: they produce
+// DiagnosticBootCompletenessUnestablished, which reports what was observed and
+// points at the record it was observed in. Reporting either of them as a verdict
+// would be the fabricated-plausible-output failure of §5 -- a caller's filtering
+// decision arriving downstream wearing the compiler's authority.
+//
+// CARDINALITY IS CHECKED BEFORE ANY CALLBACK IS INSPECTED. A replay is a fact
+// about the population, not about any one receipt, so reading a receipt first
+// would let a well-formed one speak for a population that should have been
+// refused outright. A duplicate is refused even when the two callbacks are
+// byte-identical: choosing one of two to honour would be an absorbing fallback
+// (§5) -- widening on ambiguity instead of stopping the line.
+//
+// THE REFUSAL POINTS AT THE ACQUIRER'S OWN RECORD rather than inventing an
+// identity per callback. IntakeAgentBootReceipt carries no transport identity,
+// and the fields it does carry are identical across legitimate duplicates -- the
+// artifact digest especially -- so listing them would be a nickname for a fact
+// this model does not hold. The nonce itself is never carried: it is a secret
+// with no place in durable output.
+//
+// RUNG, HONESTLY. Duplicate refusal and mismatch refusal are real and executed.
+// Attestation is NOT: no path in this repository constructs DiagnosticBootAttested,
+// because none can establish completeness. Next-rung trigger: an acquisition
+// producer that closes a population -- exact issuance identity, the exact
+// callbacks, evidence derived from that same acquisition rather than passed
+// beside it, and a declared closure boundary or one-shot nonce consumption after
+// which no further callback can be accepted unrecorded. Producer identity alone
+// is insufficient: without the closure boundary a producer can mint a singleton
+// after the first callback and receive a second afterwards.
+fn attest_diagnostic_boot(
+  issued: IssuedAttemptNonce,
+  unit_key: UnitKey,
+  observed: ObservedAgentCallbackPopulation,
+  supporting: List<SupportingBootObservation>,
+) -> DiagnosticBootAttestation {
+  if (observed.issuance_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
+    DiagnosticBootNotAttested {
+      cause: CallbackPopulationForOtherIssuance,
+      population_evidence: observed.acquisition_evidence,
+    }
+  } else {
+    adjudicate_observed_population(issued: issued, unit_key: unit_key, observed: observed, supporting: supporting)
+  }
+}
+
+fn adjudicate_observed_population(
+  issued: IssuedAttemptNonce,
+  unit_key: UnitKey,
+  observed: ObservedAgentCallbackPopulation,
+  supporting: List<SupportingBootObservation>,
+) -> DiagnosticBootAttestation {
+  let received = list_length(items: observed.callbacks)
+  if received > 1 {
+    DiagnosticBootNotAttested {
+      cause: DuplicateAgentCallback { received: received },
+      population_evidence: observed.acquisition_evidence,
+    }
+  } else {
+    match observed.callbacks.first() {
+      Absent =>
+        DiagnosticBootCompletenessUnestablished {
+          observed_callbacks: 0,
+          population_evidence: observed.acquisition_evidence,
+          supporting: supporting,
+        }
+      Present { value: r } =>
+        adjudicate_single_callback(
+          issued: issued,
+          unit_key: unit_key,
+          r: r,
+          population_evidence: observed.acquisition_evidence,
+          supporting: supporting,
+        )
+    }
+  }
+}
+
+// THE PROVENANCE IS ON THE WRAPPER, SO THE CLAIM IS TRUE BY CONSTRUCTION. An
+// earlier cut put the acquisition record on DuplicateAgentCallback and on the
+// non-refusing arm, and annotated that as "every outcome names the population it
+// was read from" -- which was FALSE for the four field mismatches, and the
+// control greened anyway because it only exercised the unestablished path. That
+// is this repository's own §5 trap: a claim in prose with an oracle that cannot
+// see the paths it is about. Every outcome now takes population_evidence at the
+// same grain, so no adjudication path can return without it, and the cause
+// carries only what distinguishes it -- DuplicateAgentCallback keeps the count
+// and no longer carries a second copy of the record.
+fn adjudicate_single_callback(
+  issued: IssuedAttemptNonce,
+  unit_key: UnitKey,
+  r: IntakeAgentBootReceipt,
+  population_evidence: EvidenceRef,
+  supporting: List<SupportingBootObservation>,
+) -> DiagnosticBootAttestation {
+  if (r.attempt_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
+    DiagnosticBootNotAttested { cause: AgentCallbackNonceMismatch, population_evidence: population_evidence }
+  } else if content_hash_equal(left: issued.artifact.digest, right: r.artifact_digest) == false {
+    DiagnosticBootNotAttested {
+      cause: ArtifactDigestMismatch { expected: issued.artifact.digest, received: r.artifact_digest },
+      population_evidence: population_evidence,
+    }
+  } else if (r.architecture == issued.artifact.architecture) == false {
+    DiagnosticBootNotAttested {
+      cause: ArchitectureMismatch { expected: issued.artifact.architecture, received: r.architecture },
+      population_evidence: population_evidence,
+    }
+  } else if r.board_serial != (unit_key as NonEmptyStr) {
+    DiagnosticBootNotAttested {
+      cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial },
+      population_evidence: population_evidence,
+    }
+  } else {
+    DiagnosticBootCompletenessUnestablished {
+      observed_callbacks: 1,
+      population_evidence: population_evidence,
+      supporting: supporting,
+    }
+  }
+}
