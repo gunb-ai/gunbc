@@ -1,6 +1,8 @@
 module test.claim.run_disposition_witness_test
 
-import std.types { Bool }
+import std.types { Bool, String, NonEmptyStr, List }
+import product.placement_supply { HostIdentity }
+import std.measure { hardware_thread_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -9,7 +11,26 @@ import extdeps.github.actions_runs {
   run_conclusion_wire,
   run_settled
 }
+import gunbc.compile_permit_scope {
+  FleetCompileCancellationStanding,
+  FleetCancellationSafe,
+  FleetCancellationNotSafe,
+  HostCompileCancellationStanding,
+  HostCancellationObserved,
+  HostCancellationUnreadable,
+  HostCancellationUnobserved,
+  BorrowerHeldCooperativeHostFifo,
+  InvocationLocalCargo,
+  fleet_cancellation_standing,
+  fleet_compile_cancellation_standing,
+  FleetCancellationFoldAcc,
+  CapacityPreservedByServerReclamation,
+  CapacityLostUntilPoolRestart,
+  accumulate_observed_disposition,
+  finalize_fleet_standing
+}
 import gunbc.witness_floor_workflow {
+  running_supersession_for_fleet_standing,
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
   ReplaceExistingPending,
@@ -562,4 +583,193 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
     ConcurrencyScalar { group: _ } => false
   }
   live_holds && retaining_holds && superseding_holds
+}
+
+
+// ── The drop retires by construction, and only on observed convergence ─────────────────────────
+
+fn two_host_fleet() -> List<HostIdentity> {
+  ["srv1" as HostIdentity, "srv2" as HostIdentity]
+}
+
+fn safe_host(name: String) -> HostCompileCancellationStanding {
+  HostCancellationObserved {
+    host: name as HostIdentity,
+    realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
+  }
+}
+
+// THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON, AND OF WHAT THE HOSTS ACTUALLY RUN.
+//
+// Authored as a literal, NeverSupersedeRunning outlives the condition that required it. Derived from
+// a DESIRED realization row it does something worse: it restores cancellation the moment the
+// workflow reaches main, while hosts that have not restarted onto the new unit keep losing a permit
+// per kill. So the policy reads an OBSERVED fleet standing, and the arms below are that join.
+test fn w_an_unobserved_fleet_refuses_to_supersede_a_running_run() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: []),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// ONE UNREAD HOST IS ENOUGH. A fold that answered on the hosts it happened to receive would report
+// the fleet safe while an eligible host nobody asked about went on leaking.
+test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
+      safe_host(name: "srv1"),
+      HostCancellationUnobserved {
+        host: "srv2" as HostIdentity,
+        cause: "no active unit readback" as NonEmptyStr,
+      },
+    ]),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
+      safe_host(name: "srv1"),
+      HostCancellationUnreadable {
+        host: "srv2" as HostIdentity,
+        cause: "systemctl show returned no Environment property" as NonEmptyStr,
+      },
+    ]),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// A READBACK THAT CLAIMS SAFE WHILE CARRYING A LOSING DISPOSITION IS A CONTRADICTION, and joins the
+// unsafe side rather than being believed. Without this arm the safe constructor is self-certifying.
+test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
+      HostCancellationObserved {
+        host: "srv1" as HostIdentity,
+        realization: BorrowerHeldCooperativeHostFifo {
+          fifo_path: "/var/lib/ctrl/jobserver/host.fifo" as NonEmptyStr,
+          daemon_service: "ctrl-jobserver.service" as NonEmptyStr,
+        },
+      },
+    ]),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// AND A FULLY OBSERVED SAFE FLEET RESTORES SUPERSESSION WITH NO EDIT TO THIS POLICY. This is what
+// makes the pair discriminating: a derivation that ignored its argument and answered
+// NeverSupersedeRunning for everything would pass every witness above and fail here.
+test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
+      safe_host(name: "srv1"),
+      safe_host(name: "srv2"),
+    ]),
+  ) {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    NeverSupersedeRunning => false
+  }
+}
+
+// THE LIVE ROW STILL PROJECTS WHAT CI ACTUALLY RUNS, so the fixtures above cannot go green while the
+// emitted workflow quietly moves.
+test fn w_the_live_fleet_standing_still_refuses_running_supersession() -> Bool {
+  match running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+
+// A SAFE OBSERVATION FOR PART OF THE FLEET IS NOT A SAFE FLEET. This is the arm the denominator
+// exists for: before it was a parameter, one safe host answered SAFE while every other eligible host
+// went unasked, and the unsafe interval stayed writable.
+test fn w_a_partially_observed_fleet_is_not_safe() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(
+      eligible_hosts: two_host_fleet(),
+      observations: [safe_host(name: "srv1")],
+    ),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// AND AN OBSERVATION FOR A HOST OUTSIDE THE ROSTER CANNOT STAND IN FOR ONE INSIDE IT, which is why
+// the join runs in both directions rather than comparing two counts.
+test fn w_an_observation_outside_the_roster_does_not_complete_it() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(
+      eligible_hosts: two_host_fleet(),
+      observations: [safe_host(name: "srv1"), safe_host(name: "srv9")],
+    ),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+
+// ── The reclamation arm, reached where its RED is authorable ────────────────────────────────────
+
+// EVERY WITNESS ABOVE PASSES IF THE RECLAMATION ARM IS MUTATED TO CLASSIFY ITS HOST AS UNSAFE.
+// Review 58515 ran exactly that mutation and nothing went red, because no realization maps to
+// CapacityPreservedByServerReclamation, so the ordinary path never produces one and the arm sat
+// inside the fold's lambda where no fixture could address it. The arm is half of the drop's
+// dissolve-on and must not be deleted; what has to change is the production shape, so the two
+// witnesses here call the SAME production procedures the fold calls -- there is no second
+// classification and no second finalization for a fixture to agree with vacuously.
+fn reclaiming_fleet_acc() -> FleetCancellationFoldAcc {
+  accumulate_observed_disposition(
+    acc: accumulate_observed_disposition(
+      acc: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
+      host: "srv1" as HostIdentity,
+      disposition: CapacityPreservedByServerReclamation,
+    ),
+    host: "srv2" as HostIdentity,
+    disposition: CapacityPreservedByServerReclamation,
+  )
+}
+
+// THE POSITIVE CONTROL: a fleet whose every host preserves capacity by SERVER RECLAMATION carries
+// all the way to restored supersession. Flip that arm to the unsafe side and this goes red.
+test fn w_a_server_reclaiming_fleet_restores_supersession() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: finalize_fleet_standing(acc: reclaiming_fleet_acc(), eligible_hosts: two_host_fleet()),
+  ) {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    NeverSupersedeRunning => false
+  }
+}
+
+// AND THE DISCRIMINATING RED FOR THE SAME HELPER: one losing host among reclaiming ones holds the
+// containment, so the witness above cannot be satisfied by a helper that classifies everything safe.
+test fn w_one_losing_host_among_reclaiming_hosts_holds_the_containment() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: finalize_fleet_standing(
+      acc: accumulate_observed_disposition(
+        acc: accumulate_observed_disposition(
+          acc: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
+          host: "srv1" as HostIdentity,
+          disposition: CapacityPreservedByServerReclamation,
+        ),
+        host: "srv2" as HostIdentity,
+        disposition: CapacityLostUntilPoolRestart,
+      ),
+      eligible_hosts: two_host_fleet(),
+    ),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
 }

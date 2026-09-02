@@ -43,7 +43,6 @@ import gunbc.remote_operation {
 }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
 import gunbc.spark.grant_privileged_operation {
-  OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,
   CredentialNotEnrolled,
   CredentialRejected,
@@ -61,7 +60,7 @@ import gunbc.spark.grant_privileged_operation {
 // sudoers entries, and the fixtures below would pass against either if the two were the same string.
 fn installer() -> NonEmptyStr { "briansrls" as NonEmptyStr }
 
-fn pending_lease() -> OperatorBootstrapCredentialLease {
+fn pending_lease() -> AuthorizationRequest<SparkBootstrapSubject> {
   spark_bootstrap_credential_lease(
     host: "srv6",
     administrator: CredentialMaterializationPending,
