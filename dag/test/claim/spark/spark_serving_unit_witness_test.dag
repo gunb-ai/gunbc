@@ -186,7 +186,18 @@ test fn an_inverted_throughput_band_refuses() -> Bool {
 //
 // This claim goes RED the moment a weights-peer host is added to the serving roster, which is the
 // regression control the constructor cannot provide.
+// THE NON-EMPTINESS CONJUNCT IS NOT DECORATION. `any` over an empty list is false and its negation
+// is true, so the disjointness half alone goes GREEN when no unit constructs -- a wall reporting
+// that nothing collides because nothing exists. This claim would then be carried as C1 coverage
+// while establishing nothing, which is the vacuity failure the positive control above exists to
+// catch for the module and which this claim has to catch for itself.
+//
+// THE RULE IS DISJOINTNESS BETWEEN TWO ROSTERS, NOT A NAMED HOST. Nothing here says "srv8 may never
+// serve" -- that would transcribe today's assignment and go stale the moment the fleet is
+// repartitioned. It says an internal participant of a constructed unit is not simultaneously a
+// client-routable serving cell, which stays the right rule under any partition.
 test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
-  !any(spark_serving_cell_hosts(), h =>
-    serving_unit_host_is_weights_peer(deployments: serving_unit_observed_units(), host: h))
+  length(serving_unit_observed_units()) > 0
+    && !any(spark_serving_cell_hosts(), h =>
+         serving_unit_host_is_weights_peer(deployments: serving_unit_observed_units(), host: h))
 }
