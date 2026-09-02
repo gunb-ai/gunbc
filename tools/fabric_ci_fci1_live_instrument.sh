@@ -4,7 +4,7 @@ set -euo pipefail
 # FCI-1 reservation instrument. It starts no Work command.
 # SCAFFOLD — dissolve-on: modeled lifecycle actuation sufficient to sequence a wet gate from .dag.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-[[ -d $repo_root/.git ]] || { echo 'InstrumentRefused: derived repo_root is not a git checkout' >&2; exit 2; }
+git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || { echo 'InstrumentRefused: derived repo_root is not a git checkout' >&2; exit 2; }
 cd "$repo_root" || { echo 'InstrumentRefused: cannot enter derived repo_root' >&2; exit 2; }
 export FABRIC_CI_GUNBC_BIN="$repo_root/target/release/gunbc"
 export FABRIC_CI_SOURCE_ROOT="$repo_root"

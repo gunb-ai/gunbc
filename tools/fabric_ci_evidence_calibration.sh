@@ -3,7 +3,7 @@ set -euo pipefail
 # This realizes the ordered typed rows emitted by fabric_ci_calibration_write_plan.
 # SCAFFOLD — dissolve-on: modeled lifecycle actuation sufficient to sequence a wet gate from .dag.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-[[ -d $repo_root/.git ]] || { echo 'CalibrationRefused: derived repo_root is not a git checkout' >&2; exit 2; }
+git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || { echo 'CalibrationRefused: derived repo_root is not a git checkout' >&2; exit 2; }
 cd "$repo_root" || { echo 'CalibrationRefused: cannot enter derived repo_root' >&2; exit 2; }
 export FABRIC_CI_GUNBC_BIN=${FABRIC_CI_GUNBC_BIN:-"$repo_root/target/release/gunbc"}
 export FABRIC_CI_SOURCE_ROOT=$repo_root FABRIC_CI_ENTRY="$repo_root/dag/gunbc/instruments/fabric_ci_evidence.dag"
