@@ -4,9 +4,6 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.measure {
   TokenCount, token_count, PositiveSlotCount, positive_slot_count, positive_measure_count,
 }
-import gunbc.guarantee_rung_drop {
-  GuaranteeRungDrop, MechanicallyPreventable, Mitigatable, DeletedWithoutReplacement,
-}
 import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
@@ -359,14 +356,6 @@ fn spark_serving_automation_principal() -> NamedPrincipal {
 // inheritance for the rest. The capability is that no realization can be served at a configuration
 // it has not been observed at -- which requires both the observations and the removal of automatic
 // inheritance.
-data spark_serving_fleet_global_configuration_drop: GuaranteeRungDrop = GuaranteeRungDrop {
-  subject: "the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence",
-  previous: MechanicallyPreventable,
-  temporary: Mitigatable,
-  reason: DeletedWithoutReplacement,
-  population: [
-    "gunbc.spark.serving_desired spark_serving_desired_context_length",
-    "gunbc.spark.serving_desired spark_serving_desired_serving_slots_value",
-  ],
-  restoration_trigger: "no realization can be served at a configuration it has not been observed at: a per-realization runner-memory observation exists for every model the cell loads, at the configuration selected for it, AND the fleet-global default no longer confers an unmeasured realization automatic admission -- an unobserved realization must refuse rather than inherit. An observation table alone does not discharge this row, because inheritance is the half that makes an unmeasured model's admission silent",
-}
+//
+// THE ROW ITSELF IS gunbc.rung_drop spark_serving_fleet_global_configuration_drop, in the roster
+// DESIGN section 4b(3) calls full rather than beside the fields it lowers the rung of.

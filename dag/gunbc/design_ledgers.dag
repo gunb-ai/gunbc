@@ -27,7 +27,7 @@ import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline,
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { recurring_failure_mode_roster }
-import gunbc.rung_drop { rung_drop_roster }
+import gunbc.rung_drop { rung_drop_roster, rung_drop_declaration_message }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
   census_identity_domain_separator,
@@ -68,7 +68,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
       ],
       flat_map(rung_drop_roster, d => concat([
         h3(text: concat(concat(d.subject, " — declared "), d.declared)),
-        p(text: d.authored),
+        p(text: rung_drop_declaration_message(d: d)),
       ], if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
       } else { [] })),

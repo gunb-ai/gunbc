@@ -61,19 +61,8 @@ import gunbc.fleet_converge_plan {
   FullyApplied,
   PartiallyApplied,
 }
-import gunbc.guarantee_rung_drop {
-  GuaranteeStall,
-  AwaitsOneGrounding,
-  ClimbableButUnbuilt,
-  CannotClimbFurther,
-  Mitigatable,
-  OutsideTheLadder,
-  StructurallyGuaranteed,
-  BoundedPopulation,
-  UncountedNotEnumerable,
-  stall_is_below_ceiling,
-  stall_is_permanent,
-}
+import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling, stall_is_permanent }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 
 // THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried

@@ -4,6 +4,11 @@ import gunbc.rung_drop {
   rung_drop_roster,
   standing_rung_drops,
   cited_symbol_census,
+  authored_prose_rung_drops,
+  legacy_prose_identity_roster,
+  every_authored_prose_row_names_its_arm,
+  every_legacy_arm_is_claimed_exactly_once,
+  source_root_ingest_gate_rung_drop,
 }
 
 // THE DEFECT THIS WITNESS EXISTS FOR, stated as the state that must stay unwritable: DESIGN.md's
@@ -40,4 +45,32 @@ import gunbc.rung_drop {
 test fn standing_list_excludes_every_retired_drop() -> Bool {
   length(xs: filter(map(standing_rung_drops(), d => d.identity), i => i == cited_symbol_census.identity)) == 0
     && length(xs: filter(map(rung_drop_roster, d => d.identity), i => i == cited_symbol_census.identity)) == 1
+}
+
+// THE PROSE ARM IS CLOSED, AND THIS IS THE PART OF THAT CLAIM A TEST CAN CARRY. A 22nd prose row
+// is not policed here -- it is unwritable, because `LegacyProseIdentity` has no 22nd constructor,
+// and a check for a state with no spelling would be permanently green by construction and worse
+// than absent. What IS checkable, and what this asserts, is the JOIN between the two spellings of
+// an identity that the closure introduces: the row's `identity` field and the arm it carries.
+//
+// BOTH DIRECTIONS, because either alone admits a real defect. Per-row agreement alone passes on an
+// arm that no row claims -- a row deleted rather than split, which would shrink the debt without a
+// disposition. Arm-side coverage alone passes on two rows that swapped arms. The discriminating
+// RED for the first is editing one row's arm to another's; for the second, deleting a prose row
+// from the roster.
+test fn every_prose_declaration_agrees_with_its_closed_arm() -> Bool {
+  every_authored_prose_row_names_its_arm(ds: rung_drop_roster)
+    && every_legacy_arm_is_claimed_exactly_once(ds: rung_drop_roster)
+}
+
+// THE PARTITION IS NON-DEGENERATE IN BOTH DIRECTIONS. A roster of only prose rows, or only typed
+// rows, would make one of the two folds above vacuous, so the counts are asserted against each
+// other and against the closed arm roster rather than against a literal. The typed side is named
+// by a row that was declared OUTSIDE any roster until this consolidation, which is the defect this
+// change exists to remove -- if it ever leaves the roster again, this reds.
+test fn the_roster_carries_both_declaration_arms() -> Bool {
+  length(xs: authored_prose_rung_drops(ds: rung_drop_roster)) == length(xs: legacy_prose_identity_roster)
+    && length(xs: rung_drop_roster) > length(xs: legacy_prose_identity_roster)
+    && length(xs: filter(map(rung_drop_roster, d => d.identity),
+                         i => i == source_root_ingest_gate_rung_drop.identity)) == 1
 }

@@ -15,10 +15,7 @@ import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
 import tools.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
 import tools.prose_row_introduction_gate { run_prose_row_introduction_gate }
-import gunbc.guarantee_rung_drop {
-  GuaranteeRungDrop, Mitigatable, OutsideTheLadder, LostAsPassenger,
-  rung_drop_refusal_message,
-}
+import gunbc.rung_drop { rung_drop_declaration_message, source_root_ingest_gate_rung_drop }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -34,7 +31,7 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     ExtdepsScopePlacementGate => run_extdeps_scope_placement_gate()
     ProseRowIntroductionGate => run_prose_row_introduction_gate()
     SourceRootIngestGate => exit_failure(
-      reason: rung_drop_refusal_message(d: source_root_ingest_gate_rung_drop)
+      reason: rung_drop_declaration_message(d: source_root_ingest_gate_rung_drop)
     )
   }
 }
@@ -81,22 +78,8 @@ func main() -> ProcessExit {
 // exists" rests entirely on .github/workflows holding exactly two files, which is checkable in one
 // command and is the whole basis. No execution was attempted. The day a third workflow lands, this
 // row can become false with nobody having touched it.
-data source_root_ingest_gate_rung_drop: GuaranteeRungDrop = GuaranteeRungDrop {
-    subject: "v2.workflow.source_root_ingest_gate",
-    previous: Mitigatable,
-    temporary: OutsideTheLadder,
-    reason: LostAsPassenger { carrier: "the falsifier cadence, deleted by the floor cut of 2026-08-15" },
-    population: [
-      "v2.workflow.source_root_ingest_gate",
-      "v2.workflow.source_root_ingest_transport",
-      "v2.workflow.compiler_closure_ingest_transport",
-      "v2.workflow.module_binding_supply_transport",
-      "src/v1/stage0/src/bin/discover_owned_data.rs",
-      "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness",
-      "src/v2/test/claim/program_assembly/real_ingest_test.dag",
-      "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
-      "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
-      "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
-    ],
-    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci_layer_roots exclusion rows above name a consumer that executes"
-  }
+//
+// THE ROW ITSELF IS gunbc.rung_drop source_root_ingest_gate_rung_drop. It is declared in the drop
+// roster and consumed here, because where a declaration is READ is not where it is DECLARED -- and
+// a drop declared beside its consumer is a drop the roster DESIGN section 4b(3) calls full does not
+// contain, which is exactly the state this rationale used to sit in.

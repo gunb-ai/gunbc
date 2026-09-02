@@ -143,7 +143,7 @@ fn structural_ordering_for(rows: List<StructuralOrderingBinding>, carrier: Decla
   }
 }
 
-// A DECLARED CONNECTIVE (review 57746, retiring gunbc.guarantee_rung_drop structural_connective_stall
+// A DECLARED CONNECTIVE (review 57746, retiring gunbc.guarantee_stall structural_connective_stall
 // by its own trigger): the row admits that this structural carrier's conjunction and disjunction
 // realize on the host token -- a row may only state what is already true of the destination
 // (v2.std.logic Bool = True | False, the corpus's ordinary Bool). A structural operand under a
@@ -287,7 +287,7 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
 // (StructuralConnectiveBinding below; rows in gunbc.structural_realization_bindings
 // structural_connective_rows): a structural operand under And/Or realizes on the host only where
 // its carrier declares it, and refuses, typed and located, where it does not. The former
-// structural_connective_stall row in gunbc.guarantee_rung_drop is retired by exactly this
+// structural_connective_stall row in gunbc.guarantee_stall is retired by exactly this
 // capability, which is what its trigger named.
 //
 // AN OPERAND WHOSE DECLARATION COULD NOT BE READ is not a widen and not a guess: it decides by
