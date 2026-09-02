@@ -3154,6 +3154,14 @@ const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witne
 const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness/witness_deferral_freeze.dag";
 const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
+/// The roster of witness MODULE NAMESPACES the required fold cannot execute, read from the same
+/// `ci_layer_roots` authority as `witness_layer_roots`. Fail-closed by construction: the exemption
+/// it grants is keyed on MEMBERSHIP IN THIS ROSTER, never on the absence of a match in
+/// `witness_layer_roots` -- "not declared executing" and "declared non-executing" are different
+/// claims, and only the second carries the 4b(2) stall and its trigger
+/// (`non_executing_witness_module_prefixes_restoration`). An unreadable or empty roster exempts nothing.
+const NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME: &str =
+    "non_executing_witness_module_prefixes";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
 /// The v2 entry roster the emission phase compiles — one `.dag` row, so re-deciding
@@ -3282,6 +3290,25 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
 /// authority.
 pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<String> {
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
+}
+
+/// Project the `non_executing_witness_module_prefixes` `List<String>` literal out of the ci_layer_roots
+/// authority.
+pub(crate) fn non_executing_witness_module_prefixes_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        NON_EXECUTING_WITNESS_MODULE_PREFIXES_DATA_NAME,
+    )
+}
+
+/// The declared non-executing witness module namespaces, read once.
+pub fn non_executing_witness_module_prefixes() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            non_executing_witness_module_prefixes_from_source(ci_layer_roots_authority_content())
+        })
+        .clone()
 }
 
 /// One `witness_exclusion_frontier` row as the host reads it: the discovery-exclusion
@@ -19276,8 +19303,28 @@ pub fn classify_cli_wire(
                         }
                     }
                 };
+                // PRESENT IS NOT THE SAME AS VALID, and accepting the field merely because it
+                // exists was the remaining hole. `classify_exit` answers `NotProcessExit` for a
+                // value that is not an exit at all, and routing that into `Printable` meant
+                // `cli_wire_outcome` set `stdout: Some(bytes)` and then exited 2 -- so the host
+                // PRINTED bytes carried by a value that does not inhabit the declared wire shape,
+                // and a consumer reading stdout got partial output from a refused response. That is
+                // the fabricated plausible output DESIGN section 5 forbids, reached by a value
+                // claiming a type it does not inhabit. Found by review 58518 on gunbc#9864.
+                //
+                // Only a real exit keeps the response printable; anything else is a malformed
+                // payload and refuses with nothing on stdout.
                 let exit = match ctx.field(fields, "exit") {
-                    Some(v) => classify_exit(v, ctx),
+                    Some(v) => match classify_exit(v, ctx) {
+                        ExitClass::NotProcessExit { type_name } => {
+                            return CliWireClass::MalformedCliWire {
+                                detail: format!(
+                                    "CliWirePrintable{{exit: `{type_name}` is not a ProcessExit}}"
+                                ),
+                            }
+                        }
+                        valid => valid,
+                    },
                     None => {
                         return CliWireClass::MalformedCliWire {
                             detail: "CliWirePrintable{exit: <absent>}".to_string(),
@@ -19374,8 +19421,19 @@ pub fn cli_wire_outcome(class: CliWireClass, function: &str) -> Option<CliWireOu
 /// The `ExitClass` half of the map, shared by the wire path and the driver's plain
 /// `ProcessExit` path so the two cannot disagree about what a verdict means.
 ///
-/// Kept byte-for-byte equivalent to the driver's own `exit_status_for`, including its refusal
-/// of `ExitFailure { code: 0 }` — a variant that claims failure while reporting success.
+/// This IS the driver's `exit_status_for` — `main.rs` delegates to it and holds no match of its
+/// own — so the two paths cannot disagree about what a verdict means, including the refusal of
+/// `ExitFailure { code: 0 }`, a variant that claims failure while reporting success. That is a
+/// property of there being one implementation, not a discipline anyone has to maintain.
+///
+/// THE COMMENT USED TO CLAIM SOMETHING WEAKER AND FALSER: "kept byte-for-byte equivalent",
+/// asserting an equivalence held by care. It was not held. The relocation dropped the
+/// `status: refused — printing the value and exiting 0 would report success for a run whose
+/// outcome is unknown.` sentence from the `NotProcessExit` message, so the doc asserted byte
+/// equivalence against a message that had lost a line — the doc lied, not the code. Found by
+/// review 58567 on gunbc#9864. The sentence is restored rather than the claim weakened, because
+/// it carries the operator-facing reason the refusal exists: an unknown outcome reported as
+/// success is the fabricated plausible output §5 forbids.
 pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<String>) {
     match class {
         ExitClass::Success => (0, None),
@@ -19396,7 +19454,9 @@ pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<S
             Some(format!(
                 "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
                  cause: the host maps a run's verdict to an exit code, and only ProcessExit \
-                 carries one. Wrap the result in ExitSuccess / ExitFailure."
+                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
+                 status: refused — printing the value and exiting 0 would report success for \
+                 a run whose outcome is unknown."
             )),
         ),
     }
@@ -19525,6 +19585,37 @@ mod cli_wire_classify_tests {
             vec![("bytes", str_value("x"))],
         );
         assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    // A PRESENT-BUT-INVALID EXIT IS MALFORMED, NOT PRINTABLE. This is the case review 58518 found:
+    // the field exists, so the earlier version accepted it and let the host print `bytes` before
+    // exiting 2 on the shape error. The assertion that nothing reaches stdout is the one that
+    // matters -- a classification that stayed `Printable` would still refuse, but only AFTER
+    // emitting untrusted partial output.
+    #[test]
+    fn a_printable_response_whose_exit_is_not_a_process_exit_is_malformed_and_prints_nothing() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![
+                ("bytes", str_value("half an answer\n")),
+                ("exit", str_value("not an exit at all")),
+            ],
+        );
+        let class = classify_cli_wire(&v, &c);
+        assert!(
+            is_malformed(&class),
+            "a present but invalid exit must be malformed, not printable"
+        );
+        let out = super::cli_wire_outcome(class, "scm_log_cli_response")
+            .expect("a malformed wire response produces an outcome");
+        assert_eq!(out.status, 2);
+        assert!(
+            out.stdout.is_none(),
+            "bytes carried by a value that does not inhabit the wire shape must never be printed"
+        );
     }
 
     #[test]
@@ -39407,6 +39498,26 @@ pub enum RequiredFloorDisposition {
     /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
     /// this is the identity grain the population join is keyed on.
     DeclinedDiscoveryExcluded { matched_substring: String },
+    /// Selected by the changed-witness sublane and NOT PRESENT IN THE DECLARED POPULATION at all,
+    /// because the module that declares it is outside the run's discovery roots.
+    ///
+    /// TWO RANGES OVER ONE POPULATION, which is what this variant exists to make sayable.
+    /// `changed_witness_set` is derived from the run's git diff and is ROOT-AGNOSTIC; the declared
+    /// population is enumerated from the discovered index, which is scoped to the run's
+    /// `--source-root`s. The selector's range is therefore strictly wider than the enumerator's,
+    /// so a witness homed outside those roots is SELECTABLE AND UNDECLARABLE by construction, and
+    /// every PR touching one used to refuse with `ChangedWitnessSublaneJoinInexact` naming
+    /// identities no in-diff edit could ever satisfy.
+    ///
+    /// It is a DECLINE and not a filter, deliberately. Dropping the selection before the join
+    /// would have greened the floor by making the over-selection invisible — the absorbing arm,
+    /// where the selector keeps over-selecting and nobody ever learns. This row is counted,
+    /// named, and carries the module, so the mismatch is visible in the disposition receipt.
+    ///
+    /// THIS DOES NOT RETIRE THE MISMATCH. The repair is that selection and disposition consume
+    /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
+    /// denominators have been reconciled.
+    DeclinedChangedWitnessOutsideDiscovery { module_path: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -40122,6 +40233,60 @@ fn write_required_floor_claim_cost_tsv(
     Ok(())
 }
 
+/// The cross-claim demand receipt: one row per RETAINED producer identity, whether or not more
+/// than one claim demanded it. The single-claim rows are kept deliberately — they are the
+/// control population that makes `claims > 1` mean something, and dropping them would leave an
+/// artifact in which every row looks shared.
+///
+/// The header line carries the census's own disclosure: how many claims were folded in, and what
+/// the retention floor and the key cap did NOT retain. An artifact that truncates without saying
+/// so is read as a population, which is the failure this instrument exists to stop making.
+fn write_required_floor_cross_claim_demand_tsv(
+    path: &str,
+    rows: &[v1_interpreter::CrossClaimDemandRow],
+    disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
+    claim_cpu_total_ms: u128,
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
+    writeln!(
+        file,
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
+        disclosure.claims_absorbed,
+        rows.len(),
+        disclosure.omitted_keys,
+        disclosure.omitted_ns / 1_000_000,
+        disclosure.overflow_keys,
+        disclosure.absorb_ns_total / 1_000_000,
+        disclosure.absorb_ns_max / 1_000_000,
+        claim_cpu_total_ms
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    writeln!(
+        file,
+        "producer\targ_shape\tclaims\tevals\ttotal_ms\tcross_claim_ms\tmodules\tmodule_sample\tdecl_site"
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            row.producer.replace(['\t', '\n'], " "),
+            row.arg_shape,
+            row.claims,
+            row.evals,
+            row.total_ns / 1_000_000,
+            row.cross_claim_wasted_ns() / 1_000_000,
+            row.modules,
+            row.module_sample.join(",").replace(['\t', '\n'], " "),
+            row.decl_site.replace(['\t', '\n'], " ")
+        )
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
 fn write_required_floor_disposition_tsv(
     path: &str,
     rows: &[RequiredFloorDispositionRow],
@@ -40152,6 +40317,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_outside_gate = 0usize;
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
+    let mut declined_changed_witness_outside_discovery = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -40164,13 +40330,17 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
                 declined_discovery_excluded += 1
             }
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                declined_changed_witness_outside_discovery += 1
+            }
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
-         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
+         \tdeclined_changed_witness_outside_discovery={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -40179,7 +40349,8 @@ fn write_required_floor_disposition_tsv(
         declined_outside_gate,
         declined_gate_closure,
         declined_discovery_excluded,
-        declined_cost_debt
+        declined_cost_debt,
+        declined_changed_witness_outside_discovery
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
@@ -40906,10 +41077,11 @@ pub use emitted_closure_compile_host::{
 /// public surface merely because Rust needs a path to it.
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
-    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, FixtureClosureOutcome,
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
+    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

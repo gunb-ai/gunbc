@@ -20,9 +20,21 @@ pub use crate::extdeps_languages_rust_types::{
 pub use crate::gunbc_rust_source_type_bindings::{
     checkpoint_row_migration_rows, rust_source_type_binding_rows,
 };
-use crate::std_coercion::TypeRealizationDecision::*;
+use crate::std_coercion::RealizationGround::{
+    GroundedByCheckpointRow, GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow,
+};
+use crate::std_coercion::RealizationRefusalCause::{
+    BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow,
+    DeclarationIdentityUnavailable, ExactBindingAmbiguousForOneDeclaration,
+    ExactSourceIdentityAbsent,
+};
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
+use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
 pub use crate::std_coercion::{
-    CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint, TypeRealizationDecision,
+    CallableRepr, CastSyntax, InhabitantDecl, RealizationGround, RealizationRefusalCause,
+    TypeCheckpoint, TypeDeclarationProvenance, TypeRealizationDecision,
 };
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_target_representation::ExactBindingResolution;
@@ -38,8 +50,10 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::qualified_last_segment;
 use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::{
+    declaration_provenance_of, qualified_last_segment, type_reference_provenance,
+};
 pub use crate::v1_std_core::{InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -135,24 +149,10 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     }
 }
 
-pub fn decl_identity_file(item: Rc<Node>) -> String {
-    match item.ident_span.clone() {
-        Some(sp) => sp.file.clone(),
-        std::option::Option::None => "".to_string(),
-    }
-}
-
-pub fn type_reference_decl_file(n: Rc<Node>) -> String {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => decl_identity_file(rt.clone()),
-        _ => decl_identity_file(n.clone()),
-    }
-}
-
 pub fn type_reference_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity. Homed in v1.compiler.coercion, not v1.compiler.emit_rust, because lookup_checkpoint -- the identity-gated consumer -- is target-generic and shared by v1.compiler.emit as well as v1.compiler.emit_rust; the helper lived beside one caller only because that caller was written first.".to_string()
+            "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring identity. THAT IDENTITY IS NO LONGER A STRING AND NO LONGER TRAVELS. It was a decl_file path threaded to ninety-five call sites, each of which then asked a gate here to make the same decision at the periphery; DESIGN section 3 says the dispatch that selects a realization is itself realization and sits peripheral rather than in the interface, and a ninety-five-site-wide identity channel was that sentence inverted. The decision is taken once, at type_reference_realization (reference sites) or declaration_realization (declaration sites), and what travels to the renderers is a std.coercion TypeRealizationDecision. A NAME MAY STILL BE A STRING; AN IDENTITY MAY NOT -- dag_name stays a parameter because which peel of a reference is meant (authored spelling, fn-sig leaf, qualified last segment) is a fact the SITE holds and no mint can derive without guessing. The regression this note has always existed to prevent is unchanged and is now unwritable rather than merely warned about: passing the empty string used to mean identity unknown, and a site that omitted identity rendered structurally in silence -- the seed's own dag/std/integer.dag aliases once rendered as crate::std_nat::Nat instead of i64 because eight reference sites passed an empty identity. There is no empty string to pass. An absent identity is std.coercion DeclarationIdentityAbsent, and the answer it still reaches from the bare table is stamped GroundedByUnidentifiedBareRow so that a declared drop is countable instead of indistinguishable from a keyed answer. Homed in v1.compiler.coercion rather than v1.compiler.emit_rust because the decision is target-generic and shared by v1.compiler.emit as well; the provenance itself and its recognizer are homed further down still, in std.coercion and v1.std.core beside the kernel_span minter they read.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -179,23 +179,26 @@ pub fn structural_declaration_gate_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn decl_file_declares_structurally(dag_name: String, decl_file: String) -> bool {
-    if (decl_file.clone() == "".to_string()) {
-        false
-    } else {
-        {
+pub fn provenance_declares_structurally(
+    dag_name: String,
+    p: Rc<TypeDeclarationProvenance>,
+) -> bool {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
             let mut __found = false;
             for m in structural_declaration_modules_for(dag_name.clone())
                 .iter()
                 .cloned()
             {
-                if v1_rt::contains(decl_file.clone(), m.clone()) {
+                if v1_rt::contains(f.clone(), m.clone()) {
                     __found = true;
                     break;
                 }
             }
             __found
         }
+        TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => false,
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
     }
 }
 
@@ -221,34 +224,32 @@ pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
     Rc::new(vec![
         "dag/std/nat.dag".to_string(),
         "dag/std/integer.dag".to_string(),
-        "<kernel:".to_string(),
     ])
 }
 
-pub fn is_kernel_minted_file(file: String) -> bool {
-    v1_rt::contains(file.clone(), "<kernel:".to_string())
-}
-
-pub fn decl_file_realizes_natively(decl_file: String) -> bool {
-    if (decl_file.clone() == "".to_string()) {
-        false
-    } else {
-        {
+pub fn provenance_realizes_natively(p: Rc<TypeDeclarationProvenance>) -> bool {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
             let mut __found = false;
             for m in numeric_realization_declaring_modules().iter().cloned() {
-                if v1_rt::contains(decl_file.clone(), m.clone()) {
+                if v1_rt::contains(f.clone(), m.clone()) {
                     __found = true;
                     break;
                 }
             }
             __found
         }
+        TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
     }
 }
 
-pub fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> Option<String> {
+pub fn provenance_host_numeric_alias(
+    name: String,
+    p: Rc<TypeDeclarationProvenance>,
+) -> Option<String> {
     if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
-        && decl_file_realizes_natively(decl_file.clone()))
+        && provenance_realizes_natively(p.clone()))
     {
         Some("i64".to_string())
     } else {
@@ -259,73 +260,10 @@ pub fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> Option<S
 pub fn type_realization_decision(
     target: RenderTarget,
     dag_name: String,
-    decl_file: String,
+    provenance: Rc<TypeDeclarationProvenance>,
 ) -> Rc<TypeRealizationDecision> {
-    if (decl_file.clone() == "".to_string()) {
-        Rc::new(TypeRealizationDecision::Refused {
-            cause: "declaration identity unknown: empty decl_file".to_string(),
-        })
-    } else {
-        if decl_file_declares_structurally(dag_name.clone(), decl_file.clone()) {
-            Rc::new(TypeRealizationDecision::Unrealized)
-        } else {
-            if ((target.clone() == RenderTarget::Rust)
-                && !rust_checkpoint_row_keeps_bare_row(dag_name.clone()))
-            {
-                Rc::new(TypeRealizationDecision::Refused {
-    cause: v1_rt::concat(v1_rt::concat("declaration-keyed name '".to_string(), dag_name.clone()), "' reached the spelling-keyed arm without a DeclarationRef: its bare row is MigratedToExactBinding (gunbc.rust_source_type_bindings checkpoint_row_migration_rows); answer from rust_exact_realization_decision".to_string()),
-})
-            } else {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for cp in target_checkpoints(target.clone()).iter().cloned() {
-                        if (cp.dag_name.clone() == dag_name.clone()) {
-                            __result.push(cp);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(cp) => Rc::new(TypeRealizationDecision::Realized {
-                        checkpoint: cp.clone(),
-                    }),
-                    std::option::Option::None => {
-                        let native = if (target.clone() == RenderTarget::Rust) {
-                            rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
-                        } else {
-                            std::option::Option::None
-                        };
-                        match native.clone() {
-                            Some(host) => Rc::new(TypeRealizationDecision::Realized {
-                                checkpoint: Rc::new(TypeCheckpoint {
-                                    dag_name: dag_name.clone(),
-                                    target_type: host.clone(),
-                                    grounding_type: host.clone(),
-                                    default_expr: std::option::Option::None,
-                                    is_copy: std::option::Option::None,
-                                    literal_suffix: std::option::Option::None,
-                                }),
-                            }),
-                            std::option::Option::None => {
-                                Rc::new(TypeRealizationDecision::Unrealized)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn lookup_checkpoint(
-    target: RenderTarget,
-    dag_name: String,
-    decl_file: String,
-) -> Option<Rc<TypeCheckpoint>> {
-    if (decl_file.clone() == "".to_string()) {
-        Rc::new({
+    match (*provenance.clone()).clone() {
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => match Rc::new({
             let mut __result = Vec::new();
             for cp in target_checkpoints(target.clone()).iter().cloned() {
                 if (cp.dag_name.clone() == dag_name.clone()) {
@@ -336,14 +274,124 @@ pub fn lookup_checkpoint(
         })
         .first()
         .cloned()
-    } else {
-        match (*type_realization_decision(target.clone(), dag_name.clone(), decl_file.clone()))
-            .clone()
         {
-            TypeRealizationDecision::Realized { checkpoint: cp, .. } => Some(cp.clone()),
-            TypeRealizationDecision::Unrealized => std::option::Option::None,
-            TypeRealizationDecision::Refused { cause: _, .. } => std::option::Option::None,
+            Some(cp) => Rc::new(TypeRealizationDecision::Realized {
+                checkpoint: cp.clone(),
+                ground: RealizationGround::GroundedByUnidentifiedBareRow,
+            }),
+            std::option::Option::None => Rc::new(TypeRealizationDecision::RealizationRefused {
+                cause: Rc::new(RealizationRefusalCause::DeclarationIdentityUnavailable),
+            }),
+        },
+        _ => {
+            if provenance_declares_structurally(dag_name.clone(), provenance.clone()) {
+                Rc::new(TypeRealizationDecision::Unrealized)
+            } else {
+                if ((target.clone() == RenderTarget::Rust)
+                    && !rust_checkpoint_row_keeps_bare_row(dag_name.clone()))
+                {
+                    Rc::new(TypeRealizationDecision::RealizationRefused {
+                        cause: Rc::new(RealizationRefusalCause::BareRowMigratedToExactBinding {
+                            dag_name: dag_name.clone(),
+                        }),
+                    })
+                } else {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for cp in target_checkpoints(target.clone()).iter().cloned() {
+                            if (cp.dag_name.clone() == dag_name.clone()) {
+                                __result.push(cp);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(cp) => Rc::new(TypeRealizationDecision::Realized {
+                            checkpoint: cp.clone(),
+                            ground: RealizationGround::GroundedByCheckpointRow,
+                        }),
+                        std::option::Option::None => {
+                            let native = if (target.clone() == RenderTarget::Rust) {
+                                provenance_host_numeric_alias(dag_name.clone(), provenance.clone())
+                            } else {
+                                std::option::Option::None
+                            };
+                            match native.clone() {
+                                Some(host) => Rc::new(TypeRealizationDecision::Realized {
+                                    checkpoint: Rc::new(TypeCheckpoint {
+                                        dag_name: dag_name.clone(),
+                                        target_type: host.clone(),
+                                        grounding_type: host.clone(),
+                                        default_expr: std::option::Option::None,
+                                        is_copy: std::option::Option::None,
+                                        literal_suffix: std::option::Option::None,
+                                    }),
+                                    ground: RealizationGround::GroundedByHostNumericAlias,
+                                }),
+                                std::option::Option::None => {
+                                    Rc::new(TypeRealizationDecision::Unrealized)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+pub fn type_reference_realization(
+    n: Rc<Node>,
+    dag_name: String,
+    target: RenderTarget,
+) -> Rc<TypeRealizationDecision> {
+    type_realization_decision(
+        target.clone(),
+        dag_name.clone(),
+        crate::v1_std_core::type_reference_provenance(n.clone()),
+    )
+}
+
+pub fn declaration_realization(
+    item: Rc<Node>,
+    dag_name: String,
+    target: RenderTarget,
+) -> Rc<TypeRealizationDecision> {
+    type_realization_decision(
+        target.clone(),
+        dag_name.clone(),
+        crate::v1_std_core::declaration_provenance_of(item.clone()),
+    )
+}
+
+pub fn realized_checkpoint(decision: Rc<TypeRealizationDecision>) -> Option<Rc<TypeCheckpoint>> {
+    match (*decision.clone()).clone() {
+        TypeRealizationDecision::Realized { checkpoint: cp, .. } => Some(cp.clone()),
+        TypeRealizationDecision::Unrealized => std::option::Option::None,
+        TypeRealizationDecision::RealizationRefused { cause: _, .. } => std::option::Option::None,
+    }
+}
+
+pub fn realization_is_host_numeric(decision: Rc<TypeRealizationDecision>) -> bool {
+    match (*decision.clone()).clone() {
+        TypeRealizationDecision::Realized {
+            ground: RealizationGround::GroundedByHostNumericAlias,
+            ..
+        } => true,
+        _ => false,
+    }
+}
+
+pub fn realization_host_numeric_spelling(decision: Rc<TypeRealizationDecision>) -> Option<String> {
+    match (*decision.clone()).clone() {
+        TypeRealizationDecision::Realized {
+            checkpoint: cp,
+            ground: RealizationGround::GroundedByHostNumericAlias,
+            ..
+        } => Some(cp.target_type.clone()),
+        _ => std::option::Option::None,
     }
 }
 
@@ -360,37 +408,46 @@ pub fn rust_exact_realization_decision(
     source: Option<Rc<DeclarationRef>>,
 ) -> Rc<TypeRealizationDecision> {
     match (*rust_lookup_exact_binding(source.clone())).clone() {
-    ExactBindingResolution::ResolvedExactBinding { binding: b, .. } => match crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint(b.clone()) {
-    Some(cp) => Rc::new(TypeRealizationDecision::Realized {
-    checkpoint: cp.clone(),
-}),
-    std::option::Option::None => Rc::new(TypeRealizationDecision::Refused {
-    cause: v1_rt::concat(v1_rt::concat("declaration '".to_string(), b.source.clone().decl_name.clone()), "' is bound to a Rust representation with no realization row".to_string()),
-}),
-},
-    ExactBindingResolution::ExactBindingAbsent => Rc::new(TypeRealizationDecision::Unrealized),
-    ExactBindingResolution::ExactBindingAmbiguous { candidate_count: _, .. } => Rc::new(TypeRealizationDecision::Refused {
-    cause: "ambiguous exact binding: more than one row for one declaration (gunbc.rust_source_type_bindings authoring defect)".to_string(),
-}),
-    ExactBindingResolution::ExactSourceIdentityUnavailable { cause: c, .. } => Rc::new(TypeRealizationDecision::Refused {
-    cause: c.clone(),
-}),
-}
+        ExactBindingResolution::ResolvedExactBinding { binding: b, .. } => {
+            match crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint(
+                b.clone(),
+            ) {
+                Some(cp) => Rc::new(TypeRealizationDecision::Realized {
+                    checkpoint: cp.clone(),
+                    ground: RealizationGround::GroundedByCheckpointRow,
+                }),
+                std::option::Option::None => Rc::new(TypeRealizationDecision::RealizationRefused {
+                    cause: Rc::new(
+                        RealizationRefusalCause::BoundRepresentationHasNoRealizationRow {
+                            decl_name: b.source.clone().decl_name.clone(),
+                        },
+                    ),
+                }),
+            }
+        }
+        ExactBindingResolution::ExactBindingAbsent => Rc::new(TypeRealizationDecision::Unrealized),
+        ExactBindingResolution::ExactBindingAmbiguous {
+            candidate_count: _, ..
+        } => Rc::new(TypeRealizationDecision::RealizationRefused {
+            cause: Rc::new(RealizationRefusalCause::ExactBindingAmbiguousForOneDeclaration),
+        }),
+        ExactBindingResolution::ExactSourceIdentityUnavailable { cause: c, .. } => {
+            Rc::new(TypeRealizationDecision::RealizationRefused {
+                cause: Rc::new(RealizationRefusalCause::ExactSourceIdentityAbsent {
+                    detail: c.clone(),
+                }),
+            })
+        }
+    }
 }
 
 pub fn declaration_realizes_natively_on_rust(
     declaration: Rc<DeclarationRef>,
-    decl_file: String,
+    spelling_decision: Rc<TypeRealizationDecision>,
 ) -> bool {
     match (*rust_exact_realization_decision(Some(declaration.clone()))).clone() {
-        TypeRealizationDecision::Realized { checkpoint: _, .. } => true,
-        _ => {
-            (lookup_checkpoint(
-                RenderTarget::Rust,
-                declaration.decl_name.clone(),
-                decl_file.clone(),
-            ) != std::option::Option::None)
-        }
+        TypeRealizationDecision::Realized { .. } => true,
+        _ => (realized_checkpoint(spelling_decision.clone()) != std::option::Option::None),
     }
 }
 
@@ -419,22 +476,22 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
-    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
+pub fn coerce_primitive_type(decision: Rc<TypeRealizationDecision>, dag_name: String) -> String {
+    match realized_checkpoint(decision.clone()) {
         Some(cp) => cp.target_type.clone(),
         std::option::Option::None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
     }
 }
 
-pub fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Option<bool> {
-    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
+pub fn is_copy(decision: Rc<TypeRealizationDecision>) -> Option<bool> {
+    match realized_checkpoint(decision.clone()) {
         Some(cp) => cp.is_copy.clone(),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
-pub fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> Option<String> {
-    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
+pub fn literal_suffix(decision: Rc<TypeRealizationDecision>) -> Option<String> {
+    match realized_checkpoint(decision.clone()) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
             std::option::Option::None => Some("".to_string()),
@@ -659,10 +716,22 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     (*{
                         let inhs =
                             unique_inhabitants_for_template_tests(target_inhabitants(t.clone()));
-                        let int_target =
-                            coerce_primitive_type(t.clone(), "Int".to_string(), "".to_string());
-                        let str_target =
-                            coerce_primitive_type(t.clone(), "String".to_string(), "".to_string());
+                        let int_target = coerce_primitive_type(
+                            type_realization_decision(
+                                t.clone(),
+                                "Int".to_string(),
+                                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+                            ),
+                            "Int".to_string(),
+                        );
+                        let str_target = coerce_primitive_type(
+                            type_realization_decision(
+                                t.clone(),
+                                "String".to_string(),
+                                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+                            ),
+                            "String".to_string(),
+                        );
                         Rc::new({
                             let mut __result = Vec::new();
                             for inh in inhs.iter().cloned() {
