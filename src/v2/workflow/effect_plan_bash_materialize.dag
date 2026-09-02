@@ -54,6 +54,7 @@ import v2.std.orchestration {
   FailFast,
   FailurePolicy
 }
+import v2.std.text { String }
 import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }

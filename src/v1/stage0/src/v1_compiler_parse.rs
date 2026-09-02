@@ -2159,20 +2159,6 @@ pub fn is_prefix_infix_dual_role_operator(symbol: String) -> bool {
     }
 }
 
-pub fn is_ambiguous_prefix_infix_newline_boundary(tokens: Rc<TokenStream>) -> bool {
-    if tok_is_newline(token_stream_first(tokens.clone())) {
-        {
-            let after = skip_newlines(tokens.clone());
-            match token_stream_first(after.clone()) {
-                Some(t) => is_prefix_infix_dual_role_operator(t.text.clone()),
-                std::option::Option::None => false,
-            }
-        }
-    } else {
-        false
-    }
-}
-
 pub fn is_operator_continuation_token(tok: Option<Rc<Token>>) -> bool {
     match tok.clone() {
         Some(t) => {
@@ -12289,23 +12275,6 @@ pub fn parse_expr_loop(
             });
         } else {
             let loop_span = token_span(token_stream_first(tokens.clone()));
-            if is_ambiguous_prefix_infix_newline_boundary(tokens.clone()) {
-                {
-                    let operator_span =
-                        token_span(token_stream_first(skip_newlines(tokens.clone())));
-                    let ambiguity_span = make_file_span(
-                        lhs.span.clone().file.clone(),
-                        lhs.span.clone().start.clone(),
-                        operator_span.end.clone(),
-                    );
-                    return Rc::new(ExprResult {
-    expr: lhs.clone(),
-    tokens: tokens.clone(),
-    ctx: ctx.clone(),
-    err: Some(parse_error("ambiguous newline before prefix/infix operator '-': move the infix operator before the newline or parenthesize the unary expression".to_string(), ambiguity_span.clone())),
-});
-                }
-            }
             tokens = skip_continuation_newlines(tokens.clone());
             let post = try_postfix(tokens.clone(), ctx.clone(), lhs.clone(), min_bp.clone());
             if has_err(post.err.clone()) {
@@ -14143,23 +14112,6 @@ pub fn parse_expr_loop_no_brace(
             });
         } else {
             let loop_span = token_span(tok.clone());
-            if is_ambiguous_prefix_infix_newline_boundary(tokens.clone()) {
-                {
-                    let operator_span =
-                        token_span(token_stream_first(skip_newlines(tokens.clone())));
-                    let ambiguity_span = make_file_span(
-                        lhs.span.clone().file.clone(),
-                        lhs.span.clone().start.clone(),
-                        operator_span.end.clone(),
-                    );
-                    return Rc::new(ExprResult {
-    expr: lhs.clone(),
-    tokens: tokens.clone(),
-    ctx: ctx.clone(),
-    err: Some(parse_error("ambiguous newline before prefix/infix operator '-': move the infix operator before the newline or parenthesize the unary expression".to_string(), ambiguity_span.clone())),
-});
-                }
-            }
             tokens = skip_continuation_newlines(tokens.clone());
             if (tok_is_lparen(token_stream_first(tokens.clone())) && (21 >= min_bp.clone())) {
                 let r = parse_call_args(tokens.clone(), ctx.clone());

@@ -153,7 +153,7 @@ test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: gunbc_runner_slots_per_host(host: operator_host_srv1)
+        desired: declared_runner_count_for(host: operator_host_srv1)
       ) == gunbc.host_converge.Drifted
     Absent => false
   }
@@ -164,7 +164,7 @@ test fn witness_srv2_width_drifts_from_declared_count() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: gunbc_runner_slots_per_host(host: operator_host_srv2)
+        desired: declared_runner_count_for(host: operator_host_srv2)
       ) == gunbc.host_converge.Drifted
     Absent => false
   }

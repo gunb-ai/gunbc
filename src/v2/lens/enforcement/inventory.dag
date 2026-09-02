@@ -94,7 +94,6 @@ fn disposition_when_bool(enrolled: Bool) -> SchedulingDisposition {
 fn primary_is_offline_local_recipe(primary: WitnessConsumerCadence) -> Bool {
   match primary {
     DiscoverySelection => false
-    LocalRepoWetLane => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
@@ -112,7 +111,6 @@ fn pr_floor_scheduling_disposition(
 ) -> SchedulingDisposition {
   match primary {
     DiscoverySelection => SchedulingEnrolled
-    LocalRepoWetLane => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
@@ -130,7 +128,6 @@ fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> Sche
     FalsifierRehomedBinWet => SchedulingEnrolled
     BinWitnessWet => SchedulingEnrolled
     OfflineLocalRecipe => SchedulingDark
-    LocalRepoWetLane => SchedulingExcluded
     DiscoverySelection => SchedulingExcluded
     FalsifierSubstrateLongLane => SchedulingExcluded
     QuarantineProbeExpectRed => SchedulingExcluded
@@ -144,7 +141,6 @@ fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
     FalsifierSubstrateLongLane => SchedulingEnrolled
-    LocalRepoWetLane => SchedulingExcluded
     QuarantineProbeExpectRed => SchedulingEnrolled
     DiscoverySelection => SchedulingExcluded
     BinWitnessWet => SchedulingExcluded

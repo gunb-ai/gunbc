@@ -41,7 +41,8 @@ import gunbc.runner_slot_provision {
   runner_slot_member_from_instance_name,
 }
 import gunbc.membership_reconcile { membership_added_count }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count, host_memory_admitted_width }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count }
+import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
 
@@ -154,7 +155,7 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
   match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {
     RunnerSlotEnumerationMismatch { host: h, declared_count: d, observed_count: o } =>
       h == operator_host_srv3
-        && d == gunbc_runner_slots_per_host(host: operator_host_srv3)
+        && d == declared_runner_count_for(host: operator_host_srv3)
         && o == 1
         && d > o
     RunnerSlotEnumerationMatched => false
@@ -302,9 +303,9 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // than a restatement of one.
 //
 // runner_count derives from gunbc.runner_slot_allocation gunbc_runner_slots_per_host, which is the
-// MINIMUM over the memory, CPU and disk axes. host_memory_admitted_width is the memory axis ALONE.
-// The memory-only gunbc.fleet_host_budget declared_runner_count_for that used to stand here was a
-// SECOND producer of the committed width and is deleted; the axis it approximated is named directly. Asserting equality between them would be wrong as well as vacuous -- since the 2026-08-23
+// MINIMUM over the memory, CPU and disk axes. gunbc.fleet_host_budget declared_runner_count_for is
+// the memory axis alone, computed from the pool budget and the per-runner cgroup cap by a different
+// route. Asserting equality between them would be wrong as well as vacuous -- since the 2026-08-23
 // CPU-axis change the CPU axis binds first on srv1, srv3 and srv4, so the two numbers legitimately
 // differ (twenty-one committed against a memory admission of twenty-seven or twenty-nine).
 //
@@ -314,7 +315,7 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
   all(
     fleet_runner_host_deploys,
-    d => d.runner_count <= host_memory_admitted_width(host: d.host_label as HostIdentity)
+    d => d.runner_count <= declared_runner_count_for(host: d.host_label as HostIdentity)
       && d.runner_count > 0
   )
 }

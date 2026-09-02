@@ -9,6 +9,7 @@ import v2.std.operation_argv {
   operation_argv_bind_text_list
 }
 import v2.std.orchestration { FailFast }
+import v2.std.text { String }
 import v2.workflow.effect_plan_bash_materialize {
   BashBoundOperationInvocation,
   EffectPlanBashMaterializationRefused,

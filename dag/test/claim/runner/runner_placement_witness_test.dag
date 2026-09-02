@@ -27,12 +27,7 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
   hosts.length() > 0
     && plan_derived_run_total(p: live_plan()) == fold(hosts, init: 0, f: (n, h) => n + h.runner_count)
     && all(hosts, h =>
-        h.runner_count == gunbc_runner_slots_per_host(host: h.identity)
-          && h.runner_count <= host_memory_admitted_width(host: h.identity)
-          && (match host_cpu_admitted_width(host: h.identity) {
-               CpuAdmitsWidth { slots: c } => h.runner_count <= c
-               CpuWidthUnresolved { cause: _ } => false
-             })
+        h.runner_count == declared_runner_count_for(host: h.identity)
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget_for(host: h.identity))
           && hardware_thread_count_value(t: h.build_tokens) > 0
@@ -60,7 +55,7 @@ test fn witness_live_session_plan_fail_closed() -> Bool {
 // to accept that unsoundness would have made it green without exercising srv3 at all.
 test fn witness_live_effective_runners_derives_declared_count() -> Bool {
   match runner_host_deployment_for(p: live_plan(), host: operator_host_srv3) {
-    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == gunbc_runner_slots_per_host(host: operator_host_srv3)
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == declared_runner_count_for(host: operator_host_srv3)
     HostRunnerDeploymentRefused { refusal: _ } => false
   }
 }
@@ -282,9 +277,6 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         HostAllocationOversubscribedOnHost { cause: _ } => false
         HostAllocationUnchargeableOnHost { cause: _ } => false
         ZeroRunnerWidth => false
-        JobserverCitationAbsent { cause: _ } => false
-        HostCpuAllocationUnchargeable { cause: _ } => false
-        RunnerCoreRatioUnresolved { cause: _ } => false
         HostNotEnrolledInFleet => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false

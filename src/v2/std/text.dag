@@ -17,6 +17,13 @@ fn host_string_text_value(value: HostStringText) -> String {
   value.text
 }
 
+fn host_string_text_from_rust_host(host: String) -> String {
+  host_string_text_value(host_string_text(text: host))
+}
+fn host_string_text_to_rust_host(text: String) -> String {
+  host_string_text_value(host_string_text(text: text))
+}
+
 type CharResult
   = CharFound { value: Char }
   | CharAbsent

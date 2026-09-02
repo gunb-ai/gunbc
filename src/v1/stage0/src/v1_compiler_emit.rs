@@ -1436,57 +1436,23 @@ pub fn emit_container(name: String, inner: String, target: RenderTarget) -> Stri
 }
 
 pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
-    emit_keyed_container_type(
-        "map".to_string(),
-        key_type.clone(),
-        val_type.clone(),
-        "Map".to_string(),
-        target.clone(),
-    )
-}
-
-pub fn emit_keyed_container_type(
-    container_name: String,
-    key_type: String,
-    val_type: String,
-    fallback_base: String,
-    target: RenderTarget,
-) -> String {
-    match crate::v1_compiler_coercion::coerce_container_template(
-        target.clone(),
-        container_name.clone(),
-    ) {
+    match crate::v1_compiler_coercion::coerce_container_template(target.clone(), "map".to_string())
+    {
         Some(template) => crate::v1_compiler_emit_core_support::apply_type_template2(
             template.clone(),
             key_type.clone(),
             val_type.clone(),
         ),
-        std::option::Option::None => {
-            let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
+        std::option::Option::None => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(fallback_base.clone(), spec.type_arg_open.clone()),
-                            key_type.clone(),
-                        ),
-                        ", ".to_string(),
-                    ),
-                    val_type.clone(),
+                    v1_rt::concat("Map<".to_string(), key_type.clone()),
+                    ", ".to_string(),
                 ),
-                spec.type_arg_close.clone(),
-            )
-        }
-    }
-}
-
-pub fn keyed_container_has_target_inhabitant(container_name: String, target: RenderTarget) -> bool {
-    match crate::v1_compiler_coercion::coerce_container_template(
-        target.clone(),
-        container_name.clone(),
-    ) {
-        Some(_) => true,
-        std::option::Option::None => false,
+                val_type.clone(),
+            ),
+            ">".to_string(),
+        ),
     }
 }
 
@@ -1979,17 +1945,7 @@ pub fn render_node_type(
                     ),
                     std::option::Option::None => "_".to_string(),
                 };
-                let base = emit_keyed_container_type(
-                    tn.clone(),
-                    k.clone(),
-                    v.clone(),
-                    crate::v1_compiler_coercion::coerce_primitive_type(
-                        target.clone(),
-                        tn.clone(),
-                        crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
-                    ),
-                    target.clone(),
-                );
+                let base = emit_map_type(k.clone(), v.clone(), target.clone());
                 let map_str = if shared.clone() {
                     crate::v1_compiler_languages::wrap_shared_type(target.clone(), base.clone())
                 } else {

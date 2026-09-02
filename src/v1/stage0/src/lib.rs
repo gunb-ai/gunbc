@@ -82,7 +82,6 @@ pub mod v1_gunbc_occurrence_binding_parser_walk;
 pub mod v1_probe_emit_interp;
 pub mod v1_test_non_ascii_perf_fixture;
 pub mod v1_tests_claim_bare_variant_reference_occurrence_control_test;
-pub mod v1_tests_claim_carrier_realization_census;
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
 pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
 pub mod v1_tests_claim_transport_roster_closure_witness_test;

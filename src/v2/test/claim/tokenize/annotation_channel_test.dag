@@ -39,7 +39,7 @@ fn test_rules() -> LexRuleSet {
 
 // There is deliberately no `Rejected => empty artifact` arm. Such a fallback makes refusal indistinguishable from success on a clean source: `captures none` would pass because lexing FAILED, and a token-equivalence claim would degenerate into comparing two fabricated empties to each other. Every reader below renders the Outcome itself, so a refusal produces a string no expectation matches — the claim fails loudly instead of passing vacuously.
 fn annotation_count_rendered(source: String) -> String {
-  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: test_rules()) {
+  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       to_string(length(xs: lex_artifact_annotations(artifact: a)))
     v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
@@ -48,7 +48,7 @@ fn annotation_count_rendered(source: String) -> String {
 
 // Renders the semantic stream as an exact ordered (class, lexeme) sequence rather than a count or a concatenation. A count admits a leaked annotation that REPLACES another token while preserving cardinality; a concatenation admits any reordering that preserves total text. The identity sequence admits neither.
 fn token_identity(source: String) -> String {
-  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: test_rules()) {
+  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       fold_list(
         xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
@@ -60,7 +60,7 @@ fn token_identity(source: String) -> String {
 }
 
 fn annotations_of(source: String) -> List<UnboundSourceAnnotation> {
-  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: test_rules()) {
+  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => lex_artifact_annotations(artifact: a)
     v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
@@ -146,7 +146,7 @@ fn line_spanning_rules(token_text: String) -> LexRuleSet {
 }
 
 fn placement_after_spanning_token(token_text: String) -> String {
-  match lex_walk_artifact(source: chars(s: concat(token_text, "// note")), file: ^probe, rules: line_spanning_rules(token_text: token_text)) {
+  match lex_walk_artifact(source: concat(token_text, "// note"), file: ^probe, rules: line_spanning_rules(token_text: token_text)) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       fold_list(
         xs: lex_artifact_annotations(artifact: a),

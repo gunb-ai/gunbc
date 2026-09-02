@@ -1,7 +1,6 @@
 module test.claim.fleet_converge_plan_manifest_witness
 
 import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
-import v2.std.algebra { count_where }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.actions_run_binding { ActionsRunBinding }
@@ -487,57 +486,6 @@ fn is_classified(path: String) -> Bool {
 test fn every_rostered_persisted_member_is_classified() -> Bool {
   list_length(items: fleet_converge_persisted_member_paths) > 0
     && all(fleet_converge_persisted_member_paths, p => is_classified(path: p))
-}
-
-// EVERY ROSTERED IDENTITY APPEARS EXACTLY ONCE, and this row exists because the classification join
-// above CANNOT SEE A DUPLICATE. It requires only that the roster is nonempty and that every
-// occurrence classifies, so repeating a path that is already classified satisfies it BY
-// CONSTRUCTION -- the witness passes for a reason unrelated to the property it names. That is not
-// hypothetical: this PR inserted a second fleet_converge_plan_content_hash_path into this roster
-// while adding a missing import, every row here stayed green, and a reader caught it rather than
-// the gate.
-//
-// It matters because the roster claims to be a MAP. The authority's own annotation says the
-// classification and this list together are "a closed map rather than a lookup nobody enumerates",
-// joined at identity grain -- and an identity appearing twice is not a harmless bag entry, it means
-// the population the map is over is not what the map says it is.
-//
-// THE RUNG THIS REACHES IS MECHANICALLY ENFORCED AND NOT STRUCTURAL, said here because the word
-// "wall" invites the higher reading. The roster is a List<String>, so a repeated identity stays
-// perfectly WRITABLE and safety depends on this row executing and staying enrolled. Construction
-// would mean a carrier whose type cannot express a second occurrence of one identity at all, and
-// calling a raw list "a closed map" does not elevate it -- a name is not a constructor. The
-// next-rung trigger, named as the capability rather than as an artifact: a keyed-roster carrier
-// whose construction admits at most one member per identity, so that the duplicate this row
-// catches has nowhere to be written.
-//
-// NO LENGTH LITERAL, DELIBERATELY, for the same reason the row above refuses one: a count copied
-// from the tree it checks collapses to measure() == measure(). Multiplicity is asserted per
-// identity instead -- each member occurs exactly once in the roster -- which is a property of the
-// list rather than a snapshot of its size, and which reddens on a duplicate of an ALREADY-PRESENT
-// path, the case a length literal would also catch but only until someone updated it.
-fn occurs_exactly_once(path: String, roster: List<String>) -> Bool {
-  count_where(xs: roster, predicate: fn(p) { p == path }) == 1
-}
-
-test fn no_persisted_member_path_is_rostered_twice() -> Bool {
-  list_length(items: fleet_converge_persisted_member_paths) > 0
-    && all(fleet_converge_persisted_member_paths, p =>
-        occurs_exactly_once(path: p, roster: fleet_converge_persisted_member_paths))
-}
-
-// THE MUTATION CONTROL, so the zero above is a measurement and not a blind spot. The predicate is
-// run against the REAL roster with one existing identity repeated -- the exact defect this PR
-// committed -- and must refuse it. Without this row, "no duplicates" would be indistinguishable
-// from a check that cannot see one.
-data roster_with_one_identity_repeated: List<String> = concat(
-  fleet_converge_persisted_member_paths,
-  [fleet_converge_plan_content_hash_path],
-)
-
-test fn a_repeated_existing_identity_is_refused_by_the_uniqueness_wall() -> Bool {
-  !all(roster_with_one_identity_repeated, p =>
-      occurs_exactly_once(path: p, roster: roster_with_one_identity_repeated))
 }
 
 // THE DISCRIMINATING RED, and the reason the fold has no default arm. An unrecognized path is

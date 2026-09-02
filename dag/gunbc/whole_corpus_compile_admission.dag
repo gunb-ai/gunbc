@@ -9,10 +9,8 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
-  HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
   HostBudgetSource,
-  HostBudgetObserved,
   host_budget_source_label,
 }
 
@@ -96,26 +94,6 @@ data whole_corpus_compile_measured_demand_note: String = "WHERE THE THRESHOLD CO
 // An unasked question, not an all-clear: a scoped compile is not admitted by this module, it is
 // outside its subject. If scoped compiles later need their own bound it will be a different
 // measurement with a different demand figure, never this one reused at a discount.
-//
-// WHAT THE UNASKED QUESTION COSTS ON THE ENTRY PATH, because a reservation that records only its
-// intent gets rediscovered. A whole-root subject maps a declared-but-unverified budget to
-// WholeCorpusCompileRefusedBudgetUnreadable and stops. An entry subject is outside this arm by the
-// placement above, so it ADMITS -- and the declaration is never compared against an observable,
-// because on a runner exposing no cgroup limit there is nothing to compare it against. The only
-// behaviour left when the declaration is false is for the kernel to end the process.
-//
-// That is a real ending and not a hypothesis. Its receipt is gunbc.memory_stall_refusal
-// memory_stall_declared_budget_kill_receipt_note, which is also where the truthful-declaration
-// specimen lives; the two together are what establish that the honest range is EMPTY for a
-// whole-closure entry on that runner class, rather than merely badly chosen. The receipts are
-// carried there because that module owns what happens when the budget half was satisfied and the
-// machine still cannot deliver it -- this module owns only the placement that routes an entry
-// subject past the refusal.
-//
-// The consequence for anyone measuring here: declaring a budget to get past an Unreadable refusal
-// is the workaround DESIGN section 5 names, and the arm it defeats cites the resulting exit code in
-// its own refusal text. An entry measurement needs a runner that exposes a real limit, at which
-// point no declaration is involved and the refusal never fires.
 
 // The demand figure: the highest available COMPLETING-run peak on the compile route (15871708 kB,
 // --target dag), rounded up to whole-gibibyte grain. This session's own three peaks are all lower
@@ -157,12 +135,8 @@ fn whole_corpus_compile_admission_at_budget(
 fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
   match budget {
     HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetResolved {
-      effective_bytes: b,
-      requested_bytes: _,
-      observation: HostBudgetObserved { source: s, bytes: _ }
-    } => whole_corpus_compile_admission_at_budget(bytes: b, source: s)
+    HostBudgetResolved { source: s, bytes: b } =>
+      whole_corpus_compile_admission_at_budget(bytes: b, source: s)
   }
 }
 

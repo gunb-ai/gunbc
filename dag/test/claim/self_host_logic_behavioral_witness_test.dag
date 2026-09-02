@@ -6,16 +6,9 @@ import tools.self_host_logic_behavioral_transport { slb_behavioral_receipt_holds
 // tools.self_host_logic_behavioral_transport emits dag/std/logic.dag via the real gunbc binary,
 // compiles the emitted Rust against the v1-compiler seed crate, and runs the resulting witness
 // binary (plain + --inject-fault) to prove emit -> compile -> run -> equals-seed behavioral
-// equivalence by execution. Live host effects (cargo build, process execution), so it is CLASSIFIED
-// onto the falsifier Wet follow-on batch (falsifier_self_host_wet_entries) rather than per-PR
-// hermetic discovery or bin_witness_wet. THE JUSTIFYING HALF OF THAT SENTENCE IS PAST TENSE
-// (corrected 2026-09-01): the falsifier WAS the proven template lane for Wave 2 self-host receipts,
-// and that was the reason this receipt could leave per-PR without leaving coverage. falsifier.yml
-// was deleted at 611fd02770 (#8283, 2026-08-15), std.witness_admission
-// witness_cadence_has_scheduled_route answers FalsifierSelfHostWet false, and no replacement
-// executor exists -- so the destination this receipt was classified onto executes nothing, and the
-// classification now removes it from per-PR coverage without adding any. Censused as
-// PremiseInvalidated in gunbc.deleted_cadence_reference_census.
+// equivalence by execution. Live host effects (cargo build, process execution), so it runs in the
+// nightly falsifier Wet follow-on batch (falsifier_self_host_wet_entries), not per-PR hermetic
+// discovery or bin_witness_wet — the proven template lane for Wave 2 self-host receipts.
 
 test fn self_host_logic_behavioral_receipt_holds() -> Bool {
   slb_behavioral_receipt_holds()

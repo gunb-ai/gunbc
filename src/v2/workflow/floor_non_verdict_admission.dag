@@ -2,6 +2,7 @@ module v2.workflow.floor_non_verdict_admission
 
 import v2.std.algebra { Cons, Empty, fold_list, length }
 import v2.std.collection { List }
+import v2.std.text { String }
 import v2.std.logic { Bool }
 
 // THE ADMISSION, MODELED WHERE THE ROSTER LIVES rather than only in the seed that reads it.

@@ -24,7 +24,7 @@ import gunbc.systemctl_show_read {
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
@@ -278,7 +278,7 @@ fn host_converge_slice1_enumeration_mismatch(
   host: HostIdentity,
   units: List<NonEmptyStr>,
 ) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = gunbc_runner_slots_per_host(host: host)
+  let declared = declared_runner_count_for(host: host)
   if length(units) == declared {
     none
   } else {
@@ -293,7 +293,7 @@ fn host_converge_slice1_enumeration_mismatch(
 }
 
 fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = gunbc_runner_slots_per_host(host: host)
+  let declared = declared_runner_count_for(host: host)
   let observed_count = length(units)
   if observed_count > declared {
     host_converge_slice1_enumeration_mismatch(host: host, units: units)

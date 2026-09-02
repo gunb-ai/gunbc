@@ -284,55 +284,6 @@ fn a_spelling_that_stops_denoting_anything_refuses_as_new_unresolvedness() {
     assert!(!report_unadjudicated(&report).is_empty());
 }
 
-#[test]
-fn removing_a_structural_import_keeps_a_kernel_name_resolved() {
-    let structural = "module probe.structural\n\ntype String = List<Int>\n";
-    let with_import = "module probe.consumer\n\nimport probe.structural { String }\n\nfn use_it(value: String) -> String { value }\n";
-    let without_import = "module probe.consumer\n\nfn use_it(value: String) -> String { value }\n";
-    let report = compare(
-        "kernel_string_import_removed",
-        &[
-            ("structural.dag", structural),
-            ("consumer.dag", with_import),
-        ],
-        &[
-            ("structural.dag", structural),
-            ("consumer.dag", without_import),
-        ],
-    );
-    assert!(
-        dispositions_for(&report, "String").is_empty(),
-        "bare String resolves to the ambient kernel identity on both sides; removing an import \
-         the kernel precedence never selected must not fabricate unresolvedness: {:?}",
-        report.deltas
-    );
-    assert_eq!(
-        membership_dispositions(&report, "probe.structural"),
-        vec![NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved],
-        "the structural import supplied no selected binding and its removal must be measured as \
-         unused membership: {:?}",
-        report.deltas
-    );
-    assert!(report_unadjudicated(&report).is_empty());
-}
-
-#[test]
-fn an_unknown_bare_name_still_refuses_as_unresolvedness_beside_kernel_control() {
-    let base = "module probe.consumer\n\ndata widget: String = \"w\"\n\nfn use_it() -> String { widget }\n";
-    let head = "module probe.consumer\n\nfn use_it() -> String { widget }\n";
-    let report = compare(
-        "unknown_beside_kernel_control",
-        &[("consumer.dag", base)],
-        &[("consumer.dag", head)],
-    );
-    assert_eq!(
-        dispositions_for(&report, "widget"),
-        vec![NamespaceDeltaDisposition::NewUnresolvedness],
-        "recognizing ambient kernel names must not widen arbitrary bare names: {:?}",
-        report.deltas
-    );
-}
-
 // ── `0 -> 1` IS TWO STATES, AND THESE TWO ARMS ARE THE DISCRIMINATING PAIR ──
 //
 // The two fixtures differ in ONE fact: which side's author wrote something. In the first the

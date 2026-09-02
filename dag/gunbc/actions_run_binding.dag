@@ -24,7 +24,7 @@ import gunbc.running_release_identity { release_revision_text_valid }
 // downstream join compares bindings rather than trusting a workflow input. The expected revision is
 // an INDEPENDENT input (RLM_EXPECTED_REVISION, a workflow_dispatch input the operator types), so
 // `run_revision == expected` is a comparison of two origins and can fail; deriving both from the
-// checkout would compare git to itself (gunbc.live_rust_observation LiveRustObservationRequest).
+// checkout would compare git to itself (gunbc.live_rust_observation live_rust_observation_note).
 // Every absence is its own typed arm: outside Actions the variables are legitimately unset, and a
 // run must refuse to mint a receipt it cannot bind rather than mint one bound to nothing.
 type ActionsRunBinding {

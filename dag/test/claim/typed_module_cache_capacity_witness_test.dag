@@ -8,7 +8,7 @@ import gunbc.host_budget_source {
   HostBudgetResolved,
   HostBudgetUnreadable,
   BudgetSourceCgroupMemoryMax,
-  host_budget_resolved_observation,
+  BudgetSourceEnvOverride,
 }
 import gunbc.typed_module_cache_capacity {
   TypedModuleCacheCap,
@@ -33,18 +33,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // 300 entries exactly: 300 * 3 MiB = 943718400 bytes, comfortably inside the band.
 fn ordinary_budget() -> HostBudgetResolution {
-  host_budget_resolved_observation(
+  HostBudgetResolved {
     source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" },
     bytes: byte_size(count: 943718400)
-  )
+  }
 }
 
 fn tiny_budget() -> HostBudgetResolution {
-  host_budget_resolved_observation(source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" }, bytes: byte_size(count: 1048576))
+  HostBudgetResolved { source: BudgetSourceEnvOverride, bytes: byte_size(count: 1048576) }
 }
 
 fn huge_budget() -> HostBudgetResolution {
-  host_budget_resolved_observation(source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" }, bytes: byte_size(count: 107374182400))
+  HostBudgetResolved { source: BudgetSourceEnvOverride, bytes: byte_size(count: 107374182400) }
 }
 
 fn unreadable_budget() -> HostBudgetResolution {

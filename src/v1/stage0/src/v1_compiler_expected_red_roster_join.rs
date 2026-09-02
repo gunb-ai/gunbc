@@ -3,7 +3,6 @@
 
 use self::BudgetVerdictCompletion::*;
 use self::ExpectedRedJoinDisposition::*;
-use self::ExpectedRedSuppressionGround::*;
 use self::HermeticEffectGround::*;
 use self::WitnessEvalVerdict::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
@@ -60,26 +59,21 @@ pub enum WitnessEvalVerdict {
     },
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum ExpectedRedSuppressionGround {
-    OutsideRequiredGate,
-    WithheldCostDebt,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExpectedRedJoinDisposition {
     StillRed,
     NowPasses,
-    NotEvaluated {
-        reason: String,
-    },
-    Suppressed {
-        ground: ExpectedRedSuppressionGround,
-    },
+    NotEvaluated { reason: String },
+}
+impl ExpectedRedJoinDisposition {
+    pub fn reason(&self) -> String {
+        match self {
+            ExpectedRedJoinDisposition::StillRed => panic!("no reason on unit variant"),
+            ExpectedRedJoinDisposition::NowPasses => panic!("no reason on unit variant"),
+            ExpectedRedJoinDisposition::NotEvaluated { reason: __val, .. } => __val.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -138,31 +132,6 @@ pub fn is_now_passes(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
     }
 }
 
-pub fn is_suppressed(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::Suppressed { ground: _, .. } => true,
-        _ => false,
-    }
-}
-
-pub fn suppression_ground_label(ground: ExpectedRedSuppressionGround) -> String {
-    match ground.clone() {
-        ExpectedRedSuppressionGround::OutsideRequiredGate => {
-            "suppressed_outside_required_gate".to_string()
-        }
-        ExpectedRedSuppressionGround::WithheldCostDebt => {
-            "suppressed_withheld_cost_debt".to_string()
-        }
-    }
-}
-
-pub fn suppression_ground_detail(ground: ExpectedRedSuppressionGround) -> String {
-    match ground.clone() {
-    ExpectedRedSuppressionGround::OutsideRequiredGate => "enrolled, but its module is outside the required gate and was never loaded, so this run could not attempt it -- dormant, not deleted".to_string(),
-    ExpectedRedSuppressionGround::WithheldCostDebt => "enrolled, but the cost-debt roster withholds it from execution in this run -- dormant, not deleted".to_string(),
-}
-}
-
 pub fn is_not_evaluated(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
     match (*disposition.clone()).clone() {
         ExpectedRedJoinDisposition::NotEvaluated { reason: _, .. } => true,
@@ -201,19 +170,6 @@ pub fn expected_red_roster_join_not_evaluated(report: Rc<ExpectedRedRosterJoinRe
         let mut __result = Vec::new();
         for row in report.rows.clone().iter().cloned() {
             if is_not_evaluated(row.disposition.clone()) {
-                __result.push(row);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-}
-
-pub fn expected_red_roster_join_suppressed(report: Rc<ExpectedRedRosterJoinReport>) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for row in report.rows.clone().iter().cloned() {
-            if is_suppressed(row.disposition.clone()) {
                 __result.push(row);
             }
         }
@@ -375,17 +331,6 @@ pub fn disposition_label(disposition: Rc<ExpectedRedJoinDisposition>) -> String 
         ExpectedRedJoinDisposition::StillRed => "still_red".to_string(),
         ExpectedRedJoinDisposition::NowPasses => "now_passes".to_string(),
         ExpectedRedJoinDisposition::NotEvaluated { reason: _, .. } => "not_evaluated".to_string(),
-        ExpectedRedJoinDisposition::Suppressed { ground: _, .. } => "suppressed".to_string(),
-    }
-}
-
-pub fn disposition_reason(disposition: Rc<ExpectedRedJoinDisposition>) -> String {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::NotEvaluated { reason: reason, .. } => reason.clone(),
-        ExpectedRedJoinDisposition::Suppressed { ground: ground, .. } => {
-            suppression_ground_label(ground.clone())
-        }
-        _ => "".to_string(),
     }
 }
 
@@ -394,34 +339,6 @@ pub fn not_evaluated_reason(disposition: Rc<ExpectedRedJoinDisposition>) -> Stri
         ExpectedRedJoinDisposition::NotEvaluated { reason: reason, .. } => reason.clone(),
         _ => "".to_string(),
     }
-}
-
-pub fn record_suppressed(
-    report: Rc<ExpectedRedRosterJoinReport>,
-    identity: String,
-    ground: ExpectedRedSuppressionGround,
-) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new({
-            let mut __result = Vec::new();
-            for row in report.rows.clone().iter().cloned() {
-                __result.push(if (row.identity.clone() == identity.clone()) {
-                    Rc::new(ExpectedRedRosterJoinRow {
-                        identity: row.identity.clone(),
-                        disposition: Rc::new(ExpectedRedJoinDisposition::Suppressed {
-                            ground: ground.clone(),
-                        }),
-                        detail: suppression_ground_detail(ground.clone()),
-                    })
-                } else {
-                    row.clone()
-                });
-            }
-            __result
-        }),
-    })
 }
 
 pub fn row_with_recorded_verdict(
@@ -513,7 +430,3 @@ pub struct UnpublishedMockCase;
 pub struct NoMockResponse;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FilesystemRemoval;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct OutsideRequiredGate;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WithheldCostDebt;

@@ -14,6 +14,7 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.algebra { list_append }
+import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,

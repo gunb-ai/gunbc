@@ -40,17 +40,17 @@ import v2.std.compilers.lexing {
 }
 
 type LexMatchResult
-  = LexMatchAccepted { remaining: v2.std.text.String, lexeme: v2.std.text.String }
+  = LexMatchAccepted { remaining: String, lexeme: String }
   | LexMatchRejected
 
 type LexRuleApply
   = LexRuleNoMatch
-  | LexRuleToken { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String }
-  | LexRuleTrivia { lexeme: v2.std.text.String, remaining: v2.std.text.String }
-  | LexRuleAnnotation { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String }
+  | LexRuleToken { class: Symbol, lexeme: String, remaining: String }
+  | LexRuleTrivia { lexeme: String, remaining: String }
+  | LexRuleAnnotation { class: Symbol, lexeme: String, remaining: String }
 
 type LexMatchThunk {
-  apply: fn(v2.std.text.String) -> LexMatchResult
+  apply: fn(String) -> LexMatchResult
 }
 
 fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
@@ -97,7 +97,7 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
   }
 }
 
-fn lex_strip_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> ListTailResult<Char> {
+fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<Char> {
   fold_list(
     xs: prefix,
     empty: TailFound { tail: source },
@@ -110,7 +110,7 @@ fn lex_strip_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> L
   )
 }
 
-fn lex_match_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> LexMatchResult {
+fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     match lex_strip_prefix(prefix: prefix, source: source) {
       TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
@@ -122,14 +122,14 @@ fn lex_match_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> L
 }
 
 type RepeatState {
-  remaining: v2.std.text.String
-  lexeme: v2.std.text.String
+  remaining: String
+  lexeme: String
   done: Bool
 }
 
 type DelimitedState {
-  remaining: v2.std.text.String
-  lexeme: v2.std.text.String
+  remaining: String
+  lexeme: String
   done: Bool
   failed: Bool
 }
@@ -142,7 +142,7 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
   }
 }
 
-fn lex_match_char_pred(pred: fn(Char) -> Bool, source: v2.std.text.String) -> LexMatchResult {
+fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult {
   match string_is_empty(s: source) {
     true => LexMatchRejected
     false =>
@@ -345,7 +345,7 @@ fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
   )
 }
 
-fn lex_try_compiled(compiled: CompiledLexRule, source: v2.std.text.String) -> LexRuleApply {
+fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
   match compiled.thunk.apply(source) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
@@ -371,7 +371,7 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
   reversed.reverse()
 }
 
-fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
+fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
   lex_try_compiled(
     compiled: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
     source: source
@@ -403,7 +403,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
   }
 }
 
-fn lex_try_rules(rules: List<CompiledLexRule>, source: v2.std.text.String) -> LexRuleApply {
+fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
@@ -418,7 +418,7 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: v2.std.text.String) -> Le
 
 // The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token.
 type LexWalkAcc {
-  remaining: v2.std.text.String
+  remaining: String
   tokens: List<Token>
   annotations: List<UnboundSourceAnnotation>
   line_prefix_indent_only: Bool
@@ -429,7 +429,7 @@ type LexWalkAcc {
   rules: List<CompiledLexRule>
 }
 
-fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
+fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
     remaining: src,
     tokens: std.algebra.Empty,
@@ -588,7 +588,7 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
 }
 
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
-fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
+fn lex_walk_artifact(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
@@ -607,7 +607,7 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
   }
 }
 
-fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
+fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
   match lex_walk_artifact(source: source, file: file, rules: rules) {
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
@@ -616,44 +616,20 @@ fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outc
   }
 }
 
-// THE ONE SOURCE-TEXT INGRESS, AND THE ONLY PLACE HOST TEXT BECOMES STRUCTURAL TEXT IN THIS MODULE.
-//
-// `text` is host-valued ON PURPOSE and its spelling is not an oversight: the filesystem REPORTS
-// source text, so what reaches this parameter is what a read returned. v2.compiler.source_authority
-// hands over exactly the value it hashed, and the read boundary performs no lexical interpretation
-// — deciding what a character IS belongs to the lexer, which is here.
-//
-// `chars` is the SAME scalar decomposition the literal elaborator uses. v1.compiler.infer
-// unfold_scalar_sequence_image builds the UnicodeScalarSequenceUnfold image by calling it, so the
-// runtime converter and the literal elaborator are two producers deriving one meaning from one
-// authority rather than two loops that agree by coincidence. Scalar values, never UTF-8 bytes and
-// never UTF-16 code units — an ad hoc byte loop would agree with this on ASCII and diverge on the
-// first non-ASCII source file, which is precisely the divergence a shared authority forecloses.
-//
-// EXACTLY ONCE, ABOVE EVERYTHING. Both arms below read the converted value, so no lexical callback,
-// prefix operation, walk state or fold ever receives the host form. A second conversion further in
-// would be a second answer to a question already answered.
-//
-// THIS AUTHORIZES ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
-// arbitrary host Strings to inhabit structural text: gunbc.rung_drop's
-// text_boundary_identity_wall stands, its subject is the non-literal host value crossing an exact
-// structural-text boundary through permissive compatibility, and this named morphism does not
-// retire it. A green ingress here is not that wall coming down.
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
-  let source = chars(s: text)
   let at = Textual {
     file: file,
     extent: WholeFile
   }
   match rules {
     VoidLexRules =>
-      if is_empty(xs: source) {
+      if is_empty(xs: text) {
         v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: rule_set } =>
-      lex_walk(source: source, file: file, rules: rule_set)
+      lex_walk(source: text, file: file, rules: rule_set)
   }
 }
 

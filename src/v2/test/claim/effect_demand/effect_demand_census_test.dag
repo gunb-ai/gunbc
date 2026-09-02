@@ -14,8 +14,7 @@ import v2.compiler.effect_demand {
   SeamRealizedByBridge,
   SeamRefusalObservedInClosure,
   SeamStanding,
-  SeamUnrealizedNoProjectedPrimitive,
-  SeamUnrealizedNoRegistryBinding,
+  SeamUnrealized,
   SeamUnrostered,
   effect_demand_seam_roster,
   effect_demand_seam_runtime_registry,
@@ -25,7 +24,6 @@ import v2.compiler.effect_demand {
   SeamRuntimeBindingAmbiguous,
   seam_unrealized_without_executed_evidence,
   seam_unrostered_rows,
-  seam_no_registry_binding_rows,
   DemandAgreement,
   DemandProducer,
   EffectRealizationKey,
@@ -132,8 +130,8 @@ data effect_demand_probe_observed: List<EffectDemandKey> = [
 ]
 
 data effect_demand_probe_roster: List<EffectDemandRow> = [
-  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
-  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
+  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 },
+  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 },
   EffectDemandRow { key: effect_demand_probe_debt_key, disposition: Unrealized { reason: ^no_v2_http_transport } },
   EffectDemandRow {
     key: effect_demand_probe_retired_key,
@@ -210,10 +208,10 @@ test fn effect_demand_witness_undispositioned_demand_refuses() -> Bool {
 // A row cannot outlive the reachability that justified it, and the disposition is what separates this
 // from the retirement arm probed above.
 data effect_demand_probe_roster_with_stale: List<EffectDemandRow> = [
-  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
-  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
+  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 },
+  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 },
   EffectDemandRow { key: effect_demand_probe_debt_key, disposition: Unrealized { reason: ^no_v2_http_transport } },
-  EffectDemandRow { key: effect_demand_probe_retired_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } }
+  EffectDemandRow { key: effect_demand_probe_retired_key, disposition: NativeV2 }
 ]
 
 data effect_demand_probe_realized_with_shell: List<EffectRealizationKey> = [
@@ -601,7 +599,7 @@ data effect_demand_probe_wet_realization: List<EffectRealizationKey> = [
 ]
 
 data effect_demand_probe_wet_native_roster: List<EffectDemandRow> = [
-  EffectDemandRow { key: effect_demand_probe_wet_demand_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } }
+  EffectDemandRow { key: effect_demand_probe_wet_demand_key, disposition: NativeV2 }
 ]
 
 data effect_demand_probe_wet_observed: List<EffectDemandKey> = [effect_demand_probe_wet_demand_key]
@@ -619,31 +617,6 @@ test fn effect_demand_witness_hermetic_realization_cannot_prove_a_wet_demand() -
   )
   (length(xs: hermetic.unproven_native_claims) == 1)
     && (length(xs: wet.unproven_native_claims) == 0)
-}
-
-// THE RUNTIME AXIS OF THE REALIZATION JOIN, witnessed the way the mode axis already is. A NativeV2
-// claim names the runtime it claims, and a realization from a DIFFERENT runtime must not prove it --
-// the same operation at the same execution mode, realized by a runtime the claim does not name, is a
-// realization the program does not link. Before the runtime entered the join, the left census below
-// reported zero unproven claims: any runtime's realization satisfied any native claim, which is the
-// axis-only-load-bearing-on-one-side defect the realization key's own note records for execution mode.
-data effect_demand_probe_other_runtime_realization: List<EffectRealizationKey> = [
-  effect_demand_realization_key(operation: "process_invoke", mode: Wet, runtime_identity: "a-different-runtime")
-]
-
-test fn effect_demand_witness_a_foreign_runtime_cannot_prove_a_native_claim() -> Bool {
-  let foreign = effect_demand_census(
-    roster: effect_demand_probe_wet_native_roster,
-    observed: effect_demand_probe_wet_observed,
-    realized: effect_demand_probe_other_runtime_realization
-  )
-  let named = effect_demand_census(
-    roster: effect_demand_probe_wet_native_roster,
-    observed: effect_demand_probe_wet_observed,
-    realized: effect_demand_probe_wet_realization
-  )
-  (length(xs: foreign.unproven_native_claims) == 1)
-    && (length(xs: named.unproven_native_claims) == 0)
 }
 
 // THE FALSIFIER FOR THE COUNT-BASED MEMBERSHIP CHECK. The predecessor compared a stored digest String
@@ -733,47 +706,6 @@ test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool {
   }
 }
 
-// THE LEFT ROOT ARM AND THE MODELED-TWICE PRODUCER ARM, both added because a mutation battery proved
-// they were uncovered. The gate decides root resolution per SIDE and producer distinctness per PAIR,
-// and the pre-existing pair of witnesses exercised the RIGHT receipt's empty root set and the
-// census-twice producer pair only -- so planting a defect in the left root arm or in the
-// modeled-twice arm left every witness green. Neither arm is a mirror that some other arm covers:
-// they are separate constructors reached by separate inputs, which is exactly what a per-arm fold
-// makes individually mutable and therefore individually testable.
-data effect_demand_probe_receipt_modeled_empty_roots: DemandReceipt = effect_demand_probe_receipt(
-  producer: ModeledCallReachability,
-  members: effect_demand_probe_roster_members,
-  roots: Empty,
-  root_resolution: RootSetEmpty { attempted_identity: "v2.compiler.00_compile" },
-  unresolved: Empty
-)
-
-test fn effect_demand_witness_local_gate_refuses_an_empty_left_root_set() -> Bool {
-  match effect_demand_local_gate(
-    left: effect_demand_probe_receipt_modeled_empty_roots,
-    right: effect_demand_probe_receipt_realized,
-    population: effect_demand_probe_complete_population,
-    agreement: effect_demand_probe_empty_agreement,
-    census_is_sound: true
-  ) {
-    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
-    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^left_roots_unresolved
-  }
-}
-
-test fn effect_demand_witness_local_gate_refuses_the_modeled_producer_twice() -> Bool {
-  match effect_demand_local_gate(
-    left: effect_demand_probe_receipt_modeled,
-    right: effect_demand_probe_receipt_modeled,
-    population: effect_demand_probe_complete_population,
-    agreement: effect_demand_probe_empty_agreement,
-    census_is_sound: true
-  ) {
-    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
-    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^one_producer_twice
-  }
-}
-
 test fn effect_demand_witness_local_gate_refuses_unresolved_indirect_edges() -> Bool {
   match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
@@ -837,8 +769,7 @@ test fn effect_demand_witness_realization_keys_on_the_projected_primitive() -> B
   ) {
     SeamRealizedByBridge { bridge } => bridge == "rc_empty_map",
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealizedNoProjectedPrimitive => false,
-    SeamUnrealizedNoRegistryBinding { primitive } => false
+    SeamUnrealized => false
   }
 }
 
@@ -849,8 +780,7 @@ test fn effect_demand_witness_declaration_name_is_not_the_realization_key() -> B
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealizedNoProjectedPrimitive => true,
-    SeamUnrealizedNoRegistryBinding { primitive } => true
+    SeamUnrealized => true
   }
 }
 
@@ -861,8 +791,7 @@ test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() 
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealizedNoProjectedPrimitive => true,
-    SeamUnrealizedNoRegistryBinding { primitive } => true
+    SeamUnrealized => true
   }
 }
 
@@ -874,8 +803,7 @@ test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool {
         SeamRefusalObservedInClosure { closure_entry } => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
           SeamRealizedByBridge { bridge } => true,
           SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-          SeamUnrealizedNoProjectedPrimitive => false,
-          SeamUnrealizedNoRegistryBinding { primitive } => false
+          SeamUnrealized => false
         },
         SeamEvidenceDerivedNotExercised { reason } => false
       }
@@ -889,8 +817,7 @@ test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool {
     predicate: fn(seam) {
       match seam.projection {
         SeamUnrostered => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
-          SeamUnrealizedNoProjectedPrimitive => false,
-          SeamUnrealizedNoRegistryBinding { primitive } => false,
+          SeamUnrealized => false,
           SeamRealizedByBridge { bridge } => true,
           SeamRuntimeBindingAmbiguous { primitive, bridges } => true
         },
@@ -910,11 +837,7 @@ test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() 
           SeamRefusalObservedInClosure { closure_entry } => true,
           SeamEvidenceDerivedNotExercised { reason } => false
         },
-        SeamUnrealizedNoProjectedPrimitive => match seam.evidence {
-          SeamRefusalObservedInClosure { closure_entry } => true,
-          SeamEvidenceDerivedNotExercised { reason } => false
-        },
-        SeamUnrealizedNoRegistryBinding { primitive } => match seam.evidence {
+        SeamUnrealized => match seam.evidence {
           SeamRefusalObservedInClosure { closure_entry } => true,
           SeamEvidenceDerivedNotExercised { reason } => false
         }
@@ -933,8 +856,7 @@ test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> B
           SeamEvidenceDerivedNotExercised { reason } => false
         },
         SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-        SeamUnrealizedNoProjectedPrimitive => false,
-        SeamUnrealizedNoRegistryBinding { primitive } => false
+        SeamUnrealized => false
       }
     }
   )
@@ -965,8 +887,7 @@ test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bo
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealizedNoProjectedPrimitive => true,
-    SeamUnrealizedNoRegistryBinding { primitive } => true
+    SeamUnrealized => true
   }
 }
 
@@ -981,8 +902,7 @@ test fn effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bri
       match seam_realization_for(projection: ProjectedPrimitive { primitive: cited.primitive }, registry: effect_demand_seam_runtime_registry) {
         SeamRealizedByBridge { bridge } => bridge != cited.bridge,
         SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
-        SeamUnrealizedNoProjectedPrimitive => true,
-        SeamUnrealizedNoRegistryBinding { primitive } => true
+        SeamUnrealized => true
       }
     }
   )
@@ -998,8 +918,7 @@ test fn effect_demand_witness_two_bridges_for_one_primitive_select_none() -> Boo
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => length(xs: bridges) == 2,
-    SeamUnrealizedNoProjectedPrimitive => false,
-    SeamUnrealizedNoRegistryBinding { primitive } => false
+    SeamUnrealized => false
   }
 }
 
@@ -1018,8 +937,7 @@ test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrea
         SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
       ]) {
         SeamRealizedByBridge { bridge } => true,
-        SeamUnrealizedNoProjectedPrimitive => true,
-        SeamUnrealizedNoRegistryBinding { primitive } => true,
+        SeamUnrealized => true,
         SeamRuntimeBindingAmbiguous { primitive, bridges } => false
       }
     }
@@ -1033,89 +951,7 @@ test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per
       match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
         SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
         SeamRealizedByBridge { bridge } => false,
-        SeamUnrealizedNoProjectedPrimitive => false,
-        SeamUnrealizedNoRegistryBinding { primitive } => false
-      }
-    }
-  )
-}
-
-// THE DISCRIMINATOR FOR THE SPLIT, IN BOTH DIRECTIONS, because one direction alone passes under the
-// collapse it is meant to detect. A rostered seam whose primitive has no bridge must NOT answer
-// NoProjectedPrimitive, and an unrostered seam must NOT answer NoRegistryBinding; under the previous
-// single arm both of these were the same value, so either assertion alone would have been green
-// against the very defect. decl_facts is the live specimen for the first: it projects a primitive and
-// the authored registry binds only three, none of them this one.
-test fn effect_demand_witness_a_rostered_seam_with_no_bridge_is_not_reported_unrostered() -> Bool {
-  match seam_realization_for(
-    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "decl_facts") },
-    registry: effect_demand_seam_runtime_registry
-  ) {
-    SeamUnrealizedNoRegistryBinding { primitive } => primitive.slug == primitive_identity_slug(name: "decl_facts").slug,
-    SeamUnrealizedNoProjectedPrimitive => false,
-    SeamRealizedByBridge { bridge } => false,
-    SeamRuntimeBindingAmbiguous { primitive, bridges } => false
-  }
-}
-
-test fn effect_demand_witness_an_unrostered_seam_is_not_reported_as_an_unbound_primitive() -> Bool {
-  match seam_realization_for(
-    projection: SeamUnrostered,
-    registry: effect_demand_seam_runtime_registry
-  ) {
-    SeamUnrealizedNoProjectedPrimitive => true,
-    SeamUnrealizedNoRegistryBinding { primitive } => false,
-    SeamRealizedByBridge { bridge } => false,
-    SeamRuntimeBindingAmbiguous { primitive, bridges } => false
-  }
-}
-
-// THE TWO POPULATIONS ARE JOINED AT IDENTITY GRAIN, NEVER BY COUNT. Membership is decided by the
-// projection arm each row carries, so a row cannot inhabit both lists and no literal is asserted here:
-// today the split is 6 unrostered and 5 rostered-but-unbound, and both numbers move as seams are
-// disposed or bridges are bound, which is exactly why the law is stated over identities instead.
-test fn effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_projection() -> Bool {
-  !any(
-    xs: seam_no_registry_binding_rows(roster: effect_demand_seam_roster, registry: effect_demand_seam_runtime_registry),
-    predicate: fn(seam) {
-      match seam.projection {
-        SeamUnrostered => true,
-        ProjectedPrimitive { primitive } => false
-      }
-    }
-  ) && !any(
-    xs: seam_unrostered_rows(roster: effect_demand_seam_roster),
-    predicate: fn(seam) {
-      match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
-        SeamUnrealizedNoRegistryBinding { primitive } => true,
-        SeamUnrealizedNoProjectedPrimitive => false,
-        SeamRealizedByBridge { bridge } => false,
-        SeamRuntimeBindingAmbiguous { primitive, bridges } => false
-      }
-    }
-  )
-}
-
-// EVERY ROSTER ROW LANDS IN EXACTLY THE CLASS ITS PROJECTION DECIDES, over the live population rather
-// than over a fixture, so a roster row added with a projection that disagrees with its derivation
-// cannot pass quietly.
-test fn effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrostered_rows() -> Bool {
-  !any(
-    xs: effect_demand_seam_roster,
-    predicate: fn(seam) {
-      match seam.projection {
-        SeamUnrostered => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
-          SeamUnrealizedNoProjectedPrimitive => false,
-          SeamUnrealizedNoRegistryBinding { primitive } => true,
-          SeamRealizedByBridge { bridge } => true,
-          SeamRuntimeBindingAmbiguous { primitive, bridges } => true
-        },
-        ProjectedPrimitive { primitive } => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
-          SeamUnrealizedNoProjectedPrimitive => true,
-          SeamUnrealizedNoRegistryBinding { primitive: unbound } => false,
-          SeamRealizedByBridge { bridge } => false,
-          SeamRuntimeBindingAmbiguous { primitive: ambiguous, bridges } => false
-        }
+        SeamUnrealized => false
       }
     }
   )

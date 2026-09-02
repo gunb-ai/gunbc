@@ -1272,19 +1272,11 @@ fn source_ast_equal_witness(
   }
 }
 
-// THE PROJECTION OUT OF THE SEALED CARRIER, WHICH THIS CALL SITE OWED SINCE BL-1.
-// `NormalizedTree` was an alias for `Node` until BL-1 sealed it into a sole-constructor record so
-// that wrapper-retention evidence could not reach resolve as a bare `Node`. Sealing it made
-// `NormalizedDagSourceAst.tree` a carrier rather than a node, and `source_authority_node_equal`
-// asks for nodes. The neighbouring `source_ast_equal_witness` reads correctly only because
-// `DagSourceAst.tree` is a `ParseTree`, still an alias -- so the two sites look identical and are
-// not. `.root` is `v2.compiler.normalized_tree`'s own projection out of the carrier, the same one
-// `normalized_tree_roots_to_nodes` uses.
 fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
 ) -> Witness<NormalizedSourceAstEqual> {
-  if source_authority_node_equal(left: original.tree.root, right: reparsed.tree.root) {
+  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {

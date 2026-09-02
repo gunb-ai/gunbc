@@ -16,7 +16,6 @@ import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   RunnerHostDeployment,
-  RunnerCpuBoundary, CapacityQuota,
   runner_deployment_plan,
   workload_class_cpu_weight,
   WorkloadClass,
@@ -39,10 +38,8 @@ import extdeps.systemd {
   systemd_memory_swap_max_property,
   systemd_memory_high_property,
   systemd_cpu_weight_property,
-  systemd_cpu_quota_property,
   systemd_tasks_max_property,
 }
-import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
 import extdeps.systemd.oomd {
   oomd_managed_oom_memory_pressure_property,
   oomd_managed_oom_memory_pressure_limit_property,
@@ -67,7 +64,6 @@ data gunbc_runner_unit_template: String = runner_unit_template_name as String
 data gunbc_runner_all_slots_unit_glob: String = runner_all_slots_unit_glob as String
 data gunbc_runner_per_slot_dropin_path: String = runner_unit_dropin_path(file_name: "20-fleet-width.conf" as NonEmptyStr) as String
 data gunbc_runner_per_slot_swap_dropin_path: String = runner_unit_dropin_path(file_name: "30-fleet-swap.conf" as NonEmptyStr) as String
-data gunbc_runner_per_slot_cpu_dropin_path: String = runner_unit_dropin_path(file_name: "60-fleet-cpu.conf" as NonEmptyStr) as String
 data gunbc_runner_per_slot_high_dropin_path: String = runner_unit_dropin_path(file_name: "40-fleet-high.conf" as NonEmptyStr) as String
 data gunbc_runner_per_slot_tasks_dropin_path: String = runner_unit_dropin_path(file_name: "50-fleet-tasks.conf" as NonEmptyStr) as String
 data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.control/"
@@ -526,40 +522,9 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
   [codex_runtime_bundle_knob(host: host)]
 }
 
-// THE CPU KNOB RIDES THE PER-SLOT MECHANISM RATHER THAN FORKING A VARIANT FOR IT. ConvergeTarget's
-// PerSlotMemoryCap is (dropin_path x instance_glob x property x value) and is property-generic --
-// per_slot_tasks_max already rides it with a pids-controller count -- so a CPU rider needs no new
-// target. Its own declaration says forking a parallel variant per property class would be the
-// DESIGN 2 duplication the shape exists to avoid, and declines the ~96-site rename to
-// PerSlotUnitProperty/value_raw in favour of the HostAxisBundle P3 lane that owns it. This rider
-// does not pre-empt that rename; it is the third value to arrive at a field still named
-// bytes_value, which strengthens the case that lane already carries rather than adding a new one.
-//
-// EVERY REPRESENTABLE BOUNDARY EMITS A KNOB. RunnerCpuBoundary has exactly one constructor, so this
-// function is total without an arm that converges successfully while realizing nothing -- the
-// fail-open review 57675 found, now closed by deletion at the type rather than by a refusal here.
-fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<ConvergeKnob> {
-  match h.per_runner_cpu_boundary {
-    CapacityQuota { threads: t } =>
-      [
-        legacy_converge_knob(
-          slice: RunnerSlice,
-          name: "per_slot_cpu_quota",
-          desired: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }),
-          target: PerSlotMemoryCap {
-            dropin_path: gunbc_runner_per_slot_cpu_dropin_path,
-            instance_glob: glob,
-            property: systemd_cpu_quota_property,
-            bytes_value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }),
-          }
-        ),
-      ]
-  }
-}
-
 fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   let glob = runner_instance_glob(host: h.identity)
-  concat(runner_cpu_boundary_knobs(h: h, glob: glob), [
+  [
     slice_numeric_knob(
       slice: RunnerSlice,
       name: "runner_slice_cap_bytes",
@@ -634,7 +599,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
       desired: to_string(h.runner_count),
       target: RunnerWidth { instance_glob: glob }
     ),
-  ])
+  ]
 }
 
 fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {

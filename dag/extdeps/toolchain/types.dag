@@ -54,10 +54,13 @@ type ToolchainEnvIsolation
   | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
   | HermeticContainer
 
+type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
+
 type ToolchainCapability {
   name: NonEmptyStr
   version: NonEmptyStr
   env_isolation: ToolchainEnvIsolation
+  build_wrapper: BuildWrapperKind?
   linked_cache_interface: CacheInterfaceId?
 }
 

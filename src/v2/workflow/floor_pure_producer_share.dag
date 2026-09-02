@@ -1,6 +1,7 @@
 module v2.workflow.floor_pure_producer_share
 
 import v2.std.collection { List }
+import v2.std.text { String }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE ROSTER — which pure functions the required floor may
 // serve from one evaluation across claims.

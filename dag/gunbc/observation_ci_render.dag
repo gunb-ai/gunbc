@@ -669,7 +669,7 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
 // get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
 // seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
 // boundary and passes the result back in, so the constructor stays the single authority (a record
-// built in Rust would have forked it).
+// built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.
 //
 // The seed's ONE seam into this authority. The floor walk lives in Rust and cannot construct a
 // .dag record, so it hands over the scalars it already has and receives one finished line back.

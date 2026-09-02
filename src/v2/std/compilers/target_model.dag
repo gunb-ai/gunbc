@@ -4015,13 +4015,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
         target_model_named_edge(
           name: ^target_value_expression_field_codepoint,
           target: Node {
-            kind: TypeNode {
-              connective: Atom {
-                identity: symbol_intern_lexeme(
-                  lexeme: list_snoc_item(xs: Empty, item: codepoint)
-                )
-              }
-            },
+            kind: TypeNode { connective: Atom { identity: codepoint } },
             children: [],
             occurrence_id: OccurrenceSynthetic
 }
@@ -11794,33 +11788,6 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> TargetUseSiteOwnershipCatalogLookup {
-  match acc {
-    TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
-    TargetUseSiteOwnershipCatalogMissing =>
-      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
-        acc: TargetUseSiteOwnershipMissing, row_node: row_node, display_name: display_name,
-        source_carrier: source_carrier, use_site: use_site
-      )
-    TargetUseSiteOwnershipCatalogUnique { row: r } =>
-      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
-        acc: TargetUseSiteOwnershipUnique { row: r }, row_node: row_node, display_name: display_name,
-        source_carrier: source_carrier, use_site: use_site
-      )
-    TargetUseSiteOwnershipCatalogAmbiguous =>
-      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
-        acc: TargetUseSiteOwnershipAmbiguous, row_node: row_node, display_name: display_name,
-        source_carrier: source_carrier, use_site: use_site
-      )
-  }
-}
-
-fn target_use_site_ownership_catalog_lookup_step_from_valid_acc(
-  acc: TargetUseSiteOwnershipLookup,
-  row_node: Node,
-  display_name: Symbol,
-  source_carrier: Node,
-  use_site: TargetOwnershipUseSite
-) -> TargetUseSiteOwnershipCatalogLookup {
   match target_use_site_ownership_row_from_node(
     row_node: row_node,
     display_name: display_name,
@@ -11828,13 +11795,21 @@ fn target_use_site_ownership_catalog_lookup_step_from_valid_acc(
   ) {
     Accepted { value: row, diagnostics: _ } =>
       match target_use_site_ownership_lookup_step(
-        acc: acc,
+        acc: match acc {
+          TargetUseSiteOwnershipCatalogMissing => TargetUseSiteOwnershipMissing
+          TargetUseSiteOwnershipCatalogUnique { row: r } =>
+            TargetUseSiteOwnershipUnique { row: r }
+          TargetUseSiteOwnershipCatalogAmbiguous => TargetUseSiteOwnershipAmbiguous
+          TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+        },
         row: row,
         source_carrier: source_carrier,
         use_site: use_site
       ) {
-        TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipCatalogMissing
-        TargetUseSiteOwnershipUnique { row: row } => TargetUseSiteOwnershipCatalogUnique { row: row }
+        TargetUseSiteOwnershipMissing =>
+          TargetUseSiteOwnershipCatalogMissing
+        TargetUseSiteOwnershipUnique { row: row } =>
+          TargetUseSiteOwnershipCatalogUnique { row: row }
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid

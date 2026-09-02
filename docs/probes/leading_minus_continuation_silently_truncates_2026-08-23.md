@@ -3,8 +3,7 @@
 **Found:** 2026-08-23, while adding an arithmetic consistency check to
 `extdeps.cpu_attachment.lotes_azifa072` (gunbc#9061).
 **Class:** silent wrongness — below the guarantee ladder's floor, not a rung on it (DESIGN §4b/§5).
-**Original live corpus exposure:** zero after the instance that found it was fixed. That containment
-strategy was falsified by a recurrence on 2026-08-31 in gunbc#9839; see “Recurrence and wall” below.
+**Live corpus exposure:** zero. The only instance was the one that found it, now fixed.
 
 ## The defect
 
@@ -65,30 +64,25 @@ are prose bullets inside string literals — markdown lists in `std/realization_
 is irrelevant. The thirteenth was the instance in this PR. Mechanism confirmed; current corpus
 exposure zero.
 
-Zero exposure was not zero risk: the corpus constantly writes multi-line boolean chains with leading
-`&&`, so the *style* the hazard punishes is house style; only the operator is rare. The next
-arithmetic expression split that way was silently wrong eight days later.
+Zero exposure is not zero risk: the corpus constantly writes multi-line boolean chains with leading
+`&&`, so the *style* the hazard punishes is house style; only the operator is rare. The first
+arithmetic expression split that way will be silently wrong.
 
-## What was not done in the original change, and why
+## What was NOT done, and why
 
-The parser was not fixed in that change. This is `src/v1`, whose admission test is service to the v2
-self-host program (DESIGN §3, v1 maintenance standing) — a lexer or statement-boundary change was
-neither that nor in scope for the PR that found it, and needed its own review against v2's grammar
-rather than a drive-by in a socket-geometry change.
+The parser is not fixed here. This is `src/v1`, whose admission test is service to the v2 self-host
+program (DESIGN §3, v1 maintenance standing) — a lexer or statement-boundary change is neither that
+nor in scope for the PR that found it, and needs its own review against v2's grammar rather than a
+drive-by in a socket-geometry change.
 
 The instance was repaired by parenthesising the subtraction on one line, with the reason recorded at
-the call site. That repaired the instance, not the class: **the class remained open at that point.**
+the call site. That repairs the instance, not the class: **the class is open.**
 
-## Recurrence and wall
+## Next-rung trigger
 
-The class recurred on 2026-08-31 in gunbc#9839, where it silently produced the negation of a count
-inside a comparator. Both new witnesses simply reported failure; the author found the parser choice
-only by printing intermediate values and observing that each was exactly one less than the truth.
-The earlier “current exposure zero” observation was therefore a historical census, not containment.
-
-The parser now refuses the exact ambiguous statement boundary: a complete expression followed by a
-newline and the sole token (`-`) that has both prefix and infix roles. The located parse diagnostic
-spans the preceding expression and the operator and names both explicit spellings: put infix `-`
-before the newline, or parenthesize a fresh unary expression. Both explicit readings remain admitted
-and are checked by value; the ambiguous spelling admits neither. This converts the class from silent
-wrongness to a structural parse refusal without guessing the author's intent.
+A statement-boundary rule that refuses an ambiguous continuation rather than silently choosing one
+reading. The fail-closed form is available and cheap: where a newline is followed by a token that
+could either continue the expression or begin a statement, refuse with a located diagnostic naming
+both readings and requiring parentheses or an explicit terminator. That converts silent wrongness to
+a typed refusal — from below the floor to *structurally guaranteed* — and, unlike a precedence tweak,
+cannot change the meaning of any program that currently parses as its author intended.

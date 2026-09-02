@@ -8,6 +8,7 @@ import std.content_hash { ContentHash }
 import std.content_hash { content_hash_atom, as_content_hash_structural }
 import std.realization { Materialization, Share, Recompute }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 
 // P2/host fusion law (census R6 projection, 2026-07-22): the host transport decides warmness as
 // compile_skipped = !cold_control && marker_exists (v1_interpreter.rs

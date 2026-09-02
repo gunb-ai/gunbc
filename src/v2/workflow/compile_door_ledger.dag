@@ -40,6 +40,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
+import v2.std.text { String }
 
 // The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5
 // factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in

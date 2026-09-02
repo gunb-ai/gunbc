@@ -20,7 +20,7 @@ import gunbc.stage0_partition_package_graph {
 // PACKAGES those changed mirrors force the next-pass compiler to rebuild. The two are different
 // questions over different graphs -- one over .dag module references, one over cargo packages --
 // and the second is the larger of the two costs on every measured host
-// (gunbc.regen_round_cost regen_affected_set_disposition).
+// (gunbc.regen_round_cost regen_round_cost_shape_note).
 //
 // THE CLAIM IS NOT "ONE MIRROR, ONE CRATE". A foundation edit legitimately rebuilds several
 // downstream packages; the guarantee is that an UNRELATED package stays uncompiled, and that

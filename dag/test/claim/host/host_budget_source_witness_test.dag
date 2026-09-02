@@ -21,13 +21,12 @@ import extdeps.linux.procfs {
 }
 import gunbc.host_budget_source {
   HostBudgetSource,
+  BudgetSourceEnvOverride,
   BudgetSourceCgroupMemoryHigh,
   BudgetSourceCgroupMemoryMax,
   BudgetSourceDarwinPhysicalMemory,
   HostBudgetResolution,
   HostBudgetResolved,
-  HostBudgetObserved,
-  HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
   KernelBudgetSourcing,
   SourcedStatically,
@@ -43,7 +42,6 @@ import gunbc.host_budget_source {
   host_budget_resolution_bytes,
   host_budget_unreadable_on_kernel,
   host_budget_source_label,
-  effective_planning_budget,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -80,10 +78,11 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 //
 // The arm went away for a different reason than this note: capping a host-shared reading at one
 // fleet's declared slot line was a substitution, not a bound (gunbc.host_budget_source
-// host_budget_source_seed_mirror_disposition). The lesson survives the arm, which is why this row
+// host_budget_unreadable_cgroup_receipt_note). The lesson survives the arm, which is why this row
 // does — a fixture derived from the tree under test is inert whatever it is measuring.
 
 data all_sources: List<HostBudgetSource> = [
+  BudgetSourceEnvOverride,
   BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   BudgetSourceDarwinPhysicalMemory,
@@ -119,19 +118,15 @@ test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
 // arm defaulted to non-degraded, which is the direction that actually costs something — a
 // host-shared signal silently trusted as a private limit is the 2026-07-21 srv3 exit-137 shape.
 
-test fn degraded_is_exactly_the_non_observed_sources() -> Bool {
-  !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
+test fn degraded_is_exactly_the_non_private_sources() -> Bool {
+  all(
+    all_sources,
+    s => host_budget_source_is_degraded(s: s) == !host_budget_source_bounds_this_process(s: s)
+  )
+    && !host_budget_source_is_degraded(s: BudgetSourceEnvOverride)
+    && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
     && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
     && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
-}
-
-test fn memory_high_is_an_observed_throttle_not_an_enforced_cap() -> Bool {
-  !host_budget_source_bounds_this_process(
-      s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" }
-    )
-    && host_budget_source_bounds_this_process(
-      s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" }
-    )
 }
 
 // THE DISCRIMINATING PAIR FOR THE 2026-08-30 BUILDBUDDY SIGKILL, and it is a pair for the same
@@ -290,71 +285,10 @@ test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
 
 test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
   match host_budget_resolution_bytes(
-    r: HostBudgetResolved {
-      effective_bytes: byte_size(17179869184),
-      requested_bytes: none,
-      observation: HostBudgetObserved {
-        source: BudgetSourceDarwinPhysicalMemory,
-        bytes: byte_size(17179869184)
-      }
-    }
+    r: HostBudgetResolved { source: BudgetSourceDarwinPhysicalMemory, bytes: byte_size(17179869184) }
   ) {
     Present { value: b } => byte_size_count(b: b) == 17179869184
     Absent => false
-  }
-}
-
-test fn an_unverified_declaration_remains_a_planning_number_without_becoming_resolved() -> Bool {
-  match host_budget_resolution_bytes(
-    r: HostBudgetDeclaredUnverified {
-      requested_bytes: byte_size(5368709120),
-      reason: "an environment assertion constrains no allocation"
-    }
-  ) {
-    Present { value: b } => byte_size_count(b: b) == 5368709120
-    Absent => false
-  }
-}
-
-test fn RED_operator_request_cannot_widen_an_observed_limit() -> Bool {
-  match effective_planning_budget(
-    requested: Present { value: byte_size(10737418240) },
-    observation: Present { value: HostBudgetObserved {
-      source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
-      bytes: byte_size(8589934592)
-    } }
-  ) {
-    HostBudgetResolved {
-      effective_bytes: b,
-      requested_bytes: Present { value: requested },
-      observation: HostBudgetObserved { source: BudgetSourceCgroupMemoryHigh { cgroup_dir: _ }, bytes: observed }
-    } => byte_size_count(b: b) == 8589934592
-      && byte_size_count(b: requested) == 10737418240
-      && byte_size_count(b: observed) == 8589934592
-    HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
-    HostBudgetUnreadable { reason: _ } => false
-  }
-}
-
-test fn operator_request_may_narrow_an_observed_limit() -> Bool {
-  match effective_planning_budget(
-    requested: Present { value: byte_size(5368709120) },
-    observation: Present { value: HostBudgetObserved {
-      source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
-      bytes: byte_size(8589934592)
-    } }
-  ) {
-    HostBudgetResolved {
-      effective_bytes: b,
-      requested_bytes: Present { value: requested },
-      observation: HostBudgetObserved { source: BudgetSourceCgroupMemoryMax { cgroup_dir: _ }, bytes: observed }
-    } => byte_size_count(b: b) == 5368709120
-      && byte_size_count(b: requested) == 5368709120
-      && byte_size_count(b: observed) == 8589934592
-    HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
-    HostBudgetUnreadable { reason: _ } => false
   }
 }
 
@@ -382,14 +316,15 @@ test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
 test fn procfs_reading_labels_do_name_their_path() -> Bool {
   string_contains(s: host_budget_source_label(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" }) as String, pattern: "memory.high")
     && string_contains(s: host_budget_source_label(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" }) as String, pattern: "memory.max")
+    && string_contains(s: host_budget_source_label(s: BudgetSourceEnvOverride) as String, pattern: "GUNBC_MEMORY_BUDGET_BYTES")
 }
 
 // The refusal above proves the resolution carries no NUMBER; this proves it carries the two things
 // a stopped operator needs, because a line-stop that does not say how to restart the line is a stop
 // nobody can analyze (DESIGN section 5, the factory model). The reason must name what was
-// unreadable — the cgroup limit files — and the env request that cannot replace them. On the
-// BuildBuddy runner that motivated this change the executor must expose the missing observation;
-// a plausible environment integer is exactly the unverified state this change refuses.
+// unreadable — the cgroup limit files — and the env var that supplies the bound. On the BuildBuddy
+// runner that motivated this change those are the only two facts that separate a rc=137 with no
+// output from a run that completes.
 
 test fn the_unreadable_reason_names_both_the_missing_bound_and_the_remedy() -> Bool {
   all(
@@ -400,8 +335,7 @@ test fn the_unreadable_reason_names_both_the_missing_bound_and_the_remedy() -> B
           string_contains(s: r as String, pattern: "memory.high")
             && string_contains(s: r as String, pattern: "memory.max")
             && string_contains(s: r as String, pattern: "GUNBC_MEMORY_BUDGET_BYTES")
-        HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
-        HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
+        HostBudgetResolved { source: _, bytes: _ } => false
       }
   )
 }

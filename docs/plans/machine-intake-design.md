@@ -231,13 +231,8 @@ AccountManagementUnavailable) → PartsHold, not ReturnWindow, absent other evid
 
 Each attempt mints a nonce; the intake agent returns `IntakeAgentBootReceipt { attempt_nonce,
 artifact_digest, architecture, board_serial, assembly_observation, firmware_observation,
-booted_at }`. That receipt, and nothing else, is what a future attestation would rest on —
-but nothing constructs DiagnosticBootAttested today, and
-`gunbc.machine_intake_receipt.attest_diagnostic_boot` does not: a matching singleton returns
-DiagnosticBootCompletenessUnestablished, because an observed population is not a closed one.
-The positive arm waits on an acquisition producer that CLOSES the callback population — bound
-issuance, single ingress, close-before-snapshot, gap-free transcript, evidence from that same
-acquisition. The module is the authority for which arms exist. NFS plateaus, redirection sessions,
+booted_at }`. That — and only that — constructs DiagnosticBootAttested
+(`gunbc.machine_intake_receipt.attest_diagnostic_boot`). NFS plateaus, redirection sessions,
 power signatures, reset completion, SOL streams and KVM pixels are supporting observations that
 ride in the refusal. KVM is optional forensic capture.
 

@@ -421,10 +421,10 @@ test fn slice_verdict_classifier_admits_exactly_the_two_converged_verdicts() -> 
 // that would have looked like a serving failure rather than a string comparison.
 test fn the_converged_verdict_is_admitted_with_its_serving_evidence() -> Bool {
   spark_serving_slice_verdict_is_converged(
-    verdict: join([spark_serving_slice_verdict_applied_converged, " serving-converged version=0.32.9 model=gpt-oss:120b"], ""),
+    verdict: join([spark_serving_slice_verdict_applied_converged, " serving-converged version=0.32.9 model=gpt-oss:20b"], ""),
   )
     && spark_serving_slice_verdict_is_converged(
-         verdict: join([spark_serving_slice_verdict_noop_converged, " serving-converged version=0.32.9 model=gpt-oss:120b"], ""),
+         verdict: join([spark_serving_slice_verdict_noop_converged, " serving-converged version=0.32.9 model=gpt-oss:20b"], ""),
        )
 }
 

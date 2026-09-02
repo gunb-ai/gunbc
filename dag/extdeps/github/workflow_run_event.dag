@@ -45,16 +45,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // this tree — extdeps.languages.json.emit keeps every number as a JsonNumberLexeme (a branded
 // String) precisely so that parsing never silently reinterprets a lexeme — so decoding here would
 // mint the repo's first such decode inside a webhook reader, which is the wrong place to introduce
-// it and would need its own overflow and leading-zero story. It is also unnecessary: every consumer
-// question asked of a run id here is IDENTITY — is this the run that other carrier is about — which
-// is answered by comparing the digits as text, so the join is string-to-string at both ends with no
-// decode on either side and a decode would add a lossy step between carriers that already agree.
-// PROVENANCE OF THAT ARGUMENT, recorded because its original witness is gone: the motivating
-// consumer was gunbc.floor_component_receipt's event-subject join, which carried its subject run_id
-// as NonEmptyStr. That module was deleted on 2026-09-01 as unreachable residue of the 2026-08-15 CI
-// cut (it had no producer), so the sentence is kept in the past tense rather than deleted — the
-// lexeme decision does not depend on it, and the live consumers of this carrier (the fleet
-// admission modules) ask the same identity-shaped question. If arithmetic on run ids is ever
+// it and would need its own overflow and leading-zero story. It is also unnecessary: the only
+// consumer question is IDENTITY — does the receipt this alert downloaded come from the run this
+// event describes — and gunbc.floor_component_receipt already carries its subject run_id as
+// NonEmptyStr, so the join is string-to-string at both ends with no decode on either side. A decode
+// would add a lossy step between two carriers that already agree. If arithmetic on run ids is ever
 // needed, the decode lands in the JSON authority with its own witness, not here.
 
 data workflow_run_event_member: String = "workflow_run"

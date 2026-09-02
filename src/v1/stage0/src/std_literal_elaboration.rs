@@ -70,31 +70,13 @@ pub enum LiteralUnfolding {
         true_variant: Rc<DeclarationRef>,
         false_variant: Rc<DeclarationRef>,
     },
-    UnicodeScalarSequenceUnfold,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LiteralHomomorphism {
     pub source_kind: LiteralSourceKind,
     pub destination: Rc<DeclarationRef>,
-    pub element: Option<Rc<DeclarationRef>>,
     pub producer: Rc<LiteralUnfolding>,
-}
-
-pub fn homomorphism_element_eq(
-    a: Option<Rc<DeclarationRef>>,
-    b: Option<Rc<DeclarationRef>>,
-) -> bool {
-    match a.clone() {
-        Some(ae) => match b.clone() {
-            Some(be) => crate::std_decl_ref::declaration_ref_eq(ae.clone(), be.clone()),
-            std::option::Option::None => false,
-        },
-        std::option::Option::None => match b.clone() {
-            Some(_) => false,
-            std::option::Option::None => true,
-        },
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -109,18 +91,16 @@ pub fn literal_homomorphism_for(
     rows: Rc<Vec<Rc<LiteralHomomorphism>>>,
     source_kind: LiteralSourceKind,
     destination: Rc<DeclarationRef>,
-    element: Option<Rc<DeclarationRef>>,
 ) -> Rc<LiteralHomomorphismLookup> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
             for r in rows.iter().cloned() {
-                if ((literal_source_kind_eq(r.source_kind.clone(), source_kind.clone())
+                if (literal_source_kind_eq(r.source_kind.clone(), source_kind.clone())
                     && crate::std_decl_ref::declaration_ref_eq(
                         r.destination.clone(),
                         destination.clone(),
                     ))
-                    && homomorphism_element_eq(r.element.clone(), element.clone()))
                 {
                     __result.push(r);
                 }
@@ -204,19 +184,13 @@ pub fn elaborate_literal_at(
     rows: Rc<Vec<Rc<LiteralHomomorphism>>>,
     source_kind: LiteralSourceKind,
     destination: Rc<DeclarationRef>,
-    element: Option<Rc<DeclarationRef>>,
     destination_realizes_natively: bool,
 ) -> Rc<LiteralElaborationOutcome> {
     if destination_realizes_natively.clone() {
         Rc::new(LiteralElaborationOutcome::DirectLiteral)
     } else {
-        match (*literal_homomorphism_for(
-            rows.clone(),
-            source_kind.clone(),
-            destination.clone(),
-            element.clone(),
-        ))
-        .clone()
+        match (*literal_homomorphism_for(rows.clone(), source_kind.clone(), destination.clone()))
+            .clone()
         {
             LiteralHomomorphismLookup::LiteralHomomorphismFound { row: row, .. } => {
                 Rc::new(LiteralElaborationOutcome::ViaHomomorphism {

@@ -17,19 +17,6 @@ import gunbc.session_reservation_policy {
 }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import extdeps.toolchain.types { Aarch64 }
-import extdeps.ci_runner.types { QuotedBasisUnresolved, ResolvedBytes, quoted_magnitude_bytes }
-import extdeps.cloud.ubicloud { ubicloud_provider_identity }
-import gunbc.runner_shape_census {
-  memory_per_vcpu,
-  surveyed_runner_shapes,
-  MemoryPerVcpuReading,
-  UniformMemoryPerVcpu,
-  RatioNotUniformAcrossSizes,
-  NonIntegralRatioInSizes,
-  UnitLabelNotUniformAcrossSizes,
-  NoShapesForProviderArchitecture,
-}
 
 type RunnerSlotLabels {
   github_labels: List<String>
@@ -47,12 +34,13 @@ type RunnerSlotDesired {
 type HostRunnerSlotAllocation {
   host: HostIdentity
   slots_per_host: Int
+  cores_per_slot: HardwareThreadCount
   runner_slice_cap: ByteSize
   per_slot: RunnerSlotDesired
 }
 
 data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal {
-  reason: "Single authority for fleet runner-slot desired allocation (operator rulings 2026-07-10 superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning 2026-07-11; srv3 host-standup converge 2026-07-21; PER-HOST WIDTH + 14GiB slot 2026-08-05; srv4 disk row-pin retired + apply-time preflight 2026-08-06). Fleet-uniform per-slot row: 6 cores (DERIVED 2026-08-23 from the 16GiB MemoryMax at the surveyed 1 core : 3 GiB memory-per-vCPU convention, superseding an authored 8 that stated no relation to the ceiling beside it -- gunbc_runner_memory_per_core reads it from gunbc.runner_shape_census rather than restating it as a literal here) · 16GiB MemoryMax · 15GiB MemoryHigh (the authored max−1GiB relation, its own emitted knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15; raised from 14/13 by the 2026-08-17 floor-peak ruling in gunbc_runner_slot_memory_max_ruling_note) · 32GiB MemorySwapMax · TasksMax 16384 (the 2026-06-21 incident REPAIR value restored by operator ruling 2026-08-08 on PR 8045: TasksMax=512 WAS the diagnosed EAGAIN/process-creation outage value, and the earlier 512 row here inverted that diagnosis; any lower derived envelope value must be separately accepted and never below live task demand) · cpu_weight 100. PER-HOST width, RE-DERIVED 2026-08-27: MEMORY admits 25 on srv1 and 29 on srv3/srv4 at the 16GiB slot, and on srv2 IT IS UNESTABLISHED. CPU admits 21 on every host (128 cited cores at 6 per slot); disk admits nothing numeric anywhere. COMMITTED width is the minimum over those axes -- srv1/srv3/srv4 commit 21 -- and srv2 HOLDS 5.\n\nsrv1 MOVED 27 -> 25 AND THAT IS A SYNCHRONIZATION, NOT A NEW TARGET. The 27 was consistent with an ungrounded 20 GiB fleet-wide session figure; that figure is deleted and srv1 carries an evidence-backed 52 GiB allowance, which removes three slots from the derivation this literal claims to report. No committed width moves, because srv1's CPU axis binds at 21 either way.\n\nsrv2's 5 IS A HELD ALLOCATION AND MUST NOT BE CITED AS A MEMORY ADMISSION (operator ruling 2026-08-27). Its session reservation is unestablished, so the memory subtraction cannot be performed at all -- there is no denominator to subtract. A held number and a derived one are different claims: the first says what the host is currently running while it is re-grounded, the second says what the conservation wall would pass, and only the second is evidence. The previous revision of this sentence listed 5 beside three derived figures as though the four were the same kind of fact, which is exactly the reading the ruling forbids. test.claim.host_allocation_conservation the_srv2_width_derivation_is_unestablished is the executed statement of this; every_derived_width_matches_its_authored_copy deliberately excludes srv2 rather than counting it as reproduced. The eventual construction fix is to replace this Int API with a typed standing (MemoryWidthDerived / MemoryWidthUnestablished) so an unestablished host cannot be read as a number at all; until then this note is the boundary and the two witnesses are the wall. THE BINDING AXIS CHANGED AND THAT IS THE HEADLINE: memory bound every host in this fleet's entire history until 2026-08-22, and now binds only srv2, the one host whose 64GiB install failed training and was reverted. Everywhere else CPU binds, which is why host_memory_admitted_width reporting 29 is not a commitment to 29 (width_minimum_now_spans_three_axes_note). srv4's disk stays DiskWidthUnconstrained at allocation with the apply-time gate gunbc.runner_lifecycle runner_width_disk_preflight unchanged. Live fleet ran 5 slots on EVERY host when this was written, so srv3/srv4's sixth slot is a provisioning target rather than a description (gunbc_runner_slot_width_ruling_note). GUARANTEED mode is now STRUCTURAL rather than checked — runner_slice_cap is DERIVED as slots × MemoryMax instead of being a second literal, so Σ per-slot MemoryMax ≤ slice_cap holds by construction and an oversubscribed slice has no representation here (DESIGN 5 construction-over-validation; the prior 80GiB literal was kept coherent with 5 × 16GiB by hand, which the old note admitted when it called them 'coherent by construction at these values' — a coincidence maintained by an author, not a derivation). The real remaining constraint is CONSERVATION against host RAM, which is not this module's to check: gunbc.ci_runner_placement holds it, now against OS-usable RAM with the per-host session slice and per-host fixed overhead charged. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement, gunbc.host_converge, gunbc.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
+  reason: "Single authority for fleet runner-slot desired allocation (operator rulings 2026-07-10 superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning 2026-07-11; srv3 host-standup converge 2026-07-21; PER-HOST WIDTH + 14GiB slot 2026-08-05; srv4 disk row-pin retired + apply-time preflight 2026-08-06). Fleet-uniform per-slot row: 6 cores (DERIVED 2026-08-23 from the 16GiB MemoryMax at the adopted 1 core : 3 GB ratio, superseding an authored 8 that stated no relation to the ceiling beside it -- gunbc_runner_cpu_memory_ratio_note) · 16GiB MemoryMax · 15GiB MemoryHigh (the authored max−1GiB relation, its own emitted knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15; raised from 14/13 by the 2026-08-17 floor-peak ruling in gunbc_runner_slot_memory_max_ruling_note) · 32GiB MemorySwapMax · TasksMax 16384 (the 2026-06-21 incident REPAIR value restored by operator ruling 2026-08-08 on PR 8045: TasksMax=512 WAS the diagnosed EAGAIN/process-creation outage value, and the earlier 512 row here inverted that diagnosis; any lower derived envelope value must be separately accepted and never below live task demand) · cpu_weight 100. PER-HOST width, RE-DERIVED 2026-08-27: MEMORY admits 25 on srv1 and 29 on srv3/srv4 at the 16GiB slot, and on srv2 IT IS UNESTABLISHED. CPU admits 21 on every host (128 cited cores at 6 per slot); disk admits nothing numeric anywhere. COMMITTED width is the minimum over those axes -- srv1/srv3/srv4 commit 21 -- and srv2 HOLDS 5.\n\nsrv1 MOVED 27 -> 25 AND THAT IS A SYNCHRONIZATION, NOT A NEW TARGET. The 27 was consistent with an ungrounded 20 GiB fleet-wide session figure; that figure is deleted and srv1 carries an evidence-backed 52 GiB allowance, which removes three slots from the derivation this literal claims to report. No committed width moves, because srv1's CPU axis binds at 21 either way.\n\nsrv2's 5 IS A HELD ALLOCATION AND MUST NOT BE CITED AS A MEMORY ADMISSION (operator ruling 2026-08-27). Its session reservation is unestablished, so the memory subtraction cannot be performed at all -- there is no denominator to subtract. A held number and a derived one are different claims: the first says what the host is currently running while it is re-grounded, the second says what the conservation wall would pass, and only the second is evidence. The previous revision of this sentence listed 5 beside three derived figures as though the four were the same kind of fact, which is exactly the reading the ruling forbids. test.claim.host_allocation_conservation the_srv2_width_derivation_is_unestablished is the executed statement of this; every_derived_width_matches_its_authored_copy deliberately excludes srv2 rather than counting it as reproduced. The eventual construction fix is to replace this Int API with a typed standing (MemoryWidthDerived / MemoryWidthUnestablished) so an unestablished host cannot be read as a number at all; until then this note is the boundary and the two witnesses are the wall. THE BINDING AXIS CHANGED AND THAT IS THE HEADLINE: memory bound every host in this fleet's entire history until 2026-08-22, and now binds only srv2, the one host whose 64GiB install failed training and was reverted. Everywhere else CPU binds, which is why host_memory_admitted_width reporting 29 is not a commitment to 29 (width_minimum_now_spans_three_axes_note). srv4's disk stays DiskWidthUnconstrained at allocation with the apply-time gate gunbc.runner_lifecycle runner_width_disk_preflight unchanged. Live fleet ran 5 slots on EVERY host when this was written, so srv3/srv4's sixth slot is a provisioning target rather than a description (gunbc_runner_slot_width_ruling_note). GUARANTEED mode is now STRUCTURAL rather than checked — runner_slice_cap is DERIVED as slots × MemoryMax instead of being a second literal, so Σ per-slot MemoryMax ≤ slice_cap holds by construction and an oversubscribed slice has no representation here (DESIGN 5 construction-over-validation; the prior 80GiB literal was kept coherent with 5 × 16GiB by hand, which the old note admitted when it called them 'coherent by construction at these values' — a coincidence maintained by an author, not a derivation). The real remaining constraint is CONSERVATION against host RAM, which is not this module's to check: gunbc.ci_runner_placement holds it, now against OS-usable RAM with the per-host session slice and per-host fixed overhead charged. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement, gunbc.host_converge, gunbc.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
 }
 
 data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERSEDING THE 14GiB/13GiB ROW (operator ruling 2026-08-17). The 2026-08-05 derivation below is not repudiated — it is re-run on a changed input. Its subject is floor-job cgroup peaks, and the floor's peak moved: the claim-scope cut measures 15.6GB (14.53GiB) after taking whole-run peak from 45.4GB to 15.6GB. 14.53GiB does not fit a 14GiB MemoryMax and sits 1.53GiB above a 13GiB MemoryHigh, so the prior row can no longer hold its own consumer.\n\nTHE PIN IS OBSERVED, NOT PREDICTED (srv1, read 2026-08-17, gunbc_srv1_converged_slot_throttle_observation). All five srv1 slots carry the declared 14GiB/13GiB. Two of them — srv1-04 and srv1-05 — report memory.peak of EXACTLY 13.00GiB against 829 and 44803 memory.high events, with memory.max events and oom_kill both zero. A peak equal to the throttle line is the censored lower bound this very note taught for the four 15.0GiB pins in the 2026-08-05 sample; it is the workload being held, not the workload being measured. Survival without OOM is reclaim plus swap, and the host carried 10GiB of swap in use at the same reading.\n\nWHAT IT COSTS, STATED BECAUSE IT IS NOT FREE: two runner slots fleet-wide. At 16GiB the managed hosts admit 6 rather than 7 (7 x 16 = 112GiB against 111.4GiB available) while srv1/srv2 hold 5 (5 x 16 = 80GiB against 81.0GiB, a 1.0GiB margin — the tightest number in this module and the first thing to recheck if the sessions reservation or the legacy overhead is ever corrected upward). Fleet total 24 -> 22. The trade is bought deliberately: a 15GiB/14GiB row would have preserved all 24 slots and cleared MemoryMax, but its throttle line would sit 0.53GiB BELOW the measured peak, making the throttle confound permanent and structural in the instrument now measuring the fold.\n\nTHAT THE NEW TARGET EQUALS srv2-03'S DRIFTED READBACK IS A COINCIDENCE AND MUST NOT BE READ AS A PRECEDENT. gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation still stands unamended: this row moved because a floor-peak measurement moved, which is the same subject the 2026-08-05 ruling used, and it would have moved to 16GiB had every host in the fleet been sitting at 8. srv1 was CONVERGED to 14/13 when this was written, so the fleet was not at 16/15 to be reconciled toward.\n\nDISSOLVE-ON: the 14.53GiB peak is not established as steady. If the fold's remaining 5.6GB comes down, re-derive from the new floor-peak distribution and reclaim the two slots; this row is sized to a measurement under active reduction, not to a settled envelope.\n\nSUPERSEDED DERIVATION, RETAINED AS THE PRIOR INPUT (operator ruling 2026-08-05). 186 floor-job cgroup peaks from 2026-08-05 plus five sampled days back to 2026-07-16, read from the [calibration] floor_peak_post receipts the ci job emits: successful runs peak at p50 10.32GiB and max 10.96GiB, and NOT ONE run in the sample reached the 16GiB MemoryMax. Four of 186 reached 15.0GiB, which is the 15GiB MemoryHigh exactly — those are throttle pins, censored lower bounds rather than demand, and they are why the cap does not fall further.\n\nTHE FLOOR UNDER IT IS ALREADY MEASURED AND IT IS 12GiB: gunbc_floor_minimum_viable_armed_budget in this module, enforced by claim_executor as an arm-time refusal. MemoryHigh is what the run-time governor arms against, so MemoryHigh is the axis that number constrains — 13GiB leaves exactly 1GiB of margin over it, and clears the worst p90 in the three-week sample (12.94GiB on 2026-07-30). Going to 13/12 to buy an eighth slot on the managed hosts would put the throttle line ON the measured refusal floor with zero margin, and the 2026-07-30 distribution says that day would have spent most of its runs in swap.\n\nWHAT MOVING 16 TO 14 IS NOT: it is not oversubscription and does not touch the guaranteed-mode property. Every slot still owns its ceiling outright. The ceilings are simply sized closer to what the workload was measured to want, which is what freed the width."
@@ -187,8 +175,7 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // CPU IS AN ADMISSION AXIS AND UNTIL THIS ROW IT WAS NOT ONE AT ALL. gunbc_runner_slots_per_host
 // took a minimum over memory and disk and never asked how many cores the host had, so
 // cores_per_slot existed only as a field reported in HostRunnerSlotAllocation -- a number carried
-// to consumers and constraining nothing. That field is now DELETED: with CPU a real admission axis
-// the figure constrains through host_cpu_admitted_width, and nothing read the reported copy. That was harmless while memory was the tight axis on every
+// to consumers and constraining nothing. That was harmless while memory was the tight axis on every
 // host and it stopped being harmless the moment it was not: the 2026-08-22 DIMM upgrade took srv3
 // and srv4 from 125 GiB of usable RAM to about 502 GiB, memory admission moved from 6 to 29, and
 // with disk DiskWidthUnconstrained on both the minimum would have degenerated to memory alone and
@@ -211,19 +198,10 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // host-and-session CPU residency series, at which point this subtracts a reserve exactly as the
 // memory axis already does.
 
-type CpuAdmittedWidth
-  = CpuAdmitsWidth { slots: Int }
-  | CpuWidthUnresolved { cause: String }
-
-fn host_cpu_admitted_width(host: HostIdentity) -> CpuAdmittedWidth {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: c } => CpuWidthUnresolved { cause: c }
-    CoresPerSlotResolved { threads: t } => {
-      let cores = altra_max_m12830_catalog.cores
-      let per_slot = hardware_thread_count_value(t: t)
-      CpuAdmitsWidth { slots: cores / per_slot }
-    }
-  }
+fn host_cpu_admitted_width(host: HostIdentity) -> Int {
+  let cores = altra_max_m12830_catalog.cores
+  let per_slot = hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
+  if per_slot == 0 { 0 } else { cores / per_slot }
 }
 
 data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THREE AXES AND THE THIRD ONE IS WHY THIS CHANGE IS SAFE. Memory admits 29 on the upgraded hosts, CPU admits 21, disk admits nothing numeric, so the commitment is 21 -- and the two answers coexist under their own names instead of one of them being suppressed to keep the other honest. width_is_a_minimum_over_axes_note records what happens when they are collapsed: gunbc_runner_slots_per_host once returned the memory verdict under a name that read as the full commitment, and srv4's roster and its prose disagreed as a result.\n\nSo host_memory_admitted_width saying 29 is not a claim that 29 runners may exist. It is the true answer to the question that function asks, and it is the minimum's job -- not the literal's -- to keep the fleet from acting on it."
@@ -287,10 +265,9 @@ fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
       reason: "session reservation unestablished on this host, so the memory subtraction has no denominator and states no width" as NonEmptyStr,
     }
   }
-  let cpu = match host_cpu_admitted_width(host: host) {
-    CpuAdmitsWidth { slots: n } => AxisAdmits { axis: "cores" as NonEmptyStr, slots: n }
-    CpuWidthUnresolved { cause: c } =>
-      AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: c as NonEmptyStr }
+  let cpu = AxisAdmits {
+    axis: "cores" as NonEmptyStr,
+    slots: host_cpu_admitted_width(host: host),
   }
   let disk = match host_disk_admitted_width(host: host) {
     DiskAdmitsWidth { slots: d, provenance: _ } =>
@@ -387,200 +364,34 @@ fn host_held_runner_width(host: HostIdentity) -> Int? {
   }
 }
 
-// A ZERO-MEMORY SLOT SHAPE ADMITS NO RUNNERS, AND THE HELD ARM MUST NOT OUTRANK THAT.
-//
-// This refusal was previously carried by ACCIDENT, in a function whose deletion is the point of the
-// change that added this one. gunbc.fleet_host_budget declared_runner_count_for computed
-// measure_fit_count_floor(slots * memory_max, memory_max), and that projection returns ZERO when its
-// divisor is zero rather than dividing -- so a zero-memory slot shape reached a zero width through
-// arithmetic nobody wrote for that purpose. The identity slots * k / k = slots holds only for k > 0,
-// so the deletion of that round trip was behaviour-preserving on the current tree and NOT on every
-// tree the source can express.
-//
-// The derived path would still refuse without this: cores_per_slot ceilings memory_max against the
-// surveyed memory-per-vCPU convention, so a zero ceiling yields zero cores per slot. THE HELD PATH
-// WOULD NOT. It is consulted
-// first and answers with an authored number that never consults the slot shape at all, so srv2's held
-// five would survive a slot shape admitting nothing -- committing five runners on a ceiling of zero
-// bytes. That is the one place the accidental refusal was load-bearing, and it is why the standing is
-// checked BEFORE the held arm rather than inside the derivation.
-//
-// Zero reaches ZeroRunnerWidth in gunbc.ci_runner_placement, so the host refuses rather than deploys.
-type RunnerSlotShapeStanding
-  = RunnerSlotShapeAdmitted
-  | RunnerSlotShapeRefusedZeroMemoryMax
-
-fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
-  if byte_size_count(b: d.memory_max) == 0 {
-    RunnerSlotShapeRefusedZeroMemoryMax
-  } else {
-    RunnerSlotShapeAdmitted
-  }
-}
-
-// UNKNOWN AND ZERO ARE DIFFERENT ANSWERS, AND THIS FUNCTION STILL CONFLATES THEM.
-//
-// gunbc_runner_slots_per_host returns Int, so the unresolved arm has nowhere to put its cause and
-// answers 0. gunbc.ci_runner_placement no longer depends on that -- it consults the ratio directly
-// and refuses with RunnerCoreRatioUnresolved, carrying the reason.
-//
-// THAT MAKES ONE PATH HONEST AND NOT THE PRODUCTION SURFACE, and an earlier revision of this note
-// said "the live refusal path is honest" without the qualifier. Two consumers take the Int
-// directly and would read an unresolved ratio as a real zero. gunbc.runner_host_deploy builds four
-// deploy rows from it, and that count becomes the materialization target -- so a zero changes the
-// desired runner population from the host's admitted roster to an empty one, which
-// gunbc.runner_slot_provision then plans against; removal ownership refuses destructive teardown,
-// which contains the harm, but the plan is answering the wrong question. gunbc.host_axis_caps uses
-// the same Int as the upper bound of the runner-unit roster whose system-control shadows are
-// reverted, where a zero produces no reverts and can leave stale effective caps standing.
-//
-// DECLARED GAP, NOT AN ACCIDENT, and the trigger is the CAPABILITY rather than an artifact: the arm
-// dissolves when the canonical width answer is a RunnerWidthResolution -- derived, held, or
-// unresolved-with-cause -- and every production call site carries or refuses that cause instead of
-// reading an Int. That is a fail-closed cascade, including `data` rows whose declared shape has no
-// arm to match on, so it is the whole subject of its own change rather than a rider on this one.
-// Landing half of it would mean minting one silent default per un-migrated site, which is the
-// defect this branch exists to remove.
-//
-// THE POPULATION IS NAMED BY ITS PRODUCER RATHER THAN TRANSCRIBED, because an earlier revision of
-// this annotation said "sixteen production call sites" and a census taken while planning the
-// cascade independently said twelve. Both were wrong, and neither was checkable from where it was
-// written. The producer is the call-site read over this symbol -- every non-comment, non-import
-// occurrence of gunbc_runner_slots_per_host( under dag/gunbc and src/v2, less this declaration --
-// and a reader who wants the count runs it. DESIGN section 6 states the rule this violated: name
-// the instrument, never transcribe its output, for the same reason section 3 cites a symbol rather
-// than a line -- a copied number is unreachable from the thing that owns it, so it rots without
-// anyone touching either end, and here it rotted twice in opposite directions.
 fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
-  match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
-    RunnerSlotShapeRefusedZeroMemoryMax => 0
-    RunnerSlotShapeAdmitted =>
-      match host_held_runner_width(host: host) {
-        Present { value: held } => held
-        Absent =>
-          match gunbc_derived_runner_slots_per_host(host: host) {
-            DerivedRunnerWidthSlots { slots: n } => n
-            DerivedRunnerWidthUnresolved { cause: _ } => 0
-          }
-      }
+  match host_held_runner_width(host: host) {
+    Present { value: held } => held
+    Absent => gunbc_derived_runner_slots_per_host(host: host)
   }
 }
 
-type DerivedRunnerWidth
-  = DerivedRunnerWidthSlots { slots: Int }
-  | DerivedRunnerWidthUnresolved { cause: String }
-
-fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> DerivedRunnerWidth {
-  match host_cpu_admitted_width(host: host) {
-    CpuWidthUnresolved { cause: c } => DerivedRunnerWidthUnresolved { cause: c }
-    CpuAdmitsWidth { slots: by_cpu } => {
-      let by_memory = host_memory_admitted_width(host: host)
-      let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
-      DerivedRunnerWidthSlots {
-        slots: match host_disk_admitted_width(host: host) {
-          DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
-          DiskWidthUnconstrained { reason: _ } => by_mem_cpu
-        }
-      }
-    }
+fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> Int {
+  let by_memory = host_memory_admitted_width(host: host)
+  let by_cpu = host_cpu_admitted_width(host: host)
+  let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
+  match host_disk_admitted_width(host: host) {
+    DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
+    DiskWidthUnconstrained { reason: _ } => by_mem_cpu
   }
 }
 
-// THE MEMORY-PER-VCPU CONVENTION IS SURVEYED, NOT AUTHORED. It replaces a hand-written
-// byte_size(3000000000) that restated one provider's published figure as a gunbc literal --
-// a second authority for a number extdeps already cites, which could drift from the catalog
-// it was copied from with nothing to notice.
-//
-// GITHUB ACTIONS IS DELIBERATELY NOT A SECOND SOURCE FOR THE RATIO. Its aarch64 catalog reads
-// 4 per vCPU where uniform and carries two sizes that are not integral at all (arm-5core at
-// 14, arm-64core at 208), so memory_per_vcpu REFUSES on it rather than reporting a number.
-// A provider that aims at a ratio has not published one, and averaging the survey would mint
-// a figure no vendor states. Ubicloud aarch64 is the uniform integral reading, so it is the
-// one adopted; the survey's disagreement is a typed refusal on the other providers, not noise
-// to be smoothed away.
-//
-// THE BASIS IS THE VENDOR'S AND THE CENSUS NOW CARRIES IT. An earlier revision of this block
-// asserted that no surveyed page states whether its "GB" is decimal or binary and then adopted
-// GIBIBYTES on that basis. Both halves were wrong: extdeps.cloud.ubicloud quotes its catalog as
-// QuotedDecimalGigabytes, so the basis was stated all along and the census was discarding it, and
-// the adoption cited an operator ruling that does not exist. The conversion is now the extdeps
-// authority's own quoted_magnitude_bytes, which refuses rather than guessing when a sample really
-// has no stated basis.
-fn gunbc_runner_memory_per_core_reading() -> MemoryPerVcpuReading {
-  memory_per_vcpu(
-    rows: surveyed_runner_shapes(),
-    provider: ubicloud_provider_identity,
-    architecture: Aarch64,
-  )
-}
+data gunbc_runner_cpu_memory_ratio_note: String = "ONE CORE PER THREE GIBIBYTES IS THE ADOPTED SLOT SHAPE (operator ruling 2026-08-23), and cores_per_slot is DERIVED from it rather than authored beside it. The previous row returned a literal 8 with no stated relation to the 16 GiB MemoryMax it accompanied, so the two could drift apart silently and the only thing tying them together was that one author wrote both.\n\nTHE RATIO IS ADOPTED, NOT DERIVED, and this row does not pretend otherwise. It is the arm64 shape Ubicloud publishes across its whole standard profile -- five sizes at exactly 3 decimal GB per vCPU, cited in extdeps.cloud.ubicloud -- adopted because a published provider catalog is a real intersubjective reference and a number this lane invented would not be. What is NOT adopted with it: that catalog runs Altra Q80-30 while this fleet runs Altra Max M128-30, so the ratio travels and the machine behind it does not.\n\nTHE 16 GiB ANCHOR IS EXPLICITLY ARBITRARY AND EXPLICITLY TEMPORARY (same ruling: 16 GiB for now, and we need to be able to change this soon). It is carried unchanged from the 2026-08-17 floor-peak ruling that set MemoryMax, so the slot keeps the ceiling its workload was measured against; the ratio then decides how much CPU that ceiling is worth.\n\nROUNDING IS UP, AND THE DIRECTION IS THE FAIL-CLOSED ONE FOR SLOT COUNT. 16 GiB at 3 GB per core is 5.73 cores, which is not a whole number of cores and never will be for an arbitrary anchor. Rounding UP to 6 gives each slot slightly more CPU than the ratio demands and yields FEWER slots per host (128 / 6 = 21, not 128 / 5 = 25); rounding down would over-admit width on every host in the fleet at once. Over-admitting is the harmful error here -- it commits runners a machine cannot carry -- so the rounding follows the harm, not the arithmetic's convenience."
 
-// AN UNGROUNDED RATIO REFUSES BY NAME INSTEAD OF ANSWERING ZERO. The shape this replaces mapped
-// every refusing reading to byte_size(0) and relied on the zero travelling through
-// gunbc_runner_cores_per_slot and host_cpu_admitted_width until the placement called it
-// ZeroRunnerWidth. That is the absorbing arm DESIGN forbids: it is a degradation wearing a
-// refusal's name, and it was measured -- a missing unit conversion made the per-core figure 3
-// BYTES, which drove cores-per-slot to 5,726,623,062, the CPU axis to zero, and the whole fleet
-// to deployment=refused cause=zero_runner_width, a diagnostic that named neither the ratio nor
-// the conversion. The cause now travels with the refusal.
-type RunnerMemoryPerCoreResolution
-  = MemoryPerCoreResolved { bytes: ByteSize }
-  | MemoryPerCoreUnresolved { cause: String }
+data gunbc_runner_memory_per_core: ByteSize = byte_size(3000000000)
 
-fn gunbc_runner_memory_per_core() -> RunnerMemoryPerCoreResolution {
-  runner_memory_per_core_of(reading: gunbc_runner_memory_per_core_reading())
-}
-
-// THE READING IS A PARAMETER SO THE REFUSAL HAS AN AUTHORABLE RED. A zero-argument derivation over
-// the live census can only ever be exercised on whatever the survey currently says, so its refusing
-// arms would be permanently unreachable and the check on them would be a decoration. Taking the
-// reading lets a fixture hand this function each arm it claims to refuse.
-fn runner_memory_per_core_of(reading: MemoryPerVcpuReading) -> RunnerMemoryPerCoreResolution {
-  match reading {
-    UniformMemoryPerVcpu { per_vcpu: q, sizes_agreeing: _ } =>
-      match quoted_magnitude_bytes(quoted: q) {
-        ResolvedBytes { bytes: b } => MemoryPerCoreResolved { bytes: b }
-        QuotedBasisUnresolved { numeral: _, unit_label: l } =>
-          MemoryPerCoreUnresolved {
-            cause: concat("the surveyed memory-per-vCPU ratio is uniform but carries no stated byte basis, so its numeral cannot be read as bytes without gunbc choosing a basis the vendor did not publish; unit label: ", l)
-          }
-      }
-    RatioNotUniformAcrossSizes { first_per_vcpu: _, divergent_label: dl, divergent_per_vcpu: _ } =>
-      MemoryPerCoreUnresolved {
-        cause: concat("the surveyed provider's sizes do not agree on a memory-per-vCPU ratio, so there is no convention to adopt; first divergent size: ", dl)
-      }
-    NonIntegralRatioInSizes { label: l } =>
-      MemoryPerCoreUnresolved {
-        cause: concat("a surveyed size divides memory by vCPUs non-integrally, so the provider states no whole ratio; size: ", l)
-      }
-    UnitLabelNotUniformAcrossSizes { first_label: fl, divergent_label: dl } =>
-      MemoryPerCoreUnresolved {
-        cause: concat(concat("the surveyed sizes are quoted in more than one unit word, so their quotient is not a ratio: ", fl), concat(" against ", dl))
-      }
-    NoShapesForProviderArchitecture =>
-      MemoryPerCoreUnresolved {
-        cause: "the survey holds no shapes for the cited provider and architecture, so no ratio was read at all"
-      }
-  }
-}
-
-type RunnerCoresPerSlotResolution
-  = CoresPerSlotResolved { threads: HardwareThreadCount }
-  | CoresPerSlotUnresolved { cause: String }
-
-fn gunbc_runner_cores_per_slot() -> RunnerCoresPerSlotResolution {
-  match gunbc_runner_memory_per_core() {
-    MemoryPerCoreUnresolved { cause: c } => CoresPerSlotUnresolved { cause: c }
-    MemoryPerCoreResolved { bytes: per_core } => {
-      let want = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
-      let per = byte_size_count(b: per_core)
-      if per == 0 {
-        CoresPerSlotUnresolved {
-          cause: "the surveyed memory-per-vCPU ratio resolved to zero bytes, which would admit every core on the host against no memory at all"
-        }
-      } else {
-        CoresPerSlotResolved { threads: hardware_thread_count(count: (want + per - 1) / per) }
-      }
-    }
+fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
+  let want = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  let per = byte_size_count(b: gunbc_runner_memory_per_core)
+  if per == 0 {
+    hardware_thread_count(count: 0)
+  } else {
+    hardware_thread_count(count: (want + per - 1) / per)
   }
 }
 
@@ -606,6 +417,7 @@ fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunner
   HostRunnerSlotAllocation {
     host: host,
     slots_per_host: slots,
+    cores_per_slot: gunbc_runner_cores_per_slot(),
     runner_slice_cap: gunbc_runner_slice_cap_declared(host: host),
     per_slot: per_slot
   }
@@ -957,40 +769,10 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // gunbc_runner_slot_oversubscription_within_slice survives as the general relation for callers
 // holding two independent numbers.
 
-// THE FIRST CONJUNCT CONSUMES THE RESOLUTIONS AND REFUSES ON EITHER UNRESOLVED ARM. It previously
-// passed gunbc_runner_cores_per_slot() to hardware_thread_count_value and gunbc_runner_memory_per_core()
-// to byte_size_count after both had become resolution coproducts, and the corpus accepted it: a
-// two-variant coproduct reached a parameter declared as a one-field measure at a CALL-argument
-// position, and the required floor stayed green over 3,136 witnesses. It is recorded here rather
-// than quietly repaired because it is a floor-level compiler admission -- DESIGN's "values inhabit
-// declared types" baseline.
-//
-// THE SPECIMEN IS RECORDED, NOT YET ENROLLED, and the distinction is stated plainly because an
-// annotation is not evidence (DESIGN 4c). test.claim.declared_type_inhabitance_direct_call_witness
-// already refuses distinct unapplied constructors passed through a call, so this admission is NOT
-// the general call-argument case and the discriminator is unmeasured: the candidates are a
-// coproduct producer, an alias-expanded generic application at the parameter, and cross-module
-// resolution. Asserting one of them here without the matrix would be the same guess that produced
-// the unit bug above. The trigger is the capability: a probe matrix over producer kind x judgment
-// position (return, call argument, record field, typed let) with one-axis REDs and matching
-// positive controls, enrolled where the floor folds it -- after which this comment is redundant and
-// goes.
-fn runner_slot_core_memory_relation_holds(want: ByteSize) -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } =>
-      match gunbc_runner_memory_per_core() {
-        MemoryPerCoreUnresolved { cause: _ } => false
-        MemoryPerCoreResolved { bytes: per_core } =>
-          hardware_thread_count_value(t: t) * byte_size_count(b: per_core) >= byte_size_count(b: want)
-      }
-  }
-}
-
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
   let gibibyte_bytes = 1073741824
-  runner_slot_core_memory_relation_holds(want: per_slot.memory_max)
+  (hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) * byte_size_count(b: gunbc_runner_memory_per_core) >= byte_size_count(b: per_slot.memory_max))
     && (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
     && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget))
     && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_measured_peak_observation))
