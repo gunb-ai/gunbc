@@ -30,7 +30,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // 33 independent production occurrences of the unrepaired helper. Five further occurrences already
 // route through the repaired sibling, so the population of production sites that consume a
 // declaration identity through this channel is 38, not 39.
-type CensusBasis
+type OccurrenceCensusBasis
   = EnumeratedFromDeclaration { declaration: DeclarationRef, sibling_declaration: DeclarationRef, selector: String, known_blind_spot: String }
 
 // WHAT THE OCCURRENCE ACTUALLY NEEDS -- the class axis. Every occurrence's `String` result is
@@ -71,7 +71,7 @@ type AuthorityAvailability
 // ConvertAtRosterGrainFirst therefore names the roster that must be re-keyed BEFORE any occurrence
 // moves. CorrectAsPosition is DESIGN section 3's own carve-out -- a position is legitimate where no
 // symbol exists to name -- and it is a disposition of correctness, not of debt.
-type Disposition
+type OccurrenceDisposition
   = ConvertAtRosterGrainFirst { roster_to_rekey: DeclarationRef, gate_to_rekey: DeclarationRef, why_call_site_first_is_wrong: String }
   | IrreducibleUntilAuthorityExists { finding: String }
   | CorrectAsPosition { why: String }
@@ -84,7 +84,7 @@ type OccurrenceClass {
   specimens: List<DeclarationRef>
   why_the_positional_form_was_reached_for: String
   authority: AuthorityAvailability
-  disposition: Disposition
+  disposition: OccurrenceDisposition
 }
 
 // THE ROSTER. Every row was established by reading `v1.compiler.coercion` `type_reference_decl_file`,
@@ -226,7 +226,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
   },
 ]
 
-data type_reference_decl_file_census_basis: CensusBasis = EnumeratedFromDeclaration {
+data type_reference_decl_file_census_basis: OccurrenceCensusBasis = EnumeratedFromDeclaration {
   declaration: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_decl_file"),
   sibling_declaration: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_reference_decl_file_in_env"),
   selector: "every call occurrence of the two declarations above under src/, classified by the terminal predicate its String result reaches -- not by caller and not by file. Classification was performed by reading each consumer to its deciding predicate: decl_file_realizes_natively, lookup_checkpoint's two arms, is_kernel_minted_file, or no predicate at all.",
