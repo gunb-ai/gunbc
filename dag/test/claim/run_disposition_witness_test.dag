@@ -22,7 +22,12 @@ import gunbc.compile_permit_scope {
   BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo,
   fleet_cancellation_standing,
-  fleet_compile_cancellation_standing
+  fleet_compile_cancellation_standing,
+  FleetCancellationFoldAcc,
+  CapacityPreservedByServerReclamation,
+  CapacityLostUntilPoolRestart,
+  accumulate_observed_disposition,
+  finalize_fleet_standing
 }
 import gunbc.witness_floor_workflow {
   running_supersession_for_fleet_standing,
@@ -707,6 +712,61 @@ test fn w_an_observation_outside_the_roster_does_not_complete_it() -> Bool {
     standing: fleet_cancellation_standing(
       eligible_hosts: two_host_fleet(),
       observations: [safe_host(name: "srv1"), safe_host(name: "srv9")],
+    ),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+
+// ── The reclamation arm, reached where its RED is authorable ────────────────────────────────────
+
+// EVERY WITNESS ABOVE PASSES IF THE RECLAMATION ARM IS MUTATED TO CLASSIFY ITS HOST AS UNSAFE.
+// Review 58515 ran exactly that mutation and nothing went red, because no realization maps to
+// CapacityPreservedByServerReclamation, so the ordinary path never produces one and the arm sat
+// inside the fold's lambda where no fixture could address it. The arm is half of the drop's
+// dissolve-on and must not be deleted; what has to change is the production shape, so the two
+// witnesses here call the SAME production procedures the fold calls -- there is no second
+// classification and no second finalization for a fixture to agree with vacuously.
+fn reclaiming_fleet_acc() -> FleetCancellationFoldAcc {
+  accumulate_observed_disposition(
+    acc: accumulate_observed_disposition(
+      acc: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
+      host: "srv1" as HostIdentity,
+      disposition: CapacityPreservedByServerReclamation,
+    ),
+    host: "srv2" as HostIdentity,
+    disposition: CapacityPreservedByServerReclamation,
+  )
+}
+
+// THE POSITIVE CONTROL: a fleet whose every host preserves capacity by SERVER RECLAMATION carries
+// all the way to restored supersession. Flip that arm to the unsafe side and this goes red.
+test fn w_a_server_reclaiming_fleet_restores_supersession() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: finalize_fleet_standing(acc: reclaiming_fleet_acc(), eligible_hosts: two_host_fleet()),
+  ) {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    NeverSupersedeRunning => false
+  }
+}
+
+// AND THE DISCRIMINATING RED FOR THE SAME HELPER: one losing host among reclaiming ones holds the
+// containment, so the witness above cannot be satisfied by a helper that classifies everything safe.
+test fn w_one_losing_host_among_reclaiming_hosts_holds_the_containment() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: finalize_fleet_standing(
+      acc: accumulate_observed_disposition(
+        acc: accumulate_observed_disposition(
+          acc: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
+          host: "srv1" as HostIdentity,
+          disposition: CapacityPreservedByServerReclamation,
+        ),
+        host: "srv2" as HostIdentity,
+        disposition: CapacityLostUntilPoolRestart,
+      ),
+      eligible_hosts: two_host_fleet(),
     ),
   ) {
     NeverSupersedeRunning => true
