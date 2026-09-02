@@ -1132,6 +1132,397 @@ pub fn workspace_root() -> PathBuf {
     .clone()
 }
 
+/// The process working directory is one mutable cell shared by every test thread in this binary,
+/// and `cargo test` runs those threads concurrently. A test that chdirs therefore does not perturb
+/// only itself: for the width of the call it redirects every RELATIVE path any concurrent test
+/// resolves, and its restore (`prior = current_dir(); chdir(ws); …; chdir(prior)`) can hand the
+/// cwd back while a sibling is still mid-read. That is the nondeterminism `entry_admission_tests`
+/// already measured on this file — a DIFFERENT pair of tests failing on each run of identical code
+/// — and the victim population is not the mutators, it is every non-ignored test in the binary.
+///
+/// So the gate is REACHABILITY, not a grep for the literal in a test body. All seven mutators this
+/// module was written to remove reached `set_current_dir` through a helper (`with_workspace_cwd`,
+/// `enter_workspace`, and three roster helpers), so a body-local check would have been green over
+/// every one of them and would go green again the first time someone reintroduces the chdir one
+/// call deep. This computes the same transitive closure the census did.
+///
+/// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
+/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
+/// `repo_self_test_command`). The `#[ignore]`d live-corpus tests still reach mutators and are the
+/// named residue — they are excluded here because the gating lane does not run them, not because
+/// they are safe. Their next-rung trigger is the capability "every live-tree test resolves paths
+/// from an explicitly passed root", after which `set_current_dir` has no consumer in the test tree
+/// and the call becomes unwritable rather than merely absent.
+///
+/// Rung: the class was found BELOW the ladder (a silently wrong answer — a test resolves against
+/// another tree and can pass or fail either way, with no typed refusal anywhere). For the gating
+/// population the state is now absent; this lens is what keeps it absent, so that population sits
+/// at 2, mechanically preventable, with ceiling 4 named above.
+/// The process working directory is one mutable cell shared by every test thread in this binary,
+/// and `cargo test` runs those threads concurrently. A test that chdirs therefore does not perturb
+/// only itself: for the width of the call it redirects every RELATIVE path any concurrent test
+/// resolves, and the restore idiom (`prior = current_dir(); chdir(ws); …; chdir(prior)`) can hand
+/// the cwd back while a sibling is still mid-read. That is the nondeterminism `entry_admission_tests`
+/// already measured on this file — a DIFFERENT pair of tests failing on each run of identical code
+/// — and the victim population is not the mutators, it is every non-ignored test in the binary.
+///
+/// So the gate is REACHABILITY, not a grep for the literal in a test body. All seven mutators this
+/// module was written to remove reached the call through a helper (`with_workspace_cwd`,
+/// `enter_workspace`, and three roster helpers), so a body-local check would have been green over
+/// every one of them, and would go green again the first time someone moves the write one call
+/// deeper. This computes the same transitive closure the census did.
+///
+/// CONTAINMENT IS BRACE DEPTH, NOT INDENTATION, and the first cut of this module got that wrong in
+/// the direction that matters. Taking a declaration's extent as "up to the next declaration at the
+/// same or shallower indent" makes a top-level `fn` swallow every `mod` that follows it, so a
+/// module-level line was attributed to the preceding function — which here was `workspace_root`
+/// itself, a function nearly every test calls. The closure then reported 220 offenders. An
+/// over-approximating gate is the absorbing fallback DESIGN §5 refuses: it would have been cited as
+/// coverage while carrying no information. Extents are now closed on real brace depth, computed
+/// over a projection with comments and string bodies removed.
+///
+/// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
+/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
+/// `repo_self_test_command`). The `#[ignore]`d live-corpus tests still reach mutators and are the
+/// named residue — excluded here because the gating lane does not run them, not because they are
+/// safe. Their next-rung trigger is the capability "every live-tree test resolves paths from an
+/// explicitly passed root", after which the ambient write has no consumer in the test tree and the
+/// call can be removed rather than merely counted.
+///
+/// Rung: the class was found BELOW the ladder (a silently wrong answer — a test resolves against
+/// another tree and can pass or fail either way, with no typed refusal anywhere). For the gating
+/// population the state is now absent; this lens is what keeps it absent, so that population sits
+/// at 2, mechanically preventable, with ceiling 4 named above.
+/// Class: `gunbc.recurring_failure_mode` `ambient_process_state_read_by_a_concurrent_reader`.
+#[cfg(test)]
+mod process_cwd_mutation_reachability_gate {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    /// SPELLED IN PIECES ON PURPOSE. This module scans its own file, so a verbatim occurrence of
+    /// the call it hunts for would make the gate an offender against itself, and that false RED
+    /// would be indistinguishable from a real one.
+    const MUTATOR_CALL: &str = concat!("std::env::", "set_", "current_dir");
+    const SELF_REL: &str = "src/v1/stage0/src/cli_run.rs";
+
+    #[derive(Debug, Clone)]
+    struct FnDecl {
+        name: String,
+        start: usize,
+        end: usize,
+        is_test: bool,
+        is_ignored: bool,
+    }
+
+    /// Comments and string BODIES removed, everything else kept at its original line. Two jobs at
+    /// once: brace counting must not see a `{` inside a comment or a literal, and name matching
+    /// must not see a function name inside prose — this file's doc comments name most of its own
+    /// symbols, so scanning raw text would fabricate call edges wholesale.
+    fn code_projection(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut in_block_comment = false;
+        for line in text.split('\n') {
+            let mut kept = String::with_capacity(line.len());
+            let mut chars = line.chars().peekable();
+            let mut in_string = false;
+            let mut in_char = false;
+            let mut escaped = false;
+            while let Some(c) = chars.next() {
+                if in_block_comment {
+                    if c == '*' && chars.peek() == Some(&'/') {
+                        chars.next();
+                        in_block_comment = false;
+                    }
+                    continue;
+                }
+                if in_string {
+                    if escaped {
+                        escaped = false;
+                    } else if c == '\\' {
+                        escaped = true;
+                    } else if c == '"' {
+                        in_string = false;
+                        kept.push('"');
+                    }
+                    continue;
+                }
+                if in_char {
+                    if escaped {
+                        escaped = false;
+                    } else if c == '\\' {
+                        escaped = true;
+                    } else if c == '\'' {
+                        in_char = false;
+                    }
+                    continue;
+                }
+                match c {
+                    '/' if chars.peek() == Some(&'/') => break,
+                    '/' if chars.peek() == Some(&'*') => {
+                        chars.next();
+                        in_block_comment = true;
+                    }
+                    '"' => {
+                        in_string = true;
+                        kept.push('"');
+                    }
+                    // A lifetime (`'a`) is not a char literal; only a quote followed by a
+                    // non-identifier start opens one, and `'\''` is the case that needs the escape
+                    // branch above.
+                    '\'' => {
+                        let opens_char = matches!(chars.peek(), Some(&'\\'))
+                            || matches!(chars.clone().nth(1), Some('\''));
+                        if opens_char {
+                            in_char = true;
+                        } else {
+                            kept.push(c);
+                        }
+                    }
+                    _ => kept.push(c),
+                }
+            }
+            out.push(kept);
+        }
+        out
+    }
+
+    /// Brace depth at the START of each line, over the code projection.
+    fn depth_at_line_start(code: &[String]) -> Vec<i64> {
+        let mut depths = Vec::with_capacity(code.len());
+        let mut depth: i64 = 0;
+        for line in code {
+            depths.push(depth);
+            for c in line.chars() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+            }
+        }
+        depths
+    }
+
+    /// Every `fn` declaration with the half-open line range its BODY occupies, plus the
+    /// `#[test]`/`#[ignore]` attributes above it.
+    fn declarations(raw: &[&str], code: &[String], depths: &[i64]) -> Vec<FnDecl> {
+        let mut decls: Vec<FnDecl> = Vec::new();
+        for (i, line) in code.iter().enumerate() {
+            let mut rest = line.trim_start();
+            for prefix in [
+                "pub(crate) ",
+                "pub(super) ",
+                "pub ",
+                "async ",
+                "const ",
+                "unsafe ",
+                "extern ",
+            ] {
+                if let Some(stripped) = rest.strip_prefix(prefix) {
+                    rest = stripped;
+                }
+            }
+            let Some(after) = rest.strip_prefix("fn ") else {
+                continue;
+            };
+            let name: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            // The body opener may sit on a later line for a wrapped signature.
+            let Some(open) = (i..code.len().min(i + 12)).find(|j| code[*j].contains('{')) else {
+                continue;
+            };
+            let base = depths[open];
+            let end = (open + 1..code.len())
+                .find(|j| depths[*j] <= base)
+                .unwrap_or(code.len());
+            let mut is_test = false;
+            let mut is_ignored = false;
+            let mut k = i;
+            while k > 0 {
+                let above = raw[k - 1].trim();
+                if above.starts_with("#[") {
+                    if above.starts_with("#[test]") {
+                        is_test = true;
+                    }
+                    if above.starts_with("#[ignore") {
+                        is_ignored = true;
+                    }
+                } else if !(above.is_empty() || above.starts_with("//")) {
+                    break;
+                }
+                k -= 1;
+            }
+            decls.push(FnDecl {
+                name,
+                start: i,
+                end,
+                is_test,
+                is_ignored,
+            });
+        }
+        decls
+    }
+
+    /// Innermost owning declaration per line. A line outside every function body — a `mod`-level
+    /// `const`, a `use`, a type declaration — is owned by NOBODY, which is the correction that
+    /// collapsed the first cut's 220 false offenders to nothing.
+    fn owner_per_line(len: usize, decls: &[FnDecl]) -> Vec<Option<usize>> {
+        let mut owner: Vec<Option<usize>> = vec![None; len];
+        let mut width: Vec<usize> = vec![usize::MAX; len];
+        for (d_index, d) in decls.iter().enumerate() {
+            let w = d.end.saturating_sub(d.start);
+            for line in d.start..d.end.min(len) {
+                if w <= width[line] {
+                    width[line] = w;
+                    owner[line] = Some(d_index);
+                }
+            }
+        }
+        owner
+    }
+
+    /// A call, not a substring: `name` bounded by non-identifier characters and followed by `(`.
+    /// Without the boundary `frozen_path_deferral_keys` matches inside
+    /// `frozen_path_deferral_keys_from_source` and the closure over-approximates again.
+    fn call_mention(line: &str, name: &str) -> bool {
+        let bytes = line.as_bytes();
+        let mut from = 0usize;
+        while let Some(rel) = line[from..].find(name) {
+            let at = from + rel;
+            let after = at + name.len();
+            let before_ok = at == 0 || {
+                let b = bytes[at - 1] as char;
+                !(b.is_ascii_alphanumeric() || b == '_')
+            };
+            let after_ok = line[after..].trim_start().starts_with('(');
+            if before_ok && after_ok {
+                return true;
+            }
+            from = at + name.len();
+        }
+        false
+    }
+
+    /// Declarations that reach the ambient write, directly or through any number of helpers.
+    fn mutator_reaching(code: &[String], decls: &[FnDecl]) -> BTreeSet<String> {
+        let owner = owner_per_line(code.len(), decls);
+        let mut reaching: BTreeSet<String> = BTreeSet::new();
+        for (i, line) in code.iter().enumerate() {
+            if line.contains(MUTATOR_CALL) {
+                if let Some(d) = owner[i] {
+                    reaching.insert(decls[d].name.clone());
+                }
+            }
+        }
+        let names: BTreeSet<String> = decls.iter().map(|d| d.name.clone()).collect();
+        let mut callers_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (i, line) in code.iter().enumerate() {
+            let Some(d) = owner[i] else { continue };
+            let caller = decls[d].name.clone();
+            for name in &names {
+                if *name != caller && call_mention(line, name) {
+                    callers_of
+                        .entry(name.clone())
+                        .or_default()
+                        .insert(caller.clone());
+                }
+            }
+        }
+        loop {
+            let mut grew = false;
+            for callee in reaching.clone() {
+                if let Some(callers) = callers_of.get(&callee) {
+                    for c in callers {
+                        grew |= reaching.insert(c.clone());
+                    }
+                }
+            }
+            if !grew {
+                return reaching;
+            }
+        }
+    }
+
+    fn closure_over_self() -> (Vec<FnDecl>, BTreeSet<String>) {
+        let path = super::workspace_root().join(SELF_REL);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {} for the cwd-mutation gate: {e}", path.display()));
+        let raw: Vec<&str> = text.split('\n').collect();
+        let code = code_projection(&text);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&raw, &code, &depths);
+        let reaching = mutator_reaching(&code, &decls);
+        (decls, reaching)
+    }
+
+    /// THE WALL. No test the required unit lane runs may reach a process-cwd mutation.
+    #[test]
+    fn no_gating_test_reaches_a_process_cwd_mutator() {
+        let (decls, reaching) = closure_over_self();
+        let offenders: Vec<&str> = decls
+            .iter()
+            .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.name))
+            .map(|d| d.name.as_str())
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "a test the required unit lane RUNS reaches {MUTATOR_CALL}, directly or through a \
+             helper: {offenders:?}. The process cwd is one cell shared by every test thread, so \
+             this redirects relative-path resolution for the whole binary while it is set. Resolve \
+             paths from an explicitly passed root instead — every consumer in this file already \
+             accepts one."
+        );
+    }
+
+    /// NON-VACUITY, against the SAME computed closure the wall consumes. The wall is an emptiness
+    /// assertion, so without this the module stays green if the declaration scan collapses, if the
+    /// extent rule closes every body at zero width, or if `closure_over_self` reads some other
+    /// tree. Each assertion below is a way the wall could go green while proving nothing.
+    #[test]
+    fn the_closure_still_finds_the_ignored_residue_it_is_scoped_around() {
+        let (decls, reaching) = closure_over_self();
+        assert!(
+            decls.len() > 1000,
+            "the declaration scan collapsed ({} fns found); the wall would be vacuous",
+            decls.len()
+        );
+        assert!(
+            reaching.contains("with_workspace_cwd"),
+            "the direct-write scan lost a known mutator helper"
+        );
+        let residue: Vec<&str> = decls
+            .iter()
+            .filter(|d| d.is_test && d.is_ignored && reaching.contains(&d.name))
+            .map(|d| d.name.as_str())
+            .collect();
+        assert!(
+            residue.len() >= 20,
+            "the ignored live-corpus residue must still be REACHED by this closure, else the wall \
+             proves nothing about helpers; found {}: {residue:?}",
+            residue.len()
+        );
+        assert!(
+            residue.contains(&"class_b_gate_skip_runs_on_subject_entry"),
+            "the closure stopped being transitive — this test reaches a write ONLY through \
+             `with_workspace_cwd`: {residue:?}"
+        );
+        // And the over-approximation control, in the direction the first cut failed: the closure
+        // must NOT swallow the file. If it reaches most of the corpus it is measuring containment
+        // failure rather than call edges, and the wall's emptiness would be unattainable noise.
+        assert!(
+            reaching.len() < decls.len() / 4,
+            "the closure reached {} of {} declarations — that is containment failure, not call \
+             edges",
+            reaching.len(),
+            decls.len()
+        );
+    }
+}
+
 // SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
 // ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
@@ -25118,8 +25509,6 @@ mod node_frontier_plumbing_controls {
     // would go green on any pair of compensating edits.
     #[test]
     fn frozen_path_deferral_roster_carries_no_stale_rows() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let stale = super::collect_stale_frozen_path_deferrals();
         super::refuse_stale_frozen_path_deferrals(&stale)
             .unwrap_or_else(|e| panic!("frozen roster must join the live tree exactly: {e}"));
@@ -25162,7 +25551,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn frozen_roster_monotonicity_reads_a_real_baseline() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let additions = super::collect_frozen_path_deferral_additions_for(
             &ws,
             &super::FreezeBaselineComparison::Direct {
@@ -25185,7 +25573,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn appending_a_row_to_the_live_roster_source_refuses() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let content =
             std::fs::read_to_string(ws.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
                 .expect("read the live freeze authority");
@@ -25296,7 +25683,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn frozen_roster_monotonicity_refuses_an_unresolvable_baseline() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let err = super::collect_frozen_path_deferral_additions_for(
             &ws,
             &super::FreezeBaselineComparison::Direct {
@@ -25950,7 +26336,6 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = vec![ws
             .join("dag/test/fixture/effect_reach_conjunction")
             .to_string_lossy()
@@ -27227,7 +27612,6 @@ mod construction_authority_graph_tests {
     #[test]
     fn wall_now_authority_graph_is_total() {
         let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
         let roots = vec![
             ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
@@ -31881,18 +32265,20 @@ mod witness_layer_roots_compile_clean_tests {
     /// Class B gate skip: non-pull_request always runs (cold control).
     #[test]
     fn class_b_gate_skip_runs_on_push_event() {
+        // NO `with_workspace_cwd` HERE, deliberately: the label is derived from the two env vars
+        // below and this body resolves no path at all, so the chdir was pure residue — and a
+        // process-global chdir in a lane-gating test yanks the cwd out from under every other
+        // test in the binary for the width of this call (see `no_gating_test_reaches_a_process_cwd_mutator`).
         with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
+            let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+            let _ns = EnvGuard::set(
+                "GUNBC_CI_DIFF_NAME_STATUS",
+                "M\\000src/v2/lens/machine_shape.dag\\000",
+            );
+            assert_eq!(
+                class_b_import_closure_gate_skip_label_for_ci(),
+                RUN_CLASS_B_GATE_LABEL
+            );
         });
     }
 

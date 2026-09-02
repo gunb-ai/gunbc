@@ -235,6 +235,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `incidental_denominator_as_wall`
 - `compensating_errors_cancel_in_the_aggregate`
 - `one_refusal_two_destinations`
+- `ambient_process_state_read_by_a_concurrent_reader`
 
 ## Building & checks
 
