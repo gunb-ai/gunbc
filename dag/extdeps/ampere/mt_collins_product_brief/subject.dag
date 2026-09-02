@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithoutStatedTerms }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
@@ -44,8 +44,8 @@ data mt_collins_product_brief_version_label: NonEmptyStr = "2022 V2"
 // same publicly-published-with-marking arm the getting started guide does. It is declared here
 // because this is the brief's own document module; the guide's status lives on the guide's module,
 // extdeps.ampere.mt_collins_getting_started_guide.subject.
-data mt_collins_product_brief_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
-  marking: "Ampere Computing marketing collateral, no licence granted",
+data mt_collins_product_brief_publication_status: DocumentPublicationStatus = PubliclyPublishedWithoutStatedTerms {
+  absence_basis: "The full text of the artifact at the anchor was extracted and read: 1304 characters, a one-page specifications sheet running from the Model row to the Dimensions row. It contains no occurrence of proprietary, confidential, copyright, trademark, reserved or licence, and no document or issue number. Its embedded metadata records Title 'Microsoft Word - Mt._Collins_2U_2022_V2', Producer 'Microsoft: Print To PDF', created 2022-10-17. sha256 961b98a41971bc5e8d189f795dec3b2a5249268d1845decfb71a7fad802f1c14.",
 }
 
 type MtCollinsPublicProductBrief {
