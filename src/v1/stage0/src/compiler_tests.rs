@@ -1348,7 +1348,7 @@ mod compiler_tests {
                 path: "identity_producer.dag".to_string(),
                 content: "module identity.producer\ntype Foreign { value: Int }\n".to_string(),
             });
-            let consumer_text = "module identity.consumer\nimport identity.producer { Foreign }\nfn leaf(x: Foreign) -> Foreign { x }\nfn applied(x: List<Foreign>) -> Int { 0 }\n".to_string();
+            let consumer_text = "module identity.consumer\nimport identity.producer { Foreign }\nfn leaf(x: Foreign) -> Int { x.value }\nfn applied(x: List<Foreign>) -> Int { 0 }\n".to_string();
             let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                 path: "identity_consumer.dag".to_string(),
                 content: consumer_text.clone(),

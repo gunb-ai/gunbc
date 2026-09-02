@@ -1062,7 +1062,7 @@ fn ct_rendered_leaf_occurrence_identity_pipeline_test() -> String {
     "                path: \"identity_producer.dag\".to_string(),\n",
     "                content: \"module identity.producer\\ntype Foreign { value: Int }\\n\".to_string(),\n",
     "            });\n",
-    "            let consumer_text = \"module identity.consumer\\nimport identity.producer { Foreign }\\nfn leaf(x: Foreign) -> Foreign { x }\\nfn applied(x: List<Foreign>) -> Int { 0 }\\n\".to_string();\n",
+    "            let consumer_text = \"module identity.consumer\\nimport identity.producer { Foreign }\\nfn leaf(x: Foreign) -> Int { x.value }\\nfn applied(x: List<Foreign>) -> Int { 0 }\\n\".to_string();\n",
     "            let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
     "                path: \"identity_consumer.dag\".to_string(),\n",
     "                content: consumer_text.clone(),\n",
