@@ -1,0 +1,186 @@
+module gunbc.spark.fabric_link_desired
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 {
+  Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
+  PrefixLength, ipv4_same_network, ipv4_address_eq,
+}
+import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+
+// THE DESIRED STATE OF THE SPARK FABRIC, AND WHY IT IS DESIRED STATE RATHER THAN A RUNBOOK.
+//
+// This module exists because of a measured loss, not a preference. The 200 Gb/s RoCE addressing on
+// srv5/srv6 was applied at RUNTIME -- `ip` and `nmcli` calls made by hand -- verified working at
+// MTU 9000 with a clean 8972-byte jumbo ping, reported as configured, and then destroyed entirely by
+// one power cycle. Nothing was on disk to survive it.
+//
+// The mechanism is specific and is the whole reason the file path below is the subject. These hosts
+// run netplan with `renderer: NetworkManager`, and NetworkManager had the fabric NICs as "connected
+// (externally)" -- observed, not managed. An `nmcli` write is intercepted by the netplan-NM
+// integration and lands a keyfile in /run/NetworkManager/system-connections/, which is TMPFS. The
+// durable artifact is the GENERATED /etc/netplan/90-NM-<uuid>.yaml, and only that. So a convergence
+// that actuates `nmcli` converges a host into a state that does not survive its next boot, while
+// reporting success -- the runtime-observation-read-as-durable-state failure, at the layer that
+// makes every serving fact above it unreachable after a reboot.
+//
+// A RAIL IS THE SUBJECT, NOT AN INTERFACE, and the rail's identity is the interface NAME -- which is
+// the SAME on both hosts. This is the NVIDIA connect-two-sparks convention and it is load-bearing
+// rather than cosmetic: NCCL selects a rail by matching interface to subnet, so the pairing that
+// works for `ping` is not the pairing that works for collective traffic.
+//
+// This module first shipped the opposite rule, on a peer session's report that the names were
+// CROSSED between hosts, and both of us then read it back off the durable files and found they are
+// not: enp1s0f0np0 carries 192.168.100.x on both, enP2p1s0f0np0 carries 192.168.101.x on both. The
+// crossed configuration had been applied by hand, passed a jumbo ping, and was wrong anyway -- which
+// is exactly why the same-name rule is a CONSTRUCTOR condition here and not a comment. A rail whose
+// two ends name different interfaces cannot be built.
+//
+// The two rails are two RoCE devices -- rocep1s0f0 and roceP2p1s0f0, both reported Up by
+// ibdev2netdev on both hosts, with their f1 siblings Down. WHAT IS NOT ESTABLISHED, and is recorded
+// here rather than assumed either way: whether those are two physical cables or two logical views of
+// one QSFP port. A jumbo ping on each rail passes in both cases, so the reachability evidence cannot
+// distinguish them. It does not affect addressing, which is what this module owns; it does bound any
+// future claim about aggregate fabric bandwidth, and such a claim needs its own instrument.
+type FabricEndpoint sole_constructor {
+  host: HostIdentity
+  interface: NonEmptyStr
+  address: Ipv4Address
+  prefix: PrefixLength
+  mtu: ByteSize
+}
+
+// A RAIL THAT COULD NOT CARRY COLLECTIVE TRAFFIC HAS NO CONSTRUCTOR. Five conditions decide it, and
+// every one of them was a real way to get this wrong by hand on these two hosts:
+//
+//   - the endpoints must be on DIFFERENT HOSTS. A rail from a host to itself is a typo that reads as
+//     a configured fabric.
+//   - they must name the SAME INTERFACE. Crossing them survives a ping and breaks rail selection,
+//     which is the failure that is expensive precisely because it tests green.
+//   - they must share a NETWORK at the declared prefix. Two ends on unrelated subnets are up,
+//     carrier-present and unreachable, which gets diagnosed as a cabling fault.
+//   - they must be DIFFERENT ADDRESSES. Identical ends is the copy-paste error.
+//   - they must agree on MTU. A 9000/1500 mismatch does not fail until a jumbo frame meets the small
+//     end and is silently dropped -- no error anywhere, just collectives that stall.
+//
+// The prefix must also be one `ipv4_same_network` can answer for; an unanswerable prefix refuses
+// rather than being assumed to match, because "I could not check" is not "it is fine".
+type FabricLink sole_constructor {
+  name: NonEmptyStr
+  endpoint_a: FabricEndpoint
+  endpoint_b: FabricEndpoint
+}
+
+fn fabric_link(
+  name: NonEmptyStr,
+  endpoint_a: FabricEndpoint,
+  endpoint_b: FabricEndpoint,
+) -> FabricLink? {
+  if host_identity_eq(a: endpoint_a.host, b: endpoint_b.host) {
+    none
+  } else if (endpoint_a.interface as String) != (endpoint_b.interface as String) {
+    none
+  } else if ipv4_address_eq(a: endpoint_a.address, b: endpoint_b.address) {
+    none
+  } else if endpoint_a.prefix != endpoint_b.prefix {
+    none
+  } else if byte_size_count(b: endpoint_a.mtu) != byte_size_count(b: endpoint_b.mtu) {
+    none
+  } else {
+    match ipv4_same_network(
+      a: endpoint_a.address, b: endpoint_b.address, prefix: endpoint_a.prefix) {
+      Absent => none
+      Present { value: shared } =>
+        if shared {
+          Present { value: FabricLink {
+            name: name, endpoint_a: endpoint_a, endpoint_b: endpoint_b } }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn fabric_endpoint(
+  host: HostIdentity,
+  interface: NonEmptyStr,
+  address: Ipv4Address,
+  prefix: PrefixLength,
+  mtu: ByteSize,
+) -> FabricEndpoint {
+  FabricEndpoint {
+    host: host, interface: interface, address: address, prefix: prefix, mtu: mtu }
+}
+
+// The endpoint this host owns on this link, or Absent when the link does not touch it. A host that
+// is not an end of the link gets no configuration from it -- never a defaulted one.
+fn fabric_endpoint_on(link: FabricLink, host: HostIdentity) -> FabricEndpoint? {
+  if host_identity_eq(a: link.endpoint_a.host, b: host) {
+    Present { value: link.endpoint_a }
+  } else if host_identity_eq(a: link.endpoint_b.host, b: host) {
+    Present { value: link.endpoint_b }
+  } else {
+    none
+  }
+}
+
+// ================= THE MEASURED FABRIC =================
+//
+// Read back from the durable /etc/netplan/90-NM-*.yaml on BOTH hosts on 2026-09-02 and cross-checked
+// against `ip -br -4 addr` and `ibdev2netdev` on each -- not authored from intent, and not taken on
+// report. The first version of these rows was authored from a peer session's summary and had the
+// subnets crossed and the prefix wrong; re-derive from the files rather than trusting this block.
+//
+// The addressing follows the NVIDIA connect-two-sparks playbook: rail0 on 192.168.100.0/24, rail1 on
+// 192.168.101.0/24, same interface name at both ends of each rail, MTU 9000, IPv6 disabled. The NM
+// profile names on the hosts are cx7-rail0 and cx7-rail1.
+data fabric_prefix: PrefixLength = 24
+// AN MTU IS A BYTE COUNT, so it carries std.measure's ByteSize rather than a bare Int. The scale is
+// exactly what a 9000-vs-1500 mismatch turns on, and a bare number leaves it to the reader -- the
+// same defect PrefixLength above exists to close for the network half of this record.
+data fabric_mtu_bytes: ByteSize = byte_size(count: 9000)
+
+data fabric_rail0: FabricLink? = fabric_link(
+  name: "cx7-rail0" as NonEmptyStr,
+  endpoint_a: fabric_endpoint(
+    host: operator_host_srv7,
+    interface: "enp1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 10),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes),
+  endpoint_b: fabric_endpoint(
+    host: operator_host_srv8,
+    interface: "enp1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 11),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes))
+
+data fabric_rail1: FabricLink? = fabric_link(
+  name: "cx7-rail1" as NonEmptyStr,
+  endpoint_a: fabric_endpoint(
+    host: operator_host_srv7,
+    interface: "enP2p1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 101, octet4: 10),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes),
+  endpoint_b: fabric_endpoint(
+    host: operator_host_srv8,
+    interface: "enP2p1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 101, octet4: 11),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes))
+
+// The roster is the PRESENT links only. A link whose constructor refused is not a link with a
+// problem to be reported later -- it never existed, so nothing downstream can plan from it.
+fn spark_fabric_links() -> List<FabricLink> {
+  flat_map([fabric_rail0, fabric_rail1], l =>
+    match l {
+      Present { value: v } => [v]
+      Absent => []
+    })
+}
+
+fn spark_fabric_endpoints_on(host: HostIdentity) -> List<FabricEndpoint> {
+  flat_map(spark_fabric_links(), l =>
+    match fabric_endpoint_on(link: l, host: host) {
+      Present { value: e } => [e]
+      Absent => []
+    })
+}

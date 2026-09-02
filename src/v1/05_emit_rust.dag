@@ -3438,6 +3438,44 @@ fn lib_rs_mod_name_from_path(path: String) -> String {
 
 data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
 
+// ONE AUTHORITY FOR THE LINT RELAXATION GENERATED RUST NEEDS, TWO RENDERINGS. Mechanically
+// derived Rust carries artifacts no lint can inform an authoring decision about: parentheses
+// the lowering adds to keep precedence safe, imports the emitter cannot know a body will not
+// use, clones it cannot know are Copy. Relaxing those is a fact about GENERATED CODE, so it
+// is spelled once here and rendered where it belongs, rather than copied per emitter -- it was
+// spelled twice, here and in v1.compiler.stage0_crates, which is one concept with two names.
+//
+// THE RENDERING IS NOT COSMETIC. An inner `#![allow(..)]` at a crate root outranks `-D warnings`
+// on the command line and reaches every module under that root, so a root that blankets on
+// behalf of its generated modules also silences every HAND-MAINTAINED module sharing it. The
+// v1-compiler root did exactly that: `cargo clippy --all-targets -- -D warnings`, one of the
+// three checks DESIGN names, decided nothing over the 40 top-level and 27 cli_run modules
+// written by hand. So the crate-root block is emitted only for a root whose modules are ALL
+// generated, and where hand-maintained siblings share the root each generated item carries the
+// relaxation as an outer attribute instead.
+data generated_rust_lint_relaxations: List<String> = [
+  "unused_imports",
+  "unused_variables",
+  "unused_mut",
+  "unused_parens",
+  "dead_code",
+  "non_shorthand_field_patterns",
+  "suspicious_double_ref_op",
+  "clippy::all"
+]
+
+fn generated_rust_lint_arguments() -> String {
+  generated_rust_lint_relaxations |> join(separator: ", ")
+}
+
+fn generated_rust_crate_allow_block() -> String {
+  concat("#![allow(", generated_rust_lint_arguments(), ")]")
+}
+
+fn generated_rust_item_allow_attr() -> String {
+  concat("#[allow(", generated_rust_lint_arguments(), ")]\n")
+}
+
 // ONE role, TWO projections. Being a macro provider decides both how the module is
 // RENDERED (`#[macro_use]`) and where it is ORDERED (ahead of its consumers), and the
 // two were independently written comparisons against the same literal until this
@@ -3522,9 +3560,9 @@ fn stage0_package_name_to_crate_ident(package_name: String) -> String {
 // shell's own definition leaves every `crate::NonEmptyVec` in the modules that stay bound to
 // exactly the type it was bound to before this cut. Deleting it would silently repoint them at
 // the foundation's, which is a carrier change wearing a re-export's clothes.
-fn stage0_host_shell_partition_reexport_block() -> String {
+fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
   generated_host_shell_partition_dependencies
-    |> map(pkg => concat("pub use ", stage0_package_name_to_crate_ident(package_name: pkg), "::*;"))
+    |> map(pkg => concat(item_attr, "pub use ", stage0_package_name_to_crate_ident(package_name: pkg), "::*;"))
     |> join(separator: "\n")
 }
 
@@ -3540,6 +3578,17 @@ fn stage0_host_shell_partition_reexport_block() -> String {
 // the module NAME; it reads no module content and no rendered file, so a scoped emission still
 // declares the whole population minus the partition-owned names. Ownership and scope are decided
 // by different inputs and neither can shadow the other.
+// A ROOT THAT MIXES AUTHORSHIP MAY NOT BLANKET ON ITS MODULES' BEHALF. `has_compiler_tests`
+// selects the one root that declares hand-maintained modules beside generated ones -- the
+// stage0 host shell -- and there the relaxation rides each generated item while the
+// hand-maintained block is left bare, so `cargo clippy --all-targets -- -D warnings` reaches it.
+// Every other root this function renders is wholly generated and keeps the crate-level block,
+// which is honest because there is nothing under it the relaxation does not describe.
+//
+// The `im` alias carries the attribute because it is generated and one of its two names is
+// unused; the NonEmpty* wrappers deliberately do NOT, because they are a fixed handful of items
+// that are clean under the gate today, and leaving judged what can be judged keeps the excused
+// set as small as the facts require rather than as large as the category.
 fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
   let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
   let shell_names = if has_compiler_tests {
@@ -3552,7 +3601,20 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
   } else {
     order_partial_lib_rs_mod_names(mod_names: shell_names)
   }
-  let mod_decls = mod_names |> map(emit_lib_rs_mod_decl)
+  let root_is_mixed_authorship = has_compiler_tests
+  let generated_item_attr = if root_is_mixed_authorship {
+    generated_rust_item_allow_attr()
+  } else {
+    ""
+  }
+  let root_allow_block = if root_is_mixed_authorship {
+    ""
+  } else {
+    concat(generated_rust_crate_allow_block(), "\n")
+  }
+
+  let mod_decls = mod_names
+    |> map(n => concat(generated_item_attr, emit_lib_rs_mod_decl(mod_name: n)))
 
   let hand_maintained_mods = if has_compiler_tests {
     generated_pub_mod_block
@@ -3560,20 +3622,22 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
     ""
   }
   let test_mod = if has_compiler_tests {
-    "\n\n#[cfg(test)]\nmod compiler_tests;"
+    concat("\n\n#[cfg(test)]\n", generated_item_attr, "mod compiler_tests;")
   } else {
     ""
   }
   let partition_reexports = if has_compiler_tests {
-    concat(stage0_host_shell_partition_reexport_block(), "\n\n")
+    concat(stage0_host_shell_partition_reexport_block(item_attr: generated_item_attr), "\n\n")
   } else {
     ""
   }
   let shared_types = emit_non_empty_wrappers()
   let content = concat("// Generated by v1 compiler -- do not edit.\n\n",
-    "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n#![deny(unreachable_patterns)]\n",
+    root_allow_block,
+    "#![deny(unreachable_patterns)]\n",
 
     "#![recursion_limit = \"256\"]\n\n",
+    generated_item_attr,
     "use im::\{OrdSet as BTreeSet, Vector as Vec\};\n\n",
     partition_reexports,
     mod_decls |> join(separator: "\n"),
@@ -4375,7 +4439,15 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // deliberately quotes NO number. emit_rust_reference_derived_census is the projection, but
 // reaching it needs a resolved graph, and the only .dag route to one is a nested compile that the
 // interpreter refuses -- compile_to_resolved over an authored source vector errors with
-// NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. That
+// NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. THAT
+// REFUSAL'S CAUSE IS CORRECTED 2026-09-02 (quick-crab-396) AND THE SENTENCE ABOVE NAMES A SYMPTOM:
+// nested compiles are one population that constructs Nodes through helpers omitting v1.std.core
+// Node's `ident` and then reads it, and the class is that the interpreter has no default for an
+// OMITTED OPTIONAL FIELD and refuses on read, general to any record type -- established on a fresh
+// type unrelated to Node, filed as the fourth form of gunbc.recurring_failure_mode
+// state_space_conflation. The consequence for THIS row is that the third trigger below is not the
+// only route: a nested-compile builtin would route around the refusal, while construction supplying
+// every declared field would remove it. That
 // is why the two nested-compile instruments the corpus already has
 // (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host
 // builtin. A CLI or builtin surface that hands the census a graph is capability growth in a
@@ -14068,6 +14140,27 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
   }
 }
 
+// Every emitted service operation method declares
+// `-> Result<T, Box<dyn std::error::Error>>`, so every error arm owes that Box and
+// reaches it through `Into`. This is the ONE place the conversion is spelled.
+//
+// It was two: the REST arms wrote `.into()` at their own call sites, and the shell
+// arms went through a constant of their own. Those two spellings agreed -- but only
+// because #9886 had just made them agree. Before it, the shell arm was written
+// inline and emitted a bare `Err(stderr)` against the declared Box for its whole
+// life, so every operation declaring an `exit` block emitted a function that does
+// not compile; #9886 replaced that inline arm with the boxed constant this
+// constructor now supersedes.
+//
+// The fork therefore survived its own repair: the repair produced a SECOND
+// authority for one fact rather than removing the first. That is the argument for
+// this constructor. The emitter does not typecheck what it emits, so nothing goes
+// red when two spellings drift apart -- and a second site is exactly where that
+// agreement gets lost again. There is no second site.
+fn emit_rust_boxed_error_return(message_expr: String) -> String {
+  concat("Err(", message_expr, ".into())")
+}
+
 fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
@@ -14083,7 +14176,9 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
       "let status = response.status().as_u16();\n",
       "match status {\n",
       arms |> join(separator: "\n"),
-      "\n    _ => Err(format!(\"unexpected status code: {}\", status).into())\n",
+      "\n    _ => ",
+      emit_rust_boxed_error_return(message_expr: "format!(\"unexpected status code: {}\", status)"),
+      "\n",
       "}")
   }
 }
@@ -14107,7 +14202,8 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }
   } else {
-    concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },")
+    concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); ",
+      emit_rust_boxed_error_return(message_expr: "format!(\"HTTP {}: {}\", status, err_body)"), " },")
   }
 }
 
@@ -14124,7 +14220,7 @@ fn emit_exit_code_handling(op_node: Node, result_fields: List<ShellResultField>,
     let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, result_fields: result_fields, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { concat("\n    _ => { ", shell_stderr_binding_line, " ", shell_boxed_stderr_error_arm, " },") }
+      else { concat("\n    _ => { ", shell_stderr_binding_line, " ", emit_rust_boxed_error_return(message_expr: "stderr"), " },") }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -14143,7 +14239,7 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(result_fields: result_fields), " },")
   } else {
-    concat("    ", pattern, " => { ", shell_stderr_binding_line, " ", shell_boxed_stderr_error_arm, " },")
+    concat("    ", pattern, " => { ", shell_stderr_binding_line, " ", emit_rust_boxed_error_return(message_expr: "stderr"), " },")
   }
 }
 
@@ -14251,17 +14347,11 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
   }
 }
 
-// The error arm of a shell operation, boxed.
-//
-// The method's declared Rust return is `Result<T, Box<dyn std::error::Error>>`,
-// which the REST arm has always respected (`...into()`) and this arm did not:
-// it emitted `Err(stderr)` against a `String`, so every operation declaring an
-// `exit` block emitted a function that does not compile (E0308). It also ran the
-// payload through the host-to-dag String seam, which is the wrong seam -- the
-// error arm does not produce a dag value at all, it produces the method's host
-// error -- so the seam call is gone rather than boxed.
+// The stderr the shell error arm reports on. It is bound as a host String and
+// handed to emit_rust_boxed_error_return, NOT through the host-to-dag String seam:
+// the error arm does not produce a dag value at all, it produces the method's host
+// error.
 data shell_stderr_binding_line: String = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
-data shell_boxed_stderr_error_arm: String = "Err(stderr.into())"
 
 // Answers the declared fields in declared order, from the projection the binding
 // resolved. A single-field projection answers one expression rather than a

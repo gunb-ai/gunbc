@@ -1,0 +1,240 @@
+module extdeps.printing.fdm
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Millimeter, millimeter_count, Micrometer, micrometer_count, Celsius, celsius_count }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Fused_filament_fabrication"
+  }
+}
+
+// THE AGNOSTIC HUB for fused-filament fabrication, and it deliberately carries NO ExternalModelScope
+// and NO product rows. DESIGN §3 "External upstream decomposition": a generic hub may define shapes
+// that concrete products inhabit, and may not enumerate those products, dispatch among their
+// authorities, or hold their version rows. Every machine-specific figure lives in the machine's own
+// module and cites the machine's own authority; this file is what those modules are spelled in.
+//
+// WHY THESE TWO LENGTHS ARE MICROMETRES AND THE ENVELOPE IS MILLIMETRES, which is the one modelling
+// decision in this file that a reader could mistake for fussiness.
+//
+// Millimeter is Measure<Length, Milli, Nat> — a NON-NEGATIVE INTEGER count of millimetres. A 0.4 mm
+// nozzle is therefore not merely rounded in that carrier, it is ZERO, and the 0.2 / 0.4 / 0.6 / 0.8
+// family collapses to a single value: the carrier loses the DISTINCTION the fact exists to make.
+// That is the same failure std.spatial_frame records for a 0.5 mm contact pitch on a printed circuit
+// board, reached from the opposite direction, and it is why nozzle and filament diameter are
+// micrometres here while build extents — hundreds of whole millimetres — stay in millimetres.
+// The rule the two cases share: pick the quantum from the SMALLEST distinction the quantity must
+// preserve, never from the largest value it must hold.
+type NozzleDiameter sole_constructor { value: Micrometer }
+
+fn nozzle_diameter(value: Micrometer) -> NozzleDiameter {
+  NozzleDiameter { value: value }
+}
+
+fn nozzle_diameter_value(n: NozzleDiameter) -> Micrometer { n.value }
+
+type FilamentDiameter sole_constructor { value: Micrometer }
+
+fn filament_diameter(value: Micrometer) -> FilamentDiameter {
+  FilamentDiameter { value: value }
+}
+
+fn filament_diameter_value(f: FilamentDiameter) -> Micrometer { f.value }
+
+// THE BUILD ENVELOPE, and the fit question asked of it.
+//
+// A build envelope is a machine fact. Whether a PART fits it is a question about an ORIENTED part,
+// and this module answers only that question — it does not search orientations. Refusing to search
+// is the load-bearing choice: an operation that quietly rotated the part until something fitted
+// would answer "fits" for a part the caller cannot actually print in the orientation its strength
+// requires, and layer adhesion makes orientation a STRUCTURAL fact for a printed bracket, not a
+// packing convenience. Orientation selection is a separate decision with its own inputs, and it
+// belongs to whatever holds those inputs.
+type BuildEnvelope sole_constructor {
+  x: Millimeter
+  y: Millimeter
+  z: Millimeter
+}
+
+fn build_envelope(x: Millimeter, y: Millimeter, z: Millimeter) -> BuildEnvelope {
+  BuildEnvelope { x: x, y: y, z: z }
+}
+
+fn build_envelope_x(e: BuildEnvelope) -> Millimeter { e.x }
+fn build_envelope_y(e: BuildEnvelope) -> Millimeter { e.y }
+fn build_envelope_z(e: BuildEnvelope) -> Millimeter { e.z }
+
+// An oriented part's bounding extent, in the same axes as the envelope it will be asked about.
+type PartExtent sole_constructor {
+  x: Millimeter
+  y: Millimeter
+  z: Millimeter
+}
+
+fn part_extent(x: Millimeter, y: Millimeter, z: Millimeter) -> PartExtent {
+  PartExtent { x: x, y: y, z: z }
+}
+
+type EnvelopeAxis
+  = EnvelopeX
+  | EnvelopeY
+  | EnvelopeZ
+
+type AxisExceedance sole_constructor {
+  axis: EnvelopeAxis
+  part: Millimeter
+  envelope: Millimeter
+}
+
+// The refusal reports EVERY exceeded axis rather than the first, and carries both numbers per axis.
+// A single-axis refusal makes the caller re-ask once per axis to learn how far off the part is,
+// which is the shape that turns one sectioning decision into three rounds of trial fitting. The
+// nonempty payload is split first/rest so that an exceedance-free refusal — a refusal asserting
+// nothing — is unwritable rather than checked, the ExternalModelScope citation precedent.
+type EnvelopeFit
+  = PartFits
+  | PartExceedsEnvelope {
+      first: AxisExceedance
+      rest: List<AxisExceedance>
+    }
+
+fn axis_exceedance(axis: EnvelopeAxis, part: Millimeter, envelope: Millimeter) -> List<AxisExceedance> {
+  match millimeter_count(m: part) <= millimeter_count(m: envelope) {
+    true => []
+    false => [AxisExceedance { axis: axis, part: part, envelope: envelope }]
+  }
+}
+
+// Comparison is inclusive: a part exactly as long as the envelope is reported as fitting. That is
+// the honest reading of the machine's stated extent, and it is NOT a claim that the part is
+// printable at that size — head clearance, skirt, and plate-edge margin all consume envelope and
+// none of them are facts this carrier holds. A clearance margin is a policy fact belonging to
+// whoever sets it; folding a guess for it in here would make every consumer inherit a number no
+// authority states, and would make the envelope silently smaller than the machine's own figure.
+fn add_exceedance(acc: EnvelopeFit, e: AxisExceedance) -> EnvelopeFit {
+  match acc {
+    PartFits => PartExceedsEnvelope { first: e, rest: [] }
+    PartExceedsEnvelope { first: f, rest: r } => PartExceedsEnvelope { first: f, rest: concat(r, [e]) }
+  }
+}
+
+fn envelope_fit(envelope: BuildEnvelope, part: PartExtent) -> EnvelopeFit {
+  fold(
+    concat(
+      axis_exceedance(axis: EnvelopeX, part: part.x, envelope: envelope.x),
+      concat(
+        axis_exceedance(axis: EnvelopeY, part: part.y, envelope: envelope.y),
+        axis_exceedance(axis: EnvelopeZ, part: part.z, envelope: envelope.z)
+      )
+    ),
+    init: PartFits,
+    f: fn(acc, e) { add_exceedance(acc: acc, e: e) }
+  )
+}
+
+
+// FILAMENT MATERIAL CLASSES. These are polymer classes, not products: a spool of PETG from any
+// vendor inhabits Petg. Thermal and mechanical PROPERTIES are deliberately absent — they are facts
+// about a specific formulation from a specific supplier, cited to that supplier's technical data
+// sheet, and authoring a nominal glass-transition figure here would make one number stand for every
+// PETG on the market at exactly the point where a load-bearing part consults it.
+type FilamentMaterial
+  = Pla
+  | Petg
+  | Tpu
+  | Pva
+  | Abs
+  | Asa
+  | Polycarbonate
+  | Polyamide
+  | Pet
+  | FiberReinforcedPolymer
+
+// A MACHINE VENDOR'S OWN SUITABILITY GRADE for a material, and the third arm is the whole point.
+//
+// A vendor specification table splits materials into the ones it endorses and the ones it warns
+// against. A material appearing in NEITHER column is not thereby endorsed, and it is not thereby
+// refused — the table is silent, and silence is a distinct state that must survive to the consumer.
+// Collapsing it into either graded arm is the fail-open move: read as endorsement it prints a part
+// the vendor never claimed the machine can make, and read as refusal it invents a restriction the
+// vendor never stated. A lookup over the vendor's rows therefore returns SuitabilityUnstated for
+// anything the rows do not mention, and the caller decides what to do about not knowing.
+type MaterialSuitability
+  = SuitabilityIdeal
+  | SuitabilityNotRecommended
+  | SuitabilityUnstated
+
+type MaterialSuitabilityRow sole_constructor {
+  material: FilamentMaterial
+  suitability: MaterialSuitability
+}
+
+fn material_suitability_row(material: FilamentMaterial, suitability: MaterialSuitability) -> MaterialSuitabilityRow {
+  MaterialSuitabilityRow { material: material, suitability: suitability }
+}
+
+// EQUALITY BY EXHAUSTIVE TAG PROJECTION, NOT BY NESTED MATCH WITH A WILDCARD.
+//
+// The first revision wrote the pairwise form: match a { Pla => match b { Pla => true, _ => false }
+// ... }. The corpus's non-fold-residue lens flags exactly that shape, and it is right to. The inner
+// wildcard is the defect: adding an eleventh material would be ABSORBED by every `_ => false` arm,
+// so the new variant would silently compare unequal to itself in some arms and nothing would fail to
+// compile. A wildcard over a closed coproduct converts "I enumerated the domain" into "I did not,
+// and the compiler may not tell you".
+//
+// EQUALITY IS THE SUBSTRATE'S, NOT THIS MODULE'S.
+//
+// An earlier revision projected every variant to an integer tag and compared the integers, with an
+// annotation arguing the tag was "an ordinal comparison device and not a second name". That defence
+// is the tell: a second representation always claims not to be one. `==` is structurally defined for
+// closed coproducts in this substrate -- `std.roster_frontier` `frontier_subject_eq` is the same
+// one-line shape -- so the ordinals were a hand-rolled duplicate of a decision the language already
+// makes, and DESIGN section 2 prices a re-derivation of an existing law as redundant regardless of
+// how small it is.
+//
+// It also failed at the thing it was introduced to do. The tags were written to avoid a wildcard
+// over a closed coproduct, but a new material added to FilamentMaterial gets a fresh ordinal only if
+// the author remembers to extend the projection; structural equality has nothing to extend.
+fn filament_material_eq(a: FilamentMaterial, b: FilamentMaterial) -> Bool {
+  a == b
+}
+
+// DUPLICATE ROWS REFUSE, AND THIS IS THE SAME DEFECT THIS SESSION ALREADY FIXED ONCE ELSEWHERE.
+//
+// The first revision folded and returned the last matching row, so two rows for PETG — one Ideal,
+// one NotRecommended — resolved by list order with nothing refusing. That is byte-for-byte the
+// last-match-wins bug found and repaired in product.printed_chassis.measurement, and it was left
+// standing here because that repair was applied at the site where it was noticed rather than swept
+// across the class. Found in review. A defect class is not closed at one site.
+//
+// A vendor table stating a material twice with different grades is a reading error or a table
+// change, and either way the honest answer is that the rows disagree — not whichever the fold
+// happened to see last.
+type MaterialSuitabilityLookup
+  = SuitabilityResolved { suitability: MaterialSuitability }
+  | SuitabilityRowsConflict { material: FilamentMaterial, count: Int }
+
+type SuitabilityScan sole_constructor {
+  count: Int
+  suitability: MaterialSuitability
+}
+
+fn material_suitability(rows: List<MaterialSuitabilityRow>, material: FilamentMaterial) -> MaterialSuitabilityLookup {
+  let scan = fold(rows, init: SuitabilityScan { count: 0, suitability: SuitabilityUnstated }, f: fn(acc, row) {
+    match filament_material_eq(a: row.material, b: material) {
+      true => SuitabilityScan { count: acc.count + 1, suitability: row.suitability }
+      false => acc
+    }
+  })
+  if scan.count > 1 {
+    SuitabilityRowsConflict { material: material, count: scan.count }
+  } else {
+    SuitabilityResolved { suitability: scan.suitability }
+  }
+}
