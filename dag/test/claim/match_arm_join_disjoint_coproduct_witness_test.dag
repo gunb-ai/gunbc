@@ -1,0 +1,122 @@
+module test.claim.match_arm_join_disjoint_coproduct_witness_test
+
+// A MATCH JOIN ANSWERED WITH ONE ARM AND NEVER JUDGED THE REST, SO THE VERDICT FLIPPED WITH ARM
+// ORDER. v1.compiler.infer builds a match expression's type by folding every arm's body type through
+// v1.compiler.infer_types prefer_specific_type, whose tie-break for two disjoint coproducts is the
+// LEFT operand -- the FIRST arm. The match's inferred type is therefore the first arm's, a later arm
+// producing a wholly different declared coproduct is judged nowhere, and the consumer's declared-type
+// check sees only the join's answer.
+//
+// MEASURED BEFORE THE WALL, two modules identical except for ARM ORDER, one compiler:
+//
+//   ORDER A, satisfying arm FIRST   -> ACCEPTED
+//   ORDER B, satisfying arm LATER   -> REFUSED, `value does not inhabit its declared type at the
+//                                      direct call argument for parameter 'r': declared
+//                                      'Coproduct(MajRes)', produced 'Coproduct(MajOth)'`
+//
+// ONE OF THOSE IS WRONG AND IT IS THE ACCEPTED ONE: in order A the second arm produces a MajOth and
+// it is passed to a formal declared MajRes. That is the ordinary compiler floor -- values inhabit
+// their declared types -- which DESIGN section 4b puts BELOW the ladder rather than on a rung of it.
+// So both orders are enrolled: a wall that closed only the accepted order would still leave the
+// verdict a function of arm order, and the pair is what says the answer no longer depends on it.
+//
+// THE REFUSING AUTHORITY is v1.compiler.infer match_arm_join_diagnostics, asked once per arm at the
+// ExprMatch join, over the relation match_arm_types_are_disjoint_coproducts.
+//
+// THE THREE CONTROLS ARE NOT COSMETIC, and each names a class the wall must NOT answer -- a wall
+// that refused every match would satisfy the two reds above and measure nothing. Two of the three
+// are the exclusions the corpus self-compile forced: the first form of this wall asked
+// node_type_compatible and refused four correct modules, in exactly the shapes controlled here.
+//
+// THE DELETE ARM WAS RUN AND EXACTLY ONE ROW MOVES. These five rows were executed against a binary
+// built from this tree with only the stage0 mirror of v1.compiler.infer reverted to the pre-wall
+// generation -- the wall absent, everything else identical. Result: maj_satisfying_arm_first_must_refuse
+// FAILS and the other four PASS, in both binaries. So the red is discriminating rather than merely
+// executed (`executed_conjunct_discriminates_nothing`), and none of the three controls is measuring the
+// wall's presence. Re-derive by reverting src/v1/stage0/src/v1_compiler_infer.rs, rebuilding
+// claim_batch, and running these five function names through it.
+//
+// dissolve-on: none. Per DESIGN section 4b(4) a climb deletes the redundant lower-rung production
+// machinery, never the evidence that the higher rung is real.
+
+fn maj_satisfying_arm_first_fixture_source() -> String {
+  "module maj.probe_a\n\nimport std.types { Int }\n\ntype MajRes\n  = MajResA\n  | MajResB\n\ntype MajOth\n  = MajOthA\n  | MajOthB\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_takes_res(r: MajRes) -> Int {\n  match r {\n    MajResA => 1\n    MajResB => 2\n  }\n}\n\nfn maj_satisfying_arm_first(fl: MajFlag) -> Int {\n  maj_takes_res(r: match fl {\n    MajYes => MajResA\n    MajNo => MajOthA\n  })\n}\n"
+}
+
+fn maj_satisfying_arm_later_fixture_source() -> String {
+  "module maj.probe_b\n\nimport std.types { Int }\n\ntype MajRes\n  = MajResA\n  | MajResB\n\ntype MajOth\n  = MajOthA\n  | MajOthB\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_takes_res(r: MajRes) -> Int {\n  match r {\n    MajResA => 1\n    MajResB => 2\n  }\n}\n\nfn maj_satisfying_arm_later(fl: MajFlag) -> Int {\n  maj_takes_res(r: match fl {\n    MajYes => MajOthA\n    MajNo => MajResA\n  })\n}\n"
+}
+
+fn maj_both_arms_declared_type_fixture_source() -> String {
+  "module maj.control_same\n\nimport std.types { Int }\n\ntype MajRes\n  = MajResA\n  | MajResB\n\ntype MajOth\n  = MajOthA\n  | MajOthB\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_takes_res(r: MajRes) -> Int {\n  match r {\n    MajResA => 1\n    MajResB => 2\n  }\n}\n\nfn maj_both_arms_declared_type(fl: MajFlag) -> Int {\n  maj_takes_res(r: match fl {\n    MajYes => MajResA\n    MajNo => MajResB\n  })\n}\n"
+}
+
+fn maj_diverging_arm_fixture_source() -> String {
+  "module maj.control_diverging\n\ntype MajRes\n  = MajResA\n  | MajResB\n\ntype MajOth\n  = MajOthA\n  | MajOthB\n  | MajOthC\n\nfn maj_diverging_arm(o: MajRes?) -> MajOth {\n  let v = match o {\n    Present { value: r } => r\n    Absent => return MajOthC\n  }\n  match v {\n    MajResA => MajOthA\n    MajResB => MajOthB\n  }\n}\n"
+}
+
+fn maj_optional_carrier_arms_fixture_source() -> String {
+  "module maj.control_optional\n\ntype MajRes\n  = MajResA\n  | MajResB\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_optional_arms(fl: MajFlag) -> MajRes? {\n  match fl {\n    MajYes => Present { value: MajResA }\n    MajNo => Absent\n  }\n}\n"
+}
+
+// THE DISCRIMINATING RED. The join answers MajRes because MajRes is the FIRST arm, and the MajOth
+// second arm reaches a formal declared MajRes unjudged. This is the arm order that COMPILED CLEAN
+// before the wall; it is the whole subject.
+test fn maj_satisfying_arm_first_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    maj_satisfying_arm_first_fixture_source(),
+    "src/maj_probe_a.rs",
+    [],
+    []
+  )
+}
+
+// THE ORDER-INDEPENDENCE HALF OF THE SAME RED. This order already refused before the wall, at the
+// direct-call argument seam rather than at the join, so it is carried as the row that says the two
+// orders now agree -- not as a second measurement of the same fact.
+test fn maj_satisfying_arm_later_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    maj_satisfying_arm_later_fixture_source(),
+    "src/maj_probe_b.rs",
+    [],
+    []
+  )
+}
+
+// POSITIVE CONTROL 1. Two arms of the DECLARED coproduct must still compile, or the reds above are
+// satisfied by a compiler that refuses every match.
+test fn maj_both_arms_declared_type_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    maj_both_arms_declared_type_fixture_source(),
+    "src/maj_control_same.rs",
+    [],
+    []
+  )
+}
+
+// POSITIVE CONTROL 2, THE DIVERGING ARM. An arm that returns produces no value of the match's type
+// at all -- its body's inferred type is the ENCLOSING FUNCTION'S return type, which answers to the
+// return seam and not to the join. Judging it here refused extdeps.uri_path path_segment_tokens,
+// which is correct code; this row is what says that stays admitted.
+test fn maj_diverging_arm_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    maj_diverging_arm_fixture_source(),
+    "src/maj_control_diverging.rs",
+    [],
+    []
+  )
+}
+
+// POSITIVE CONTROL 3, THE OPTIONAL CARRIER. A `Present { value: T }` arm beside an `Absent` arm is
+// two spellings of one `T?`, not two coproducts; `Optional` is the language's own cardinality
+// carrier and is excluded on both sides by the same authority the declared-type walls at this stage
+// use. Judging it refused std.observation observation_subject_module_path and gunbc.output_policy
+// surface_effect_stream.
+test fn maj_optional_carrier_arms_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    maj_optional_carrier_arms_fixture_source(),
+    "src/maj_control_optional.rs",
+    [],
+    []
+  )
+}
