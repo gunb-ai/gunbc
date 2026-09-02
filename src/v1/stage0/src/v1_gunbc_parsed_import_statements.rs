@@ -2,8 +2,16 @@
 // Source module: v1.gunbc.parsed_import_statements
 
 pub use crate::std_import::ParsedImportStatements;
+use crate::std_import::ParsedImportStatements::*;
+pub use crate::v1_compiler_parse::parse_import_statement_extents;
+pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
-use crate::v1_std_core::NewlineIndex;
+use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::NewlineIndex;
+pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
+use crate::NonEmptyBTreeSet;
+use crate::NonEmptyVec;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn parsed_import_statements(file: String, source: String) -> Rc<ParsedImportStatements> {
