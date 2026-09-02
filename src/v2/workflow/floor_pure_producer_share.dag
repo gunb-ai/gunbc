@@ -142,6 +142,13 @@ import v2.std.collection { List }
 //   - `rust_target_model` regressed the `v2.test.emit.produced_decl_two_target` /
 //     `v2.test.emit.rust_produced_decl_emit` cluster by about 20% normalised, on both present
 //     runs, and refused a floor run at cost=502ms EXACT.
+//     THE BASE IT REGRESSED FROM IS A CROSS-TREE ONE AND NOT A SINGLE OBSERVATION, which is
+//     what licenses reading the regression as large rather than as one run's noise: the same
+//     identities were independently joined on two further MAIN runs by the FLOOR-COST-500MS lane
+//     (33664853305 head 22e3d70963 and 33664768371 head dbd57f2af3, both attempt 1, both green)
+//     and every member moved together between them by 1.09-1.13 while the within-module spread
+//     stayed near 1.17. Four main-ish trees put the cluster's level inside one narrow band, and
+//     the present arms sit half again above it.
 //   - `rust_target_model_core_edges` showed NO effect at all over four consumer modules. A row
 //     that neither costs nor saves is cache population, which this file already refuses.
 //   - `rust_target_model_staging` LOOKED like the survivor -- its 17 consumer modules improved
@@ -156,10 +163,20 @@ import v2.std.collection { List }
 // SO THE COMMON FINDING, WHICH IS THE USEFUL PART OF A NEGATIVE RESULT: serving a rust
 // `TargetModel` across claim frames costs its produced-decl consumers MORE than recomputing it,
 // and the per-frame WALK WAS NOT THE CAUSE -- #9721's conclusion survives its own re-enrol
-// trigger being discharged. What remains unidentified, and this file does not guess at it: a
-// serve hands over an `Rc` every consumer shares, so any path that would have mutated a freshly
-// recomputed value in place (`Rc::make_mut` at a strong count of one) copies instead. That is a
-// candidate, not a finding.
+// trigger being discharged. THE REMAINING COST IS UNIDENTIFIED, and this file leaves it that way
+// rather than carrying a plausible story: an unsupported cause in a carrier is read as a lead by
+// the next reader and spends their time before it spends anyone's doubt.
+//
+// ONE CANDIDATE WAS RAISED HERE AND IS WITHDRAWN, recorded because the next reader will think of
+// it too. The suggestion was copy-on-write: a serve hands over an `Rc` every consumer shares, so
+// a path that would have mutated a freshly recomputed value in place (`Rc::make_mut` at a strong
+// count of one) would copy instead. IT REQUIRES AN IN-PLACE MUTATION PATH OVER `Value` AND THERE
+// IS NONE. The seed's only `Rc::make_mut` in `v1_compiler.v1_interpreter` is inside a test
+// fixture builder over `Node`, not over a `Value` on any evaluation path; the `v1_compiler.v1_rt`
+// occurrences are the EMITTED runtime that compiled `.dag` code calls, which no interpreter serve
+// reaches. Value operations in the interpreter rebuild rather than mutate, so sharing defeats
+// nothing there. The candidate predicted that only MUTATING consumers would regress, which is
+// what made it worth stating and is also what refuted it.
 //
 // NEXT TRIGGER FOR ALL THREE, naming what must be true rather than what must be built: the
 // remaining cost identified, and a measured serve-below-recompute ON THE PRODUCED-DECL
