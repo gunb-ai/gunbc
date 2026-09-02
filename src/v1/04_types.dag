@@ -194,17 +194,25 @@ type TypeResolutionVerdict
 
 // Refusal dominates under-resolution dominates resolution: the strongest reason
 // the walk found is the one it reports, so a refused child is never averaged away
-// by resolved siblings.
+// by resolved siblings. review 58547: the acc match is spelled over all four
+// variants rather than a wildcard. A catch-all here would hide DivergentExpression
+// at the verdict layer in exactly the way an absent name hid it at the node layer,
+// which is the conflation this whole change exists to remove -- and the next
+// variant added would be absorbed silently instead of refusing. The arms are
+// deliberately identical in behaviour to the wildcard they replace: this states the
+// existing dominance order, it does not change it.
 fn combine_resolution_verdicts(acc: TypeResolutionVerdict, next: TypeResolutionVerdict) -> TypeResolutionVerdict {
+  let stronger_of_next = match next {
+    ContainerSpellingUnresolvable { name: _ } => next
+    UnderResolved => UnderResolved
+    DivergentExpression => next
+    FullyResolved => acc
+  }
   match acc {
     ContainerSpellingUnresolvable { name: _ } => acc
-    _ =>
-      match next {
-        ContainerSpellingUnresolvable { name: _ } => next
-        UnderResolved => UnderResolved
-        DivergentExpression => next
-        FullyResolved => acc
-      }
+    UnderResolved => stronger_of_next
+    DivergentExpression => stronger_of_next
+    FullyResolved => stronger_of_next
   }
 }
 

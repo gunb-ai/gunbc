@@ -335,14 +335,19 @@ pub fn combine_resolution_verdicts(
     acc: Rc<TypeResolutionVerdict>,
     next: Rc<TypeResolutionVerdict>,
 ) -> Rc<TypeResolutionVerdict> {
-    match (*acc.clone()).clone() {
-        TypeResolutionVerdict::ContainerSpellingUnresolvable { name: _, .. } => acc.clone(),
-        _ => match (*next.clone()).clone() {
+    {
+        let stronger_of_next = match (*next.clone()).clone() {
             TypeResolutionVerdict::ContainerSpellingUnresolvable { name: _, .. } => next.clone(),
             TypeResolutionVerdict::UnderResolved => Rc::new(TypeResolutionVerdict::UnderResolved),
             TypeResolutionVerdict::DivergentExpression => next.clone(),
             TypeResolutionVerdict::FullyResolved => acc.clone(),
-        },
+        };
+        match (*acc.clone()).clone() {
+            TypeResolutionVerdict::ContainerSpellingUnresolvable { name: _, .. } => acc.clone(),
+            TypeResolutionVerdict::UnderResolved => stronger_of_next,
+            TypeResolutionVerdict::DivergentExpression => stronger_of_next,
+            TypeResolutionVerdict::FullyResolved => stronger_of_next,
+        }
     }
 }
 
