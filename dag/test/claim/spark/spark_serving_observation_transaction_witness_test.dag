@@ -536,7 +536,7 @@ test fn a_transport_refused_leg_moves_the_receipt_counts() -> Bool {
       let line = spark_serving_provenance_receipt_line(
         p: spark_serving_transaction_provenance(txn: t),
       )
-      string_contains(s: line, pattern: "executed=23")
+      string_contains(s: line, pattern: "executed=24")
         && string_contains(s: line, pattern: "transport-refused=1")
         && string_contains(s: line, pattern: "missing=0")
     }
@@ -613,7 +613,7 @@ test fn changed_capture_outcomes_move_the_line_the_report_emits() -> Bool {
   match acquired_observation_body(captures: swap_is_active(with: refused)) {
     Absent => false
     Present { value: body } =>
-      string_contains(s: body, pattern: "executed=23")
+      string_contains(s: body, pattern: "executed=24")
         && string_contains(s: body, pattern: "transport-refused=1")
         && !string_contains(s: body, pattern: "executed=25")
   }
