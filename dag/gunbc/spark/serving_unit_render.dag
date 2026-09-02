@@ -1,6 +1,7 @@
 module gunbc.spark.serving_unit_render
 
 import std.types { String, NonEmptyStr, FilePath }
+import std.measure { token_count_value, positive_slot_count_value }
 import std.content_hash { serialize_content_hash, content_hash_of_value }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.encoding { base64_encode, Standard }
@@ -73,8 +74,30 @@ fn spark_serving_exec_start_command(spec: SparkServingUserUnitSpec) -> NonEmptyS
 // is not a self-hash of a file containing its own hash), while still covering every typed unit-spec
 // field.  A later observer reads this value from /proc/<MainPID>/environ; it never substitutes the
 // file's current identity for the invocation's.
+// The hash primitive accepts a string atom, so the typed spec is projected to one canonical wire
+// here. String fields are base64-framed and field names are fixed; delimiters inside a field cannot
+// make two distinct specs collide structurally. This wire is intentionally NOT unit-file content:
+// that content includes the resulting identity and therefore cannot be its own hash domain.
+fn spark_serving_user_unit_spec_identity_wire(spec: SparkServingUserUnitSpec) -> NonEmptyStr {
+  join([
+    "description=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.description as String)), variant: Standard), "\n",
+    "after=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.after as String)), variant: Standard), "\n",
+    "service_type=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.service_type as String)), variant: Standard), "\n",
+    "bind_host_port=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.bind_host_port as String)), variant: Standard), "\n",
+    "models_root_rel=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.models_root_rel)), variant: Standard), "\n",
+    "runtime_root_rel=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.runtime_root_rel)), variant: Standard), "\n",
+    "exec_subcommand=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.exec_subcommand as String)), variant: Standard), "\n",
+    "restart=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.restart as String)), variant: Standard), "\n",
+    "wanted_by=", base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: spec.wanted_by as String)), variant: Standard), "\n",
+    "default_context=", to_string(token_count_value(t: spec.default_context)), "\n",
+    "serving_slots=", to_string(positive_slot_count_value(slots: spec.serving_slots)), "\n",
+  ], "") as NonEmptyStr
+}
+
 fn spark_serving_user_unit_definition_identity(spec: SparkServingUserUnitSpec) -> NonEmptyStr {
-  serialize_content_hash(hash: content_hash_of_value(value: spec)) as NonEmptyStr
+  serialize_content_hash(
+    hash: content_hash_of_value(value: spark_serving_user_unit_spec_identity_wire(spec: spec)),
+  ) as NonEmptyStr
 }
 
 data spark_serving_definition_identity_environment_name: NonEmptyStr = "GUNBC_SPARK_SERVING_DEFINITION_IDENTITY" as NonEmptyStr
