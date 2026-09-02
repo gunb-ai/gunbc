@@ -3,6 +3,7 @@ module extdeps.publication
 import std.integer { Int }
 import std.logic { Bool }
 import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
 
 // PURE PUBLICATION VOCABULARY — no upstream document subject of its own (same class as
 // extdeps.external_authority and extdeps.uri). SpecificationDocumentDate and
@@ -59,6 +60,43 @@ type DocumentPublicationStatus
 // marking. Neither answers whether gunbc may carry the document's facts — that
 // is upstream_fact_carriage in gunbc.upstream_document_carriage, and keeping
 // these two total over the coproduct is what lets that rule stay one match.
+// WHICH REVISION OF A HELD SPECIFICATION WE ACTUALLY HOLD, relative to what the publisher serves
+// now. Re-homed here from extdeps.cpu.ampere_altra_platform_hw_design.subject, where it was
+// authored first: the type names no product, so a SECOND document needing it would otherwise have
+// to import the platform specification's own subject module to describe its datasheet, which is a
+// layer inversion. Its home is the shared publication vocabulary that already owns
+// SpecificationDocumentDate and DocumentPublicationStatus.
+//
+// THE THIRD ARM IS NOT A REFINEMENT OF THE SECOND, it is a different fact. "A newer revision is
+// listed in an index but the cited locator still serves ours" and "a newer revision is publicly
+// served right now at a locator we fetched" carry different obligations: the first is a standing
+// we may hold indefinitely because there is nothing to read, the second is a live citation debt.
+// Collapsing them would let a retrievable supersession hide behind the unretrieved arm's excuse.
+type HeldSpecificationSupersessionStanding
+  = HeldRevisionIsCurrentPublicCopy
+  | NewerRevisionExistsUnretrieved {
+      newer_version_label: NonEmptyStr,
+      newer_publication_date: SpecificationDocumentDate,
+      index_authority: ExternalAuthority,
+      held_version_label: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+  | NewerRevisionPubliclyServed {
+      newer_version_label: NonEmptyStr,
+      newer_locator: NonEmptyStr,
+      index_authority: ExternalAuthority,
+      held_version_label: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+
+fn supersession_standing_is_current(s: HeldSpecificationSupersessionStanding) -> Bool {
+  match s {
+    HeldRevisionIsCurrentPublicCopy => true
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_locator: _, index_authority: _, held_version_label: _, detail: _ } => false
+  }
+}
+
 fn publication_status_is_publicly_published(status: DocumentPublicationStatus) -> Bool {
   match status {
     PubliclyPublishedUnderOpenLicense { license: _ } => true

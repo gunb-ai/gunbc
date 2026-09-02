@@ -20,10 +20,13 @@ import extdeps.cpu.ampere_altra_package {
 }
 import extdeps.cpu.ampere_altra_platform_hw_design.subject {
   AltraPlatformHwDesignSpecification,
-  HeldRevisionIsCurrentPublicCopy,
-  NewerRevisionExistsUnretrieved,
   altra_platform_hw_design_specification,
   altra_platform_hw_design_subject_authority_anchor,
+}
+import extdeps.publication {
+  HeldRevisionIsCurrentPublicCopy,
+  NewerRevisionExistsUnretrieved,
+  NewerRevisionPubliclyServed,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
@@ -69,6 +72,7 @@ fn platform_facts_are_from_the_latest_revision() -> Bool {
   match altra_platform_hw_design_subject.supersession_standing {
     HeldRevisionIsCurrentPublicCopy => true
     NewerRevisionExistsUnretrieved { newer_version_label, newer_publication_date, index_authority, held_version_label, detail } => false
+    NewerRevisionPubliclyServed { newer_version_label, newer_locator, index_authority, held_version_label, detail } => false
   }
 }
 
