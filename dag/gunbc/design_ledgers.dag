@@ -34,9 +34,8 @@ import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierEmpty,
   CompilePhaseFrontierValidated,
   CompilePhaseFrontierInvalid,
-  compile_phase_frontier_standing,
+  current_compile_phase_frontier_standing,
   render_phase_board,
-  self_host_compile_phase_frontier_receipts,
 }
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
@@ -78,7 +77,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
 }
 
 fn compile_phase_frontier_blocks() -> List<MarkdownBlock> {
-  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+  match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierEmpty => [
       h3(text: "Whole-corpus compile-phase frontier receipts"),
       p(text: "No complete instrument observation has been appended; the next valid row must be the typed genesis receipt."),

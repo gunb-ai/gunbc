@@ -1128,8 +1128,18 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
   }
 }
 
-fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) -> CompilePhaseFrontierStanding {
-  match phase_board_series_ratchet(series: series) {
+// THE STANDING IS THE VERDICT PLUS THE SERIES TAIL, AND SPLITTING THEM IS WHAT LETS ONE COMPUTATION
+// SERVE EVERY DEMAND. The verdict is the whole cost: it folds every receipt against its predecessor,
+// re-deriving each one's payload identity, prefix link and census coherence over a whole-corpus rustc
+// diagnostic population. Selecting the latest receipt from an already-held series is a
+// `reverse |> first`. Stated as one function the two were inseparable, so every consumer that wanted
+// the standing paid the fold; stated as two, the expensive half is a value one declaration can hold
+// and the cheap half stays where it is asked.
+fn compile_phase_frontier_standing_from_verdict(
+  verdict: PhaseBoardSeriesVerdict,
+  series: List<CompilePhaseFrontierReceipt>
+) -> CompilePhaseFrontierStanding {
+  match verdict {
     PhaseBoardSeriesEmptyBaselinePermitted => CompilePhaseFrontierEmpty
     PhaseBoardSeriesRefused { invocation: i, reason: why } => CompilePhaseFrontierInvalid {
       reason: concat(concat(i, ": "), why as String) as NonEmptyStr
@@ -1139,6 +1149,54 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
       Present { value: latest } => CompilePhaseFrontierValidated { latest: latest }
     }
   }
+}
+
+// The standing of ANY series. This stays the authority the fixtures judge -- an authored series, a
+// truncated one, a planted-regression one -- and it is the only place the two halves are composed for
+// a series the caller supplies.
+fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) -> CompilePhaseFrontierStanding {
+  compile_phase_frontier_standing_from_verdict(
+    verdict: phase_board_series_ratchet(series: series),
+    series: series
+  )
+}
+
+// ONE IDENTITY FOR THE PERSISTED SERIES, AND IT IS A DECLARATION RATHER THAN A CACHE.
+//
+// Fourteen authored sites asked for the ratchet over THIS series and each respelled the demand at its
+// own call site: two in this module's witness, one in `gunbc.design_ledgers` (which renders committed
+// bytes), two in `gunbc.compiler_frontend_program_status` reached by every claim that folds over
+// `program_milestones`, eight across the live gate and its witness, and one in the live-gate
+// instrument. DESIGN section 2 minimizes the demand graph BEFORE materializing its answers: many
+// demands for one semantic fact sharing a least common ancestor is authored duplication, and the
+// remedy is to carry, rewire or share at that ancestor -- never to make the next caller cheap.
+//
+// THE ANCESTOR IS NOT THE FLOOR RUN, and that is the load-bearing part. The floor claims share the
+// floor run, but the ledger projection is evaluated in the regen and generated-artifact phases and
+// the instrument is an operator entry point -- neither is inside it. What every demand actually
+// shares is the persisted series itself, a pure function of committed source. So the collapse belongs
+// here, in the module that owns the series, where all three kinds of consumer can name it.
+//
+// A PROVIDER IS A SEPARATE AND LATER QUESTION, AND THIS DECLARATION DOES NOT DEPEND ON IT. Enrolling
+// this as a warm row on `v2.workflow.floor_pure_producer_share` would give the floor run one
+// evaluation served to every claim frame, and it is the right SHAPE for that tier -- the derivation
+// is a whole-corpus fold, the value is a three-arm coproduct carrying at most two short strings, so
+// reification is negligible against the recompute it replaces. But `std.materialization_ladder`
+// admits a provider only on measured total serving cost below recomputation, and this declaration
+// earns its place under section 2 whether or not that measurement admits the row.
+fn current_compile_phase_frontier_series_verdict() -> PhaseBoardSeriesVerdict {
+  phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts)
+}
+
+// The standing of the persisted series, derived from the one shared verdict. Same answer as
+// `compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)` by
+// construction -- the two differ only in whether the verdict is recomputed -- and the witness
+// `the_shared_frontier_verdict_is_the_verdict_the_series_fold_answers` executes that equality.
+fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
+  compile_phase_frontier_standing_from_verdict(
+    verdict: current_compile_phase_frontier_series_verdict(),
+    series: self_host_compile_phase_frontier_receipts
+  )
 }
 
 // THE RATCHET ABOVE JUDGES RECEIPTS AGAINST EACH OTHER, AND NOTHING IN IT LOOKS AT THE TREE BEING

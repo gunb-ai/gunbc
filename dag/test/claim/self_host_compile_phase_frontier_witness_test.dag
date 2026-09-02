@@ -38,6 +38,7 @@ import gunbc.self_host_compile_phase_frontier {
   ExposedByPhaseAdvance,
   PhaseBoardSeriesHeld,
   phase_board_series_ratchet,
+  current_compile_phase_frontier_series_verdict,
   self_host_compile_phase_frontier_receipts,
   PersistedPhaseBoardFold,
   phase_board_from_census_identities,
@@ -52,7 +53,7 @@ import gunbc.self_host_compile_phase_frontier {
   rustc_phase_classification_policy_digest,
   board_row,
   CompilePhaseFrontierValidated,
-  compile_phase_frontier_standing,
+  current_compile_phase_frontier_standing,
   CompilePhaseFrontierCoverage,
   FrontierCoversSubjectTree,
   FrontierReceiptTreeStale,
@@ -180,8 +181,27 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
 // The required witness executes over the persisted series, not a fixture or a copied count. The
 // genesis is the only row today; once a successor is appended this same call validates the link and
 // applies the phase/identity ratchet to the latest validated pair.
+// THE SHARED IDENTITY ANSWERS WHAT THE UNSHARED FOLD ANSWERS, AND THIS IS THE ARM THAT KEEPS IT
+// HONEST. Every consumer of the persisted series now names
+// `current_compile_phase_frontier_series_verdict` instead of respelling
+// `phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts)` at its own site, so
+// this arm is where the two are still compared. It is not a tautology even though one calls the
+// other: they differ in WHERE the fold happens, and if the identity is ever enrolled as a warm row on
+// `v2.workflow.floor_pure_producer_share` the left side is SERVED from one preparation-time
+// evaluation while the right side recomputes in this frame -- the same-frame discriminator a
+// cross-frame value needs, since a served value carrying a different identity than a locally
+// constructed one fails here rather than silently answering fourteen call sites.
+//
+// It compares the VERDICT rather than the standing because the standing is a pure function of the
+// verdict and the series, so verdict equality implies standing equality at the cost of one small
+// coproduct instead of a whole receipt.
+test fn the_shared_frontier_verdict_is_the_verdict_the_series_fold_answers() -> Bool {
+  current_compile_phase_frontier_series_verdict()
+    == phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts)
+}
+
 test fn current_persisted_compile_phase_frontier_holds() -> Bool {
-  match phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts) {
+  match current_compile_phase_frontier_series_verdict() {
     PhaseBoardSeriesHeld => true
     verdict => false
   }
@@ -413,7 +433,7 @@ test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool
 // the document renders may not say the emitted compiler clears typeck or borrowck while the latest
 // validated receipt's census says otherwise.
 test fn the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed() -> Bool {
-  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+  match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => {
       let rendered = render_phase_board(board: latest.board)
       !string_contains(s: rendered, pattern: "typeck PASSES")

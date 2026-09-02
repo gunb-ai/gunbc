@@ -19,6 +19,8 @@ import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierValidated,
   CompilePhaseFrontierInvalid,
   compile_phase_frontier_standing,
+  current_compile_phase_frontier_standing,
+  CompilePhaseFrontierStanding,
   CompilePhaseReceiptSubject,
   comparison_inputs_same,
   PersistedPhaseBoardFold,
@@ -255,16 +257,41 @@ fn live_observation_from_measurement(
 
 // The verdict for a measurement, which is the only entry point a consumer should use: it cannot be
 // handed an observation that no measurement produced.
-fn live_tree_verdict_for_measurement(
-  series: List<CompilePhaseFrontierReceipt>,
+fn live_tree_verdict_for_measurement_from_standing(
+  standing: CompilePhaseFrontierStanding,
   m: EmissionMeasurement,
   toolchain: LiveToolchainReading
 ) -> LiveFrontierVerdict {
   match live_observation_from_measurement(m: m, toolchain: toolchain) {
     LiveObservationNotTaken { cause: why } => LiveFrontierUnmeasured { reason: why }
     LiveObservationTaken { observation: observation } =>
-      live_tree_frontier_verdict(series: series, observation: observation)
+      live_tree_frontier_verdict_from_standing(standing: standing, observation: observation)
   }
+}
+
+fn live_tree_verdict_for_measurement(
+  series: List<CompilePhaseFrontierReceipt>,
+  m: EmissionMeasurement,
+  toolchain: LiveToolchainReading
+) -> LiveFrontierVerdict {
+  live_tree_verdict_for_measurement_from_standing(
+    standing: compile_phase_frontier_standing(series: series),
+    m: m,
+    toolchain: toolchain
+  )
+}
+
+// The measurement-side gate against the PERSISTED series -- the instrument's own entry point, so the
+// operator route and the witnesses read one standing rather than two.
+fn current_live_tree_verdict_for_measurement(
+  m: EmissionMeasurement,
+  toolchain: LiveToolchainReading
+) -> LiveFrontierVerdict {
+  live_tree_verdict_for_measurement_from_standing(
+    standing: current_compile_phase_frontier_standing(),
+    m: m,
+    toolchain: toolchain
+  )
 }
 
 fn live_phase_board(observation: LiveCompilePhaseObservation) -> PersistedPhaseBoardFold {
@@ -279,11 +306,16 @@ fn live_phase_board(observation: LiveCompilePhaseObservation) -> PersistedPhaseB
 // board; a live tree carries no such authored disposition, so any identity the live board holds
 // and the latest receipt does not refuses here. The remedy is to append a receipt -- to make the
 // exposure a declared, checked fact -- and not to teach this gate to guess a cause.
-fn live_tree_frontier_verdict(
-  series: List<CompilePhaseFrontierReceipt>,
+// THE SAME SPLIT, ONE LEVEL UP, AND FOR THE SAME REASON. This gate needs the STANDING of a series,
+// not the series, so taking the series as its parameter forced it to recompute the ratchet at every
+// call site -- eight of them over the persisted series once the witnesses are counted. Taking the
+// standing instead lets a caller that already holds one hand it over, while a caller holding only a
+// series composes it through `live_tree_frontier_verdict` below and loses nothing.
+fn live_tree_frontier_verdict_from_standing(
+  standing: CompilePhaseFrontierStanding,
   observation: LiveCompilePhaseObservation
 ) -> LiveFrontierVerdict {
-  match compile_phase_frontier_standing(series: series) {
+  match standing {
     CompilePhaseFrontierInvalid { reason: why } => LiveFrontierRefused {
       identities: [],
       reason: concat(
@@ -317,6 +349,28 @@ fn live_tree_frontier_verdict(
         }
       }
   }
+}
+
+// The series-taking spelling, kept because the fixtures judge AUTHORED series -- a truncated one, a
+// planted-regression one, an empty one -- and those have no shared identity to name.
+fn live_tree_frontier_verdict(
+  series: List<CompilePhaseFrontierReceipt>,
+  observation: LiveCompilePhaseObservation
+) -> LiveFrontierVerdict {
+  live_tree_frontier_verdict_from_standing(
+    standing: compile_phase_frontier_standing(series: series),
+    observation: observation
+  )
+}
+
+// The gate against the PERSISTED series, reading the one shared standing. Every consumer that asks
+// about the live tree relative to the receipts on disk names this instead of respelling the series
+// argument, so the ratchet is one computation for all of them rather than one per call site.
+fn current_live_tree_frontier_verdict(observation: LiveCompilePhaseObservation) -> LiveFrontierVerdict {
+  live_tree_frontier_verdict_from_standing(
+    standing: current_compile_phase_frontier_standing(),
+    observation: observation
+  )
 }
 
 fn live_frontier_verdict_text(verdict: LiveFrontierVerdict) -> String {
