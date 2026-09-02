@@ -236,6 +236,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `compensating_errors_cancel_in_the_aggregate`
 - `one_refusal_two_destinations`
 - `liveness_probe_read_as_currency`
+- `recurrence_ledger_scoped_below_the_recurrence`
 
 ## Building & checks
 

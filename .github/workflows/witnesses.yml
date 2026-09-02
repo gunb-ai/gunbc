@@ -18,6 +18,7 @@ env:
   GUNBC_REQUIRED_FLOOR_DISPOSITION: required_floor_disposition.tsv
   GUNBC_LONG_HOME_STORAGE_AGREEMENT: long_home_storage_agreement.tsv
   GUNBC_REQUIRED_FLOOR_CLAIM_COST: required_floor_claim_cost.tsv
+  GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND: required_floor_cross_claim_demand.tsv
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
   required-witnesses-build:
@@ -168,6 +169,14 @@ jobs:
         with:
           name: required-floor-claim-cost
           path: required_floor_claim_cost.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the floor's cross-claim demand census
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-floor-cross-claim-demand
+          path: required_floor_cross_claim_demand.tsv
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
