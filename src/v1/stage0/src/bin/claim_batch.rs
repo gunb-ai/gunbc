@@ -195,47 +195,34 @@ struct DiscoveryConfig {
     notice_title: String,
 }
 
-/// Names callable declarations from an entry's source without loading or resolving its closure.
-/// This is deliberately an entry-local CLI preflight: a miss can be decided from the file the
-/// caller already named, so paying the whole-corpus index and resolve costs first is redundant.
-fn entry_function_names(source: &str) -> std::collections::BTreeSet<String> {
-    source
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim_start();
-            [
-                "pub test fn ",
-                "test fn ",
-                "pub fn ",
-                "fn ",
-                "pub func ",
-                "func ",
-            ]
-            .iter()
-            .find_map(|prefix| line.strip_prefix(prefix))
-            .map(|rest| {
-                rest.chars()
-                    .take_while(|c| c.is_alphanumeric() || *c == '_')
-                    .collect::<String>()
-            })
-            .filter(|name| !name.is_empty())
-        })
-        .collect()
-}
-
 fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
+    use v1_compiler::v1_compiler_infer_items::{item_kind, ItemKind};
+
     for group in entry_groups {
         if group.functions.is_empty() {
             continue;
         }
-        let source = std::fs::read_to_string(&group.entry).map_err(|e| {
+        let parsed = v1_compiler::module_path_index::parsed_dag_file::parse_dag_file(
+            std::path::Path::new(&group.entry),
+        )
+        .ok_or_else(|| {
             eprintln!(
-                "claim_batch: cannot read --entry {} while validating functions: {e}",
+                "claim_batch: cannot parse --entry {} while validating functions",
                 group.entry
             );
             ExitCode::from(2)
         })?;
-        let declared = entry_function_names(&source);
+        let declared: std::collections::BTreeSet<String> = parsed
+            .items
+            .iter()
+            .filter(|item| {
+                matches!(
+                    item_kind((*item).clone()),
+                    ItemKind::FnItem | ItemKind::FuncItem
+                )
+            })
+            .map(|item| item.name.clone())
+            .collect();
         let missing: Vec<&str> = group
             .functions
             .iter()
@@ -1019,7 +1006,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod cli_path_resolution_wiring_tests {
-    use super::{entry_function_names, parse_args, validate_explicit_functions, EntryGroup};
+    use super::{parse_args, validate_explicit_functions, EntryGroup};
     use v1_compiler::cli_run::workspace_root;
 
     fn args(v: &[&str]) -> Vec<String> {
@@ -1086,30 +1073,6 @@ mod cli_path_resolution_wiring_tests {
     }
 
     #[test]
-    fn entry_function_scan_covers_claimable_declaration_forms_only() {
-        let source = r#"
-module fixture
-
-fn ordinary_holds() -> Bool { true }
-pub fn public_holds() -> Bool { true }
-test fn witness_holds() -> Bool { true }
-func block_holds() -> Bool { return true }
-data not_callable: Bool = true
-// fn commented_out() -> Bool { true }
-"#;
-        let names = entry_function_names(source);
-        assert_eq!(
-            names.into_iter().collect::<Vec<_>>(),
-            vec![
-                "block_holds",
-                "ordinary_holds",
-                "public_holds",
-                "witness_holds"
-            ]
-        );
-    }
-
-    #[test]
     fn nonexistent_explicit_function_refuses_before_resolution() {
         let entry = workspace_root()
             .join("dag/test/claim/discovery_census_witness_test.dag")
@@ -1120,6 +1083,19 @@ data not_callable: Bool = true
             functions: vec!["this_function_does_not_exist".to_string()],
         }];
         assert!(validate_explicit_functions(&groups).is_err());
+    }
+
+    #[test]
+    fn declared_explicit_function_passes_preflight() {
+        let entry = workspace_root()
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let groups = vec![EntryGroup {
+            entry,
+            functions: vec!["w_site_label_is_the_module_path_as_package".to_string()],
+        }];
+        assert!(validate_explicit_functions(&groups).is_ok());
     }
 }
 
