@@ -1,0 +1,108 @@
+module test.claim.mt_collins_document_carriage_witness
+
+import std.logic { Bool }
+import std.types { String, list_length }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, external_model_scope_citations }
+import extdeps.uri { Uri, Https }
+import extdeps.publication {
+  AccessGatedNotPubliclyPublished,
+  PubliclyPublishedUnderOpenLicense,
+  PubliclyPublishedWithRestrictiveMarking,
+  PubliclyPublishedWithoutStatedTerms,
+  publication_status_is_publicly_published,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.subject {
+  mt_collins_gsg_authority,
+  mt_collins_gsg_publication_status,
+}
+import extdeps.ampere.mt_collins_product_brief.subject { mt_collins_product_brief_publication_status }
+import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_memory_population_model_scope }
+import extdeps.ampere.mt_collins_product_brief.platform { mt_collins_platform_model_scope }
+import gunbc.upstream_document_carriage {
+  FactsBarredDocumentNotPublic,
+  FactsMayBeCarried,
+  ampere_customer_connect_collateral_status,
+  carriage_permits_facts,
+  upstream_fact_carriage,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A locator no scope cites, used only to drive the negative below. It exists so the membership
+// predicate is shown to DISCRIMINATE rather than being true of everything handed to it.
+data ampere_absent_probe_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/this-locator-is-cited-by-no-scope-in-this-repository",
+  }
+}
+
+// Membership in the SCOPE CITATION RELATION, which is the edge a carriage fold traverses -
+// first_citation plus further_citations, read through the accessor that owns that concatenation.
+// A declaration sitting BESIDE the scope is not on it, which is exactly the defect this witness
+// exists to keep out: one revision of this change bound the guide's authority into consumer-local
+// aliases, and every scope still reported an empty further_citations.
+fn scope_cites(scope: ExternalModelScope, authority: ExternalAuthority) -> Bool {
+  fold(external_model_scope_citations(scope: scope), init: false, f: (acc, c) => acc || (c == authority))
+}
+
+// THE POSITIVE, BOUND TO THE EXACT DOCUMENT THE FACT MODULES USE. Asserting only that some public
+// status admits carriage would stay green if the guide's citation were dropped, swapped for another
+// authority, or paired with an unrelated public status - the three ways this can silently rot. So
+// the claim is the JOIN: both fact modules cite THIS authority, and THIS document's status is what
+// upstream_fact_carriage admits.
+test fn w_both_fact_modules_cite_the_guide_whose_status_admits_carriage() -> Bool {
+  scope_cites(scope: mt_collins_memory_population_model_scope, authority: mt_collins_gsg_authority)
+    && scope_cites(scope: mt_collins_platform_model_scope, authority: mt_collins_gsg_authority)
+    && publication_status_is_publicly_published(status: mt_collins_gsg_publication_status)
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_collins_gsg_publication_status))
+    && (upstream_fact_carriage(status: mt_collins_gsg_publication_status) == FactsMayBeCarried)
+}
+
+// THE STATUS IS THE MARKED-PUBLIC ARM SPECIFICALLY, not merely some arm that happens to admit.
+// Without this, replacing the guide's status with any other public value leaves the join above
+// green while the document's actual terms have gone unrecorded.
+test fn w_the_guide_status_is_the_marked_public_arm() -> Bool {
+  match mt_collins_gsg_publication_status {
+    PubliclyPublishedWithRestrictiveMarking { marking } =>
+      (marking as String) == "Ampere Computing Proprietary and Confidential, document AMP 2021-00511"
+    PubliclyPublishedUnderOpenLicense { license: _ } => false
+    PubliclyPublishedWithoutStatedTerms { absence_basis: _ } => false
+    AccessGatedNotPubliclyPublished { gate: _ } => false
+  }
+}
+
+// THE PAIRED NEGATIVE, on the same kernel and the same axis. The barred population is the
+// reference-board collateral, and it must refuse while the guide admits - one call each, so a
+// kernel that started admitting everything reds here rather than passing quietly.
+test fn w_red_the_customer_connect_collateral_is_barred_while_the_guide_admits() -> Bool {
+  let barred = upstream_fact_carriage(status: ampere_customer_connect_collateral_status)
+  !publication_status_is_publicly_published(status: ampere_customer_connect_collateral_status)
+    && !carriage_permits_facts(carriage: barred)
+    && (barred == FactsBarredDocumentNotPublic { gate: "Ampere Customer Connect, NDA registration required" })
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_collins_gsg_publication_status))
+}
+
+// THE THIRD PUBLIC ARM CARRIES ITS OWN CONTROL. A document that states no terms is public and
+// admits, and the brief is the live instance: it is the first_citation of both fact modules, so if
+// this arm were ever mapped to a refusal the two modules that depend on it would go with it.
+test fn w_a_document_that_states_no_terms_is_public_and_admits() -> Bool {
+  match mt_collins_product_brief_publication_status {
+    PubliclyPublishedWithoutStatedTerms { absence_basis: _ } => true
+    PubliclyPublishedWithRestrictiveMarking { marking: _ } => false
+    PubliclyPublishedUnderOpenLicense { license: _ } => false
+    AccessGatedNotPubliclyPublished { gate: _ } => false
+  }
+    && publication_status_is_publicly_published(status: mt_collins_product_brief_publication_status)
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_collins_product_brief_publication_status))
+    && (upstream_fact_carriage(status: PubliclyPublishedWithoutStatedTerms { absence_basis: "any basis at all" }) == FactsMayBeCarried)
+}
+
+// THE CITATION RELATION IS NON-VACUOUS. scope_cites over an empty or wrong-authority relation must
+// be false, or the membership assertions above are satisfied by any scope at all.
+test fn w_red_scope_cites_is_false_for_an_authority_the_scope_does_not_carry() -> Bool {
+  !scope_cites(scope: mt_collins_memory_population_model_scope, authority: ampere_absent_probe_authority)
+    && !scope_cites(scope: mt_collins_platform_model_scope, authority: ampere_absent_probe_authority)
+    && list_length(items: external_model_scope_citations(scope: mt_collins_memory_population_model_scope)) == 2
+}

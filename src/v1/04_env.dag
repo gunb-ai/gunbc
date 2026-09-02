@@ -35,6 +35,7 @@ type TypeEnv {
   symbol_index: SymbolIndex
   module_path: String
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
+  unit_variant_index_observed: Bool
 }
 
 type TypeBinding {
@@ -243,7 +244,8 @@ fn empty_type_env() -> TypeEnv {
     intern_table: empty_intern_table(),
     source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: empty_symbol_index(),
-    unit_variant_index: empty_map()
+    unit_variant_index: empty_map(),
+    unit_variant_index_observed: false
   }
 }
 
@@ -1299,7 +1301,8 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       source_visible_names: map_insert(e.source_visible_names, tp_name, true),
       authored_import_names: e.authored_import_names,
       symbol_index: e.symbol_index,
-      unit_variant_index: updated_index
+      unit_variant_index: updated_index,
+      unit_variant_index_observed: e.unit_variant_index_observed
     }
   )
 }

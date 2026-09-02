@@ -1,0 +1,435 @@
+module extdeps.llm.anthropic_messages_api
+
+import std.types { NonEmptyStr }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.llm.anthropic_messages_api_contracts {
+  wire_contract,
+  anthropic_chat_message_wire_contract,
+  anthropic_user_content_block_wire_contract,
+  anthropic_assistant_content_block_wire_contract,
+  anthropic_messages_200_content_block_wire_contract,
+  anthropic_tool_result_content_wire_contract,
+  anthropic_tool_result_block_wire_contract
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.anthropic.com/en/api/messages"
+  }
+}
+
+// THE SUBJECT IS THE SPECIFICATION, NOT THE COMPANY THAT PUBLISHES IT. The messages/tool-use wire
+// shape is a shared standard with more than one independently governed implementation, so under
+// DESIGN section 3's external-upstream-decomposition rule it gets its own module and each
+// implementation cites it — the extdeps.whatwg.html_navigation position, not the
+// extdeps.browser.chromium one. It keeps the publisher's real names because section 3 forbids
+// coining a neutral second name for a concept that already has one; extdeps.llm.anthropic keeps
+// only what is a fact about the API PRODUCT (its model roster), and extdeps.ollama.api declares its
+// own conformance against this module rather than restating the shape.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.anthropic_messages_api",
+      decl_name: "AnthropicApiVersion",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri {
+        scheme: Https
+        locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/message_param.py"
+      }
+    },
+    ExternalAuthority {
+      uri: Uri {
+        scheme: Https
+        locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py"
+      }
+    }
+  ]
+}
+
+// THE SPECIFICATION'S OWN VERSION AXIS, which is what makes this a citable standard rather than a
+// snapshot: the revision is selected by a request header, so it is a fact about the spec and not
+// about any one implementation.
+type AnthropicApiVersion {
+  version: String
+  header: String
+}
+
+data current_api_version: AnthropicApiVersion = {
+  version: "2023-06-01",
+  header: "anthropic-version"
+}
+
+// AN ACCEPTED-AND-IGNORED PARAMETER IS WORSE THAN A REFUSED ONE, BECAUSE IT LOOKS LIKE A CONTROL
+// AND IS NOT. That is why this axis exists and why it is here rather than in a plan document. The
+// publisher selects a spec revision with the version header; an implementation may instead accept
+// the header and disregard it, and upstream says so in its own words. A request that is accepted
+// is then NOT evidence that the revision asked for is the revision served -- the caller believes it
+// has pinned something, the send succeeds, and nothing anywhere refuses. Silent success against an
+// inert control is the fail-open shape DESIGN section 5 forbids, arriving through a parameter
+// rather than through a failure arm.
+//
+// SO THE AXIS IS A COPRODUCT AND EVERY CONFORMANCE ROW MUST STATE ITS ARM. Modeling it as one Bool,
+// or leaving it off the carrier and writing it in prose somewhere, would put the caller back where
+// it started: believing the header did something. The same class has been observed independently on
+// this fleet for other accepted-but-inert request fields, so it is a pattern to model rather than a
+// quirk of one product.
+//
+// It carries NO Bool accessor, deliberately. A predicate answering "is the header honored?" would
+// re-collapse the arm a caller has to branch on to the same one bit this coproduct exists to
+// replace, and a third arm would silently pick a side of it. Consumers match.
+type MessagesApiVersionBinding
+  = VersionHeaderSelectsRevision {}
+  | VersionHeaderAcceptedUnused {}
+
+// The carrier by which an IMPLEMENTATION declares that it serves this specification. It is
+// deliberately product-agnostic: this module names no implementation, enumerates no product and
+// dispatches among no authorities — each implementation module declares its own row, pointing
+// symbolically at the declaration of its own that serves the spec, and citing its own upstream for
+// that claim. Carrying a roster here instead would be the enumerate-concrete-products violation the
+// external-upstream-decomposition rule names.
+//
+// The request path is NOT a field: each implementation already owns its own endpoint authority
+// (extdeps.ollama.api ollama_endpoint_path, extdeps.llm.anthropic_rest's transport row), and a path
+// restated here would be a second authority for it.
+type MessagesApiImplementation {
+  implementation: ExternalSubjectRef
+  spec_version: AnthropicApiVersion
+  version_binding: MessagesApiVersionBinding
+  citation: ExternalAuthority
+}
+
+type AnthropicImageMediaType
+  = ImageJpeg
+  | ImagePng
+  | ImageGif
+  | ImageWebp
+  | AnthropicImageMediaTypeOther { raw: NonEmptyStr }
+
+data anthropic_image_jpeg_wire: String = "image/jpeg"
+data anthropic_image_png_wire: String = "image/png"
+data anthropic_image_gif_wire: String = "image/gif"
+data anthropic_image_webp_wire: String = "image/webp"
+
+fn parse_anthropic_image_media_type(raw: String) -> AnthropicImageMediaType {
+  if raw == anthropic_image_jpeg_wire { ImageJpeg }
+  else if raw == anthropic_image_png_wire { ImagePng }
+  else if raw == anthropic_image_gif_wire { ImageGif }
+  else if raw == anthropic_image_webp_wire { ImageWebp }
+  else { AnthropicImageMediaTypeOther { raw: raw } }
+}
+
+fn anthropic_image_media_type_label(kind: AnthropicImageMediaType) -> String {
+  match kind {
+    ImageJpeg => anthropic_image_jpeg_wire
+    ImagePng => anthropic_image_png_wire
+    ImageGif => anthropic_image_gif_wire
+    ImageWebp => anthropic_image_webp_wire
+    AnthropicImageMediaTypeOther { raw: r } => r
+  }
+}
+
+type ImageSource
+  = Base64Image { media_type: AnthropicImageMediaType, data: String }
+  | UrlImage { url: String }
+
+type AnthropicToolResultContent
+  = ToolResultText(String)
+  | ToolResultBlocks(List<AnthropicToolResultBlock>)
+
+type AnthropicToolResultWireTextTag
+  = Text {}
+
+type AnthropicPlainTextDocumentMediaType
+  = TextPlain {}
+
+type AnthropicToolResultTextBlock {
+  type: AnthropicToolResultWireTextTag
+  text: String
+}
+
+type AnthropicSearchResultCitationsConfig {
+  enabled: Bool
+}
+
+type AnthropicToolResultBlock
+  = AnthropicTextBlock { text: String }
+  | AnthropicImageBlock { source: ImageSource }
+
+  | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
+  | AnthropicSearchResultBlock {
+      source: String
+      title: String
+      content: List<AnthropicToolResultTextBlock>
+      citations: AnthropicSearchResultCitationsConfig?
+      cache_control: CacheControl?
+    }
+  | AnthropicToolReferenceBlock { tool_name: String }
+
+data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<Disposition> = [
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
+  },
+  Terminal {
+    reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"
+  }
+]
+
+type AnthropicToolResultPlainTextDocumentSource {
+  type: AnthropicToolResultWireTextTag
+  media_type: AnthropicPlainTextDocumentMediaType
+  data: String
+}
+
+type AnthropicUserContentBlock
+  = UserTextBlock { text: String }
+  | UserToolResultBlock { tool_use_id: String, content: AnthropicToolResultContent?, is_error: Bool? }
+
+type AnthropicAssistantContentBlock
+  = AssistantTextBlock { text: String }
+  | AssistantToolUseBlock { id: String, name: String, input: Json }
+
+type CacheControlType
+  = CacheEphemeral {}
+
+data cache_control_ephemeral_wire: String = "ephemeral"
+
+fn cache_control_type_label(kind: CacheControlType) -> String {
+  match kind {
+    CacheEphemeral {} => cache_control_ephemeral_wire
+  }
+}
+
+type CacheControl {
+  type: CacheControlType
+}
+
+type SystemPrompt {
+  text: String
+  cache_control: CacheControl?
+}
+
+type ThinkingMode = Enabled | Disabled
+
+type ThinkingConfig {
+  type: ThinkingMode
+  budget_tokens: Int?
+}
+
+type AnthropicToolDefinition {
+  name: String
+  description: String
+  input_schema: Json
+}
+
+type AnthropicChatMessage
+  = UserMessage { content: List<AnthropicUserContentBlock> }
+  | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
+
+type AnthropicMessages200Citation
+  = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
+  | PageLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_page_number: Int, end_page_number: Int }
+  | ContentBlockLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_block_index: Int, end_block_index: Int }
+  | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
+  | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
+
+type AnthropicMessages200ContentBlock
+  = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
+  | MessagesThinkingBlock { thinking: String, signature: String }
+  | MessagesRedactedThinkingBlock { data: String }
+  | MessagesToolUseBlock { id: String, name: String, input: Json, caller: Json? }
+  | MessagesServerToolUseBlock { id: String, name: AnthropicServerToolName, input: Json, caller: Json? }
+  | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json, caller: Json? }
+
+type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25 | Advisor
+
+type AnthropicMessages200ServiceTier = Standard | Priority | Batch
+
+type AnthropicMessages200Usage {
+  input_tokens: Int
+  output_tokens: Int
+  cache_creation_input_tokens: Int?
+  cache_read_input_tokens: Int?
+  service_tier: AnthropicMessages200ServiceTier?
+}
+
+type AnthropicMessages200Role
+  = Assistant {}
+
+type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal | ModelContextWindowExceeded
+
+type AnthropicMessagesObjectType
+  = MessagesObjectMessage {}
+
+data anthropic_messages_object_message_wire: String = "message"
+
+fn anthropic_messages_object_type_label(kind: AnthropicMessagesObjectType) -> String {
+  match kind {
+    MessagesObjectMessage {} => anthropic_messages_object_message_wire
+  }
+}
+
+type AnthropicMessages200Body {
+  id: String
+  type: AnthropicMessagesObjectType
+  role: AnthropicMessages200Role
+  content: List<AnthropicMessages200ContentBlock>
+  model: String
+  stop_reason: AnthropicStopReason
+  stop_sequence: String?
+  usage: AnthropicMessages200Usage
+  container: Json?
+}
+
+data structural_coverage_gap_anthropic_messages_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200Body" },
+      JsonPending { field: "container" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller" },
+      JsonPending { field: "web_search_tool_result_payload" }
+    ],
+    trigger: "container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesToolUseBlock" },
+      Residue { description: "client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema" }
+    ],
+    trigger: "tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesServerToolUseBlock" },
+      Residue { description: "server_tool_input_and_optional_caller_payloads_unmodeled" }
+    ],
+    trigger: "fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicServerToolName" },
+      ExternalSpecWatch { item: "server_tool_use_name_set" }
+    ],
+    trigger: "Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      VariantPending { variant: "web_fetch_tool_result" },
+      VariantPending { variant: "code_execution_tool_result" },
+      VariantPending { variant: "bash_code_execution_tool_result" },
+      VariantPending { variant: "text_editor_code_execution_tool_result" },
+      VariantPending { variant: "tool_search_tool_result" },
+      VariantPending { variant: "advisor_tool_result" },
+      VariantPending { variant: "mcp_tool_use" },
+      VariantPending { variant: "mcp_tool_result" },
+      VariantPending { variant: "container_upload" }
+    ],
+    trigger: "Anthropic beta/server-tool content-block surface modeled structurally"
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages.output.content" },
+      Blocked { reason: "variant_aware_typed_rest_response_projection" },
+      PathRef { path: "content/0/text" },
+      RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
+    ],
+    trigger: "structural projection metadata carrier lands"
+  }
+]
+
+data rest_request_wire_serde_alignment_receipt: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicChatMessage" },
+      Paid { item: "role_internally_tagged_object_user_assistant" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_result" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicAssistantContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_use" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock.UserToolResultBlock.content" },
+      Paid { item: "tool_result_content_untagged_scalar_or_block_array" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicToolResultBlock" },
+      Paid { item: "type_internally_tagged_object_tool_result_nested_blocks" }
+    ],
+    trigger: none
+  }
+]
+
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ImageSource" },
+      VariantPending { variant: "FileImage" },
+      Residue { description: "file_source_requires_anthropic_beta_on_messages_transport" }
+    ],
+    trigger: "add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
+  }
+]
+
+data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      Residue { description: "messages_200_content_block_internally_tagged_object_unproved" }
+    ],
+    trigger: "generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
+  }
+]

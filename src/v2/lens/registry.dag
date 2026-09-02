@@ -68,6 +68,11 @@ type LensRegistryEntryV0 {
   module_path: LensModulePathV0
 }
 
+type LensRegistryIdCount {
+  rows: Int
+  bound_rows: Int
+}
+
 type LensOwnedFnV0 {
   fn_name: Symbol
   owner_module_path: String
@@ -696,8 +701,26 @@ fn lens_registry_bound_row_count(lens_id: LensIdV0) -> Int {
   })
 }
 
+fn lens_registry_id_resolves_in(entries: List<LensRegistryEntryV0>, lens_id: LensIdV0) -> Bool {
+  let count = fold(
+    entries,
+    init: LensRegistryIdCount { rows: 0, bound_rows: 0 },
+    f: fn(acc, entry) {
+      if lens_registry_entry_matches_id(entry: entry, lens_id: lens_id) {
+        LensRegistryIdCount {
+          rows: acc.rows + 1,
+          bound_rows: if lens_registry_entry_bound(entry: entry) { acc.bound_rows + 1 } else { acc.bound_rows }
+        }
+      } else {
+        acc
+      }
+    }
+  )
+  count.rows == 1 && count.bound_rows == 1
+}
+
 fn lens_registry_id_resolves(lens_id: LensIdV0) -> Bool {
-  lens_registry_row_count(lens_id: lens_id) == 1 && lens_registry_bound_row_count(lens_id: lens_id) == 1
+  lens_registry_id_resolves_in(entries: lens_registry_v0, lens_id: lens_id)
 }
 
 fn lens_registry_ids_resolve(lens_ids: List<LensIdV0>) -> Bool {

@@ -9,6 +9,8 @@ use self::FileResultChannel::*;
 use self::FileVerb::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
+use self::ShellEmissionRefusal::*;
+use self::ShellResultChannel::*;
 use self::TargetEmissionMode::*;
 use self::TcoExprShape::*;
 use self::TransportBindingRefusal::*;
@@ -116,12 +118,13 @@ pub use crate::v1_std_core::{
     binop_right, cast_expr, cast_target, classify_transport, empty_intern_table, expr_call_func_at,
     expr_field_access_summary, expr_has_non_tail_self_call, expr_has_self_call,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
-    field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_init_operation_modifier, find_child_named, foreach_body,
-    foreach_collection, foreach_variable_at, if_condition, if_else_branch, if_then_branch,
-    index_base, index_expr, is_compiler_error, is_file_transport, is_local_transport,
-    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
+    field_access_field_at, field_binding_name_at, field_binding_pattern,
+    field_from_key_property_name, field_init_node_name_at, field_init_node_value,
+    field_init_operation_modifier, find_child_named, foreach_body, foreach_collection,
+    foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
+    is_compiler_error, is_file_transport, is_local_transport, is_rest_transport,
+    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
     record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_base_path,
@@ -596,6 +599,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
                 String,
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
+            unit_variant_index_observed: false,
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "".to_string(),
@@ -2436,17 +2440,8 @@ pub struct FileResultField {
 #[serde(tag = "_variant")]
 pub enum TransportBindingRefusal {
     FileBindingRefused { refusal: Rc<FileEmissionRefusal> },
+    ShellBindingRefused { refusal: Rc<ShellEmissionRefusal> },
     TransportMatchesNoRosterMember,
-}
-impl TransportBindingRefusal {
-    pub fn refusal(&self) -> Rc<FileEmissionRefusal> {
-        match self {
-            TransportBindingRefusal::FileBindingRefused { refusal: __val, .. } => __val.clone(),
-            TransportBindingRefusal::TransportMatchesNoRosterMember => {
-                panic!("no refusal on unit variant")
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2457,6 +2452,7 @@ pub enum BoundOperation {
     },
     ShellBound {
         transport: Rc<Node>,
+        result_fields: Rc<Vec<Rc<ShellResultField>>>,
     },
     LocalBound,
     FileBound {
@@ -2472,6 +2468,7 @@ pub enum BoundOperation {
 pub fn transport_binding_refusal_fact(cause: Rc<TransportBindingRefusal>) -> String {
     match (*cause.clone()).clone() {
     TransportBindingRefusal::FileBindingRefused { refusal: r, .. } => file_emission_refusal_fact(r.clone()),
+    TransportBindingRefusal::ShellBindingRefused { refusal: r, .. } => shell_emission_refusal_fact(r.clone()),
     TransportBindingRefusal::TransportMatchesNoRosterMember => "the transport matches no member of the closed transport roster (rest, shell, file, local)".to_string(),
 }
 }
@@ -2605,6 +2602,260 @@ pub fn bind_file_operation(
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ShellResultChannel {
+    ShellChanStdout,
+    ShellChanStderr,
+    ShellChanExitSuccess,
+    ShellChanExitCode,
+    ShellChanStdoutLines,
+    ShellChanStderrTruncated,
+    ShellChanStderrTotalBytes,
+    ShellChanStderrRetainedBytes,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ShellResultField {
+    pub channel: ShellResultChannel,
+    pub optional: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ShellEmissionRefusal {
+    ShellOutputKeyNotModeled { key: String },
+    ShellChannelNotRealizedByTarget { key: String, target_name: String },
+}
+impl ShellEmissionRefusal {
+    pub fn key(&self) -> String {
+        match self {
+            ShellEmissionRefusal::ShellOutputKeyNotModeled { key: __val, .. } => __val.clone(),
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
+pub fn shell_result_channel_of_key(key: String) -> Option<ShellResultChannel> {
+    if (key.clone() == "stdout".to_string()) {
+        Some(ShellResultChannel::ShellChanStdout)
+    } else {
+        if (key.clone() == "stderr".to_string()) {
+            Some(ShellResultChannel::ShellChanStderr)
+        } else {
+            if (((key.clone() == "exit_success".to_string())
+                || (key.clone() == "success".to_string()))
+                || (key.clone() == "exists".to_string()))
+            {
+                Some(ShellResultChannel::ShellChanExitSuccess)
+            } else {
+                if (key.clone() == "exit_code".to_string()) {
+                    Some(ShellResultChannel::ShellChanExitCode)
+                } else {
+                    if (key.clone() == "stdout_lines".to_string()) {
+                        Some(ShellResultChannel::ShellChanStdoutLines)
+                    } else {
+                        if (key.clone() == "stderr_truncated".to_string()) {
+                            Some(ShellResultChannel::ShellChanStderrTruncated)
+                        } else {
+                            if (key.clone() == "stderr_total_bytes".to_string()) {
+                                Some(ShellResultChannel::ShellChanStderrTotalBytes)
+                            } else {
+                                if (key.clone() == "stderr_retained_bytes".to_string()) {
+                                    Some(ShellResultChannel::ShellChanStderrRetainedBytes)
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn shell_result_channel_key(c: ShellResultChannel) -> String {
+    match c.clone() {
+        ShellResultChannel::ShellChanStdout => "stdout".to_string(),
+        ShellResultChannel::ShellChanStderr => "stderr".to_string(),
+        ShellResultChannel::ShellChanExitSuccess => "exit_success".to_string(),
+        ShellResultChannel::ShellChanExitCode => "exit_code".to_string(),
+        ShellResultChannel::ShellChanStdoutLines => "stdout_lines".to_string(),
+        ShellResultChannel::ShellChanStderrTruncated => "stderr_truncated".to_string(),
+        ShellResultChannel::ShellChanStderrTotalBytes => "stderr_total_bytes".to_string(),
+        ShellResultChannel::ShellChanStderrRetainedBytes => "stderr_retained_bytes".to_string(),
+    }
+}
+
+pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
+    match c.clone() {
+        ShellResultChannel::ShellChanStderrTruncated => false,
+        ShellResultChannel::ShellChanStderrTotalBytes => false,
+        ShellResultChannel::ShellChanStderrRetainedBytes => false,
+        _ => target_renders_shell_transport(target.clone()),
+    }
+}
+
+pub fn target_renders_shell_transport(target: RenderTarget) -> bool {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::RealizesTransports => true,
+        TargetEmissionMode::SerializesSubstrate => false,
+    }
+}
+
+pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes".to_string()),
+    ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran".to_string()),
+}
+}
+
+pub fn shell_field_authors_from_key(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match child_from_key(ch.clone(), source_indices.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn shell_output_channel_of_field(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match child_from_key(ch.clone(), source_indices.clone()) {
+        Some(k) => k.clone(),
+        std::option::Option::None => {
+            crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone())
+        }
+    }
+}
+
+pub fn shell_bind_result_field(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<ShellResultField>> {
+    match shell_result_channel_of_key(shell_output_channel_of_field(
+        ch.clone(),
+        source_indices.clone(),
+    )) {
+        Some(c) => Some(Rc::new(ShellResultField {
+            channel: c.clone(),
+            optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
+        })),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn shell_output_channel_fields(op_node: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let rt = crate::v1_compiler_infer_types::resolved_type(op_node.clone());
+        if crate::v1_compiler_infer_types::is_product_type(rt.clone()) {
+            rt.children.clone()
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn bind_shell_operation(
+    t: Rc<Node>,
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<BoundOperation> {
+    {
+        let declared = shell_output_channel_fields(op_node.clone());
+        let bound = Rc::new({
+            let mut __result = Vec::new();
+            for ch in declared.iter().cloned() {
+                __result.extend(
+                    (*match shell_bind_result_field(ch.clone(), source_indices.clone()) {
+                        Some(f) => Rc::new(vec![f.clone()]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let declared_count = (declared.clone().len() as i64);
+        let bound_count = (bound.clone().len() as i64);
+        let unresolved = Rc::new({
+            let mut __result = Vec::new();
+            for ch in declared.iter().cloned() {
+                if match shell_bind_result_field(ch.clone(), source_indices.clone()) {
+                    Some(_) => false,
+                    std::option::Option::None => true,
+                } {
+                    __result.push(ch);
+                }
+            }
+            __result
+        });
+        let authored_unresolved = Rc::new({
+            let mut __result = Vec::new();
+            for ch in unresolved.iter().cloned() {
+                if shell_field_authors_from_key(ch.clone(), source_indices.clone()) {
+                    __result.push(ch);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned();
+        match authored_unresolved.clone() {
+            Some(ch) => Rc::new(BoundOperation::BindingRefused {
+                cause: Rc::new(TransportBindingRefusal::ShellBindingRefused {
+                    refusal: Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                        key: shell_output_channel_of_field(ch.clone(), source_indices.clone()),
+                    }),
+                }),
+            }),
+            std::option::Option::None => {
+                if (declared_count.clone() < 2) {
+                    Rc::new(BoundOperation::ShellBound {
+                        transport: t.clone(),
+                        result_fields: bound.clone(),
+                    })
+                } else {
+                    if (bound_count.clone() == declared_count.clone()) {
+                        Rc::new(BoundOperation::ShellBound {
+                            transport: t.clone(),
+                            result_fields: bound.clone(),
+                        })
+                    } else {
+                        match unresolved.clone().first().cloned() {
+                            Some(ch) => Rc::new(BoundOperation::BindingRefused {
+                                cause: Rc::new(TransportBindingRefusal::ShellBindingRefused {
+                                    refusal: Rc::new(
+                                        ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                                            key: shell_output_channel_of_field(
+                                                ch.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        },
+                                    ),
+                                }),
+                            }),
+                            std::option::Option::None => Rc::new(BoundOperation::ShellBound {
+                                transport: t.clone(),
+                                result_fields: bound.clone(),
+                            }),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn bind_operation_transport(
     t: Rc<Node>,
     op_node: Rc<Node>,
@@ -2614,9 +2865,9 @@ pub fn bind_operation_transport(
         Some(TransportKind::RestTransport) => Rc::new(BoundOperation::RestBound {
             transport: t.clone(),
         }),
-        Some(TransportKind::ShellTransport) => Rc::new(BoundOperation::ShellBound {
-            transport: t.clone(),
-        }),
+        Some(TransportKind::ShellTransport) => {
+            bind_shell_operation(t.clone(), op_node.clone(), source_indices.clone())
+        }
         Some(TransportKind::FileTransport) => {
             bind_file_operation(t.clone(), op_node.clone(), source_indices.clone())
         }
@@ -2645,7 +2896,11 @@ pub fn emit_unified_transport_dispatch(
             depth.clone(),
             source_indices.clone(),
         ),
-        BoundOperation::ShellBound { transport: t, .. } => render_shell(
+        BoundOperation::ShellBound {
+            transport: t,
+            result_fields: __rsf,
+            ..
+        } => render_shell(
             op_name.clone(),
             t.clone(),
             depth.clone(),
@@ -4639,7 +4894,7 @@ pub fn child_from_key(
         let mut __result = Vec::new();
         for p in ch.properties.clone().iter().cloned() {
             if (crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone())
-                == "from_key".to_string())
+                == field_from_key_property_name())
             {
                 __result.push(p);
             }
@@ -5022,6 +5277,113 @@ pub fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
         RenderTarget::Python => TargetEmissionMode::RealizesTransports,
         RenderTarget::Go => TargetEmissionMode::RealizesTransports,
         RenderTarget::Dag => TargetEmissionMode::SerializesSubstrate,
+    }
+}
+
+pub fn unmodeled_shell_transport_operation_diagnostics(
+    tm: Rc<TypedModule>,
+    item: Rc<Node>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let env = tm.type_env.clone();
+        let si = env.source_indices.clone();
+        let module_name =
+            crate::v1_compiler_infer_env::authored_name(env.clone(), tm.module.clone());
+        let service_name = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
+        let fallback = service_fallback_transport(item.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op_node in item.children.clone().iter().cloned() {
+                __result.extend((*{
+            let t = effective_operation_transport(op_node.clone(), fallback.clone());
+match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
+    Some(TransportKind::ShellTransport) => Rc::new({ let mut __result = Vec::new(); for ch in shell_output_channel_fields(op_node.clone()).iter().cloned() { __result.extend((*match shell_result_channel_of_key(shell_output_channel_of_field(ch.clone(), si.clone())) {
+    std::option::Option::None => if !shell_field_authors_from_key(ch.clone(), si.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+    transport_kind: "shell".to_string(),
+    service: service_name.clone(),
+    operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
+    declaring_module: module_name.clone(),
+    target: render_target_name(target.clone()),
+    missing_realization_fact: shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
+    key: shell_output_channel_of_field(ch.clone(), si.clone()),
+})),
+    span: ch.span.clone(),
+}), module_name.clone())])
+            },
+    Some(c) => if shell_channel_realized_by_target(c.clone(), target.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+    transport_kind: "shell".to_string(),
+    service: service_name.clone(),
+    operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
+    declaring_module: module_name.clone(),
+    target: render_target_name(target.clone()),
+    missing_realization_fact: shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+    key: shell_result_channel_key(c.clone()),
+    target_name: render_target_name(target.clone()),
+})),
+    span: ch.span.clone(),
+}), module_name.clone())])
+            },
+}).iter().cloned()); } __result }),
+    _ => Rc::new(vec![]),
+}
+}).iter().cloned());
+            }
+            __result
+        })
+    }
+}
+
+pub fn unmodeled_shell_transport_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if crate::v1_compiler_emit_core_support::is_service_item(
+                                    item.clone(),
+                                ) {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*unmodeled_shell_transport_operation_diagnostics(
+                                    tm.clone(),
+                                    item.clone(),
+                                    target.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
     }
 }
 
@@ -7496,6 +7858,22 @@ pub struct FileChanPath;
 pub struct FileChanError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileChanContent;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStdout;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderr;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanExitSuccess;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanExitCode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStdoutLines;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderrTruncated;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderrTotalBytes;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderrRetainedBytes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExprCatLeaf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
