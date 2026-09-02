@@ -1,0 +1,135 @@
+module gunbc.namespace_step0_canary
+
+import std.types { NonEmptyStr, Bool, List }
+import std.content_hash { Sha256Digest }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+
+// THIS IS THE FROZEN STEP-0 CANARY, NOT A CENSUS AND NOT XL-1. It asks only whether the
+// import-strip subject can be entered and, if it cannot, names the first transition that stopped.
+// A prerequisite change may cite movement in a receipt produced by this contract; it may not edit
+// this contract, the classifier below, the subject-entry rule, or the controls in
+// test.claim.namespace_step0_canary_witness in the same change. A correction lands separately and
+// establishes a new baseline. That separation is the stop rule: useful maintenance with no paired
+// canary movement cannot delay Step 0 by calling itself a prerequisite.
+
+type NamespaceStep0CanaryContract {
+  identity: NonEmptyStr
+  command: NonEmptyStr
+  source_roots: List<NonEmptyStr>
+  subject: NonEmptyStr
+}
+
+data namespace_step0_canary_contract: NamespaceStep0CanaryContract = NamespaceStep0CanaryContract {
+  identity: "namespace-step0-strip-entry-canary-v1" as NonEmptyStr,
+  command: "target/release/claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/namespace_step0_canary_witness_test.dag --functions current_main_step0_canary_receipt_is_admitted" as NonEmptyStr,
+  source_roots: ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr, "src/v1" as NonEmptyStr],
+  subject: "every parsed DAG import statement in dag, src/v2, and src/v1, removed by a typed source rewrite before containment resolution is compiled" as NonEmptyStr
+}
+
+type NamespaceStep0CompletedTransition
+  = CanaryContractFrozen
+  | SourceTreePinned
+  | CompilerExecutablePinned
+  | InputSubjectManifestPinned
+
+type NamespaceStep0BlockingTransition
+  = ApplyTypedImportStrip
+  | CompileContainmentResolution
+
+type NamespaceStep0BlockingCause
+  = TypedSourceRewriteAndStripObservationProducerUnavailable {
+      missing_operation: NonEmptyStr,
+      missing_producer: NonEmptyStr
+    }
+
+type NamespaceStep0SubjectEntry
+  = Step0SubjectEntered
+  | Step0SubjectNotEntered
+
+type NamespaceStep0ObservationCompleteness
+  = Step0ObservationComplete
+  | Step0ObservationIncomplete
+
+type NamespaceStep0CanaryReceipt {
+  contract_identity: NonEmptyStr
+  source_commit: GitObjectId
+  source_tree: GitObjectId
+  compiler_program: NonEmptyStr
+  compiler_executable_sha256: Sha256Digest
+  input_subject_manifest: NonEmptyStr
+  completed_production_prefix: List<NamespaceStep0CompletedTransition>
+  first_blocking_transition: NamespaceStep0BlockingTransition
+  first_blocking_cause: NamespaceStep0BlockingCause
+  subject_entry: NamespaceStep0SubjectEntry
+  observation_completeness: NamespaceStep0ObservationCompleteness
+}
+
+fn namespace_step0_manifest_identity() -> NonEmptyStr {
+  "roots=dag,src/v2,src/v1; syntax=parsed import statements including braced, single-name, and bare forms; action=remove each whole statement; successor=containment resolution; counts=non-authoritative" as NonEmptyStr
+}
+
+fn namespace_step0_unavailable_receipt(
+  contract_identity: NonEmptyStr,
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  compiler_program: NonEmptyStr,
+  compiler_executable_sha256: Sha256Digest,
+  input_subject_manifest: NonEmptyStr
+) -> NamespaceStep0CanaryReceipt {
+  NamespaceStep0CanaryReceipt {
+    contract_identity: contract_identity,
+    source_commit: source_commit,
+    source_tree: source_tree,
+    compiler_program: compiler_program,
+    compiler_executable_sha256: compiler_executable_sha256,
+    input_subject_manifest: input_subject_manifest,
+    completed_production_prefix: [
+      CanaryContractFrozen,
+      SourceTreePinned,
+      CompilerExecutablePinned,
+      InputSubjectManifestPinned,
+    ],
+    first_blocking_transition: ApplyTypedImportStrip,
+    first_blocking_cause: TypedSourceRewriteAndStripObservationProducerUnavailable {
+      missing_operation: "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr,
+      missing_producer: "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr
+    },
+    subject_entry: Step0SubjectNotEntered,
+    observation_completeness: Step0ObservationIncomplete
+  }
+}
+
+// Admission is intentionally exact and narrow. In particular, an empty observation cannot turn
+// NotEntered into Entered, and a foreign tree cannot inherit this baseline merely because every
+// other field agrees. Subject entry and completeness are checked separately because failure to
+// reach the strip and failure to finish observing a reached strip have different remedies.
+fn namespace_step0_unavailable_receipt_admitted(
+  receipt: NamespaceStep0CanaryReceipt,
+  expected_commit: GitObjectId,
+  expected_tree: GitObjectId,
+  expected_compiler_sha256: Sha256Digest
+) -> Bool {
+  receipt.contract_identity == namespace_step0_canary_contract.identity
+    && git_object_id_eq(left: receipt.source_commit, right: expected_commit)
+    && git_object_id_eq(left: receipt.source_tree, right: expected_tree)
+    && receipt.compiler_program == "target/release/gunbc" as NonEmptyStr
+    && receipt.compiler_executable_sha256.hex == expected_compiler_sha256.hex
+    && receipt.input_subject_manifest == namespace_step0_manifest_identity()
+    && receipt.completed_production_prefix == [
+      CanaryContractFrozen,
+      SourceTreePinned,
+      CompilerExecutablePinned,
+      InputSubjectManifestPinned,
+    ]
+    && match receipt.first_blocking_transition {
+      ApplyTypedImportStrip => true
+      CompileContainmentResolution => false
+    }
+    && match receipt.first_blocking_cause {
+      TypedSourceRewriteAndStripObservationProducerUnavailable { missing_operation: op, missing_producer: producer } =>
+        op == "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr
+          && producer == "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr
+    }
+    && match receipt.subject_entry { Step0SubjectEntered => false Step0SubjectNotEntered => true }
+    && match receipt.observation_completeness { Step0ObservationComplete => false Step0ObservationIncomplete => true }
+}
