@@ -8,9 +8,8 @@ import std.measure {
   Second, second, second_count,
 }
 import std.pareto {
-  AxisComparison, Better, Same, Worse,
   HigherIsBetter,
-  axis_comparison,
+  oriented_ordering,
 }
 import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.demand { Demand }
@@ -220,11 +219,20 @@ fn rate_ordering(
   if left < right { Less } else if left > right { Greater } else { Equal }
 }
 
-fn headroom_rate_comparison(
+// THIS COMPARISON IS SHARP, SO IT ANSWERS IN THE SHARP CARRIER. rate_ordering compares two exact
+// rates and returns a total Ordering; orienting it by the axis goal is still total. Answering in
+// std.pareto's AxisComparison would widen it into a coproduct carrying "the evidence could not
+// decide" -- a state these inputs cannot produce -- and every consumer downstream would inherit an
+// arm it can neither construct nor meaningfully handle. This module already refuses to model an
+// unreachable state ahead of a carrier that can produce it; the same rule applies here.
+//
+// The orientation fact still comes from std.pareto rather than being respelled: oriented_ordering is
+// the same authority axis_comparison itself is built on, consulted at the width this caller needs.
+fn headroom_rate_ordering(
   headroom_a: MoneyAmountMicro, billed_a: Second,
   headroom_b: MoneyAmountMicro, billed_b: Second,
-) -> AxisComparison {
-  axis_comparison(
+) -> Ordering {
+  oriented_ordering(
     goal: HigherIsBetter,
     value_order: rate_ordering(
       headroom_a: headroom_a, billed_a: billed_a,
@@ -634,13 +642,13 @@ type DemandPrecedence
   | TiedUnderPolicy
 
 fn compare_admitted<P>(left: AdmittedDemand<P>, right: AdmittedDemand<P>) -> DemandPrecedence {
-  match headroom_rate_comparison(
+  match headroom_rate_ordering(
     headroom_a: left.buyer_headroom, billed_a: left.billed_occupancy,
     headroom_b: right.buyer_headroom, billed_b: right.billed_occupancy,
   ) {
-    Better => LeftPrecedes
-    Worse => RightPrecedes
-    Same => TiedUnderPolicy
+    Greater => LeftPrecedes
+    Less => RightPrecedes
+    Equal => TiedUnderPolicy
   }
 }
 

@@ -186,6 +186,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 
 - `censored_estimator_drops_its_own_tail`
 - `selection_view_read_as_population`
+- `unlanded_citation_indistinguishable_at_the_citing_end`
 - `hollow_alias`
 - `state_space_conflation`
 - `absorbing_fallback`
@@ -217,6 +218,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `unbacked_execution_claim`
 - `admitted_module_without_judged_standing`
 - `mitigation_injected_where_judgment_declined`
+- `transport_close_read_as_completion`
 - `merge_region_excludes_shared_tail`
 - `sealing_property_erases_structure`
 - `disagreement_census_blind_to_agreed_wrong`
@@ -226,6 +228,8 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `accepted_source_emits_uncompilable_target`
 - `incidental_denominator_as_wall`
+- `compensating_errors_cancel_in_the_aggregate`
+- `one_refusal_two_destinations`
 
 ## Building & checks
 
