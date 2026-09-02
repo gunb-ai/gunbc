@@ -1,0 +1,236 @@
+module gunbc.compile_permit_scope
+
+import std.types { String, NonEmptyStr, List, Bool, list_length }
+import std.materialization_ladder { string_list_contains }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_runner_connectivity { fleet_hosts }
+import std.measure { HardwareThreadCount }
+
+// WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
+// DESIGN 4b(3) drop turns on, and until now it existed only as a sentence in an annotation while the
+// policy it governs was an authored literal -- so the containment could outlive its own reason.
+//
+// The fleet's builds are bounded by a GNU jobserver whose permits are returned COOPERATIVELY. A
+// SIGKILLed cargo returns nothing and no owner reclaims it, so the permit is not so much outliving
+// its borrower as being ABANDONED: capacity is lost for the daemon's lifetime, there is no reaper,
+// and a host at zero permits still accepts jobs. That is why the symptom is a slow queue and not a
+// failure, and why the drop was declared rather than the leak simply fixed.
+//
+// THREE LAYERS, BECAUSE THEY ARE THREE FACTS. A concrete realization is what a host runs; a
+// disposition is what that realization implies for capacity under kill; a standing is what has been
+// OBSERVED to be true of the running fleet. Collapsing the first into the third is what lets a
+// desired-state row authorize a policy the hosts have not yet earned.
+type CompileParallelismRealization
+  = BorrowerHeldCooperativeHostFifo { fifo_path: NonEmptyStr, daemon_service: NonEmptyStr }
+  | InvocationLocalCargo { jobs_per_slot: HardwareThreadCount }
+
+// THE SEMANTIC OUTCOME, WHICH IS WHAT POLICY IS ALLOWED TO SEE. Business policy that matched
+// realization variants would have to learn FIFO paths and systemd service names, and would need a
+// new business branch every time a realization appeared -- the layer inversion DESIGN section 3
+// names. It reads this instead.
+//
+// CapacityPreservedByServerReclamation HAS NO CONCRETE REALIZATION TODAY, and it belongs here
+// anyway: it is one of the two arms the controlling dissolve-on names as SUFFICIENT, it has an
+// immediate consumer in the policy fold below, and it is fixture-authorable. Omitting it would
+// narrow the trigger to one of its two arms -- the failure DESIGN 4b(3) warns about, where a trigger
+// naming less than the capability is satisfied while the capability stays dead. What would be
+// vocabulary ahead of its consumer is a concrete server realization with guessed fields, and that is
+// deliberately absent until someone builds one.
+type BorrowerDeathCapacityDisposition
+  = CapacityLostUntilPoolRestart
+  | CapacityPreservedByInvocationLifetime
+  | CapacityPreservedByServerReclamation
+
+// ONE DECISION PROCEDURE OVER THIS FACT, not two. An earlier draft declared a Boolean
+// `permit_outlives_borrower` as "the decidable question" and then had the policy fold independently
+// re-match the same realization type -- two procedures over one fact, which is what DESIGN section 2
+// removes. A Boolean was also the wrong shape: unsafe, safe-by-local-lifetime and
+// safe-by-server-reclamation are materially different states, and a fourth -- unobserved -- is not a
+// property of the realization at all but of our knowledge of the fleet, which is why it lives on the
+// standing below rather than here.
+fn borrower_death_capacity_disposition(
+  realization: CompileParallelismRealization,
+) -> BorrowerDeathCapacityDisposition {
+  match realization {
+    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: _ } => CapacityLostUntilPoolRestart
+    InvocationLocalCargo { jobs_per_slot: _ } => CapacityPreservedByInvocationLifetime
+  }
+}
+
+// WHAT A HOST HAS BEEN OBSERVED TO BE RUNNING, which is not what a row desires it to run.
+//
+// This is the boundary the first draft of this module got wrong, and the error was a fail-open of
+// exactly the kind DESIGN section 5 forbids. Deriving the workflow policy straight from a desired
+// realization row would restore cancellation the moment the workflow change reached main, whether or
+// not any host had received and restarted onto the new unit -- so between merge and convergence, CI
+// would supersede running builds on hosts still leaking a permit for every kill. A generated
+// artifact can make a rendered unit and a rendered workflow agree; it cannot make host deployment
+// and GitHub workflow activation atomic.
+//
+// So the safe arm carries its READBACK rather than asserting itself: what the active unit says, not
+// what the model wishes it said.
+type HostCompileCancellationStanding
+  = HostCancellationObserved { host: HostIdentity, realization: CompileParallelismRealization }
+  | HostCancellationUnreadable { host: HostIdentity, cause: NonEmptyStr }
+  | HostCancellationUnobserved { host: HostIdentity, cause: NonEmptyStr }
+
+type FleetCompileCancellationStanding
+  = FleetCancellationSafe { hosts: List<HostIdentity> }
+  | FleetCancellationNotSafe { unsafe_hosts: List<HostIdentity>, unobserved_hosts: List<HostIdentity> }
+
+type FleetCancellationFoldAcc {
+  unsafe_hosts: List<HostIdentity>
+  unobserved_hosts: List<HostIdentity>
+  safe_hosts: List<HostIdentity>
+}
+
+// ONE UNSAFE, MIXED OR UNREAD HOST KEEPS THE CONTAINMENT IN FORCE, and an EMPTY observation set is
+// not safe either -- it is the empty-observation narrowing this repository has a named failure mode
+// for. A fleet nobody has looked at is unobserved, and unobserved is on the refusing side.
+//
+// THE DENOMINATOR IS A PARAMETER, NOT A SENTENCE. An earlier draft's annotation said the caller
+// supplied the eligible-host roster while the signature took only observations, so one safe
+// observation carried the whole fleet: [safe_host("srv1")] answered SAFE while srv2, srv3 and srv4
+// were eligible and unobserved. An annotation cannot authorize; only executable structure can, and
+// that is what review 58469's companion finding names.
+//
+// SAFE IS AN IDENTITY JOIN over that roster, not a count equality -- every eligible host must appear
+// among the safe observations (missing), no observation may name a host outside it (unexpected), and
+// the counts must agree so a duplicate cannot stand in for an absentee. An empty roster is refused
+// outright: a fleet with no eligible hosts is not a safe fleet, it is an unasked question.
+//
+// NO OBSERVATION ASSERTS ITS OWN SAFETY. An earlier draft had HostCancellationSafe carry both an
+// authored disposition and an active_unit_readback string, and the fold read only the disposition --
+// so the readback was decorative and arbitrary prose could label a host capacity-preserving, which
+// is the self-certifying carrier review 58469 named. The observation now carries only WHAT WAS READ
+// -- the realization -- and safety is DERIVED from it here, so there is no constructor for "safe"
+// at all.
+//
+// The Boolean predicate that used to sit between them is gone with it. It matched the disposition
+// coproduct's variants only to collapse them to true/false, which is the predicate-dissolution
+// trigger; the fold matches the three arms directly, and a fourth disposition would refuse to
+// compile here rather than silently falling to one side.
+// THE THREE-ARM CLASSIFICATION IS A PRODUCTION HELPER, so a fixture can drive an arm the ordinary
+// path cannot yet reach. Review 58515 mutated only the CapacityPreservedByServerReclamation arm to
+// classify its host as UNSAFE and every witness still passed: no realization maps to that
+// disposition, so borrower_death_capacity_disposition never produces it and the arm was unexecuted
+// vocabulary sitting inside the fold's lambda where no test could address it. An arm whose
+// discriminating RED is unauthorable is a decoration, and DESIGN 4b says to ask that question before
+// writing the check -- so the arm is not deleted (it is half of the drop's dissolve-on) but hoisted
+// to where the RED is authorable, which is the same repair the ladder names.
+fn accumulate_observed_disposition(
+  acc: FleetCancellationFoldAcc,
+  host: HostIdentity,
+  disposition: BorrowerDeathCapacityDisposition,
+) -> FleetCancellationFoldAcc {
+  match disposition {
+    CapacityLostUntilPoolRestart => FleetCancellationFoldAcc {
+      unsafe_hosts: concat(acc.unsafe_hosts, [host]),
+      unobserved_hosts: acc.unobserved_hosts,
+      safe_hosts: acc.safe_hosts,
+    }
+    CapacityPreservedByInvocationLifetime => FleetCancellationFoldAcc {
+      unsafe_hosts: acc.unsafe_hosts,
+      unobserved_hosts: acc.unobserved_hosts,
+      safe_hosts: concat(acc.safe_hosts, [host]),
+    }
+    CapacityPreservedByServerReclamation => FleetCancellationFoldAcc {
+      unsafe_hosts: acc.unsafe_hosts,
+      unobserved_hosts: acc.unobserved_hosts,
+      safe_hosts: concat(acc.safe_hosts, [host]),
+    }
+  }
+}
+
+// THE IDENTITY JOIN IS ALSO REACHABLE ON ITS OWN, for the same reason: a fixture that drives a
+// disposition through the helper above must be able to carry it all the way to a fleet standing and
+// then to the workflow's running axis, or it has established a classification and not a consequence.
+// Both callers below run this same procedure -- there is no second finalization.
+fn finalize_fleet_standing(
+  acc: FleetCancellationFoldAcc,
+  eligible_hosts: List<HostIdentity>,
+) -> FleetCompileCancellationStanding {
+  let safe_names = map(acc.safe_hosts, h => h as String)
+  let missing = fold(
+    eligible_hosts,
+    init: [],
+    f: (m, e) => if string_list_contains(xs: safe_names, wanted: e as String) { m } else { concat(m, [e]) },
+  )
+  let unexpected = fold(
+    acc.safe_hosts,
+    init: [],
+    f: (u, h) => if string_list_contains(xs: map(eligible_hosts, e => e as String), wanted: h as String) { u } else { concat(u, [h]) },
+  )
+  let blocking = list_length(items: concat(acc.unsafe_hosts, acc.unobserved_hosts))
+  let eligible_count = list_length(items: eligible_hosts)
+  let safe_count = list_length(items: acc.safe_hosts)
+  let joined = (list_length(items: missing) == 0) && (list_length(items: unexpected) == 0)
+  let no_duplicates = safe_count == eligible_count
+  let fleet_is_safe = (blocking == 0) && (eligible_count > 0) && joined && no_duplicates
+  match fleet_is_safe {
+    true => FleetCancellationSafe { hosts: acc.safe_hosts }
+    false => FleetCancellationNotSafe {
+      unsafe_hosts: acc.unsafe_hosts,
+      unobserved_hosts: concat(acc.unobserved_hosts, missing),
+    }
+  }
+}
+
+fn fleet_cancellation_standing(
+  eligible_hosts: List<HostIdentity>,
+  observations: List<HostCompileCancellationStanding>,
+) -> FleetCompileCancellationStanding {
+  let acc = fold(
+    observations,
+    init: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
+    f: (a, o) => match o {
+      HostCancellationObserved { host: h, realization: r } =>
+        accumulate_observed_disposition(acc: a, host: h, disposition: borrower_death_capacity_disposition(realization: r))
+      HostCancellationUnreadable { host: h, cause: _ } => FleetCancellationFoldAcc {
+        unsafe_hosts: concat(a.unsafe_hosts, [h]),
+        unobserved_hosts: a.unobserved_hosts,
+        safe_hosts: a.safe_hosts,
+      }
+      HostCancellationUnobserved { host: h, cause: _ } => FleetCancellationFoldAcc {
+        unsafe_hosts: a.unsafe_hosts,
+        unobserved_hosts: concat(a.unobserved_hosts, [h]),
+        safe_hosts: a.safe_hosts,
+      }
+    },
+  )
+  finalize_fleet_standing(acc: acc, eligible_hosts: eligible_hosts)
+}
+
+// THE DENOMINATOR IS THE FLEET'S OWN ROSTER, read from gunbc.fleet_runner_connectivity fleet_hosts
+// rather than re-minted here. Review 58495 caught the second authoring, and its concrete
+// consequence is that this construction would have defeated itself: a fifth host joining the fleet
+// leaves a hand-written four-name list answering SAFE on a 4/4 observation set while the new host
+// leaks a permit per kill -- the exact denominator failure the parameter was added to prevent,
+// reintroduced one layer up.
+//
+// PRODUCTION HAS NO ROUTE TO SAFE AT ALL, which is stronger than routing one through a named arm.
+//
+// An earlier revision wrapped the observation list in an ActiveUnitReadbackSource coproduct whose
+// live row was ReadbackProducerAbsent, and annotated that reaching SAFE would require implementing
+// the observed arm. That annotation was false: ReadbackObservations was an ordinary constructor, so
+// a source edit could supply an authored observation list covering fleet_hosts() and the fold would
+// return SAFE with no host read, no command, no captured output and no receipt. Wrapping an
+// author-constructible value in a two-arm source does not change its provenance, and the type's name
+// establishes nothing -- the third time in this PR that an annotation claimed a property the code
+// did not have.
+//
+// So the production binding calls a function with no safe arm. Fixtures keep the full fold, because
+// section 4b requires the discriminating RED and its positive control to be authorable as source
+// handed to the compiler by a fixture; the restriction belongs on the production path alone. The
+// stage-two PR that adds a real observer adds it together with its observed output, in the shape
+// gunbc.host_hygiene_reaper_observe already uses for typed systemctl and filesystem reads.
+//
+// A note the eventual boundary owes: an active-unit readback alone cannot establish server
+// reclamation, because reclaim-on-client-death is a property of the pool's behaviour rather than of
+// the runner unit's environment. The observation boundary is borrower-death capacity evidence, of
+// which unit text is one source.
+fn producer_absent_standing(eligible_hosts: List<HostIdentity>) -> FleetCompileCancellationStanding {
+  FleetCancellationNotSafe { unsafe_hosts: [], unobserved_hosts: eligible_hosts }
+}
+
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = producer_absent_standing(eligible_hosts: fleet_hosts())

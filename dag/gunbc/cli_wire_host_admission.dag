@@ -1,0 +1,181 @@
+module gunbc.cli_wire_host_admission
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Terminal }
+import std.types { String }
+import v2.std.collection { List }
+
+data cli_wire_host_receipt_disposition: Disposition = Terminal {
+  reason: "Single authority for the SEED-GROWTH RECEIPT owed by the host renderer that carries a modeled CliWireResponse to a process's stdout and exit status. It declares WHICH hand-authored Rust declarations that change adds to the seed, why they exist, and what retires them. It does NOT admit them: the realization disposition is an operator judgment and fails closed in its absence, because a receipt that also granted its own admission would be the self-authorized dissolution failure DESIGN names. Terminal because the RECEIPT is permanent -- it outlives the code it describes, recording what was owed and on what trigger it was discharged."
+}
+
+// WHAT THIS GROWTH BOUGHT, STATED AS THE DEFECT IT REMOVED RATHER THAN AS A FEATURE.
+//
+// gunbc.cli_dispatch_surface already carried a row saying the scm family REFUSES UNWIRED: the
+// modeled command surface computed an answer and no route existed to deliver it. So every scm
+// entry was a value the host discarded -- specification without execution, DESIGN section 5's
+// deepest trap, and flagged by the compiler's OWN surface model rather than discovered by review.
+// Five production declarations sit below. THREE ARE THE ROUTE -- classify a returned value as a
+// CliWireResponse or refuse to call it one, decide what the host must DO about it, and exit
+// accordingly. The other two are the carriers that keep the route's states apart, and they are
+// counted in the census below exactly like the functions are.
+//
+// WHY THE CLASSIFIER CANNOT BE MODELED AWAY TODAY. It reads an interpreter Value -- a host runtime
+// representation with no .dag denotation -- and asks whether it inhabits a declared coproduct. The
+// answer is a fact about the modeled type, but the SUBJECT is a seed data structure, so the fold
+// has to live where that structure lives. That is the same boundary every other value-projecting
+// item in this roster sits on, not new debt of its own kind.
+
+// exit_status_for_class IS NOT NEW BEHAVIOUR, and why the roster counts it anyway. Its body was
+// MOVED out of main.rs's exit_status_for, which now delegates to it. It is enumerated below because
+// it is a hand-authored declaration that did not exist before at that name and in that module, and
+// netting a relocation against an addition is exactly the arithmetic gunbc.seed_growth_admission
+// refuses -- but a reader counting BEHAVIOUR rather than DECLARATIONS should know that the
+// process-exit path gained nothing here and was only made callable from the wire path beside it.
+//
+// This was a `data ... : String` row until review 58455 named it: a String declaration whose only
+// purpose is commentary is the state DESIGN section 4c quarantines, because nothing distinguishes it
+// from program data. It is authored rationale about why the roster has the shape it has, so it is an
+// annotation. The fact it carried -- that one of the five is a relocation -- is stated inside the
+// justification's own `reason`, where a consumer reading the receipt can see it.
+data cli_wire_host_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "CliWireClass",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "classify_cli_wire",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "CliWireOutcome",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "cli_wire_outcome",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "exit_status_for_class",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "cli_wire_outcome_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_outcome_tests",
+      decl_name: "a_printable_response_writes_its_bytes_and_honors_its_own_exit",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_outcome_tests",
+      decl_name: "a_printable_response_can_carry_a_failing_exit",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_outcome_tests",
+      decl_name: "an_unprintable_response_refuses_rather_than_printing_nothing",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_outcome_tests",
+      decl_name: "a_non_wire_value_yields_no_outcome_so_the_process_exit_path_is_untouched",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_outcome_tests",
+      decl_name: "an_exit_failure_with_code_zero_is_refused_on_the_wire_path_too",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "cli_wire_classify_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "ctx",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "variant",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "exit_success",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "is_malformed",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "is_not_wire",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_well_formed_printable_response_classifies_as_printable",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_process_exit_is_not_a_wire_response_and_falls_through",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_printable_response_missing_its_bytes_is_malformed_not_foreign",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_printable_response_whose_bytes_are_not_a_string_is_malformed",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_printable_response_missing_its_exit_is_malformed",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_printable_response_whose_exit_is_not_a_process_exit_is_malformed_and_prints_nothing",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "an_unprintable_response_with_an_empty_or_absent_cause_is_malformed",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "an_unknown_wire_variant_is_malformed",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.cli_wire_classify_tests",
+      decl_name: "a_malformed_wire_response_refuses_rather_than_falling_through",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "WHY RUST IS STILL NEEDED HERE: the subject is the HOST PROCESS -- stdout bytes and an exit status -- and it is reached from a returned interpreter Value. Neither end has a .dag denotation today: there is no modeled carrier for a running process's standard output, and no modeled projection of the interpreter's own Value representation, so the fold between them cannot be written in the substrate it is bridging into. This is a boundary item, not seed-shrink debt.\n\nWHAT IT REMOVED: gunbc.cli_dispatch_surface's scm row carried CliRefusesUnwired -- the compiler's own dispatch model recording that the scm command family computed answers no user could invoke. Every modeled scm entry was therefore specification without execution. With this route bound, the scm log and status answers reach an operator, which is the only reason the .dag side of this change is worth anything. scm_init is deliberately NOT in this change: observing an absence and then writing unconditionally can still truncate the bytes it claims to refuse, and the atomic create-only write that closes that does not exist yet, so init lands with the primitive rather than being claimed reachable here.\n\nHAND-ITEM DELTA: +26 FROM THE MERGE BASE, ENUMERATED ABOVE.\n\nTHE COUNT IS STATED AS A DERIVATION RATHER THAN A NUMBER, because typing the number is how this row was wrong twice. It said +11 while the classifier test module added thirteen items nobody had listed, and then +25 while a test added after the row was written -- a_printable_response_whose_exit_is_not_a_process_exit_is_malformed_and_prints_nothing, the one that closed review 58518 -- sat outside it. Both times the receipt was edited as a step SEPARATE from the code it admits, so anything added afterwards fell silently outside the subject. Re-derive instead of trusting: for each of the two test modules, the entries are the module itself, every `fn` in it that carries #[test], and every `fn` in it that does not. 5 production + (cli_wire_outcome_tests: 1 module + 0 helpers + 5 tests) + (cli_wire_classify_tests: 1 module + 5 helpers + 9 tests) = 26.\n\nCHILD ITEMS CARRY THEIR NESTED MODULE PATH -- v1_compiler.cli_run.cli_wire_classify_tests, not v1_compiler.cli_run -- because that is where the declaration actually lives, and a roster whose identities do not resolve to the code cannot be checked against it. The outcome module's five were flattened onto the parent path when first written; they are corrected here rather than left as a second convention beside the new one.\n\nReproducible from the merge base, never the moving tip: git diff $(git merge-base origin/main HEAD)...HEAD -- src/v1/stage0/src/cli_run.rs src/v1/stage0/src/main.rs. Two further .rs files differ and are GENERATED projections rather than hand-authored items -- gunbc_cli_dispatch_surface.rs and gunbc_rust_source_type_bindings.rs, both regenerated from their .dag authority -- so they are outside this roster's subject by construction, not by exemption. One of the 26, exit_status_for_class, is a RELOCATION rather than new behaviour: its body was moved out of main.rs's exit_status_for, which now delegates to it, so the process-exit path gained no behaviour and was only made callable from the wire path beside it. It is counted because the roster counts hand-authored DECLARATIONS, and netting a relocation against an addition is the arithmetic gunbc.seed_growth_admission refuses.\n\nWHY THE CLASSIFIER AND THE OUTCOME ARE TWO ITEMS: the classification is a question about a value and the outcome is a decision about a process, and fusing them would have put the write-or-refuse decision inside a match arm in main.rs where no test could reach it. Splitting them is what made the five-case matrix authorable, including the two cases that carry the actual safety content -- an unprintable response REFUSES rather than printing nothing, and an exit_failure carrying status zero is refused on the wire path exactly as it already was on the process-exit path.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete CliWireClass, classify_cli_wire and their tests when the interpreter publishes a modeled projection of a returned Value against a declared type -- an inhabitance decision the substrate answers, rather than a hand-written field-by-field match on the host Value representation. Delete CliWireOutcome, cli_wire_outcome, exit_status_for_class and their tests when std models a process's standard output and exit status as a carrier the .dag side can produce directly, so a command entry returns the whole host effect and the seed only executes it. Both triggers name a CAPABILITY the substrate does not have today; neither is discharged by any artifact short of it, and in particular neither is discharged by moving this Rust to another file.",
+  current_boundary: "gunbc.cli_wire_host_admission -> v1_compiler.cli_run cli_wire_outcome -> v1_compiler.main run_verb -> the host process stdout and exit status"
+}

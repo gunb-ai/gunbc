@@ -267,7 +267,7 @@ fn arrow_body_form_eval_binary_int_holds(
 
 fn arrow_body_form_eval_call_does_not_reject_unsupported_callee(call: Node) -> Bool {
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
-    Accepted { value: _, diagnostics: None } => true
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
   }
 }

@@ -58,6 +58,18 @@
 //! Adjudicating the consequence as well as the generator would be a second representation of
 //! one fact (DESIGN §2/§3).
 
+// CLIPPY ROSTER -- 5 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::manual_contains,  // 1
+    clippy::useless_format,  // 4
+)]
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::cli_run::declaration_index::{
@@ -516,12 +528,12 @@ pub struct TransitionAdmission {
 /// judging, and a transport module cannot be the authority for a member of an identity the plan
 /// module mints. The constant therefore moves to the module that owns the digest -- same spelling,
 /// same value, one declaring module, no second declaration left behind and no requalification. The
-/// two deltas below are the CLI's own call sites now resolving to the new declarer. This paragraph
+/// two rows it added were the CLI's own call sites resolving to the new declarer. That paragraph
 /// previously reported them as `closure blast radius: 0 module(s)`, which gunbc#9908 has since made
 /// a wrong sentence rather than a stale one: closure is a pure function of MEMBERSHIP, so a binding
 /// row is not asked the question and now carries `None` and renders no clause at all. Quoting a
-/// measured zero for it would be the exact conflation that change removed. They dissolve when this
-/// PR merges, by the same trigger as every shrink above.
+/// measured zero for it would be the exact conflation that change removed. Their declared trigger
+/// was that PR merging; the fourteenth entry records it firing and the rows are gone.
 /// THIRTEENTH DISSOLUTION (2026-09-01). The seventeen XL-0T rows above were removed by THEIR OWN
 /// dissolve-on trigger, which the paragraph declaring them states as "#9907 merging". #9907 merged
 /// to main at 14:02:39; the first merge of main into this branch that carried them was made at
@@ -538,7 +550,7 @@ pub struct TransitionAdmission {
 /// cohorts, MINUS every cohort whose trigger has fired as of the base being merged, asked of each
 /// side independently.
 /// FOURTEENTH DISSOLUTION (2026-09-02), AND IT IS THE THIRTEENTH'S OWN LESSON APPLIED TO THE ROWS
-/// THAT TAUGHT IT. RLM-2b's two rows above declare their trigger as "#9832 merging". #9832 IS the
+/// THAT TAUGHT IT. RLM-2b's two rows declared their trigger as "#9832 merging". #9832 IS the
 /// base this change merges -- main's head is that merge -- so their lifetime ended at the moment
 /// this merge began. Base and head both carry the constant's relocation, no run can produce those
 /// deltas, and both rows would report stale, refusing every unrelated PR exactly as the seventeen
@@ -548,122 +560,714 @@ pub struct TransitionAdmission {
 /// DISSOLUTION RULES, and asking the trigger question of the kept rows only is how the previous
 /// cohort outlived itself by ten minutes. Keeping RLM-2b's rows through this merge because they
 /// arrived from main would be that identical mistake one iteration later, with the roles swapped.
-/// The recipe was run against BOTH sides: this change's own cohort has an unfired trigger and
-/// stays; the imported cohort's has fired and goes.
+/// The recipe was run against BOTH sides: that change's own cohort had an unfired trigger and
+/// stayed; the imported cohort's had fired and went.
+///
+/// A TENSE CORRECTION, MADE BY THE FIFTEENTH DISSOLUTION AND RECORDED RATHER THAN SILENTLY APPLIED.
+/// The three paragraphs above were written from inside the commits that made them, and referred to
+/// their cohorts DEICTICALLY -- rows "above", deltas "below", a cohort that "stays". Every one of
+/// those referents has since been deleted, so sentences that were true when authored became prose
+/// asserting a present-tense fact that is false, inside the very ledger whose subject is rows
+/// outliving their truth. Only the tense and the position words were changed; no claim was altered.
+/// This is DESIGN section 3's standing rule reaching prose: cite the cohort by NAME, never by where
+/// it sits, because a ledger's positions are exactly what its own dissolution rule destroys.
 /// FIFTEENTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
 /// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
 /// module more than one implementation cites. No declaration was renamed and no name was minted:
 /// every spelling below denotes the same declaration it denoted at the base, at a new home, so
 /// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
 /// `{extdeps.llm.anthropic_messages_api}`.
-///
-/// THE POPULATION IS EXACTLY NINE, AND THE REST OF THE MOTION NEEDED NO ROW. The same phase
-/// classified this change's membership and closure motion automatically -- the memberships
-/// `extdeps.llm.anthropic` lost are `SameDeclarationIdentityRebind`, the memberships the new module
-/// gained are `ExplicitlyEvaluatedZeroDelta` -- so the nine below are the whole unadjudicated set,
-/// not a sample of it. Every row names one exact (module, declaration, spelling) triple: a tenth
-/// binding re-pointed at the new module anywhere in the corpus still refuses as UNADJUDICATED.
-///
 /// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
 /// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
 /// here refuses every unrelated PR in the repository.
+/// FOURTEENTH DISSOLUTION, AND THE FIRST ONE A MECHANISM CAN SEE (2026-09-02). The nine DCH-1
+/// rows authored by gunbc#9985 are removed by their own dissolve-on trigger, which is that pull
+/// request merging: c2cd45dcff9 IS that merge, so `extdeps.llm.anthropic_rest` already imports the
+/// four hoisted spellings from `extdeps.llm.anthropic_messages_api` on the base of every run, and
+/// `admission_consumed_at_base` proves the relocation the rows admit. Like the RLM-2b pair before
+/// them, they were BORN CONSUMED — authored in the same commit that merged their subject, so no
+/// run after that commit could ever match them.
+///
+/// THIS DELETION IS NOT HOUSEKEEPING ATTACHED TO AN UNRELATED CHANGE; IT IS THIS CHANGE'S OWN
+/// FIRST POSITIVE CONTROL. The commit removing them is also the commit that makes
+/// `roster_touched` reachable, and it touches this file, so under the arm it enables these nine
+/// rows would come due and refuse it. A change that turns a wall on and leaves standing exactly
+/// the population that wall refuses would be reporting a green it did not earn.
+///
+/// EMPTY IS THE RESTING STATE and empty is not permissive: with no rows, a run with no delta
+/// passes and a run with a real delta refuses it as UNADJUDICATED.
+/// SIXTEENTH TRANSITION (2026-09-02, SJT-1, gunbc#10010), AND IT LEFT THE RESTING STATE THE
+/// PARAGRAPH ABOVE DESCRIBES. The four Redfish boot-override constants moved WHOLE from
+/// `gunbc.srv3_boot_once_cd` to `gunbc.srv3_os_install_actuate_workflow`, the module that now
+/// authors the scoped-authorization subject those constants are the fields of. Nothing was renamed
+/// and no name was minted: each of the four spellings denoted the same declaration it denoted at the
+/// base, at a new home, so each arrived as `TargetChanged binding` with base `{gunbc.srv3_boot_once_cd}`
+/// -> head `{gunbc.srv3_os_install_actuate_workflow}`. The relocation is forced rather than
+/// stylistic: `srv3_boot_once_cd` already imports the workflow module, so leaving the constants
+/// behind would have made the subject's own module import its importer.
+///
+/// THE POPULATION IS EXACTLY FOUR. The run's other motion classified automatically as
+/// `ExplicitlyEvaluatedZeroDelta` membership additions (the new `std.scoped_authorization` edges),
+/// so these four are the whole unadjudicated set, not a sample: a fifth re-pointed binding
+/// anywhere in the corpus still refuses as UNADJUDICATED.
+///
+/// DISSOLVE-ON: gunbc#10010 merging. Base and head then both place the constants in the workflow
+/// module, no run can produce these deltas, all four report stale, and the roster RETURNS to the
+/// empty resting state -- a stale row here refuses every unrelated PR in the repository.
+///
+/// THE DCH-1 COHORT IS NOT RESURRECTED HERE, AND THAT IS A DELIBERATE READ OF THE MERGE RATHER
+/// THAN AN ACCIDENT OF IT. Both sides of this merge deleted those nine rows independently, main by
+/// the dissolution recorded above and this branch by its own reading of the same fired trigger.
+/// A union of the two rosters would have re-added a deletion both sides intended; the resolution
+/// took the deletion.
+/// SEVENTEENTH DISSOLUTION (2026-09-02). The four SJT-1 rows are removed by their own
+/// dissolve-on trigger. That trigger reads "this change merging", and the change is gunbc#10010,
+/// merged as de531c35496, which is an ancestor of the base of every run here.
+///
+/// THE RECEIPT IS PER ROW, NOT PER COHORT, because a row whose trigger fired for a different
+/// reason than the sweep assumes is exactly how a dissolution goes wrong. Each row admits
+/// `TargetChanged binding` in `gunbc.srv3_boot_once_cd`, declaration `srv3_boot_once_cd_resolved`,
+/// base `{gunbc.srv3_boot_once_cd}` -> head `{gunbc.srv3_os_install_actuate_workflow}`. For each,
+/// on the base: the constant is declared in the TARGET module, `srv3_boot_once_cd` imports it from
+/// there, and the spelling still occurs inside `srv3_boot_once_cd_resolved` -- so the reference
+/// exists, resolves to the target on BOTH sides, and the delta the row admits cannot be produced.
+///
+///   srv3_boot_cd_target      declared srv3_os_install_actuate_workflow; occurs in the boot-override
+///                            body; moved by de531c35496 (removed from srv3_boot_once_cd, added there)
+///   srv3_boot_cd_enabled     same commit, same motion; occurs beside it in the same body
+///   srv3_boot_cd_mode        same commit, same motion; occurs twice, in the override-mode refusal
+///                            match and in the boot-override body
+///   srv3_boot_cd_reset_type  same commit, same motion; occurs in the reset body
+///
+/// No row was swept for tidiness: all four receipts were established separately and all four fired.
+/// Had one lacked a fired trigger it would have been left standing and said so here, because four
+/// rows swept with three receipts is worse than three rows swept.
+///
+/// THE SIXTEENTH ENTRY PREDICTED THE WRONG DISPOSITION AND THE PREDICTION IS LEFT STANDING RATHER
+/// THAN QUIETLY CORRECTED. It says these rows would "report stale". They reported CONSUMED. The two
+/// are not synonyms: STALE is a row matching no delta, and CONSUMED is a row whose delta is already
+/// satisfied at the BASE -- and only the second carries the deletion obligation onto an unrelated
+/// roster-toucher, which is how this sweep came to exist. An author predicting the softer
+/// disposition is worth a line here, because it is the disposition that decides who pays.
+///
+/// THESE WERE BORN CONSUMED, the same way the DCH-1 cohort was: de531c35496 is BOTH the commit that
+/// authored the rows and the commit that performed the move they admit, so no run after it could
+/// ever match them. That is why the wall reported them as CONSUMED "already satisfied at the base"
+/// rather than as stale, and why it charges the deletion to whoever next TOUCHES this roster.
+///
+/// THE DELETING CHANGE IS UNRELATED TO THE ROWS' SUBJECT, AND THAT IS THE MECHANISM WORKING AS
+/// DESIGNED. A consumed row left standing is a permission over nothing that reads as coverage, and
+/// naming the next roster-toucher as the sweeper is what keeps a row's removal from waiting on its
+/// author coming back. This change is a one-file sweep carrying nothing else, so the receipts above
+/// are the whole of what it claims.
+///
+/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive -- a run with a real delta
+/// still refuses it as UNADJUDICATED.
+/// FOURTH TRANSITION, SAME RULE (2026-09-02). The `ClaimSafetyOutcome` /
+/// `ClaimPreemptionReachability` relocation of gunbc#10077: both types move from
+/// `v2.workflow.required_floor` to `v2.workflow.floor_terminal_ledger`, beside the
+/// `ClaimAttemptTerminal` arm that carries them, so the ledger stops importing the floor and the
+/// cycle that blocked the wet-route migration opens. Every one of the 57 rows below is a
+/// `TargetChanged` binding whose base is `v2.workflow.required_floor` and whose head is
+/// `v2.workflow.floor_terminal_ledger` — verified as the ONLY shape in the report, so no row here
+/// adjudicates a delta this transition did not cause.
+///
+/// THEY ARE ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Fifty-seven deltas, fifty-seven rows,
+/// each naming its module, its declaration and the exact spelling whose target moved. A wildcard
+/// covering this relocation would also admit the next one nobody reviewed.
+///
+/// TRIGGER: #10077 MERGING. After that, main carries the relocation, so a later run's base and head
+/// both have it and no run can produce these deltas.
+///
+/// THEY WILL REPORT CONSUMED, NOT STALE, AND THE ENTRY ABOVE IS WHY I AM SAYING SO. The seventeenth
+/// dissolution records that its predecessor predicted "stale" and got CONSUMED, and left the wrong
+/// prediction standing because the disposition is what decides WHO PAYS: a stale row matches no
+/// delta, a CONSUMED row is one whose delta is already satisfied at the BASE, and only the second
+/// charges its deletion to the next unrelated roster-toucher. These 57 are authored in the same PR
+/// that performs the move, so once that PR is in main they are satisfied at the base of every
+/// subsequent run — born consumed, exactly as the SJT-1 and DCH-1 cohorts were.
+///
+/// SO THE DELETION IS OWED AND IT SHOULD NOT WAIT FOR ME. They must be removed in the first PR
+/// after #10077 lands, by whoever next touches this roster, which is the convention the sweep above
+/// establishes rather than a favour asked of them. Removing them early is safe and loud — an
+/// unadjudicated delta refuses by name and is closed by re-authoring a row, never by a silent
+/// admission — so the only dangerous direction is leaving them standing.
+const LEDGER_SAFETY_VOCABULARY_LABEL: &str =
+    "ledger safety vocabulary relocation gunbc#10077 2026-09-02";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "AnthropicChatMessage",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_both_within_their_own_limits_does_not_block",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "AnthropicMessages200Body",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "AnthropicStopReason",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "extdeps.llm.anthropic_rest",
-            in_declaration: "llm.Anthropic",
-            spelling: "current_api_version",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_refused_preparation_blocks_though_every_claim_is_healthy",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.extdeps_llm_type_grounding_witness",
-            in_declaration: "w_anthropic_messages_object_type",
-            spelling: "Assistant",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_a_live_non_nested_compile_operation_is_still_refused",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.extdeps_llm_type_grounding_witness",
-            in_declaration: "w_anthropic_messages_object_type",
-            spelling: "Standard",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_a_second_nested_compile_operation_is_admitted",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
-            in_declaration: "redundancy_region1_anthropic_green_against_nonmatching_present",
-            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_completed_past_safety_limit_blocks",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
-            in_declaration: "redundancy_region1_anthropic_marks_nonempty",
-            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_completed_past_safety_limit_blocks",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label:
-            "DCH-1 messages wire shape hoisted to its specification module 2026-09-02 (gunbc#9985)",
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
-            in_declaration: "redundancy_region1_fires_when_a_real_mark_successor_present",
-            spelling: "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
-            target: "extdeps.llm.anthropic_messages_api",
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_cooperatively_pollable_is_always_admitted",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_blocks_too",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_grandfather_population_matches_the_grounded_surface",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_grandfathered_operation_is_admitted",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_new_opaque_operation_is_refused",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "ClaimAttemptTerminal",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "claim_disposition",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "claim_disposition",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "claim_disposition",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_test",
+            in_declaration: "a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_test",
+            in_declaration: "a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_test",
+            in_declaration: "a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_terminal_tag",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_terminal_tag",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_terminal_tag",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_preemption_admission",
+            spelling: "ClaimPreemptionReachability",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_preemption_admission",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_preemption_admission",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "ClaimPreemptionReachability",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "floor_run_blocks",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1399,6 +2003,59 @@ pub enum WaveAdmissionOutcome {
 /// deletion obligation.
 pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_admission.rs";
 
+/// Whether one adjudicated run REFUSES, and the sentence naming why — the wall's verdict, held by
+/// the wall.
+///
+/// IT LIVES HERE SO ITS RED IS AUTHORABLE WHERE THE VERDICT IS ACTUALLY REACHED. The decision was
+/// interleaved with the executor's printing, in a private function of a binary, so nothing outside
+/// that binary could construct the refusal and no test could discriminate the roster-touched arm
+/// on the path CI runs. DESIGN §4b puts that squarely: a wall whose RED cannot be authored on the
+/// acceptance path is a decoration, and the missing harness is the trigger rather than a ceiling.
+/// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
+/// so "does this run refuse" has one authority instead of one authority and one printer.
+///
+/// AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a permission standing
+/// over nothing — author error, and leaving it means the roster stops being a fact about the
+/// corpus.
+///
+/// A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already holds at the
+/// base (a positive proof), so for an unrelated run it is an inert typed receipt; billing its
+/// cleanup to that run was the externalized degradation eight dissolution PRs paid for. The
+/// deletion is due — and enforced — on the first change that touches the roster file itself,
+/// which every future relocation PR does by construction.
+pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
+    match outcome {
+        WaveAdmissionOutcome::NoSubject { head: _ } => None,
+        WaveAdmissionOutcome::NotEvaluated { reason: _ } => {
+            Some("namespace-wave-admission (NotEvaluated)".to_string())
+        }
+        WaveAdmissionOutcome::Adjudicated {
+            base: _,
+            head: _,
+            report,
+            roster_touched,
+        } => {
+            let unadjudicated = report_unadjudicated(report);
+            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+                return None;
+            }
+            Some(format!(
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
+                 consumed admission(s){})",
+                unadjudicated.len(),
+                report.stale_admissions.len(),
+                report.consumed_admissions.len(),
+                if consumed_due {
+                    " due for deletion on this roster-touching change"
+                } else {
+                    ""
+                }
+            ))
+        }
+    }
+}
+
 /// Run git in the workspace and return stdout with TRAILING whitespace removed, or a refusal
 /// naming the command.
 ///
@@ -1434,7 +2091,18 @@ pub fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// `run_dag_parse_sweep`'s: build output, and the parser's deliberately malformed fixtures. A
 /// base file the head sweep would not read must not enter the base index, or the two sides are
 /// measured by different instruments.
-fn in_sweep_scope(rel: &str) -> bool {
+///
+/// THIS ANSWERS THE PARSER'S QUESTION AND NOTHING ELSE, AND IT IS APPLIED AT THE POINT OF USE.
+/// It used to be applied inside `diff_sides`, so the only available answer to "what did this
+/// change touch" was already narrowed to `.dag` — and a second consumer asking a DIFFERENT
+/// question read that narrowed list as if it were the diff. `roster_touched` asks about a `.rs`
+/// path, a `.rs` path cannot survive a `.dag` filter, and the arm it fed was therefore false on
+/// every production run: an upstream filter written for one question silently deciding another,
+/// with nothing joining them (`gunbc.recurring_failure_mode` `incidental_denominator_as_wall`).
+/// The repair is not a second path list — that would be two representations of one fact, the same
+/// class one step later. `diff_sides` reports what the diff touched, once; every consumer applies
+/// the scope its own question needs, here.
+pub fn in_sweep_scope(rel: &str) -> bool {
     rel.ends_with(".dag")
         && DAG_PARSE_SWEEP_ROOTS
             .iter()
@@ -1455,8 +2123,14 @@ fn in_sweep_scope(rel: &str) -> bool {
 ///
 /// So the diff is read rename-aware, `--name-status -z -M`, each entry contributing to the sides
 /// SEPARATELY: a rename gives its destination to head and its source to base, an addition only a
-/// head path, a deletion only a base path, a modification the same path to both. Scope is applied
-/// per side, because a rename may cross the sweep boundary either way.
+/// head path, a deletion only a base path, a modification the same path to both.
+///
+/// THE SIDES ARE UNFILTERED, WHICH IS WHAT MAKES THIS ONE AUTHORITY FOR WHAT THE DIFF TOUCHED.
+/// Scope is not applied here: it belongs to the QUESTION being asked, not to the diff, and two
+/// consumers downstream ask different ones — the base-index reconstruction wants the parser's
+/// `in_sweep_scope`, and `roster_touched` wants a `.rs` path that predicate can never admit.
+/// A rename may still cross a scope boundary either way, so each consumer applies its own scope
+/// PER SIDE at its call site.
 pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
     let mut head_touched = Vec::new();
     let mut base_side = Vec::new();
@@ -1478,8 +2152,6 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
             head_touched.push(first.to_string());
         }
     }
-    head_touched.retain(|p| in_sweep_scope(p));
-    base_side.retain(|p| in_sweep_scope(p));
     (head_touched, base_side)
 }
 
@@ -1562,9 +2234,18 @@ pub fn run_required_wave_admission(
     )?;
     let (head_touched, base_side) = diff_sides(&name_status);
 
+    // THE PARSER'S SCOPE IS APPLIED HERE, WHERE THE PARSER'S QUESTION IS ASKED, AND NOWHERE ELSE.
+    // `head_touched` and `base_side` are what the diff touched; these two are what the baseline
+    // reconstruction may read. Filtering per side rather than once is not redundancy: a rename may
+    // cross the sweep boundary in either direction, which is why `diff_sides` splits the sides in
+    // the first place. Everything below that asks a DIFFERENT question — `roster_touched` — reads
+    // the unfiltered list, because its subject is a `.rs` path this predicate cannot admit.
+    let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
+    let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
+
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
-        if !head_touched.iter().any(|c| c == &record.rel_path) {
+        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
     }
@@ -1579,8 +2260,8 @@ pub fn run_required_wave_admission(
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: std::collections::BTreeSet<String> =
         base_paths.lines().map(|l| l.trim().to_string()).collect();
-    for rel in &base_side {
-        if !base_paths.contains(rel) {
+    for rel in &base_parsed {
+        if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
             continue;
         }
@@ -1606,6 +2287,10 @@ pub fn run_required_wave_admission(
         }
     }
 
+    // READ FROM THE UNFILTERED HEAD SIDE. This is the whole subject of the repair: the roster is a
+    // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this
+    // predicate was false on every production run and the consumed-row deletion obligation it
+    // gates could never come due.
     let roster_touched = head_touched.iter().any(|p| p == ADMISSION_ROSTER_REL_PATH);
     let report = adjudicate(&base_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS);
     Ok(WaveAdmissionOutcome::Adjudicated {

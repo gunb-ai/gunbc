@@ -3,6 +3,9 @@ module v2.workflow.floor_terminal_ledger_wire_test
 import std.content_hash { structural_content_hash }
 import v2.std.logic { Bool }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_route_gap {
+  FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval
+}
 import v2.workflow.floor_terminal_ledger {
   RepositorySnapshot,
   UnpublishedWorkingTree,
@@ -38,6 +41,7 @@ import v2.workflow.floor_terminal_ledger_wire {
   parse_ledger,
   readback_digest_agrees,
   readback_disposition,
+  RouteGapBeforeVerdict,
   readback_footer_count_agrees,
   SeedLedgerRow,
   parse_readback_row,
@@ -181,7 +185,17 @@ fn every_shape() -> List<ClaimTerminalRow> {
     ClaimTerminalRow {
       identity: ident(f: "route_gap"),
       expectation: ExpectedToHold,
-      terminal: RouteGap { route: "shell" }
+      terminal: RouteGap { operation: "Write", ground: NoMockResponse {} }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "route_gap_unpublished_mock_case"),
+      expectation: ExpectedToHold,
+      terminal: RouteGap { operation: "Dir", ground: UnpublishedMockCase {} }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "route_gap_filesystem_removal"),
+      expectation: ExpectedToHold,
+      terminal: RouteGap { operation: "Remove", ground: FilesystemRemoval {} }
     },
     ClaimTerminalRow {
       identity: ident(f: "panicked"),
@@ -236,7 +250,7 @@ test fn the_disposition_survives_the_round_trip_for_every_terminal_shape() -> Bo
   let rows = every_shape()
   let readback = readback_rows_of(text: rendered_text(rows: rows))
   readback.length() == rows.length()
-    && rows.length() == 15
+    && rows.length() == 17
     && filter(rows, r => !disposition_survives(row: r)).length() == 0
 }
 
@@ -320,13 +334,52 @@ test fn a_truncated_ledger_with_a_consistent_footer_still_fails_the_planned_coun
     && !readback_footer_count_agrees(readback: parse_ledger(text: short), planned_rows: three.length())
 }
 
+fn route_gap_tag_reads_back(tag: String) -> Bool {
+  match readback_disposition(row: LedgerReadbackRow {
+    qualified: "test.claim.x.y",
+    expectation: ExpectedToHold,
+    terminal_tag: tag,
+    terminal_detail: "Dir"
+  }) {
+    Absent => false
+    Present { value: d } =>
+      match d { RouteGapBeforeVerdict => true  _ => false }
+  }
+}
+
+// THE WIDENED ROUTE-GAP ARM SURVIVES THE ROUND TRIP IN BOTH DIRECTIONS, AND THE THREE GROUNDS DO
+// NOT COLLIDE. Rendering picks a distinct tag per ground and carries the operation as the detail;
+// reading back recovers `RouteGapBeforeVerdict` from each. Before the widening these three were one
+// tag with one string, so a reader could not tell an unpublished mock case from a filesystem
+// removal -- two grounds whose remedies are "record the case" and "give the operation a hermetic
+// arm", which send a maintainer to different files.
+//
+// THE DISCRIMINATING HALF IS THE TAG INEQUALITY. Without it this witness would pass over an
+// implementation that rendered all three grounds to one tag and read them all back to the same
+// disposition -- which is precisely the collapse being removed, and it would have looked green.
+test fn the_three_route_gap_grounds_render_apart_and_read_back_to_one_disposition() -> Bool {
+  let unpublished = RouteGap { operation: "Dir", ground: UnpublishedMockCase {} }
+  let no_response = RouteGap { operation: "Dir", ground: NoMockResponse {} }
+  let removal = RouteGap { operation: "Dir", ground: FilesystemRemoval {} }
+  let t_unpublished = render_terminal_tag(terminal: unpublished)
+  let t_no_response = render_terminal_tag(terminal: no_response)
+  let t_removal = render_terminal_tag(terminal: removal)
+  t_unpublished != t_no_response
+    && t_no_response != t_removal
+    && t_unpublished != t_removal
+    && route_gap_tag_reads_back(tag: t_unpublished)
+    && route_gap_tag_reads_back(tag: t_no_response)
+    && route_gap_tag_reads_back(tag: t_removal)
+    && render_terminal_detail(terminal: no_response) == "Dir"
+}
+
 // A FIELD CARRYING THE SEPARATOR IS REFUSED, NOT SANITIZED. The neighbouring disposition writer
 // replaces tabs with spaces, which publishes a different fact than the one observed.
 test fn a_field_carrying_the_separator_makes_the_ledger_unrenderable() -> Bool {
   let poisoned = ClaimTerminalRow {
     identity: ident(f: "a"),
     expectation: ExpectedToHold,
-    terminal: RouteGap { route: "shell\tinjected" }
+    terminal: RouteGap { operation: "shell\tinjected", ground: NoMockResponse {} }
   }
   match render_ledger(binding: binding(), rows: [poisoned]) {
     LedgerRendered { text: _ } => false

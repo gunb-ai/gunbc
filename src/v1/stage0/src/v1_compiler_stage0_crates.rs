@@ -30,7 +30,9 @@ pub use crate::gunbc_stage0_partition_package_graph::{
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
+pub use crate::v1_compiler_emit_rust::{
+    emit_cargo_dep, emit_non_empty_wrappers, generated_rust_lint_relaxations,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
@@ -68,21 +70,24 @@ pub struct Stage0CratePlan {
 }
 
 pub fn stage0_crate_allow_block() -> String {
-    Rc::new(vec![
-        "#![allow(".to_string(),
-        "    unused_imports,".to_string(),
-        "    unused_variables,".to_string(),
-        "    unused_mut,".to_string(),
-        "    unused_parens,".to_string(),
-        "    dead_code,".to_string(),
-        "    non_shorthand_field_patterns,".to_string(),
-        "    suspicious_double_ref_op,".to_string(),
-        "    clippy::all".to_string(),
-        ")]".to_string(),
-        "#![deny(unreachable_patterns)]".to_string(),
-        "#![recursion_limit = \"256\"]".to_string(),
-    ])
-    .join(&"\n".to_string())
+    {
+        let lints = Rc::new({
+            let mut __result = Vec::new();
+            for lint in generated_rust_lint_relaxations().iter().cloned() {
+                __result.push(v1_rt::concat("    ".to_string(), lint.clone()));
+            }
+            __result
+        })
+        .join(&",\n".to_string());
+        Rc::new(vec![
+            "#![allow(".to_string(),
+            lints.clone(),
+            ")]".to_string(),
+            "#![deny(unreachable_patterns)]".to_string(),
+            "#![recursion_limit = \"256\"]".to_string(),
+        ])
+        .join(&"\n".to_string())
+    }
 }
 
 pub fn stage0_foundation_header_doc() -> String {
