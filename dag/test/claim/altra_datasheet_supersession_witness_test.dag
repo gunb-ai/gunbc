@@ -26,7 +26,7 @@ test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
     NewerRevisionPubliclyServed { newer_version_label: v, newer_authority: _, index_authority: _, held_version_label: h, detail: _ } =>
-      v == "1.55" && h == "v1.50"
+      v == "v1.55" && h == "v1.50"
   }
 }
 

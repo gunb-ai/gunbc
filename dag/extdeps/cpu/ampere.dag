@@ -77,7 +77,7 @@ data ampere_altra_classic_rev_a1_v1_55_authority: ExternalAuthority = ExternalAu
 }
 
 data ampere_altra_classic_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
-  newer_version_label: "1.55",
+  newer_version_label: "v1.55",
   newer_authority: ampere_altra_classic_rev_a1_v1_55_authority,
   index_authority: ampere_altra_device_documentation_authority,
   held_version_label: "v1.50",
