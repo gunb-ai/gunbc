@@ -173,9 +173,14 @@ import v2.std.collection { List }
 // entirely by one COMPLETED-OVER-COST-REQUIREMENT row in `v2.test.emit.rust_produced_decl_emit`;
 // the present run is `verdict=FloorClean` with `completed_over_cost_requirement=0`.
 //
-// A THIRD RUN, 33664119594, carries the same roster as the present arm and is read the same
-// way; the two present runs agree on every judgment above, which is what makes a single-run
-// artifact of the runner distinguishable from a repeated effect.
+// FIVE RUNS IN ALL, AND THE LAST TWO ARE THE WITHDRAWAL'S OWN RECEIPT rather than a repetition
+// of the first. 33664119594 carries the same roster as the present arm and agrees with it on
+// every judgment above, which is what distinguishes a repeated effect from a single-run artifact
+// of the runner. 33667640710 carries `rust_target_model_staging` alone -- the state in which
+// that row inherited the wider consumer set -- and 33671317370 carries none of the three, where
+// the produced-decl cluster returns to its absent-arm value on the same normalised basis and the
+// floor is `verdict=FloorClean`. A withdrawal whose receipt is only "the rows are gone" asserts
+// that removing them helped; this pair measures it.
 //
 // AND THE ABSOLUTE DELTA IS NOT THE EVIDENCE, because the two runs did not get the same runner:
 // every row in the corpus got cheaper between them. The admissible reading is the NORMALISED
