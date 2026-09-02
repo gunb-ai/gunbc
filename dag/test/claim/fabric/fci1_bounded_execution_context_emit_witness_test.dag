@@ -13,7 +13,7 @@ import gunbc.generated_artifact {
 }
 
 test fn fci1_bounded_context_fragment_is_the_rostered_projection() -> Bool {
-  list_length(items: committed_generated_artifacts()) == 36
+  list_length(items: committed_generated_artifacts()) == 37
     && artifact_path(a: Fci1BoundedExecutionContextArtifact)
       == "tools/fabric_ci_fci1_bounded_execution_context.env"
     && match expected_fci1_bounded_execution_context_env() {
