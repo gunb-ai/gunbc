@@ -3,9 +3,12 @@ module gunbc.runner_microvm
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.measure {
   Mebibyte,
+  ByteSize,
   HardwareThreadCount,
+  byte_size_count,
   mebibyte,
   mebibyte_count,
+  mebibyte_to_byte_size,
   hardware_thread_count,
   hardware_thread_count_value,
 }
@@ -18,6 +21,7 @@ import product.fabric.isolation {
   isolation_profile_satisfies,
 }
 import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
   gunbc_runner_cores_per_slot,
   RunnerCoresPerSlotResolution,
   CoresPerSlotResolved,
@@ -114,97 +118,162 @@ data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
   memory: mebibyte(count: 4096),
 }
 
-// THE FLEET'S VM SIZE IS THE CELL'S RESOURCE ENVELOPE, DERIVED -- THIS IS THE FCI-1 RECONCILIATION.
+// THREE QUANTITIES, NOT ONE -- THIS IS THE REPAIR, AND THE OLD CODE HAD ONLY THE FIRST.
 //
-// FCI-1 (gunbc.fabric_ci_program) asks "what bounded owned cell will realize this Work?" and
-// freezes `cell-resource-envelope` as one of its output identities. This fleet already answers that
-// question once, in gunbc.runner_slot_allocation gunbc_runner_slot_desired: 16GiB MemoryMax against
-// a core count DERIVED from that ceiling at the surveyed memory-per-vCPU ratio. A microVM is a
-// second REALIZATION of that same bounded execution context -- gunbc.fabric_cell_effect realizes it
-// as a cgroup slice carrying those magnitudes as directives, and this module realizes it as a guest
-// with a machine configuration. Two realizations, one envelope.
+// The withdrawn derivation set the guest's RAM to the cell's whole MemoryMax. That treated ONE
+// number as answering three different questions, and the safety property is a relation between
+// all three:
 //
-// SO THE SIZE IS DERIVED RATHER THAN AUTHORED, AND THAT IS CONSTRUCTION RATHER THAN A CHECK
-// (DESIGN 5). An authored `RunnerMicroVmSize` beside gunbc_runner_slot_desired would be a second
-// spelling of one envelope -- the SECTION 3 failure -- and the two would drift the moment either
-// moved, which is not hypothetical: this module's MVP row above says 4 vCPU / 4 GiB while the cell
-// it would realize says 6 cores / 16 GiB. A VM sized under the cell's ceiling does not bound the
-// work more tightly; it makes the SAME work OOM inside a guest whose host slice had room, and the
-// cgroup ledger the fleet reads would show the slice well under its limit while the job died.
-// Nothing here validates the two into agreement, because there is only one of them.
+//   CELL MEMORY ENVELOPE     what the bounded cell is granted -- gunbc_runner_slot_desired.memory_max
+//   GUEST MEMORY REQUEST     what the guest would be handed -- Firecracker's machine_config.mem_size_mib
+//   REALIZATION RESERVE      what the VMM PROCESS ITSELF costs, INSIDE that same cell
 //
-// THE MEMORY AXIS DOES NOT RESOLVE, AND THAT IS THE HONEST ANSWER TODAY.
+// The reserve was zero and unnamed, so guest == envelope read as correct and the slice would have
+// OOM-killed the VM it exists to bound. Equality is not the property; CONTAINMENT is:
 //
-// Deriving the guest's RAM as the cell's whole MemoryMax was WRONG, and wrong in the direction that
-// looks most like right. `machine_config.mem_size_mib` is GUEST RAM; the Firecracker VMM process
-// that owns the guest lives inside the SAME cell. Guest RAM equal to the ceiling therefore leaves
-// nothing for the VMM's own resident footprint, so the slice OOM-kills the VM it exists to hold.
+//   guest + reserve <= envelope
 //
-// It is the same class as the authored 4 GiB this module used to carry, inverted. Undersized, the
-// work dies inside a guest whose slice had room. Sized at exactly the ceiling, the guest believes
-// it has an envelope the cell cannot honour. Deriving the number fixed the AUTHORITY question --
-// there is still only one envelope -- and left the ARITHMETIC one: the safety property is not that
-// the guest EQUALS the envelope, it is that the guest PLUS its realization FITS INSIDE it.
-// Equality is the specific wrong answer that most resembles the right one, which is why it
-// survived both authoring and review.
+// A guest SMALLER than the envelope FITS. The withdrawn control asserted the opposite -- it refused
+// the 4 GiB MVP configuration against a 16 GiB cell -- so both arms of that pair were wrong in
+// opposite directions while the pair looked discriminating.
+type CellMemoryEnvelope { bytes: ByteSize }
+type GuestMemoryRequest { bytes: ByteSize }
+
+// THE RESERVE IS AN INPUT, NOT A GLOBAL, AND THAT IS WHAT MAKES THE FIT CONTROLS AUTHORABLE.
 //
-// SO THE SUBTRAHEND IS THE MISSING FACT. Guest RAM is the cell envelope minus the Firecracker
-// realization's own footprint, and extdeps.virtualization.firecracker cites no such quantity -- it
-// models the config SHAPES and the single-root rule, and nothing about what the VMM itself costs.
-// Inventing a figure here would be a fabricated plausible output (DESIGN 5) wearing a derivation's
-// clothes. The memory axis therefore refuses with a cause naming the missing fact.
+// Production cannot supply one: no VMM footprint is cited anywhere, so gunbc_runner_microvm_
+// realization_reserve returns ReserveUnmodeled and every production path refuses. If the reserve
+// were read from a global instead of passed, that refusal would be the ONLY reachable outcome and
+// neither fit arm could ever execute -- a wall whose red cannot be authored, which DESIGN 4b calls
+// a decoration. Taking it as a parameter lets a witness declare one from a controlled fixture and
+// drive BOTH polarities, while production stays honest.
+type RealizationReserve
+  = ReserveDeclared { bytes: ByteSize }
+  | ReserveUnmodeled { cause: String }
+
+type MemoryFitJudgment
+  = GuestFitsWithinCell
+  | GuestExceedsCell { detail: String }
+  | MemoryFitUnresolved { cause: String }
+
+fn guest_memory_fits(
+  guest: GuestMemoryRequest,
+  reserve: RealizationReserve,
+  envelope: CellMemoryEnvelope,
+) -> MemoryFitJudgment {
+  match reserve {
+    ReserveUnmodeled { cause: c } =>
+      MemoryFitUnresolved {
+        cause: concat("the guest's memory cannot be judged against the cell without the realization's own reserve: ", c),
+      }
+    ReserveDeclared { bytes: r } =>
+      if byte_size_count(b: guest.bytes) + byte_size_count(b: r) <= byte_size_count(b: envelope.bytes) {
+        GuestFitsWithinCell
+      } else {
+        GuestExceedsCell {
+          detail: "the guest's memory plus the realization's reserve exceeds the cell's MemoryMax, so the slice would kill the VM it exists to bound",
+        }
+      }
+  }
+}
+
+// WHY PRODUCTION REFUSES, AND WHY NO NUMBER APPEARS HERE.
 //
-// THE vCPU AXIS IS UNAFFECTED, and saying so is the point. The core count IS derivable from the
-// cell. The claim is not "no guest is sizable", it is "no guest RAM is sizable", and the two
-// refusal arms below keep that difference visible instead of collapsing both axes into one
-// silence: an unresolved core count and an unmodeled VMM footprint reach DIFFERENT typed causes.
-// A refusal that reports which fact is missing and one that refuses uniformly are
-// indistinguishable from outside unless something executes both.
+// extdeps.virtualization.firecracker cites no VMM memory overhead. It models the config SHAPES --
+// FirecrackerMachineConfig { vcpu_count, mem_size_mib } and its neighbours -- plus the single-root
+// rule, and nothing about what the VMM process costs. And the quantity may not exist as a constant
+// at all: a VMM's resident footprint scales with guest size through page tables, with the device
+// model, and with host page size, so what upstream documents is a MEASURED overhead for one stated
+// configuration -- an observation about one boot rather than a property of the realization.
+// Inventing a subtrahend here would be a fabricated plausible output (DESIGN 5) wearing a
+// derivation's clothes.
+fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
+  ReserveUnmodeled {
+    cause: "no VMM resident footprint is a cited quantity in extdeps.virtualization.firecracker, and it is not a constant -- it scales with guest size, device model and host page size, so upstream documents a measured overhead for one configuration rather than a property of the realization",
+  }
+}
+
+// THE CPU AXIS IS NOT THE SAME KIND OF GAP, AND IT IS NOT REPAIRABLE IN THIS MODULE.
 //
-// WHAT WAS DELETED WITH THE DERIVATION, so it is not read as an oversight: the whole-mebibyte
-// check. It asked whether a byte count divides evenly into MiB so it can be stated to
-// machine_config. There is now no such byte count -- the quantity whose wholeness mattered was the
-// GUEST size, and that is exactly what no longer resolves. Asking it of the ENVELOPE instead would
-// test an operand the code no longer states to Firecracker: a check whose red cannot be authored,
-// which DESIGN 4b calls a decoration and which would be worse than absent because it would be
-// cited as coverage.
+// On memory the quantity may exist and merely be uncited. On CPU the cell realizes NO ABSOLUTE
+// ENTITLEMENT AT ALL: gunbc.fabric.fabric_cell_effect fabric_cell_slice_desired_directives emits
+// five directives whose CPU one is CPUWeight -- a RELATIVE share that decides who yields first
+// under contention and guarantees no amount of anything. The absolute ceiling this fleet DOES
+// declare, gunbc.host.host_converge runner_cpu_boundary_knobs writing CapacityQuota as a CPUQuota
+// drop-in, lands on the RUNNER UNIT, a different systemd object from the cell slice.
+//
+// So one bounded execution context is realized twice and the two realizations enforce different
+// axes. Deriving a guest vCPU count from the cell would equate it to a quantity the cell never
+// enforces -- the failure gunbc.ci.ci_runner_placement already records once: "the arithmetic said
+// six threads per slot and the host was never told."
+//
+// Either an absolute cell entitlement becomes real -- which is a change to fabric_cell_effect, not
+// to this module -- or guest topology stops being derived from the cell and is declared as its own
+// product decision. Both are legitimate. Deriving from an entitlement that does not exist is not.
+type CellCpuEntitlement
+  = CpuEntitlementAbsolute { threads: HardwareThreadCount }
+  | CpuEntitlementRelativeOnly { cause: String }
+
+fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
+  CpuEntitlementRelativeOnly {
+    cause: "the fabric cell slice carries CPUWeight, a relative share that guarantees no absolute amount; the fleet's absolute CPUQuota is written by gunbc.host.host_converge onto the runner UNIT, which is not the cell slice, so the cell grants no CPU quantity a guest vCPU count could be derived from",
+  }
+}
+
+// THE SIZING NAMES WHICH AXIS IS UNAVAILABLE RATHER THAN REFUSING UNIFORMLY.
+//
+// Three inputs, three distinguishable refusals, and a reader can act on each: an unresolved core
+// count is a fact about the host survey, a relative-only CPU entitlement is a fact about the cell's
+// directives, and an unmodeled reserve is a fact about extdeps.virtualization.firecracker. A single
+// "sizing unavailable" would collapse three different repairs into one silence, and a refusal that
+// reports WHICH fact is missing cannot be told from one that refuses uniformly unless both execute.
+//
+// All three are parameters for the same reason the reserve is: gunbc_runner_cores_per_slot and the
+// cell entitlement are nullary in production, so at the fleet call site no witness input can reach
+// their unresolved arms and none of these refusals would be authorable.
 type RunnerMicroVmSizing
   = MicroVmSized { size: RunnerMicroVmSize }
   | MicroVmSizeUnresolved { cause: String }
 
-// THE CORE RESOLUTION IS A PARAMETER SO BOTH ARMS ARE AUTHORABLE. gunbc_runner_cores_per_slot is
-// nullary and resolves from surveyed host facts, so at the fleet call site its unresolved arm
-// cannot be reached by any input a witness can supply. Taking the resolution as an argument is
-// what makes the two causes discriminable by execution rather than by reading; the fleet entry
-// point below still supplies the real one, so there is no second authority for the envelope.
-fn runner_microvm_sizing_of_cores(cores: RunnerCoresPerSlotResolution) -> RunnerMicroVmSizing {
+fn runner_microvm_sizing(
+  cores: RunnerCoresPerSlotResolution,
+  cpu: CellCpuEntitlement,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmSizing {
   match cores {
     CoresPerSlotUnresolved { cause: c } =>
       MicroVmSizeUnresolved {
-        cause: concat("the cell's core count is unresolved, so no guest vCPU count is derivable from it: ", c),
+        cause: concat("the cell's core count is unresolved, so nothing about this guest is derivable: ", c),
       }
     CoresPerSlotResolved { threads: _ } =>
-      MicroVmSizeUnresolved {
-        cause: "the guest's memory is not derivable from the cell envelope: guest RAM is the cell's MemoryMax MINUS the Firecracker VMM's own resident footprint, because that process runs inside the same cell, and no such footprint is a cited quantity in extdeps.virtualization.firecracker. The cell's core count did resolve, so the vCPU axis is not what is blocked",
+      match cpu {
+        CpuEntitlementRelativeOnly { cause: c } =>
+          MicroVmSizeUnresolved {
+            cause: concat("the guest's vCPU count is not derivable from the cell: ", c),
+          }
+        CpuEntitlementAbsolute { threads: _ } =>
+          match reserve {
+            ReserveUnmodeled { cause: c } =>
+              MicroVmSizeUnresolved {
+                cause: concat("the guest's memory is not derivable from the cell: ", c),
+              }
+            ReserveDeclared { bytes: _ } =>
+              MicroVmSizeUnresolved {
+                cause: "the cell grants an absolute CPU entitlement and a reserve is declared, but no rule yet states what GUEST memory a cell envelope minus that reserve permits -- deriving one here would restate the reserve as an answer rather than apply it",
+              }
+          }
       }
   }
 }
 
 fn runner_microvm_size_from_cell_envelope() -> RunnerMicroVmSizing {
-  runner_microvm_sizing_of_cores(cores: gunbc_runner_cores_per_slot())
+  runner_microvm_sizing(
+    cores: gunbc_runner_cores_per_slot(),
+    cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
+    reserve: gunbc_runner_microvm_realization_reserve(),
+  )
 }
 
-// THERE IS NO `size_matches_cell_envelope(..) -> Bool` HERE EITHER, FOR THE SAME REASON. The
-// envelope comparison is made where the admission decides, matching RunnerMicroVmSizing in place,
-// so the unresolved envelope and the disagreeing envelope reach the caller as two different typed
-// causes instead of collapsing into one `false` that answers for both. They have different owners
-// and different remedies: one is a survey that stopped resolving, the other is an authored VM.
-
-// THE ISOLATION A RUNNER MICROVM PROVIDES, WHICH IS THE FABRIC'S VOCABULARY AND NOT A NEW ONE.
-//
-// A dedicated kernel is the guarantee the current fleet slots cannot make -- product.fabric.
-// isolation current_runner_slot_profile() is EMPTY by measurement -- so this row is the entire
-// delta the migration buys, stated in terms a broker can already compare against a requirement.
 fn runner_microvm_isolation_profile() -> IsolationProfile {
   dedicated_kernel_sandbox_profile()
 }
@@ -283,13 +352,14 @@ fn runner_microvm_admission(
   listener_is_main_process: Bool,
   transport: JitCredentialTransport,
   config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
 ) -> RunnerMicroVmAdmission {
   match topology {
     VmmIsMainProcess =>
-      runner_microvm_admission_after_topology(transport: transport, config: config)
+      runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
     VmmUnderLifecycleController =>
       if lifecycle_intent_cannot_orphan(intent: intent, listener_is_main_process: listener_is_main_process) {
-        runner_microvm_admission_after_topology(transport: transport, config: config)
+        runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
       } else {
         RunnerMicroVmRefusedOrphanableUnit {
           reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the cgroup-reaching intent, or exec the VMM directly as MainPID",
@@ -301,6 +371,7 @@ fn runner_microvm_admission(
 fn runner_microvm_admission_after_topology(
   transport: JitCredentialTransport,
   config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
 ) -> RunnerMicroVmAdmission {
   match transport {
     JitConfigInSharedSlotDirectory { path: _ } =>
@@ -308,30 +379,46 @@ fn runner_microvm_admission_after_topology(
         reason: "the JIT credential is carried in a directory shared across incarnations, which is the exact carrier that lets one incarnation delete another's credential mid-job; a per-VM read-only drive is required",
       }
     JitConfigOnReadOnlyDrive { drive_id: _ } =>
-      runner_microvm_admission_after_credential(config: config)
+      runner_microvm_admission_after_credential(config: config, reserve: reserve)
   }
 }
 
-fn runner_microvm_admission_after_credential(config: FirecrackerVmConfig) -> RunnerMicroVmAdmission {
+// THE ADMISSION JUDGES FIT, NOT AGREEMENT, AND THE DIFFERENCE IS THE WHOLE REPAIR.
+//
+// The withdrawn arm asked whether the guest's configuration EQUALLED a derived envelope. That is
+// the wrong question twice over: it admits a guest sized at the whole ceiling, which leaves the
+// VMM process nothing inside the same cell, and it refuses a guest SMALLER than the ceiling, which
+// fits comfortably. Containment is the property -- guest plus reserve within the envelope -- and a
+// smaller guest passing is a REQUIREMENT of the repair rather than a tolerated side effect.
+//
+// The cell's envelope is read here rather than passed because it is not the disputed quantity:
+// gunbc_runner_slot_desired is the single authority for what the cell is granted, and reading it
+// is what keeps this from becoming a second envelope. The RESERVE is the parameterised one.
+fn runner_microvm_admission_after_credential(
+  config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmAdmission {
   if !firecracker_config_has_single_root(config: config) {
     RunnerMicroVmRefusedMalformedVm {
       reason: "the Firecracker configuration does not name exactly one root device, so the guest either cannot boot or its root is ambiguous",
     }
   } else {
-    match runner_microvm_size_from_cell_envelope() {
-      MicroVmSizeUnresolved { cause: c } =>
+    match guest_memory_fits(
+      guest: GuestMemoryRequest {
+        bytes: mebibyte_to_byte_size(m: mebibyte(count: config.machine_config.mem_size_mib)),
+      },
+      reserve: reserve,
+      envelope: CellMemoryEnvelope { bytes: gunbc_runner_slot_desired().memory_max },
+    ) {
+      MemoryFitUnresolved { cause: c } =>
         RunnerMicroVmRefusedEnvelopeUnresolved {
-          reason: concat("the bounded cell's resource envelope does not resolve, so there is nothing for this guest's machine configuration to agree with and no VM is admissible: ", c),
+          reason: concat("this guest cannot be judged against the bounded cell, so no VM is admissible: ", c),
         }
-      MicroVmSized { size: want } =>
-        if config.machine_config.vcpu_count == hardware_thread_count_value(t: want.vcpu_count)
-          && config.machine_config.mem_size_mib == mebibyte_count(m: want.memory) {
-          RunnerMicroVmAdmitted
-        } else {
-          RunnerMicroVmRefusedEnvelopeDisagreement {
-            reason: "the guest machine configuration does not carry the bounded cell's own resource envelope, so this VM would realize a different execution context than the one FCI-1 admitted -- a guest sized under the cell's ceiling makes the same work die inside a slice that still had room, and one sized at or above the ceiling escapes the boundary the slice exists to hold, because the Firecracker VMM process is itself inside that cell. This arm is unreachable while the memory axis refuses, and it is retained because the sizing coproduct is total, not as a live check",
-          }
+      GuestExceedsCell { detail: d } =>
+        RunnerMicroVmRefusedEnvelopeDisagreement {
+          reason: concat("the guest would not fit the bounded cell FCI-1 admitted: ", d),
         }
+      GuestFitsWithinCell => RunnerMicroVmAdmitted
     }
   }
 }
@@ -405,6 +492,7 @@ fn gunbc_runner_microvm_admission(
     listener_is_main_process: gunbc_runner_listener_is_main_process,
     transport: gunbc_runner_jit_transport,
     config: config,
+    reserve: gunbc_runner_microvm_realization_reserve(),
   )
 }
 
