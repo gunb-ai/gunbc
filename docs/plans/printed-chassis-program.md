@@ -180,7 +180,7 @@ not choose it.
   arithmetic and the fit path. **V0 is now closed at one operation** (`OpThroughHole`) — see the v0
   population section for why the second one was deleted rather than kept.
 - `product.printed_chassis.realization_contract` — the transport wall. Raw JSON from the CAD handler
-  is admitted through `admit_envelope`, which refuses an unsupported schema version, an unknown
+  is admitted through `decode_envelope`, which refuses an unsupported schema version, an unknown
   operation kind, and an envelope carrying no operations, each with a typed cause naming what it
   received. Conformance reports the EARLIEST divergence rather than the last, and a count mismatch is
   its own outcome rather than a silent zip truncation.
@@ -194,11 +194,11 @@ not choose it.
   must not read a conforming verdict as adjudicating identity or canonical ordering.
 
   **The admitted value is unforgeable, and an earlier revision only CLAIMED it was.** That revision
-  put the geometry on the accepted arm (`EnvelopeAdmitted { plate, features }`) and argued admission
+  put the geometry on the accepted arm (`EnvelopeDecodedV0 { plate, features }`) and argued admission
   was unavoidable "because the refusal arms have no geometry to hand on" — a correct argument for an
   insufficient conclusion, since it rules out the raw envelope bypassing the judge and says nothing
   about a caller bypassing the raw envelope. A probe compiled the forgery from a foreign module.
-  `AdmittedRealization` is now `sole_constructor`, so only `admit_envelope` can mint one; a foreign
+  `DecodedRealizationV0` is now `sole_constructor`, so only `decode_envelope` can mint one; a foreign
   module may name the arm and cannot obtain a value to put in it.
 
   **That wall now has an executing witness, and the claim that it could not have one was false.**
@@ -215,7 +215,7 @@ not choose it.
   The witness is `test.claim.printed_chassis_admitted_realization_seal_witness_test`, built on the two
   forms that module's own annotation names as exact: a count scoped to diagnostic class AND
   `subject_name`, and a differential between two sources differing on one axis. It carries a red
-  source writing the `AdmittedRealization` record literal from a foreign module, a green source with
+  source writing the `DecodedRealizationV0` record literal from a foreign module, a green source with
   identical imports and no literal, and the red-minus-green subtraction as a third witness so the
   shared imported closure cancels rather than being asserted away. The `CensusNotRunnable` arm answers
   `-1`, so every assertion compares against a non-negative quantity and a harness that never ran
@@ -223,21 +223,21 @@ not choose it.
 
   **The refusal payload could carry a success, and the witnesses were where it showed.**
   `RealizationVerdict`'s refusal arm was typed `RealizationRefusedAtWire { admission: EnvelopeAdmission }`,
-  and `EnvelopeAdmission` includes `EnvelopeAdmitted`. No route produces that state —
+  and `EnvelopeAdmission` includes `EnvelopeDecodedV0`. No route produces that state —
   `judge_realization` builds the refusal arm only on the three refusing branches — but reachability is
   not occupancy, and the state was writable. The tell was not in the contract at all: four witnesses
-  carried a dead `EnvelopeAdmitted { admitted: _ } => false` arm purely to satisfy exhaustiveness over
+  carried a dead `EnvelopeDecodedV0 { admitted: _ } => false` arm purely to satisfy exhaustiveness over
   a case the route cannot produce, which is what a coproduct too wide for its position looks like from
   the consumer side. The refusal reasons are now their own closed coproduct `EnvelopeRefusal`, and
-  `EnvelopeAdmission = EnvelopeAdmitted | EnvelopeRefused { refusal: EnvelopeRefusal }`. The class
+  `EnvelopeAdmission = EnvelopeDecodedV0 | EnvelopeRefused { refusal: EnvelopeRefusal }`. The class
   climbs from mechanically preventable to structurally impossible, and the four dead arms are deleted
   with it — §4b(4) retires the redundant production handling while every discriminating witness stays
   enrolled.
 
-  **Still open, routed by the side chat and not yet answered:** `AdmittedRealization` is minted before
+  **Still open, routed by the side chat and not yet answered:** `DecodedRealizationV0` is minted before
   semantic conformance runs, so the trusted-type boundary may sit one step too early. Two candidate
   cuts: a second sealed type downstream of `judge_realization` carrying admitted-and-conformant, or
-  `AdmittedRealization` not existing until conformance has run. Decode-admitted and contract-conformant
+  `DecodedRealizationV0` not existing until conformance has run. Decode-admitted and contract-conformant
   are genuinely different facts, so the first reading is not obviously wrong — but no consumer today
   distinguishes them, which is exactly the condition under which one of the two is redundant.
 

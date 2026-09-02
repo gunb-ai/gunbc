@@ -19,22 +19,55 @@ import extdeps.climbing_holds.types { DimensionEvidence, OperatorRelayedDocument
 //
 // NO NEUTRAL SHARED MODULE IS EXTRACTED YET, deliberately. MountingLocationId and MountingLocation
 // are shapes a second standard could eventually share, but there is no multi-standard consumer today
-// -- ATX 2.2 carries no location population in this corpus -- and extracting a hub for one consumer
+// -- the ATX 2.2 spec carries no location population in this corpus -- and extracting a hub for one consumer
 // would be inventing an authority to hold a symbol rather than to answer a question. They live here,
 // with the standard that actually enumerates. The extraction becomes correct when a second standard
 // enumerates, and not before.
 //
-// THE REVISION IS NOT ESTABLISHED HERE, and the module is named accordingly. The coordinates below
-// arrived by relay from a routed review naming the microATX Motherboard Interface Specification; no
-// first-party read of a specific revision happened in this session, so this module does not spell a
-// revision it cannot cite. That is the same rule that deleted an unverified vendor legal name
-// earlier in this program. When a revision is read first-party, this module gains that fact and may
-// be renamed to carry it.
+// THE CITED DOCUMENT IS NOW THE RIGHT ONE, AND AN EARLIER REVISION CITED A DIFFERENT DOCUMENT THAN
+// THE ONE ITS OWN PROVENANCE ROW NAMED.
+//
+// This scope's first_citation was the archived ATX 2.2 PDF while the provenance row below said the
+// coordinates came by relay from the microATX Motherboard Interface Specification -- two different
+// documents, one of them asserted STRUCTURALLY. An earlier revision recorded that contradiction in an
+// annotation and left it standing, on the reasoning that no microATX document was in hand and the
+// three available repairs were all worse than confessing. Recording it was not a repair: a prose
+// confession does not subtract a typed claim, and first_citation is read by lenses that cannot see
+// the paragraph denying it (routed review, 2026-09-02). The fourth option was to go and get the
+// document, which is what happened.
+//
+// WHAT WAS ACTUALLY VERIFIED, stated at this grain because the provenance grade turns on it:
+//   - a document whose title page reads verbatim "microATX Motherboard Interface Specification
+//     Version 1.2" was retrieved and its title page text layer read first-party this session, from
+//     the xdevs mirror carried in further_citations;
+//   - its BODY is the same font-subset artwork the ATX 2.2 PDF turned out to be -- Table 4 and the
+//     mounting-hole figure do not survive text extraction -- so the COORDINATES were still not read
+//     first-party, and the provenance row below is unchanged at OperatorRelayedDocument;
+//   - the publisher's own copy at formfactors.org is present in the Wayback CDX index with status
+//     200 at the snapshot spelled below. Its BYTES were not retrieved this session (rate limited),
+//     which is why the mirror that WAS opened is carried beside it rather than silently dropped.
+//
+// So the defect that closes here is the WRONG-DOCUMENT one. The remaining gap is narrower and is
+// exactly what OperatorRelayedDocument exists to say: the right document is cited, the coordinates
+// within it were relayed rather than read. TRIGGER for the last step is unchanged in kind but no
+// longer blocked on finding a document -- it needs the figure extracted from THIS PDF, by OCR or by
+// an operator reading Table 4, at which point the provenance row upgrades and the module may be
+// renamed to spell the revision.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "web.archive.org/web/20180417122513/http://www.formfactors.org:80/developer/specs/atx2_2.pdf"
+    locator: "web.archive.org/web/20061010062718/http://www.formfactors.org/developer/specs/matxspe1.2.pdf"
+  }
+}
+
+// The mirror that was actually opened and read this session. It is a further_citation and not the
+// first: a mirror is not the publisher, and the citation that leads should be the document's own
+// home even when the copy in hand came from elsewhere.
+data extdeps_external_authority_mirror: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "xdevs.com/doc/_PC_HW/Form_factors/matxspe1.2.pdf"
   }
 }
 
@@ -47,7 +80,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [extdeps_external_authority_mirror]
 }
 
 // PROVENANCE OF THE COORDINATES: CITED-VIA-RELAY, the grade extdeps.climbing_holds.atomik defines
@@ -74,23 +107,16 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // consumers follow it.
 data micro_atx_coordinate_provenance: DimensionEvidence = OperatorRelayedDocument {
   authority: extdeps_external_authority_anchor,
-  relay_note: "Routed review reporting the microATX Motherboard Interface Specification location population and coordinates. No first-party figure read in this session; the revision is not established. Corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on these values exactly.",
+  relay_note: "Routed review reporting the microATX Motherboard Interface Specification location population and coordinates. The cited document is Version 1.2 and its title page was read first-party this session; its Table 4 and mounting-hole figure are font-subset artwork that does not survive text extraction, so the COORDINATES below are still the relay reading and not this session's. Which revision the RELAY read is not established, so the module is not renamed to spell one -- holding a 1.2 copy does not establish that the relayed numbers came from 1.2. Corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on these values exactly.",
 }
 
-// A RESIDUAL DEFECT, RECORDED RATHER THAN HALF-FIXED. `extdeps_model_scope` above names
-// `micro_atx_mounting_locations` as the subject and cites the archived ATX 2.2 PDF as its
-// first_citation -- a STRUCTURAL claim that these coordinates came from that document, which the
-// provenance row directly above denies. This session's extraction of that PDF recovered Figure 7's
-// text layer and NOT the mounting-location artwork.
-//
-// It is left standing because the honest repair is not obvious and guessing would be worse: there is
-// no microATX document in hand to cite, so the choices are to cite the ATX PDF (what it does now,
-// and wrong about which document supplied the numbers), to cite nothing (losing the only anchor we
-// have), or to model a citation whose authority is a RELAY rather than a document -- which is a
-// change to `extdeps.external_authority`, not to this file. TRIGGER: either a first-party read of a
-// microATX revision, or an ExternalAuthority arm that can carry a relayed-with-no-document chain.
-// Until one of those lands, the structural citation over-claims and this row says so out loud rather
-// than letting a reader take first_citation at face value.
+// THE STRUCTURAL OVER-CLAIM IS CLOSED. first_citation now names the microATX Motherboard Interface
+// Specification, which is the document the provenance row names, so the typed citation and the typed
+// provenance agree on WHICH DOCUMENT. What remains is a grade, not a contradiction: the coordinates
+// came by relay from that document rather than from this session reading its Table 4, and
+// OperatorRelayedDocument says exactly that. The earlier framing of this gap -- that an
+// ExternalAuthority arm carrying a relayed-with-no-document chain might be needed -- is retired: the
+// document exists and is cited, so there is no document-less chain left to model.
 
 // THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
 // and because this session got it BACKWARDS once and shipped the error.

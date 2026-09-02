@@ -117,19 +117,38 @@ fn raw_realization_envelope(
 // because a raw envelope that has been checked is still a raw envelope, and the next reader has no
 // way to tell it apart from an unchecked one. Decoding into PlateDimensions and CouponOperation is
 // what makes the downstream total: there is no arm in which an unadmitted value reaches geometry.
-// THE ADMITTED VALUE IS UNFORGEABLE, AND AN EARLIER REVISION ONLY CLAIMED IT WAS.
+// THE NAME SAYS DECODED, NOT ADMITTED, AND THE EARLIER NAME WAS THE OVERCLAIM.
 //
-// That revision put the geometry directly on the accepted arm -- EnvelopeAdmitted { plate, features }
+// This type was called AdmittedRealization. It is minted by decode_envelope after schema and tag
+// decoding and BEFORE any comparison against the canonical contract, so a caller may legally obtain
+// one and never invoke judge_realization -- and "admitted" claimed a stronger standing than the
+// function that mints it establishes. That is DESIGN section 3's meaning fork in its quietest form:
+// the annotation cannot narrow what the type name claims, and the name is what the next reader
+// imports. Renamed rather than re-annotated, before it becomes PRINT-5's vocabulary. The conformance
+// verdict is renamed on the same reasoning: it compares normalized GEOMETRY, not the whole specimen,
+// so GeometryConformance says what it decides.
+//
+// The terminal shape this leaves room for, and deliberately does not build yet:
+//
+//   RawRealizationEnvelope -> DecodedRealizationV0 -> GeometryConforms -> AdmittedRealizationV0
+//
+// where only the last is accepted by a handler, and carries geometry RE-DERIVED from the canonical
+// model rather than the transported geometry that happened to compare equal. Nothing here mints that
+// type, because nothing consumes it yet; the name is left free rather than spent.
+//
+// THE DECODED VALUE IS UNFORGEABLE, AND AN EARLIER REVISION ONLY CLAIMED IT WAS.
+//
+// That revision put the geometry directly on the accepted arm -- EnvelopeDecodedV0 { plate, features }
 // -- and argued that conformance was unreachable without admission "because the refusal arms have no
 // plate and no features to hand on". That reasoning is necessary and INSUFFICIENT, and a probe
-// settled it: a foreign module compiled `EnvelopeAdmitted { plate: p, features: [] }` directly, with
+// settled it: a foreign module compiled `EnvelopeDecodedV0 { plate: p, features: [] }` directly, with
 // a deliberate must-fail control in the same file proving the compiler had actually read it. The raw
 // envelope could not bypass the judge; a CALLER could bypass the raw envelope entirely and mint the
 // trusted result. The accepted arm was itself a geometry mint.
 //
-// AdmittedRealization is sole_constructor, so it can only be built inside THIS module, and the only
-// function here that builds one is admit_envelope after every wire check has passed. A foreign
-// module may still name the EnvelopeAdmitted arm; it cannot obtain an AdmittedRealization to put in
+// DecodedRealizationV0 is sole_constructor, so it can only be built inside THIS module, and the only
+// function here that builds one is decode_envelope after every wire check has passed. A foreign
+// module may still name the EnvelopeDecodedV0 arm; it cannot obtain a DecodedRealizationV0 to put in
 // it. That moves the class from "no caller happens to do this" to "no caller can express this".
 //
 // THE EVIDENCE IS AN EXECUTING WITNESS. An earlier cut of this annotation said the evidence could
@@ -139,9 +158,9 @@ fn raw_realization_envelope(
 // TO THE COMPILER BY A FIXTURE, and only the second boundary decides whether the check has a RED.
 // It does. test.claim.printed_chassis_admitted_realization_seal_witness_test hands the forged record
 // literal to gunbc.compile_diagnostic_census as data and asserts a SoleConstructorViolation scoped to
-// subject_name AdmittedRealization, against a green source with identical imports and no literal, and
+// subject_name DecodedRealizationV0, against a green source with identical imports and no literal, and
 // asserts the difference between them -- the two forms that module's own annotation names as exact.
-type AdmittedRealization sole_constructor {
+type DecodedRealizationV0 sole_constructor {
   plate: PlateDimensions
   features: List<CouponOperation>
 }
@@ -149,10 +168,10 @@ type AdmittedRealization sole_constructor {
 // The refusal reasons are their own closed coproduct, SEPARATE from the admission outcome, because
 // the refusal payload must not be able to carry a success. An earlier cut typed
 // RealizationRefusedAtWire { admission: EnvelopeAdmission }, so the refusal arm's payload included
-// EnvelopeAdmitted -- unreachable in practice, since judge_realization only builds that arm on the
+// EnvelopeDecodedV0 -- unreachable in practice, since judge_realization only builds that arm on the
 // three refusing branches, but perfectly writable, and reachability is not occupancy. The tell was
 // visible in the witnesses rather than in this file: four of them carried a dead
-// EnvelopeAdmitted { admitted: _ } => false arm to satisfy exhaustiveness over a case the route
+// EnvelopeDecodedV0 { decoded: _ } => false arm to satisfy exhaustiveness over a case the route
 // cannot produce. Splitting the coproduct climbs that class from mechanically preventable to
 // structurally impossible and deletes those four arms with it -- DESIGN 4b(4) dissolution on climb,
 // which retires the redundant PRODUCTION handling while the discriminating witnesses stay enrolled.
@@ -162,7 +181,7 @@ type EnvelopeRefusal
   | EnvelopeCarriesNoOperations
 
 type EnvelopeAdmission
-  = EnvelopeAdmitted { admitted: AdmittedRealization }
+  = EnvelopeDecodedV0 { decoded: DecodedRealizationV0 }
   | EnvelopeRefused { refusal: EnvelopeRefusal }
 
 // The closed operation vocabulary AS SPELLED ON THE WIRE, and this roster is HAND-SYNCED to the
@@ -213,7 +232,7 @@ fn decode_operation_row(row: RawOperationRow) -> CouponOperation {
   }
 }
 
-fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
+fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
   if envelope.schema_version != contract_schema_version {
     EnvelopeRefused {
       refusal: EnvelopeSchemaUnsupported {
@@ -234,8 +253,8 @@ fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
     } else if envelope.operations.length() == 0 {
       EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
     } else {
-      EnvelopeAdmitted {
-        admitted: AdmittedRealization {
+      EnvelopeDecodedV0 {
+        decoded: DecodedRealizationV0 {
           plate: plate_dimensions(
             size_x: micrometer(count: envelope.plate_x_um),
             size_y: micrometer(count: envelope.plate_y_um),
@@ -327,11 +346,11 @@ type PlateAxis = PlateAxisX | PlateAxisY | PlateAxisZ
 
 type OperationField = FieldDiameter | FieldCenterX | FieldCenterY
 
-type ContractConformance
-  = ContractConforms
-  | ContractPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
-  | ContractOperationCountDiverges { modeled: Int, realized: Int }
-  | ContractOperationDiverges {
+type GeometryConformance
+  = GeometryConforms
+  | GeometryPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
+  | GeometryOperationCountDiverges { modeled: Int, realized: Int }
+  | GeometryOperationDiverges {
       index: Int,
       field: OperationField,
       modeled: Micrometer,
@@ -347,7 +366,7 @@ type ContractConformance
 // The cost was not the worse half. That recursion read `realized.first()` while only `modeled` was
 // tested for emptiness, so it was total only because a separate count precheck happened to run
 // first. Called with a shorter realized list it would have read past the end; called with a shorter
-// MODELED list it would have returned ContractConforms — a fabricated pass, which is precisely the
+// MODELED list it would have returned GeometryConforms — a fabricated pass, which is precisely the
 // absorbing fallback DESIGN section 5 forbids, guarded by nothing but a caller's good manners.
 //
 // Zipping removes the state rather than checking for it: a ragged pair has no representation, so the
@@ -363,24 +382,24 @@ type RungComparison sole_constructor {
 // the only question an index answers usefully.
 type RungScan sole_constructor {
   index: Int
-  outcome: ContractConformance
+  outcome: GeometryConformance
 }
 
 // One operation pair, compared field by field, reporting the FIRST field that differs. Diameter is
 // checked before position because a wrong diameter is a process fault and a wrong centre is a layout
 // fault, and naming the process fault first is what an operator acts on.
-fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> ContractConformance {
+fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> GeometryConformance {
   match m {
     OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
       OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
         if micrometer_count(m: md) != micrometer_count(m: rd) {
-          ContractOperationDiverges { index: index, field: FieldDiameter, modeled: md, realized: rd }
+          GeometryOperationDiverges { index: index, field: FieldDiameter, modeled: md, realized: rd }
         } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
-          ContractOperationDiverges { index: index, field: FieldCenterX, modeled: mx, realized: rx }
+          GeometryOperationDiverges { index: index, field: FieldCenterX, modeled: mx, realized: rx }
         } else if micrometer_count(m: my) != micrometer_count(m: ry) {
-          ContractOperationDiverges { index: index, field: FieldCenterY, modeled: my, realized: ry }
+          GeometryOperationDiverges { index: index, field: FieldCenterY, modeled: my, realized: ry }
         } else {
-          ContractConforms
+          GeometryConforms
         }
     }
   }
@@ -388,13 +407,13 @@ fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> C
 
 fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
   match acc.outcome {
-    ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } =>
+    GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
-    ContractPlateDiverges { axis: _, modeled: _, realized: _ } =>
+    GeometryPlateDiverges { axis: _, modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
-    ContractOperationCountDiverges { modeled: _, realized: _ } =>
+    GeometryOperationCountDiverges { modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
-    ContractConforms =>
+    GeometryConforms =>
       RungScan {
         index: acc.index + 1,
         outcome: operation_divergence(index: acc.index, m: pair.modeled, r: pair.realized),
@@ -408,17 +427,17 @@ fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
 fn compare_operations(
   modeled: List<CouponOperation>,
   realized: List<CouponOperation>,
-) -> ContractConformance {
+) -> GeometryConformance {
   let modeled_count = modeled.length()
   let realized_count = realized.length()
   if modeled_count != realized_count {
-    ContractOperationCountDiverges { modeled: modeled_count, realized: realized_count }
+    GeometryOperationCountDiverges { modeled: modeled_count, realized: realized_count }
   } else {
     fold(
       zip_map(a: modeled, b: realized, f: fn(m, r) {
         RungComparison { modeled: m, realized: r }
       }),
-      init: RungScan { index: 0, outcome: ContractConforms },
+      init: RungScan { index: 0, outcome: GeometryConforms },
       f: rung_scan_step
     ).outcome
   }
@@ -427,15 +446,15 @@ fn compare_operations(
 // The plate is compared BEFORE the operations, and the order is a diagnostic decision. A plate of
 // the wrong thickness makes every hole depth wrong at once, so reporting the first hole as divergent
 // would name a symptom and bury the cause.
-fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> ContractConformance {
+fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> GeometryConformance {
   if micrometer_count(m: modeled.size_x) != micrometer_count(m: realized.size_x) {
-    ContractPlateDiverges { axis: PlateAxisX, modeled: modeled.size_x, realized: realized.size_x }
+    GeometryPlateDiverges { axis: PlateAxisX, modeled: modeled.size_x, realized: realized.size_x }
   } else if micrometer_count(m: modeled.size_y) != micrometer_count(m: realized.size_y) {
-    ContractPlateDiverges { axis: PlateAxisY, modeled: modeled.size_y, realized: realized.size_y }
+    GeometryPlateDiverges { axis: PlateAxisY, modeled: modeled.size_y, realized: realized.size_y }
   } else if micrometer_count(m: modeled.size_z) != micrometer_count(m: realized.size_z) {
-    ContractPlateDiverges { axis: PlateAxisZ, modeled: modeled.size_z, realized: realized.size_z }
+    GeometryPlateDiverges { axis: PlateAxisZ, modeled: modeled.size_z, realized: realized.size_z }
   } else {
-    ContractConforms
+    GeometryConforms
   }
 }
 
@@ -471,17 +490,17 @@ fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> Contrac
 // REFUSED (see w_an_unauthorised_operation_order_refuses) because position is compared -- which is
 // not the same as features HAVING identities, and the difference reappears the moment two features
 // share a geometry.
-fn admit_realized_specimen(
+fn judge_realized_geometry(
   contract: RealizationContract,
   plate: PlateDimensions,
   features: List<CouponOperation>,
-) -> ContractConformance {
+) -> GeometryConformance {
   let plate_outcome = compare_plate(modeled: contract.specimen.plate, realized: plate)
   match plate_outcome {
-    ContractConforms => compare_operations(modeled: contract.specimen.features, realized: features)
-    ContractPlateDiverges { axis: _, modeled: _, realized: _ } => plate_outcome
-    ContractOperationCountDiverges { modeled: _, realized: _ } => plate_outcome
-    ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => plate_outcome
+    GeometryConforms => compare_operations(modeled: contract.specimen.features, realized: features)
+    GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => plate_outcome
+    GeometryOperationCountDiverges { modeled: _, realized: _ } => plate_outcome
+    GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => plate_outcome
   }
 }
 
@@ -491,17 +510,17 @@ fn admit_realized_specimen(
 // a validation step a caller could forget to run.
 type RealizationVerdict
   = RealizationRefusedAtWire { refusal: EnvelopeRefusal }
-  | RealizationJudged { conformance: ContractConformance }
+  | RealizationJudged { conformance: GeometryConformance }
 
 fn judge_realization(
   contract: RealizationContract,
   envelope: RawRealizationEnvelope,
 ) -> RealizationVerdict {
-  let admission = admit_envelope(envelope: envelope)
+  let admission = decode_envelope(envelope: envelope)
   match admission {
-    EnvelopeAdmitted { admitted: a } =>
+    EnvelopeDecodedV0 { decoded: a } =>
       RealizationJudged {
-        conformance: admit_realized_specimen(contract: contract, plate: a.plate, features: a.features),
+        conformance: judge_realized_geometry(contract: contract, plate: a.plate, features: a.features),
       }
     EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
   }

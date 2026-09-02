@@ -14,7 +14,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// The seal on product.printed_chassis.realization_contract.AdmittedRealization is what makes
+// The seal on product.printed_chassis.realization_contract.DecodedRealizationV0 is what makes
 // judge_realization the ONLY route from wire bytes to a judged realization: a foreign module that
 // could write the record literal could hand a downstream consumer an admitted value that never
 // passed decode. A probe run before the seal landed proved the arm WAS forgeable, and that probe
@@ -25,9 +25,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // closure carries its own diagnostics into both censuses, and it is precisely their cancellation
 // under the differential that leaves the forged literal as the only difference.
 
-data forged_source: String = "module probe_chassis_forged_admitted\nimport product.printed_chassis.realization_contract { AdmittedRealization }\nimport product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation }\nimport std.measure { micrometer }\nimport std.types { List }\nfn forged() -> AdmittedRealization {\n  AdmittedRealization {\n    plate: plate_dimensions(size_x: micrometer(count: 1), size_y: micrometer(count: 1), size_z: micrometer(count: 1)),\n    features: [],\n  }\n}\n"
+data forged_source: String = "module probe_chassis_forged_admitted\nimport product.printed_chassis.realization_contract { DecodedRealizationV0 }\nimport product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation }\nimport std.measure { micrometer }\nimport std.types { List }\nfn forged() -> DecodedRealizationV0 {\n  DecodedRealizationV0 {\n    plate: plate_dimensions(size_x: micrometer(count: 1), size_y: micrometer(count: 1), size_z: micrometer(count: 1)),\n    features: [],\n  }\n}\n"
 
-data lawful_source: String = "module probe_chassis_lawful_admitted\nimport product.printed_chassis.realization_contract { AdmittedRealization }\nimport product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation }\nimport std.measure { micrometer }\nimport std.types { List }\nfn lawful(value: AdmittedRealization) -> AdmittedRealization {\n  value\n}\n"
+data lawful_source: String = "module probe_chassis_lawful_admitted\nimport product.printed_chassis.realization_contract { DecodedRealizationV0 }\nimport product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation }\nimport std.measure { micrometer }\nimport std.types { List }\nfn lawful(value: DecodedRealizationV0) -> DecodedRealizationV0 {\n  value\n}\n"
 
 fn rows_of_subject(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
   rows |> filter(r => r.subject_name == wanted)
@@ -43,7 +43,7 @@ fn seal_violation_count(source: String) -> Int {
           rows: census_blocking_rows(rows: rows),
           wanted: "SoleConstructorViolation"
         ),
-        wanted: "AdmittedRealization"
+        wanted: "DecodedRealizationV0"
       )
     )
     CensusNotRunnable { cause: _ } => 0 - 1

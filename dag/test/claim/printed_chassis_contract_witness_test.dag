@@ -9,15 +9,15 @@ import product.printed_chassis.coupon {
 import product.printed_chassis.realization_contract {
   RealizationContract,
   realization_contract,
-  ContractConformance, ContractConforms,
-  ContractPlateDiverges, ContractOperationCountDiverges, ContractOperationDiverges,
+  GeometryConformance, GeometryConforms,
+  GeometryPlateDiverges, GeometryOperationCountDiverges, GeometryOperationDiverges,
   PlateAxis, PlateAxisX, PlateAxisY, PlateAxisZ,
   OperationField, FieldDiameter, FieldCenterX, FieldCenterY,
-  compare_operations, compare_plate, admit_realized_specimen,
+  compare_operations, compare_plate, judge_realized_geometry,
   RawRealizationEnvelope, raw_realization_envelope,
   RawOperationRow, raw_operation_row,
   EnvelopeSchemaUnsupported, EnvelopeOperationUnknown, EnvelopeCarriesNoOperations,
-  admit_envelope, contract_schema_version,
+  decode_envelope, contract_schema_version,
   RealizationVerdict, RealizationRefusedAtWire, RealizationJudged,
   judge_realization,
 }
@@ -121,10 +121,10 @@ test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
       let contract = realization_contract(declaration: l)
       match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
         RealizationJudged { conformance: c } => match c {
-          ContractConforms => true
-          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          ContractOperationCountDiverges { modeled: _, realized: _ } => false
-          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+          GeometryConforms => true
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
@@ -146,15 +146,15 @@ test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
       let bad = envelope_with_plate_z(s: contract.specimen, z: micrometer_count(m: contract.specimen.plate.size_z) + 500)
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
-          ContractPlateDiverges { axis: a, modeled: m, realized: r } =>
+          GeometryPlateDiverges { axis: a, modeled: m, realized: r } =>
             match a {
               PlateAxisZ => micrometer_count(m: r) - micrometer_count(m: m) == 500
               PlateAxisX => false
               PlateAxisY => false
             }
-          ContractConforms => false
-          ContractOperationCountDiverges { modeled: _, realized: _ } => false
-          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+          GeometryConforms => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
@@ -177,15 +177,15 @@ test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
-          ContractOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
+          GeometryOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
             match f {
               FieldCenterX => i == 0 && micrometer_count(m: r) - micrometer_count(m: m) == 250
               FieldDiameter => false
               FieldCenterY => false
             }
-          ContractConforms => false
-          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
@@ -206,15 +206,15 @@ test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
-          ContractOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
+          GeometryOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
             match f {
               FieldDiameter => i == 0 && micrometer_count(m: r) - micrometer_count(m: m) == 50
               FieldCenterX => false
               FieldCenterY => false
             }
-          ContractConforms => false
-          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
@@ -235,10 +235,10 @@ test fn w_a_dropped_operation_diverges_on_count() -> Bool {
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
-          ContractOperationCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
-          ContractConforms => false
-          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
@@ -265,10 +265,10 @@ test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
-          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => true
-          ContractConforms => false
-          ContractOperationCountDiverges { modeled: _, realized: _ } => false
-          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => true
+          GeometryConforms => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
@@ -440,15 +440,15 @@ test fn w_an_unauthorised_operation_order_refuses() -> Bool {
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
-          ContractOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
+          GeometryOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
             match f {
               FieldDiameter => i == 0 && micrometer_count(m: m) == 3000 && micrometer_count(m: r) == 4000
               FieldCenterX => false
               FieldCenterY => false
             }
-          ContractConforms => false
-          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
