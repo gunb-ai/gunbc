@@ -119,7 +119,7 @@ import product.altra_motherboard.minimal_design {
   DdrChannel4,
   DdrChannel5,
   FirstDimmOnChannel,
-  MemoryConfiguration,
+  RevARoutedMemoryDesign, RoutedDdrTopology, ShipsWithProductionPopulation,
   Production,
   altra_1p_minimum,
 }
@@ -260,11 +260,16 @@ fn drop_label(xs: List<NonEmptyStr>, needle: String) -> List<NonEmptyStr> {
 
 fn six_channel_design() -> AltraMinimalMotherboard {
   AltraMinimalMotherboard {
-    intent: Production,
-    memory: MemoryConfiguration {
-      topology: ActiveDdrTopology {
-        populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
-        positions_per_channel: [FirstDimmOnChannel],
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
       },
     },
     pcie_lanes_broken_out: 4,

@@ -83,7 +83,8 @@ import product.altra_motherboard.minimal_design {
   DdrSlotIdentity,
   DimmSlotPosition,
   FirstDimmOnChannel,
-  MemoryConfiguration,
+  RevARoutedMemoryDesign, RoutedDdrTopology, ShipsWithProductionPopulation,
+  EngineeringFixturePopulation, BringUpThenFill,
   EngineeringBringUp,
   Production,
   SecondDimmOnChannel,
@@ -307,10 +308,20 @@ fn requires_slot(d: AltraMinimalMotherboard, c: DdrChannelIdentity, p: DimmSlotP
   })
 }
 
+// ROUTED EQUALS POPULATED HERE ON PURPOSE. These placement witnesses were authored against a
+// carrier that had only one topology, so routing exactly what is populated preserves every slot
+// count they assert. The cases where the two axes DIFFER are the point of the new controls below,
+// and keeping this helper degenerate is what makes those controls discriminating rather than
+// merely different.
 fn design_over(t: ActiveDdrTopology) -> AltraMinimalMotherboard {
   AltraMinimalMotherboard {
-    intent: Production,
-    memory: MemoryConfiguration { topology: t },
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: t.populated_channels,
+        routed_positions_per_channel: t.positions_per_channel,
+      },
+      lifecycle: ShipsWithProductionPopulation { production: t },
+    },
     pcie_lanes_broken_out: 4,
   }
 }
@@ -663,8 +674,15 @@ test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
 test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
   let prod = altra_1p_minimum
   let fixture = AltraMinimalMotherboard {
-    intent: EngineeringBringUp,
-    memory: prod.memory,
+    design: RevARoutedMemoryDesign {
+      routed: prod.design.routed,
+      lifecycle: EngineeringFixturePopulation {
+        bringup: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
     pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
   }
   let prod_roles = list_length(items: required_roles(d: prod))
@@ -730,8 +748,15 @@ test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool {
 test fn w_the_role_gate_does_not_touch_the_memory_slots() -> Bool {
   let prod = altra_1p_minimum
   let fixture = AltraMinimalMotherboard {
-    intent: EngineeringBringUp,
-    memory: prod.memory,
+    design: RevARoutedMemoryDesign {
+      routed: prod.design.routed,
+      lifecycle: EngineeringFixturePopulation {
+        bringup: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
     pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
   }
   memory_role_count(d: prod) == memory_role_count(d: fixture)

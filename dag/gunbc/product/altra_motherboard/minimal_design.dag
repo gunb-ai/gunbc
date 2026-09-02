@@ -134,9 +134,6 @@ fn ddr_slot_identity_eq(a: DdrSlotIdentity, b: DdrSlotIdentity) -> Bool {
 // THE POPULATION IS NAMED CONTROLLERS, and the admitted COUNT is recovered from it rather than
 // declared beside it. Carrying both a count field and a channel list would be two statements of
 // one fact, and the copy that disagrees is the one nobody edits.
-type MemoryConfiguration {
-  topology: ActiveDdrTopology
-}
 
 // THE COUNT IS RECOVERED, AND A POPULATION THE VENDOR DOES NOT ADMIT HAS NO ANSWER. Three named
 // channels do not round down to two: Absent here means the population is outside the enumerated
@@ -224,15 +221,49 @@ fn duplicate_channel_causes(cs: List<DdrChannelIdentity>) -> List<DesignRefusal>
   })
 }
 
+// THE BOARD CARRIES THE ROUTED DESIGN, NOT A POPULATION, and this is the correction that makes
+// the routed-versus-populated distinction reach the things that are actually fabricated. An
+// earlier revision carried `memory: MemoryConfiguration`, a single ActiveDdrTopology, and the
+// geometry consumers derived PHYSICAL DIMM CONNECTOR obligations from it. So a board routing
+// eight channels and populating four projected FOUR physical slots and compared EQUAL to a board
+// that routed only four -- the exact conflation this module's own annotation calls invisible when
+// it is decided and expensive afterwards, still live one layer downstream. Splitting routed from
+// populated in the judgment while the geometry still read the populated axis left the new
+// distinction unable to change any physical answer.
+//
+// `intent` is gone from this record because it now lives where it is decided: each population in
+// the MemoryPopulationLifecycle is judged under its own intent. A board-level intent field could
+// disagree with the lifecycle it contains, which is one fact with two homes.
 type AltraMinimalMotherboard {
-  intent: DesignIntent
-  memory: MemoryConfiguration
+  design: RevARoutedMemoryDesign
   pcie_lanes_broken_out: Int
 }
 
-type DesignAdmission
-  = DesignAdmitted { design: AltraMinimalMotherboard }
-  | DesignRefused { causes: DesignRefusalSet }
+// PHYSICAL CONNECTORS ARE OWED BY COPPER. A routed slot exists on the board whether or not a
+// module is seated in it, so the connector obligation is the cross product of ROUTED channels and
+// ROUTED positions. The populated topology answers a different question -- which of those
+// connectors ship filled -- and no physical obligation follows from it.
+fn routed_slot_identities(r: RoutedDdrTopology) -> List<DdrSlotIdentity> {
+  fold(r.routed_channels, init: [], f: fn(acc, ch) {
+    concat(acc, fold(r.routed_positions_per_channel, init: [], f: fn(inner, pos) {
+      concat(inner, [DdrSlotIdentity { channel: ch, position: pos }])
+    }))
+  })
+}
+
+fn board_routed_topology(d: AltraMinimalMotherboard) -> RoutedDdrTopology {
+  d.design.routed
+}
+
+fn board_slot_identities(d: AltraMinimalMotherboard) -> List<DdrSlotIdentity> {
+  routed_slot_identities(r: d.design.routed)
+}
+
+fn board_total_dimm_positions(d: AltraMinimalMotherboard) -> Int {
+  list_length(items: board_slot_identities(d: d))
+}
+
+
 
 type DesignRefusalSet {
   first: DesignRefusal
@@ -250,53 +281,11 @@ fn design_refusal_count(s: DesignRefusalSet) -> Int {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
-fn total_dimms(m: MemoryConfiguration) -> Int {
-  list_length(items: topology_slot_identities(t: m.topology))
-}
 
 // EVERY BOUND IS READ FROM THE PACKAGE AUTHORITY, never retyped. The controller population and
 // the lane count come from the cited datasheet rows, so a correction there moves this admission
 // rather than leaving it agreeing with a number that has changed.
-fn design_causes(d: AltraMinimalMotherboard) -> List<DesignRefusal> {
-  let selected = topology_channel_count(t: d.memory.topology)
-  let admitted = admitted_channel_count(n: selected)
-  let intent_cause = match admitted {
-    Absent => [ChannelPopulationIsNotAnAdmittedCount { populated: selected }]
-    Present { value: c } =>
-      match d.intent {
-        EngineeringBringUp => []
-        Production =>
-          if channel_count_is_production_qualified(c: c) {
-            []
-          } else {
-            [DebugOnlyChannelCountUnderProductionIntent { selected: selected }]
-          }
-      }
-  }
-  let population_cause = if selected > altra_ddr4_channel_count {
-    [ChannelCountExceedsControllerPopulation { selected: selected, available: altra_ddr4_channel_count }]
-  } else {
-    concat([], duplicate_channel_causes(cs: d.memory.topology.populated_channels))
-  }
-  let dimm_cause = if list_length(items: d.memory.topology.positions_per_channel) < 1 {
-    [ChannelHasNoDimmPositions]
-  } else {
-    duplicate_position_causes(ps: d.memory.topology.positions_per_channel)
-  }
-  let pcie_cause = if d.pcie_lanes_broken_out > altra_pcie_gen4_lane_count {
-    [PcieLanesExceedPackage { requested: d.pcie_lanes_broken_out, available: altra_pcie_gen4_lane_count }]
-  } else {
-    []
-  }
-  concat(concat(intent_cause, population_cause), concat(dimm_cause, pcie_cause))
-}
 
-fn admit_design(d: AltraMinimalMotherboard) -> DesignAdmission {
-  match fold(design_causes(d: d), init: none, f: fn(acc, c) { push_design_refusal(acc: acc, r: c) }) {
-    Absent => DesignAdmitted { design: d }
-    Present { value: s } => DesignRefused { causes: s }
-  }
-}
 
 // THE SELECTED MINIMUM. Four channels because that is the smallest production-qualified
 // population, one DIMM per channel because a second is a capacity decision rather than a
@@ -343,16 +332,37 @@ fn routed_channel_count(r: RoutedDdrTopology) -> Int {
 // the shipped product, and judging it separately as Production produces a second verdict with no
 // structural relation to the first. The lifecycle makes the relation a modelled fact, so both
 // populations are judged under their own intent against ONE routed ceiling.
+// THE THIRD ARM EXISTS BECAUSE THE OLD ROOT COULD EXPRESS SOMETHING THE FIRST TWO CANNOT. Both
+// arms below carry a production population, so with only those two, EVERY board is a production
+// board and a genuine engineering fixture -- a board that runs two channels and never ships --
+// becomes unwritable. The previous carrier said that with `intent: EngineeringBringUp`, and a
+// replacement that quietly drops a state the thing it replaces could express has erased a
+// distinction rather than migrated it.
 type MemoryPopulationLifecycle
-  = ShipsWithProductionPopulation { production: ActiveDdrTopology }
+  = EngineeringFixturePopulation { bringup: ActiveDdrTopology }
+  | ShipsWithProductionPopulation { production: ActiveDdrTopology }
   | BringUpThenFill { bringup: ActiveDdrTopology, production: ActiveDdrTopology }
 
-fn lifecycle_production_population(l: MemoryPopulationLifecycle) -> ActiveDdrTopology {
+// THE BOARD'S GOVERNING INTENT IS DERIVED FROM ITS LIFECYCLE, never carried beside it. A board
+// that brings up on two channels and then ships on four IS A PRODUCTION BOARD and owes production
+// non-memory roles: it must not project as an engineering fixture merely because one phase of its
+// life uses a debug-qualified active count.
+fn lifecycle_governing_intent(l: MemoryPopulationLifecycle) -> DesignIntent {
   match l {
-    ShipsWithProductionPopulation { production: p } => p
-    BringUpThenFill { bringup: _, production: p } => p
+    EngineeringFixturePopulation { bringup: _ } => EngineeringBringUp
+    ShipsWithProductionPopulation { production: _ } => Production
+    BringUpThenFill { bringup: _, production: _ } => Production
   }
 }
+
+fn board_governing_intent(d: AltraMinimalMotherboard) -> DesignIntent {
+  lifecycle_governing_intent(l: d.design.lifecycle)
+}
+
+fn lifecycle_causes_for_arm(routed: RoutedDdrTopology, p: ActiveDdrTopology, intent: DesignIntent) -> List<DesignRefusal> {
+  concat(active_population_causes(populated: p, intent: intent), population_subset_causes(routed: routed, populated: p))
+}
+
 
 type RevARoutedMemoryDesign {
   routed: RoutedDdrTopology
@@ -486,12 +496,14 @@ fn active_population_causes(populated: ActiveDdrTopology, intent: DesignIntent) 
 // EACH POPULATION IN THE LIFECYCLE IS JUDGED UNDER ITS OWN INTENT, and both against one ceiling.
 fn lifecycle_causes(routed: RoutedDdrTopology, l: MemoryPopulationLifecycle) -> List<DesignRefusal> {
   match l {
+    EngineeringFixturePopulation { bringup: b } =>
+      lifecycle_causes_for_arm(routed: routed, p: b, intent: EngineeringBringUp)
     ShipsWithProductionPopulation { production: p } =>
-      concat(active_population_causes(populated: p, intent: Production), population_subset_causes(routed: routed, populated: p))
+      lifecycle_causes_for_arm(routed: routed, p: p, intent: Production)
     BringUpThenFill { bringup: b, production: p } =>
       concat(
-        concat(active_population_causes(populated: b, intent: EngineeringBringUp), population_subset_causes(routed: routed, populated: b)),
-        concat(active_population_causes(populated: p, intent: Production), population_subset_causes(routed: routed, populated: p))
+        lifecycle_causes_for_arm(routed: routed, p: b, intent: EngineeringBringUp),
+        lifecycle_causes_for_arm(routed: routed, p: p, intent: Production)
       )
   }
 }
@@ -505,9 +517,29 @@ type RoutedDesignAdmission
   = RoutedDesignAdmitted { admitted: RevARoutedMemoryDesign, pcie_lanes_broken_out: Int }
   | RoutedDesignRefused { causes: DesignRefusalSet }
 
+// THE BOARD JUDGE IS A PROJECTION, NOT A SECOND AUTHORITY. It supplies the two fields the routed
+// judge already takes and forwards; it decides nothing of its own, so there is no second place a
+// board could be judged differently from the design it contains.
+fn admit_board(b: AltraMinimalMotherboard) -> RoutedDesignAdmission {
+  admit_routed_design(d: b.design, pcie_lanes: b.pcie_lanes_broken_out)
+}
+
+// REACHABILITY IS A PRODUCTION QUESTION AND ONLY A PRODUCTION BOARD OWES IT. Asking whether a
+// production-qualified population is reachable from this copper is the right refusal for a board
+// that ships, and the WRONG one for an engineering fixture: a two-channel fixture routes two
+// channels on purpose and never reaches a production population by design. Applying the law
+// unconditionally would refuse exactly the board the third lifecycle arm exists to express, which
+// would have re-lost the capability that arm was added to preserve.
+fn reachability_causes_under(d: RevARoutedMemoryDesign) -> List<DesignRefusal> {
+  match lifecycle_governing_intent(l: d.lifecycle) {
+    EngineeringBringUp => []
+    Production => routed_reachability_causes(routed: d.routed)
+  }
+}
+
 fn admit_routed_design(d: RevARoutedMemoryDesign, pcie_lanes: Int) -> RoutedDesignAdmission {
   let causes = concat(
-    concat(routed_structural_causes(routed: d.routed, pcie_lanes: pcie_lanes), routed_reachability_causes(routed: d.routed)),
+    concat(routed_structural_causes(routed: d.routed, pcie_lanes: pcie_lanes), reachability_causes_under(d: d)),
     lifecycle_causes(routed: d.routed, l: d.lifecycle)
   )
   match fold(causes, init: none, f: fn(acc, c) { push_design_refusal(acc: acc, r: c) }) {
@@ -517,11 +549,16 @@ fn admit_routed_design(d: RevARoutedMemoryDesign, pcie_lanes: Int) -> RoutedDesi
 }
 
 data altra_1p_minimum: AltraMinimalMotherboard = AltraMinimalMotherboard {
-  intent: Production,
-  memory: MemoryConfiguration {
-    topology: ActiveDdrTopology {
-      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
-      positions_per_channel: [FirstDimmOnChannel],
+  design: RevARoutedMemoryDesign {
+    routed: RoutedDdrTopology {
+      routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      routed_positions_per_channel: [FirstDimmOnChannel],
+    },
+    lifecycle: ShipsWithProductionPopulation {
+      production: ActiveDdrTopology {
+        populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
     },
   },
   pcie_lanes_broken_out: 4,

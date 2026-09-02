@@ -107,10 +107,11 @@ import product.altra_motherboard.attachment_stack {
 import extdeps.ocp.mt_jade.platform { mt_jade_motherboard_mechanical }
 import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import product.altra_motherboard.minimal_design {
-  AltraMinimalMotherboard,
+  AltraMinimalMotherboard, RoutedDdrTopology, MemoryPopulationLifecycle,
+  ShipsWithProductionPopulation, BringUpThenFill, EngineeringFixturePopulation, routed_slot_identities,
   ActiveDdrTopology,
   DdrSlotIdentity,
-  DesignIntent,
+
   EngineeringBringUp,
   Production,
   ddr_slot_identity_eq,
@@ -135,18 +136,6 @@ import product.altra_motherboard.minimal_design {
 // with a nonempty obligation, never an empty list. The outline constructing is
 // PartialPcbWorldReady — a preview, not an admitted board. A six-channel design has no plan on
 // this increment, so it refuses rather than borrowing the reference plan.
-fn intent_eq(a: DesignIntent, b: DesignIntent) -> Bool {
-  match a {
-    EngineeringBringUp => match b {
-      EngineeringBringUp => true
-      Production => false
-    }
-    Production => match b {
-      Production => true
-      EngineeringBringUp => false
-    }
-  }
-}
 
 fn slot_list_covers(xs: List<DdrSlotIdentity>, ys: List<DdrSlotIdentity>) -> Bool {
   fold(ys, init: true, f: fn(acc, p) {
@@ -161,9 +150,48 @@ fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
     && slot_list_covers(xs: aslots, ys: bslots)
 }
 
+// DESIGN EQUALITY MUST SEE THE COPPER. This compared intent, the POPULATED topology and the lane
+// count, and not the routed set -- so a board routing eight and populating four compared EQUAL to
+// a board that routed four and populated the same four. Those are different products with
+// different layer counts and different upgrade stories, and this is the boundary at which the
+// difference stops being recoverable, so the routed topology is part of the identity.
+//
+// Intent is no longer a board field: it lives in the lifecycle, and comparing the lifecycles
+// compares both populations under the intents that actually judged them.
+fn routed_topologies_eq(a: RoutedDdrTopology, b: RoutedDdrTopology) -> Bool {
+  let aslots = routed_slot_identities(r: a)
+  let bslots = routed_slot_identities(r: b)
+  list_length(items: aslots) == list_length(items: bslots)
+    && slot_list_covers(xs: aslots, ys: bslots)
+}
+
+fn lifecycles_eq(a: MemoryPopulationLifecycle, b: MemoryPopulationLifecycle) -> Bool {
+  match a {
+    EngineeringFixturePopulation { bringup: ba } =>
+      match b {
+        EngineeringFixturePopulation { bringup: bb } => topologies_eq(a: ba, b: bb)
+        ShipsWithProductionPopulation { production: _ } => false
+        BringUpThenFill { bringup: _, production: _ } => false
+      }
+    ShipsWithProductionPopulation { production: pa } =>
+      match b {
+        EngineeringFixturePopulation { bringup: _ } => false
+        ShipsWithProductionPopulation { production: pb } => topologies_eq(a: pa, b: pb)
+        BringUpThenFill { bringup: _, production: _ } => false
+      }
+    BringUpThenFill { bringup: ba, production: pa } =>
+      match b {
+        EngineeringFixturePopulation { bringup: _ } => false
+        ShipsWithProductionPopulation { production: _ } => false
+        BringUpThenFill { bringup: bb, production: pb } =>
+          topologies_eq(a: ba, b: bb) && topologies_eq(a: pa, b: pb)
+      }
+  }
+}
+
 fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
-  intent_eq(a: a.intent, b: b.intent)
-    && topologies_eq(a: a.memory.topology, b: b.memory.topology)
+  routed_topologies_eq(a: a.design.routed, b: b.design.routed)
+    && lifecycles_eq(a: a.design.lifecycle, b: b.design.lifecycle)
     && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
 }
 

@@ -43,7 +43,8 @@ import product.altra_motherboard.minimal_design {
   ddr_channel_ordinal,
   ddr_slot_identity_eq,
   dimm_slot_position_ordinal,
-  topology_slot_identities,
+  board_slot_identities, board_governing_intent, admit_board,
+  RoutedDesignAdmitted, RoutedDesignRefused, DesignRefusalSet,
   altra_1p_minimum,
 }
 import product.altra_motherboard.realization {
@@ -260,6 +261,7 @@ type PlacementRefusal
   | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
   | PlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
   | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: BoardRequirementIdentity }
+  | DesignIsNotAdmitted { causes: DesignRefusalSet }
 
 // WHICH DESIGN THIS PLAN WAS BUILT FROM, carried so that a projection cannot mix two boards. A
 // plan is derived from a design, and once several projections exist -- a scene, a fabrication
@@ -433,12 +435,16 @@ fn every_non_slot_role() -> List<BoardComponentRole> {
    HostNetworkPhy, ManagementNetworkPath, StorageEndpoint, DebugConnector]
 }
 
+// PHYSICAL ROLES ARE OWED BY ROUTED COPPER. This fold read d.memory.topology -- the POPULATED
+// topology -- so an eight-routed/four-populated board asked for four physical DIMM connectors and
+// was indistinguishable here from a board that routed only four. A connector is fabricated whether
+// or not a module ships in it, so the obligation follows the routed set.
 fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
-  let slots = fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+  let slots = fold(board_slot_identities(d: d), init: [], f: fn(acc, s) {
     concat(acc, [MemoryModuleSlot { slot: s }])
   })
   let gated = fold(every_non_slot_role(), init: [], f: fn(acc, r) {
-    if role_is_required_under(r: r, intent: d.intent) { concat(acc, [r]) } else { acc }
+    if role_is_required_under(r: r, intent: board_governing_intent(d: d)) { concat(acc, [r]) } else { acc }
   })
   concat(gated, slots)
 }
@@ -548,7 +554,24 @@ fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<Plac
 // join answered the same question no matter which design was passed: a plan built from design A,
 // admitted against design B, agreed with A and passed. The caller is the one who knows which
 // declaration it read the design out of, so the caller states it and the mismatch becomes real.
+// THE DESIGN IS JUDGED HERE, BY THE CANONICAL JUDGE, BEFORE ANY GEOMETRY IS DERIVED FROM IT.
+// Without this arm placement had a SIBLING PATH: a raw board reached required_roles and
+// memory_slot_obligations directly, so physical connector obligations were derived from a design
+// nobody had admitted. A refused design could produce a placement and a PCB world.
+//
+// This calls admit_routed_design itself rather than accepting a caller-supplied admission, which
+// is what keeps possession of an accepted value from being treated as proof that judgment
+// occurred -- there is no forged-verdict boundary here because there is no verdict parameter.
+fn design_admission_causes(d: AltraMinimalMotherboard) -> List<PlacementRefusal> {
+  match admit_board(b: d) {
+    RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => []
+    RoutedDesignRefused { causes: c } => [DesignIsNotAdmitted { causes: c }]
+  }
+}
+
 fn placement_causes(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  concat(
+    design_admission_causes(d: d),
   concat(
     concat(
       concat(
@@ -558,7 +581,7 @@ fn placement_causes(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: Boa
       design_refusals(d_ref: d_ref, plan: plan)
     ),
     realization_placement_refusals(plan: plan)
-  )
+  ))
 }
 
 fn placement_refusal_count(cs: List<PlacementRefusal>) -> Int {
@@ -719,7 +742,7 @@ fn obligation(g: FactAuthorityBlocker, id: NonEmptyStr, r: BoardComponentRole, x
 // refusal above exists to catch -- but only once their envelopes land, and by then the board is
 // drawn. Naming them fully means the collision cannot be authored in the first place.
 fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent> {
-  fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+  fold(board_slot_identities(d: d), init: [], f: fn(acc, s) {
     let ch = ddr_channel_ordinal(c: s.channel)
     let pos = dimm_slot_position_ordinal(p: s.position)
     concat(acc, [obligation(
