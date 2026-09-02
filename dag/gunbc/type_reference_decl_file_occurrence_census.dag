@@ -489,6 +489,33 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
 // summary: a class that becomes VISIBLE ranks for climbing, and a class that has been REPAIRED
 // stops ranking. Reading this climb as the second would retire rows that are still live, which is
 // rung inflation reached by generosity rather than by claim.
+// TERMINAL MEASUREMENT OF THIS CENSUS'S SUBJECT, 2026-09-02, AND ONE ERROR OF MY OWN RECORDED
+// BESIDE IT BECAUSE IT IS THE SAME CLASS THE CENSUS IS ABOUT.
+//
+// THE SUBJECT IS GONE. All eight declarations this census enumerated -- type_reference_decl_file,
+// type_reference_decl_file_in_env, decl_identity_file, is_kernel_minted_file,
+// decl_file_realizes_natively, decl_file_declares_structurally, rust_seed_host_numeric_alias,
+// lookup_checkpoint -- are absent from the tree. The population is zero by DELETION, not by
+// re-spelling, which is the outcome the brief asked for and the one a mechanical sweep would have
+// faked.
+//
+// WHAT SURVIVES IS ONE SITE, not thirty-nine occurrences: v1.compiler.infer's literal-elaboration
+// boundary, holding a DeclarationRef and consulting v1.compiler.coercion's path-keyed numeric
+// roster. Its ceiling and the reason it may not delegate are recorded at that roster rather than
+// restated here.
+//
+// AND THE ERROR, FILED AGAINST MYSELF BECAUSE THE CENSUS EXISTS TO CATCH EXACTLY THIS SHAPE: I
+// twice reported v1.compiler.emit_rust emit_typed_item as a specimen of an identity dropped between
+// two adjacent arguments -- module_path: module_name passed to one parameter while the sibling
+// re-derived the module positionally from a span. IT IS NOT. rust_declaration_checkpoint_grounding_at
+// CONSUMES that module_path to build a DeclarationRef and asks the exact-identity authority FIRST,
+// with the positional decision as its fallback; the call is the delegation. I had read the ARGUMENT
+// LIST and not the CALLEE, in a lane whose entire subject is a positional read standing where an
+// identity read belongs. The recognition rule this yields, and the reason it is worth a paragraph:
+// AN ARGUMENT LIST IS NOT A SEMANTICS -- a fact passed adjacent to a positional one is evidence of
+// nothing until the callee is read, because the two shapes "both facts present, one dropped" and
+// "identity asked first, position as fallback" are indistinguishable at the call site. The
+// discriminating check is one function down, and it is cheap.
 data type_reference_decl_file_census_discharge: List<DeclarationRef> = [
   decl_ref(module_path: "std.coercion", decl_name: "TypeDeclarationProvenance"),
   decl_ref(module_path: "std.coercion", decl_name: "RealizationGround"),

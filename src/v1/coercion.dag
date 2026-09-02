@@ -151,6 +151,29 @@ data structural_declaration_gate_note: String = "Companion to checkpoint_table_b
 // upstream rather than falling through a string comparison. v1.compiler.infer_env
 // global_bare_fallback_invariant already states the terminal key for the surviving arm: filepaths
 // are irrelevant, the declared module path is the containment tree.
+// THE "Hash" ROW OF structural_declaration_modules_for IS VACUOUS, measured 2026-09-02
+// (quick-crab-396), and it is FILED HERE RATHER THAN DELETED. Trace both arms for dag_name "Hash":
+// the structural arm answers Unrealized; the other arm reaches
+// target_checkpoints(Rust) |> filter(cp => cp.dag_name == "Hash"), and
+// extdeps.languages.rust.types rust_type_checkpoints has NO Hash row -- its eight rows are Int,
+// Float, Bool, Unit, String, Bytes, Secret, Json -- so it falls through an absent checkpoint to an
+// absent native alias (Hash is neither Nat nor Int) and ALSO answers Unrealized. Both arms, one
+// answer: the row cannot change an outcome, and a predicate that discriminates nothing is the
+// decoration DESIGN section 4b names at the top rung.
+//
+// AND THE ARGUMENT FOR THE ROW REASONS FROM A PREMISE THE TABLE DOES NOT CARRY.
+// structural_declaration_gate_note above says "Hash has no native dag declaration anywhere --
+// lookup_checkpoint's row for Hash exists only because the seed's own runtime type happens to share
+// the spelling", and there is no Hash row in the table for that sentence to be about. A prose
+// dependent on an absent row cannot refuse when the row goes away, which is why this is recorded
+// beside the note rather than by editing it: the note's CONCLUSION about kernel-vs-corpus spelling
+// still holds, its premise does not, and a silent rewrite would erase the argument.
+//
+// NOT DELETED, and the reason is a dependency rather than caution: the ProvenUniqueKernelBinding
+// proofs for BOTH "String" and "Bool" in gunbc.rust_source_type_bindings checkpoint_row_migration_rows
+// cite structural_declaration_modules_for BY NAME as the mechanism gating their second declaration.
+// The roster is load-bearing for two standing proofs, so a vacuous row inside it is a finding to
+// file, not a line to cut in a change about how the roster is asked.
 fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenance) -> Bool {
   match p {
     CorpusDeclared { decl_file: f } => structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(f, m))
@@ -175,6 +198,40 @@ fn numeric_realization_declaring_modules() -> List<String> {
 // ANSWER PRESERVED EXACTLY. A kernel-minted node matched the deleted "<kernel:" row and was
 // answered natively; it is answered natively here, by an arm that says so. An absent identity
 // returned false through an empty-string guard; it returns false through its own arm.
+// THE CEILING FOR THIS ARM, measured 2026-09-02 (quick-crab-396) by attempting the repair rather
+// than by reasoning about it, and recorded at the size the measurement supports: ONE SITE.
+//
+// This roster answers positionally -- contains(decl_file, "dag/std/nat.dag") -- and the identity-keyed
+// authority for the same question is landed: gunbc.rust_source_type_bindings rust_source_type_binding_rows,
+// nine rows keyed by module_path AND decl_name, reached through std.target_representation
+// resolve_exact_binding. Every OTHER identity-carrying consumer in the tree already delegates to it:
+// declaration_realizes_natively_on_rust asks rust_exact_realization_decision BEFORE the spelling
+// decision, and v1.compiler.emit_rust rust_declaration_checkpoint_grounding_at builds a DeclarationRef
+// from its module_path argument and asks the exact rows first. The last non-delegating one is
+// v1.compiler.infer's literal-elaboration boundary, which holds a DeclarationRef and comes straight
+// here.
+//
+// WHY THAT SITE MAY NOT DELEGATE, AND IT IS A LAYER FACT RATHER THAN A MISSING ROW. It computes
+// `natively` during INFERENCE, to hand to elaborate_literal_at; there is no render target in scope.
+// rust_source_type_binding_rows is a Rust fact by its module and its name, so delegating there would
+// make literal elaboration during inference depend on a Rust realization table -- realization dispatch
+// pulled into the interface, which DESIGN section 3 says sits peripheral and never in the interface.
+// The question that site actually asks is target-agnostic: is this declaration the grounded numeric
+// authority. This roster answers that; it answers it by path.
+//
+// A SECOND, INDEPENDENT OBSTACLE, recorded so the ceiling is not read as one-cause: the exact rows
+// carry no std.nat Nat row, and Nat is the only name for which provenance_host_numeric_alias is live
+// at all (Int has a checkpoint row, which the filter finds before the native arm is consulted, so the
+// "Int" half of that gate's name test is dead on this path). Delegating would silently answer
+// Unrealized for the one live case. Adding the row is admissible under that module's own rule but is
+// NOT taken here: it would remove the symptom while the layer inversion stayed.
+//
+// NEXT-RUNG TRIGGER, a capability and not an artifact: a target-agnostic declaration-to-realization
+// authority that v1.compiler.infer may consult without naming a render target -- at which point this
+// roster's remaining consumer stops needing a path and the positional arm deletes. Re-keying this
+// roster to DeclarationRefs BY ITSELF is not that trigger and does not satisfy it: provenance_host_numeric_alias
+// below holds a provenance and no DeclarationRef, so a re-key alone would leave a path-keyed twin,
+// which is the dual authority this whole construction exists to remove.
 fn provenance_realizes_natively(p: TypeDeclarationProvenance) -> Bool {
   match p {
     CorpusDeclared { decl_file: f } => numeric_realization_declaring_modules() |> any(m => contains(f, m))

@@ -34,6 +34,9 @@ pub mod gunbc_structural_realization_bindings;
 #[path = "../../stage0/src/v1_compiler_coercion.rs"]
 pub mod v1_compiler_coercion;
 #[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_compiler_tests_rust.rs"]
+pub mod v1_compiler_compiler_tests_rust;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_emit_info.rs"]
 pub mod v1_compiler_infer_emit_info;
 #[rustfmt::skip]
