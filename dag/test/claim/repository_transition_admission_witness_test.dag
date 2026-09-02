@@ -1,9 +1,6 @@
 module test.claim.repository_transition_admission_witness_test
 
 import std.types { Bool, String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.live_deploy.apply { live_deploy_wet_with_access }
-import gunbc.ci_deploy_access { ci_deploy_srv1_access, ci_deploy_srv1_operator_access }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   LegacyGitFileSync,
@@ -39,13 +36,11 @@ test fn the_two_realizations_are_admitted_differently() -> Bool {
     && is_admitted(a: repository_transition_admission(realization: GitNativeConvergence))
 }
 
-// THE BOUND REALIZATION IS THE LEGACY ONE TODAY, so a dispatch of the restored dashboard mode
-// refuses rather than converging a tree with a broken index. This is the row that flips when the
-// Git-native transition lands, and this witness is what makes that flip a deliberate, visible act
-// rather than a silent one -- it goes RED the moment the row changes, forcing the author to state
-// that the realization actually moved.
-test fn the_deployment_is_currently_bound_to_the_legacy_realization() -> Bool {
-  !is_admitted(a: repository_transition_admission(realization: deployed_tree_repository_transition))
+// THE BOUND REALIZATION MOVES ONLY WITH THE EMITTED GIT-NATIVE UNIT. The legacy arm remains above as
+// the discriminating regression control; this assertion names the production selection whose prior
+// value kept both wet ingresses behind the refusal wall.
+test fn the_deployment_is_bound_to_the_git_native_realization() -> Bool {
+  is_admitted(a: repository_transition_admission(realization: deployed_tree_repository_transition))
 }
 
 // THE REFUSAL CARRIES ITS EVIDENCE. A refusal that said only "not admitted" would be a verdict an
@@ -60,37 +55,4 @@ test fn the_refusal_names_the_mechanism_rather_than_only_a_verdict() -> Bool {
 // only on the arm that has something to say, so "admitted" cannot smuggle a stale explanation.
 test fn an_admitted_realization_carries_no_refusal_reason() -> Bool {
   refusal_reason(a: repository_transition_admission(realization: GitNativeConvergence)) == ""
-}
-
-fn exit_refusal_reason(e: ProcessExit) -> String {
-  match e {
-    ExitSuccess => ""
-    ExitFailure { code: _, reason: r } => r
-  }
-}
-
-// THE FOUR WITNESSES ABOVE COVER THE DECISION FUNCTION AND SAY NOTHING ABOUT WHERE IT IS CONSULTED.
-// Delete the match in live_deploy_wet_with_access and call the admitted body directly and every one
-// of them stays green while the wall is gone -- the local-relation-promoted-to-end-to-end failure,
-// and the reason a wall must cover a PRODUCER rather than a position it was once observed at. The
-// two witnesses below call the real guarded entry with the exact access values its two wet ingresses
-// pass (live_deploy_apply_srv1_wet and live_deploy_apply_srv1_operator_wet), so coverage is
-// per-argument rather than per-call-site.
-//
-// THEY ARE HERMETIC BECAUSE THE GUARD FIRES, which is a property of the currently bound row and not
-// of the entry: the refusing arm returns before any host effect is reached. When
-// deployed_tree_repository_transition flips to GitNativeConvergence these two witnesses reach the
-// wet body and MUST BE DELETED AND REPLACED rather than relaxed -- weakening them to keep them green
-// would convert an executing placement check into the decoration section 4b calls worse than absent.
-// That flip is the same event the deployed_tree_scope next-rung trigger names, so it is one change
-// and not two.
-
-test fn the_ci_apply_ingress_is_refused_at_the_guarded_entry() -> Bool {
-  exit_refusal_reason(e: live_deploy_wet_with_access(access: ci_deploy_srv1_access))
-    == refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
-}
-
-test fn the_operator_apply_ingress_is_refused_at_the_guarded_entry() -> Bool {
-  exit_refusal_reason(e: live_deploy_wet_with_access(access: ci_deploy_srv1_operator_access))
-    == refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
 }

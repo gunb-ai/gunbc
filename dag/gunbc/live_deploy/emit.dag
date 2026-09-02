@@ -27,6 +27,11 @@ import extdeps.systemd.systemctl {
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import gunbc.live_deploy.repository_convergence_placement {
+  convergence_receipt_path,
+  convergence_unit_doc,
+  convergence_placement_entry_path,
+}
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -749,8 +754,6 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
-data tree_sync_git_whitelist_note: String = "The .git/ leg is a WHITELIST sync (2026-07-22, journal receipt on srv1: three deploys failed rsync exit 23 on ONE file — objects/pack/pack-25d0810548020708d75d5510c2107766baaf86d2.keep, a git fetch-time marker written 0600 by ghrunner, unreadable to the User= principal; and /opt/gunbc/gunbc/.git/config was found carrying a live actions extraheader auth token from an earlier blanket sync — a credential leak). The belt needs exactly four things for `git worktree add` resolving origin/main: HEAD (repo validity), objects/ (minus *.keep / tmp_pack_* fetch transients, which are 0600 runner-private and never needed), packed-refs, and refs/. Everything else — config (CREDENTIALS), config.worktree, index, hooks, logs — never syncs, so both failure classes are unwritable by construction: no runner-private 0600 file can red the sync, and no credential can reach the service tree (DESIGN 5 construction over validation; the blacklist alternative re-reds on the next unknown transient). Still additive (no --delete): target-local worktree registrations, session refs, and their objects must survive redeploys (apply_tree_split_sync_note). Filter order is load-bearing: the two pack-transient excludes precede the /objects/*** include (first match wins), and the terminal --exclude=* is the whitelist wall."
-
 fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
   let user = spec.service.service_user
   doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
@@ -766,13 +769,42 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
         "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
         " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
       ], "") as NonEmptyStr },
-      ExecStart { command: join([
-        "/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ",
-        tree_path, "/.git/",
-      ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
   }))
+}
+
+// THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
+// first installs the owner-run working-byte sync; ServeBinary then installs the admitted binary and
+// replaces that unit document with Git-native convergence. There is no second unit name, lifecycle,
+// or environment carrier to keep aligned, and no repository metadata is ever copied as files.
+// Starting convergence before ServeBinary would execute the target's stale binary/corpus; leaving
+// the rsync document installed would make the next deploy's first phase run convergence before its
+// candidate binary exists. The two writes therefore bracket the binary install deliberately.
+fn apply_repository_convergence_unit_write_step(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+) -> PipelineStep {
+  deploy_raw(command: deploy_stage_write_command(
+    stage_name: spec.names.tree_sync_unit_name as String,
+    content: convergence_unit_doc(
+      spec: spec,
+      candidate: release_revision_execstart_text(binding: revision),
+      receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+    ),
+  ))
+}
+
+fn repository_convergence_readback_command(
+  spec: DeploymentSpec,
+) -> String {
+  join([
+    spec.service.serve_binary as String, " run",
+    " --source-root dag --source-root src/v2",
+    " --entry ", convergence_placement_entry_path,
+    " --function repository_convergence_readback_wet",
+    " --arg receipt=", convergence_receipt_path(instance_root: spec.service.instance_root as String),
+  ], "")
 }
 
 fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> PipelineStep {
@@ -924,7 +956,7 @@ fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   }
 }
 
-data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
+data apply_tree_split_sync_note: String = "GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the ServeBinary step replaces the owner-run oneshot with Git-native repository convergence. Repository metadata is never transported as files: git imports the candidate objects from the runner checkout, compare-and-swaps the base ref, resets the index/worktree, and the deploy reads back its receipt before continuing. Target-local worktree registrations, session refs and unrelated refs are preserved by the convergence adjudication rather than by an additive file copy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
 
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match art.kind {
@@ -963,6 +995,19 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         source: "target/release/gunbc",
         dest: art.path as String,
       )),
+      deploy_raw(command: install_d_owned_command(
+        spec: spec,
+        path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
+      )),
+      apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: spec.names.tree_sync_unit_name as String,
+        mode: install_file_shared_mode,
+        dest: tree_sync_unit_path(names: spec.names) as String,
+      )),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      tree_sync_restart_step_with_diagnosis(spec: spec),
+      deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]
     DispatchWorktreeRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
