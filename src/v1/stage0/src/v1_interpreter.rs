@@ -8155,6 +8155,20 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // this bridge is what stops the next four lanes paying, and a new measurement tier would put it
 // behind a fresh review cycle on the fleet condition it exists to explain.
 //
+// AN OUT-OF-SCOPE OBSERVATION THE CEILING COLUMN MADE, RECORDED HERE BECAUSE ITS ONLY OTHER HOME
+// IS TWO LOGS THAT AGE OUT. `claim_cpu_total_ms` — added purely as a bound against summing the
+// cost column — measured 130335 on run 33615659836 and 99943 on run 33631458679 (both
+// `run_attempt=1`), over the same corpus. A THIRTY PERCENT SWING IN A RUN'S TOTAL CLAIM CPU, and
+// a per-closure constant cannot produce it: the constant is by construction identical on two runs
+// of one tree. It is the same variance term measured independently as byte-identical evaluator
+// steps against 1.31-1.80x cpu, reached here from the opposite direction and at whole-run grain.
+// UNEXPLAINED AND DELIBERATELY NOT PURSUED HERE — this census's subject is the LEVEL — but it is
+// a property of the ENVIRONMENT measured from inside the run, which is what a fleet-variance
+// account has so far lacked. THE TWO FIGURES ARE TRANSCRIBED, as a declared exception to naming
+// the instrument instead of copying its output, for the reason the floor-cost carrier grants the
+// same exception: THE SUBJECT IS THE DIVERGENCE BETWEEN TWO RUNS, which no single producer on
+// this side of the boundary can re-derive once the logs expire.
+//
 // WHAT THIS CENSUS CANNOT SEE, DECLARED HERE RATHER THAN DISCOVERED BY A LATER READER. Two
 // boundaries, and neither is a defect in the aggregation — they are properties of the ledger it
 // folds, and a reader who does not know them will read absence as evidence.
