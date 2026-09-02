@@ -69,6 +69,8 @@ type SparkServingProbeRequest
   | ModelBlobDigestsRequest { digests: List<NonEmptyStr> }
   | UserUnitReadRequest
   | UserUnitIsEnabledRequest
+  | RunningDefinitionRequest
+  | InvocationIdentityRequest
   | RuntimeRootRequest
   | RuntimeExecutableRequest
   | RuntimeExecutableBitRequest
@@ -95,6 +97,8 @@ fn spark_serving_probe_request_leg(request: SparkServingProbeRequest) -> SparkSe
     ModelBlobDigestsRequest { digests: _ } => ProbeModelBlobDigests
     UserUnitReadRequest => ProbeUserUnitRead
     UserUnitIsEnabledRequest => ProbeUserUnitIsEnabled
+    RunningDefinitionRequest => ProbeRunningDefinition
+    InvocationIdentityRequest => ProbeInvocationIdentity
     RuntimeRootRequest => ProbeRuntimeRoot
     RuntimeExecutableRequest => ProbeRuntimeExecutable
     RuntimeExecutableBitRequest => ProbeRuntimeExecutableBit
@@ -122,6 +126,8 @@ type SparkServingProbeLeg
   | ProbeModelBlobDigests
   | ProbeUserUnitRead
   | ProbeUserUnitIsEnabled
+  | ProbeRunningDefinition
+  | ProbeInvocationIdentity
   | ProbeRuntimeRoot
   | ProbeRuntimeExecutable
   | ProbeRuntimeExecutableBit
@@ -148,6 +154,8 @@ fn spark_serving_probe_leg_key(leg: SparkServingProbeLeg) -> NonEmptyStr {
     ProbeModelBlobDigests => "model_blob_digests" as NonEmptyStr
     ProbeUserUnitRead => "user_unit_read" as NonEmptyStr
     ProbeUserUnitIsEnabled => "user_unit_is_enabled" as NonEmptyStr
+    ProbeRunningDefinition => "running_definition" as NonEmptyStr
+    ProbeInvocationIdentity => "invocation_identity" as NonEmptyStr
     ProbeRuntimeRoot => "runtime_root" as NonEmptyStr
     ProbeRuntimeExecutable => "runtime_executable" as NonEmptyStr
     ProbeRuntimeExecutableBit => "runtime_executable_bit" as NonEmptyStr
@@ -590,13 +598,20 @@ fn spark_serving_transaction_duplicated_legs(
 // only. An absent capture must not be left for whichever downstream reader happens to want it
 // first, because that reader will read Absent and honestly report unobserved -- and the whole host
 // will look measured-and-empty rather than never-acquired.
+//
+// FOLLOW-UP TRIGGER: the receipt witnesses still spell the evaluated executed-count snapshots as
+// numeric literals. Before another probe leg joins this roster, expose the roster cardinality to
+// those witnesses and assert the relation `executed == required - refused` instead. The present
+// literals are honest for this closed population, but a third added leg can otherwise make the
+// oracle stale until a person recounts it; deriving the relation from this authority removes that
+// hand-maintained second count.
 fn spark_serving_required_probe_legs() -> List<SparkServingProbeLeg> {
   [
     ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
     ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
     ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
     ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
-    ProbeUserUnitRead, ProbeUserUnitIsEnabled,
+    ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition, ProbeInvocationIdentity,
     ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
   ]
 }

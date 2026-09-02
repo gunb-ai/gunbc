@@ -377,26 +377,27 @@ jobs:
         if: always()
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [required-witnesses-build, required-witnesses-floor]
+    needs: [required-witnesses-build, required-witnesses-floor, rust-unit-tests]
     timeout-minutes: 5
     if: always()
     steps:
-      - name: Both required lanes must have succeeded
+      - name: Every required lane must have succeeded
         run: |
           HEAD_STANDING='not-applicable'
           if '[' "$EVENT_NAME" '=' 'pull_request' ']'; then HEAD_STANDING='unobserved'; fi
           'echo' 'required floor attempt: pull_request='"$PULL_REQUEST"' measured_head='"$MEASURED_HEAD"' run_id='"$RUN_ID"' head_standing='"$HEAD_STANDING"
           VERDICT='stands-green'
-          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
-          if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']'; then VERDICT='stands-red'; fi
+          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']' || '[' "$UNIT" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
+          if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']' || '[' "$UNIT" '=' 'failure' ']'; then VERDICT='stands-red'; fi
           MECHANISM='unestablished'
           ATTRIBUTION='unestablished'
-          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
-          if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
-          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' unit='"$UNIT"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
+          if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' unit='"$UNIT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' unit='"$UNIT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
         env:
           BUILD: ${{ needs['required-witnesses-build'].result }}
           FLOOR: ${{ needs['required-witnesses-floor'].result }}
+          UNIT: ${{ needs['rust-unit-tests'].result }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
           MEASURED_HEAD: ${{ github.event.pull_request.head.sha }}
