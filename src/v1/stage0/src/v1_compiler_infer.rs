@@ -10135,13 +10135,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     }
                     __result
                 }),
-                std::option::Option::None => Rc::new({
-                    let mut __result = Vec::new();
-                    for ar in arm_infer_results.iter().cloned() {
-                        __result.push(ar.body_type.clone());
-                    }
-                    __result
-                }),
+                std::option::Option::None => match expected.clone() {
+                    Some(expected_type) => Rc::new(vec![expected_type.clone()]),
+                    std::option::Option::None => Rc::new({
+                        let mut __result = Vec::new();
+                        for ar in arm_infer_results.iter().cloned() {
+                            __result.push(ar.body_type.clone());
+                        }
+                        __result
+                    }),
+                },
             };
             let unified_arm_type = match arm_body_types.clone().first().cloned() {
                 Some(first_type) => Rc::new(

@@ -259,3 +259,38 @@ test fn an_all_diverging_match_in_argument_position_types_as_the_arms() -> Bool 
     ProbeOk { cell: _ } => false
   }
 }
+
+// review 58384 (codex/gpt-5.6-sol, REQUEST_CHANGES on #9964) and the case that
+// refuted the previous fallback BY EXECUTION. An all-diverging match produces NO
+// VALUE, so its arms' return-payload types must not become the match's type either.
+// The earlier fallback restored them, and this shape refused with
+//   declared 'Coproduct(ProbeResult)', produced 'Coproduct(ProbeOther)'
+// on an argument that never returns -- a FABRICATED REFUSAL, the DESIGN 5 sign-flip
+// this PR exists to remove, relocated from the scrutinee to the return payload.
+//
+// The rule is now contextual: when every arm diverges the match takes the EXPECTED
+// type, because a value that is never produced inhabits whatever the context needs.
+// `scrut_rt` survives only for a match with no arms at all.
+//
+// The types here are deliberately three-way distinct: the formal is ProbeResult, the
+// arms return ProbeOther, and the scrutinee is ProbeFlag. So this witness reds if the
+// match is typed as EITHER the scrutinee (the original defect) or the arm payloads
+// (the over-correction). A third variant carries the tail because the ownership pass
+// counts a repeated nullary constructor as two consumers of one binding.
+type ProbeOther = ProbeOtherA | ProbeOtherB | ProbeOtherC
+
+fn probe_all_diverge_other_context(fl: ProbeFlag) -> ProbeOther {
+  let ignored = probe_consume(r: match fl {
+    ProbeYes => return ProbeOtherA
+    ProbeNo => return ProbeOtherB
+  })
+  ProbeOtherC
+}
+
+test fn an_all_diverging_match_takes_the_expected_type_not_the_arm_payloads() -> Bool {
+  match probe_all_diverge_other_context(fl: ProbeYes) {
+    ProbeOtherA => true
+    ProbeOtherB => false
+    ProbeOtherC => false
+  }
+}

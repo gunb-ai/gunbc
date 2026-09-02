@@ -6266,7 +6266,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let non_diverging_arm_results = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm)))
       let arm_body_types = match non_diverging_arm_results |> first {
         Present { value: _ } => non_diverging_arm_results |> map(ar => ar.body_type)
-        Absent => arm_infer_results |> map(ar => ar.body_type)
+        Absent => match expected {
+          Present { value: expected_type } => [expected_type]
+          Absent => arm_infer_results |> map(ar => ar.body_type)
+        }
       }
       let unified_arm_type = match arm_body_types |> first {
         Present { value: first_type } =>
