@@ -5920,7 +5920,7 @@ pub fn run_required_floor(
             // with a number already read in the cost position, and demonstrably loses. The
             // renderer does not put the bound there at all, so the remedy sentences below need
             // only say what to DO, which is the part a caveat was never the right carrier for.
-            ClaimOutcome::BudgetInterrupted { .. } => {
+            ClaimOutcome::BudgetInterrupted { kind, .. } => {
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
