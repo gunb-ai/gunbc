@@ -1,0 +1,385 @@
+module test.claim.fleet_converge_launch_scope_non_interference
+
+import std.types { String, Bool, NonEmptyStr, List }
+import product.placement_supply { HostIdentity }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { serialize_content_hash }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_converge_plan {
+  FleetConvergeRequest,
+  FullHostConverge,
+  LaunchEnvironmentConverge,
+  FleetConvergePlanArtifact,
+  fleet_converge_plan_artifact_of_request,
+  fleet_converge_plan_artifact_hash,
+  fleet_converge_apply_terminal_wire,
+  fleet_converge_apply_terminal,
+  FullyApplied,
+  PartiallyApplied,
+  fleet_converge_scope_wire,
+  fleet_converge_desired_caps,
+}
+import gunbc.spark.serving_execution_schedule { scheduled_rows_empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE MEASURES, AND WHY IT EXISTS AT ALL.
+//
+// AN EARLIER CUT OF THIS PR CLAIMED THE OMITTED AXES WERE UNCONSTRUCTIBLE. That claim was measured
+// and is FALSE, and the FIRST EXPLANATION OF WHY IT WAS FALSE WAS ALSO WRONG, so both are corrected
+// here rather than only the conclusion.
+//
+// The first reading blamed a sibling-variant rule: that the unknown-field check suppresses
+// FieldNotFound when the named field exists on any sibling arm of the same coproduct. That is too
+// narrow, and it is falsifiable by a probe this PR runs -- a field name declared on NO type anywhere
+// in the corpus is admitted just as readily, which no sibling rule can explain.
+//
+// THE ESTABLISHED MECHANISM IS BROADER: a payload-carrying coproduct arm literal receives NO
+// excess-field judgment at all. Arm projection returns the OWNER Disj rather than the arm record,
+// so the record-literal construction roster comes back absent, and the unknown-field path declines
+// to judge in silence rather than reporting. field_in_any_variant_named -- the disjunct the first
+// reading blamed -- is not on this path at all. Authority for this paragraph is the compiler-floor
+// lane's mechanism packet, adhoc-0f99c6bc-193 (session sharp-otter-269); it is cited rather than
+// re-derived, because a second derivation of one fact is a second authority for it.
+//
+// The asymmetry is the tell: presence checking reads the selected arm through variant_owner_node and
+// has no such hole, so the literal REFUSES a missing field and ADMITS an invented one. That pair is
+// executed in test.claim.payload_arm_excess_field_admission, which is written
+// as a substrate CHARACTERIZATION rather than as a wall.
+//
+// SO THE GUARANTEE IS RELOCATED, NOT ABANDONED. The property this file executes is:
+//
+//   the launch-environment arm's declared members are host and observed_timers, and the production
+//   planning fold projects only those, so a smuggled sibling-variant value cannot influence the
+//   subject, the observation identity, the baseline, the member-set fingerprint, the plan body, the
+//   refusal counters, the terminal, the lease, the apply shell, or the bundle identity.
+//
+// That is "mechanically excluded from the authoritative launch-environment projection on this exact
+// tree" -- NOT "structurally impossible" and NOT "mechanically preventable" without qualification.
+// The restoration trigger is the seed's variant-local field wall; until it lands, THIS file is the
+// evidence, and it is written to go red the moment any foreign value reaches any output.
+//
+// EVERY ROW IS A PAIR WITH AN OWNING-SCOPE CONTROL. Equality between a clean and a smuggled launch
+// request would also hold if the fixture payload were inert everywhere -- a dead fixture proving
+// nothing. Each row therefore also shows the SAME payload moving the full-host projection, so the
+// equality is attributable to the launch arm ignoring it rather than to the value being empty.
+
+data host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
+
+fn srv1_surplus_slot_names() -> List<String> {
+  [
+    "jit-runner.sh", "runner-liveness-reconcile.sh",
+    "srv1-22", "srv1-23", "srv1-24", "srv1-25", "srv1-26", "srv1-27", "srv1-28", "srv1-29",
+    "srv1-30", "srv1-31", "srv1-32", "srv1-33", "srv1-34", "srv1-35", "srv1-36", "srv1-37",
+    "srv1-38", "srv1-39", "srv1-40", "srv1-41", "srv1-42", "srv1-43", "srv1-44", "srv1-45",
+    "srv1-46", "srv1-47", "srv1-48", "srv1-49", "srv1-50",
+  ]
+}
+
+fn srv1_production_shaped_slots() -> List<RunnerSlotMember> {
+  map(srv1_surplus_slot_names(), nm => runner_slot_member_from_instance_name(instance_name: nm as NonEmptyStr))
+}
+
+// THE COMPLETE PROJECTION, AS ONE COMPARABLE VALUE. Comparing a chosen field or two is how a
+// non-interference claim goes green while the axis leaks through the field nobody listed, so this
+// folds EVERY member of the plan artifact -- including the receipt-facing bundle identity and the
+// lease fingerprints, which are what apply and the RLM join actually admit against.
+fn artifact_signature(a: FleetConvergePlanArtifact) -> String {
+  join(
+    [
+      "host:", a.subject.host as String,
+      "\nscope:", fleet_converge_scope_wire(scope: a.subject.scope),
+      "\nmember_set:", serialize_content_hash(hash: a.subject.member_set_fingerprint) as String,
+      "\nprior_generation:", to_string(a.prior_generation),
+      "\nlease_key:", a.plan_lease.epoch.lease_key as String,
+      "\nlease_resource:", serialize_content_hash(hash: a.plan_lease.epoch.resource_fingerprint) as String,
+      "\nlease_owner:", serialize_content_hash(hash: a.plan_lease.epoch.owner_fingerprint) as String,
+      "\nlease_generation:", to_string(a.plan_lease.epoch.generation),
+      "\nterminal:", fleet_converge_apply_terminal_wire(terminal: a.apply_terminal),
+      "\nbaseline_hex:", a.observed_baseline_hex as String,
+      "\nbundle:", match fleet_converge_plan_artifact_hash(artifact: a) {
+        Present { value: h } => h as String
+        Absent => "UNCOMPUTABLE"
+      },
+      "\nplan_body:\n", a.plan_body,
+      "\napply_shell:\n", a.apply_shell,
+    ],
+    "",
+  )
+}
+
+fn signature_of(request: FleetConvergeRequest) -> String {
+  artifact_signature(
+    a: fleet_converge_plan_artifact_of_request(
+      request: request,
+      prior_generation: 0,
+      spark_rows: scheduled_rows_empty(),
+    ),
+  )
+}
+
+// A signature that came back empty would make every equality below trivially true, so the clean
+// side is required to be substantial before any comparison is believed. The artifact fold is total,
+// so there is no absent arm to guard -- only vacuity.
+fn projections_identical(clean: FleetConvergeRequest, smuggled: FleetConvergeRequest) -> Bool {
+  let s = signature_of(request: clean)
+  string_contains(s: s, pattern: "# apply-terminal:") && s == signature_of(request: smuggled)
+}
+
+fn projections_differ(a: FleetConvergeRequest, b: FleetConvergeRequest) -> Bool {
+  let sa = signature_of(request: a)
+  string_contains(s: sa, pattern: "# apply-terminal:") && sa != signature_of(request: b)
+}
+
+// Empty, but not visibly so before it is evaluated: a fold over an empty list is not a literal, so
+// the refinement above cannot be decided until the value is actually built.
+fn empty_only_at_runtime() -> String {
+  join(map([], x => x), "")
+}
+
+fn clean_launch_srv1() -> FleetConvergeRequest {
+  LaunchEnvironmentConverge { host: host_srv1, observed_timers: [] }
+}
+
+fn clean_launch_srv3() -> FleetConvergeRequest {
+  LaunchEnvironmentConverge { host: operator_host_srv3 as NonEmptyStr, observed_timers: [] }
+}
+
+fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
+  FullHostConverge {
+    host: host_srv1,
+    observed_timers: [],
+    observed_caps: fleet_converge_desired_caps(),
+    observed_spark: [],
+    observed_slots: slots,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ROW 1 -- RUNNER SLOTS, at the production-shaped 31-surplus population that produced the incident.
+// ---------------------------------------------------------------------------
+test fn a_smuggled_thirty_one_slot_population_changes_nothing_in_the_launch_projection() -> Bool {
+  projections_identical(
+    clean: clean_launch_srv1(),
+    smuggled: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_slots: srv1_production_shaped_slots(),
+    },
+  )
+}
+
+// THE OWNING-SCOPE CONTROL FOR ROW 1: the same 31 slots are loudly visible where they belong, so
+// the equality above is the launch arm ignoring them and not the fixture being empty.
+test fn the_same_thirty_one_slot_population_moves_the_full_host_projection() -> Bool {
+  projections_differ(a: full_host_srv1(slots: []), b: full_host_srv1(slots: srv1_production_shaped_slots()))
+}
+
+// ---------------------------------------------------------------------------
+// ROW 2 -- ACTIVATION READINESS, at the two-refusal stalled/unobserved population.
+// ---------------------------------------------------------------------------
+test fn a_smuggled_activation_readiness_changes_nothing_in_the_launch_projection() -> Bool {
+  projections_identical(
+    clean: clean_launch_srv1(),
+    smuggled: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    },
+  )
+}
+
+test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Bool {
+  match fleet_converge_apply_terminal(request: full_host_srv1(slots: [])) {
+    FullyApplied => false
+    PartiallyApplied { refused_axis_count: _, detail: d } => string_contains(s: d, pattern: "activation=2")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ROW 3 -- CAPS, at an ACTIONABLE population rather than the already-converged desired set. Passing
+// fleet_converge_desired_caps() here would produce zero cap actions and the row would be green for
+// the wrong reason; an empty observation against a nonempty desired set is the add population.
+// ---------------------------------------------------------------------------
+test fn a_smuggled_cap_population_changes_nothing_in_the_launch_projection() -> Bool {
+  projections_identical(
+    clean: clean_launch_srv1(),
+    smuggled: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_caps: [],
+    },
+  )
+}
+
+test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
+  projections_differ(
+    a: full_host_srv1(slots: []),
+    b: FullHostConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_caps: [],
+      observed_spark: [],
+      observed_slots: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ROW 4 -- FABRIC CELLS, at a REFUSING population. srv3 expects a cell, so an unobserved population
+// there refuses under the scopes that own the axis.
+// ---------------------------------------------------------------------------
+test fn a_smuggled_refusing_fabric_observation_changes_nothing_in_the_launch_projection() -> Bool {
+  projections_identical(
+    clean: clean_launch_srv3(),
+    smuggled: LaunchEnvironmentConverge {
+      host: operator_host_srv3 as NonEmptyStr,
+      observed_timers: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    },
+  )
+}
+
+test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
+  string_contains(
+    s: fleet_converge_plan_artifact_of_request(
+      request: FullHostConverge {
+        host: operator_host_srv3 as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      },
+      prior_generation: 0,
+      spark_rows: scheduled_rows_empty(),
+    ).plan_body,
+    pattern: "REFUSED-OBSERVATION fabric-cell",
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ROW 5 -- ALL FOUR AT ONCE. Each row above could pass while a pair of axes cancelled each other
+// out in a combined fold; the simultaneous population is the one an attacker would actually write.
+// ---------------------------------------------------------------------------
+test fn all_four_foreign_axes_smuggled_together_change_nothing_in_the_launch_projection() -> Bool {
+  projections_identical(
+    clean: clean_launch_srv1(),
+    smuggled: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_slots: srv1_production_shaped_slots(),
+      observed_caps: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    },
+  )
+}
+
+// AND THE TERMINAL SPECIFICALLY, asserted as a VALUE rather than only as a component of the
+// signature equality: the whole point of the scope is that RLM's join gets FullyApplied, and a
+// future signature refactor that stopped folding the terminal would silently drop that.
+test fn the_launch_terminal_stays_fully_applied_under_the_full_smuggled_population() -> Bool {
+  match fleet_converge_apply_terminal(
+    request: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_slots: srv1_production_shaped_slots(),
+      observed_caps: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    },
+  ) {
+    FullyApplied => true
+    PartiallyApplied { refused_axis_count: _, detail: _ } => false
+  }
+}
+
+// AND NO FOREIGN AXIS SECTION, COUNTER OR MEMBER IS EMITTED ANYWHERE IN THE PROJECTION. The
+// equalities above prove the smuggled value did not CHANGE the output; this proves the output never
+// carries those axes at all, which is the property a reader of plan.txt or apply.sh depends on. It
+// is asserted on the SMUGGLED request, so it is not merely restating the clean fold.
+//
+// THE PATTERNS ARE EMITTED SECTION MARKERS AND A SLOT MEMBER NAME, NOT BARE AXIS WORDS, and that is
+// a correction rather than a style choice. An earlier cut excluded the bare string "runner-slot" and
+// went red against this repository's OWN ANNOTATION: the launch apply script carries a preamble note
+// explaining which axes it deliberately does not act on, so the word appears in prose that is the
+// evidence of the exclusion rather than a violation of it. A witness that cannot tell an emitted
+// section from a sentence about one is measuring the wrong thing in both directions.
+test fn the_smuggled_launch_projection_emits_no_foreign_axis_section_or_counter() -> Bool {
+  let s = signature_of(
+    request: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_slots: srv1_production_shaped_slots(),
+      observed_caps: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    },
+  )
+  string_contains(s: s, pattern: "# apply-terminal:")
+    && !string_contains(s: s, pattern: "# runner-slot")
+    && !string_contains(s: s, pattern: "# runner-service-activation")
+    && !string_contains(s: s, pattern: "# cap-axis")
+    && !string_contains(s: s, pattern: "# fabric-cell")
+    && !string_contains(s: s, pattern: "# spark-serving-typed-actions:")
+    && !string_contains(s: s, pattern: "# slot-refusals=")
+    && !string_contains(s: s, pattern: "# activation-refusals=")
+    && !string_contains(s: s, pattern: "# cap-refusals=")
+    && !string_contains(s: s, pattern: "# fabric-cell-refusals=")
+    && !string_contains(s: s, pattern: "REFUSED-REMOVAL runner-slot")
+    && !string_contains(s: s, pattern: "srv1-50")
+}
+
+// ---------------------------------------------------------------------------
+// ROW 6 -- THE ARBITRARY SENTINEL. The four rows above are the axes we know about; this one is the
+// discriminator for the BROAD class, because the compiler admits ANY excess field name on a
+// payload-carrying variant literal, not only the four that happen to exist on a sibling arm.
+// __launch_excess_field_probe is declared on no type anywhere in the corpus.
+//
+// ITS INITIALIZER IS A REFINEMENT CAST THAT MUST REFUSE AT RUNTIME, and that is the whole point of
+// the row: it is the RUNTIME half of the initializer-evaluation discriminator. If an admitted
+// excess initializer is EVALUATED, constructing this value refuses and this witness errors loudly
+// rather than returning false; if it is not, the row passes. The observation is positive in the
+// direction that matters -- evaluation announces itself -- so the conclusion is NOT drawn from
+// unchanged plan bytes, which would be equally consistent with evaluation followed by discard.
+//
+// THE EMPTINESS MUST BE COMPUTED, NOT WRITTEN. An earlier cut wrote the cast over a literal empty
+// string and the entry failed to RESOLVE: the refinement on a literal is decided statically, so the
+// witness never ran at all. That refusal is itself a third datum -- an excess field initializer is
+// not merely name-resolved but refinement-checked -- and it is recorded here rather than discarded,
+// because it is the reason this row is written the way it is. Routing the empty string through a
+// fold moves the refusal to runtime, which is the only place it can discriminate evaluation from
+// analysis.
+//
+// THE STATIC HALF lives in the compile-control matrix, where an excess initializer calling a
+// nowhere-declared function adds a blocking diagnostic naming that function while the field itself
+// draws none -- so the initializer is demonstrably ANALYSED and only the FIELD is discarded.
+//
+// THE MEASURED ANSWER, so that nobody has to re-derive it from a green: this row PASSES, and the
+// must-refuse cast therefore did not refuse. Excess-field initializers are semantically analysed --
+// name-resolved, typechecked, and refinement-checked on literals -- but are NOT runtime-evaluated,
+// and the resulting field values are absent from every launch-environment projection measured here.
+// That is the strongest of the two honest wordings, and it is the one the PR uses. It is NOT
+// inferred from unchanged plan bytes, which would be equally consistent with evaluate-then-discard;
+// it is this cast staying silent when evaluation would have made it shout.
+// ---------------------------------------------------------------------------
+test fn an_arbitrary_sentinel_excess_field_changes_nothing_in_the_launch_projection() -> Bool {
+  projections_identical(
+    clean: clean_launch_srv1(),
+    smuggled: LaunchEnvironmentConverge {
+      host: host_srv1,
+      observed_timers: [],
+      __launch_excess_field_probe: empty_only_at_runtime() as NonEmptyStr,
+    },
+  )
+}

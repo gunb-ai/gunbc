@@ -14,6 +14,7 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import product.fabric.envelope { ResourceEnvelope }
+import extdeps.gpu.types { GpuRuntime, gpu_runtime_eq, gpu_runtime_wire }
 import product.fabric.isolation {
   IsolationProfile, IsolationGuarantee,
   unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
@@ -326,6 +327,9 @@ type UnmetShapeAxis
   | MemoryNotOffered { required: ByteSize }
   | ArchitectureMismatch { required: Architecture, offered: Architecture }
   | ArchitectureNotOffered { required: Architecture }
+  | VramNotCovered { required: ByteSize, offered: ByteSize }
+  | GpuNotOffered { required: ByteSize }
+  | GpuRuntimeNotOffered { required: GpuRuntime }
 
 fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
   match axis {
@@ -344,6 +348,15 @@ fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
     ArchitectureNotOffered { required: r } =>
       join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
             ", offer states none"], "")
+    VramNotCovered { required: r, offered: o } =>
+      join(["gpu vram: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offered ", to_string(byte_size_count(b: o))], "")
+    GpuNotOffered { required: r } =>
+      join(["gpu: needs ", to_string(byte_size_count(b: r)),
+            " bytes of vram, offer states no gpu"], "")
+    GpuRuntimeNotOffered { required: r } =>
+      join(["gpu runtime: needs ", gpu_runtime_wire(runtime: r),
+            ", offer does not provide it"], "")
   }
 }
 
@@ -368,6 +381,52 @@ fn unmet_memory_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
           } else {
             [MemoryNotCovered { required: want.min_bytes, offered: have.min_bytes }]
           }
+      }
+  }
+}
+
+// THE GPU AXIS, WHICH THIS FOLD DECLARED AND THEN DID NOT READ.
+//
+// ResourceEnvelope has carried `gpu: GpuRequirement?` since the envelope was generalized, and
+// unmet_shape_axes folded threads, memory and architecture only. So a work item demanding VRAM and a
+// CUDA runtime was admitted by any offer with enough threads, with the GPU requirement never
+// examined -- and the caller could not tell, because the fold answers the empty list for both "this
+// axis matched" and "this axis was never looked at".
+//
+// The envelope's own annotation names the rule that breaks: a fold "may skip an unstated axis, but
+// it must never report an unstated axis as CHECKED -- that is the conflation where absence of
+// observation becomes positive clearance". GPU was STATED and unchecked, which is the same
+// conflation reached from the other side.
+//
+// RUNTIME IS NOT A SUBSET TEST OVER THE OFFERED LIST BUT A MEMBERSHIP TEST PER REQUIRED RUNTIME.
+// A work item naming two acceptable runtimes needs the offer to provide ONE of them; a work item
+// naming one needs exactly that one. Reporting per missing runtime rather than a single boolean
+// keeps the diagnosis at the grain the caller can act on, which is the same reason the axes above
+// carry their required and offered values rather than answering false.
+fn unmet_gpu_runtime_axes(want: List<GpuRuntime>, have: List<GpuRuntime>) -> List<UnmetShapeAxis> {
+  flat_map(want, w =>
+    if any(have, h => gpu_runtime_eq(a: h, b: w)) {
+      []
+    } else {
+      [GpuRuntimeNotOffered { required: w }]
+    })
+}
+
+fn unmet_gpu_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.gpu {
+    Absent => []
+    Present { value: want } =>
+      match offered.envelope.gpu {
+        Absent => [GpuNotOffered { required: want.min_vram }]
+        Present { value: have } =>
+          concat(
+            if byte_size_count(b: have.min_vram) >= byte_size_count(b: want.min_vram) {
+              []
+            } else {
+              [VramNotCovered { required: want.min_vram, offered: have.min_vram }]
+            },
+            unmet_gpu_runtime_axes(want: want.runtimes, have: have.runtimes),
+          )
       }
   }
 }
@@ -399,7 +458,10 @@ fn unmet_shape_axes(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
     unmet_thread_axis(offered: offered, needed: needed),
     concat(
       unmet_memory_axis(offered: offered, needed: needed),
-      unmet_architecture_axis(offered: offered, needed: needed),
+      concat(
+        unmet_architecture_axis(offered: offered, needed: needed),
+        unmet_gpu_axis(offered: offered, needed: needed),
+      ),
     ),
   )
 }

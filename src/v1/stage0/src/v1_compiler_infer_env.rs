@@ -61,6 +61,7 @@ pub struct TypeEnv {
     pub symbol_index: Rc<SymbolIndex>,
     pub module_path: String,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    pub unit_variant_index_observed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -371,6 +372,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
             String,
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
         >(),
+        unit_variant_index_observed: false,
     })
 }
 
@@ -2181,6 +2183,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 authored_import_names: e.authored_import_names.clone(),
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
+                unit_variant_index_observed: e.unit_variant_index_observed.clone(),
             })
         })
 }
