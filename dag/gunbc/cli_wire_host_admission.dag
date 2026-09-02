@@ -17,8 +17,10 @@ data cli_wire_host_receipt_disposition: Disposition = Terminal {
 // modeled command surface computed an answer and no route existed to deliver it. So every scm
 // entry was a value the host discarded -- specification without execution, DESIGN section 5's
 // deepest trap, and flagged by the compiler's OWN surface model rather than discovered by review.
-// The three declarations below are the route: classify a returned value as a CliWireResponse or
-// refuse to call it one, decide what the host must DO about it, and exit accordingly.
+// Five production declarations sit below. THREE ARE THE ROUTE -- classify a returned value as a
+// CliWireResponse or refuse to call it one, decide what the host must DO about it, and exit
+// accordingly. The other two are the carriers that keep the route's states apart, and they are
+// counted in the census below exactly like the functions are.
 //
 // WHY THE CLASSIFIER CANNOT BE MODELED AWAY TODAY. It reads an interpreter Value -- a host runtime
 // representation with no .dag denotation -- and asks whether it inhabits a declared coproduct. The

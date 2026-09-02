@@ -4,7 +4,7 @@ module gunbc.scm.cli
 //
 // `gunbc.scm.read_command` composes load-then-ask and names no destination; `gunbc.scm.render`
 // turns that answer into a `CliWireResponse`. Both existed before this module and neither had a
-// consumer outside a witness test, so every `gunbc scm` answer was computed and discarded --
+// consumer outside a witness test, so every SCM read answer was computed and discarded --
 // the unwired-renderer state `gunbc.cli_dispatch_surface` already records. This module is the
 // entry the host actually invokes: `gunbc run --entry dag/gunbc/scm/cli.dag --function scm_log
 // --arg path=<repo>`.
