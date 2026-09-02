@@ -5,6 +5,9 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, 
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
+import std.contract_identity { ContractIdentity, ContractNamingSurface, ContractName, ContractEpoch, contract_epoch_eq }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved, RequiredCiEpochUnobservable, RequiredCiEpochUnobserved, required_ci_epoch_unobserved_message }
 import gunbc.repository { gunbc_repository }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -53,15 +56,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // own the contract's phase roster, and must not encode one. A `phases_run == 6` field would make
 // every phase added to the floor a breaking change to fleet admission, which is backwards: the
 // roster is the contract's own business and its evidence, not the fleet's precondition.
-type RequiredCiContractIdentity {
-  workflow_path: String
-  repository_full_name: String
-}
+// THE OLD TWO-FIELD RECORD IS GONE, NOT WRAPPED. It answered the right semantic question -- WHICH
+// contract completed -- with an incomplete representation: it could not distinguish a contract whose
+// obligations were revised under an unchanged workflow path, which is the §3 meaning fork. The
+// repair is the canonical triple, and the transition is atomic: there is no second constructor, no
+// converter, no field beside the canonical identity, and no path back to the old shape. The public
+// domain name survives because it is the right name; only its content is replaced.
+type RequiredCiContract = | RequiredCiContractSubject
 
+type RequiredCiContractIdentity = ContractIdentity<RequiredCiContract>
+
+// The naming surface is the repository, the name is the workflow the contract IS, and the epoch is
+// its declared effective version. Each component reads its own authority: none is spelled here, and
+// the epoch deliberately comes from gunbc.required_ci_contract_epoch rather than from this module,
+// so the side that JUDGES does not also author what it requires.
 fn required_ci_contract() -> RequiredCiContractIdentity {
-  RequiredCiContractIdentity {
-    workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-    repository_full_name: fleet_repository_full_name(),
+  ContractIdentity {
+    surface: fleet_repository_full_name() as ContractNamingSurface,
+    name: artifact_path(a: WitnessFloorYamlArtifact) as ContractName,
+    epoch: required_ci_contract_epoch,
   }
 }
 
@@ -138,6 +151,13 @@ type DefaultBranchRevisionObserved<M> {
   evidence: M
 }
 
+// THE TWO CONTRACT-EPOCH ARMS. A wrong-epoch run is a WRONG CONTRACT, not a failed execution of the
+// required one, so it refuses in the identity group before the outcome is interpreted -- exactly as
+// the workflow-path and repository axes already do. CiContractEpochMismatch carries BOTH epochs,
+// because an operator acting on it needs to know which contract ran as well as which was required.
+// CiContractEpochUnobservable is a different fact with a different remedy -- the epoch could not be
+// read at the executed commit at all -- and it keeps the observation's exact failed axis rather than
+// flattening six distinguishable causes into one string.
 type RequiredCiRefusal
   = CiWorkflowNotTheRequiredFloor { observed_path: String, required_path: String }
   | CiRepositoryNotThisRepository { observed: String, required: String }
@@ -145,6 +165,8 @@ type RequiredCiRefusal
   | CiActivityNotCompleted { observed: String }
   | CiConclusionNotSuccess { observed: WorkflowRunConclusion }
   | CiHeadShaUndecodable { observed: String }
+  | CiContractEpochMismatch { observed: String, required: String }
+  | CiContractEpochUnobservable { cause: RequiredCiEpochUnobserved }
 
 type RequiredCiAdmission<E>
   = RequiredCiAdmitted { succeeded: RequiredCiSucceeded<E> }
@@ -178,6 +200,32 @@ fn decode_event_revision(event: WorkflowRunEvent) -> RevisionDecode {
   }
 }
 
+// THE EPOCH VERDICT IS ITS OWN FOLD so the ordered fold above reads as one identity group rather
+// than growing a nested match per axis. It maps an observation of the executed commit onto this
+// module's refusal vocabulary: agreement admits, disagreement names both epochs, and an epoch that
+// could not be observed keeps the exact axis that failed.
+type ContractEpochVerdict
+  = ContractEpochAgrees
+  | ContractEpochRefused { cause: RequiredCiRefusal }
+
+fn required_ci_epoch_verdict(observed: RequiredCiEpochObservation) -> ContractEpochVerdict {
+  match observed {
+    RequiredCiEpochUnobservable { cause: c } =>
+      ContractEpochRefused { cause: CiContractEpochUnobservable { cause: c } }
+    RequiredCiEpochObserved { epoch: e } =>
+      if (e as String) == (required_ci_contract_epoch as String) {
+        ContractEpochAgrees
+      } else {
+        ContractEpochRefused {
+          cause: CiContractEpochMismatch {
+            observed: e as String,
+            required: required_ci_contract_epoch as String,
+          },
+        }
+      }
+  }
+}
+
 // ORDERING: identity before outcome. A successful run of the WRONG workflow refuses as the wrong
 // workflow, and so does a FAILED run of the wrong workflow. Checking the conclusion first would
 // report "the floor was not green" about a run that was never the floor, sending a reader to
@@ -186,7 +234,15 @@ fn decode_event_revision(event: WorkflowRunEvent) -> RevisionDecode {
 // NOTE WHAT IS NOT CHECKED HERE: the branch and the originating event. This producer answers only
 // "did the Required CI contract succeed for this revision", which is true of a PR's merge-subject
 // run. The branch facts belong to the other proposition and are checked by its own producer.
-fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> RequiredCiAdmission<E> {
+// The epoch is supplied by the CALLER as an observation of the executed commit, never computed here
+// from this module's own authority: a judge that produced both sides of the comparison would be
+// checking itself, and a cross-epoch admission would be unobservable while still looking like a
+// check.
+fn accept_required_ci_workflow_run<E>(
+  event: WorkflowRunEvent,
+  evidence: E,
+  observed_epoch: RequiredCiEpochObservation,
+) -> RequiredCiAdmission<E> {
   if event.workflow_path != artifact_path(a: WitnessFloorYamlArtifact) {
     RequiredCiRefused {
       cause: CiWorkflowNotTheRequiredFloor {
@@ -211,6 +267,9 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
           },
         }
       } else {
+        match required_ci_epoch_verdict(observed: observed_epoch) {
+          ContractEpochRefused { cause: c } => RequiredCiRefused { cause: c }
+          ContractEpochAgrees =>
         if event.activity != required_ci_completed_activity {
           RequiredCiRefused { cause: CiActivityNotCompleted { observed: event.activity } }
         } else {
@@ -230,6 +289,7 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
               }
             other => RequiredCiRefused { cause: CiConclusionNotSuccess { observed: other } }
           }
+        }
         }
       }
     }
@@ -299,6 +359,10 @@ fn required_ci_refusal_message(cause: RequiredCiRefusal) -> String {
       join(["the run belongs to repository ", o, ", not ", r], "")
     CiHeadRepositoryNotThisRepository { observed: o, required: r } =>
       join(["the run's head repository is ", o, ", not ", r, " -- a fork's run never admits a fleet revision"], "")
+    CiContractEpochMismatch { observed: o, required: r } =>
+      join(["the run executed the contract at epoch ", o, ", not the required epoch ", r, " -- a different contract, not a failed run of this one"], "")
+    CiContractEpochUnobservable { cause: c } =>
+      join(["the contract epoch could not be observed at the run's commit: ", required_ci_epoch_unobserved_message(cause: c)], "")
     CiActivityNotCompleted { observed: o } =>
       concat("the workflow_run activity is not completed: ", o)
     CiConclusionNotSuccess { observed: _ } =>

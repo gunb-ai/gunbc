@@ -1,6 +1,7 @@
 module v2.test.lens_registry.sg_claims
 
 import v2.lens.registry {
+  Bound,
   ComplexityDerivedKernel,
   ComplexityOptimality,
   ComplexityAccumulatorCopy,
@@ -32,6 +33,7 @@ import v2.lens.registry {
   LanguagesConsumerCensus,
   LeafModelVerification,
   LensIdV0,
+  LensRegistryEntryV0,
   LifecycleCarrier,
   LiveReadClassification,
   MachineShape,
@@ -53,6 +55,7 @@ import v2.lens.registry {
   TableDecisionTree,
   TestMigrationDebt,
   UnitModeling,
+  Unbound,
   UnusedParameters,
   Vacuity,
   Visibility,
@@ -60,6 +63,7 @@ import v2.lens.registry {
   WitnessCostLocality,
   lens_registry_bound_row_count,
   lens_registry_id_resolves,
+  lens_registry_id_resolves_in,
   lens_registry_ids_resolve,
   lens_registry_row_count
 }
@@ -128,6 +132,21 @@ data lens_registry_v0_required_ids: List<LensIdV0> = [
 
 test fn lens_registry_required_ids_resolve_holds() -> Bool {
   lens_registry_ids_resolve(lens_ids: lens_registry_v0_required_ids)
+}
+
+test fn lens_registry_duplicate_id_refuses_holds() -> Bool {
+  let duplicate_rows: List<LensRegistryEntryV0> = [
+    { lens_id: Cost, module_path: Bound { path: "v2.lens.cost" } },
+    { lens_id: Cost, module_path: Bound { path: "v2.lens.cost_duplicate" } }
+  ]
+  !lens_registry_id_resolves_in(entries: duplicate_rows, lens_id: Cost)
+}
+
+test fn lens_registry_unbound_id_refuses_holds() -> Bool {
+  let unbound_rows: List<LensRegistryEntryV0> = [
+    { lens_id: Cost, module_path: Unbound }
+  ]
+  !lens_registry_id_resolves_in(entries: unbound_rows, lens_id: Cost)
 }
 
 test fn lens_registry_singleton_row_counts_holds() -> Bool {
