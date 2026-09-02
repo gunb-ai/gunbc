@@ -676,20 +676,24 @@ pub struct TransitionAdmission {
 /// each naming its module, its declaration and the exact spelling whose target moved. A wildcard
 /// covering this relocation would also admit the next one nobody reviewed.
 ///
-/// TRIGGER: #10077 MERGING. After that, main carries the relocation, so a later run's base and head
-/// both have it and no run can produce these deltas.
+/// TRIGGER: FIRED. #10077 merged 2026-09-02T18:55:08Z as a4a6db175d2, so main now carries the
+/// relocation and a later run's base and head both have it. These 57 rows can no longer match a
+/// delta and are SATISFIED AT THE BASE of every run from that commit onward.
 ///
-/// THEY WILL REPORT CONSUMED, NOT STALE, AND THE ENTRY ABOVE IS WHY I AM SAYING SO. The seventeenth
-/// dissolution records that its predecessor predicted "stale" and got CONSUMED, and left the wrong
-/// prediction standing because the disposition is what decides WHO PAYS: a stale row matches no
-/// delta, a CONSUMED row is one whose delta is already satisfied at the BASE, and only the second
-/// charges its deletion to the next unrelated roster-toucher. These 57 are authored in the same PR
-/// that performs the move, so once that PR is in main they are satisfied at the base of every
-/// subsequent run — born consumed, exactly as the SJT-1 and DCH-1 cohorts were.
+/// THIS IS WRITTEN IN THE PAST TENSE ON PURPOSE. It previously read "#10077 MERGING ... once that PR
+/// is in main", which was accurate when authored and became ambiguous the moment the condition
+/// occurred: a future-tense trigger gives a later reader no way to tell whether it has fired, and the
+/// person who pays for that ambiguity is the next toucher rather than its author.
 ///
-/// SO THE DELETION IS OWED AND IT SHOULD NOT WAIT FOR ME. They must be removed in the first PR
-/// after #10077 lands, by whoever next touches this roster, which is the convention the sweep above
-/// establishes rather than a favour asked of them. Removing them early is safe and loud — an
+/// THEY ARE CONSUMED, NOT STALE, AND THE DISTINCTION DECIDES WHO PAYS. The seventeenth dissolution
+/// records that its predecessor predicted "stale" and got CONSUMED, and left the wrong prediction
+/// standing for exactly this reason: a stale row matches no delta, a CONSUMED row is one whose delta
+/// is already satisfied at the BASE, and only the second charges its deletion to the next unrelated
+/// roster-toucher. These were authored in the same PR that performed the move, so they were born
+/// consumed, as the SJT-1 and DCH-1 cohorts were.
+///
+/// SO THE DELETION IS OWED NOW, BY WHOEVER NEXT TOUCHES THIS ROSTER. That is the convention the
+/// sweep above establishes rather than a favour asked of them. Removing them is safe and loud — an
 /// unadjudicated delta refuses by name and is closed by re-authoring a row, never by a silent
 /// admission — so the only dangerous direction is leaving them standing.
 const LEDGER_SAFETY_VOCABULARY_LABEL: &str =
