@@ -24,7 +24,6 @@ import std.symbols { Ascii }
 import extdeps.render.surface { RenderTarget, PlainTerminal }
 import gunbc.cli_wire { CliWireResponse }
 import gunbc.scm.authoring { empty_proposal }
-import gunbc.scm.repository_envelope { empty_repository }
 import gunbc.scm.log { CommitLog }
 import gunbc.scm.status { RepositoryStatus }
 import gunbc.scm.read_command { ScmReadResult, scm_read_log, scm_read_status }
