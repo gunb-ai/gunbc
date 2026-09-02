@@ -5,9 +5,11 @@ module gunbc.design_ledgers
 // DESIGN.md is reasoned serially: section 1 fixes the axioms and each later section is a
 // consequence of the ones before it. Two of its sections were never consequences of anything --
 // the recurring failure modes and the declared rung drops are ROSTERS, appended to by every lane
-// that finds a new class or declares a new drop, and between them they had grown to 96,042 of the
-// projected document's 165,482 characters. Fifty-eight percent of the file that every session
-// loads on every turn, and the half that grows without bound.
+// that finds a new class or declares a new drop, and between them they had grown to the MAJORITY
+// of the projected document by character count -- the half of the file that every session loads on
+// every turn, and the half that grows without bound. The magnitude is deliberately not transcribed
+// here for the reason given below; the instrument is `wc -c` on the projection before and after,
+// which any reader can run against the tree in front of them.
 //
 // So they are projected HERE, one file per roster: docs/design-failure-modes.md from
 // gunbc.recurring_failure_mode and docs/design-rung-drops.md from gunbc.rung_drop. Each is one
@@ -15,26 +17,37 @@ module gunbc.design_ledgers
 // neither is hand-editable. What changed is which file a reader pays for by default.
 //
 // ONE FILE PER ROSTER IS A CONTENTION FACT, NOT A TIDINESS ONE, AND THE FIRST SPLIT DID NOT FINISH
-// THE JOB. Measured over 482 merges to main in one week: 21 merges touched recurring_failure_mode
-// alone, 10 touched rung_drop alone, and only 4 touched both -- yet all 35 collided in one
-// docs/design-ledgers.md, because a generated projection is bound to merge=generated-artifact and
-// that driver REFUSES whenever both sides changed the path. Independent lanes were serialised by
-// a shared artifact rather than by a shared fact.
+// THE JOB. THIS SECTION CARRIES NO COUNTS, DELIBERATELY -- DESIGN's standing rule is name the
+// instrument, never transcribe its output, and a contention measurement is the worst place to
+// break it: it decays every time main moves, and a reader sequencing work against a stale count
+// budgets against a repository that no longer exists. THE INSTRUMENT, over any window:
 //
-// The same measurement showed the split alone would have bought almost nothing: 28 of those 35
-// merges ALSO touched DESIGN.md, because gunbc.design_document derived an index from both rosters
-// with map(). One row appended fanned out to two driver-bound files, so every lane still collided
-// with every other lane on the second one. The index is therefore gone from DESIGN.md and this is
-// the only projection of these rows. Removing it costs a reader the at-a-glance names in the file
-// they always have loaded; keeping it cost every appending lane a merge conflict with every other
-// appending lane, which is the more expensive of the two.
+//   git log --since=<window> --name-only --format='' origin/main \
+//     | grep -v '^$' | sort | uniq -c | sort -rn
+//
+// read at recurring_failure_mode.dag, rung_drop.dag, docs/design-ledgers.md and DESIGN.md; and for
+// the join that decides this design, the per-commit form that reports which of those a single
+// merge touched TOGETHER. Re-derive them from the tree at the moment you need them.
+//
+// THE DIRECTION IS THE DURABLE FACT AND IT NEEDS NO MAGNITUDE. Lanes append to the two rosters
+// INDEPENDENTLY -- most merges touch one roster or the other, few touch both -- yet every such
+// merge collided in one docs/design-ledgers.md, because a generated projection is bound to
+// merge=generated-artifact and that driver REFUSES whenever both sides changed the path.
+// Independent lanes were serialised by a shared artifact rather than by a shared fact.
+//
+// Splitting that document alone would NOT have finished the job, and this is the load-bearing
+// half: most roster-touching merges ALSO rewrote DESIGN.md, because gunbc.design_document derived
+// an index from both rosters with map(). One row appended fanned out to two driver-bound files, so
+// every lane still collided with every other lane on the second one. The index is therefore gone
+// from DESIGN.md and this is the only projection of these rows. Removing it costs a reader the
+// at-a-glance names in the file they always have loaded; keeping it cost every appending lane a
+// merge conflict with every other appending lane, which is the more expensive of the two.
 //
 // THIS IS A RELOCATION AND ITS ORACLE IS CONTENT PRESERVATION. Every authored sentence that was in
 // DESIGN.md is still generated, byte-for-byte, from the same `authored` fields. One thing is
 // deliberately NOT preserved, and it is a rendering decision rather than a content one: the
-// nineteen failure classes were joined into a SINGLE paragraph with " · " separators -- 29,827
-// characters with no structural break anywhere in it -- and are rendered here as one list item
-// each. Nothing is added and nothing is dropped; the separator becomes a line break, which is the
+// failure classes were joined into a SINGLE paragraph with " · " separators, with no structural
+// break anywhere in it, and are rendered here as one list item each. Nothing is added and nothing is dropped; the separator becomes a line break, which is the
 // difference between a roster a reader can scan and a wall a reader skips.
 
 import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
