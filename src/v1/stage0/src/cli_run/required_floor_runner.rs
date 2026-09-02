@@ -3944,108 +3944,6 @@ pub fn run_required_floor(
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
-
-    // THE PER-CLAIM CEILING IS NO LONGER ONE SCALAR FOR THE WHOLE CORPUS. A witness that carries a
-    // `SubstrateLongLaneEvalBudget` row on `gunbc.witness_eval_budget` runs against the envelope it
-    // declared; every other claim keeps `required_floor_claim_cpu_safety_limit_ms` above.
-    //
-    // THE NUMBER IS STAMPED ON THE ROW, NOT COMPUTED HERE, and that is the point of the projection
-    // rather than a style preference. Reading two constants and choosing between them in Rust would
-    // put a second representation of the policy in the host — one that drifts the first time an arm
-    // is added, and that could hand the executor a limit no `.dag` authority ever selected.
-    // `required_floor_declared_claim_cpu_ceilings` performs the exhaustive match over
-    // `WitnessExecutionBudget` and emits the chosen ceiling per identity; this decode threads it.
-    //
-    // WHY IT NARROWS AND CANNOT WIDEN BY OMISSION: absence of a row is the tighter arm. A missing
-    // decode, an empty roster, or a witness nobody declared all land on the ordinary limit, which
-    // is exactly today's behaviour — there is no arm here in which a failure to read the
-    // declaration grants anybody a larger envelope.
-    let declared_claim_cpu_ceilings: HashMap<(String, String), u64> = {
-        let value = v1_interpreter::run_in_context(
-            &hermetic,
-            "v2.workflow.required_floor.required_floor_declared_claim_cpu_ceilings",
-            false,
-        )
-        .map_err(|e| format!("required_floor_declared_claim_cpu_ceilings: {e}"))?;
-        let items = floor_decode_list(&hermetic, Some(&value))
-            .map_err(|e| format!("required_floor_declared_claim_cpu_ceilings: {e}"))?;
-        let mut out: HashMap<(String, String), u64> = HashMap::new();
-        for item in items {
-            let v1_interpreter::Value::Record { fields, .. } = item else {
-                return Err(format!(
-                    "required_floor_declared_claim_cpu_ceilings: expected ClaimCpuCeiling records, \
-                     got {}",
-                    floor_value_shape(Some(item))
-                ));
-            };
-            let entry = match hermetic.field(fields, "entry") {
-                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-                other => {
-                    return Err(format!(
-                        "required_floor_declared_claim_cpu_ceilings: `entry` must be a String, got \
-                         {}",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            let function = match hermetic.field(fields, "function") {
-                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-                other => {
-                    return Err(format!(
-                        "required_floor_declared_claim_cpu_ceilings: `function` must be a String, \
-                         got {}",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            // A NON-POSITIVE CEILING IS REFUSED for the reason `floor_required_int` gives about
-            // the scalar it replaced: a zero ceiling refuses every claim before it evaluates one,
-            // which is not a lenient policy but a broken one.
-            let cpu_limit_ms = match hermetic.field(fields, "cpu_limit_ms") {
-                Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-                other => {
-                    return Err(format!(
-                        "required_floor_declared_claim_cpu_ceilings: `cpu_limit_ms` must be a \
-                         positive Int, got {}",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            // A FILE-GRAIN ROW IS REFUSED HERE TOO. The carrier already refuses one
-            // (`declared_witness_eval_budget_well_formed`), and this seam refuses it again rather
-            // than trusting that: an empty function would key the map on a pair no site can match,
-            // so the row would read as enrolled and reach nothing — the silent-no-op shape, which
-            // is worse than a refusal because the declaration looks honoured.
-            if entry.is_empty() || function.is_empty() {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=DeclaredCeilingNotExactGrain entry={entry:?} \
-                     function={function:?} — a declared eval-budget row must name one entry and \
-                     one function; a file-grain row would grant an envelope to cells nobody has \
-                     authored"
-                ));
-            }
-            if out
-                .insert((entry.clone(), function.clone()), cpu_limit_ms)
-                .is_some()
-            {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=DuplicateDeclaredCeiling entry={entry:?} \
-                     function={function:?} — two declared eval-budget rows name one identity, so \
-                     which ceiling it runs under depends on fold order"
-                ));
-            }
-        }
-        out
-    };
-    eprintln!(
-        "[floor-declared-budget] {} identity(ies) declare their own eval ceiling",
-        declared_claim_cpu_ceilings.len()
-    );
-    // WHICH DECLARED IDENTITIES THIS RUN ACTUALLY REACHED, counted at the end of the claim build.
-    // A declaration for a module outside the gate closure is dormant rather than wrong — the same
-    // standing the cost-debt and expected-red rosters report for their own out-of-scope rows — but
-    // it must be COUNTED, or a roster whose rows all miss reads exactly like one that is working.
-    let mut declared_ceilings_applied: HashSet<(String, String)> = HashSet::new();
     let long_home_prefixes = floor_decode_module_prefix_roster(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
@@ -4386,25 +4284,8 @@ pub fn run_required_floor(
             .any(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
-        // The declaration is keyed on the REPO PATH of the entry, the same spelling
-        // `gunbc.witness_eval_budget` rows carry and the same normalization the discovery
-        // authority is handed above.
-        let declared_ceiling_entry = file.path.replace('\\', "/");
         for function in &file.functions {
             let identity = format!("{}.{}", file.module_path, function);
-            // THE DECLARED CEILING FOR THIS SITE, OR THE ORDINARY ONE. Looked up per site rather
-            // than per claim so both claim-construction arms below read one value and neither can
-            // drift from the other.
-            let claim_cpu_limit_ms = match declared_claim_cpu_ceilings
-                .get(&(declared_ceiling_entry.clone(), function.clone()))
-            {
-                Some(declared) => {
-                    declared_ceilings_applied
-                        .insert((declared_ceiling_entry.clone(), function.clone()));
-                    *declared
-                }
-                None => claim_cpu_safety_limit_ms,
-            };
             // ONE SITE PER QUALIFIED IDENTITY, REFUSED OVER THE WHOLE OFFERED POPULATION.
             //
             // This wall used to stand further down, guarding PLANNED claims only, so a duplicate
@@ -4476,7 +4357,7 @@ pub fn run_required_floor(
                     module_path: file.module_path.clone(),
                     function: function.clone(),
                     execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                    cpu_safety_limit_ms: claim_cpu_limit_ms,
+                    cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
                     wall_safety_limit_ms: claim_wall_safety_limit_ms,
                     cost_line_ms: claim_cost_line_ms,
                     cost_policy,
@@ -4550,39 +4431,11 @@ pub fn run_required_floor(
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                cpu_safety_limit_ms: claim_cpu_limit_ms,
+                cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
                 wall_safety_limit_ms: claim_wall_safety_limit_ms,
                 cost_line_ms: claim_cost_line_ms,
                 cost_policy: ChangedWitnessCostPolicy::Ordinary,
             });
-        }
-    }
-    // THE DECLARED-CEILING ROSTER, ACCOUNTED FOR AT IDENTITY GRAIN RATHER THAN BY ITS LENGTH. A row
-    // whose module this run never prepared is DORMANT, not wrong — the required gate admits a
-    // fraction of the corpus and the long-lane declarations deliberately include witnesses outside
-    // it — but silence about the misses is what would let a roster whose rows ALL miss read
-    // exactly like one that is working. So the two populations are named and printed, and the
-    // unapplied ones are listed rather than counted, because a count cannot be checked against the
-    // authority that produced it.
-    {
-        let mut unapplied: Vec<String> = declared_claim_cpu_ceilings
-            .keys()
-            .filter(|key| !declared_ceilings_applied.contains(*key))
-            .map(|(entry, function)| format!("{entry}::{function}"))
-            .collect();
-        unapplied.sort();
-        eprintln!(
-            "[floor-declared-budget] {} of {} declared ceiling(s) applied to a planned or declined \
-             site in this run",
-            declared_ceilings_applied.len(),
-            declared_claim_cpu_ceilings.len()
-        );
-        for key in &unapplied {
-            eprintln!(
-                "[floor-declared-budget] dormant: {key} — no site in this run's prepared subject \
-                 carries this identity; the declaration is not withdrawn and applies wherever the \
-                 identity executes"
-            );
         }
     }
     // Taken BEFORE the declared population is folded in, so it is what the site loop offered and
@@ -5704,7 +5557,6 @@ pub fn run_required_floor(
             cpu_nanos: receipt.cpu_nanos,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
-            cpu_limit_ms: claim.cpu_safety_limit_ms,
         });
         // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
         // 2026-08-30). Standing down a gate without putting a measurement in its place is the

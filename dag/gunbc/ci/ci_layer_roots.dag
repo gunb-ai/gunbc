@@ -20,9 +20,9 @@ import gunbc.explicit_witness_admission {
   known_red_probe_corpus_roster,
   known_red_probe_v1_envelope_roster,
   known_red_probe_execution_roster,
+  witness_long_eval_budget_roster,
   explicit_witness_admission_substrate_long_lane_roster
 }
-import gunbc.witness_eval_budget { witness_long_eval_budget_roster }
 import std.witness_admission {
   WitnessConsumerCadence,
   witness_consumer_cadence_eq,
@@ -1920,7 +1920,7 @@ fn falsifier_substrate_long_lane_batch_schedule_entries() -> List<ScheduleWitnes
 // KNOWN-RED root had to occur twice in the schedule, once for its polarity and once for its budget,
 // and the second occurrence sat on a batch that expects green and paged the operator for a witness
 // that is red by design (gunbc#7737). This union is the separation: batch membership still routes
-// execution, gunbc.witness_eval_budget witness_long_eval_budget_roster sizes the ceiling
+// execution, gunbc.explicit_witness_admission witness_long_eval_budget_roster sizes the ceiling
 // from each row's OWN declared budget, and a witness needs no second batch to be given the time it
 // requires. The residual — declared by neither — keeps the fast lane, so an undeclared lane reds
 // loudly at 5s rather than running unbounded (DESIGN 5, the arm narrows). LANE GRANULARITY, AND WHY

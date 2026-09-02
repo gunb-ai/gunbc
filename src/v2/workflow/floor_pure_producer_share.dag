@@ -133,27 +133,57 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
 // compile_phase_frontier_standing is the receipt-series half of the SAME defect this roster
-// closes, found from the other direction: the thirteen cells of
-// test.claim.self_host_compile_phase_live_gate_witness (and the frontier-status cells that
-// derive the same series) each fold gunbc.self_host_compile_phase_frontier's persisted receipt
-// series once per claim, and the fold is essentially the whole of each cell.
+// closes, reached from the other direction: the thirteen cells of
+// test.claim.self_host_compile_phase_live_gate_witness, the cells of
+// test.claim.compiler_frontend_program_status_witness, and
+// test.claim.self_host_compile_phase_frontier_witness all fold gunbc.self_host_compile_phase_frontier's
+// persisted receipt series, and that fold was essentially the whole of each of those claims.
 //
-// MEASURED RECOMPUTE, by planted probe on an isolated release claim_batch run of that module,
-// re-derivable with the same three probes: a `true` body costs 0ms, so the fresh per-claim frame
-// is not the cost; a body that only counts the receipt series data costs 30ms; and a body that
-// folds it through this function costs ~270ms. The ~240ms difference is this call, paid once per
-// claim, and every cell's own perturbation work is below measurement resolution beside it.
+// MEASURED RECOMPUTE, by planted probe on an isolated release claim_batch run of the live-gate
+// module — three probes, added, measured and reverted, re-derivable the same way. A `true` body
+// costs 0ms, so the fresh per-claim frame is not the cost. A body that only counts the receipt
+// series data costs 30ms. A body that folds it through THIS function costs ~270ms, and the real
+// cell that then perturbs the census and joins it at identity grain also costs ~270ms — so the
+// fold is the cost and each cell's own work is below measurement resolution beside it.
 //
-// ARGUMENT IS CLAIM-INDEPENDENT IN PRACTICE — every consumer passes the one persisted series
-// declaration — so it fills on first touch and later claims hit on the content-hashed argument
-// row, exactly like the four rows below.
+// MEASURED SHARING, from this roster's own ledger on the first enrolled run (33649705841), which
+// is the half that decides admission rather than the speedup:
 //
-// THE SERVE-COST HALF OF THE ADMISSION BAR IS NOT ASSERTED HERE. Per this roster's own criterion
-// a measured recompute is necessary and not sufficient: the row is admitted only if its serve
-// costs less than its recompute, and if it shares (fills against consumer claims) rather than
-// populating a cache. Both are read from the required floor's own required_floor_claim_cost.tsv
-// and [floor-shared-fill] ledger joined against a run with this row absent -- the instruments
-// this roster names, not a number transcribed here. If either fails, the row leaves by deletion.
+//   [floor-shared-fill] cache=cross_claim_pure_share key=compile_phase_frontier_standing
+//   fill_ms=362 inclusive_ms=362 consumer_claims=22 consumer_modules=3 disposition=shared
+//
+// ONE 362ms fill served 22 consumer claims across three modules. Four further fills appear at
+// fill_ms=0 with disposition=exclusive (the frontier witness passes its own planted series, so
+// those keys cost nothing and populate nothing). That is the opposite pole from
+// formal_production_for_lhs_exact, which this roster REMOVED at 1,635 fills for 113 consumer
+// claims: a row earns its place by measured recompute AND measured sharing, and a non-sharing
+// producer is cache population rather than a saving.
+//
+// SERVE BELOW RECOMPUTE IS ESTABLISHED BY THE DROP, not asserted beside it. Per-claim cpu in
+// required_floor_claim_cost.tsv: the live-gate cells moved from 430-503ms to 75-94ms and the
+// frontier-status cells from 494-502ms to 94-107ms. Had reification cost more than the derivation
+// the cells would have got SLOWER — which is exactly how the two rust target model rows above were
+// caught and removed — so the direction of the change is the evidence.
+//
+// WHAT IT REPAIRED, stated because a future reader deciding whether to delete this row needs the
+// consequence and not only the numbers: before enrollment the floor reported
+// interrupted_before_verdict=4, all four in compiler_frontend_program_status_witness at 501-502ms
+// against the 500ms ceiling, with failed=0 — a required lane red for a cost unrelated to the diff
+// under review. With this row the same fold reports interrupted_before_verdict=0 and
+// verdict=FloorClean over 3,501 claims.
+//
+// THE ROUTE THIS REPLACED, so the alternative is not re-proposed as new: the same cells were first
+// addressed by declaring a larger per-claim eval envelope for them. That route measured correctly
+// and still moved the red rather than removing it — the four frontier-status cells were outside the
+// declared population and were interrupted instead, because a ceiling reaches the identities
+// someone enumerated while the recompute reaches every consumer of the shared derivation. This
+// roster's own doctrine, "stop recomputing, never raise the line", is that finding stated in
+// advance.
+//
+// ARGUMENT IS CLAIM-INDEPENDENT IN PRACTICE — the ordinary consumers pass the one persisted series
+// declaration — so it fills on first touch and later claims hit on the content-hashed, fully
+// verified argument row, like the rows below rather than the nullary warms above.
+
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "gunbc.self_host_compile_phase_frontier.compile_phase_frontier_standing",
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
