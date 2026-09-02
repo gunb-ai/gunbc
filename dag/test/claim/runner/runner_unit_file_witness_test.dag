@@ -262,7 +262,9 @@ fn invocation_local_text() -> String {
     RunnerUnitText { text: t } => t
     RunnerUnitTextRefused { reason: _ } => ""
   }
-}test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
+}
+
+test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
   match borrower_death_capacity_disposition(realization: live_realization()) {
     CapacityLostUntilPoolRestart => true
     CapacityPreservedByInvocationLifetime => false
