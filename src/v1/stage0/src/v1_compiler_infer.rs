@@ -19338,6 +19338,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 authored_import_names: parent_env.authored_import_names.clone(),
                 symbol_index: parent_env.symbol_index.clone(),
                 unit_variant_index: rebuilt_index.clone(),
+                unit_variant_index_observed: true,
             })
         }
     } else {
@@ -19368,6 +19369,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             authored_import_names: filtered.authored_import_names.clone(),
             symbol_index: filtered.symbol_index.clone(),
             unit_variant_index: rebuilt_index.clone(),
+            unit_variant_index_observed: true,
         })
     }
 }
@@ -19394,6 +19396,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             authored_import_names: env.authored_import_names.clone(),
             symbol_index: env.symbol_index.clone(),
             unit_variant_index: rebuilt_index.clone(),
+            unit_variant_index_observed: true,
         })
     }
 }
@@ -20482,6 +20485,7 @@ pub fn census_fn_sig_env(
                 String,
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
+            unit_variant_index_observed: false,
         });
         crate::v1_compiler_infer_env::env_with_type_variable_bindings(
             base.clone(),
@@ -21665,6 +21669,7 @@ pub fn build_type_env(
                 Rc::new(vec![]),
                 source_indices.clone(),
             ),
+            unit_variant_index_observed: true,
         });
         let module_name_str =
             crate::v1_std_core::authored_name_at(source_indices.clone(), module.module.clone());
@@ -22080,6 +22085,7 @@ pub fn build_type_env(
             authored_import_names: authored_import_names.clone(),
             symbol_index: symbol_index.clone(),
             unit_variant_index: module_variant_index.clone(),
+            unit_variant_index_observed: true,
         });
         let resolved = resolve_env_bindings(
             unresolved_env.clone(),
@@ -22104,6 +22110,7 @@ pub fn build_type_env(
             authored_import_names: authored_import_names.clone(),
             symbol_index: resolved_env_out.symbol_index.clone(),
             unit_variant_index: resolved_env_out.unit_variant_index.clone(),
+            unit_variant_index_observed: resolved_env_out.unit_variant_index_observed.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -22317,6 +22324,7 @@ pub fn build_type_env_unresolved(
                 Rc::new(vec![]),
                 source_indices.clone(),
             ),
+            unit_variant_index_observed: true,
         });
         let module_name_str =
             crate::v1_std_core::authored_name_at(source_indices.clone(), module.module.clone());
@@ -22638,6 +22646,7 @@ pub fn build_type_env_unresolved(
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
             unit_variant_index: module_variant_index.clone(),
+            unit_variant_index_observed: true,
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -24054,6 +24063,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                         authored_import_names: env.authored_import_names.clone(),
                         symbol_index: env.symbol_index.clone(),
                         unit_variant_index: stuck_accum.unit_variant_index.clone(),
+                        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
                     }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
@@ -24140,6 +24150,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                 authored_import_names: env.authored_import_names.clone(),
                 symbol_index: env.symbol_index.clone(),
                 unit_variant_index: ready_accum.unit_variant_index.clone(),
+                unit_variant_index_observed: env.unit_variant_index_observed.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
@@ -24969,6 +24980,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
                             unit_variant_index: rewired_index.clone(),
+                            unit_variant_index_observed: true,
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
@@ -25221,6 +25233,7 @@ pub fn compiler_kernel_type_env(
                 Rc::new(vec![]),
                 source_indices.clone(),
             ),
+            unit_variant_index_observed: true,
         })
     }
 }
@@ -25329,6 +25342,7 @@ pub fn rewire_type_env_parent_links(
                             authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
                             unit_variant_index: rewired_index.clone(),
+                            unit_variant_index_observed: true,
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),

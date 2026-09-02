@@ -80,24 +80,11 @@ import gunbc.spark.cell_role {
 import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
   SparkServingRetirementEffect,
-  SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
-  PlannedReactivationEffect,
+  SparkServingExecutablePlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
 }
-import gunbc.runner_slot_provision { RunnerSlotMember }
-import gunbc.fabric_cell_observation_admission {
-  FabricCellObservationDecision,
-}
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
-  FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
   PlannedEffectExecution,
-  fleet_converge_apply_shell,
-  TimerRetirementMember,
-  TimerRetirementMemberAt,
-  CapMember,
-  CapMemberAt,
-  fleet_converge_apply_terminal,
   fleet_converge_spark_serving_row_effects,
 }
 // Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed
@@ -353,31 +340,22 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
   }
 }
 
-fn spark_serving_fleet_converge_apply_shell(
-  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
-  host: NonEmptyStr,
-  observed_slots: List<RunnerSlotMember>,
-  observed_caps: List<CapMember>,
-  cap_plan: MembershipPlan<CapMember, CapMemberAt>,
-  observed_fabric_cells: FabricCellObservationDecision,
-) -> String {
-  fleet_converge_apply_shell(
-    timer_plan: timer_plan,
-    host: host,
-    observed_slots: observed_slots,
-    observed_fabric_cells: observed_fabric_cells,
-    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-    terminal: fleet_converge_apply_terminal(
-      host: host,
-      observed_slots: observed_slots,
-      observed_caps: observed_caps,
-      timer_plan: timer_plan,
-      cap_plan: cap_plan,
-      observed_fabric_cells: observed_fabric_cells,
-      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-    ),
-  )
-}
+// THE SECOND APPLY-SHELL SPELLING IS DELETED, NOT RE-WIRED.
+//
+// spark_serving_fleet_converge_apply_shell composed fleet_converge_apply_shell with
+// fleet_converge_apply_terminal over one request -- which is exactly what
+// gunbc.fleet_converge_plan fleet_converge_plan_artifact_of_request already does, computing the
+// terminal ONCE and handing that same value to the plan body line and to the apply script. A
+// second spelling of one composition is a second name for one fact (DESIGN section 3), and the
+// two reconstructions could disagree about the terminal with nothing joining them.
+//
+// IT HAD NO CALLER TO MIGRATE. #9763 deleted the Spark-specific artifact route and with it this
+// wrapper's only caller; the symbol has occurred exactly once in the tree -- its own declaration --
+// on every commit since. Review 5070355515 asked for a caller so that a real consumer would
+// exercise the migrated API; giving a dead wrapper a caller would have minted the parallel
+// authority instead of removing it. The Spark axis reaches the single authority through
+// spark_serving_axis_for_observation into fleet_converge_plan_artifact, and THAT route's terminal
+// identity is asserted by execution in test.claim.spark_serving_converge_slice_witness.
 
 // P0-C3: THE SPARK ROWS ARE A FACT ABOUT AN OBSERVATION, NOT A FACT ABOUT AN ARTIFACT.
 //
@@ -594,7 +572,7 @@ fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool 
 //
 // spark_serving_install_effects_include takes List<ServingInstallEffect> and a bare needle. Since the
 // retirement vocabulary landed, fleet_converge_spark_serving_row_effects answers in the WRAPPER,
-// List<SparkServingPlannedEffect>, so every comparison was a wrapped value against a bare constructor
+// List<SparkServingExecutablePlannedEffect>, so every comparison was a wrapped value against a bare constructor
 // and no row could ever match. This function returned `none` for every input, including rows that
 // plainly carry EnableLingerForOwnAccount -- a silent always-absent, not a refusal.
 //
@@ -608,7 +586,6 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
     match e {
       PlannedInstallEffect { install: i } => i == EnableLingerForOwnAccount
       PlannedRetirementEffect { retirement: _ } => false
-      PlannedReactivationEffect { reactivation: _ } => false
     }) {
     Present { value: EnableLingerForOwnAccount }
   } else {

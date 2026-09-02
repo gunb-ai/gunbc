@@ -113,11 +113,33 @@ func generated_artifact_drift_failure_receipt() -> String {
 // would fit. The first half is true; THE SECOND IS FALSE AND WAS MEASURED FALSE BEFORE THIS
 // LANDED, which is why the corrected version is recorded rather than the tidy one.
 //
-// THE CEILING, stated at the grain that is actually true (measured 2026-08-31, this tree, by
-// polling VmHWM to completion):
-//   main_wet      -- all 35 artifacts -- peak RSS 7.55 GiB
-//   main_wet_one  -- exactly one      -- peak RSS 7.54 GiB
-//   ctrl-build --remote runner VM     -- 7.86 GB TOTAL
+// THE CEILING, stated at the grain that is actually true (by polling VmHWM to completion):
+//   main_wet      -- all 35 artifacts -- peak RSS 7.55 GiB   (2026-08-31)
+//   main_wet_one  -- exactly one      -- peak RSS 8.37 GiB   (2026-09-01, SUPERSEDES 7.54)
+//   ctrl-build --remote runner VM     -- 7.86 GB TOTAL       (= 7.32 GiB)
+//
+// THE ONE-ARTIFACT FIGURE ROSE 0.83 GiB IN ONE DAY AND THE OLD ONE IS NOT AMENDED IN PLACE,
+// because a ceiling that moves with the corpus is a different fact from a ceiling that was
+// mismeasured, and only the dated pair shows which this is. 8.37 GiB was measured on
+// 2026-09-01 by the same method as the row above it -- polling VmHWM, the kernel's own
+// high-water mark, to completion -- so the two are comparable and the growth is real rather
+// than an artifact of instrumentation. Re-derive it rather than trusting it: the poller is
+// two lines of shell over /proc/<pid>/status, and the figure belongs to the tree it was
+// measured on.
+//
+// WHY THE SUPERSESSION MATTERS MORE THAN THE 0.83: at 7.54 against a 7.86 GB VM the margin
+// reads as thin-but-conceivable, which invites the "maybe with a tighter budget setting"
+// attempt whose only outcome is an rc=137 twenty minutes in. At 8.37 GiB against 7.32 GiB
+// the requirement is a full gigabyte OUTSIDE the whole VM and the question stops being
+// tempting. A documented ceiling that UNDERSTATES the measured peak is worse than an
+// unmeasured one, because it gets cited as the reason a thing is safe to try -- the §4b
+// decoration shape pointed at a resource limit rather than at a check.
+//
+// gunbc.memory_stall_refusal bounds the same runner class from the other two sides: a
+// TRUTHFUL budget declaration thrashes without completing, an OVERSTATED one is SIGKILLed at
+// rc=137. With this figure the honest range there is not merely narrow, it is EMPTY, and the
+// remedy is a runner exposing a real cgroup limit rather than any value of the budget
+// variable.
 // Regenerating one artifact costs what regenerating thirty-five costs. The generation fold is NOT
 // where the memory goes: the shared WHOLE-TREE RESOLUTION is, and every path reaching the
 // generation stage pays it in full, so ROSTER SIZE IS NOT THE VARIABLE. main_wet is SIGKILLed on
