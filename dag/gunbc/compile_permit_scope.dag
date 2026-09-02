@@ -1,6 +1,7 @@
 module gunbc.compile_permit_scope
 
 import std.types { String, NonEmptyStr, List, Bool, list_length }
+import std.materialization_ladder { string_list_contains }
 import std.measure { HardwareThreadCount }
 
 // WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
@@ -85,15 +86,16 @@ type FleetCancellationFoldAcc {
 // not safe either -- it is the empty-observation narrowing this repository has a named failure mode
 // for. A fleet nobody has looked at is unobserved, and unobserved is on the refusing side.
 //
-// The caller supplies the eligible-host denominator, so a host that satisfies the workflow's runner
-// selector and produced no observation arrives here as HostCancellationUnobserved rather than being
-// silently absent from the fold. A fold that ranged only over the observations it happened to
-// receive would answer SAFE for a fleet it had never asked about.
+// THE DENOMINATOR IS A PARAMETER, NOT A SENTENCE. An earlier draft's annotation said the caller
+// supplied the eligible-host roster while the signature took only observations, so one safe
+// observation carried the whole fleet: [safe_host("srv1")] answered SAFE while srv2, srv3 and srv4
+// were eligible and unobserved. An annotation cannot authorize; only executable structure can, and
+// that is what review 58469's companion finding names.
 //
-// SAFE THEREFORE REQUIRES BOTH a non-empty safe roster and an empty blocking one. The first
-// conjunct is what keeps an empty observation set on the refusing side: a fleet nobody looked at
-// has no unsafe and no unobserved host either, so testing only the blocking roster would report
-// SAFE for silence.
+// SAFE IS AN IDENTITY JOIN over that roster, not a count equality -- every eligible host must appear
+// among the safe observations (missing), no observation may name a host outside it (unexpected), and
+// the counts must agree so a duplicate cannot stand in for an absentee. An empty roster is refused
+// outright: a fleet with no eligible hosts is not a safe fleet, it is an unasked question.
 //
 // NO OBSERVATION ASSERTS ITS OWN SAFETY. An earlier draft had HostCancellationSafe carry both an
 // authored disposition and an active_unit_readback string, and the fold read only the disposition --
@@ -107,6 +109,7 @@ type FleetCancellationFoldAcc {
 // trigger; the fold matches the three arms directly, and a fourth disposition would refuse to
 // compile here rather than silently falling to one side.
 fn fleet_cancellation_standing(
+  eligible_hosts: List<NonEmptyStr>,
   observations: List<HostCompileCancellationStanding>,
 ) -> FleetCompileCancellationStanding {
   let acc = fold(
@@ -143,21 +146,45 @@ fn fleet_cancellation_standing(
       }
     },
   )
+  let safe_names = map(acc.safe_hosts, h => h as String)
+  let missing = fold(
+    eligible_hosts,
+    init: [],
+    f: (m, e) => if string_list_contains(xs: safe_names, wanted: e as String) { m } else { concat(m, [e]) },
+  )
+  let unexpected = fold(
+    acc.safe_hosts,
+    init: [],
+    f: (u, h) => if string_list_contains(xs: map(eligible_hosts, e => e as String), wanted: h as String) { u } else { concat(u, [h]) },
+  )
   let blocking = list_length(items: concat(acc.unsafe_hosts, acc.unobserved_hosts))
-  let observed_safe = list_length(items: acc.safe_hosts)
-  let fleet_is_safe = (blocking == 0) && (observed_safe > 0)
+  let eligible_count = list_length(items: eligible_hosts)
+  let safe_count = list_length(items: acc.safe_hosts)
+  let joined = (list_length(items: missing) == 0) && (list_length(items: unexpected) == 0)
+  let no_duplicates = safe_count == eligible_count
+  let fleet_is_safe = (blocking == 0) && (eligible_count > 0) && joined && no_duplicates
   match fleet_is_safe {
     true => FleetCancellationSafe { hosts: acc.safe_hosts }
     false => FleetCancellationNotSafe {
       unsafe_hosts: acc.unsafe_hosts,
-      unobserved_hosts: acc.unobserved_hosts,
+      unobserved_hosts: concat(acc.unobserved_hosts, missing),
     }
   }
 }
+
+// THE HOSTS THE REQUIRED FLOOR CAN ROUTE TO, which is the denominator the join above ranges over.
+// Every one of them must be observed safe before a kill stops costing capacity, because a single
+// unconverged host still leaks a permit for every superseded build that lands on it.
+data fleet_cancellation_eligible_hosts: List<NonEmptyStr> = [
+  "srv1" as NonEmptyStr,
+  "srv2" as NonEmptyStr,
+  "srv3" as NonEmptyStr,
+  "srv4" as NonEmptyStr,
+]
 
 // THE FLEET AS OBSERVED TODAY: nothing. No host readback exists yet, so the standing is NotSafe with
 // an empty roster on both sides, and the policy below stays NeverSupersedeRunning BY REFUSAL rather
 // than by a literal someone has to remember to keep. Publishing real observations is what moves it,
 // and that is the second stage of the cutover -- deploy and restart the safe realization on every
 // eligible host, read the active units back, bind the receipts, and only then does the policy move.
-data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_cancellation_standing(observations: [])
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_cancellation_standing(eligible_hosts: fleet_cancellation_eligible_hosts, observations: [])

@@ -1,6 +1,6 @@
 module test.claim.run_disposition_witness_test
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { hardware_thread_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
@@ -582,6 +582,10 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
 
 // ── The drop retires by construction, and only on observed convergence ─────────────────────────
 
+fn two_host_fleet() -> List<NonEmptyStr> {
+  ["srv1" as NonEmptyStr, "srv2" as NonEmptyStr]
+}
+
 fn safe_host(name: String) -> HostCompileCancellationStanding {
   HostCancellationObserved {
     host: name as NonEmptyStr,
@@ -597,7 +601,7 @@ fn safe_host(name: String) -> HostCompileCancellationStanding {
 // per kill. So the policy reads an OBSERVED fleet standing, and the arms below are that join.
 test fn w_an_unobserved_fleet_refuses_to_supersede_a_running_run() -> Bool {
   match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(observations: []),
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: []),
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
@@ -608,11 +612,10 @@ test fn w_an_unobserved_fleet_refuses_to_supersede_a_running_run() -> Bool {
 // the fleet safe while an eligible host nobody asked about went on leaking.
 test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
   match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(observations: [
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       safe_host(name: "srv1"),
-      safe_host(name: "srv2"),
       HostCancellationUnobserved {
-        host: "srv3" as NonEmptyStr,
+        host: "srv2" as NonEmptyStr,
         cause: "no active unit readback" as NonEmptyStr,
       },
     ]),
@@ -624,10 +627,10 @@ test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
 
 test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
   match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(observations: [
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       safe_host(name: "srv1"),
       HostCancellationUnreadable {
-        host: "srv4" as NonEmptyStr,
+        host: "srv2" as NonEmptyStr,
         cause: "systemctl show returned no Environment property" as NonEmptyStr,
       },
     ]),
@@ -641,7 +644,7 @@ test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
 // unsafe side rather than being believed. Without this arm the safe constructor is self-certifying.
 test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool {
   match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(observations: [
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       HostCancellationObserved {
         host: "srv1" as NonEmptyStr,
         realization: BorrowerHeldCooperativeHostFifo {
@@ -661,7 +664,7 @@ test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool 
 // NeverSupersedeRunning for everything would pass every witness above and fail here.
 test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
   match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(observations: [
+    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
       safe_host(name: "srv1"),
       safe_host(name: "srv2"),
     ]),
@@ -675,6 +678,36 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
 // emitted workflow quietly moves.
 test fn w_the_live_fleet_standing_still_refuses_running_supersession() -> Bool {
   match running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+
+// A SAFE OBSERVATION FOR PART OF THE FLEET IS NOT A SAFE FLEET. This is the arm the denominator
+// exists for: before it was a parameter, one safe host answered SAFE while every other eligible host
+// went unasked, and the unsafe interval stayed writable.
+test fn w_a_partially_observed_fleet_is_not_safe() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(
+      eligible_hosts: two_host_fleet(),
+      observations: [safe_host(name: "srv1")],
+    ),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// AND AN OBSERVATION FOR A HOST OUTSIDE THE ROSTER CANNOT STAND IN FOR ONE INSIDE IT, which is why
+// the join runs in both directions rather than comparing two counts.
+test fn w_an_observation_outside_the_roster_does_not_complete_it() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(
+      eligible_hosts: two_host_fleet(),
+      observations: [safe_host(name: "srv1"), safe_host(name: "srv9")],
+    ),
+  ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
   }
