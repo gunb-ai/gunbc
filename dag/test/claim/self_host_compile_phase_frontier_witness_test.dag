@@ -24,6 +24,7 @@ import gunbc.self_host_compile_phase_frontier {
   phase_board_error_population_reconciles,
   NewlyExposedDiagnostic,
   newly_exposed_identity_admitted,
+  board_all_identities,
   ExposedByNewEmittedModule,
   OpenUnadmittedRegression,
   ClosedUnadmittedRegression,
@@ -612,8 +613,10 @@ test fn a_new_emitted_module_disposition_is_admitted_only_for_a_file_the_predece
   let previous = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:1:1\tE0308\tmismatch"])
   let current = fixture_board(resolve_ids: [], typeck_ids: ["src/new_module.rs:4:7\tE0308\tmismatch"])
   newly_exposed_identity_admitted(
-    previous: previous,
-    current: current,
+    previous_identities: board_all_identities(board: previous),
+    previous_furthest_phase: previous.furthest_phase_reached,
+    current_identities: board_all_identities(board: current),
+    current_furthest_phase: current.furthest_phase_reached,
     dispositions: [
       NewlyExposedDiagnostic {
         identity: "src/new_module.rs:4:7\tE0308\tmismatch",
@@ -631,8 +634,10 @@ test fn a_new_emitted_module_disposition_refuses_a_file_the_predecessor_already_
   let previous = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:1:1\tE0308\tmismatch"])
   let current = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:9:9\tE0599\tno method"])
   !newly_exposed_identity_admitted(
-    previous: previous,
-    current: current,
+    previous_identities: board_all_identities(board: previous),
+    previous_furthest_phase: previous.furthest_phase_reached,
+    current_identities: board_all_identities(board: current),
+    current_furthest_phase: current.furthest_phase_reached,
     dispositions: [
       NewlyExposedDiagnostic {
         identity: "src/old.rs:9:9\tE0599\tno method",
