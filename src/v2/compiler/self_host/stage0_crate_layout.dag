@@ -294,8 +294,6 @@ data emitter_produced_divergent_note: String = "A DECLARED RUNG DROP (DESIGN sec
 // signature, so changing either arity or order cannot leave the retained call stale. At that point
 // this row is deleted with the independently authored caller contract; adding one compile test does
 // not satisfy the trigger because the lost relation is corpus-grain.
-data generated_dispatch_retained_caller_contract_rung_note: String = "The generated dispatch signature and retained main.rs call are presently separate projections across an admitted divergence boundary; compilation is the mitigatable rung until one authority constructs both contracts."
-
 data emitter_produced_divergent_registrations: List<EmitterProducedDivergentRegistration> = [
   EmitterProducedDivergentRegistration {
     basename: "main",
