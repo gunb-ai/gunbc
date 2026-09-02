@@ -680,11 +680,17 @@ pub fn compare_pair(
     }
 }
 
-pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationRef>) -> i64 {
-    axes.iter()
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AxisScan {
+    pub prefix: Rc<Vec<Rc<DeclarationRef>>>,
+    pub causes: Rc<Vec<NonEmptyStr>>,
+}
+
+pub fn count_identity_in(seen: Rc<Vec<Rc<DeclarationRef>>>, id: Rc<DeclarationRef>) -> i64 {
+    seen.iter()
         .cloned()
-        .fold(0, |acc: i64, ax: Rc<SelectionAxis>| {
-            if crate::std_decl_ref::declaration_ref_eq(ax.identity.clone(), id.clone()) {
+        .fold(0, |acc: i64, s: Rc<DeclarationRef>| {
+            if crate::std_decl_ref::declaration_ref_eq(s.clone(), id.clone()) {
                 (acc.clone() + 1)
             } else {
                 acc.clone()
@@ -692,33 +698,18 @@ pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationR
         })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AxisScan {
-    pub named: Rc<Vec<Rc<DeclarationRef>>>,
-    pub causes: Rc<Vec<NonEmptyStr>>,
-}
-
-pub fn identity_already_named(named: Rc<Vec<Rc<DeclarationRef>>>, id: Rc<DeclarationRef>) -> bool {
-    named
-        .iter()
-        .cloned()
-        .fold(false, |acc: bool, seen: Rc<DeclarationRef>| {
-            (acc || crate::std_decl_ref::declaration_ref_eq(seen.clone(), id.clone()))
-        })
-}
-
 pub fn axis_roster_contradiction(axes: Rc<Vec<Rc<SelectionAxis>>>) -> Rc<Vec<String>> {
-    axes.clone().iter().cloned().fold(Rc::new(AxisScan {
-    named: no_axis_ids(),
+    axes.iter().cloned().fold(Rc::new(AxisScan {
+    prefix: no_axis_ids(),
     causes: no_names(),
-}), |acc: Rc<AxisScan>, ax: Rc<SelectionAxis>| if ((count_axis_identity(axes.clone(), ax.identity.clone()) > 1) && !identity_already_named(acc.named.clone(), ax.identity.clone())) {
-        Rc::new(AxisScan {
-    named: v1_rt::concat(acc.named.clone(), Rc::new(vec![ax.identity.clone()])),
-    causes: v1_rt::concat(acc.causes.clone(), one_name(Rc::new(vec!["two selection axes share one identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(ax.identity.clone()), " - a duplicate axis would resolve first-one-wins, so the selection refuses".to_string()]).join(&"".to_string()))),
-})
+}), |acc: Rc<AxisScan>, ax: Rc<SelectionAxis>| Rc::new(AxisScan {
+    prefix: v1_rt::concat(acc.prefix.clone(), Rc::new(vec![ax.identity.clone()])),
+    causes: if (count_identity_in(acc.prefix.clone(), ax.identity.clone()) == 1) {
+        v1_rt::concat(acc.causes.clone(), one_name(Rc::new(vec!["two selection axes share one identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(ax.identity.clone()), " - a duplicate axis would resolve first-one-wins, so the selection refuses".to_string()]).join(&"".to_string())))
     } else {
-        acc.clone()
-    }).causes.clone()
+        acc.causes.clone()
+    },
+})).causes.clone()
 }
 
 pub fn count_entry_identity(field: Rc<Vec<Rc<ParetoEntry>>>, id: Rc<DeclarationRef>) -> i64 {

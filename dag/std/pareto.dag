@@ -547,10 +547,6 @@ fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Pa
 // Duplicate-identity refusals: an axis roster or a candidate field carrying one identity
 // twice REFUSES the whole selection, because the fold would otherwise resolve the collision
 // silently (first-reading-wins for axes, skipped-as-self for candidates).
-fn count_axis_identity(axes: List<SelectionAxis>, id: DeclarationRef) -> Int {
-  fold(axes, init: 0, f: fn(acc, ax) { if declaration_ref_eq(a: ax.identity, b: id) { acc + 1 } else { acc } })
-}
-
 // THE AXIS ROSTER IS EVIDENCE TOO, AND ITS CONTRADICTION HAS ONE AUTHORITY. This replaces the Bool
 // predicate that used to stand here, a THIRD instance of the split this PR exists to close:
 // entry_standing consulted it and refused, exported compare_pair never looked at the roster at all,
@@ -575,23 +571,36 @@ fn count_axis_identity(axes: List<SelectionAxis>, id: DeclarationRef) -> Int {
 // This module already refuses the same shape one layer over: see the control
 // a_contradiction_is_named_once_not_once_per_spelling, which requires one entry's contradiction to
 // read identically whether or not the field happens to contain it. Reported on review of this head.
-type AxisScan = { named: List<DeclarationRef>, causes: List<NonEmptyStr> }
+type AxisScan = { prefix: List<DeclarationRef>, causes: List<NonEmptyStr> }
 
-fn identity_already_named(named: List<DeclarationRef>, id: DeclarationRef) -> Bool {
-  fold(named, init: false, f: fn(acc, seen) { acc || declaration_ref_eq(a: seen, b: id) })
+fn count_identity_in(seen: List<DeclarationRef>, id: DeclarationRef) -> Int {
+  fold(seen, init: 0, f: fn(acc, s) { if declaration_ref_eq(a: s, b: id) { acc + 1 } else { acc } })
 }
 
+// ONE TRAVERSAL, ONE LOOKUP PER AXIS. The previous shape did TWO full-list scans per element -- a
+// count_axis_identity over the whole roster plus an already-named scan -- which is the copied-
+// accumulator cost defect §6 says is always fixed regardless of realized n. This carries the prefix
+// already traversed and emits exactly when an identity's prefix count is 1, i.e. on its SECOND
+// occurrence: the third and later copies see a count of 2 or more and add nothing, so one duplicated
+// identity still yields one cause without a separate already-named population to rescan.
+//
+// This is O(n*distinct), not linear, and that is a floor rather than a shortcut: exact duplicate
+// detection needs a map, set or ordering to beat it, and std carries none -- std.keyed_roster, the
+// repo's canonical duplicate-detection authority, documents itself as O(n^2) worst case in its own
+// header for exactly this reason. It is not consumed here because it answers a different question:
+// it locates the FIRST duplicate as evidence, where a roster scan owes one cause per duplicated
+// identity. A linear surface would dissolve both.
 fn axis_roster_contradiction(axes: List<SelectionAxis>) -> List<NonEmptyStr> {
-  fold(axes, init: AxisScan { named: no_axis_ids, causes: no_names }, f: fn(acc, ax) {
-    if count_axis_identity(axes: axes, id: ax.identity) > 1 && !identity_already_named(named: acc.named, id: ax.identity) {
-      AxisScan {
-        named: concat(acc.named, [ax.identity]),
-        causes: concat(acc.causes, one_name(name: join([
+  fold(axes, init: AxisScan { prefix: no_axis_ids, causes: no_names }, f: fn(acc, ax) {
+    AxisScan {
+      prefix: concat(acc.prefix, [ax.identity]),
+      causes: if count_identity_in(seen: acc.prefix, id: ax.identity) == 1 {
+        concat(acc.causes, one_name(name: join([
           "two selection axes share one identity ",
           declaration_ref_display_key(ref: ax.identity),
-          " - a duplicate axis would resolve first-one-wins, so the selection refuses"], ""))),
-      }
-    } else { acc }
+          " - a duplicate axis would resolve first-one-wins, so the selection refuses"], "")))
+      } else { acc.causes },
+    }
   }).causes
 }
 
