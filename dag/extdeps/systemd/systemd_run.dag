@@ -41,13 +41,13 @@ fn systemd_run_transient_unit_argv(unit: NonEmptyStr, properties: List<SystemdRu
 
 service systemd.SystemdRun {
   operation RunTransient {
-    input { unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String> }
+    input { unit: NonEmptyStr, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["systemd-run", "--unit={unit}", "--collect", "--", command_argv] }
+    transport shell { argv: ["systemd-run", "--unit={unit}", "--collect", command_argv] }
     exit {
       0 => Unit
       nonzero => String "systemd-run transient unit start failed"

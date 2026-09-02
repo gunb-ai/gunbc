@@ -29,13 +29,14 @@ type SystemdRunTransientOutcome =
   | SystemdRunTransientRefused { reason: String }
 
 fn systemd_run_transient_operation_argv(unit: NonEmptyStr, command_argv: List<String>) -> ArgvMaterialization {
+  let rendered_argv = systemd_run_transient_unit_argv(unit: unit, properties: [], command_argv: command_argv)
   shell_materialize_operation_argv(
     systemd_run_transient_path,
     systemd_run_transient_service,
     systemd_run_transient_operation,
     [
       operation_argv_bind_text(name: "unit", text: unit as String),
-      operation_argv_bind_text_list(name: "command_argv", items: command_argv),
+      operation_argv_bind_text_list(name: "command_argv", items: rendered_argv),
     ]
   )
 }
