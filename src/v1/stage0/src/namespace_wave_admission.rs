@@ -506,174 +506,55 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
 /// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
 /// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
+/// TWELFTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
+/// gunbc#9832): ONE relocation, rostered by its author under the rule this ledger states -- a run
+/// carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row here.
+/// `fleet_converge_plan_spark_typed_actions_wire_path` is the on-disk path of one of the three
+/// members of the plan BUNDLE DIGEST, and the digest is computed in `gunbc.fleet_converge_plan`
+/// while the path constant was declared in `gunbc.fleet_converge_plan_cli`. That split is what the
+/// PR's persisted-member work made untenable: the manifest admission must name the path it is
+/// judging, and a transport module cannot be the authority for a member of an identity the plan
+/// module mints. The constant therefore moves to the module that owns the digest -- same spelling,
+/// same value, one declaring module, no second declaration left behind and no requalification. The
+/// two deltas below are the CLI's own call sites now resolving to the new declarer. This paragraph
+/// previously reported them as `closure blast radius: 0 module(s)`, which gunbc#9908 has since made
+/// a wrong sentence rather than a stale one: closure is a pure function of MEMBERSHIP, so a binding
+/// row is not asked the question and now carries `None` and renders no clause at all. Quoting a
+/// measured zero for it would be the exact conflation that change removed. They dissolve when this
+/// PR merges, by the same trigger as every shrink above.
+/// THIRTEENTH DISSOLUTION (2026-09-01). The seventeen XL-0T rows above were removed by THEIR OWN
+/// dissolve-on trigger, which the paragraph declaring them states as "#9907 merging". #9907 merged
+/// to main at 14:02:39; the first merge of main into this branch that carried them was made at
+/// 14:12:13, ten minutes AFTER their lifetime ended, and preserved them anyway. Base and head both
+/// carry the qualification now, so no run can produce those deltas and all seventeen report stale --
+/// and a stale row here refuses every unrelated PR in the repository, which is why the deletion is
+/// owed on the roster's next touch rather than at someone's convenience. This merge is that touch.
+///
+/// THE MISTAKE WAS ASKING THE QUESTION OF ONE SIDE ONLY, and it is recorded because the resolution
+/// recipe is what failed, not the arithmetic. The trigger check was run carefully against the rows
+/// being KEPT -- this PR's own two, whose trigger is this PR merging and has not fired -- and was
+/// never run against the cohort being IMPORTED. "Preserve both sides" is the wrong default for a
+/// ledger with dissolution rules: the resolved roster is the old cohort, UNION newly live main
+/// cohorts, MINUS every cohort whose trigger has fired as of the base being merged, asked of each
+/// side independently.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label: "RLM-2b: plan bundle-member path joins the module that mints the digest 2026-09-01",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "DelimitedState",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "gunbc.fleet_converge_plan_cli",
+            in_declaration: "fleet_converge_apply_bound_wet",
+            spelling: "fleet_converge_plan_spark_typed_actions_wire_path",
+            target: "gunbc.fleet_converge_plan",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        label: "RLM-2b: plan bundle-member path joins the module that mints the digest 2026-09-01",
         subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexMatchResult",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexMatchThunk",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexRuleApply",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "LexWalkAcc",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "RepeatState",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_match_char_pred",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_match_prefix",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_strip_prefix",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_compiled",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_rule",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_try_rules",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk_artifact",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.compiler.tokenize",
-            in_declaration: "lex_walk_init",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.lexing",
-            in_declaration: "LexPattern",
-            spelling: "String",
-            target: "v2.std.text",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.lexing",
-            in_declaration: "LexPatternFold",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "gunbc.fleet_converge_plan_cli",
+            in_declaration: "write_fleet_converge_plan_artifact_wet",
+            spelling: "fleet_converge_plan_spark_typed_actions_wire_path",
+            target: "gunbc.fleet_converge_plan",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

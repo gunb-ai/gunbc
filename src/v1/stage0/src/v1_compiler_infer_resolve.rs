@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_resolve
 
 use self::AliasKind::*;
+use self::UnitVariantPhantomLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -62,39 +63,74 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UnitVariantPhantomLookup {
+    UnitVariantPhantomPresent { variant: Rc<Node> },
+    UnitVariantPhantomAbsent,
+    UnitVariantPhantomEvidenceUnavailable,
+}
+impl UnitVariantPhantomLookup {
+    pub fn variant(&self) -> Rc<Node> {
+        match self {
+            UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: __val, .. } => {
+                __val.clone()
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
+                panic!("no variant on unit variant")
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+                panic!("no variant on unit variant")
+            }
+        }
+    }
+}
+
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
-) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
-        Some(contribs) => {
-            let total = Rc::new(v1_rt::map_values(&contribs))
-                .iter()
-                .cloned()
-                .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
-                    (acc + c.count.clone())
-                });
-            if (total.clone() == 1) {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
-                        if (c.count.clone() == 1) {
-                            __result.push(c);
+) -> Rc<UnitVariantPhantomLookup> {
+    if !env.unit_variant_index_observed.clone() {
+        Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable)
+    } else {
+        match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
+            Some(contribs) => {
+                let total = Rc::new(v1_rt::map_values(&contribs))
+                    .iter()
+                    .cloned()
+                    .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
+                        (acc + c.count.clone())
+                    });
+                if (total.clone() == 1) {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
+                            if (c.count.clone() == 1) {
+                                __result.push(c);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(single) => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomPresent {
+                                variant: single.variant.clone(),
+                            })
+                        }
+                        std::option::Option::None => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
                         }
                     }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(single) => Some(single.variant.clone()),
-                    std::option::Option::None => std::option::Option::None,
+                } else {
+                    Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
                 }
-            } else {
-                std::option::Option::None
+            }
+            std::option::Option::None => {
+                Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
             }
         }
-        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1854,14 +1890,21 @@ Rc::new(NodeResolveResult {
     diagnostics: Rc::new(vec![]),
 })
                                                     } else {
-                                                        match lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone())) {
-    Some(phantom) => Rc::new(NodeResolveResult {
+                                                        match (*lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
+    UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: phantom, .. } => Rc::new(NodeResolveResult {
     resolved: phantom.clone(),
     diagnostics: Rc::new(vec![]),
 }),
-    std::option::Option::None => Rc::new(NodeResolveResult {
+    UnitVariantPhantomLookup::UnitVariantPhantomAbsent => Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()), n.span.clone()), module_name.clone())]),
+}),
+    UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => Rc::new(NodeResolveResult {
+    resolved: n.clone(),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable {
+    name: crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()),
+    span: n.span.clone(),
+}), module_name.clone())]),
 }),
 }
                                                     }

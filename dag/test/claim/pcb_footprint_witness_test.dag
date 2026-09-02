@@ -57,11 +57,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sig: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
 data gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
-data core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+data fr4_core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
 
 data two_layer: Stackup = Stackup {
   top: sig,
-  plies: [StackupPly { dielectric: core, copper: gnd }],
+  plies: [StackupPly { dielectric: fr4_core, copper: gnd }],
 }
 
 data board_authority: DeclarationRef = decl_ref(module_path: "test.claim.pcb_footprint_witness", decl_name: "two_layer")
@@ -70,7 +70,7 @@ data other_authority: DeclarationRef = decl_ref(module_path: "test.claim.pcb_foo
 
 data other_board: Stackup = Stackup {
   top: gnd,
-  plies: [StackupPly { dielectric: core, copper: sig }],
+  plies: [StackupPly { dielectric: fr4_core, copper: sig }],
 }
 
 // The drawing this fixture's pads claim to come from. A footprint cannot be authored without one,

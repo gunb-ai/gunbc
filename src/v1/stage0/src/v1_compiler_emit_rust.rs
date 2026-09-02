@@ -181,6 +181,10 @@ pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
+pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
+use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup::{
+    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
+};
 pub use crate::v1_compiler_infer_resolve::{
     is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
 };
@@ -1879,12 +1883,16 @@ pub fn rust_type_arg_identity_spelling(
         } {
             std::option::Option::None
         } else {
-            match crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+            match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
                 env.clone(),
                 name.clone(),
-            ) {
-                Some(_) => Some(name.clone()),
-                std::option::Option::None => {
+            ))
+            .clone()
+            {
+                UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => {
+                    Some(name.clone())
+                }
+                UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
                     if (crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone())
                         || is_machine_width_phantom_token(name.clone()))
                     {
@@ -1892,6 +1900,27 @@ pub fn rust_type_arg_identity_spelling(
                     } else {
                         std::option::Option::None
                     }
+                }
+                UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+                    Some(emit_rust_compile_error_expr(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "unit-variant marker identity evidence unavailable for "
+                                            .to_string(),
+                                        name.clone(),
+                                    ),
+                                    " at ".to_string(),
+                                ),
+                                n.span.clone().file.clone(),
+                            ),
+                            ":".to_string(),
+                        ),
+                        crate::v1_compiler_emit_core_support::to_string(
+                            n.span.clone().start.clone(),
+                        ),
+                    )))
                 }
             }
         }
@@ -9762,6 +9791,28 @@ pub fn emit_module_full(
     {
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
+        let emit_info = Rc::new(EmitGraphInfo {
+            type_summaries: emit_info.type_summaries.clone(),
+            type_decl_items: emit_info.type_decl_items.clone(),
+            fn_decl_items: emit_info.fn_decl_items.clone(),
+            recursive_type_set: emit_info.recursive_type_set.clone(),
+            fielded_variants: emit_info.fielded_variants.clone(),
+            positional_payload_variants: emit_info.positional_payload_variants.clone(),
+            shared_types: emit_info.shared_types.clone(),
+            ownership_index: emit_info.ownership_index.clone(),
+            movable: emit_info.movable.clone(),
+            variant_to_enum: emit_info.variant_to_enum.clone(),
+            owned_bindings: emit_info.owned_bindings.clone(),
+            read_only_params_index: emit_info.read_only_params_index.clone(),
+            read_only_params: emit_info.read_only_params.clone(),
+            clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
+            map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
+            clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
+            fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
+            fn_type_env: scope.type_env.clone(),
+            fn_return_type: emit_info.fn_return_type.clone(),
+            expected_type: emit_info.expected_type.clone(),
+        });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
             build_scoped_data_item_index(typed_module.clone(), data_items.clone()),
             contracts_imports_for_module(
@@ -11753,12 +11804,15 @@ pub fn type_item_has_rust_nominal_shell_authority(
 }
 
 pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
-    match crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+    match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
         env.clone(),
         variant_name.clone(),
-    ) {
-        Some(_) => true,
-        std::option::Option::None => false,
+    ))
+    .clone()
+    {
+        UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => true,
+        UnitVariantPhantomLookup::UnitVariantPhantomAbsent => false,
+        UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => false,
     }
 }
 
