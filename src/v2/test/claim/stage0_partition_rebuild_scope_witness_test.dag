@@ -150,6 +150,21 @@ test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
 // CONTROL 4 -- a mirror the partition does not own refuses BEFORE any build, naming the mirror.
 // cli_run.rs is a real hand-authored host module in the compared population and is owned by no
 // partition row, so this is the live shape of the coverage hole, not an invented name.
+//
+// A SECOND LIVE INSTANCE, AND IT SITS ON THE OTHER SIDE OF THE HAND-MAINTAINED PARTITION.
+// v1_compiler_compiler_tests_rust.rs refuses the same way: an authored edit to
+// v1.compiler.compiler_tests_rust drifts that mirror, and --regen-round-cost then refuses its
+// partitioned rebuild with MirrorHasNoOwningPackage naming it (observed 2026-09-02 while
+// regenerating the shell-service refusal oracle).
+//
+// THE DIFFERENCE FROM cli_run.rs IS THE WHOLE POINT rather than a second example of one thing.
+// cli_run.rs IS listed in HAND_MAINTAINED_STAGE0_FILES; v1_compiler_compiler_tests_rust.rs is
+// NOT, which by the regen's own rule means it is EMITTED rather than copied. One instance on a
+// hand-authored file is consistent with the roster simply not having caught up with hand-written
+// host modules -- a bookkeeping gap. An instance on a GENERATED mirror says the crate-partition
+// authority does not cover files the regen itself produces, so the gap is in the partition's
+// coverage of its own output. The two instances differ on exactly the axis that distinguishes
+// those readings, which is why the second one is evidence rather than a duplicate.
 test fn witness_unowned_mirror_refuses_holds() -> Bool {
   match witness_decide(changed: ["cli_run.rs"]) {
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } => m == "cli_run.rs"

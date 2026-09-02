@@ -58,20 +58,29 @@ import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_co
 // its own name rather than deleted, because a wall whose refused input no longer exists anywhere is
 // a wall nothing runs (DESIGN 4b).
 //
-// THE UNRESOLVED ARM FAILS THE WITNESS RATHER THAN BEING SKIPPED. If the cell's envelope stops
-// resolving, every admission witness in this file is measuring nothing, and a fixture that quietly
-// substituted a fallback config would report green over exactly that.
-fn specimen_config() -> FirecrackerVmConfig {
-  match gunbc_runner_microvm_vm_config(
+// IT RETURNS THE RESOLUTION RATHER THAN A CONFIGURATION, AND THAT IS THE REPAIR OF A REAL DEFECT
+// REVIEW 58648 CAUGHT. An earlier revision returned FirecrackerVmConfig and, on the unresolved
+// arm, SUBSTITUTED two_root_config() -- which builds its own fields from the specimen, so the two
+// functions called each other with no descent. Unbounded mutual recursion, in a file whose subject
+// is fail-closed refusal, reached only when the envelope stops resolving.
+//
+// It was also a fabricated fallback on its own terms: DESIGN 5 says every path succeeds fully or
+// fails with a typed located diagnostic, and substituting a deliberately malformed configuration
+// so that admission would refuse for a DIFFERENT reason is exactly the absorbing arm that section
+// forbids -- it converts "the envelope did not resolve" into "the VM was malformed", two states
+// with different owners.
+//
+// So the resolution is propagated and every witness matches it. An unresolved envelope now makes
+// each witness FALSE by its own arm, which is the honest red: if the cell's envelope stops
+// resolving, every admission witness in this file is measuring nothing and says so.
+fn specimen_resolution() -> RunnerMicroVmConfigResolution {
+  gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/tmp/fcmvp/rootfs.ext4",
     jit_config_path: "/var/tmp/fcmvp/jitcfg.ext4",
     kernel_path: "/var/tmp/fcmvp/vmlinux",
     tap_device: "fcmvp0",
     guest_mac: "06:00:AC:10:00:02",
-  ) {
-    MicroVmConfigResolved { config: c } => c
-    MicroVmConfigUnresolved { cause: _ } => two_root_config()
-  }
+  )
 }
 
 // THE srv4 MVP CONFIGURATION, RETAINED AS THE ENVELOPE WALL'S RED INPUT.
@@ -158,29 +167,37 @@ data repaired_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleI
 // orphan class, it relocates the orphan to the VMM. The admission must refuse, and refuse with
 // THAT cause rather than a generic no.
 test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
-  admission_is_orphan_refusal(
-    a: runner_microvm_admission(
-      topology: VmmUnderLifecycleController,
-      intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_orphan_refusal(
+      a: runner_microvm_admission(
+        topology: VmmUnderLifecycleController,
+        intent: deployed_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: c,
+      ),
+    )
+  }
 }
 
 // THE POSITIVE CONTROL. Same VM, same transport, cgroup-reaching teardown: admitted. Without this
 // arm the refusal above would be satisfied by an admission that refuses everything.
 test fn cgroup_teardown_admits_the_same_microvm() -> Bool {
-  admission_is_admitted(
-    a: runner_microvm_admission(
-      topology: VmmUnderLifecycleController,
-      intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_admitted(
+      a: runner_microvm_admission(
+        topology: VmmUnderLifecycleController,
+        intent: repaired_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: c,
+      ),
+    )
+  }
 }
 
 // THE SHARED-DIRECTORY CARRIER IS THE MEASURED DEFECT, SO IT IS REFUSED BY NAME. Five confirmed
@@ -188,26 +205,30 @@ test fn cgroup_teardown_admits_the_same_microvm() -> Bool {
 // .credentials from the slot directory a LIVE job is using. A microVM that reproduced that carrier
 // would reproduce the defect inside a nicer box.
 test fn shared_slot_directory_credential_is_refused() -> Bool {
-  admission_is_credential_refusal(
-    a: runner_microvm_admission(
-      topology: VmmUnderLifecycleController,
-      intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_credential_refusal(
+      a: runner_microvm_admission(
+        topology: VmmUnderLifecycleController,
+        intent: repaired_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
+        config: c,
+      ),
+    )
+  }
 }
 
 fn two_root_config() -> FirecrackerVmConfig {
   FirecrackerVmConfig {
-    boot_source: specimen_config().boot_source,
+    boot_source: mvp_sized_config().boot_source,
     drives: [
       FirecrackerDrive { drive_id: "rootfs", path_on_host: "/a", is_root_device: true, is_read_only: false },
       FirecrackerDrive { drive_id: "other", path_on_host: "/b", is_root_device: true, is_read_only: false },
     ],
-    network_interfaces: specimen_config().network_interfaces,
-    machine_config: specimen_config().machine_config,
+    network_interfaces: mvp_sized_config().network_interfaces,
+    machine_config: mvp_sized_config().machine_config,
   }
 }
 
@@ -226,7 +247,11 @@ test fn two_root_devices_is_a_malformed_vm() -> Bool {
 // THE DERIVED CONFIGURATION IS WELL FORMED BY CONSTRUCTION, WHICH IS WHAT MAKES THE ARM ABOVE A
 // PROPERTY OF HAND-AUTHORED CONFIGS RATHER THAN A HAZARD OF THIS MODULE'S OWN CONSTRUCTOR.
 test fn derived_config_names_exactly_one_root() -> Bool {
-  firecracker_config_has_single_root(config: specimen_config())
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    firecracker_config_has_single_root(config: c)
+  }
 }
 
 // THE DELTA THE MIGRATION BUYS, STATED AS A COMPARISON RATHER THAN AS A CLAIM. The current slot
@@ -246,52 +271,64 @@ test fn microvm_provides_a_dedicated_kernel_and_the_current_slot_does_not() -> B
 // leave an orphan and the guarantee is not required. A model that refused this would be refusing a
 // correct design and calling it safety.
 test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
-  admission_is_admitted(
-    a: runner_microvm_admission(
-      topology: VmmIsMainProcess,
-      intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_admitted(
+      a: runner_microvm_admission(
+        topology: VmmIsMainProcess,
+        intent: deployed_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: c,
+      ),
+    )
+  }
 }
 
 // AND THE PAIR THAT MAKES THE ARM ABOVE LOAD-BEARING RATHER THAN A BLANKET PASS: under the
 // controller topology the SAME intent refuses. The topology is what decides, and it decides both
 // ways -- so neither arm is the constant.
 test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
-  admission_is_admitted(
-    a: runner_microvm_admission(
-      topology: VmmIsMainProcess,
-      intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: specimen_config(),
-    ),
-  ) && admission_is_orphan_refusal(
-    a: runner_microvm_admission(
-      topology: VmmUnderLifecycleController,
-      intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_admitted(
+      a: runner_microvm_admission(
+        topology: VmmIsMainProcess,
+        intent: deployed_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: c,
+      ),
+    ) && admission_is_orphan_refusal(
+      a: runner_microvm_admission(
+        topology: VmmUnderLifecycleController,
+        intent: deployed_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: c,
+      ),
+    )
+  }
 }
 
 // A DIRECT-EXEC VMM DOES NOT EXCUSE THE SHARED-CREDENTIAL CARRIER. The two gates are independent
 // facts and the topology must not absorb the other one.
 test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
-  admission_is_credential_refusal(
-    a: runner_microvm_admission(
-      topology: VmmIsMainProcess,
-      intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_credential_refusal(
+      a: runner_microvm_admission(
+        topology: VmmIsMainProcess,
+        intent: deployed_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
+        config: c,
+      ),
+    )
+  }
 }
 
 // THE GUEST IMAGE CARRIES THE FLEET'S OWN CITED RUNNER RELEASE, NOT A SECOND VERSION ROW.
@@ -366,13 +403,17 @@ test fn the_mvp_size_is_not_the_cell_envelope() -> Bool {
 // that refuses the MVP configuration admits the derived one, so the wall is discriminating rather
 // than constant, and the constructed path needs no fixing up to clear it.
 test fn the_fleet_constructed_vm_carries_the_cell_envelope() -> Bool {
-  admission_is_admitted(
-    a: runner_microvm_admission(
-      topology: VmmUnderLifecycleController,
-      intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
-      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-      config: specimen_config(),
-    ),
-  )
+  match specimen_resolution() {
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+    admission_is_admitted(
+      a: runner_microvm_admission(
+        topology: VmmUnderLifecycleController,
+        intent: repaired_lifecycle_intent,
+        listener_is_main_process: false,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: c,
+      ),
+    )
+  }
 }
