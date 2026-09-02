@@ -1,7 +1,6 @@
 module test.claim.run_disposition_witness_test
 
-import std.types { Bool }
-import std.measure { hardware_thread_count }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
@@ -11,13 +10,21 @@ import extdeps.github.actions_runs {
   run_settled
 }
 import gunbc.compile_permit_scope {
-  CompilePermitScope,
-  HostPersistentPermitPool,
-  InvocationLocalParallelism,
-  fleet_compile_permit_scope
+  FleetCompileCancellationStanding,
+  FleetCancellationSafe,
+  FleetCancellationNotSafe,
+  HostCompileCancellationStanding,
+  HostCancellationSafe,
+  HostCancellationUnsafe,
+  HostCancellationUnobserved,
+  CapacityPreservedByInvocationLifetime,
+  CapacityPreservedByServerReclamation,
+  CapacityLostUntilPoolRestart,
+  fleet_cancellation_standing,
+  fleet_compile_cancellation_standing
 }
 import gunbc.witness_floor_workflow {
-  running_supersession_for_permit_scope,
+  running_supersession_for_fleet_standing,
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
   ReplaceExistingPending,
@@ -573,41 +580,117 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
 }
 
 
-// ── The drop retires by construction, not by remembering ────────────────────────────────────────
+// ── The drop retires by construction, and only on observed convergence ─────────────────────────
 
-// THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON. gunbc#9789's declared DESIGN 4b(3) drop names a
-// capability as its dissolve-on -- no client of the required floor holds a host-persistent
-// cooperative permit. Authored as a literal, NeverSupersedeRunning would outlive that condition
-// silently: the fleet retires the FIFO, the leak stops, and CI keeps paying the latency of not
-// superseding because nothing joins the two facts. These two arms are that join executing.
-test fn w_a_leaking_permit_scope_refuses_to_supersede_a_running_run() -> Bool {
-  match running_supersession_for_permit_scope(
-    scope: HostPersistentPermitPool {
-      fifo_path: "/var/lib/ctrl/jobserver/host.fifo",
-      daemon_service: "ctrl-jobserver.service" as NonEmptyStr,
-    },
+fn safe_host(name: String) -> HostCompileCancellationStanding {
+  HostCancellationSafe {
+    host: name as NonEmptyStr,
+    disposition: CapacityPreservedByInvocationLifetime,
+    active_unit_readback: "Environment=CARGO_BUILD_JOBS=8" as NonEmptyStr,
+  }
+}
+
+// THE CONTAINMENT IS A FUNCTION OF ITS OWN REASON, AND OF WHAT THE HOSTS ACTUALLY RUN.
+//
+// Authored as a literal, NeverSupersedeRunning outlives the condition that required it. Derived from
+// a DESIRED realization row it does something worse: it restores cancellation the moment the
+// workflow reaches main, while hosts that have not restarted onto the new unit keep losing a permit
+// per kill. So the policy reads an OBSERVED fleet standing, and the arms below are that join.
+test fn w_an_unobserved_fleet_refuses_to_supersede_a_running_run() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(observations: []),
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
   }
 }
 
-// AND THE CUTOVER RESTORES SUPERSESSION WITHOUT ANYONE EDITING THIS POLICY. This is the arm that
+// ONE UNREAD HOST IS ENOUGH. A fold that answered on the hosts it happened to receive would report
+// the fleet safe while an eligible host nobody asked about went on leaking.
+test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(observations: [
+      safe_host(name: "srv1"),
+      safe_host(name: "srv2"),
+      HostCancellationUnobserved {
+        host: "srv3" as NonEmptyStr,
+        cause: "no active unit readback" as NonEmptyStr,
+      },
+    ]),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+test fn w_a_single_unsafe_host_holds_the_containment() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(observations: [
+      safe_host(name: "srv1"),
+      HostCancellationUnsafe {
+        host: "srv4" as NonEmptyStr,
+        cause: "active unit still names the host FIFO" as NonEmptyStr,
+      },
+    ]),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// A READBACK THAT CLAIMS SAFE WHILE CARRYING A LOSING DISPOSITION IS A CONTRADICTION, and joins the
+// unsafe side rather than being believed. Without this arm the safe constructor is self-certifying.
+test fn w_a_safe_readback_carrying_a_losing_disposition_is_not_safe() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(observations: [
+      HostCancellationSafe {
+        host: "srv1" as NonEmptyStr,
+        disposition: CapacityLostUntilPoolRestart,
+        active_unit_readback: "Environment=MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo" as NonEmptyStr,
+      },
+    ]),
+  ) {
+    NeverSupersedeRunning => true
+    SupersedeRunningForEvent { event: _ } => false
+  }
+}
+
+// AND A FULLY OBSERVED SAFE FLEET RESTORES SUPERSESSION WITH NO EDIT TO THIS POLICY. This is what
 // makes the pair discriminating: a derivation that ignored its argument and answered
-// NeverSupersedeRunning for everything would pass the witness above and fail here.
-test fn w_a_non_leaking_permit_scope_restores_supersession() -> Bool {
-  match running_supersession_for_permit_scope(
-    scope: InvocationLocalParallelism { jobs_per_slot: hardware_thread_count(count: 8) },
+// NeverSupersedeRunning for everything would pass every witness above and fail here.
+test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(observations: [
+      safe_host(name: "srv1"),
+      safe_host(name: "srv2"),
+    ]),
   ) {
     SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
   }
 }
 
-// THE LIVE ROW STILL PROJECTS WHAT CI ACTUALLY RUNS, so the derivation cannot quietly change the
-// emitted workflow while the two arms above stay green on fixtures.
-test fn w_the_live_policy_still_refuses_running_supersession() -> Bool {
-  match running_supersession_for_permit_scope(scope: fleet_compile_permit_scope) {
+// SERVER RECLAMATION IS THE OTHER SUFFICIENT ARM the dissolve-on names, and the policy already knows
+// what it means -- so the day a server-owned pool exists it needs no new business branch here.
+test fn w_server_reclamation_is_a_sufficient_arm_for_the_policy() -> Bool {
+  match running_supersession_for_fleet_standing(
+    standing: fleet_cancellation_standing(observations: [
+      HostCancellationSafe {
+        host: "srv1" as NonEmptyStr,
+        disposition: CapacityPreservedByServerReclamation,
+        active_unit_readback: "server-owned pool with death reclamation" as NonEmptyStr,
+      },
+    ]),
+  ) {
+    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    NeverSupersedeRunning => false
+  }
+}
+
+// THE LIVE ROW STILL PROJECTS WHAT CI ACTUALLY RUNS, so the fixtures above cannot go green while the
+// emitted workflow quietly moves.
+test fn w_the_live_fleet_standing_still_refuses_running_supersession() -> Bool {
+  match running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
   }

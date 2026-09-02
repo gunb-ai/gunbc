@@ -11,13 +11,15 @@ import gunbc.runner_unit {
   lifecycle_intent_cannot_orphan,
 }
 import gunbc.runner_host_deploy { srv1_runner_host_deploy }
-import gunbc.host_converge { gunbc_runner_jobserver_default_fifo }
 import gunbc.compile_permit_scope {
-  CompilePermitScope,
-  HostPersistentPermitPool,
-  InvocationLocalParallelism,
-  fleet_compile_permit_scope,
-  permit_outlives_borrower
+  CompileParallelismRealization,
+  BorrowerHeldCooperativeHostFifo,
+  InvocationLocalCargo,
+  BorrowerDeathCapacityDisposition,
+  CapacityLostUntilPoolRestart,
+  CapacityPreservedByInvocationLifetime,
+  CapacityPreservedByServerReclamation,
+  borrower_death_capacity_disposition
 }
 import std.measure { hardware_thread_count }
 import gunbc.runner_unit_file {
@@ -48,7 +50,7 @@ fn rendered_text(intent: RunnerUnitLifecycleIntent) -> String {
     rendering: runner_unit_file(
       deploy: srv1_runner_host_deploy,
       spec: srv1_spec(),
-      permit_scope: fleet_compile_permit_scope,
+      permit_scope: live_realization(),
       intent: intent,
     ),
   ) {
@@ -101,8 +103,8 @@ test fn the_rendered_intent_is_the_one_that_cannot_orphan() -> Bool {
 // fail against a FIFO nobody is serving.
 test fn the_jobserver_ordering_dependency_survives_the_redesign() -> Bool {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(s: text, pattern: "\nAfter=ctrl-jobserver.service\n")
-    && string_contains(s: text, pattern: "\nWants=ctrl-jobserver.service\n")
+  string_contains(s: text, pattern: "\nAfter=fixture-other.service\n")
+    && string_contains(s: text, pattern: "\nWants=fixture-other.service\n")
     && string_contains(s: text, pattern: "\nAfter=network-online.target\n")
 }
 
@@ -117,8 +119,8 @@ test fn the_start_rate_limiter_is_disabled_for_a_restart_per_job_unit() -> Bool 
 // about again.
 test fn both_jobserver_lines_name_the_same_fifo() -> Bool {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/var/lib/ctrl/jobserver/host.fifo\n")
-    && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo\n")
+  string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/fixture/other.fifo\n")
+    && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/fixture/other.fifo\n")
 }
 
 // THE per-slot TASK CEILING IS NOT HERE, AND ITS ABSENCE IS THE CLAIM. gunbc.host_converge converges
@@ -186,7 +188,7 @@ fn refusal_reason(spec: RunnerSpec) -> String {
   match gunbc_runner_unit_file(
     deploy: srv1_runner_host_deploy,
     spec: spec,
-    permit_scope: fleet_compile_permit_scope,
+    permit_scope: live_realization(),
   ) {
     RunnerUnitFileRefused { reason: r } => r as String
     RunnerUnitFileRendered { file: _ } => ""
@@ -207,17 +209,25 @@ test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> B
 }
 
 
-// ── The permit scope, which is the fact both the unit and the required floor now read ───────────
+// ── The permit realization, and whether the render actually reads its payload ───────────────────
 
-// THE CUTOVER ARM RENDERS A DIFFERENT UNIT, and this is the discriminating red for the whole
-// construction: if runner_unit_jobserver_environment ignored its scope and kept emitting the FIFO
-// pair, every witness above would stay green because they all render the live arm.
+// THE LIVE-SHAPED FIXTURE CARRIES FIXTURE VALUES, NOT THE PRODUCTION CONSTANTS. An earlier draft
+// passed the fleet row itself, whose FIFO path and service name are exactly what the renderer used
+// to hardcode -- so a renderer that ignored its argument entirely would have passed every witness
+// here. Distinct values are what make the field occupancy discriminating.
+fn live_realization() -> CompileParallelismRealization {
+  BorrowerHeldCooperativeHostFifo {
+    fifo_path: "/fixture/other.fifo",
+    daemon_service: "fixture-other.service" as NonEmptyStr,
+  }
+}
+
 fn invocation_local_text() -> String {
   match runner_unit_text(
     rendering: runner_unit_file(
       deploy: srv1_runner_host_deploy,
       spec: srv1_spec(),
-      permit_scope: InvocationLocalParallelism { jobs_per_slot: hardware_thread_count(count: 8) },
+      permit_scope: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
       intent: gunbc_runner_lifecycle_intent,
     ),
   ) {
@@ -226,14 +236,51 @@ fn invocation_local_text() -> String {
   }
 }
 
-test fn w_the_live_scope_lets_a_permit_outlive_its_borrower() -> Bool {
-  permit_outlives_borrower(scope: fleet_compile_permit_scope) == true
+// EVERY FIELD OF THE ARM REACHES THE FOUR PLACES THAT NAME IT. Four separate assertions rather than
+// one, because a renderer that dropped the daemon service from the ordering while keeping it in the
+// environment would otherwise still pass.
+test fn w_the_realization_payload_reaches_every_directive_that_names_it() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/fixture/other.fifo\n")
+    && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/fixture/other.fifo\n")
+    && string_contains(s: text, pattern: "\nAfter=fixture-other.service\n")
+    && string_contains(s: text, pattern: "\nWants=fixture-other.service\n")
 }
 
-test fn w_invocation_local_parallelism_cannot_leak_a_permit() -> Bool {
-  permit_outlives_borrower(
-    scope: InvocationLocalParallelism { jobs_per_slot: hardware_thread_count(count: 8) },
-  ) == false
+// THE EXACT UNIT-SECTION SEQUENCE FOR BOTH ARMS, because the directive list was restructured to
+// interleave the optional pair and substring witnesses cannot see order, duplication, or a stray
+// blank line. This is the shape oracle the restructure owes.
+test fn w_the_live_arm_unit_section_is_exactly_ordered() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(
+    s: text,
+    pattern: "\nAfter=network-online.target\nAfter=fixture-other.service\nWants=network-online.target\nWants=fixture-other.service\nStartLimitIntervalSec=0\n",
+  )
+}
+
+test fn w_the_cutover_arm_unit_section_is_exactly_ordered() -> Bool {
+  string_contains(
+    s: invocation_local_text(),
+    pattern: "\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n",
+  )
+}
+
+test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
+  match borrower_death_capacity_disposition(realization: live_realization()) {
+    CapacityLostUntilPoolRestart => true
+    CapacityPreservedByInvocationLifetime => false
+    CapacityPreservedByServerReclamation => false
+  }
+}
+
+test fn w_invocation_local_parallelism_preserves_capacity_by_lifetime() -> Bool {
+  match borrower_death_capacity_disposition(
+    realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
+  ) {
+    CapacityPreservedByInvocationLifetime => true
+    CapacityLostUntilPoolRestart => false
+    CapacityPreservedByServerReclamation => false
+  }
 }
 
 // THE MAKEFLAGS CLAUSE IS GONE UNDER THE CUTOVER ARM, not merely repointed. Handing cargo an auth
@@ -247,9 +294,7 @@ test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
 }
 
 // AND THE ORDERING DEPENDENCY LEAVES WITH IT. A unit ordering itself After a service the cutover
-// deleted is a fresh failure introduced by the fix, so the pair departs with the environment that
-// needed it -- while the live arm above still asserts both lines are present.
+// deleted is a fresh failure introduced by the fix.
 test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool {
-  let text = invocation_local_text()
-  !string_contains(s: text, pattern: "ctrl-jobserver.service")
+  !string_contains(s: invocation_local_text(), pattern: "fixture-other.service")
 }

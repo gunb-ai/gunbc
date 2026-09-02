@@ -1,49 +1,159 @@
 module gunbc.compile_permit_scope
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.measure { HardwareThreadCount }
-import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 
-// WHETHER A COMPILE PERMIT OUTLIVES THE PROCESS THAT BORROWED IT. That single fact is what makes
-// killing a running build either cheap or permanently expensive, and until now it was not written
-// down anywhere -- it was implied by the runner unit always rendering a shared FIFO, which made the
-// alternative unrepresentable rather than merely unchosen.
+// WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
+// DESIGN 4b(3) drop turns on, and until now it existed only as a sentence in an annotation while the
+// policy it governs was an authored literal -- so the containment could outlive its own reason.
 //
-// The fleet's builds are bounded by a host-persistent GNU jobserver whose permits are returned
-// COOPERATIVELY. A SIGKILLed cargo returns nothing, so every permit that process held is lost for
-// the lifetime of the daemon; there is no reaper, and a host at zero permits still accepts jobs,
-// which is why the symptom is a slow queue rather than a failure. gunbc#9789 contained the CAUSE by
-// declaring NeverSupersedeRunning, and declared a DESIGN 4b(3) drop whose dissolve-on is this
-// capability: no client of the required floor holds a host-persistent cooperative permit -- either
-// the host FIFO is gone and compile parallelism is invocation-local to cargo, or the pool is
-// server-owned with admission that survives client death.
+// The fleet's builds are bounded by a GNU jobserver whose permits are returned COOPERATIVELY. A
+// SIGKILLed cargo returns nothing and no owner reclaims it, so the permit is not so much outliving
+// its borrower as being ABANDONED: capacity is lost for the daemon's lifetime, there is no reaper,
+// and a host at zero permits still accepts jobs. That is why the symptom is a slow queue and not a
+// failure, and why the drop was declared rather than the leak simply fixed.
 //
-// This module makes that capability a MODELLED FACT rather than a sentence in an annotation, so the
-// containment retires by construction when the fleet changes rather than by someone remembering the
-// row exists. The two arms below are the two the trigger names as sufficient; a third arm belongs
-// here the day someone builds a server-owned pool, and not before -- an arm with no realization is
-// vocabulary invented ahead of its consumer.
-type CompilePermitScope
-  = HostPersistentPermitPool { fifo_path: String, daemon_service: NonEmptyStr }
-  | InvocationLocalParallelism { jobs_per_slot: HardwareThreadCount }
+// THREE LAYERS, BECAUSE THEY ARE THREE FACTS. A concrete realization is what a host runs; a
+// disposition is what that realization implies for capacity under kill; a standing is what has been
+// OBSERVED to be true of the running fleet. Collapsing the first into the third is what lets a
+// desired-state row authorize a policy the hosts have not yet earned.
+type CompileParallelismRealization
+  = BorrowerHeldCooperativeHostFifo { fifo_path: String, daemon_service: NonEmptyStr }
+  | InvocationLocalCargo { jobs_per_slot: HardwareThreadCount }
 
-// THE DECIDABLE QUESTION THE DISSOLVE-ON ASKS, answered by construction rather than by inspection.
-// A borrower that cannot outlive its own permit cannot leak one, so the invalid state has no
-// constructor under the second arm -- DESIGN 4b rung 4 for this class, reached by deleting the
-// shared resource rather than by watching it.
-fn permit_outlives_borrower(scope: CompilePermitScope) -> Bool {
-  match scope {
-    HostPersistentPermitPool { fifo_path: _, daemon_service: _ } => true
-    InvocationLocalParallelism { jobs_per_slot: _ } => false
+// THE SEMANTIC OUTCOME, WHICH IS WHAT POLICY IS ALLOWED TO SEE. Business policy that matched
+// realization variants would have to learn FIFO paths and systemd service names, and would need a
+// new business branch every time a realization appeared -- the layer inversion DESIGN section 3
+// names. It reads this instead.
+//
+// CapacityPreservedByServerReclamation HAS NO CONCRETE REALIZATION TODAY, and it belongs here
+// anyway: it is one of the two arms the controlling dissolve-on names as SUFFICIENT, it has an
+// immediate consumer in the policy fold below, and it is fixture-authorable. Omitting it would
+// narrow the trigger to one of its two arms -- the failure DESIGN 4b(3) warns about, where a trigger
+// naming less than the capability is satisfied while the capability stays dead. What would be
+// vocabulary ahead of its consumer is a concrete server realization with guessed fields, and that is
+// deliberately absent until someone builds one.
+type BorrowerDeathCapacityDisposition
+  = CapacityLostUntilPoolRestart
+  | CapacityPreservedByInvocationLifetime
+  | CapacityPreservedByServerReclamation
+
+// ONE DECISION PROCEDURE OVER THIS FACT, not two. An earlier draft declared a Boolean
+// `permit_outlives_borrower` as "the decidable question" and then had the policy fold independently
+// re-match the same realization type -- two procedures over one fact, which is what DESIGN section 2
+// removes. A Boolean was also the wrong shape: unsafe, safe-by-local-lifetime and
+// safe-by-server-reclamation are materially different states, and a fourth -- unobserved -- is not a
+// property of the realization at all but of our knowledge of the fleet, which is why it lives on the
+// standing below rather than here.
+fn borrower_death_capacity_disposition(
+  realization: CompileParallelismRealization,
+) -> BorrowerDeathCapacityDisposition {
+  match realization {
+    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: _ } => CapacityLostUntilPoolRestart
+    InvocationLocalCargo { jobs_per_slot: _ } => CapacityPreservedByInvocationLifetime
   }
 }
 
-// WHAT THE FLEET RUNS TODAY. Flipping this row is the cutover, and because both the runner unit's
-// environment and the required floor's supersession policy are DERIVED from it, the flip cannot
-// move one without the other -- which is the disagreement DESIGN section 3 forbids and the specific
-// way this containment could have gone stale: the fleet retires the FIFO, and CI keeps refusing to
-// supersede for a reason that stopped being true.
-data fleet_compile_permit_scope: CompilePermitScope = HostPersistentPermitPool {
-  fifo_path: gunbc_runner_jobserver_default_fifo,
-  daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+fn disposition_preserves_capacity(disposition: BorrowerDeathCapacityDisposition) -> Bool {
+  match disposition {
+    CapacityLostUntilPoolRestart => false
+    CapacityPreservedByInvocationLifetime => true
+    CapacityPreservedByServerReclamation => true
+  }
 }
+
+// WHAT A HOST HAS BEEN OBSERVED TO BE RUNNING, which is not what a row desires it to run.
+//
+// This is the boundary the first draft of this module got wrong, and the error was a fail-open of
+// exactly the kind DESIGN section 5 forbids. Deriving the workflow policy straight from a desired
+// realization row would restore cancellation the moment the workflow change reached main, whether or
+// not any host had received and restarted onto the new unit -- so between merge and convergence, CI
+// would supersede running builds on hosts still leaking a permit for every kill. A generated
+// artifact can make a rendered unit and a rendered workflow agree; it cannot make host deployment
+// and GitHub workflow activation atomic.
+//
+// So the safe arm carries its READBACK rather than asserting itself: what the active unit says, not
+// what the model wishes it said.
+type HostCompileCancellationStanding
+  = HostCancellationSafe {
+      host: NonEmptyStr,
+      disposition: BorrowerDeathCapacityDisposition,
+      active_unit_readback: NonEmptyStr,
+    }
+  | HostCancellationUnsafe { host: NonEmptyStr, cause: NonEmptyStr }
+  | HostCancellationUnobserved { host: NonEmptyStr, cause: NonEmptyStr }
+
+type FleetCompileCancellationStanding
+  = FleetCancellationSafe { hosts: List<NonEmptyStr> }
+  | FleetCancellationNotSafe { unsafe_hosts: List<NonEmptyStr>, unobserved_hosts: List<NonEmptyStr> }
+
+type FleetCancellationFoldAcc {
+  unsafe_hosts: List<NonEmptyStr>
+  unobserved_hosts: List<NonEmptyStr>
+  safe_hosts: List<NonEmptyStr>
+}
+
+// ONE UNSAFE, MIXED OR UNREAD HOST KEEPS THE CONTAINMENT IN FORCE, and an EMPTY observation set is
+// not safe either -- it is the empty-observation narrowing this repository has a named failure mode
+// for. A fleet nobody has looked at is unobserved, and unobserved is on the refusing side.
+//
+// The caller supplies the eligible-host denominator, so a host that satisfies the workflow's runner
+// selector and produced no observation arrives here as HostCancellationUnobserved rather than being
+// silently absent from the fold. A fold that ranged only over the observations it happened to
+// receive would answer SAFE for a fleet it had never asked about.
+fn fleet_cancellation_standing(
+  observations: List<HostCompileCancellationStanding>,
+) -> FleetCompileCancellationStanding {
+  let acc = fold(
+    observations,
+    init: FleetCancellationFoldAcc { unsafe_hosts: [], unobserved_hosts: [], safe_hosts: [] },
+    f: (a, o) => match o {
+      HostCancellationSafe { host: h, disposition: d, active_unit_readback: _ } =>
+        match disposition_preserves_capacity(disposition: d) {
+          true => FleetCancellationFoldAcc {
+            unsafe_hosts: a.unsafe_hosts,
+            unobserved_hosts: a.unobserved_hosts,
+            safe_hosts: concat(a.safe_hosts, [h]),
+          }
+          // A readback that says SAFE while carrying a disposition that loses capacity is a
+          // contradiction in the observation, not a safe host. It joins the unsafe side.
+          false => FleetCancellationFoldAcc {
+            unsafe_hosts: concat(a.unsafe_hosts, [h]),
+            unobserved_hosts: a.unobserved_hosts,
+            safe_hosts: a.safe_hosts,
+          }
+        }
+      HostCancellationUnsafe { host: h, cause: _ } => FleetCancellationFoldAcc {
+        unsafe_hosts: concat(a.unsafe_hosts, [h]),
+        unobserved_hosts: a.unobserved_hosts,
+        safe_hosts: a.safe_hosts,
+      }
+      HostCancellationUnobserved { host: h, cause: _ } => FleetCancellationFoldAcc {
+        unsafe_hosts: a.unsafe_hosts,
+        unobserved_hosts: concat(a.unobserved_hosts, [h]),
+        safe_hosts: a.safe_hosts,
+      }
+    },
+  )
+  match acc.safe_hosts {
+    [] => FleetCancellationNotSafe {
+      unsafe_hosts: acc.unsafe_hosts,
+      unobserved_hosts: acc.unobserved_hosts,
+    }
+    _ => match concat(acc.unsafe_hosts, acc.unobserved_hosts) {
+      [] => FleetCancellationSafe { hosts: acc.safe_hosts }
+      _ => FleetCancellationNotSafe {
+        unsafe_hosts: acc.unsafe_hosts,
+        unobserved_hosts: acc.unobserved_hosts,
+      }
+    }
+  }
+}
+
+// THE FLEET AS OBSERVED TODAY: nothing. No host readback exists yet, so the standing is NotSafe with
+// an empty roster on both sides, and the policy below stays NeverSupersedeRunning BY REFUSAL rather
+// than by a literal someone has to remember to keep. Publishing real observations is what moves it,
+// and that is the second stage of the cutover -- deploy and restart the safe realization on every
+// eligible host, read the active units back, bind the receipts, and only then does the policy move.
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding =
+  fleet_cancellation_standing(observations: [])
