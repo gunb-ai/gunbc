@@ -1,227 +1,420 @@
 module test.claim.printed_chassis_contract_witness
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
-  LengthLadder, LadderConstruction, LadderReady,
+  LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero, LadderTooFewRungs,
   hole_ladder_spec, hole_ladder_specimen, ladder_rungs, specimen_hole_diameters,
+  CouponSpecimen, CouponOperation, OpThroughHole, PlateDimensions,
 }
 import product.printed_chassis.realization_contract {
   RealizationContract,
   realization_contract,
   ContractConformance, ContractConforms,
-  ContractRungCountDiverges, ContractRungValueDiverges,
-  compare_rungs, admit_realized_ladder,
+  ContractPlateDiverges, ContractOperationCountDiverges, ContractOperationDiverges,
+  PlateAxis, PlateAxisX, PlateAxisY, PlateAxisZ,
+  OperationField, FieldDiameter, FieldCenterX, FieldCenterY,
+  compare_operations, compare_plate, admit_realized_specimen,
   RawRealizationEnvelope, raw_realization_envelope,
+  RawOperationRow, raw_operation_row,
   EnvelopeAdmission, EnvelopeAdmitted, EnvelopeSchemaUnsupported,
-  EnvelopeOperationUnknown, EnvelopeCarriesNoRungs,
+  EnvelopeOperationUnknown, EnvelopeCarriesNoOperations,
   admit_envelope, contract_schema_version,
+  RealizationVerdict, RealizationRefusedAtWire, RealizationJudged,
+  judge_realization,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-// WITNESS 1 — A FAITHFUL HANDLER IS ADMITTED. The positive control: without it every witness below
-// is satisfied by a check that refuses everything.
-test fn w_a_handler_reproducing_the_ladder_conforms() -> Bool {
-  match hole_ladder_spec {
-    LadderReady { ladder: l } => {
-      let contract = realization_contract(declaration: l)
-      match admit_realized_ladder(contract: contract, realized_rungs: ladder_rungs(l: l)) {
-        ContractConforms => true
-        _ => false
-      }
-    }
-    _ => false
-  }
-}
-// WITNESS 2 — A HANDLER THAT DROPS A RUNG IS CAUGHT ON THE COUNT, and the refusal carries both
-// populations. Silently realizing ten holes where the model declared eleven would produce a coupon
-// that measures fine and calibrates against a ladder that never existed.
-test fn w_a_handler_that_drops_a_rung_diverges_on_count() -> Bool {
-  match hole_ladder_spec {
-    LadderReady { ladder: l } => {
-      let contract = realization_contract(declaration: l)
-      match admit_realized_ladder(contract: contract, realized_rungs: ladder_rungs(l: l).skip(n: 1)) {
-        ContractRungCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
-        _ => false
-      }
-    }
-    _ => false
-  }
-}
-// WITNESS 3 — THE ONE THAT MATTERS: A HANDLER USING THE WRONG STEP IS CAUGHT, AND LOCATED.
+
+// A FAITHFUL HANDLER IS SIMULATED BY PROJECTING THE CANONICAL SPECIMEN ONTO THE WIRE, and the
+// weakness of that is stated rather than hidden: an envelope derived from the specimen agrees with
+// the specimen by construction, so the positive control below proves the DECODE is lossless and
+// nothing more. It is not evidence that the wall discriminates.
 //
-// This is the realistic parallel-authority failure. The handler keeps the right rung COUNT and the
-// right base, and derives with 0.05 mm steps instead of the declared 0.10 — a plausible Python edit,
-// a coupon that looks entirely correct, and a calibration that would be wrong for every part printed
-// afterwards. Count agreement is exactly why the count check cannot catch it. The divergence must be
-// reported at index 1, the first rung where the two laws part.
-test fn w_a_handler_using_the_wrong_step_diverges_at_the_first_bad_rung() -> Bool {
-  match hole_ladder_spec {
-    LadderReady { ladder: l } => {
-      let contract = realization_contract(declaration: l)
-      let wrong = fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], init: [], f: fn(acc, i) {
-        concat(acc, [micrometer(count: 3000 + i * 50)])
-      })
-      match admit_realized_ladder(contract: contract, realized_rungs: wrong) {
-        ContractRungValueDiverges { index: i, modeled: m, realized: r } =>
-          i == 1 && micrometer_count(m: m) == 3100 && micrometer_count(m: r) == 3050
-        _ => false
-      }
-    }
-    _ => false
-  }
-}
-// WITNESS 4 — THE PAIRING IS UNWRITABLE. Replaces a witness that asserted the contract's sidecar rung
-// list equalled its own derivation — a check that tested only itself, and whose subject this change
-// deleted. What matters now is that the specimen cannot come from a different declaration than the
-// one the contract carries, so this asserts the contract's holes are the declaration's rungs. There
-// is no second argument the mint could disagree with, which is why this reads as a tautology: that
-// is the point, and it was NOT one before, when specimen and ladder arrived independently.
-test fn w_the_contract_specimen_derives_from_its_own_declaration() -> Bool {
-  match hole_ladder_spec {
-    LadderReady { ladder: l } => {
-      let c = realization_contract(declaration: l)
-      match compare_rungs(modeled: specimen_hole_diameters(s: c.specimen), realized: ladder_rungs(l: c.declaration)) {
-        ContractConforms => true
-        _ => false
-      }
-    }
-    _ => false
+// The discrimination lives entirely in the MUTATION witnesses. Each perturbs exactly one field of an
+// otherwise faithful envelope and requires the wall to name that field. A mutation is an independent
+// oracle in a way an authored fixture is not, because it does not depend on the author having
+// written the expected geometry correctly -- only on the wall noticing a difference the author made
+// deliberately.
+fn row_of(op: CouponOperation) -> RawOperationRow {
+  match op {
+    OpThroughHole { diameter: d, center_x: x, center_y: y } =>
+      raw_operation_row(
+        kind: "through_hole",
+        diameter_um: micrometer_count(m: d),
+        center_x_um: micrometer_count(m: x),
+        center_y_um: micrometer_count(m: y),
+      )
   }
 }
 
-// WITNESS 5 — THE GEOMETRY-BINDING CONTROL, added after review found that this suite could not see
-// its own most serious defect.
-//
-// The first revision computed the specimen's holes with a SECOND derivation of base + i * step,
-// independent of ladder_rungs. Conformance compared the rung list, so changing only the hole
-// derivation left every witness green while the plate carried the wrong diameters. This witness
-// asserts the binding directly: the diameters PRESENT IN THE OPERATION GRAPH are the ladder's rungs.
-// It is the assertion that would have gone red on the defect, and it goes red again if anyone
-// reintroduces a parallel computation.
-test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
-  match hole_ladder_spec {
-    LadderReady { ladder: l } =>
-      match compare_rungs(
-        modeled: specimen_hole_diameters(s: hole_ladder_specimen(l: l)),
-        realized: ladder_rungs(l: l)
-      ) {
-        ContractConforms => true
-        _ => false
-      }
-    _ => false
-  }
+fn rows_of(s: CouponSpecimen) -> List<RawOperationRow> {
+  fold(s.features, init: [], f: fn(acc, op) { concat(acc, [row_of(op: op)]) })
 }
 
-// WITNESS 6 — THE SCAN REPORTS THE FIRST DIVERGENCE, NOT THE LAST. The rewrite from recursion to a
-// fold visits every pair instead of stopping at one, so "keep the earliest" moved from early exit
-// into the accumulator. This is the discriminating red for that move: the realized ladder here is
-// shifted by two, so EVERY rung differs, and the reported index must still be 0. An accumulator that
-// overwrote would report 10 and would look correct on any single-divergence test.
-test fn w_the_scan_reports_the_earliest_of_many_divergences() -> Bool {
-  match hole_ladder_spec {
-    LadderReady { ladder: l } => {
-      let modeled = specimen_hole_diameters(s: hole_ladder_specimen(l: l))
-      let shifted = concat(modeled.skip(n: 2), [micrometer(count: 1), micrometer(count: 2)])
-      match compare_rungs(modeled: modeled, realized: shifted) {
-        ContractRungValueDiverges { index: i, modeled: _, realized: _ } => i == 0
-        ContractConforms => false
-        ContractRungCountDiverges { modeled: _, realized: _ } => false
-      }
-    }
-    _ => false
-  }
-}
-
-// THE FOUR TRANSPORT WITNESSES. Each of these REDs is authorable — a handler really can send any of
-// these payloads — which is the property the deleted ContractVersion check never had. That check was
-// removed as a decoration on the grounds that its RED could not be written; the grounds were wrong,
-// because they tested the typed boundary and the payload arrives at the raw one.
-
-// WITNESS 7 — THE POSITIVE CONTROL, first, because without it the three refusals below are satisfied
-// by an admission procedure that rejects everything.
-test fn w_a_well_formed_envelope_is_admitted() -> Bool {
-  match admit_envelope(envelope: raw_realization_envelope(
+fn envelope_of(s: CouponSpecimen) -> RawRealizationEnvelope {
+  raw_realization_envelope(
     schema_version: contract_schema_version,
-    operation_kinds: ["through_hole"],
-    rung_diameters_um: [3000, 3100]
-  )) {
-    EnvelopeAdmitted { realized_rungs: r } => r.length() == 2
-    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
-    EnvelopeOperationUnknown { received: _ } => false
-    EnvelopeCarriesNoRungs => false
+    plate_x_um: micrometer_count(m: s.plate.size_x),
+    plate_y_um: micrometer_count(m: s.plate.size_y),
+    plate_z_um: micrometer_count(m: s.plate.size_z),
+    operations: rows_of(s: s),
+  )
+}
+
+// The mutation helpers rebuild the envelope with ONE value replaced, so every witness below differs
+// from the faithful envelope in exactly one place and the wall's answer names that place or fails.
+fn envelope_with_plate_z(s: CouponSpecimen, z: Int) -> RawRealizationEnvelope {
+  raw_realization_envelope(
+    schema_version: contract_schema_version,
+    plate_x_um: micrometer_count(m: s.plate.size_x),
+    plate_y_um: micrometer_count(m: s.plate.size_y),
+    plate_z_um: z,
+    operations: rows_of(s: s),
+  )
+}
+
+fn envelope_with_rows(s: CouponSpecimen, rows: List<RawOperationRow>) -> RawRealizationEnvelope {
+  raw_realization_envelope(
+    schema_version: contract_schema_version,
+    plate_x_um: micrometer_count(m: s.plate.size_x),
+    plate_y_um: micrometer_count(m: s.plate.size_y),
+    plate_z_um: micrometer_count(m: s.plate.size_z),
+    operations: rows,
+  )
+}
+
+fn bump_first_center_x(rows: List<RawOperationRow>, delta: Int) -> List<RawOperationRow> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if acc.length() == 0 {
+      concat(acc, [raw_operation_row(
+        kind: row.kind,
+        diameter_um: row.diameter_um,
+        center_x_um: row.center_x_um + delta,
+        center_y_um: row.center_y_um,
+      )])
+    } else {
+      concat(acc, [row])
+    }
+  })
+}
+
+fn bump_first_diameter(rows: List<RawOperationRow>, delta: Int) -> List<RawOperationRow> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if acc.length() == 0 {
+      concat(acc, [raw_operation_row(
+        kind: row.kind,
+        diameter_um: row.diameter_um + delta,
+        center_x_um: row.center_x_um,
+        center_y_um: row.center_y_um,
+      )])
+    } else {
+      concat(acc, [row])
+    }
+  })
+}
+
+// WITNESS 1 — THE DECODE IS LOSSLESS. A faithful envelope round-trips to a conforming verdict. This
+// is the positive control: without it every refusal witness below is satisfied by a wall that
+// refuses everything, which is the failure mode a negative-only suite cannot see.
+test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
+        RealizationJudged { conformance: c } => match c {
+          ContractConforms => true
+          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
   }
 }
 
-// WITNESS 8 — AN UNKNOWN SCHEMA VERSION REFUSES, AND CARRIES BOTH SPELLINGS. This is the exact
-// payload the earlier reasoning called unwritable: "v999" is a string, and a handler can send it.
+// WITNESS 2 — A WRONG PLATE THICKNESS IS CAUGHT, AND THIS FAULT WAS ADMITTED BEFORE THIS REVISION.
+//
+// The wall compared hole diameters only, so a handler that cut every hole correctly into a plate of
+// the wrong thickness CONFORMED. For a hole-diameter coupon that is not cosmetic: plate thickness is
+// the hole DEPTH, and hole depth is the aspect ratio the whole measurement is about.
+test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let bad = envelope_with_plate_z(s: contract.specimen, z: micrometer_count(m: contract.specimen.plate.size_z) + 500)
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationJudged { conformance: c } => match c {
+          ContractPlateDiverges { axis: a, modeled: m, realized: r } =>
+            match a {
+              PlateAxisZ => micrometer_count(m: r) - micrometer_count(m: m) == 500
+              PlateAxisX => false
+              PlateAxisY => false
+            }
+          ContractConforms => false
+          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 3 — A HOLE AT THE WRONG POSITION IS CAUGHT, AND THIS FAULT WAS ALSO ADMITTED BEFORE.
+//
+// Correct diameters at wrong centres is the single most plausible handler bug -- an off-by-one in a
+// pitch loop -- and it produced a conforming verdict under the diameter-only comparison. Overlapping
+// or edge-breaking holes would have printed with the wall green.
+test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let rows = bump_first_center_x(rows: rows_of(s: contract.specimen), delta: 250)
+      let bad = envelope_with_rows(s: contract.specimen, rows: rows)
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationJudged { conformance: c } => match c {
+          ContractOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
+            match f {
+              FieldCenterX => i == 0 && micrometer_count(m: r) - micrometer_count(m: m) == 250
+              FieldDiameter => false
+              FieldCenterY => false
+            }
+          ContractConforms => false
+          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 4 — A WRONG DIAMETER IS STILL CAUGHT, AND IS REPORTED AS A DIAMETER RATHER THAN A
+// POSITION. The field ordering is a diagnostic decision: diameter is a process fault and centre is a
+// layout fault, and an operator acts on the first differently from the second.
+test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let rows = bump_first_diameter(rows: rows_of(s: contract.specimen), delta: 50)
+      let bad = envelope_with_rows(s: contract.specimen, rows: rows)
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationJudged { conformance: c } => match c {
+          ContractOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
+            match f {
+              FieldDiameter => i == 0 && micrometer_count(m: r) - micrometer_count(m: m) == 50
+              FieldCenterX => false
+              FieldCenterY => false
+            }
+          ContractConforms => false
+          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 5 — A DROPPED OPERATION IS CAUGHT ON THE COUNT, and the refusal carries both populations.
+// Realizing ten holes where the model declared eleven produces a coupon that measures perfectly well
+// and calibrates against a ladder that never existed.
+test fn w_a_dropped_operation_diverges_on_count() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let rows = rows_of(s: contract.specimen).skip(n: 1)
+      let bad = envelope_with_rows(s: contract.specimen, rows: rows)
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationJudged { conformance: c } => match c {
+          ContractOperationCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
+          ContractConforms => false
+          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 6 — THE PLATE IS JUDGED BEFORE THE OPERATIONS. A plate of the wrong thickness makes every
+// hole depth wrong at once, so reporting the first hole as divergent would name a symptom and bury
+// the cause. This witness perturbs BOTH and requires the plate answer.
+test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let rows = bump_first_diameter(rows: rows_of(s: contract.specimen), delta: 50)
+      let bad = raw_realization_envelope(
+        schema_version: contract_schema_version,
+        plate_x_um: micrometer_count(m: contract.specimen.plate.size_x),
+        plate_y_um: micrometer_count(m: contract.specimen.plate.size_y),
+        plate_z_um: micrometer_count(m: contract.specimen.plate.size_z) + 500,
+        operations: rows,
+      )
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationJudged { conformance: c } => match c {
+          ContractPlateDiverges { axis: _, modeled: _, realized: _ } => true
+          ContractConforms => false
+          ContractOperationCountDiverges { modeled: _, realized: _ } => false
+          ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { admission: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 7 — AN UNSUPPORTED SCHEMA VERSION REFUSES AT THE WIRE AND NAMES BOTH SIDES. A handler
+// debugging a rejected payload needs the offending spelling; "unsupported schema" alone sends them
+// to read our source instead of their own output.
 test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
-  match admit_envelope(envelope: raw_realization_envelope(
-    schema_version: "v999",
-    operation_kinds: ["through_hole"],
-    rung_diameters_um: [3000]
-  )) {
-    EnvelopeSchemaUnsupported { received: r, supported: s } => r == "v999" && s == contract_schema_version
-    EnvelopeAdmitted { realized_rungs: _ } => false
-    EnvelopeOperationUnknown { received: _ } => false
-    EnvelopeCarriesNoRungs => false
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let bad = raw_realization_envelope(
+        schema_version: "v999",
+        plate_x_um: 40000,
+        plate_y_um: 20000,
+        plate_z_um: 4000,
+        operations: [raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
+      )
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationRefusedAtWire { admission: a } =>
+          match a {
+            EnvelopeSchemaUnsupported { received: rv, supported: sv } => rv == "v999" && sv == contract_schema_version
+            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeOperationUnknown { received: _ } => false
+            EnvelopeCarriesNoOperations => false
+          }
+        RealizationJudged { conformance: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
   }
 }
 
-// WITNESS 9 — AN UNKNOWN OPERATION REFUSES BEFORE ANY GEOMETRY IS BUILT, and names the offending
-// spelling. A handler inventing an operation we never modelled is how a coupon acquires a feature
-// the contract cannot see; refusing at the boundary means it never reaches the operation graph.
+// WITNESS 8 — AN UNKNOWN OPERATION KIND REFUSES AND NAMES IT.
 test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
-  match admit_envelope(envelope: raw_realization_envelope(
-    schema_version: contract_schema_version,
-    operation_kinds: ["through_hole", "chamfer"],
-    rung_diameters_um: [3000]
-  )) {
-    EnvelopeOperationUnknown { received: r } => r == "chamfer"
-    EnvelopeAdmitted { realized_rungs: _ } => false
-    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
-    EnvelopeCarriesNoRungs => false
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let bad = raw_realization_envelope(
+        schema_version: contract_schema_version,
+        plate_x_um: 40000,
+        plate_y_um: 20000,
+        plate_z_um: 4000,
+        operations: [raw_operation_row(kind: "chamfer", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
+      )
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationRefusedAtWire { admission: a } =>
+          match a {
+            EnvelopeOperationUnknown { received: r } => r == "chamfer"
+            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+            EnvelopeCarriesNoOperations => false
+          }
+        RealizationJudged { conformance: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
   }
 }
 
-// WITNESS 10 — AN EMPTY RUNG LIST REFUSES. A coupon with no holes measures nothing, and an empty
-// list is what a handler sends when its own derivation silently produced nothing — the failure that
-// looks most like success, because every downstream comparison over an empty list agrees.
-test fn w_an_envelope_carrying_no_rungs_refuses() -> Bool {
-  match admit_envelope(envelope: raw_realization_envelope(
-    schema_version: contract_schema_version,
-    operation_kinds: ["through_hole"],
-    rung_diameters_um: []
-  )) {
-    EnvelopeCarriesNoRungs => true
-    EnvelopeAdmitted { realized_rungs: _ } => false
-    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
-    EnvelopeOperationUnknown { received: _ } => false
+// WITNESS 9 — AN EMPTY OPERATION LIST REFUSES. A coupon with no holes measures nothing, and an empty
+// list is what a handler sends when its own derivation silently produced nothing -- the failure that
+// looks most like success, because every comparison over an empty list agrees.
+test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let bad = raw_realization_envelope(
+        schema_version: contract_schema_version,
+        plate_x_um: 40000,
+        plate_y_um: 20000,
+        plate_z_um: 4000,
+        operations: [],
+      )
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationRefusedAtWire { admission: a } =>
+          match a {
+            EnvelopeCarriesNoOperations => true
+            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+            EnvelopeOperationUnknown { received: _ } => false
+          }
+        RealizationJudged { conformance: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
   }
 }
 
-// WITNESS 11 — THE DELETED OPERATION REFUSES AT THE WIRE, AND THIS IS THE ONE WITNESS IN THIS FILE
-// THAT WAS GREEN-AS-ADMITTED BEFORE THE CHANGE THAT ADDED IT.
+// WITNESS 10 — THE DELETED OPERATION REFUSES AT THE WIRE, AND THIS WITNESS WAS GREEN-AS-ADMITTED
+// BEFORE THE CHANGE THAT ADDED IT.
 //
 // V0 deleted OpDatumMark from CouponOperation. The compile stayed clean through that deletion while
 // admitted_operation_kinds still carried the string "datum_mark", because a string in a list has no
 // referent the namespace can refuse -- so for one revision the transport would have ADMITTED an
-// operation the model had no constructor for. That is the wall inverted: the boundary accepting what
-// the authority cannot represent.
-//
-// This witness is the executed agreement between the wire spelling and the coproduct arms. It is NOT
-// redundant with the type and must not be deleted as such: nothing in the type system relates the
-// string list to the constructors, which is exactly why the drift was silent. It retires when the
-// spelling is PROJECTED from the arms rather than authored beside them -- the next-rung trigger named
-// on admitted_operation_kinds -- and not before.
+// operation the model had no constructor for. This is the executed agreement between the wire
+// spelling and the coproduct arms, and nothing in the type system provides it. It retires when the
+// spelling is PROJECTED from the arms, and not before.
 test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
-  match admit_envelope(envelope: raw_realization_envelope(
-    schema_version: contract_schema_version,
-    operation_kinds: ["through_hole", "datum_mark"],
-    rung_diameters_um: [3000]
-  )) {
-    EnvelopeOperationUnknown { received: r } => r == "datum_mark"
-    EnvelopeAdmitted { realized_rungs: _ } => false
-    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
-    EnvelopeCarriesNoRungs => false
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let bad = raw_realization_envelope(
+        schema_version: contract_schema_version,
+        plate_x_um: 40000,
+        plate_y_um: 20000,
+        plate_z_um: 4000,
+        operations: [raw_operation_row(kind: "datum_mark", diameter_um: 0, center_x_um: 3000, center_y_um: 2000)],
+      )
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationRefusedAtWire { admission: a } =>
+          match a {
+            EnvelopeOperationUnknown { received: r } => r == "datum_mark"
+            EnvelopeAdmitted { plate: _, features: _ } => false
+            EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+            EnvelopeCarriesNoOperations => false
+          }
+        RealizationJudged { conformance: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 11 — THE SPECIMEN'S HOLES ARE THE LADDER RUNGS. The contract derives its own specimen from
+// the declaration, so this is the check that the derivation the wall compares against is the same
+// derivation the coupon authority publishes.
+test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let holes = specimen_hole_diameters(s: contract.specimen)
+      let rungs = ladder_rungs(l: l)
+      holes.length() == rungs.length() && holes.length() == 11
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
   }
 }

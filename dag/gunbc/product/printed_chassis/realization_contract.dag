@@ -4,13 +4,13 @@ import v2.std.algebra { zip_map }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
-  specimen_hole_diameters,
   hole_ladder_specimen,
   LengthLadder,
   CouponSpecimen,
   CouponOperation,
   OpThroughHole,
   PlateDimensions,
+  plate_dimensions,
   ladder_rungs,
   ladder_base,
   ladder_step,
@@ -56,32 +56,72 @@ import product.printed_chassis.coupon {
 // modeled values or refuses with a located cause. Nothing downstream sees an unadmitted envelope,
 // which is the construction that makes the typed side safe -- rather than a validation bolted onto
 // a type that was already unable to express the fault.
+// ONE ROW PER OPERATION, NOT TWO PARALLEL LISTS. The previous shape carried operation_kinds and
+// rung_diameters_um side by side, so their correspondence was POSITIONAL and enforced by nothing: a
+// two-kind, three-diameter envelope was perfectly representable, and admission had no way to say
+// which diameter belonged to which operation. Making the row the unit removes that state rather than
+// checking for it -- a ragged pairing has no constructor.
+//
+// The geometry is carried in FULL. Diameter alone was the sidecar in another costume: a handler that
+// realized the right diameters at the wrong centres, or on a plate of the wrong thickness, passed a
+// wall whose entire purpose was to catch exactly that.
+type RawOperationRow sole_constructor {
+  kind: NonEmptyStr
+  diameter_um: Int
+  center_x_um: Int
+  center_y_um: Int
+}
+
+fn raw_operation_row(
+  kind: NonEmptyStr,
+  diameter_um: Int,
+  center_x_um: Int,
+  center_y_um: Int,
+) -> RawOperationRow {
+  RawOperationRow {
+    kind: kind,
+    diameter_um: diameter_um,
+    center_x_um: center_x_um,
+    center_y_um: center_y_um,
+  }
+}
+
 type RawRealizationEnvelope sole_constructor {
   schema_version: NonEmptyStr
-  operation_kinds: List<NonEmptyStr>
-  rung_diameters_um: List<Int>
+  plate_x_um: Int
+  plate_y_um: Int
+  plate_z_um: Int
+  operations: List<RawOperationRow>
 }
 
 fn raw_realization_envelope(
   schema_version: NonEmptyStr,
-  operation_kinds: List<NonEmptyStr>,
-  rung_diameters_um: List<Int>,
+  plate_x_um: Int,
+  plate_y_um: Int,
+  plate_z_um: Int,
+  operations: List<RawOperationRow>,
 ) -> RawRealizationEnvelope {
   RawRealizationEnvelope {
     schema_version: schema_version,
-    operation_kinds: operation_kinds,
-    rung_diameters_um: rung_diameters_um,
+    plate_x_um: plate_x_um,
+    plate_y_um: plate_y_um,
+    plate_z_um: plate_z_um,
+    operations: operations,
   }
 }
 
 // Every refusal names WHAT arrived, not merely that something was wrong. A handler debugging a
 // rejected payload needs the offending spelling; "unsupported schema" alone sends them to read our
 // source instead of their own output.
+// Admission yields the MODEL'S OWN TYPES or nothing. It does not yield a validated raw envelope,
+// because a raw envelope that has been checked is still a raw envelope, and the next reader has no
+// way to tell it apart from an unchecked one. Decoding into PlateDimensions and CouponOperation is
+// what makes the downstream total: there is no arm in which an unadmitted value reaches geometry.
 type EnvelopeAdmission
-  = EnvelopeAdmitted { realized_rungs: List<Micrometer> }
+  = EnvelopeAdmitted { plate: PlateDimensions, features: List<CouponOperation> }
   | EnvelopeSchemaUnsupported { received: NonEmptyStr, supported: NonEmptyStr }
   | EnvelopeOperationUnknown { received: NonEmptyStr }
-  | EnvelopeCarriesNoRungs
+  | EnvelopeCarriesNoOperations
 
 // The closed operation vocabulary AS SPELLED ON THE WIRE, and this roster is HAND-SYNCED to the
 // CouponOperation arms rather than derived from them. That is a known weakness, stated here rather
@@ -95,14 +135,24 @@ type EnvelopeAdmission
 // A stringly roster beside a closed coproduct is a second authority for the operation vocabulary,
 // and it drifts in exactly the direction that fails open.
 //
-// RUNG: mechanically preventable, not structural. The discriminating RED is
-// w_the_deleted_operation_refuses_at_the_wire, which was GREEN-as-admitted before this correction
-// and refuses after, so the roster's agreement with the coproduct is executed rather than asserted.
-// CEILING is structural impossibility and it is reachable: the wire spelling should be PROJECTED
-// from the coproduct's arms so deleting an arm deletes its spelling in the same motion. NEXT-RUNG
-// TRIGGER is an arm-name projection over a closed coproduct -- the capability to enumerate a
-// coproduct's constructors as data. Until that exists the witness is the only thing holding the two
-// spellings together, and it must not be deleted as redundant with the type.
+// THERE ARE TWO WALLS HERE AND ONLY ONE OF THEM IS CLOSABLE BY PROJECTION. An earlier revision of
+// this annotation conflated them and would have retired too much.
+//
+// WALL ONE, SCHEMA SYNCHRONISATION: the model's operation population must equal the admitted wire-tag
+// population. That is what this roster is, it is mechanically preventable and not structural, and its
+// ceiling IS reachable -- projecting the spelling from the coproduct's arms would make a deleted arm
+// delete its spelling in the same motion. NEXT-RUNG TRIGGER is that projection capability: enumerating
+// a closed coproduct's constructors as data, together with a modeled TAG LAW, because OpThroughHole
+// and "through_hole" are not automatically the same fact and equating them silently makes every arm
+// rename a schema-breaking change.
+//
+// WALL TWO, DECODER BEHAVIOUR: an unknown or deleted tag must REFUSE BEFORE GEOMETRY. No projection
+// closes this one. A decoder can still map an unknown tag onto a default known arm, skip the
+// operation, or continue with a partial contract -- all of which are fail-open behaviours that a
+// perfectly synchronised roster does not prevent. So w_the_deleted_operation_refuses_at_the_wire is
+// evidence for BOTH walls today and remains permanently required for the second. It does not retire
+// when the projection lands. It must never be deleted as redundant with the type, because that
+// reasoning closes only wall one and would leave wall two unguarded.
 data admitted_operation_kinds: List<NonEmptyStr> = ["through_hole"]
 
 fn operation_kind_admitted(kind: NonEmptyStr) -> Bool {
@@ -113,6 +163,14 @@ type OperationScan sole_constructor {
   unknown: List<NonEmptyStr>
 }
 
+fn decode_operation_row(row: RawOperationRow) -> CouponOperation {
+  OpThroughHole {
+    diameter: micrometer(count: row.diameter_um),
+    center_x: micrometer(count: row.center_x_um),
+    center_y: micrometer(count: row.center_y_um),
+  }
+}
+
 fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
   if envelope.schema_version != contract_schema_version {
     EnvelopeSchemaUnsupported {
@@ -120,22 +178,27 @@ fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
       supported: contract_schema_version,
     }
   } else {
-    let scan = fold(envelope.operation_kinds, init: OperationScan { unknown: [] }, f: fn(acc, k) {
-      if operation_kind_admitted(kind: k) {
+    let scan = fold(envelope.operations, init: OperationScan { unknown: [] }, f: fn(acc, row) {
+      if operation_kind_admitted(kind: row.kind) {
         acc
       } else {
-        OperationScan { unknown: concat(acc.unknown, [k]) }
+        OperationScan { unknown: concat(acc.unknown, [row.kind]) }
       }
     })
     if scan.unknown.length() != 0 {
       EnvelopeOperationUnknown { received: scan.unknown.first() }
-    } else if envelope.rung_diameters_um.length() == 0 {
-      EnvelopeCarriesNoRungs
+    } else if envelope.operations.length() == 0 {
+      EnvelopeCarriesNoOperations
     } else {
       EnvelopeAdmitted {
-        realized_rungs: fold(envelope.rung_diameters_um, init: [], f: fn(acc, d) {
-          concat(acc, [micrometer(count: d)])
-        })
+        plate: plate_dimensions(
+          size_x: micrometer(count: envelope.plate_x_um),
+          size_y: micrometer(count: envelope.plate_y_um),
+          size_z: micrometer(count: envelope.plate_z_um),
+        ),
+        features: fold(envelope.operations, init: [], f: fn(acc, row) {
+          concat(acc, [decode_operation_row(row: row)])
+        }),
       }
     }
   }
@@ -205,10 +268,29 @@ fn realization_contract(declaration: LengthLadder) -> RealizationContract {
 // mismatch are separate causes because they fail for different reasons: a length mismatch means the
 // two sides disagree about the POPULATION, a value mismatch means they agree on how many rungs there
 // are and disagree about where.
+// THE COMPARED SUBJECT IS THE WHOLE SPECIMEN, NOT THE RUNG LIST. An earlier revision compared only
+// hole diameters, which left plate dimensions and hole CENTRES outside the wall entirely: a handler
+// that cut correct diameters at the wrong positions, or on a plate of the wrong thickness, conformed.
+// That is the sidecar failure the diameter check was itself introduced to fix, reappearing one level
+// out -- comparing a projection of the artifact instead of the artifact.
+//
+// The axis and field vocabularies are CLOSED COPRODUCTS rather than strings. This file has already
+// paid once for a stringly vocabulary standing beside a typed one, and a diagnostic that names its
+// axis as "z" is the same construction that let "datum_mark" outlive its constructor.
+type PlateAxis = PlateAxisX | PlateAxisY | PlateAxisZ
+
+type OperationField = FieldDiameter | FieldCenterX | FieldCenterY
+
 type ContractConformance
   = ContractConforms
-  | ContractRungCountDiverges { modeled: Int, realized: Int }
-  | ContractRungValueDiverges { index: Int, modeled: Micrometer, realized: Micrometer }
+  | ContractPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
+  | ContractOperationCountDiverges { modeled: Int, realized: Int }
+  | ContractOperationDiverges {
+      index: Int,
+      field: OperationField,
+      modeled: Micrometer,
+      realized: Micrometer,
+    }
 // THE SCAN IS ONE FOLD OVER ZIPPED PAIRS, and the shape is the point rather than the speed.
 //
 // The first revision recursed with `modeled.count() == 0` as its base case. List is an alias for
@@ -226,8 +308,8 @@ type ContractConformance
 // scan cannot be handed one. Two length reads (which the count diagnostic needs anyway), one zip and
 // one fold — linear, and the raggedness question is answered by construction.
 type RungComparison sole_constructor {
-  modeled: Micrometer
-  realized: Micrometer
+  modeled: CouponOperation
+  realized: CouponOperation
 }
 
 // The accumulator keeps the FIRST divergence rather than the last. A fold visits every pair, so
@@ -238,24 +320,38 @@ type RungScan sole_constructor {
   outcome: ContractConformance
 }
 
+// One operation pair, compared field by field, reporting the FIRST field that differs. Diameter is
+// checked before position because a wrong diameter is a process fault and a wrong centre is a layout
+// fault, and naming the process fault first is what an operator acts on.
+fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> ContractConformance {
+  match m {
+    OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
+      OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
+        if micrometer_count(m: md) != micrometer_count(m: rd) {
+          ContractOperationDiverges { index: index, field: FieldDiameter, modeled: md, realized: rd }
+        } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
+          ContractOperationDiverges { index: index, field: FieldCenterX, modeled: mx, realized: rx }
+        } else if micrometer_count(m: my) != micrometer_count(m: ry) {
+          ContractOperationDiverges { index: index, field: FieldCenterY, modeled: my, realized: ry }
+        } else {
+          ContractConforms
+        }
+    }
+  }
+}
+
 fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
   match acc.outcome {
-    ContractRungValueDiverges { index: _, modeled: _, realized: _ } =>
+    ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
-    ContractRungCountDiverges { modeled: _, realized: _ } =>
+    ContractPlateDiverges { axis: _, modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    ContractOperationCountDiverges { modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
     ContractConforms =>
-      if micrometer_count(m: pair.modeled) != micrometer_count(m: pair.realized) {
-        RungScan {
-          index: acc.index + 1,
-          outcome: ContractRungValueDiverges {
-            index: acc.index,
-            modeled: pair.modeled,
-            realized: pair.realized,
-          },
-        }
-      } else {
-        RungScan { index: acc.index + 1, outcome: ContractConforms }
+      RungScan {
+        index: acc.index + 1,
+        outcome: operation_divergence(index: acc.index, m: pair.modeled, r: pair.realized),
       }
   }
 }
@@ -263,11 +359,14 @@ fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
 // Count is compared BEFORE values, and the order matters for the diagnostic rather than for
 // correctness: with unequal lengths the first differing index is an artefact of where the shorter
 // list ran out, so reporting it as a value divergence would name a position that means nothing.
-fn compare_rungs(modeled: List<Micrometer>, realized: List<Micrometer>) -> ContractConformance {
+fn compare_operations(
+  modeled: List<CouponOperation>,
+  realized: List<CouponOperation>,
+) -> ContractConformance {
   let modeled_count = modeled.length()
   let realized_count = realized.length()
   if modeled_count != realized_count {
-    ContractRungCountDiverges { modeled: modeled_count, realized: realized_count }
+    ContractOperationCountDiverges { modeled: modeled_count, realized: realized_count }
   } else {
     fold(
       zip_map(a: modeled, b: realized, f: fn(m, r) {
@@ -279,19 +378,74 @@ fn compare_rungs(modeled: List<Micrometer>, realized: List<Micrometer>) -> Contr
   }
 }
 
-// THE BOUNDARY CHECK, AND IT READS THE SPECIMEN'S ACTUAL HOLES.
+// The plate is compared BEFORE the operations, and the order is a diagnostic decision. A plate of
+// the wrong thickness makes every hole depth wrong at once, so reporting the first hole as divergent
+// would name a symptom and bury the cause.
+fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> ContractConformance {
+  if micrometer_count(m: modeled.size_x) != micrometer_count(m: realized.size_x) {
+    ContractPlateDiverges { axis: PlateAxisX, modeled: modeled.size_x, realized: realized.size_x }
+  } else if micrometer_count(m: modeled.size_y) != micrometer_count(m: realized.size_y) {
+    ContractPlateDiverges { axis: PlateAxisY, modeled: modeled.size_y, realized: realized.size_y }
+  } else if micrometer_count(m: modeled.size_z) != micrometer_count(m: realized.size_z) {
+    ContractPlateDiverges { axis: PlateAxisZ, modeled: modeled.size_z, realized: realized.size_z }
+  } else {
+    ContractConforms
+  }
+}
+
+// THE BOUNDARY CHECK, AND IT READS THE SPECIMEN ITSELF -- twice corrected, in the same direction
+// both times, which is why the direction is written down rather than the fix.
 //
-// The first revision compared contract.ladder.derived_rungs — the sidecar. Review found that the
-// specimen's holes were computed by a SECOND derivation, so this check could pass while the geometry
-// handed to CadQuery carried different diameters. Comparing the law instead of the artifact made the
-// wall structurally unable to see the fault it existed to catch.
+// The first revision compared contract.ladder.derived_rungs, the declaration's own sidecar. Review
+// found that the specimen's holes were computed by a SECOND derivation, so the check could pass
+// while the geometry handed to CadQuery carried different diameters: it compared the LAW instead of
+// the ARTIFACT, and was structurally unable to see the fault it existed to catch.
 //
-// It now reads specimen_hole_diameters: the diameters actually present in the operation graph that
-// the handler will consume. The rung list remains in the contract as the declaration's projection,
-// but it is no longer what conformance is measured against — the artifact is.
-fn admit_realized_ladder(
+// The second revision compared specimen_hole_diameters -- real diameters from the real operation
+// graph, and still a PROJECTION of the artifact rather than the artifact. Plate dimensions and hole
+// CENTRES sat outside the wall entirely, so a handler cutting correct diameters at wrong positions,
+// or on a plate of the wrong thickness, conformed. The same fault one level out.
+//
+// It now compares the whole specimen: plate on three axes, then operation count, then every
+// operation field by field. The generalisation to write down is that a wall must compare the subject
+// a consumer will actually receive, and every projection of that subject is a place the two can
+// disagree while the check stays green.
+fn admit_realized_specimen(
   contract: RealizationContract,
-  realized_rungs: List<Micrometer>,
+  plate: PlateDimensions,
+  features: List<CouponOperation>,
 ) -> ContractConformance {
-  compare_rungs(modeled: specimen_hole_diameters(s: contract.specimen), realized: realized_rungs)
+  let plate_outcome = compare_plate(modeled: contract.specimen.plate, realized: plate)
+  match plate_outcome {
+    ContractConforms => compare_operations(modeled: contract.specimen.features, realized: features)
+    ContractPlateDiverges { axis: _, modeled: _, realized: _ } => plate_outcome
+    ContractOperationCountDiverges { modeled: _, realized: _ } => plate_outcome
+    ContractOperationDiverges { index: _, field: _, modeled: _, realized: _ } => plate_outcome
+  }
+}
+
+// THE ONE ROUTE FROM WIRE TO VERDICT. A caller cannot reach conformance with an unadmitted envelope,
+// because admission is what produces the modeled values conformance consumes -- the refusal arms have
+// no plate and no features to hand on. That is the construction DESIGN section 5 asks for in place of
+// a validation step a caller could forget to run.
+type RealizationVerdict
+  = RealizationRefusedAtWire { admission: EnvelopeAdmission }
+  | RealizationJudged { conformance: ContractConformance }
+
+fn judge_realization(
+  contract: RealizationContract,
+  envelope: RawRealizationEnvelope,
+) -> RealizationVerdict {
+  let admission = admit_envelope(envelope: envelope)
+  match admission {
+    EnvelopeAdmitted { plate: p, features: f } =>
+      RealizationJudged {
+        conformance: admit_realized_specimen(contract: contract, plate: p, features: f),
+      }
+    EnvelopeSchemaUnsupported { received: _, supported: _ } =>
+      RealizationRefusedAtWire { admission: admission }
+    EnvelopeOperationUnknown { received: _ } =>
+      RealizationRefusedAtWire { admission: admission }
+    EnvelopeCarriesNoOperations => RealizationRefusedAtWire { admission: admission }
+  }
 }

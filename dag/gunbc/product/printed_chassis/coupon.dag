@@ -124,6 +124,14 @@ type PlateDimensions sole_constructor {
   size_y: Micrometer
   size_z: Micrometer
 }
+
+// The mint exists because sole_constructor confines construction to THIS module, which is the point
+// -- a plate is not a record any caller may assemble -- but the realization contract must be able to
+// build one when it decodes a wire envelope. Exporting the mint keeps the single authority here
+// rather than relaxing the type so the transport can reach past it.
+fn plate_dimensions(size_x: Micrometer, size_y: Micrometer, size_z: Micrometer) -> PlateDimensions {
+  PlateDimensions { size_x: size_x, size_y: size_y, size_z: size_z }
+}
 // A specimen is a plate plus the operations cut into it, carrying its own identity and revision so
 // a measured result can never be attributed to the wrong geometry.
 type CouponSpecimen sole_constructor {
