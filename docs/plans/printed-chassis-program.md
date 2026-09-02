@@ -152,7 +152,15 @@ not choose it.
   hole and a physically confirmed one are different facts; `asrock_altrad8ud_open_mounting_unknowns`
   carries the five unmeasured ones with their discharge instrument.
 - `extdeps.standards.micro_atx` — the nine microATX mounting locations own their own authority
-  rather than sitting inside the ATX 2.2 module, which now carries only ATX 2.2 facts.
+  rather than sitting inside the ATX 2.2 module, which now carries only ATX 2.2 facts. Coordinate
+  provenance is `OperatorRelayedDocument` from the shared `DimensionEvidence` carrier, not a prose
+  string: a citation STATUS is a typed fact, and the string form was a nickname nothing could consume.
+  **One structural over-claim is recorded and deliberately not half-fixed** — `extdeps_model_scope`
+  cites the archived ATX 2.2 PDF as `first_citation` for the microATX locations, a machine-readable
+  claim the provenance row denies, because this session's extraction recovered that PDF's text layer
+  and not its mounting-location artwork. No microATX document is in hand, so the repair needs a
+  first-party read or an `ExternalAuthority` arm that can carry a relayed-with-no-document chain;
+  both are named as triggers rather than guessed at.
 - `extdeps.printing.bambu_lab_a1_mini` — the printer as a PRODUCT ROW: build envelope, nozzle
   diameters, filament diameter, temperature ceilings, input voltage and frequency range, machine
   extents, and a ten-row material suitability roster. The fit witness reads the envelope from here
@@ -173,9 +181,37 @@ not choose it.
   population section for why the second one was deleted rather than kept.
 - `product.printed_chassis.realization_contract` — the transport wall. Raw JSON from the CAD handler
   is admitted through `admit_envelope`, which refuses an unsupported schema version, an unknown
-  operation kind, and an envelope carrying no rungs, each with a typed cause naming what it received.
-  The rung comparison reports the EARLIEST divergence rather than the last, and a count mismatch is
+  operation kind, and an envelope carrying no operations, each with a typed cause naming what it
+  received. Conformance reports the EARLIEST divergence rather than the last, and a count mismatch is
   its own outcome rather than a silent zip truncation.
+
+  **It compares WHOLE GEOMETRY, not the whole specimen, and the distinction is load-bearing for
+  PRINT-5.** Compared: plate on three axes, operation count, then every operation field. NOT compared:
+  specimen identity (carried, single-armed), revision (not a compared subject at all), and feature
+  identity — operation *i* is "the *i*-th rung" by LIST POSITION, not by an identity the operation
+  carries. A permutation is refused because position is compared, which is not the same as features
+  having identities, and the difference reappears the moment two features share a geometry. PRINT-5
+  must not read a conforming verdict as adjudicating identity or canonical ordering.
+
+  **The admitted value is unforgeable, and an earlier revision only CLAIMED it was.** That revision
+  put the geometry on the accepted arm (`EnvelopeAdmitted { plate, features }`) and argued admission
+  was unavoidable "because the refusal arms have no geometry to hand on" — a correct argument for an
+  insufficient conclusion, since it rules out the raw envelope bypassing the judge and says nothing
+  about a caller bypassing the raw envelope. A probe compiled the forgery from a foreign module.
+  `AdmittedRealization` is now `sole_constructor`, so only `admit_envelope` can mint one; a foreign
+  module may name the arm and cannot obtain a value to put in it.
+
+  **That wall's evidence is the COMPILER, not a witness**, and the gap is named rather than papered
+  over: the RED is a compile failure, so a witness asserting it cannot be enrolled in a corpus that
+  must compile. The missing capability is an expect-compile-refusal harness. `sole_constructor` is
+  nonetheless checked on every build, so an accidental foreign construction reds the gate where it is
+  written.
+
+  **Probe discipline learned here, recorded because it nearly produced a false finding.** The first
+  forgery probe returned exactly the baseline error count — consistent with "forgery permitted" — from
+  a file the compiler had never read, because an added source root was silently ignored. Confirmation
+  and vacancy produce the same number. Only a deliberate must-fail control in the same file
+  distinguished them.
 
 ## The two-day cut (printers arrive 2026-09-03)
 
