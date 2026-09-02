@@ -584,96 +584,26 @@ pub struct TransitionAdmission {
 ///
 /// EMPTY IS THE RESTING STATE and empty is not permissive: with no rows, a run with no delta
 /// passes and a run with a real delta refuses it as UNADJUDICATED.
-/// SIXTEENTH TRANSITION (2026-09-02, SJT-1, this change), AND IT LEAVES THE RESTING STATE THE
-/// PARAGRAPH ABOVE DESCRIBES. The four Redfish boot-override constants moved WHOLE from
-/// `gunbc.srv3_boot_once_cd` to `gunbc.srv3_os_install_actuate_workflow`, the module that now
-/// authors the scoped-authorization subject those constants are the fields of. Nothing was renamed
-/// and no name was minted: each spelling below denotes the same declaration it denoted at the base,
-/// at a new home, so each arrives as `TargetChanged binding` with base `{gunbc.srv3_boot_once_cd}`
-/// -> head `{gunbc.srv3_os_install_actuate_workflow}`. The relocation is forced rather than
-/// stylistic: `srv3_boot_once_cd` already imports the workflow module, so leaving the constants
-/// behind would have made the subject's own module import its importer.
+/// SIXTEENTH TRANSITION (2026-09-02, SJT-1) HAS DISSOLVED AND ITS ROWS ARE GONE. The four
+/// Redfish boot-override constants moved from `gunbc.srv3_boot_once_cd` to
+/// `gunbc.srv3_os_install_actuate_workflow`, and that change has merged, so base and head both
+/// place the constants in the workflow module, no run can produce those deltas, and all four
+/// reported CONSUMED. Its own DISSOLVE-ON paragraph called for exactly this deletion.
 ///
-/// THE POPULATION IS EXACTLY FOUR. The run's other motion classified automatically as
-/// `ExplicitlyEvaluatedZeroDelta` membership additions (the new `std.scoped_authorization` edges),
-/// so these four are the whole unadjudicated set, not a sample: a fifth re-pointed binding
-/// anywhere in the corpus still refuses as UNADJUDICATED.
+/// THE DELETION IS RECORDED BECAUSE THE MERGE THAT PRESERVED THEM WAS MINE AND WAS WRONG. When
+/// this branch conflicted with main on this const, both sides had added rows, and I resolved to
+/// the UNION on the reasoning that dropping either side's rows would silently un-adjudicate its
+/// deltas. That reasoning is right about an unconsumed row and wrong about a consumed one: SJT-1
+/// had already merged, so its trigger had already fired and the union re-added four rows that
+/// were due for deletion. The wall then refused this branch with `4 consumed admission(s) due for
+/// deletion on this roster-touching change` -- which is the arm working exactly as its author
+/// documented one paragraph earlier, in a sentence I had read: "A union of the two rosters would
+/// have re-added a deletion both sides intended; the resolution took the deletion."
 ///
-/// DISSOLVE-ON: this change merging. Base and head then both place the constants in the workflow
-/// module, no run can produce these deltas, all four report stale, and the roster RETURNS to the
-/// empty resting state -- a stale row here refuses every unrelated PR in the repository.
-///
-/// THE DCH-1 COHORT IS NOT RESURRECTED HERE, AND THAT IS A DELIBERATE READ OF THE MERGE RATHER
-/// THAN AN ACCIDENT OF IT. Both sides of this merge deleted those nine rows independently, main by
-/// the dissolution recorded above and this branch by its own reading of the same fired trigger.
-/// A union of the two rosters would have re-added a deletion both sides intended; the resolution
-/// took the deletion.
+/// THE RULE, STATED SO THE NEXT CONFLICT IS NOT RESOLVED BY REFLEX: on a conflict in this roster,
+/// union the rows whose transitions are still OPEN and delete the rows whose transitions have
+/// MERGED. "Take both sides" is not a safe default here; it is safe only for the unconsumed half.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_enabled",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_mode",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_reset_type",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "SJT-1 Redfish boot-override constants join the module that authors their subject 2026-09-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "srv3_boot_cd_target",
-            target: "gunbc.srv3_os_install_actuate_workflow",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-
-    // MERGE COMPOSITION (2026-09-02): this roster carries TWO transitions at once, main's SJT-1
-    // Redfish relocation above and gunbc#10011's supersession-standing re-home below. Both sides
-    // of this merge added rows to the same const, so the resolution is the UNION -- taking either
-    // side would have dropped the other's authority silently, with no conflict left to notice.
-    // The SJT-1 paragraph's "THE POPULATION IS EXACTLY FOUR" describes ITS OWN run's unadjudicated
-    // set and stays true of that run; it is not a claim that this const may only ever hold four
-    // rows. The two transitions dissolve independently, each when its own pull request merges.
-
-    // gunbc#10011 re-homes `HeldSpecificationSupersessionStanding` and its arms from the
-    // platform-specific subject module into `extdeps.publication`. The type names no product, so
-    // the platform subject module was the wrong layer for it (DESIGN §3: a fact's home is its
-    // LAYER, not its file); nothing about the declarations themselves changed, only which module
-    // authors them. Every row below is therefore one spelling whose resolution moved from
-    // `extdeps.cpu.ampere_altra_platform_hw_design.subject` to `extdeps.publication`, and the
-    // `target` field names where it went.
-    //
-    // DISSOLVE-ON: gunbc#10011 merging. After that commit the base itself binds all five
-    // spellings to `extdeps.publication`, so `admission_consumed_at_base` proves the relocation
-    // and every row becomes CONSUMED. A consumed row left standing is the `stale_admissions`
-    // finding this roster's own rule predicts, and because a pull_request build adjudicates the
-    // MERGE commit, leaving them would make every open PR in the repository inherit five stale
-    // rows -- exactly the 53-row incident documented above. THEY MUST BE DELETED IN THE FIRST
-    // COMMIT AFTER #10011 LANDS; this is not optional tidying, it is the second half of the
-    // change.
     TransitionAdmission {
         label: "gunbc#10011 supersession-standing re-home: platform matcher, current arm",
         subject: AdmissionSubject::Binding {
