@@ -212,86 +212,9 @@ import v2.std.collection { List }
 // the roster, and withdrawn anyway. A row earns its place by measured recompute AND measured
 // sharing AND a serve below that recompute, and it is the third conjunct that refused all
 // three.
-//
-// THE THIRD WARM ROW IS THE PERSISTED FRONTIER STANDING, and it is the first row enrolled from a
-// CANDIDATE THE CENSUS PRODUCED rather than from an incident on somebody else's pull request.
-// gunbc.recurring_failure_mode recurrence_ledger_scoped_below_the_recurrence names that discovery
-// path as the class: a roster whose rows each trace back to a budget refusal landing on a passing
-// lane is a roster whose discovery instrument is blind. The required floor's cross-claim demand
-// census is that instrument, and this row is what it ranked.
-//
-// WHAT WAS MEASURED, AND ON WHICH INSTRUMENT. Main run 33664768371 attempt 1,
-// required_floor_cross_claim_demand.tsv: gunbc.self_host_compile_phase_frontier
-// compile_phase_frontier_standing was evaluated 36 times across 22 claims for 6508ms
-// inclusive-of-callees, with phase_board_series_ratchet (23 claims / 23 evaluations / 6791ms) and
-// apply_regression_transition (23 / 23 / 6749ms) NESTED UNDERNEATH IT. ONLY THE OUTERMOST PRODUCER
-// OF THAT NEST IS ENROLLED, and the two inner rows are deliberately absent rather than overlooked:
-// the census's cost columns are inclusive of callees and its own summary line says they do not sum,
-// so enrolling the nest would be three roster rows claiming one saving three times.
-//
-// WHY IT IS WARM RATHER THAN CLAIM-FORCED, which is the whole reason this candidate is enrollable
-// at all. The census ranked the GENERAL function, whose argument is a List<CompilePhaseFrontierReceipt>
-// that a serve would have to reify and structurally verify in every consuming frame -- exactly the
-// shape this file's header records LOSING, where the serve cost more than the recompute and two
-// rows were removed. The repair was not to enrol that shape and hope. gunbc#10036's lane had already
-// established that only ONE persisted series exists, and its standing was being re-spelled at five
-// call sites; consolidating that fact into the nullary
-// gunbc.self_host_compile_phase_frontier current_compile_phase_frontier_standing is a DESIGN
-// section 3 single-authority repair whose consequence is an EMPTY argument row -- nothing to reify,
-// nothing to verify, and preparation-forceable, so the fill lands outside the fold. The general
-// function stays exactly as it was and its witnesses still exercise it against perturbed series.
-//
-// WHAT IT BUYS, MEASURED PRESENT-VS-ABSENT ON ONE BRANCH rather than expected. This roster's
-// admission criterion is that measured per-claim recompute is NECESSARY BUT NOT SUFFICIENT: a row
-// enrols only when its SERVE cost is below its recompute cost. That comparison is two floor runs of
-// this branch differing in exactly this one roster line, so it controls for the tree rather than
-// for main -- absent arm run 33669782300 attempt 1 (head 0205a4dae6), present arm run 33672356296
-// attempt 1 (head a71dfb3623), both required_floor_claim_cost.tsv, joined by identity:
-//
-//   test.claim.compiler_frontend_program_status_witness   382-409ms -> 50-63ms   (8 rows)
-//   test.claim.self_host_compile_phase_live_gate_witness  418-445ms -> 0-81ms    (7 of 13 rows)
-//   corpus rows at or above 400ms                         18 -> 10
-//   the warm fill itself                                  disposition=Stored, 501ms, billed to preparation
-//
-// THE SHARING HALF IS MEASURED TOO, AND BY A SECOND INSTRUMENT ON A SECOND BRANCH. This roster
-// admits a row on measured recompute AND measured sharing -- a non-sharing producer is cache
-// population rather than a saving, which is the ground formal_production_for_lhs_exact was REMOVED
-// on above. The figures above are a cost DROP; the sharing itself is observed by the required
-// floor's own `[floor-shared-fill]` ledger on gunbc#10068's branch, green run 33649705841, where
-// this producer records `fill_ms=362 inclusive_ms=362 consumer_claims=22 consumer_modules=3
-// disposition=shared`, beside four `fill_ms=0 disposition=exclusive` fills for the perturbed-series
-// arguments that correctly populate nothing. ONE fill served 22 consumer claims across 3 modules.
-//
-// THAT OBSERVATION IS INDEPENDENT OF THE CENSUS ABOVE IN EVERY RESPECT THAT COULD HAVE MADE IT
-// CIRCULAR: different branch, different instrument, and a different KEY SHAPE -- that lane enrolled
-// the general declaration claim-forced on the reified receipt series, where this row is nullary. Two
-// instruments that share no accounting agreeing on 22 consumer claims across 3 modules is what rules
-// out the reading that the sharing is an artifact of one census's bookkeeping. Recorded with its
-// origin because a corroboration whose provenance is dropped becomes indistinguishable from a second
-// derivation by the same lane.
-//
-// THE CONTROL THAT MAKES THAT A SERVE MEASUREMENT AND NOT A PAIR OF HOT AND COLD RUNS, and it is
-// the reading this enrolment had to survive: 72 rows at or above 250ms OUTSIDE the three consuming
-// modules -- rows this row cannot serve -- moved present/absent by p50 1.04, p90 1.09, max 1.17.
-// The present run was simply hotter. Rows inside the consuming modules that did NOT improve moved
-// 1.09-1.17, inside that same band, so they moved WITH the corpus rather than against the cache.
-// Re-derive by joining the two artifacts on identity; do not read these figures as the instrument.
-//
-// WHY THE UNIMPROVED ROWS EXISTED AT ALL, since it is this row's own coverage boundary:
-// gunbc.self_host_compile_phase_live_gate live_tree_frontier_verdict took a SERIES and re-derived
-// the standing itself, so a caller meaning the persisted series could not reach this entry however
-// the roster was spelled. That fold now takes the STANDING, which is what its body consumed all
-// along.
-//
-// WHAT THIS DOES NOT DO. Removing a per-closure constant removes the LEVEL that put these closures
-// at the line. It does not make any claim's cost environment-independent -- the control above is
-// that environment term, still present and still moving -- so gunbc.rung_drop
-// floor_cost_claim_qualification_unavailable keeps standing on that separate subject, and this row
-// is headroom rather than a rung claim.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
-  "gunbc.self_host_compile_phase_frontier.current_compile_phase_frontier_standing"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
 ]
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production

@@ -1302,8 +1302,12 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
 // (23/23) nested underneath it. Being NULLARY, this declaration is preparation-forceable, so
 // `v2.workflow.floor_pure_producer_share` can serve it as a WARM row with an empty argument row --
 // no per-serve argument reification of the receipt series at all, which is the cost shape that
-// disqualified earlier candidates from that roster. Re-derive with the instruments the roster
-// names, never from these sentences.
+// disqualified earlier candidates from that roster. THAT IS A PROPERTY OF THIS DECLARATION AND NOT
+// A CLAIM THAT A ROW EXISTS: no roster row is enrolled here, and the enrolment is held pending a
+// present-vs-absent measurement on a tree that includes gunbc#10133, which made the recompute side
+// of that comparison cheaper and so moved the denominator the earlier receipt was measured against.
+// The census figures above predate it for the same reason. Re-derive with the instruments the
+// roster names, never from these sentences.
 fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
   compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
 }
