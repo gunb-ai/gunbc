@@ -9,6 +9,7 @@ import product.altra_motherboard.minimal_design {
   Production, EngineeringBringUp,
   admit_routed_design, routed_population_causes,
   DesignRefusal, PopulatedChannelIsNotRouted, PopulatedPositionIsNotRouted,
+  NoProductionQualifiedPopulationIsReachable,
   DebugOnlyChannelCountUnderProductionIntent, ChannelCountExceedsControllerPopulation,
   ChannelPopulationIsNotAnAdmittedCount, ChannelPopulatedMoreThanOnce,
   ChannelHasNoDimmPositions, DimmPositionRepeatedOnChannel, PcieLanesExceedPackage,
@@ -75,10 +76,48 @@ test fn w_populating_an_unrouted_position_refuses() -> Bool {
   !is_admitted(a: admit_routed_design(d: d, intent: Production, pcie_lanes: 4))
 }
 
-// THE ROUTED TOPOLOGY IS WHAT THE INTENT QUALIFIES, not the populated one. Routing two channels
-// under Production intent is refused even though two is a legal population of the routed set --
-// otherwise a board could route a debug-only population and hide behind a legal subset.
-test fn w_a_debug_only_ROUTED_population_refuses_under_production() -> Bool {
+// THE FAIL-OPEN THIS SUITE PREVIOUSLY MISSED. Routing eight and shipping TWO active under
+// Production was ADMITTED by the earlier law, because it qualified the routed count and never
+// applied the vendor predicate to the population at all. Two active channels are debug and
+// bring-up only, so this is precisely the design the predicate exists to refuse.
+test fn w_eight_routed_but_two_active_refuses_under_production() -> Bool {
+  let d = RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+  }
+  !is_admitted(a: admit_routed_design(d: d, intent: Production, pcie_lanes: 4))
+    && is_admitted(a: admit_routed_design(d: d, intent: EngineeringBringUp, pcie_lanes: 4))
+}
+
+// THE OVER-REFUSAL THE EARLIER LAW PRODUCED. Five routed channel interfaces is not an admitted
+// ACTIVE count, and the earlier law refused the board for it. Nothing in the datasheet refuses a
+// board that ROUTES five and operates a supported four-channel active population; unearned copper
+// is a minimality question, not a vendor refusal.
+test fn w_five_routed_with_four_active_is_admitted() -> Bool {
+  let d = RevARoutedMemoryDesign {
+    routed: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+    initially_populated: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel],
+    },
+  }
+  is_admitted(a: admit_routed_design(d: d, intent: Production, pcie_lanes: 4))
+}
+
+// THE ROUTED SIDE STILL REFUSES A TWO-ROUTE BOARD, but from the TRUE premise: no
+// production-qualified population is reachable from a two-channel routed set, because every subset
+// has at most two active channels and one and two are both non-production. The earlier law reached
+// this same verdict from the false premise that routed copper is an active topology.
+test fn w_a_two_route_board_has_no_reachable_production_population() -> Bool {
   let d = RevARoutedMemoryDesign {
     routed: ActiveDdrTopology {
       populated_channels: [DdrChannel0, DdrChannel1],
@@ -100,6 +139,7 @@ fn names_unrouted_channel(rs: List<DesignRefusal>, ordinal: Int) -> Bool {
     acc || match r {
       PopulatedChannelIsNotRouted { channel: n } => n == ordinal
       PopulatedPositionIsNotRouted { position: _ } => false
+      NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => false
       DebugOnlyChannelCountUnderProductionIntent { selected: _ } => false
       ChannelCountExceedsControllerPopulation { selected: _, available: _ } => false
       ChannelPopulationIsNotAnAdmittedCount { populated: _ } => false

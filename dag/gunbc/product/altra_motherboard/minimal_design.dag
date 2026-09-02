@@ -49,6 +49,7 @@ type DesignRefusal
   | PcieLanesExceedPackage { requested: Int, available: Int }
   | PopulatedChannelIsNotRouted { channel: Int }
   | PopulatedPositionIsNotRouted { position: Int }
+  | NoProductionQualifiedPopulationIsReachable { routed_channels: Int }
 
 // A CHANNEL HAS AN IDENTITY, AND IT IS NOT ITS ORDINAL POSITION IN A COUNT. An earlier revision
 // derived the populated set from the count by generating [0..n), which is cardinality standing
@@ -182,6 +183,7 @@ fn duplicate_position_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           PcieLanesExceedPackage { requested: _, available: _ } => false
           PopulatedChannelIsNotRouted { channel: _ } => false
           PopulatedPositionIsNotRouted { position: _ } => false
+          NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => false
         }
       }) {
       concat(acc, [DimmPositionRepeatedOnChannel { position: dimm_slot_position_ordinal(p: p) }])
@@ -209,6 +211,7 @@ fn duplicate_channel_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           PcieLanesExceedPackage { requested: _, available: _ } => false
           PopulatedChannelIsNotRouted { channel: _ } => false
           PopulatedPositionIsNotRouted { position: _ } => false
+          NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => false
         }
       }) {
       concat(acc, [ChannelPopulatedMoreThanOnce { channel: ddr_channel_ordinal(c: c) }])
@@ -351,19 +354,105 @@ fn routed_population_causes(d: RevARoutedMemoryDesign) -> List<DesignRefusal> {
   concat(channel_causes, position_causes)
 }
 
-// THE ROUTED TOPOLOGY IS THE ONE THE PACKAGE BOUNDS AND THE INTENT QUALIFIES. Admitting the
-// populated topology instead would let a board route a population the processor does not admit so
-// long as it shipped a legal subset of it, which is the fabrication decision this type exists to
-// make visible.
-fn admit_routed_design(d: RevARoutedMemoryDesign, intent: DesignIntent, pcie_lanes: Int) -> DesignAdmission {
-  let routed_design = AltraMinimalMotherboard {
-    intent: intent,
-    memory: MemoryConfiguration { topology: d.routed },
-    pcie_lanes_broken_out: pcie_lanes,
+// TWO AXES, TWO DIFFERENT LAWS. An earlier revision of this function applied design_causes to the
+// ROUTED topology, which used the ACTIVE-channel authority to classify copper. The datasheet
+// qualifies "active channels", and says nothing of the form "a production motherboard may route
+// exactly four, six or eight channel interfaces". Judging copper by that sentence produced two
+// defects at once.
+//
+// THE FAIL-OPEN, which is the serious one: a board routing eight channels and shipping TWO active
+// under Production intent was ADMITTED, because the routed count was eight and the populated count
+// was never production-qualified at all. The vendor classifies two active channels as debug and
+// bring-up only, so that design is exactly what the predicate exists to refuse, and it passed.
+//
+// THE OVER-REFUSAL: a board routing five channel interfaces and operating a supported four-channel
+// active population was refused, because five is not an admitted ACTIVE count. Nothing in the
+// source refuses that board. A fifth route may be unearned copper and lose on a minimality
+// criterion, but it is not vendor-refused.
+//
+// SO THE ROUTED SIDE RECEIVES A REACHABILITY LAW INSTEAD. The concern that motivated the old shape
+// -- a board routing two channels passing by shipping a legal subset -- is answered without
+// misreading the source: every subset of a two-channel routed set has at most two active channels,
+// and one and two are both non-production, so NO production-qualified population is reachable from
+// it. That is the true statement, and it refuses the two-route board while leaving the
+// five-route/four-active board admitted. The false statement -- that the routed topology IS a
+// debug-only active topology -- reaches the same verdict for the two-route case and the wrong one
+// everywhere else.
+fn smallest_production_channel_count() -> Int {
+  fold([OneChannel, TwoChannels, FourChannels, SixChannels, EightChannels], init: 0, f: fn(acc, c) {
+    if channel_count_is_production_qualified(c: c) && (acc == 0 || active_channel_count(c: c) < acc) {
+      active_channel_count(c: c)
+    } else {
+      acc
+    }
+  })
+}
+
+// REACHABILITY IS DERIVED FROM THE VENDOR ROSTER, not from a literal 4. If the datasheet ever
+// admits a smaller production population, this law follows it rather than disagreeing with it.
+fn production_population_is_reachable(routed: ActiveDdrTopology) -> Bool {
+  topology_channel_count(t: routed) >= smallest_production_channel_count()
+}
+
+fn routed_structural_causes(routed: ActiveDdrTopology, pcie_lanes: Int) -> List<DesignRefusal> {
+  let count_cause = if topology_channel_count(t: routed) > altra_ddr4_channel_count {
+    [ChannelCountExceedsControllerPopulation { selected: topology_channel_count(t: routed), available: altra_ddr4_channel_count }]
+  } else {
+    duplicate_channel_causes(t: routed)
   }
-  let causes = concat(design_causes(d: routed_design), routed_population_causes(d: d))
+  let dimm_cause = if list_length(items: routed.positions_per_channel) < 1 {
+    [ChannelHasNoDimmPositions]
+  } else {
+    duplicate_position_causes(t: routed)
+  }
+  let pcie_cause = if pcie_lanes > altra_pcie_gen4_lane_count {
+    [PcieLanesExceedPackage { requested: pcie_lanes, available: altra_pcie_gen4_lane_count }]
+  } else {
+    []
+  }
+  concat(concat(count_cause, dimm_cause), pcie_cause)
+}
+
+// THE ACTIVE POPULATION CARRIES THE VENDOR PREDICATE, under its own declared intent.
+fn active_population_causes(populated: ActiveDdrTopology, intent: DesignIntent) -> List<DesignRefusal> {
+  let selected = topology_channel_count(t: populated)
+  match admitted_channel_count(n: selected) {
+    Absent => [ChannelPopulationIsNotAnAdmittedCount { populated: selected }]
+    Present { value: c } =>
+      match intent {
+        EngineeringBringUp => []
+        Production =>
+          if channel_count_is_production_qualified(c: c) {
+            []
+          } else {
+            [DebugOnlyChannelCountUnderProductionIntent { selected: selected }]
+          }
+      }
+  }
+}
+
+fn admit_routed_design(d: RevARoutedMemoryDesign, intent: DesignIntent, pcie_lanes: Int) -> DesignAdmission {
+  let reachability = match intent {
+    EngineeringBringUp => []
+    Production =>
+      if production_population_is_reachable(routed: d.routed) {
+        []
+      } else {
+        [NoProductionQualifiedPopulationIsReachable { routed_channels: topology_channel_count(t: d.routed) }]
+      }
+  }
+  let causes = concat(
+    concat(routed_structural_causes(routed: d.routed, pcie_lanes: pcie_lanes), reachability),
+    concat(active_population_causes(populated: d.initially_populated, intent: intent), routed_population_causes(d: d))
+  )
   match fold(causes, init: none, f: fn(acc, c) { push_design_refusal(acc: acc, r: c) }) {
-    Absent => DesignAdmitted { design: routed_design }
+    Absent => DesignAdmitted {
+      design: AltraMinimalMotherboard {
+        intent: intent,
+        memory: MemoryConfiguration { topology: d.initially_populated },
+        pcie_lanes_broken_out: pcie_lanes,
+      }
+    }
     Present { value: s } => DesignRefused { causes: s }
   }
 }
