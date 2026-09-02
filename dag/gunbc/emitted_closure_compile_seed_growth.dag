@@ -278,7 +278,12 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // fixture_closure_rustc_discrimination -- --ignored --nocapture` -- run on the pre-change tree,
 // where the red arm's diagnostic in the fixture's own emitted module is `E0308`. Re-derive it
 // there rather than trusting this sentence; a constant naming a code the fixture does not produce
-// would turn the arm permanently red, which is the failure mode this measurement rules out.
+// would turn the arm permanently red, which is the failure mode this measurement rules out. THE
+// CODE AND NOT THE WORDING, and that is measured too rather than preferred: across the two runs
+// taken here the same E0308 arrived once as `mismatched types` and once as `arguments to this
+// function are incorrect`. A constant matching rustc's prose would have been red on the second
+// run without anything about the emitter changing; the error index code is the part of the
+// diagnostic rustc governs as an identity.
 // A SECOND NARROWING RIDES WITH THE FIRST, and it is about which diagnostics may attribute at
 // all: only an `error` does. An emitted module routinely collects warnings, they are printed
 // above the error that stopped the build, and a red attributed to one would name a line that
