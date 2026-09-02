@@ -6,7 +6,6 @@ import extdeps.llm.anthropic_messages_api {
   MessagesApiVersionBinding,
   VersionHeaderSelectsRevision,
   VersionHeaderAcceptedUnused,
-  messages_api_version_header_is_honored,
   current_api_version,
   anthropic_chat_message_wire_contract,
   anthropic_tool_result_block_wire_contract,
@@ -25,23 +24,19 @@ import extdeps.ollama.api {
 
 // DCH-1's evidence that the hoist is a replacement migration and not a fork.
 //
-// The discriminating control is the version binding. The two implementations declare DIFFERENT arms
-// against the SAME specification version, because upstream Ollama documents that the
-// anthropic-version header is accepted and not used while the publisher's own service selects a
-// revision with it. A migration that collapsed the axis to a shared header string, or that gave
-// both implementations the publisher's arm, typechecks and goes red here.
+// The discriminating control is the version binding, and it is read by MATCHING THE ARM rather
+// than through a Bool: which arm an implementation declares is the whole content, and a predicate
+// answering "honored?" would have thrown that away at exactly the place it matters. Upstream Ollama
+// documents that the anthropic-version header is accepted and not used, while the publisher's own
+// service selects a revision with it, so the two implementations declare DIFFERENT arms against the
+// SAME specification version. A migration that collapsed the axis, left an arm uninhabited, or gave
+// both implementations the publisher's arm typechecks and goes red here.
 test fn w_messages_api_version_binding_differs_by_implementation() -> Bool {
-  messages_api_version_header_is_honored(binding: anthropic_messages_api_conformance.version_binding)
-    && !messages_api_version_header_is_honored(binding: ollama_messages_api_conformance.version_binding)
-    && anthropic_messages_api_conformance.spec_version.version == current_api_version.version
-    && ollama_messages_api_conformance.spec_version.version == current_api_version.version
-}
-
-// Both arms of the axis are inhabited by a real row, so neither is a variant nothing constructs.
-test fn w_messages_api_version_binding_arms_are_inhabited() -> Bool {
   match anthropic_messages_api_conformance.version_binding {
     VersionHeaderSelectsRevision {} => match ollama_messages_api_conformance.version_binding {
-      VersionHeaderAcceptedUnused {} => true
+      VersionHeaderAcceptedUnused {} =>
+        anthropic_messages_api_conformance.spec_version.version == current_api_version.version
+          && ollama_messages_api_conformance.spec_version.version == current_api_version.version
       VersionHeaderSelectsRevision {} => false
     }
     VersionHeaderAcceptedUnused {} => false

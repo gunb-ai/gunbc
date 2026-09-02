@@ -74,6 +74,10 @@ data current_api_version: AnthropicApiVersion = {
 // which means a caller cannot conclude from an accepted request that the revision it asked for is
 // the revision it got. Modeling the two as one Bool would erase that, so the axis is a coproduct
 // and every conformance row must state its arm.
+//
+// It carries NO Bool accessor, deliberately. A predicate answering "is the header honored?" would
+// re-collapse the arm a caller has to branch on to the same one bit this coproduct exists to
+// replace, and a third arm would silently pick a side of it. Consumers match.
 type MessagesApiVersionBinding
   = VersionHeaderSelectsRevision {}
   | VersionHeaderAcceptedUnused {}
@@ -93,13 +97,6 @@ type MessagesApiImplementation {
   spec_version: AnthropicApiVersion
   version_binding: MessagesApiVersionBinding
   citation: ExternalAuthority
-}
-
-fn messages_api_version_header_is_honored(binding: MessagesApiVersionBinding) -> Bool {
-  match binding {
-    VersionHeaderSelectsRevision {} => true
-    VersionHeaderAcceptedUnused {} => false
-  }
 }
 
 type AnthropicImageMediaType
