@@ -3,9 +3,9 @@ module extdeps.ampere.mt_collins_product_brief.memory_population
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief, mt_collins_gsg_authority, mt_collins_gsg_publication_status }
+import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.publication { DocumentPublicationStatus }
 import extdeps.uri { Uri, Https }
 
 // Tables 10-13 of the Mt. Collins DVT/PVT/MP Getting Started Guide, Document Issue 1.05.
@@ -40,11 +40,6 @@ data memory_population_revision_basis: NonEmptyStr = "Issue 1.00 was the first c
 
 data memory_population_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
 
-// The attesting document and its status, carried as declarations rather than prose so a reader -
-// and eventually a carriage fold - reaches them from this module rather than inferring them.
-data memory_population_attesting_document: ExternalAuthority = mt_collins_gsg_authority
-
-data memory_population_document_status: DocumentPublicationStatus = mt_collins_gsg_publication_status
 
 // DIMM connectors are named J1..J32 on the board: J1..J16 serve socket 0 and J17..J32
 // serve socket 1. The supported 1DPC population uses the odd-numbered member of every channel
@@ -347,7 +342,7 @@ data mt_collins_memory_population_model_scope: ExternalModelScope = ExternalMode
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
+  further_citations: [mt_collins_gsg_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_collins_memory_population_model_scope
