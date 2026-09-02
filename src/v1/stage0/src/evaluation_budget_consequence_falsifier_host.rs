@@ -123,6 +123,22 @@ pub(crate) enum EvaluationBudgetConsequenceRefusal {
     CandidateProductBuildFailed {
         observation: CommandObservation,
     },
+    /// THE EXPERIMENT'S OWN WORKTREE STOPPED BEING ONE, mid-run, from outside.
+    ///
+    /// A linked worktree is a directory whose `.git` FILE points at an admin directory under the
+    /// common `.git/worktrees/`. Any process sharing that repository can delete it -- `git worktree
+    /// prune` does, routinely, and on a machine where many sessions share one clone it is not even
+    /// unusual. The directory survives; only its registration dies. Every `git` call inside it then
+    /// fails, and because the seed's build script hard-requires `git rev-parse HEAD` to stamp the
+    /// source commit, the FIRST thing to fail is the candidate build -- so an event with no
+    /// relation to the subject arrives wearing CandidateProductBuildFailed's name.
+    ///
+    /// This arm exists because that misattribution is the failure this whole instrument is against:
+    /// charging the subject for something the subject did not do. Observed 2026-09-02 at
+    /// 17f3808cba, where the admin directory was gone while the worktree directory remained.
+    ExperimentWorktreeUnregistered {
+        detail: String,
+    },
     ServeSpawnFailed {
         detail: String,
     },
@@ -247,6 +263,29 @@ pub(crate) enum EvaluationBudgetConsequenceFalsifierOutcome {
 struct PrePerturbationDigests {
     orchestrator: String,
     dry_gate_gunbc: String,
+}
+
+/// Is the experiment's worktree still a registered worktree? Answered by resolving its `.git`
+/// pointer, because that is the thing an outside prune removes -- not by asking git from inside,
+/// which fails for this reason and several unrelated ones and so cannot discriminate.
+fn worktree_admin_area_present(worktree: &Path) -> Result<(), String> {
+    let pointer = worktree.join(".git");
+    let text = std::fs::read_to_string(&pointer)
+        .map_err(|e| format!("reading {}: {e}", pointer.display()))?;
+    let gitdir = text
+        .lines()
+        .find_map(|line| line.strip_prefix("gitdir: "))
+        .ok_or_else(|| format!("{} carries no gitdir pointer", pointer.display()))?
+        .trim()
+        .to_string();
+    if Path::new(&gitdir).is_dir() {
+        Ok(())
+    } else {
+        Err(format!(
+            "the worktree's admin directory {gitdir} no longer exists, so {} is no longer a registered worktree; another process sharing this repository pruned it",
+            worktree.display()
+        ))
+    }
 }
 
 /// SHA-256 of a file's bytes. Used to give the receipt an identity for each artifact it depends
@@ -999,6 +1038,11 @@ fn run_bound_transaction(
         long,
     );
     if !completed_zero(&built) {
+        // A build cannot be charged to the subject until the environment it ran in is known to
+        // have still been intact. This ordering is the whole point: ask first, attribute second.
+        if let Err(detail) = worktree_admin_area_present(worktree) {
+            return Outcome::Refused(Refusal::ExperimentWorktreeUnregistered { detail });
+        }
         return Outcome::Refused(Refusal::CandidateProductBuildFailed { observation: built });
     }
 
@@ -1127,6 +1171,9 @@ fn run_bound_transaction(
         long,
     );
     if !completed_zero(&rebuilt) {
+        if let Err(detail) = worktree_admin_area_present(worktree) {
+            return Outcome::Refused(Refusal::ExperimentWorktreeUnregistered { detail });
+        }
         return Outcome::Refused(Refusal::CandidateProductBuildFailed {
             observation: rebuilt,
         });
@@ -1204,6 +1251,9 @@ fn serve_and_judge(
         long,
     );
     if !completed_zero(&subject_build) {
+        if let Err(detail) = worktree_admin_area_present(worktree) {
+            return Outcome::Refused(Refusal::ExperimentWorktreeUnregistered { detail });
+        }
         return Outcome::Refused(Refusal::CandidateProductBuildFailed {
             observation: subject_build,
         });
