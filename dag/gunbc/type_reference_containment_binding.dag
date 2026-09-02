@@ -24,7 +24,10 @@ type EmittedRustSplitCensusReceipt {
   replay_cargo_job_count: Int
   coded_count: Int
   codeless_count: Int
-  total_count: Int
+}
+
+fn emitted_rust_split_census_total(r: EmittedRustSplitCensusReceipt) -> Int {
+  r.coded_count + r.codeless_count
 }
 
 data type_reference_containment_binding_emitted_rust_split_census: EmittedRustSplitCensusReceipt = EmittedRustSplitCensusReceipt {
@@ -36,8 +39,7 @@ data type_reference_containment_binding_emitted_rust_split_census: EmittedRustSp
   instrument_eagain_count: 15,
   replay_cargo_job_count: 2,
   coded_count: 64,
-  codeless_count: 1,
-  total_count: 65
+  codeless_count: 1
 }
 
 type StructuralTextOccurrencePopulation {
