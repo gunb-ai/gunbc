@@ -5062,7 +5062,7 @@ thread_local! {
     /// UNCONDITIONALLY. This is a WORK measure, not a time measure: its value is a property of
     /// the program and the arguments it was evaluated on, and it carries no term for clock
     /// frequency, cache state, co-tenant pressure or scheduler preemption. That is the whole
-    /// point — `gunbc.rung_drop` `floor_cost_contention_verdict` names "a deterministic work
+    /// point — `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` names "a deterministic work
     /// measure such as evaluator steps" as one of the three arms of its restoration trigger,
     /// and a measure that is only available under a profiling flag is not available in the
     /// envelopes the row is about. So this counter is NOT gated on `eval_profile_enabled`: the
@@ -17111,7 +17111,7 @@ pub struct PerformanceReceipt {
     ///
     /// It is here BESIDE the clocks and replaces neither. A step count says how much evaluation
     /// work the claim performed and says nothing about how long that took on this machine; the
-    /// clocks say the opposite. `gunbc.rung_drop` `floor_cost_contention_verdict` is the row
+    /// clocks say the opposite. `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` is the row
     /// this field answers to, and it is answered only in part: the field makes a deterministic
     /// work measure EXIST and be RECORDED per claim. It is not yet compared against anything,
     /// so no cost verdict rests on it and the row stays standing.
@@ -19753,7 +19753,7 @@ mod evaluator_step_work_measure_tests {
     }
 
     /// THE DISCRIMINATING RED FOR THE WHOLE MEASURE. `gunbc.rung_drop`
-    /// `floor_cost_contention_verdict` says an attempt's CPU duration is not an invariant
+    /// `floor_cost_claim_qualification_unavailable` says an attempt's CPU duration is not an invariant
     /// property of the witness, and names a deterministic work measure as one of the three arms
     /// that would restore a claim-owned cost basis. This is that arm's evidence, and it is
     /// asserted as EXACT EQUALITY rather than as a tolerance: a work measure that needed a

@@ -38826,7 +38826,7 @@ pub struct WitnessExecutionOccurrence {
     /// Evaluator steps this claim took, marginal of stored shared-artifact fills — the
     /// deterministic work measure beside the two clocks, invariant across the execution
     /// envelope in a way neither clock is. Recorded, published, and compared against nothing:
-    /// `gunbc.rung_drop` `floor_cost_contention_verdict` stays standing, and this column is the
+    /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing, and this column is the
     /// evidence a step-denominated verdict would later be built on, not that verdict.
     pub eval_steps: u64,
     /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
