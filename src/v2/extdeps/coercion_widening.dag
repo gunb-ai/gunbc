@@ -9,7 +9,7 @@ import v2.std.coercion {
   coercion_fold_refinement_widening
 }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
 import v2.std.find_witness {
   PreservationPredicate,
   TargetDeclaredPriority,
@@ -30,62 +30,85 @@ fn coercion_widening_unknown_value_set_node() -> Node {
 }
 }
 
-fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
-  match find_named_child(root: inhabitant, name: ^rust_inhabitant_field_facts) {
-    Accepted { value: facts, diagnostics: None } =>
-      match find_named_child(root: facts, name: ^rust_facts_field_range) {
-        Accepted { value: range, diagnostics: None } =>
-          integer_interval_value_set_node(interval: range)
-        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
-      }
-    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
-  }
+fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: find_named_child(root: inhabitant, name: ^rust_inhabitant_field_facts),
+    f: fn(facts) {
+      bind_outcome(
+        o: find_named_child(root: facts, name: ^rust_facts_field_range),
+        f: fn(range) { outcome_accepted(value: integer_interval_value_set_node(interval: range)) }
+      )
+    }
+  )
 }
 
-fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
-  match find_named_child(root: inhabitant, name: ^python_inhabitant_field_facts) {
-    Accepted { value: facts, diagnostics: None } =>
-      match find_named_child(root: facts, name: ^python_facts_field_encoding) {
-        Accepted { value: encoding, diagnostics: None } =>
-          if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
+fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: find_named_child(root: inhabitant, name: ^python_inhabitant_field_facts),
+    f: fn(facts) {
+      bind_outcome(
+        o: find_named_child(root: facts, name: ^python_facts_field_encoding),
+        f: fn(encoding) {
+          let value_set = if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
  occurrence_id: OccurrenceSynthetic
 } {
             integer_unbounded_value_set_node()
           } else {
             coercion_widening_unknown_value_set_node()
           }
-        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
-      }
-    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
-  }
+          outcome_accepted(value: value_set)
+        }
+      )
+    }
+  )
 }
 
-fn rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
+fn rust_i32_python_int_refinement_widening_predicate() -> Outcome<PreservationPredicate> {
   let source = rust_inhabitant_i32_node()
   let candidate = python_int_inhabitant_node()
-  PreservationPredicate {
-    algebra: refinement_widening_predicate_algebra_for_value_sets(
-      source: source,
-      candidate: candidate,
-      source_value_set: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: source),
-      candidate_value_set: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: candidate)
-    ),
-    preservation_rule: ^preservation_rule_refinement_widening
-  }
+  bind_outcome(
+    o: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: source),
+    f: fn(source_value_set) {
+      bind_outcome(
+        o: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: candidate),
+        f: fn(candidate_value_set) {
+          outcome_accepted(value: PreservationPredicate {
+            algebra: refinement_widening_predicate_algebra_for_value_sets(
+              source: source,
+              candidate: candidate,
+              source_value_set: source_value_set,
+              candidate_value_set: candidate_value_set
+            ),
+            preservation_rule: ^preservation_rule_refinement_widening
+          })
+        }
+      )
+    }
+  )
 }
 
-fn python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredicate {
+fn python_int_rust_i32_refinement_narrowing_predicate() -> Outcome<PreservationPredicate> {
   let source = python_int_inhabitant_node()
   let candidate = rust_inhabitant_i32_node()
-  PreservationPredicate {
-    algebra: refinement_widening_predicate_algebra_for_value_sets(
-      source: source,
-      candidate: candidate,
-      source_value_set: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: source),
-      candidate_value_set: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: candidate)
-    ),
-    preservation_rule: ^preservation_rule_refinement_widening
-  }
+  bind_outcome(
+    o: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: source),
+    f: fn(source_value_set) {
+      bind_outcome(
+        o: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: candidate),
+        f: fn(candidate_value_set) {
+          outcome_accepted(value: PreservationPredicate {
+            algebra: refinement_widening_predicate_algebra_for_value_sets(
+              source: source,
+              candidate: candidate,
+              source_value_set: source_value_set,
+              candidate_value_set: candidate_value_set
+            ),
+            preservation_rule: ^preservation_rule_refinement_widening
+          })
+        }
+      )
+    }
+  )
 }
 
 fn coercion_fold_rust_i32_to_python_int_widening(
@@ -93,11 +116,16 @@ fn coercion_fold_rust_i32_to_python_int_widening(
   candidates: CoercionCandidateSet,
   priority: Node,
 ) -> Outcome<CoercionResult> {
-  coercion_fold_refinement_widening(
-    source: source,
-    candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority },
-    predicate: rust_i32_python_int_refinement_widening_predicate()
+  bind_outcome(
+    o: rust_i32_python_int_refinement_widening_predicate(),
+    f: fn(predicate) {
+      coercion_fold_refinement_widening(
+        source: source,
+        candidates: candidates,
+        policy: TargetDeclaredPriority { priority: priority },
+        predicate: predicate
+      )
+    }
   )
 }
 
@@ -106,10 +134,15 @@ fn coercion_fold_python_int_to_rust_i32_narrowing(
   candidates: CoercionCandidateSet,
   priority: Node,
 ) -> Outcome<CoercionResult> {
-  coercion_fold_refinement_widening(
-    source: source,
-    candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority },
-    predicate: python_int_rust_i32_refinement_narrowing_predicate()
+  bind_outcome(
+    o: python_int_rust_i32_refinement_narrowing_predicate(),
+    f: fn(predicate) {
+      coercion_fold_refinement_widening(
+        source: source,
+        candidates: candidates,
+        policy: TargetDeclaredPriority { priority: priority },
+        predicate: predicate
+      )
+    }
   )
 }
