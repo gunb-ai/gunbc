@@ -10,14 +10,15 @@ The required floor applies its 500ms CPU ceiling uniformly to a claim's **margin
 apparent enforcement asymmetry comes from when a cross-claim computation becomes a shared
 artifact: only a fresh, successful memo store commits the computation as shared fill. Until that
 commit, the cooperative deadline sees the computation as marginal. An interruption abandons the
-fill before it can commit, so the work remains marginal and no shared-fill record is emitted.
+fill before it can commit, so that frame's self time remains marginal and no shared-fill record is
+emitted for it. Any stored descendant fills remain netted.
 
 This is one policy with a temporal classification boundary, not two ceilings:
 
 | Terminal arm | Fill classification | Budget consequence | Receipt consequence |
 | --- | --- | --- | --- |
 | Evaluation reaches a fresh store before a poll interrupts it | `CrossClaimFillGuard::mark_stored` makes `Drop` record the fill | `budgeted_cpu_nanos` and completion accounting subtract the committed fill | A `[floor-shared-fill]` line reports marginal, fill, and measured cost |
-| A poll interrupts evaluation before store | The guard drops with `stored=false` and calls `on_fill_abandon` | No fill has been recorded, so all CPU spent so far remains marginal and can cross 500ms | The interruption reports only the right-censored lower bound; no shared-fill line exists |
+| A poll interrupts evaluation before store | The guard drops with `stored=false` and calls `on_fill_abandon` | This frame's self time remains marginal and can cross 500ms; already-stored descendant fills remain netted | The interruption reports only the right-censored lower bound; no shared-fill line exists for the abandoned frame |
 
 Poll placement and arrival order can therefore decide which arm an otherwise identical cold
 computation reaches. The classification changes only when publication succeeds.
