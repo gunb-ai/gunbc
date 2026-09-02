@@ -173,6 +173,11 @@ fn runner_unit_app_environment(app: GithubAppRunnerConfig) -> List<SystemdServic
 // ctrl's own template carries a comment warning that splitting them is what creates a
 // silent-misconfig boundary; here they cannot be split, because there is one parameter and the
 // MAKEFLAGS spelling comes from the cited jobserver authority rather than from a second literal.
+// UNDER THE CUTOVER ARM THERE IS NO MAKEFLAGS, AND THAT ABSENCE IS THE POINT. Invocation-local
+// parallelism advertises no shared pool, so handing cargo an auth clause would point it at a FIFO
+// nobody serves -- and cargo does not refuse an unrecognised clause, it builds unbounded. The bound
+// moves to CARGO_BUILD_JOBS, which cargo applies per invocation and which therefore cannot survive
+// the process that read it.
 fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> List<SystemdServiceDirective> {
   match scope {
     BorrowerHeldCooperativeHostFifo { fifo_path: p, daemon_service: _ } =>
@@ -183,10 +188,6 @@ fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> Li
           value: jobserver_makeflags_fifo_auth(fifo_path: p as String),
         ),
       ]
-    // NO MAKEFLAGS, AND THAT ABSENCE IS THE POINT. Under invocation-local parallelism there is no
-    // shared pool to advertise, so handing cargo an auth clause would point it at a FIFO nobody
-    // serves. The bound moves to CARGO_BUILD_JOBS, which cargo applies per invocation and which
-    // therefore cannot survive the process that read it.
     InvocationLocalCargo { jobs_per_slot: j } =>
       [
         runner_unit_environment(

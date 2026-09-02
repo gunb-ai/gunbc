@@ -101,6 +101,15 @@ type FleetCancellationFoldAcc {
 // selector and produced no observation arrives here as HostCancellationUnobserved rather than being
 // silently absent from the fold. A fold that ranged only over the observations it happened to
 // receive would answer SAFE for a fleet it had never asked about.
+//
+// SAFE THEREFORE REQUIRES BOTH a non-empty safe roster and an empty blocking one. The first
+// conjunct is what keeps an empty observation set on the refusing side: a fleet nobody looked at
+// has no unsafe and no unobserved host either, so testing only the blocking roster would report
+// SAFE for silence.
+//
+// And a HostCancellationSafe carrying a disposition that loses capacity is a contradiction in the
+// observation rather than a safe host, so it joins the unsafe side -- without that arm the safe
+// constructor would be self-certifying.
 fn fleet_cancellation_standing(
   observations: List<HostCompileCancellationStanding>,
 ) -> FleetCompileCancellationStanding {
@@ -115,8 +124,6 @@ fn fleet_cancellation_standing(
             unobserved_hosts: a.unobserved_hosts,
             safe_hosts: concat(a.safe_hosts, [h]),
           }
-          // A readback that says SAFE while carrying a disposition that loses capacity is a
-          // contradiction in the observation, not a safe host. It joins the unsafe side.
           false => FleetCancellationFoldAcc {
             unsafe_hosts: concat(a.unsafe_hosts, [h]),
             unobserved_hosts: a.unobserved_hosts,
@@ -135,9 +142,6 @@ fn fleet_cancellation_standing(
       }
     },
   )
-  // SAFE REQUIRES BOTH a non-empty safe roster AND an empty not-safe one. The first conjunct is what
-  // keeps an empty observation set on the refusing side: a fleet nobody looked at has no unsafe and
-  // no unobserved host either, so testing only the second would report SAFE for silence.
   let blocking = list_length(items: concat(acc.unsafe_hosts, acc.unobserved_hosts))
   let observed_safe = list_length(items: acc.safe_hosts)
   let fleet_is_safe = (blocking == 0) && (observed_safe > 0)
