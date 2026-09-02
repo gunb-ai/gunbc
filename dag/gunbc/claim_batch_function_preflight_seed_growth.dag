@@ -6,10 +6,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for claim_batch's entry-local function preflight. The invalid name was
 // already refused by the evaluator, but only after whole-corpus preparation and entry resolution;
-// measured at 224b1879191, the unknown arm exited 1 with no-such-function after a 2019ms resolve,
-// while a real pure sibling exited 0 after a 2514ms resolve. The preflight moves that existing
-// refusal ahead of redundant corpus work. It reads the canonical parser's Node items and the same
-// item_kind discriminator the evaluator's function index uses; it does not scan declaration text.
+// the two-arm claim_batch reproducer at 224b1879191 showed the unknown arm exiting 1 with
+// no-such-function only after resolve, while a declared sibling exited 0. The preflight moves that
+// existing refusal ahead of redundant corpus work. It reads the canonical parser's Node items and
+// the same item_kind discriminator the evaluator's function index uses; it does not scan text.
 data claim_batch_function_preflight_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.claim_batch", decl_name: "validate_explicit_functions", field: WholeDeclaration }
