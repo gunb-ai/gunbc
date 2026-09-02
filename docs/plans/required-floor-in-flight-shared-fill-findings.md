@@ -64,7 +64,7 @@ exceeds the deadline has not necessarily crossed the enforced quantity.
 ## Exposure authority
 
 The near-ceiling concept and its distribution already belong to `gunbc.rung_drop`
-`floor_cost_contention_verdict`, which names it the exposed attention subset. That authority makes
+`floor_cost_claim_qualification_unavailable`, which names it the exposed attention subset. That authority makes
 the load-bearing distinction: the closed population is every required identity whose CPU deadline
 is armed under the shared-runner envelope; a threshold-selected set is only a view whose membership
 moves with each measurement. It also declares the current carrier gap: the attention constant is
