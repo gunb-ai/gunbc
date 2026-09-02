@@ -36,7 +36,11 @@ test fn dominated_candidate_is_off_front() -> Bool {
     verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
     verdict_of(a_cap: 16, a_cost: 100, b_cap: 32, b_cost: 200)
   ]
-  any_dominates(verdicts: pool) && !on_pareto_front(verdicts: pool)
+  any_dominates(verdicts: pool) && match front_standing(verdicts: pool) {
+    OffFront => true
+    OnFront => false
+    FrontPendingEvidence => false
+  }
 }
 
 test fn undominated_candidate_stays_on_front() -> Bool {
@@ -45,6 +49,41 @@ test fn undominated_candidate_stays_on_front() -> Bool {
     verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
     verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100)
   ]
-  on_pareto_front(verdicts: pool) && !any_dominates(verdicts: pool)
+  !any_dominates(verdicts: pool) && match front_standing(verdicts: pool) {
+    OnFront => true
+    OffFront => false
+    FrontPendingEvidence => false
+  }
 }
 
+
+// THE ARM THE OLD BOOLEAN COULD NOT EXPRESS. `on_pareto_front` answered `!any_dominates`, so this
+// pool -- nothing proven to dominate, one comparison undecided -- returned true and asserted the
+// frontier. It is the discriminating case for the whole change, and it stays enrolled as the
+// permanent control that the three-state has not quietly collapsed back to two.
+test fn an_undecided_pool_is_neither_on_nor_off_the_front() -> Bool {
+  let pool = [
+    verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
+    DominanceUndecided
+  ]
+  !any_dominates(verdicts: pool)
+    && match front_standing(verdicts: pool) {
+      FrontPendingEvidence => true
+      OnFront => false
+      OffFront => false
+    }
+}
+
+// A PROVEN DOMINATOR OUTRANKS UNCERTAINTY, at pool grain: uncertainty elsewhere cannot un-prove a
+// domination that one comparison already established.
+test fn a_proven_dominator_outranks_an_undecided_comparison() -> Bool {
+  let pool = [
+    verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
+    DominanceUndecided
+  ]
+  match front_standing(verdicts: pool) {
+    OffFront => true
+    OnFront => false
+    FrontPendingEvidence => false
+  }
+}
