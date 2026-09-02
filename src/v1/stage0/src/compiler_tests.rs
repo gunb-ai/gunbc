@@ -941,30 +941,25 @@ mod compiler_tests {
         );
     }
 
-    // KNOWN-HOLE PROBE (not a desired-behavior control), DESIGN section 4b(4).
+    // PERMANENT REGRESSION CONTROL, DESIGN section 4b(4). It landed as a KNOWN-HOLE
+    // PROBE asserting the wrong behavior, and it FLIPPED when the wall landed rather
+    // than retiring: a climb deletes the lower-rung production machinery it obsoletes,
+    // never the evidence that the higher rung is real.
     //
-    // The shell service-emission path FABRICATES rather than refuses: every declared
-    // output field is bound to `stdout`, whatever source the declaration named, and the
-    // error arm returns a bare String against a declared Box<dyn std::error::Error>.
-    // Both produce Rust that does not compile, with ZERO diagnostics -- section 5's
+    // WHAT IT PINNED. The shell service-emission path bound every declared output field
+    // to `stdout`, whatever source the declaration named, and returned a bare String
+    // from the error arm against a declared Box<dyn std::error::Error>. Both emitted
+    // Rust that does not compile, with ZERO diagnostics -- section 5's
     // fabricated-plausible-output arm, in the emitter.
     //
-    // The three-output fixture is load-bearing. The two-field case this was first seen
-    // on (an operation declaring `success: Bool from "exit_success"` beside
-    // `stdout: String from "stdout"`) cannot distinguish "wrong tuple index" from "the
-    // declared source never arrived": with two fields, "always the first output" and
-    // "always stdout" produce the same bytes. Three fields separate them, and the
-    // ABSENCE of the `let stderr = ...` prelude line is the positive evidence -- that
-    // line is emitted only when some field claims the stderr channel, so its absence
-    // proves the `from "stderr"` field was invisible to the renderer rather than
-    // mis-ordered. child_from_key returns Absent for all three.
-    //
-    // WHEN THE WALL LANDS THIS PROBE MUST FLIP and become a permanent regression
-    // control: the emitted body must bind each field to its named source, box the error
-    // arm, and REFUSE -- typed and located, naming the field and the unresolvable
-    // source -- for any source it cannot realize.
+    // THE THREE-OUTPUT FIXTURE IS STILL LOAD-BEARING, for the reason it was chosen: two
+    // fields cannot distinguish "wrong tuple index" from "the declared source never
+    // arrived", because "always the first output" and "always stdout" produce the same
+    // bytes. Three separate them, and the PRESENCE of the `let stderr = ...` prelude is
+    // the positive evidence that the `from "stderr"` field reached the renderer -- that
+    // line is emitted only when some field claims the stderr channel.
     #[test]
-    fn shell_service_output_projection_fabricates_stdout_known_hole_probe() {
+    fn shell_service_output_projection_binds_each_declared_channel() {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
@@ -983,8 +978,8 @@ mod compiler_tests {
                     .collect();
                 assert!(
                     errors.is_empty(),
-                    "KNOWN HOLE today: the emitter does not refuse; it fabricates silently. \
-                     When the wall lands this becomes the refusal assertion. Got: {:?}",
+                    "every declared channel is modeled, so this operation must emit \
+                     without a diagnostic. Got: {:?}",
                     errors
                 );
                 let emitted = r
@@ -994,7 +989,7 @@ mod compiler_tests {
                     .map(|f| f.content.clone())
                     .expect("service module must emit src/probe.rs");
 
-                // The signature reads the declaration correctly...
+                // The signature reads the declaration...
                 assert!(
                     emitted.contains(
                         "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
@@ -1002,26 +997,103 @@ mod compiler_tests {
                     "signature must project the three declared output types, got:\n{}",
                     emitted
                 );
-                // ...and the body then ignores every declared source.
+                // ...and the body now answers each field from the source it named.
                 assert!(
-                    emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
-                    "KNOWN HOLE: every output field is bound to stdout regardless of its \
-                     declared source. If this assertion fails the wall may have landed -- \
-                     flip this probe to assert the correct per-channel binding. Got:\n{}",
+                    emitted.contains(
+                        "Ok((output.status.success(), stdout.clone(), stderr.clone()))"
+                    ),
+                    "each output field must bind the channel its `from` key names. Got:\n{}",
                     emitted
                 );
-                // The stderr prelude is the absence that proves the source was never read.
+                // The stderr prelude is the presence that proves the source was read.
                 assert!(
-                    !emitted.contains("String::from_utf8_lossy(&output.stderr)"),
-                    "KNOWN HOLE: the `from \"stderr\"` field is invisible to the renderer, \
-                     so no stderr prelude line is emitted. Got:\n{}",
+                    emitted.contains("String::from_utf8_lossy(&output.stderr)"),
+                    "a field claiming the stderr channel must emit the stderr prelude. \
+                     Got:\n{}",
+                    emitted
+                );
+                // The fabricated form must be gone, not merely joined by the correct one.
+                assert!(
+                    !emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
+                    "stdout must not answer for every declared field. Got:\n{}",
                     emitted
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result
-            .expect("shell_service_output_projection_fabricates_stdout_known_hole_probe panicked");
+        result.expect("shell_service_output_projection_binds_each_declared_channel panicked");
+    }
+
+    #[test]
+    fn shell_service_unmodeled_output_key_refuses() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("service module must emit src/probe.rs");
+                assert!(
+                    emitted.contains("not_a_channel")
+                        && emitted.contains("has no modeled channel"),
+                    "an unmodeled output key must refuse and name the key. Got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("stdout.clone()"),
+                    "a refused operation must not fall through to the stdout channel. \
+                     Got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shell_service_unmodeled_output_key_refuses panicked");
+    }
+
+    #[test]
+    fn shell_service_exit_error_arm_is_boxed() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n    exit { 0 => Unit  nonzero => String }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("service module must emit src/probe.rs");
+                assert!(
+                    emitted.contains("Err(stderr.into())"),
+                    "the error arm must box into the declared error type. Got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("Err(stderr)"),
+                    "the unboxed String error arm must be gone. Got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shell_service_exit_error_arm_is_boxed panicked");
     }
 
     // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing
