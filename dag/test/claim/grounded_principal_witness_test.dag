@@ -36,7 +36,7 @@ test fn witness_declared_probe_names_principal() -> Bool {
   posix_declared_probe_names_principal(p: fleet_posix_ci_runner_principal())
     && posix_declared_probe_names_principal(p: fleet_posix_operator_principal())
     && posix_declared_probe_names_principal(p: fleet_posix_root_principal())
-    && posix_declared_probe_names_principal(p: fleet_posix_srv3_host_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_host_administrator_principal())
 }
 
 test fn witness_declared_probe_mismatch_red() -> Bool {
@@ -199,9 +199,9 @@ test fn witness_two_phase_principal_derives_job_user() -> Bool {
     && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == srv1_ci_deploy_runner_principal.job_user
 }
 
-test fn witness_srv3_host_roster_row_exists() -> Bool {
+test fn witness_host_administrator_roster_row_exists() -> Bool {
   fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
-    && grounded_posix_principal_name(p: fleet_posix_srv3_host_principal()) == "ubuntu"
+    && grounded_posix_principal_name(p: fleet_posix_host_administrator_principal()) == "ubuntu"
 }
 
 test fn witness_deploy_sudo_grants_refuse_generic_movers() -> Bool {

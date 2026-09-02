@@ -82,11 +82,19 @@ data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrinci
 // they carry policy and no operating-system label, because fleet-automation@gunbc is an SSH key
 // comment and never was a username. What a principal IS lives here; what it is CALLED on a given
 // host is an allocation, and the two are joined only by an executed observation.
+//
+// FleetAccountHostAdministrator was spelled FleetAccountSrv3Host until a second host needed the
+// same principal. The old spelling named the FIRST PLACE the role was observed, not the role, so
+// every later host that has this account had to either mis-cite srv3 or fork a second key for one
+// concept. The role is: the primary human-facing administrator account the host image provisions,
+// distinct from root, from the CI runner, and from the key-only automation identity. srv3 is still
+// named where it is a receipt -- the declared probe's host field, the allocation rows -- because a
+// receipt is about a place and this key is not.
 type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
   | FleetAccountCiRunner
-  | FleetAccountSrv3Host
+  | FleetAccountHostAdministrator
   | FleetAccountAutomation
   | FleetAccountInferenceService
   | FleetAccountPublicationHelper
@@ -112,7 +120,7 @@ data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   shell: LoginShellUnobserved,
 }
 
-data fleet_posix_srv3_host_user: PosixUser = PosixUser {
+data fleet_posix_host_administrator_user: PosixUser = PosixUser {
   name: "ubuntu",
   uid: 1000,
   gid: 1000,
@@ -137,7 +145,7 @@ data fleet_posix_ci_runner_declared_probe: PosixAccountDeclaredProbe = PosixAcco
   host: "srv1",
 }
 
-data fleet_posix_srv3_host_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
+data fleet_posix_host_administrator_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
   probed_at: "2026-07-21",
   probe_command: "id ubuntu",
   host: "srv3",
@@ -268,7 +276,7 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   )
 }
 
-fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
+fn fleet_posix_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -460,12 +468,12 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: legacy_name_requirements,
         sudo_grants: fleet_posix_ci_runner_sudo_grants(),
       }
-    FleetAccountSrv3Host =>
+    FleetAccountHostAdministrator =>
       FleetPrincipalIntent {
         principal: key,
         login_policy: LegacyHostAccount,
         name_requirements: legacy_name_requirements,
-        sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+        sudo_grants: fleet_posix_host_administrator_sudo_grants(),
       }
     FleetAccountAutomation =>
       FleetPrincipalIntent {
@@ -797,11 +805,11 @@ fn fleet_posix_ci_runner_principal() -> GroundedPosixPrincipal {
   }
 }
 
-fn fleet_posix_srv3_host_principal() -> GroundedPosixPrincipal {
+fn fleet_posix_host_administrator_principal() -> GroundedPosixPrincipal {
   GroundedPosixPrincipal {
-    posix: fleet_posix_srv3_host_user,
-    sudo_grants: fleet_posix_srv3_host_sudo_grants(),
-    declared_probe: fleet_posix_srv3_host_declared_probe,
+    posix: fleet_posix_host_administrator_user,
+    sudo_grants: fleet_posix_host_administrator_sudo_grants(),
+    declared_probe: fleet_posix_host_administrator_declared_probe,
   }
 }
 
@@ -852,12 +860,12 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
           declared_probe: fleet_posix_ci_runner_declared_probe,
         },
       }
-    FleetAccountSrv3Host =>
+    FleetAccountHostAdministrator =>
       PrincipalGrounded {
         principal: GroundedPosixPrincipal {
-          posix: fleet_posix_srv3_host_user,
-          sudo_grants: fleet_posix_srv3_host_sudo_grants(),
-          declared_probe: fleet_posix_srv3_host_declared_probe,
+          posix: fleet_posix_host_administrator_user,
+          sudo_grants: fleet_posix_host_administrator_sudo_grants(),
+          declared_probe: fleet_posix_host_administrator_declared_probe,
         },
       }
     FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
@@ -889,8 +897,8 @@ fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
           match name == fleet_posix_ci_runner_user.name {
             true => Present { value: fleet_posix_ci_runner_principal() }
             false =>
-              match name == fleet_posix_srv3_host_user.name {
-                true => Present { value: fleet_posix_srv3_host_principal() }
+              match name == fleet_posix_host_administrator_user.name {
+                true => Present { value: fleet_posix_host_administrator_principal() }
                 false => Absent
               }
           }
