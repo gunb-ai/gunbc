@@ -1,0 +1,297 @@
+module product.printed_chassis.cadquery_realization
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.algebra { zip_map }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import std.decimal {
+  ExactDecimal,
+  ExactDecimalAdmission,
+  ExactDecimalAdmitted,
+  ExactDecimalScaleRefused,
+  admit_exact_decimal,
+  exact_decimal_wire,
+}
+import product.printed_chassis.coupon {
+  CouponOperation,
+  OpThroughHole,
+  PlateDimensions,
+  HoleDiameterCouponGeometry,
+}
+import product.printed_chassis.realization_contract {
+  AdmittedRealizationV0,
+  admitted_realization_geometry,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+// THE HANDLER TAKES ONE ARGUMENT AND IT IS THE CAPABILITY, WHICH IS THE WHOLE DESIGN.
+//
+// realize_admitted's parameter is AdmittedRealizationV0 and nothing else. There is deliberately no
+// entry point shaped realize(decoded, verdict) or realize(plate, features) -- not even a private
+// one, because a private one is reachable by the next function added to this module. A caller
+// cannot obtain an AdmittedRealizationV0 without judge_realization having minted it on the arm
+// where conformance held, so the association between "this geometry" and "a judgment that passed"
+// is carried by the value rather than by the caller remembering to check a verdict first. That is
+// the discharge of ActuatorGeometryPairingUnbound arriving at its consumer.
+//
+// The geometry it reads is therefore the CONTRACT'S CANONICAL SPECIMEN, not the transported values
+// that compared equal to it. What this handler cuts is the model's own geometry, and the wire is
+// demoted to an assertion that was checked.
+//
+// THE HANDLER IS DELIBERATELY BORING, AND EVERY ABSENCE BELOW IS LOAD-BEARING. It chooses no
+// margins, centres nothing, infers no orientation, sorts no holes, defaults no thickness and
+// compensates no clearances. Each of those would be a DESIGN DECISION taken in the realization
+// layer, where it is invisible to every wall the authority layer built -- and the authority layer
+// is closed, so any decision left to make here is a decision that should have been made there.
+// A handler that "helpfully" centred the plate would silently move all twelve holes.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// MICROMETRES RENDER TO MILLIMETRES AS AN EXACT DECIMAL, NEVER AS A FLOAT AND NEVER BY DIVISION.
+//
+// The model carries integer micrometres and CadQuery consumes millimetres, so the emitter needs a
+// numeral. Dividing by 1000 in Int truncates -- 3100 um would emit 3 mm, a tenth of a millimetre
+// lost silently in the one artifact whose purpose is to be a dimensional nominal. Emitting a float
+// would move the question to the reader's parser rather than answering it.
+//
+// std.decimal already models this: the SAME integer, carried with a scale. 3100 micrometres is
+// units 3100 at three fraction digits, which is the number 3.1 exactly, and the canonicaliser
+// reduces trailing zeros so 3000 renders "3" rather than "3.000". No arithmetic happens.
+type MillimetreRendering
+  = MillimetreRendered { wire: NonEmptyStr }
+  | MillimetreScaleRefused { micrometres: Int }
+
+fn micrometre_millimetre_wire(m: Micrometer) -> MillimetreRendering {
+  match admit_exact_decimal(units: micrometer_count(m: m), fraction_digits: 3) {
+    ExactDecimalAdmitted { canonical: c } =>
+      MillimetreRendered { wire: exact_decimal_wire(d: c) as NonEmptyStr }
+    ExactDecimalScaleRefused { observed_fraction_digits: _ } =>
+      MillimetreScaleRefused { micrometres: micrometer_count(m: m) }
+  }
+}
+
+// THE RADIUS IS EXACT FOR AN ODD MICROMETRE DIAMETER, WHICH IS WHY IT IS NOT A DIVISION EITHER.
+//
+// CadQuery's circle() takes a radius and the model carries a diameter, so half of an odd micrometre
+// count has to go somewhere. Integer division loses it: a 3001 um hole would be cut at 1500 um
+// radius, 3000 um across, and the coupon would report a diameter it does not have. Instead the
+// half is taken by SCALE -- diameter times five at four fraction digits is diameter over two at
+// three, exactly, for every integer input. 3001 um renders "1.5005" and nothing is lost.
+//
+// The ladder is even-valued today, so this arithmetic is currently exercised only by its own
+// witness. That is deliberate: the alternative was to note the truncation and rely on the ladder
+// staying even, which is a property no type carries and which a future rung of 3.05 mm silently
+// breaks.
+fn micrometre_half_millimetre_wire(m: Micrometer) -> MillimetreRendering {
+  match admit_exact_decimal(units: micrometer_count(m: m) * 5, fraction_digits: 4) {
+    ExactDecimalAdmitted { canonical: c } =>
+      MillimetreRendered { wire: exact_decimal_wire(d: c) as NonEmptyStr }
+    ExactDecimalScaleRefused { observed_fraction_digits: _ } =>
+      MillimetreScaleRefused { micrometres: micrometer_count(m: m) }
+  }
+}
+
+// THE CUT OVERTRAVEL IS DECLARED, AND IT IS NOT A COMPENSATING CLEARANCE.
+//
+// A cutting cylinder exactly as tall as the plate ends coplanar with both faces, which is the
+// classic CSG robustness failure: the kernel must decide whether two touching surfaces intersect,
+// and different kernels answer differently. The cure is to start the cut below the plate and end it
+// above.
+//
+// It is stated here rather than folded into the emission because the distinction from a forbidden
+// fudge is exact and worth being able to check: overtravel runs along the cut AXIS only, so it
+// changes no measured quantity. The hole diameter is untouched, the hole centre is untouched, and
+// the plate thickness is untouched, because the plate is not what is being extended. A clearance
+// that widened a hole to "help it fit" would change the very number the coupon exists to measure;
+// this cannot, and w_overtravel_moves_no_measured_dimension is what says so by execution.
+data cut_overtravel: Micrometer = micrometer(count: 1000)
+
+// THE EMISSION REFUSES RATHER THAN EMITTING A NUMBER IT COULD NOT RENDER, and the refusal names the
+// micrometre value that could not be rendered rather than reporting that something went wrong. An
+// emitter that dropped an unrenderable dimension, or substituted a default, would produce a
+// syntactically valid CadQuery program describing a different part -- the fabricated plausible
+// output in its most expensive form, because the failure is invisible until the plastic is measured.
+type CadQueryProgram sole_constructor {
+  source: NonEmptyStr
+}
+
+fn cadquery_program_source(p: CadQueryProgram) -> NonEmptyStr {
+  p.source
+}
+
+type CadQueryEmission
+  = CadQueryEmitted { program: CadQueryProgram }
+  | CadQueryDimensionUnrenderable { micrometres: Int }
+
+// EVERY DIMENSION IS RENDERED THROUGH ONE SCAN, AND THE FIRST CUT OF THIS FILE DID IT WRONG.
+//
+// That cut nested a match per dimension and answered "" on each refusal arm. An empty string is a
+// fabricated plausible output: the emission would have continued, the joined program would have
+// been missing a line or carried an empty argument, and nothing would have said so. It is the
+// absorbing fallback this program has now produced twice by hand -- once in the datum derivation,
+// once here -- both times in a helper whose refusal arm looked like a formality.
+//
+// The shape that cannot do it: render every dimension into ONE scan that keeps renders and refusals
+// in separate lists. A caller reads the refusals first, so a line is only ever built from a scan
+// that had none, and "some dimension could not be rendered" is a state with a value rather than a
+// silently shorter string. The nesting goes away with it.
+// THE SCAN KEEPS THE FIRST REFUSAL AS A VALUE, NOT AS A LIST TO INDEX BACK INTO.
+//
+// An earlier cut of this carried `refused: List<Int>` and read `.first()` out of it after checking
+// the length. That reintroduces the option-accessor trap for the third time in this program: the
+// Absent arm is unreachable given the length check, and an unreachable arm still has to answer
+// something, and the something is invented. A coproduct that holds the first refusal has no arm to
+// invent -- it is the same shape as the rung scan keeping the first divergence, for the same reason.
+type DimensionRefusal
+  = NoDimensionRefused
+  | DimensionRefused { micrometres: Int }
+
+type WireScan sole_constructor {
+  wires: List<String>
+  refusal: DimensionRefusal
+}
+
+fn scan_wire(acc: WireScan, r: MillimetreRendering) -> WireScan {
+  match r {
+    MillimetreRendered { wire: w } =>
+      WireScan { wires: concat(acc.wires, [w as String]), refusal: acc.refusal }
+    MillimetreScaleRefused { micrometres: um } =>
+      match acc.refusal {
+        DimensionRefused { micrometres: _ } => acc
+        NoDimensionRefused => WireScan { wires: acc.wires, refusal: DimensionRefused { micrometres: um } }
+      }
+  }
+}
+
+fn wire_scan(renderings: List<MillimetreRendering>) -> WireScan {
+  fold(renderings, init: WireScan { wires: [], refusal: NoDimensionRefused }, f: scan_wire)
+}
+
+type LineEmission
+  = LineEmitted { text: String }
+  | LineDimensionUnrenderable { micrometres: Int }
+
+// THE NUMBERS GO BETWEEN THE LITERALS, AND SAYING IT THAT WAY REMOVES THE INDEXING.
+//
+// The alternative was to render into a list and read positions 0..4 back out to build the line,
+// which needs an indexed accessor whose out-of-range arm is unreachable and therefore invented --
+// the same defect as the scan above, one layer up. Pairing each literal fragment with the wire that
+// follows it is what emission actually IS, and zip_map refuses a length mismatch rather than
+// truncating to the shorter side, so a fragment list that fell out of step with its wires cannot
+// quietly drop the tail.
+fn interleave(fragments: List<String>, wires: List<String>, tail: String) -> String {
+  join(concat(zip_map(a: fragments, b: wires, f: fn(f, w) { join([f, w], "") }), [tail]), "")
+}
+
+fn line_or_refusal(scan: WireScan, fragments: List<String>, tail: String) -> LineEmission {
+  match scan.refusal {
+    DimensionRefused { micrometres: um } => LineDimensionUnrenderable { micrometres: um }
+    NoDimensionRefused =>
+      LineEmitted { text: interleave(fragments: fragments, wires: scan.wires, tail: tail) }
+  }
+}
+
+// The plate corner sits at the ORIGIN and centered is explicitly false on all three axes, which is
+// what lets every modeled centre pass through unchanged. CadQuery's default centres a box on the
+// origin, so the default would put the plate's middle at (0,0) and every modeled hole centre --
+// which the coupon authority states from the corner -- would land half a plate away. That is the
+// "helpful centering" this handler is forbidden to do, and it is forbidden precisely because it is
+// the default: an emitter that simply omitted the argument would silently adopt it.
+fn plate_line(plate: PlateDimensions) -> LineEmission {
+  line_or_refusal(
+    scan: wire_scan(renderings: [
+      micrometre_millimetre_wire(m: plate.size_x),
+      micrometre_millimetre_wire(m: plate.size_y),
+      micrometre_millimetre_wire(m: plate.size_z),
+    ]),
+    fragments: ["result = cq.Workplane(\"XY\").box(", ", ", ", "],
+    tail: ", centered=(False, False, False))\n",
+  )
+}
+
+// One cut per modeled hole, each naming its own three numbers. A loop in the EMITTED program would
+// be shorter and would put the hole population inside a Python list this repository cannot read
+// back: the trace wall wants one model feature to one realized feature, and a generated loop over a
+// generated list makes that correspondence a property of the emitted program's runtime rather than
+// of its text.
+//
+// The cut starts one overtravel BELOW the plate and runs thickness plus two overtravels, so both
+// ends clear the faces. Neither number touches a measured quantity -- see cut_overtravel above.
+fn cut_line(op: CouponOperation, thickness: Micrometer) -> LineEmission {
+  match op {
+    OpThroughHole { diameter: d, center_x: cx, center_y: cy } =>
+      line_or_refusal(
+        scan: wire_scan(renderings: [
+          micrometre_millimetre_wire(m: cut_overtravel),
+          micrometre_millimetre_wire(m: cx),
+          micrometre_millimetre_wire(m: cy),
+          micrometre_half_millimetre_wire(m: d),
+          micrometre_millimetre_wire(
+            m: micrometer(count: micrometer_count(m: thickness) + 2 * micrometer_count(m: cut_overtravel)),
+          ),
+        ]),
+        fragments: [
+          "result = result.cut(cq.Workplane(\"XY\", origin=(0, 0, -",
+          ")).moveTo(",
+          ", ",
+          ").circle(",
+          ").extrude(",
+        ],
+        tail: "))\n",
+      )
+  }
+}
+
+// THE DATUM IS EMITTED FIRST AND AS ITS OWN LINE, WHICH IS THE TRACE WALL AT THE EMISSION BOUNDARY.
+//
+// The canonical geometry keeps the orientation datum in its own field precisely so it cannot be
+// confused with a rung, and an emitter that concatenated it onto the ladder before folding would
+// undo that at the last step: the emitted program would carry twelve indistinguishable cuts and the
+// datum's identity would survive only as a position in the output. It is emitted from the datum
+// field, before the ladder, so the correspondence between one model feature and one realized
+// feature holds for the datum as a distinct subject rather than as row zero of a longer list.
+type LineScan sole_constructor {
+  lines: List<String>
+  refusal: DimensionRefusal
+}
+
+fn scan_line(acc: LineScan, e: LineEmission) -> LineScan {
+  match e {
+    LineEmitted { text: t } => LineScan { lines: concat(acc.lines, [t]), refusal: acc.refusal }
+    LineDimensionUnrenderable { micrometres: um } =>
+      match acc.refusal {
+        DimensionRefused { micrometres: _ } => acc
+        NoDimensionRefused => LineScan { lines: acc.lines, refusal: DimensionRefused { micrometres: um } }
+      }
+  }
+}
+
+data cadquery_preamble: String = "import cadquery as cq\n"
+
+data cadquery_export: String = "cq.exporters.export(result, \"hole_diameter_ladder_r1.stl\")\n"
+
+// THE ONE ENTRY POINT, AND ITS ARGUMENT IS THE CAPABILITY.
+//
+// AdmittedRealizationV0 and nothing else. There is no overload taking a decoded envelope, no
+// overload taking a plate and a feature list, and no private helper that takes them either -- a
+// private one is reachable by the next function added to this module, and the pairing this
+// discharges was writable rather than reachable, which is the same distinction.
+fn realize_admitted(a: AdmittedRealizationV0) -> CadQueryEmission {
+  let g = admitted_realization_geometry(a: a)
+  let scan = fold(
+    concat(
+      [plate_line(plate: g.plate), cut_line(op: g.orientation_datum, thickness: g.plate.size_z)],
+      fold(g.ladder_holes, init: [], f: fn(acc, op) {
+        concat(acc, [cut_line(op: op, thickness: g.plate.size_z)])
+      }),
+    ),
+    init: LineScan { lines: [], refusal: NoDimensionRefused },
+    f: scan_line,
+  )
+  match scan.refusal {
+    DimensionRefused { micrometres: um } => CadQueryDimensionUnrenderable { micrometres: um }
+    NoDimensionRefused =>
+      CadQueryEmitted {
+        program: CadQueryProgram {
+          source: join([cadquery_preamble, join(scan.lines, ""), cadquery_export], "") as NonEmptyStr,
+        },
+      }
+  }
+}
