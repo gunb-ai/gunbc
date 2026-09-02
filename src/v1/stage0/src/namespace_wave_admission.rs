@@ -565,14 +565,6 @@ pub struct TransitionAdmission {
 /// every spelling below denotes the same declaration it denoted at the base, at a new home, so
 /// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
 /// `{extdeps.llm.anthropic_messages_api}`.
-///
-/// THE POPULATION IS EXACTLY NINE, AND THE REST OF THE MOTION NEEDED NO ROW. The same phase
-/// classified this change's membership and closure motion automatically -- the memberships
-/// `extdeps.llm.anthropic` lost are `SameDeclarationIdentityRebind`, the memberships the new module
-/// gained are `ExplicitlyEvaluatedZeroDelta` -- so the nine below are the whole unadjudicated set,
-/// not a sample of it. Every row names one exact (module, declaration, spelling) triple: a tenth
-/// binding re-pointed at the new module anywhere in the corpus still refuses as UNADJUDICATED.
-///
 /// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
 /// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
 /// here refuses every unrelated PR in the repository.
@@ -592,6 +584,73 @@ pub struct TransitionAdmission {
 ///
 /// EMPTY IS THE RESTING STATE and empty is not permissive: with no rows, a run with no delta
 /// passes and a run with a real delta refuses it as UNADJUDICATED.
+/// SIXTEENTH TRANSITION (2026-09-02, SJT-1, gunbc#10010), AND IT LEFT THE RESTING STATE THE
+/// PARAGRAPH ABOVE DESCRIBES. The four Redfish boot-override constants moved WHOLE from
+/// `gunbc.srv3_boot_once_cd` to `gunbc.srv3_os_install_actuate_workflow`, the module that now
+/// authors the scoped-authorization subject those constants are the fields of. Nothing was renamed
+/// and no name was minted: each of the four spellings denoted the same declaration it denoted at the
+/// base, at a new home, so each arrived as `TargetChanged binding` with base `{gunbc.srv3_boot_once_cd}`
+/// -> head `{gunbc.srv3_os_install_actuate_workflow}`. The relocation is forced rather than
+/// stylistic: `srv3_boot_once_cd` already imports the workflow module, so leaving the constants
+/// behind would have made the subject's own module import its importer.
+///
+/// THE POPULATION IS EXACTLY FOUR. The run's other motion classified automatically as
+/// `ExplicitlyEvaluatedZeroDelta` membership additions (the new `std.scoped_authorization` edges),
+/// so these four are the whole unadjudicated set, not a sample: a fifth re-pointed binding
+/// anywhere in the corpus still refuses as UNADJUDICATED.
+///
+/// DISSOLVE-ON: gunbc#10010 merging. Base and head then both place the constants in the workflow
+/// module, no run can produce these deltas, all four report stale, and the roster RETURNS to the
+/// empty resting state -- a stale row here refuses every unrelated PR in the repository.
+///
+/// THE DCH-1 COHORT IS NOT RESURRECTED HERE, AND THAT IS A DELIBERATE READ OF THE MERGE RATHER
+/// THAN AN ACCIDENT OF IT. Both sides of this merge deleted those nine rows independently, main by
+/// the dissolution recorded above and this branch by its own reading of the same fired trigger.
+/// A union of the two rosters would have re-added a deletion both sides intended; the resolution
+/// took the deletion.
+/// SEVENTEENTH DISSOLUTION (2026-09-02). The four SJT-1 rows are removed by their own
+/// dissolve-on trigger. That trigger reads "this change merging", and the change is gunbc#10010,
+/// merged as de531c35496, which is an ancestor of the base of every run here.
+///
+/// THE RECEIPT IS PER ROW, NOT PER COHORT, because a row whose trigger fired for a different
+/// reason than the sweep assumes is exactly how a dissolution goes wrong. Each row admits
+/// `TargetChanged binding` in `gunbc.srv3_boot_once_cd`, declaration `srv3_boot_once_cd_resolved`,
+/// base `{gunbc.srv3_boot_once_cd}` -> head `{gunbc.srv3_os_install_actuate_workflow}`. For each,
+/// on the base: the constant is declared in the TARGET module, `srv3_boot_once_cd` imports it from
+/// there, and the spelling still occurs inside `srv3_boot_once_cd_resolved` -- so the reference
+/// exists, resolves to the target on BOTH sides, and the delta the row admits cannot be produced.
+///
+///   srv3_boot_cd_target      declared srv3_os_install_actuate_workflow; occurs in the boot-override
+///                            body; moved by de531c35496 (removed from srv3_boot_once_cd, added there)
+///   srv3_boot_cd_enabled     same commit, same motion; occurs beside it in the same body
+///   srv3_boot_cd_mode        same commit, same motion; occurs twice, in the override-mode refusal
+///                            match and in the boot-override body
+///   srv3_boot_cd_reset_type  same commit, same motion; occurs in the reset body
+///
+/// No row was swept for tidiness: all four receipts were established separately and all four fired.
+/// Had one lacked a fired trigger it would have been left standing and said so here, because four
+/// rows swept with three receipts is worse than three rows swept.
+///
+/// THE SIXTEENTH ENTRY PREDICTED THE WRONG DISPOSITION AND THE PREDICTION IS LEFT STANDING RATHER
+/// THAN QUIETLY CORRECTED. It says these rows would "report stale". They reported CONSUMED. The two
+/// are not synonyms: STALE is a row matching no delta, and CONSUMED is a row whose delta is already
+/// satisfied at the BASE -- and only the second carries the deletion obligation onto an unrelated
+/// roster-toucher, which is how this sweep came to exist. An author predicting the softer
+/// disposition is worth a line here, because it is the disposition that decides who pays.
+///
+/// THESE WERE BORN CONSUMED, the same way the DCH-1 cohort was: de531c35496 is BOTH the commit that
+/// authored the rows and the commit that performed the move they admit, so no run after it could
+/// ever match them. That is why the wall reported them as CONSUMED "already satisfied at the base"
+/// rather than as stale, and why it charges the deletion to whoever next TOUCHES this roster.
+///
+/// THE DELETING CHANGE IS UNRELATED TO THE ROWS' SUBJECT, AND THAT IS THE MECHANISM WORKING AS
+/// DESIGNED. A consumed row left standing is a permission over nothing that reads as coverage, and
+/// naming the next roster-toucher as the sweeper is what keeps a row's removal from waiting on its
+/// author coming back. This change is a one-file sweep carrying nothing else, so the receipts above
+/// are the whole of what it claims.
+///
+/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive -- a run with a real delta
+/// still refuses it as UNADJUDICATED.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

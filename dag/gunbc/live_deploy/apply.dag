@@ -1,6 +1,7 @@
 module gunbc.live_deploy.apply
 
 import gunbc.live_deploy.deployed_tree_scope {
+  RepositoryTransitionRealization,
   RepositoryTransitionAdmission,
   RepositoryTransitionAdmitted,
   LegacyGitFileSyncNotAdmitted,
@@ -419,11 +420,21 @@ data live_deploy_candidate_observed_at_launcher_note: String = "THE ONE OBSERVAT
 // RETRACT DELIBERATELY DOES NOT CONSULT THIS. Removing a deployment does not perform the repository
 // transition, and a wall that also blocked retraction would strand an operator with a host they
 // could neither converge nor take down -- a refusal with no exit is not fail-closed, it is stuck.
-fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
-  match repository_transition_admission(realization: deployed_tree_repository_transition) {
+fn live_deploy_wet_with_access_for_realization(
+  access: DeployAccess,
+  realization: RepositoryTransitionRealization,
+) -> ProcessExit {
+  match repository_transition_admission(realization: realization) {
     LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
     RepositoryTransitionAdmitted => live_deploy_admitted_wet_with_access(access: access)
   }
+}
+
+fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
+  live_deploy_wet_with_access_for_realization(
+    access: access,
+    realization: deployed_tree_repository_transition,
+  )
 }
 
 // THE TARGET DECISION SITS BETWEEN THE CANDIDATE OBSERVATION AND THE PREFLIGHT, AND EACH SIDE OF
@@ -705,7 +716,7 @@ fn live_deploy_transaction_admitted(access: DeployAccess, run: ActionsRunBinding
   }
 }
 
-fn live_deploy_transaction_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_transaction_admitted_wet_with_access(access: DeployAccess) -> ProcessExit {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
@@ -737,10 +748,7 @@ fn live_deploy_transaction_wet_with_access(access: DeployAccess) -> ProcessExit 
                     plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt),
                     apply_receipt_identity: fleet_converge_apply_receipt_identity_hex(r: fleet_apply_receipt),
                   }
-                  match repository_transition_admission(realization: deployed_tree_repository_transition) {
-                    LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
-                    RepositoryTransitionAdmitted => live_deploy_transaction_admitted(access: access, run: run, expected: expected, provenance: provenance)
-                  }
+                  live_deploy_transaction_admitted(access: access, run: run, expected: expected, provenance: provenance)
                   }
                   }
                   }
@@ -748,6 +756,26 @@ fn live_deploy_transaction_wet_with_access(access: DeployAccess) -> ProcessExit 
           }
       }
   }
+}
+
+// THE TRANSACTION CONSULTS THE SAME ADMISSION BEFORE READING ITS WORKFLOW ENVIRONMENT OR RECEIPTS.
+// Keeping realization injectable at this internal seam makes the refusing arm executable in a
+// hermetic witness while the production entry below remains constructed from the one bound row.
+fn live_deploy_transaction_wet_with_access_for_realization(
+  access: DeployAccess,
+  realization: RepositoryTransitionRealization,
+) -> ProcessExit {
+  match repository_transition_admission(realization: realization) {
+    LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
+    RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(access: access)
+  }
+}
+
+fn live_deploy_transaction_wet_with_access(access: DeployAccess) -> ProcessExit {
+  live_deploy_transaction_wet_with_access_for_realization(
+    access: access,
+    realization: deployed_tree_repository_transition,
+  )
 }
 
 func live_deploy_apply_srv1_transaction_wet() -> ProcessExit {

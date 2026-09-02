@@ -4,15 +4,14 @@
 use self::CensusOutcome::*;
 use self::DeclarationIdentityObservation::*;
 use self::LegacyKeyObservation::*;
-pub use crate::std_coercion::TypeRealizationDecision;
-use crate::std_coercion::TypeRealizationDecision::{Realized, Refused, Unrealized};
+use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
+use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
+pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_coercion::{
-    decl_identity_file, type_realization_decision, type_reference_decl_file,
-};
+pub use crate::v1_compiler_coercion::type_realization_decision;
 pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
@@ -25,7 +24,10 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::Resolved;
-pub use crate::v1_std_core::{authored_name_at, param_node_type_expr};
+pub use crate::v1_std_core::{
+    authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
+    type_reference_provenance,
+};
 pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -36,13 +38,13 @@ use std::rc::Rc;
 #[serde(tag = "_variant")]
 pub enum DeclarationIdentityObservation {
     IdentityFromInference {
-        decl_file: String,
+        provenance: Rc<TypeDeclarationProvenance>,
     },
     IdentityFromEnvironment {
-        decl_file: String,
+        provenance: Rc<TypeDeclarationProvenance>,
     },
     IdentitiesAgree {
-        decl_file: String,
+        provenance: Rc<TypeDeclarationProvenance>,
     },
     IdentitiesDisagree {
         inferred: String,
@@ -82,50 +84,57 @@ pub struct TypedCarrierRow {
 }
 
 pub fn identity_observation(
-    inferred: String,
-    environment: String,
+    inferred: Rc<TypeDeclarationProvenance>,
+    environment: Rc<TypeDeclarationProvenance>,
 ) -> Rc<DeclarationIdentityObservation> {
-    if ((inferred.clone() == "".to_string()) && (environment.clone() == "".to_string())) {
-        Rc::new(DeclarationIdentityObservation::IdentityUnavailableBoth)
-    } else {
-        if (inferred.clone() == "".to_string()) {
-            Rc::new(DeclarationIdentityObservation::IdentityFromEnvironment {
-                decl_file: environment.clone(),
-            })
+    {
+        let inf = crate::v1_std_core::provenance_reported_file(inferred.clone());
+        let env = crate::v1_std_core::provenance_reported_file(environment.clone());
+        if ((inf.clone() == "".to_string()) && (env.clone() == "".to_string())) {
+            Rc::new(DeclarationIdentityObservation::IdentityUnavailableBoth)
         } else {
-            if (environment.clone() == "".to_string()) {
-                Rc::new(DeclarationIdentityObservation::IdentityFromInference {
-                    decl_file: inferred.clone(),
+            if (inf.clone() == "".to_string()) {
+                Rc::new(DeclarationIdentityObservation::IdentityFromEnvironment {
+                    provenance: environment.clone(),
                 })
             } else {
-                if (inferred.clone() == environment.clone()) {
-                    Rc::new(DeclarationIdentityObservation::IdentitiesAgree {
-                        decl_file: inferred.clone(),
+                if (env.clone() == "".to_string()) {
+                    Rc::new(DeclarationIdentityObservation::IdentityFromInference {
+                        provenance: inferred.clone(),
                     })
                 } else {
-                    Rc::new(DeclarationIdentityObservation::IdentitiesDisagree {
-                        inferred: inferred.clone(),
-                        environment: environment.clone(),
-                    })
+                    if (inf.clone() == env.clone()) {
+                        Rc::new(DeclarationIdentityObservation::IdentitiesAgree {
+                            provenance: inferred.clone(),
+                        })
+                    } else {
+                        Rc::new(DeclarationIdentityObservation::IdentitiesDisagree {
+                            inferred: inf.clone(),
+                            environment: env.clone(),
+                        })
+                    }
                 }
             }
         }
     }
 }
 
-pub fn inferred_identity_file(n: Rc<Node>) -> String {
+pub fn inferred_identity_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            crate::v1_compiler_coercion::decl_identity_file(rt.clone())
+            crate::v1_std_core::declaration_provenance_of(rt.clone())
         }
-        _ => "".to_string(),
+        _ => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
     }
 }
 
-pub fn environment_identity_file(env: Rc<TypeEnv>, n: Rc<Node>) -> String {
+pub fn environment_identity_provenance(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+) -> Rc<TypeDeclarationProvenance> {
     match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-        Some(d) => crate::v1_compiler_coercion::decl_identity_file(d.clone()),
-        std::option::Option::None => "".to_string(),
+        Some(d) => crate::v1_std_core::declaration_provenance_of(d.clone()),
+        std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
     }
 }
 
@@ -141,13 +150,19 @@ pub fn legacy_observation(had_inference: bool, key: String) -> Rc<LegacyKeyObser
     }
 }
 
-pub fn identity_query_file(o: Rc<DeclarationIdentityObservation>) -> String {
+pub fn identity_query_provenance(
+    o: Rc<DeclarationIdentityObservation>,
+) -> Rc<TypeDeclarationProvenance> {
     match (*o.clone()).clone() {
-        DeclarationIdentityObservation::IdentityFromInference { decl_file: d, .. } => d.clone(),
-        DeclarationIdentityObservation::IdentityFromEnvironment { decl_file: d, .. } => d.clone(),
-        DeclarationIdentityObservation::IdentitiesAgree { decl_file: d, .. } => d.clone(),
-        DeclarationIdentityObservation::IdentitiesDisagree { .. } => "".to_string(),
-        DeclarationIdentityObservation::IdentityUnavailableBoth => "".to_string(),
+        DeclarationIdentityObservation::IdentityFromInference { provenance: d, .. } => d.clone(),
+        DeclarationIdentityObservation::IdentityFromEnvironment { provenance: d, .. } => d.clone(),
+        DeclarationIdentityObservation::IdentitiesAgree { provenance: d, .. } => d.clone(),
+        DeclarationIdentityObservation::IdentitiesDisagree { .. } => {
+            Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+        }
+        DeclarationIdentityObservation::IdentityUnavailableBoth => {
+            Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+        }
     }
 }
 
@@ -155,17 +170,17 @@ pub fn legacy_claims_text(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>
     crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone(), si.clone())
 }
 
-pub fn authority_realizes(name: String, decl_file: String) -> bool {
+pub fn authority_realizes(name: String, provenance: Rc<TypeDeclarationProvenance>) -> bool {
     match (*crate::v1_compiler_coercion::type_realization_decision(
         RenderTarget::Rust,
         name.clone(),
-        decl_file.clone(),
+        provenance.clone(),
     ))
     .clone()
     {
-        TypeRealizationDecision::Realized { checkpoint: _, .. } => true,
+        TypeRealizationDecision::Realized { .. } => true,
         TypeRealizationDecision::Unrealized => false,
-        TypeRealizationDecision::Refused { cause: _, .. } => false,
+        TypeRealizationDecision::RealizationRefused { cause: _, .. } => false,
     }
 }
 
@@ -177,17 +192,17 @@ pub fn legacy_base_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>)
     }
 }
 
-pub fn authority_base_of(name: String, decl_file: String) -> String {
+pub fn authority_base_of(name: String, provenance: Rc<TypeDeclarationProvenance>) -> String {
     match (*crate::v1_compiler_coercion::type_realization_decision(
         RenderTarget::Rust,
         name.clone(),
-        decl_file.clone(),
+        provenance.clone(),
     ))
     .clone()
     {
         TypeRealizationDecision::Realized { checkpoint: cp, .. } => cp.target_type.clone(),
         TypeRealizationDecision::Unrealized => "<structural>".to_string(),
-        TypeRealizationDecision::Refused { cause: _, .. } => "<refused>".to_string(),
+        TypeRealizationDecision::RealizationRefused { cause: _, .. } => "<refused>".to_string(),
     }
 }
 
@@ -212,11 +227,14 @@ pub fn typed_decision_row(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedCarrierRow> {
     {
-        let inferred = inferred_identity_file(n.clone());
-        let environment = environment_identity_file(env.clone(), n.clone());
-        let legacy_key = crate::v1_compiler_coercion::type_reference_decl_file(n.clone());
+        let inferred = inferred_identity_provenance(n.clone());
+        let environment = environment_identity_provenance(env.clone(), n.clone());
+        let legacy_key = crate::v1_std_core::provenance_reported_file(
+            crate::v1_std_core::type_reference_provenance(n.clone()),
+        );
         let identity = identity_observation(inferred.clone(), environment.clone());
-        let query_file = identity_query_file(identity.clone());
+        let query_provenance = identity_query_provenance(identity.clone());
+        let query_file = crate::v1_std_core::provenance_reported_file(query_provenance.clone());
         let name = crate::v1_std_core::authored_name_at(si.clone(), n.clone());
         let claims_text = legacy_claims_text(n.clone(), si.clone());
         Rc::new(TypedCarrierRow {
@@ -225,12 +243,15 @@ pub fn typed_decision_row(
             position_kind: position_kind.clone(),
             authored_name: name.clone(),
             identity: identity.clone(),
-            legacy: legacy_observation((inferred.clone() != "".to_string()), legacy_key.clone()),
+            legacy: legacy_observation(
+                (crate::v1_std_core::provenance_reported_file(inferred.clone()) != "".to_string()),
+                legacy_key.clone(),
+            ),
             legacy_base: legacy_base_label(n.clone(), si.clone()),
-            authority_base: authority_base_of(name.clone(), query_file.clone()),
+            authority_base: authority_base_of(name.clone(), query_provenance.clone()),
             outcome: outcome_of(
                 claims_text.clone(),
-                authority_realizes(name.clone(), query_file.clone()),
+                authority_realizes(name.clone(), query_provenance.clone()),
                 query_file.clone(),
             ),
         })
@@ -410,13 +431,15 @@ pub fn typed_module_rows(
 
 pub fn identity_label(o: Rc<DeclarationIdentityObservation>) -> String {
     match (*o.clone()).clone() {
-        DeclarationIdentityObservation::IdentityFromInference { decl_file: _, .. } => {
+        DeclarationIdentityObservation::IdentityFromInference { provenance: _, .. } => {
             "FromInference".to_string()
         }
-        DeclarationIdentityObservation::IdentityFromEnvironment { decl_file: _, .. } => {
+        DeclarationIdentityObservation::IdentityFromEnvironment { provenance: _, .. } => {
             "FromEnvironment".to_string()
         }
-        DeclarationIdentityObservation::IdentitiesAgree { decl_file: _, .. } => "Agree".to_string(),
+        DeclarationIdentityObservation::IdentitiesAgree { provenance: _, .. } => {
+            "Agree".to_string()
+        }
         DeclarationIdentityObservation::IdentitiesDisagree { .. } => "DISAGREE".to_string(),
         DeclarationIdentityObservation::IdentityUnavailableBoth => "UnavailableBoth".to_string(),
     }
@@ -424,9 +447,15 @@ pub fn identity_label(o: Rc<DeclarationIdentityObservation>) -> String {
 
 pub fn identity_file_label(o: Rc<DeclarationIdentityObservation>) -> String {
     match (*o.clone()).clone() {
-        DeclarationIdentityObservation::IdentityFromInference { decl_file: d, .. } => d.clone(),
-        DeclarationIdentityObservation::IdentityFromEnvironment { decl_file: d, .. } => d.clone(),
-        DeclarationIdentityObservation::IdentitiesAgree { decl_file: d, .. } => d.clone(),
+        DeclarationIdentityObservation::IdentityFromInference { provenance: d, .. } => {
+            crate::v1_std_core::provenance_reported_file(d.clone())
+        }
+        DeclarationIdentityObservation::IdentityFromEnvironment { provenance: d, .. } => {
+            crate::v1_std_core::provenance_reported_file(d.clone())
+        }
+        DeclarationIdentityObservation::IdentitiesAgree { provenance: d, .. } => {
+            crate::v1_std_core::provenance_reported_file(d.clone())
+        }
         DeclarationIdentityObservation::IdentitiesDisagree {
             inferred: i,
             environment: e,

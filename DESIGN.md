@@ -116,7 +116,12 @@ At a service boundary, rung honesty has a commercial consequence: a dimension ma
 
 Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-ledgers.md](docs/design-ledgers.md), authority `gunbc.rung_drop`. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The ones standing today:
 
-- **Stable per-claim cost qualification under a shared execution envelope** — declared 2026-09-01
+- **Heal job for generated artifacts** — declared 2026-09-01
+- **Six of the seven effect gates (one restored)** — declared 2026-09-01
+- **Rust fmt as a merge-path gate** — declared 2026-09-01
+- **Merge-admission stamping: the receipt has no producer** — declared 2026-09-01
+- **Falsifier cadence: exposure open, disposition NOT decided** — declared 2026-09-01
+- **Per-claim cost qualification is unavailable at the subject grain the gate consumes** — declared 2026-09-01
 - **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
 - **Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
@@ -126,6 +131,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
 - **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
 - **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
+- **Spark serving role-scoped retirement evidence at the production plan root** — declared 2026-09-02
 - **Arity agreement between a declared builtin parameter name and its derived algebra template** — declared 2026-09-01
 - **n-ary concat call sites judged against concat's binary declared signature** — declared 2026-09-01
 - **Dashboard MergeReady omits repository-semantic admissibility** — declared 2026-09-01
@@ -231,12 +237,23 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `alias_resolution_collides_with_kernel_spelling`
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
+- `fabricated_debt`
 - `yaml_inline_comment_ingested_as_scalar_content`
 - `accepted_source_emits_uncompilable_target`
 - `incidental_denominator_as_wall`
 - `compensating_errors_cancel_in_the_aggregate`
 - `one_refusal_two_destinations`
+- `join_answers_with_one_arm_others_unjudged`
 - `liveness_probe_read_as_currency`
+- `non_verdict_disposition_surfaces_as_refusal`
+- `empty_capture_read_as_clean_result`
+- `salience_instrument_blind_to_the_record_it_sizes`
+- `ambient_process_state_read_by_a_concurrent_reader`
+- `predicate_vacuously_true_on_an_empty_domain`
+- `check_subject_narrower_than_its_declared_claim`
+- `recurrence_ledger_scoped_below_the_recurrence`
+- `hedged_benefit_leaves_the_harm_axis_unexamined`
+- `receipt_names_a_property_not_the_tree_it_holds_of`
 
 ## Building & checks
 
