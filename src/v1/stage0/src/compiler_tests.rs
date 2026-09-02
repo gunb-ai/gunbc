@@ -2496,7 +2496,9 @@ mod compiler_tests {
         let shared = std::rc::Rc::new(im::OrdSet::new());
         let generics = std::rc::Rc::new(im::Vector::new());
         let variant_to_enum = std::rc::Rc::new(HashMap::new());
-        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let mut env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
+        env_value.unit_variant_index_observed = true;
+        let env = std::rc::Rc::new(env_value);
         let arg = named_type_node("Int");
         let applied = shaped_type_node("std.algebra.FreeMonoid", vec![arg]);
         let rendered = crate::v1_compiler_emit_rust::render_rust_applied_type(
@@ -2512,6 +2514,49 @@ mod compiler_tests {
             "applied-type base must not emit namespace dots in generic position"
         );
         assert_eq!(rendered, "Vec<i64>");
+        let marker = named_type_node("Time");
+        let contribution =
+            std::rc::Rc::new(crate::v1_compiler_infer_env::UnitVariantContribution {
+                count: 1,
+                variant: marker,
+            });
+        let by_parent = crate::v1_rt::rc_map_insert(
+            crate::v1_rt::rc_empty_map(),
+            "Quantity".to_string(),
+            contribution,
+        );
+        let mut populated_env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
+        populated_env_value.unit_variant_index = crate::v1_rt::rc_map_insert(
+            crate::v1_rt::rc_empty_map(),
+            "Time".to_string(),
+            by_parent,
+        );
+        populated_env_value.unit_variant_index_observed = true;
+        let populated = crate::v1_compiler_emit_rust::render_rust_applied_type(
+            shaped_type_node("Box", vec![named_type_node("Time")]),
+            std::rc::Rc::new(im::Vector::new()),
+            std::rc::Rc::new(im::OrdSet::new()),
+            std::rc::Rc::new(HashMap::new()),
+            std::rc::Rc::new(HashMap::new()),
+            std::rc::Rc::new(populated_env_value),
+        );
+        assert_eq!(
+            populated, "Box<Time>",
+            "a populated unit-variant census must preserve the selected marker identity"
+        );
+        let unavailable = crate::v1_compiler_emit_rust::render_rust_applied_type(
+            shaped_type_node("Box", vec![named_type_node("Time")]),
+            std::rc::Rc::new(im::Vector::new()),
+            std::rc::Rc::new(im::OrdSet::new()),
+            std::rc::Rc::new(HashMap::new()),
+            std::rc::Rc::new(HashMap::new()),
+            crate::v1_compiler_infer_env::empty_type_env(),
+        );
+        assert!(
+            unavailable.contains("unit-variant marker identity evidence unavailable for Time"),
+            "an unobserved empty census must refuse instead of answering non-marker: {}",
+            unavailable
+        );
     }
 
     fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
