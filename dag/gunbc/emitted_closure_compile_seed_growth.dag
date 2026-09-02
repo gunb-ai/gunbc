@@ -284,7 +284,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 //
 // THE LEDGER ROW IS NOT UPDATED IN THIS DIFF, AND THE REASON IS AN INSTRUMENT THAT WOULD NOT RUN,
 // stated rather than left as a silent omission. gunbc.recurring_failure_mode
-// accepted_source_emits_uncompilable_target is PROJECTED into docs/design-ledgers.md, so appending
+// accepted_source_emits_uncompilable_target is PROJECTED into docs/design-failure-modes.md, so appending
 // this instance to it requires re-running the projection actuator -- `gunbc run --source-root dag
 // --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function
 // main_wet` -- or the drift gate reads the carrier and its projection as disagreeing. Measured on
