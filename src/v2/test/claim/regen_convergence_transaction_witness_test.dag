@@ -61,6 +61,8 @@ import v2.workflow.regen_convergence_transaction {
   GenerationCycleDetected,
   GenerationBoundExceeded,
   regen_admit_stage_execution,
+  regen_stage_execution_admission_label,
+  StagePlannedExecutedMismatch,
   regen_plan_stage,
   regen_admit_affected_bound
 }
@@ -201,6 +203,37 @@ test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool {
       count(surfaces) == 2
         && surfaces |> any(surface => surface.projected_path == "std_subject.rs")
         && surfaces |> any(surface => surface.projected_path == "std_dependent.rs")
+    _ => false
+  }
+}
+
+test fn a_planned_surface_with_no_observed_effect_refuses_before_the_digest_check() -> Bool {
+  let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity(), second_identity()],
+    executed: [one_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  })
+  match admission {
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      count(planned) == 2
+        && count(executed) == 1
+        && regen_stage_execution_admission_label(admission: admission) == "StagePlannedExecutedMismatch"
+    _ => false
+  }
+}
+
+test fn an_observed_effect_outside_the_plan_refuses_in_the_other_direction() -> Bool {
+  match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
+    planned: [one_identity()],
+    executed: [one_identity(), second_identity()],
+    expected_candidate_digest: "candidate",
+    observed_candidate_digest: "candidate",
+    build_terminal: RegenStageBuildPassed
+  }) {
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      count(planned) == 1 && count(executed) == 2
     _ => false
   }
 }

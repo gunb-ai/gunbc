@@ -700,6 +700,7 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
 fn regen_stage_execution_admission_label(admission: RegenStageExecutionAdmission) -> String {
   match admission {
     RegenStageExecutionAdmitted => "Admitted"
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: _, executed: _ } } => "StagePlannedExecutedMismatch"
     RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: _, observed: _ } } => "InstalledDigestMismatch"
     RegenStageExecutionRefused { refusal: _ } => "Refused"
   }
