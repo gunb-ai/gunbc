@@ -607,9 +607,13 @@ fn v2_refuses(text: String) -> Bool {
   match parse_receipt_wire_v2(text: text) { Present { value: _ } => false  Absent => true }
 }
 
-// Positive control: the same builder with every line correct MUST parse, or every row below is
-// satisfied by a wire that was malformed for some other reason.
-test fn wire_v2_built_from_explicit_lines_parses() -> Bool {
+// Positive control, asserted at CARRIER GRAIN rather than on the verdict. A parser that returns
+// `Present` before and after a rewrite while binding a different head SHA, attempt id, base commit
+// or roster hash is NOT a no-op, and a `Present { value: _ } => true` row cannot see that. Every
+// field the accepted class carries is asserted, so a rewrite that reads the wrong line -- an
+// off-by-one in a `skip`, a field crossed with its neighbour -- goes red here rather than passing
+// as an unchanged verdict.
+test fn wire_v2_built_from_explicit_lines_parses_with_every_field_bound() -> Bool {
   match parse_receipt_wire_v2(text: wire_v2_with_lines(
     schema: merge_admission_receipt_schema_v2,
     attempt: attempt_a_raw,
@@ -617,7 +621,16 @@ test fn wire_v2_built_from_explicit_lines_parses() -> Bool {
     conclusion: good_v2_lines_conclusion(),
     head: head_sha_fx,
     base: base_commit_fx,
-  )) { Present { value: _ } => true  Absent => false }
+  )) {
+    Present { value: parsed } =>
+      ((parsed.attempt_id as String) == attempt_a_raw)
+        && (parsed.tested_head_sha == head_sha_fx)
+        && (parsed.tested_base_commit_sha == base_commit_fx)
+        && (parsed.gate_roster_hash == roster_fx())
+        && match parsed.pr_number { Absent => true  Present { value: _ } => false }
+        && match parsed.conclusion { Success => true  _ => false }
+    Absent => false
+  }
 }
 
 test fn wire_v2_refuses_a_wrong_schema_line() -> Bool {
@@ -671,14 +684,14 @@ test fn wire_v2_refuses_a_blank_base_commit_line() -> Bool {
 // same defect one parser over from the one the mutation control caught.
 test fn object_id_wire_accepts_a_valid_sha1_wire() -> Bool {
   match parse_git_object_id_wire(raw: "sha1:abc1234def5678901234567890abcd1234567890") {
-    Present { value: _ } => true
+    Present { value: oid } => git_object_id_wire_hex(oid: oid) == "abc1234def5678901234567890abcd1234567890"
     Absent => false
   }
 }
 
 test fn object_id_wire_accepts_a_valid_sha256_wire() -> Bool {
   match parse_git_object_id_wire(raw: "sha256:abc1234def5678901234567890abcd12abc1234def5678901234567890abcd12") {
-    Present { value: _ } => true
+    Present { value: oid } => git_object_id_wire_hex(oid: oid) == "abc1234def5678901234567890abcd12abc1234def5678901234567890abcd12"
     Absent => false
   }
 }
@@ -704,16 +717,24 @@ fn subject_refuses(text: String) -> Bool {
   match parse_tested_subject_wire(text: text) { Present { value: _ } => false  Absent => true }
 }
 
-// Positive control for the builder, without which every refusal row below could be satisfied by a
-// wire malformed for some other reason.
-test fn subject_wire_built_from_explicit_lines_parses() -> Bool {
+// Positive control for the builder, at carrier grain for the same reason as the receipt one above:
+// `base_ref`, `head_sha` and `base_commit_sha` are three consecutive lines, so a rewrite that reads
+// the wrong one keeps the verdict and changes the value.
+test fn subject_wire_built_from_explicit_lines_parses_with_every_field_bound() -> Bool {
   match parse_tested_subject_wire(text: subject_wire_with_lines(
     schema: merge_admission_tested_subject_schema,
     attempt: attempt_a_raw,
     base_ref: "origin/main",
     head: head_sha_fx,
     base_commit: base_commit_fx,
-  )) { Present { value: _ } => true  Absent => false }
+  )) {
+    Present { value: parsed } =>
+      ((parsed.attempt_id as String) == attempt_a_raw)
+        && (parsed.base_ref == "origin/main")
+        && (parsed.head_sha == head_sha_fx)
+        && (parsed.base_commit_sha == base_commit_fx)
+    Absent => false
+  }
 }
 
 test fn subject_wire_refuses_a_wrong_schema_line() -> Bool {
