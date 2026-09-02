@@ -7,6 +7,7 @@ import v1.std.core {
   Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
+  field_from_key_property_name,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData,
   NoExprData, VarBindingKind, ExprLiteral, ExprElaboratedLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
@@ -1069,16 +1070,18 @@ type FileResultField {
   optional: Bool
 }
 
+
 // Why a binding refused. The file arm carries #8929's `FileEmissionRefusal`
 // UNCHANGED and adds no second opinion about file facts; the other arm is the one
 // cause that is not about files at all.
 type TransportBindingRefusal
   = FileBindingRefused { refusal: FileEmissionRefusal }
+  | ShellBindingRefused { refusal: ShellEmissionRefusal }
   | TransportMatchesNoRosterMember
 
 type BoundOperation
   = RestBound { transport: Node }
-  | ShellBound { transport: Node }
+  | ShellBound { transport: Node, result_fields: List<ShellResultField> }
   | LocalBound
   | FileBound {
       verb: FileVerb
@@ -1090,6 +1093,7 @@ type BoundOperation
 fn transport_binding_refusal_fact(cause: TransportBindingRefusal) -> String {
   match cause {
     FileBindingRefused { refusal: r } => file_emission_refusal_fact(refusal: r)
+    ShellBindingRefused { refusal: r } => shell_emission_refusal_fact(refusal: r)
     TransportMatchesNoRosterMember =>
       "the transport matches no member of the closed transport roster (rest, shell, file, local)"
   }
@@ -1174,6 +1178,234 @@ fn bind_file_operation(t: Node, op_node: Node, source_indices: Map<String, Newli
       }
   }
 }
+// The shell realization's answer channels, as a CLOSED coproduct rather than a
+// channel string -- the same climb the file arm made, applied to the transport
+// that carries the corpus's whole shell surface.
+//
+// WHAT IT REPLACES, and why the replaced form was not merely untidy. The rust
+// renderer resolved the declared `from` key at RENDER time, against a string
+// comparison whose final arm was `stdout`. So every declared field whose key it
+// did not recognize -- `exit_code` most of all, which the corpus authors on 107
+// declarations -- was answered with `stdout.clone()`: a String bound to an `Int`
+// field, emitted as Rust that does not compile, and where the types happened to
+// agree, one channel silently answering for another. A String cannot say which
+// keys are modeled, so the default arm was structurally forced.
+//
+// Resolving the key to this coproduct AT THE BINDING removes the arm's
+// inhabitant: an unmodeled key becomes a typed, located refusal before any
+// target is chosen, and the renderer matches on a closed set with no default to
+// write (DESIGN section 5 -- construction over validation, and a failure arm
+// refuses rather than widens).
+type ShellResultChannel
+  = ShellChanStdout
+  | ShellChanStderr
+  | ShellChanExitSuccess
+  | ShellChanExitCode
+  | ShellChanStdoutLines
+  | ShellChanStderrTruncated
+  | ShellChanStderrTotalBytes
+  | ShellChanStderrRetainedBytes
+
+type ShellResultField {
+  channel: ShellResultChannel
+  optional: Bool
+}
+
+// Why a shell binding refused. One cause today: a declared output key with no
+// modeled channel. It is deliberately not folded into `FileEmissionRefusal` --
+// the file refusals are facts about files, and a shared carrier would be one
+// name over two contracts.
+type ShellEmissionRefusal
+  = ShellOutputKeyNotModeled { key: String }
+  | ShellChannelNotRealizedByTarget { key: String, target_name: String }
+
+// The single authority for which declared output keys the shell realization can
+// answer. Read by the binding; there is no second list.
+//
+// `success` and `exists` resolve to the exit-status channel because the
+// interpreter's `map_shell_outputs` answers those FIELD NAMES from the exit code
+// when no `from` key is authored -- so the two directions of the one procedure
+// (DESIGN section 4) read the same rule rather than agreeing by coincidence.
+//
+// NOT MODELED, named rather than left to be inferred, because each names a fact
+// the emitted realization cannot honestly produce:
+//
+//   the byte-accounting and truncation channels -- stdout/stderr_total_bytes,
+//   _retained_bytes and _truncated. An operation declaring them also declares a
+//   capture policy (gunbc.WitnessBin.Run carries a WitnessStderrCapturePolicy
+//   input), and the emitted `std::process::Command` body implements no policy at
+//   all. Answering `false` and a raw length would not be a conservative default,
+//   it would assert that the declared policy ran and did not truncate. The
+//   next-rung trigger is the emitted realization implementing the declared
+//   capture policy; until then these refuse as a counted capability gap.
+//
+//   the digest channels -- stdout/stderr_digest_hex, which the interpreter
+//   answers and the emitted realization has no digest facility for. The
+//   next-rung trigger is that facility in the emitted runtime.
+fn shell_result_channel_of_key(key: String) -> ShellResultChannel? {
+  if key == "stdout" { Present { value: ShellChanStdout } }
+  else if key == "stderr" { Present { value: ShellChanStderr } }
+  else if key == "exit_success" || key == "success" || key == "exists" { Present { value: ShellChanExitSuccess } }
+  else if key == "exit_code" { Present { value: ShellChanExitCode } }
+  else if key == "stdout_lines" { Present { value: ShellChanStdoutLines } }
+  else if key == "stderr_truncated" { Present { value: ShellChanStderrTruncated } }
+  else if key == "stderr_total_bytes" { Present { value: ShellChanStderrTotalBytes } }
+  else if key == "stderr_retained_bytes" { Present { value: ShellChanStderrRetainedBytes } }
+  else { none }
+}
+
+// The channel's own spelling, so a refusal names the key the AUTHOR wrote rather
+// than a constructor name no source contains.
+fn shell_result_channel_key(c: ShellResultChannel) -> String {
+  match c {
+    ShellChanStdout => "stdout"
+    ShellChanStderr => "stderr"
+    ShellChanExitSuccess => "exit_success"
+    ShellChanExitCode => "exit_code"
+    ShellChanStdoutLines => "stdout_lines"
+    ShellChanStderrTruncated => "stderr_truncated"
+    ShellChanStderrTotalBytes => "stderr_total_bytes"
+    ShellChanStderrRetainedBytes => "stderr_retained_bytes"
+  }
+}
+
+// WHETHER A TARGET CAN REALIZE A CHANNEL IS A FACT ABOUT THE TARGET, and keeping
+// it here rather than in the roster is the whole point of the split.
+//
+// The three capture-accounting channels are REAL shell channels -- the interpreter
+// answers all three from the declared WitnessStderrCapturePolicy -- and no emitted
+// realization implements a capture policy at all. The emitted `Command` body
+// captures whole streams, so `truncated` would always be false and total would
+// always equal retained: not a conservative default but an assertion that the
+// declared policy ran and did not truncate.
+//
+// NEXT-RUNG TRIGGER, at capability grain: the emitted realization implementing the
+// declared capture policy, sufficient to answer truncation and both byte counts
+// from the policy the operation declares. Until then every realizing target
+// refuses these three, and the refusal is LOCATED AT THE FIELD.
+fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
+  match c {
+    ShellChanStderrTruncated => false
+    ShellChanStderrTotalBytes => false
+    ShellChanStderrRetainedBytes => false
+    _ => target_renders_shell_transport(target: target)
+  }
+}
+
+fn target_renders_shell_transport(target: RenderTarget) -> Bool {
+  match target_emission_mode(target: target) {
+    RealizesTransports => true
+    SerializesSubstrate => false
+  }
+}
+
+fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
+  match refusal {
+    ShellOutputKeyNotModeled { key: k } =>
+      concat("shell transport output key '", k,
+        "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes")
+    ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
+      concat("shell output channel '", k, "' is a modeled channel that target ", tn,
+        " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran")
+  }
+}
+
+// The declared output key of one field: the authored `from` key, else the field's
+// own name -- the same pair the file arm reads, and the same pair the interpreter
+// falls back through.
+// Whether the field AUTHORED a `from` key, as opposed to falling back to its own
+// name. The two cases are indistinguishable once `shell_output_channel_of_field`
+// has collapsed them to one string, and the refusal rule turns on exactly that
+// distinction, so it is asked separately rather than recovered afterwards.
+fn shell_field_authors_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match child_from_key(ch: ch, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn shell_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match child_from_key(ch: ch, source_indices: source_indices) {
+    Present { value: k } => k
+    Absent => authored_name_at(source_indices: source_indices, node: ch)
+  }
+}
+
+fn shell_bind_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> ShellResultField? {
+  match shell_result_channel_of_key(key: shell_output_channel_of_field(ch: ch, source_indices: source_indices)) {
+    Present { value: c } => Present { value: ShellResultField { channel: c, optional: ch.return_cardinality == CardOptional } }
+    Absent => none
+  }
+}
+
+// The declared output fields, read off the operation's return type WITHOUT
+// unwrapping -- the `from` key lives on the FIELD, and unwrapping a one-field
+// product collapses it to the field's own type and loses the key.
+fn shell_output_channel_fields(op_node: Node) -> List<Node> {
+  let rt = resolved_type(n: op_node)
+  if is_product_type(n: rt) { rt.children } else { [] }
+}
+
+// Binds the shell operation's declared projection before any target is chosen.
+// An unmodeled key refuses HERE rather than defaulting in a renderer, so no
+// target can answer it with a channel the author did not ask for.
+//
+// THE CONVENTION IS KEYED ON AUTHORSHIP, NOT ON ARITY, and the difference is a
+// real hole this function carried for one round (review 58091). `output { result:
+// String }` means stdout across the whole corpus and authors no `from` key, so a
+// single UNKEYED field whose name happens to match no channel binds the
+// whole-stdout projection exactly as before.
+//
+// BUT AN AUTHORED `from` IS A CHANNEL QUESTION, and a question the roster cannot
+// answer must refuse however many fields stand beside it. Gating the convention
+// on `declared_count < 2` let `output { first: String from "not_a_channel" }`
+// bind stdout in silence -- the author named a channel, the roster had none, and
+// the renderer fabricated one. That is the exact class this binding exists to
+// delete, surviving in the one shape a count test cannot see: with two fields the
+// same declaration already refused, so the corpus fixture that covered it
+// discriminated arity rather than authorship.
+//
+// SEVERAL FIELDS ADMIT NO SUCH CONVENTION: one stdout answer cannot be right for
+// all of them, their declared types disagree with each other, and the emitted
+// Rust did not compile. Every field resolves or the operation refuses.
+fn bind_shell_operation(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> BoundOperation {
+  let declared = shell_output_channel_fields(op_node: op_node)
+  let bound = declared |> flat_map(ch =>
+    match shell_bind_result_field(ch: ch, source_indices: source_indices) {
+      Present { value: f } => [f]
+      Absent => []
+    })
+  let declared_count = declared |> count
+  let bound_count = bound |> count
+  let unresolved = declared |> filter(ch =>
+    match shell_bind_result_field(ch: ch, source_indices: source_indices) {
+      Present { value: _ } => false
+      Absent => true
+    })
+  let authored_unresolved = unresolved |> filter(ch => shell_field_authors_from_key(ch: ch, source_indices: source_indices)) |> first
+  match authored_unresolved {
+    Present { value: ch } => BindingRefused {
+      cause: ShellBindingRefused {
+        refusal: ShellOutputKeyNotModeled { key: shell_output_channel_of_field(ch: ch, source_indices: source_indices) }
+      }
+    }
+    Absent =>
+      if declared_count < 2 {
+        ShellBound { transport: t, result_fields: bound }
+      } else if bound_count == declared_count {
+        ShellBound { transport: t, result_fields: bound }
+      } else {
+        match unresolved |> first {
+          Present { value: ch } => BindingRefused {
+            cause: ShellBindingRefused {
+              refusal: ShellOutputKeyNotModeled { key: shell_output_channel_of_field(ch: ch, source_indices: source_indices) }
+            }
+          }
+          Absent => ShellBound { transport: t, result_fields: bound }
+        }
+      }
+  }
+}
 
 // The single binding point, over #8954's closed roster.
 //
@@ -1183,7 +1415,7 @@ fn bind_file_operation(t: Node, op_node: Node, source_indices: Map<String, Newli
 fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> BoundOperation {
   match classify_transport(t: t, source_indices: source_indices) {
     Present { value: RestTransport } => RestBound { transport: t }
-    Present { value: ShellTransport } => ShellBound { transport: t }
+    Present { value: ShellTransport } => bind_shell_operation(t: t, op_node: op_node, source_indices: source_indices)
     Present { value: FileTransport } => bind_file_operation(t: t, op_node: op_node, source_indices: source_indices)
     Present { value: LocalTransport } => LocalBound
     Absent => BindingRefused { cause: TransportMatchesNoRosterMember }
@@ -1198,6 +1430,13 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 // refuses as one, through the same counted TransportEmissionNotModeled the wall
 // mints -- deliberately not a fallback to the renderers #8858 deleted, and
 // deliberately not silence.
+//
+// ITS ShellBound ARM READS NONE OF THE BOUND SHELL FACTS for the same kind of
+// reason, and this one is a standing anemia rather than a refusal: the Go and
+// Python shell renderers answer stdout for every declared output shape, so there
+// is nothing yet for the resolved projection to be rendered INTO. Threading it in
+// is the next-rung trigger for those two targets; the Rust dispatcher reads it in
+// full today, so the facts have a consumer.
 //
 // ITS FileBound ARM READS NONE OF THE BOUND FILE FACTS, and that is the refusal
 // being honest rather than a payload with no consumer (review 54885 asked). Go
@@ -1219,7 +1458,7 @@ fn emit_unified_transport_dispatch(
 ) -> String {
   match bound {
     RestBound { transport: t } => render_rest(op_name, t, depth, source_indices)
-    ShellBound { transport: t } => render_shell(op_name, t, depth, source_indices)
+    ShellBound { transport: t, result_fields: __rsf } => render_shell(op_name, t, depth, source_indices)
     LocalBound => render_local(op_name, depth)
     FileBound { verb: _, path_template: __pt, result_fields: __rf } =>
       emit_unmodeled_file_transport_refusal(op_name: op_name, target: target)
@@ -1913,7 +2152,7 @@ fn escape_emoji_codepoints_inner(s: String, pos: Int, n: Int, acc: String, prefi
   else {
     let ch_str = char_at(s: s, pos: pos)
     let cp = code_point(c: ch_str)
-    let next_acc = if is_emoji_ident(ch: cp) {
+    let next_acc = if is_emoji_ident(cp: cp) {
       concat(acc, prefix, int_to_upper_hex(n: cp), suffix)
     } else {
       concat(acc, ch_str)
@@ -2112,7 +2351,7 @@ fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<Stri
 // the renderer cannot in fact express, and the emitted output -- not a diagnostic -- would carry
 // the deficit.
 fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
+  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == field_from_key_property_name) |> first {
     Present { value: prop } => match field_init_node_value(n: prop).expr_data {
       ExprLiteral { value: LitStr { value: s } } => Present { value: s }
       _ => none
@@ -2357,6 +2596,94 @@ fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
 // target gate at all, which is why they already serialize clean for dag -- the file arm was the
 // only transport asking a realization question ahead of a serializer, and that asymmetry was the
 // defect, not the missing handler the message named.
+// THE SHELL TWIN OF THE FILE DIAGNOSTIC BELOW, and it exists because its absence
+// was a section 5 hard reject this branch introduced. The shell arm carried the
+// refusal EXPRESSION half only, so an operation declaring an unrealizable channel
+// compiled to "7 files emitted, 0 diagnostics" beside a panic!() in the emitted
+// body: the line did not stop, the compile reported success, and the refusal was
+// deferred to a runtime nobody reads until production. That is fabricated
+// plausible output -- an artifact that looks like a compiled program and is not
+// one -- and the file transport had already solved it by pairing the expression
+// with a BLOCKING diagnostic that makes emit_artifact return no files.
+//
+// LOCATED AT THE FIELD, not at the operation: the span is the declaring op node
+// and the fact names the individual key, so an operation with one unrealizable
+// field among seven refuses on that field and says which.
+//
+// BOTH REFUSAL CAUSES STOP THE LINE, and the second arm was missing for one commit.
+// Review 58144 caught it: ShellChannelNotRealizedByTarget stopped the line while
+// ShellOutputKeyNotModeled still emitted N files beside a panic -- the SAME class
+// this branch had just filed as refusal_deferred_to_emitted_runtime. Closing one
+// arm and leaving its sibling open is exactly the shape that class exists to name,
+// and the recognition rule it carries (ask what the COMPILE reports on the same
+// input) is what finds it.
+//
+// THE UNMODELED-KEY ARM ASKS ABOUT AUTHORSHIP, NOT ABOUT RESOLUTION. The binding
+// keeps the whole-stdout convention for a field with NO authored `from`, so a
+// diagnostic keyed on "this key resolves to no channel" alone would refuse
+// `output { result: String }` -- valid source the corpus is built on. Reading the
+// same authorship fact the binding reads is what keeps the two readers agreeing.
+fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, target: RenderTarget) -> List<ErrorNode> {
+  let env = tm.type_env
+  let si = env.source_indices
+  let module_name = authored_name(env: env, node: tm.module)
+  let service_name = authored_name(env: env, node: item)
+  let fallback = service_fallback_transport(item: item)
+  item.children |> flat_map(op_node => {
+    let t = effective_operation_transport(op_node: op_node, fallback: fallback)
+    match classify_transport(t: t, source_indices: si) {
+      Present { value: ShellTransport } =>
+        shell_output_channel_fields(op_node: op_node) |> flat_map(ch =>
+          match shell_result_channel_of_key(key: shell_output_channel_of_field(ch: ch, source_indices: si)) {
+            Absent =>
+              if !shell_field_authors_from_key(ch: ch, source_indices: si) { [] }
+              else { [make_error_node(
+                diagnostic: TransportEmissionNotModeled {
+                  transport_kind: "shell",
+                  service: service_name,
+                  operation: authored_name(env: env, node: op_node),
+                  declaring_module: module_name,
+                  target: render_target_name(target: target),
+                  missing_realization_fact: shell_emission_refusal_fact(refusal: ShellOutputKeyNotModeled {
+                    key: shell_output_channel_of_field(ch: ch, source_indices: si)
+                  }),
+                  span: ch.span
+                },
+                module_name: module_name)] }
+            Present { value: c } =>
+              if shell_channel_realized_by_target(c: c, target: target) { [] }
+              else { [make_error_node(
+                diagnostic: TransportEmissionNotModeled {
+                  transport_kind: "shell",
+                  service: service_name,
+                  operation: authored_name(env: env, node: op_node),
+                  declaring_module: module_name,
+                  target: render_target_name(target: target),
+                  missing_realization_fact: shell_emission_refusal_fact(refusal: ShellChannelNotRealizedByTarget {
+                    key: shell_result_channel_key(c: c),
+                    target_name: render_target_name(target: target)
+                  }),
+                  span: ch.span
+                },
+                module_name: module_name)] }
+          })
+      _ => []
+    }
+  })
+}
+
+fn unmodeled_shell_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  match target_emission_mode(target: target) {
+    SerializesSubstrate => []
+    RealizesTransports =>
+      typed.modules |> flat_map(tm =>
+        tm.items
+          |> filter(item => is_service_item(item: item))
+          |> flat_map(item => unmodeled_shell_transport_operation_diagnostics(tm: tm, item: item, target: target))
+      )
+  }
+}
+
 fn unmodeled_file_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
   match target_emission_mode(target: target) {
     SerializesSubstrate => []
