@@ -1,0 +1,446 @@
+module gunbc.spark.serving_unit_observed
+
+import std.types { String, Bool, List, Int, NonEmptyStr, Timestamp }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  PositiveSlotCount, positive_slot_count, positive_slot_count_value, positive_measure_count,
+}
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address_eq }
+import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.fabric_link_desired {
+  FabricLink, FabricEndpoint, fabric_rail0, fabric_endpoint_on,
+}
+
+// A SERVING DEPLOYMENT THAT SPANS TWO HOSTS, WHICH THIS CORPUS HAD NO WAY TO SAY.
+//
+// Every serving structure in gunbc.spark is keyed on ONE HostIdentity: a release, an occurrence, a
+// launch profile, a readiness probe, all per host. That shape carries an assumption it never states
+// -- that a host is a serving unit -- and the assumption is FALSE for the deployment the operator
+// specified. Two Sparks hold one model split by layer, and the operator's first sentence is the
+// whole modeling problem: "the two hosts are ONE SERVING UNIT, not two endpoints."
+//
+// WHAT THIS MODULE IS AND IS NOT. It is an OBSERVATION. The specification's own provenance section
+// classifies the running deployment as "an observed running deployment on the experimentation pair,
+// input to convergence, NOT published desired state", and this module holds it at exactly that
+// standing. Nothing here is projected into gunbc.spark.serving_desired, so nothing here can be
+// actuated back onto .232/.233. Promoting it is a separate, declared act.
+//
+// WHAT IS NOT VERIFIED, carried because the spec carries it: reboot survival. Both units are
+// `enabled` and were started through systemd, but neither host has been power-cycled. That is
+// recorded as unobserved rather than assumed either way -- the fabric on the other pair was lost to
+// exactly one power cycle, which is why gunbc.spark.fabric_link_desired exists.
+
+// THE TWO ROLES ARE TWO TYPES, NOT ONE TYPE WITH A ROLE FIELD.
+//
+// A role enum beside a member makes "a deployment with two front doors" and "a deployment whose
+// weights peer is marked front door" both writable, leaving a validator to catch them. Distinct
+// types make them unconstructable: the deployment names one of each, so the invalid shapes have no
+// constructor rather than a check. This is DESIGN's construction-over-validation at the cheapest
+// place to buy it -- the moment the carrier is first authored.
+//
+// THE FRONT DOOR IS THE ONLY ADDRESSABLE END. It serves the OpenAI and Anthropic surfaces, owns the
+// KV cache and the slot scheduler, and drives the weights peer.
+type ServingUnitFrontDoor sole_constructor {
+  host: HostIdentity
+  bind_address: NonEmptyStr
+  port: Int
+}
+
+// THE WEIGHTS PEER HAS NO API AND MUST NEVER RECEIVE CLIENT TRAFFIC, and on this pair that is not a
+// style rule -- it is constraint C1, whose violation is a host loss.
+//
+// MEASURED 2026-09-02, not taken from the handoff: the peer's host answers HTTP 200 on
+// :11434/api/tags and OFFERS TWO MODELS, both about 86.7 GB. One of them is
+// deepseek-v4-gguf:no-h3-stop -- WHICH IS EXACTLY THE MODEL THE SINGLE-HOST SERVING ROSTER SELECTS
+// AS ITS DESIRED STATE. So the collision is not hypothetical and not merely "some load could arrive
+// here": adding this host to that roster would plan a pull-and-load of an 86.7 GB model onto a
+// machine with roughly 16 GiB free, and the two rosters would each be individually correct.
+//
+// The peer's host ALSO runs an unrelated ollama on :11434 which WILL accept work. With roughly 105
+// of 121 GiB already committed to weights and swap DISABLED, a model load accepted there is an
+// immediate OOM kill that takes the front door down with it, because the front door cannot serve
+// without the layers this host holds. So the failure is not "a request went to the wrong port"; it
+// is the loss of the whole serving unit.
+//
+// The peer is addressed on the FABRIC, never on the LAN, and the constructor below enforces it.
+type ServingUnitWeightsPeer sole_constructor {
+  host: HostIdentity
+  fabric_address: Ipv4Address
+  port: Int
+}
+
+fn serving_unit_front_door(host: HostIdentity, bind_address: NonEmptyStr, port: Int) -> ServingUnitFrontDoor {
+  ServingUnitFrontDoor { host: host, bind_address: bind_address, port: port }
+}
+
+fn serving_unit_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Int) -> ServingUnitWeightsPeer {
+  ServingUnitWeightsPeer { host: host, fabric_address: fabric_address, port: port }
+}
+
+fn serving_unit_slot_plan(per_slot_context: TokenCount, slots: PositiveSlotCount) -> ServingUnitSlotPlan {
+  ServingUnitSlotPlan { per_slot_context: per_slot_context, slots: slots }
+}
+
+// PER-SLOT CONTEXT IS THE AUTHORED FACT AND THE TOTAL BUDGET IS DERIVED, WHICH IS THE WHOLE REPAIR
+// FOR THE `-c` TRAP.
+//
+// llama.cpp's `-c` is the TOTAL KV budget across all slots and is divided by `--parallel`. The
+// operator's table records what that costs when the two are authored independently:
+//
+//     -c 10485760  --parallel 10  ->  1,048,576 per slot   (intended)
+//     -c 10485760  --parallel 16  ->    655,360 per slot   (silent shrink)
+//     -c  6291456  --parallel 16  ->      2,048 per slot   (this bit us once)
+//
+// Every one of those is a WRITABLE state when `-c` and `--parallel` are two authored numbers, and
+// nothing announces the shrink -- the server starts, serves, and answers with a context two orders
+// of magnitude smaller than intended. Authoring the per-slot window instead and DERIVING `-c` makes
+// all three unwritable: there is no pair to disagree, because there is no second number.
+//
+// THIS IS ALSO WHY THE ENGINE IS NAMED IN THIS MODULE'S TYPE AND NOT ASSUMED. gunbc.spark.
+// serving_desired carries a measured note that slot count MULTIPLIES memory and does NOT divide
+// context. That is true, and it is true OF OLLAMA, where the context length is a per-slot server
+// default. The same sentence is false here. One row spanning both engines is a meaning fork whose
+// realization is precisely the 2,048-per-slot line above.
+type ServingUnitSlotPlan sole_constructor {
+  per_slot_context: TokenCount
+  slots: PositiveSlotCount
+}
+
+// The `-c` word the unit actually carries, derived from the pair above rather than authored beside
+// them. A convergence check must NOT assert on this value: `/props` reports
+// `default_generation_settings.n_ctx` as the ALREADY-DIVIDED per-slot figure, so the unit file's
+// number and the served reality are different quantities, and comparing the wrong one is how the
+// silent shrink stays invisible. This exists to RENDER the unit, and serving_unit_slot_plan_per_slot below
+// is what a readback is compared against.
+fn serving_unit_slot_plan_total_kv(plan: ServingUnitSlotPlan) -> Int {
+  token_count_value(t: plan.per_slot_context) * positive_slot_count_value(slots: plan.slots)
+}
+
+fn serving_unit_slot_plan_per_slot(plan: ServingUnitSlotPlan) -> TokenCount {
+  plan.per_slot_context
+}
+
+// ONE SERVING UNIT, and the constructor is where "two hosts" stops being two of anything.
+//
+// Four conditions decide it, and each is a way the specified deployment could be described wrongly
+// while every part looked individually fine:
+//
+//   - the two ends must be DIFFERENT HOSTS. A split across one machine is not a split; it is one
+//     process talking to itself over a network address, and it would report healthy.
+//   - the peer must be addressed ON THE FABRIC LINK the deployment names. This is the condition
+//     with a measured price: the same deployment ran at 4.2 GB/min over the LAN and 144 GB/min over
+//     RoCE -- 34x -- and NOTHING IN THE SERVED BEHAVIOUR DISTINGUISHES THEM except latency. A peer
+//     addressed on the LAN is a working deployment that is silently thirty-four times slower, which
+//     is the class of defect that gets diagnosed as "the model is slow".
+//   - the fabric link must actually TOUCH BOTH HOSTS. A link between two other machines is not the
+//     path these two speak over, and naming it would make the check above pass against the wrong
+//     subject.
+//   - the front door and the peer must not be the same PORT ON THE SAME ADDRESS, which is the
+//     copy-paste of the endpoint block.
+//
+// A deployment that fails any of them has no constructor. It is not reported later.
+type ServingUnit sole_constructor {
+  alias: NonEmptyStr
+  front_door: ServingUnitFrontDoor
+  weights_peer: ServingUnitWeightsPeer
+  fabric: FabricLink
+  slot_plan: ServingUnitSlotPlan
+}
+
+fn serving_unit_construct(
+  alias: NonEmptyStr,
+  front_door: ServingUnitFrontDoor,
+  weights_peer: ServingUnitWeightsPeer,
+  fabric: FabricLink,
+  slot_plan: ServingUnitSlotPlan,
+) -> ServingUnit? {
+  if host_identity_eq(a: front_door.host, b: weights_peer.host) {
+    none
+  } else {
+    match fabric_endpoint_on(link: fabric, host: weights_peer.host) {
+      Absent => none
+      Present { value: peer_end } =>
+        match fabric_endpoint_on(link: fabric, host: front_door.host) {
+          Absent => none
+          Present { value: _ } =>
+            if !ipv4_address_eq(a: peer_end.address, b: weights_peer.fabric_address) {
+              none
+            } else {
+              Present { value: ServingUnit {
+                alias: alias,
+                front_door: front_door,
+                weights_peer: weights_peer,
+                fabric: fabric,
+                slot_plan: slot_plan,
+              } }
+            }
+        }
+    }
+  }
+}
+
+// THE ONE ADDRESS A CLIENT MAY HOLD. There is deliberately no sibling returning the weights peer as
+// an endpoint: C1 is enforced by there being nothing to call, rather than by a rule saying not to.
+fn serving_unit_client_endpoint(d: ServingUnit) -> String {
+  join(["http://", d.front_door.bind_address as String, ":", to_string(d.front_door.port)], "")
+}
+
+fn serving_unit_rpc_peer_wire(d: ServingUnit) -> String {
+  join([render_ipv4_address(addr: d.weights_peer.fabric_address), ":", to_string(d.weights_peer.port)], "")
+}
+
+// A HOST THAT HOLDS WEIGHTS IS NOT A SERVING ENDPOINT, asked as a question a roster can answer.
+//
+// This is the checkable half of C1. The constructor above makes the peer unaddressable WITHIN a
+// deployment; it cannot see a SEPARATE roster that also names that host as a single-host serving
+// cell. That is the actual hazard on .233, which runs an unrelated ollama on :11434 alongside its
+// weights role, and it is how the host would come to accept a load: not through this deployment,
+// but through another one that never knew this one existed.
+fn serving_unit_weights_peer_hosts(deployments: List<ServingUnit>) -> List<HostIdentity> {
+  map(deployments, d => d.weights_peer.host)
+}
+
+fn serving_unit_host_is_weights_peer(
+  deployments: List<ServingUnit>,
+  host: HostIdentity,
+) -> Bool {
+  any(serving_unit_weights_peer_hosts(deployments: deployments), h => host_identity_eq(a: h, b: host))
+}
+
+// ================= THE OBSERVED DEPLOYMENT, 2026-09-02 18:23 UTC =================
+//
+// Read from the operator's handoff specification, which records what was measured live rather than
+// what was intended: slots, per-slot context, route status codes and both hosts' memory at 18:23
+// UTC, throughput between 18:11 and 18:19 UTC on an idle deployment.
+//
+// THE FABRIC ROW IS NOT RE-AUTHORED HERE. It is `fabric_rail0` from gunbc.spark.fabric_link_desired,
+// whose endpoints were read back from the durable /etc/netplan/90-NM-*.yaml on both hosts. The
+// specification's topology section names the same 192.168.100.0/24 link, so citing the existing row
+// rather than restating its addresses is what keeps one fabric fact in one place -- and it means the
+// constructor's fabric conditions above are checked against the measured fabric, not against a
+// second copy of it authored to agree.
+data serving_unit_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
+
+// THE FRONT DOOR'S LAN ADDRESS IS CARRIED HERE AS AN OBSERVATION, AND DELIBERATELY NOT CITED FROM
+// gunbc.fleet_intent_network, WHICH WOULD BE THE OBVIOUS §3 MOVE AND WOULD BE WRONG.
+//
+// That module holds .232/.233 in PROSE only -- there is no typed address row to cite, so nothing is
+// being duplicated here. The reason there is no row is the part that matters: the module states that
+// membership in its `endpoints` IS ENROLLMENT, so authoring an address row there PERFORMS the
+// enrollment rather than describing it. srv7/srv8 are deliberately unenrolled, and enrolling a pair
+// as a side effect of needing somewhere tidy to put an address is exactly the act-fusion that the
+// admission of this pair is supposed to keep separable.
+//
+// So this field is an observation of where a measured front door answered, at a host that is not a
+// fleet member. It confers no membership and must not be read as any.
+//
+// THE FABRIC IS THE OPPOSITE CASE AND IS HANDLED THE OPPOSITE WAY. Its addresses, interface names
+// and MTU ARE owned -- by gunbc.spark.fabric_link_desired, merged -- so this module references that
+// link BY IDENTITY and derives the peer's address from it. No fabric field is restated here.
+data serving_unit_observed_front_door: ServingUnitFrontDoor = ServingUnitFrontDoor {
+  host: operator_host_srv7,
+  bind_address: "192.168.1.232" as NonEmptyStr,
+  port: 30000,
+}
+
+data serving_unit_observed_slot_plan: ServingUnitSlotPlan = ServingUnitSlotPlan {
+  per_slot_context: token_count(count: 1048576),
+  slots: positive_slot_count(count: positive_measure_count(predecessor: 9)),
+}
+
+fn serving_unit_observed_weights_peer() -> ServingUnitWeightsPeer? {
+  match fabric_rail0 {
+    Absent => none
+    Present { value: link } =>
+      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+        Absent => none
+        Present { value: e } =>
+          Present { value: ServingUnitWeightsPeer {
+            host: operator_host_srv8,
+            fabric_address: e.address,
+            port: 50052,
+          } }
+      }
+  }
+}
+
+// The observed deployment, or Absent when any condition that makes it ONE serving unit fails to
+// hold. An Absent here is not a deployment with a problem to report later -- it never existed, so
+// nothing downstream can plan from it.
+fn serving_unit_observed() -> ServingUnit? {
+  match fabric_rail0 {
+    Absent => none
+    Present { value: link } =>
+      match serving_unit_observed_weights_peer() {
+        Absent => none
+        Present { value: peer } =>
+          serving_unit_construct(
+            alias: serving_unit_observed_alias,
+            front_door: serving_unit_observed_front_door,
+            weights_peer: peer,
+            fabric: link,
+            slot_plan: serving_unit_observed_slot_plan,
+          )
+      }
+  }
+}
+
+fn serving_unit_observed_units() -> List<ServingUnit> {
+  match serving_unit_observed() {
+    Present { value: d } => [d]
+    Absent => []
+  }
+}
+
+// ================= WHAT THE UNIT WAS MEASURED TO DELIVER =================
+//
+// A BAND, NOT A NUMBER, AND THE REASON IS IN THE MEASUREMENT ITSELF. Ten slots produced 58.8
+// aggregate decode tok/s on one run and 50.9 on a repeat of the same configuration. Encoding 58.8
+// would be a censored estimator presented as a threshold: it takes the better arm of a two-sample
+// spread and reports it as the property, and the repeat already falsifies that precision. So the
+// observation carries both ends and nothing here is a floor.
+//
+// WHY THE UNIT IS NOT CONFIGURED AT ITS MEMORY CEILING, which is the fact that stops "more slots"
+// from reading as "more throughput". Twelve slots FIT -- and were SLOWER, 57.3 against 58.8, while
+// leaving the peer at 9 GiB free instead of 16. Ten is a tuned value chosen on measured throughput,
+// not a capacity limit waiting to be filled, and raising it without re-measuring is how a
+// configuration gets worse while looking more generous.
+//
+// AND SLOTS BUY CONCURRENCY, NOT SPEED. Single-stream decode is memory-bandwidth-bound at roughly
+// 13-16 tok/s no matter how many slots exist; per-stream rate FALLS as concurrency rises (13.3 at
+// one, 5.9 at ten). A reader who takes the aggregate figure as a per-session speed will size
+// sessions wrongly, which is why both quantities are recorded rather than the headline one.
+//
+// HONEST LIMIT ON ALL OF IT: measured on short completions against a near-empty context. Real
+// sessions at 90k+ decode slower, so these figures bound an idle deployment and are not a service
+// level. Re-derive rather than quote: the producer is the operator's handoff measurement between
+// 18:11 and 18:19 UTC on 2026-09-02, and a claim about delivered throughput needs its own
+// instrument rather than this row.
+type ServingUnitThroughputBand sole_constructor {
+  slots: PositiveSlotCount
+  aggregate_low_tok_s: Int
+  aggregate_high_tok_s: Int
+  per_stream_tok_s: Int
+}
+
+fn serving_unit_throughput_band(
+  slots: PositiveSlotCount,
+  aggregate_low_tok_s: Int,
+  aggregate_high_tok_s: Int,
+  per_stream_tok_s: Int,
+) -> ServingUnitThroughputBand? {
+  if aggregate_low_tok_s > aggregate_high_tok_s {
+    none
+  } else {
+    Present { value: ServingUnitThroughputBand {
+      slots: slots,
+      aggregate_low_tok_s: aggregate_low_tok_s,
+      aggregate_high_tok_s: aggregate_high_tok_s,
+      per_stream_tok_s: per_stream_tok_s,
+    } }
+  }
+}
+
+// The band as measured at the selected slot count. Reported in whole tok/s because the spread
+// between the two runs is larger than any fraction either reported.
+fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
+  serving_unit_throughput_band(
+    slots: serving_unit_observed_slot_plan.slots,
+    aggregate_low_tok_s: 50,
+    aggregate_high_tok_s: 59,
+    per_stream_tok_s: 6,
+  )
+}
+
+// THE CLAIM A THRESHOLD MAY BE COMPARED AGAINST, and it reads the LOW end deliberately. An operator
+// threshold set against the high end would be met by one of the two observed runs and missed by the
+// other, so the unit would pass or fail on which run was quoted.
+fn serving_unit_throughput_meets(band: ServingUnitThroughputBand, threshold_tok_s: Int) -> Bool {
+  band.aggregate_low_tok_s >= threshold_tok_s
+}
+
+// ================= THE ARTIFACT THE UNIT ACTUALLY LOADED =================
+//
+// ITS IDENTITY IS NOT ESTABLISHED, AND THIS CARRIER EXISTS TO SAY SO RATHER THAN TO IMPLY OTHERWISE.
+//
+// The unit serves from a four-shard GGUF set whose first shard the front door reports as its
+// model_path. What no observation reaches is WHICH BYTES those shards hold. Two independent reasons,
+// both measured rather than assumed:
+//
+//   - THE SERVING SURFACE DOES NOT CARRY ONE. GET /v1/models on the front door returns this model
+//     with `"digest": ""` -- an empty string, not an absent field. The server holds no artifact
+//     digest to report, so no probe against the API can bind identity no matter how it is written.
+//   - THE FILES ARE NOT REACHABLE FROM THE CONVERGENCE PRINCIPAL. The shards sit under a personal
+//     home on the experimentation pair, which the automation account does not have access to.
+//
+// WHY THIS IS RECORDED AND NOT PAPERED OVER. An earlier attempt to close this condition hashed the
+// wrong object entirely -- an ollama blob on a different pair of hosts -- and reported the artifact
+// identity as established. It was not, and the correction is the reason this carrier makes the
+// unbound state a CONSTRUCTOR ARM rather than a missing field: an artifact realization with no
+// identity is writable here, is visibly distinct from one with an identity, and cannot be mistaken
+// for the latter by a consumer that forgets to check.
+//
+// The spec's own provenance agrees and is quoted rather than improved on: the ~108 GiB weight split
+// is "inferred from file size, not per-host layer accounting", and reboot survival is "not
+// verified". Nothing here upgrades either.
+type ServingUnitArtifactIdentity
+  = ArtifactIdentityBound { shard_digests: List<NonEmptyStr> }
+  | ArtifactIdentityUnobserved { cause: NonEmptyStr }
+
+type ServingUnitArtifact sole_constructor {
+  primary_shard_path: NonEmptyStr
+  shard_count: Int
+  identity: ServingUnitArtifactIdentity
+}
+
+data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
+  primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
+  shard_count: 4,
+  identity: ArtifactIdentityUnobserved {
+    cause: "GET /v1/models on the front door reports this model with an empty digest, and the shard files are outside the convergence principal's access on the experimentation pair" as NonEmptyStr,
+  },
+}
+
+// A UNIT WHOSE ARTIFACT IDENTITY IS UNBOUND MAY BE OBSERVED AND MAY NOT BE CONVERGED, and that is
+// the whole reason to type the distinction. Convergence actuates bytes; a plan that cannot name
+// which bytes it is asserting is asserting a path and hoping. This is the predicate a publication
+// step must consult, and it answers false today.
+fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
+  match a.identity {
+    ArtifactIdentityBound { shard_digests: ds } => length(ds) > 0
+    ArtifactIdentityUnobserved { cause: _ } => false
+  }
+}
+
+// ================= WHAT THE FRONT DOOR ACTUALLY ANSWERS =================
+//
+// THIS IS NOT AN OLLAMA, AND A PROBE THAT ASSUMES IT IS READS A HEALTHY UNIT AS DEAD.
+//
+// Measured directly against the front door rather than taken from the handoff: /props answers with
+// total_slots 10 and default_generation_settings.n_ctx 1048576, /v1/models answers with the split
+// alias, and /api/tags answers 404. gunbc.spark.serving_terminal_health and
+// gunbc.spark.serving_readback_parse both read ollama routes, so pointing today's readback at this
+// unit would report every route missing and conclude the host is not serving.
+//
+// THE CONTEXT AUTHORITY IS /props AND THE FIGURE IT REPORTS IS ALREADY DIVIDED. That is what makes
+// it the right thing to compare against and the unit file's `-c` the wrong thing: the two are
+// different quantities, and the silent-shrink failure is invisible to anything that checks the
+// second one.
+type ServingUnitApiSurface = OpenAiCompatibleSurface | OllamaSurface
+
+data serving_unit_observed_api_surface: ServingUnitApiSurface = OpenAiCompatibleSurface
+
+fn serving_unit_context_authority_route(surface: ServingUnitApiSurface) -> NonEmptyStr {
+  match surface {
+    OpenAiCompatibleSurface => "/props" as NonEmptyStr
+    OllamaSurface => "/api/show" as NonEmptyStr
+  }
+}
+
+fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyStr {
+  match surface {
+    OpenAiCompatibleSurface => "/v1/models" as NonEmptyStr
+    OllamaSurface => "/api/tags" as NonEmptyStr
+  }
+}
