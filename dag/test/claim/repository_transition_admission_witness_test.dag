@@ -74,6 +74,12 @@ fn exit_refusal_reason(e: ProcessExit) -> String {
 // entries use, injecting the retained legacy refusal so the control stays hermetic after production
 // binds GitNativeConvergence. Removing either admission match makes its corresponding witness reach
 // host/workflow effects instead of returning this exact refusal and therefore red.
+//
+// THAT RED ATTEMPTS THE REAL WET PATH; IT IS NOT A CHEAP DIAGNOSTIC. If either witness fails after
+// an admission edit, restore the missing guard before running it again. Re-running to inspect the
+// failure can reach candidate/host observation or the receipted deploy transaction and must never be
+// used as a production experiment. The safe execution property comes from the injected refusal
+// firing first; once that property is broken, the witness is wet by construction.
 test fn both_direct_apply_principals_consult_repository_transition_admission() -> Bool {
   let expected = refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
   exit_refusal_reason(e: live_deploy_wet_with_access_for_realization(
