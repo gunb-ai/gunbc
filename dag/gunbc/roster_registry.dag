@@ -126,6 +126,14 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.witness_eval_budget", decl_name: "declared_witness_eval_budgets"),
+    unit_kind: "schedule witness entry (entry file x function)",
+    membership: DeclaredFrontier {
+      reason: "declared eval-envelope frontier: witnesses whose own work is bounded by something the required floor's per-claim ceiling cannot see, each row naming WHAT THE WITNESS WALKS rather than what a runner measured; the residual (no row) is the fast lane, so the roster names only the exceptions and an undeclared witness takes the tighter limit",
+      dissolution: unbound_dissolution(description: "per row: the derivation the row names stops being paid per claim — served once at an ancestor whose scope reaches the claims that demand it, per std.materialization_ladder — at which point the witness's own work is bounded by its closure and the row deletes; roster-wide, the roster empties when no witness needs an envelope larger than the ordinary ceiling")
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "gunbc.explicit_witness_admission", decl_name: "explicit_witness_admissions"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
