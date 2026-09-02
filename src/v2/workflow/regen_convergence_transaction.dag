@@ -697,9 +697,43 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
   }
 }
 
+// A LABEL IS A NAME, NOT A DIAGNOSTIC. The host binding used to render a refusal as its label
+// alone, so `StagePlannedExecutedMismatch` and every unlabelled arm collapsed to one word and the
+// populations that caused the refusal -- the whole content of a population verdict -- never
+// reached the caller. That is the `diagnostic_name_mechanism_silent` shape: a typed refusal whose
+// type is announced and whose located detail is discarded, leaving a reader unable to tell WHICH
+// surfaces disagreed or even which arm answered. §5 asks for a typed, LOCATED diagnostic; this
+// renders the located half.
+fn regen_surface_identity_path_list(rows: List<RegenSurfaceIdentity>) -> String {
+  fold(rows, init: "", f: fn(acc, row) {
+    if acc == "" {
+      row.projected_path
+    } else {
+      concat(acc, concat(" ", row.projected_path))
+    }
+  })
+}
+
+fn regen_stage_execution_admission_detail(admission: RegenStageExecutionAdmission) -> String {
+  match admission {
+    RegenStageExecutionAdmitted => ""
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      concat(
+        concat("planned=[", concat(regen_surface_identity_path_list(rows: planned), "] ")),
+        concat("executed=[", concat(regen_surface_identity_path_list(rows: executed), "]"))
+      )
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: expected, observed: observed } } =>
+      concat("expected=", concat(expected, concat(" observed=", observed)))
+    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: _, reason: reason } } =>
+      concat("build refused: ", reason)
+    RegenStageExecutionRefused { refusal: _ } => "refusal arm carries no renderer"
+  }
+}
+
 fn regen_stage_execution_admission_label(admission: RegenStageExecutionAdmission) -> String {
   match admission {
     RegenStageExecutionAdmitted => "Admitted"
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: _, executed: _ } } => "StagePlannedExecutedMismatch"
     RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: _, observed: _ } } => "InstalledDigestMismatch"
     RegenStageExecutionRefused { refusal: _ } => "Refused"
   }
