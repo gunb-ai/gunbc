@@ -45,9 +45,9 @@ provisioning/srv3/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv4/gunbc-ghrunner.sudoers merge=generated-artifact
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
+tools/fabric_ci_fci1_bounded_execution_context.env merge=generated-artifact
 src/v1/stage0/src/*.rs merge=generated-artifact
 src/v1/stage0/Cargo.toml merge=generated-artifact
-tools/fabric_ci_fci1_bounded_execution_context.env merge=generated-artifact
 src/v1/stage0/src/behavioral_receipt_host.rs !merge
 src/v1/stage0/src/bounded_shell_host_drain.rs !merge
 src/v1/stage0/src/census_exclude_derive.rs !merge
