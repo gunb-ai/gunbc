@@ -469,7 +469,11 @@ mod compiler_tests {
     /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below
     /// proves only that something in the tree is broken. The red must be refused BY RUSTC and
     /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the
-    /// hundreds of modules in its closure would pass for the fixture's own defect.
+    /// hundreds of modules in its closure would pass for the fixture's own defect -- and the
+    /// attributed diagnostic must be the ERROR CLASS this arm claims (rustc E0308, mismatched
+    /// types), because a location says WHERE rustc refused and never WHAT. Without the code a
+    /// fixture edited into a syntax error, or an emitter regression producing an unresolved
+    /// path, reds in the right file and passes for the text-boundary subject it is not.
     ///
     /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
     /// compiles two emitted crates, which is minutes rather than milliseconds, and
@@ -492,10 +496,11 @@ mod compiler_tests {
         );
         assert!(
             crate::cli_run::fixture_discrimination_passed(&pair),
-            "the control must compile and the meaning-level red must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            "the control must compile and the meaning-level red must be refused by rustc, attributed to its own emitted module, and carry the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
-            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
         );
     }
 
@@ -2454,35 +2459,91 @@ mod compiler_tests {
     fn coercion_rust_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Int".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Int".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Int".into()
+            ),
             "i64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Float".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Float".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Float".into()
+            ),
             "f64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bool".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Bool".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bool".into()
+            ),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Unit".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Unit".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Unit".into()
+            ),
             "()"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "String".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "String".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "String".into()
+            ),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bytes".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Bytes".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bytes".into()
+            ),
             "Vec<u8>"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Secret".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Secret".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Secret".into()
+            ),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Json".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Json".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Json".into()
+            ),
             "serde_json::Value"
         );
     }
@@ -2491,35 +2552,91 @@ mod compiler_tests {
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Int".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Int".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Int".into()
+            ),
             "int"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Float".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Float".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Float".into()
+            ),
             "float"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bool".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Bool".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bool".into()
+            ),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Unit".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Unit".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Unit".into()
+            ),
             "None"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "String".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "String".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "String".into()
+            ),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bytes".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Bytes".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bytes".into()
+            ),
             "bytes"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Secret".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Secret".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Secret".into()
+            ),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Json".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Json".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Json".into()
+            ),
             "dict"
         );
     }
@@ -2528,35 +2645,91 @@ mod compiler_tests {
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Int".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Int".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Int".into()
+            ),
             "int64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Float".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Float".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Float".into()
+            ),
             "float64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bool".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Bool".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bool".into()
+            ),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Unit".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Unit".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Unit".into()
+            ),
             "struct{}"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "String".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "String".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "String".into()
+            ),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bytes".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Bytes".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bytes".into()
+            ),
             "[]byte"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Secret".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Secret".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Secret".into()
+            ),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Json".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Json".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Json".into()
+            ),
             "interface{}"
         );
     }
@@ -2672,35 +2845,67 @@ mod compiler_tests {
     fn coercion_is_copy_from_checkpoint() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Int".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Int".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Float".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Float".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Bool".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Bool".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Unit".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Unit".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "String".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "String".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Bytes".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Bytes".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Secret".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Secret".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Json".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Json".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
     }
