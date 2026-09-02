@@ -1491,10 +1491,19 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // typed exclusive/inclusive split, which is why the sum silently failed to close instead of
     // refusing. Modelling that split is a RequiredFloorDisposition question in
     // src/v2/workflow/required_floor.dag, not something to decide inside an eprintln!.
+    // THE PER-CAUSE COUNTERS ARE DERIVED FROM THE ROWS, never accumulated beside them: a
+    // counter that disagrees with the population it summarizes has no constructor here.
+    // `interrupted_before_verdict` stays on the line as the population's size, with the causes
+    // beside it, because dropping the total would move the question rather than answer it —
+    // a reader who wants "how many claims never answered" would have to add the arms and would
+    // silently under-count the day a third mechanism gets an arm.
+    let interrupted_causes =
+        v1_compiler::cli_run::interrupted_cause_census(&outcome.interrupted_before_verdict);
     eprintln!(
         "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
          known_red_held={} failed={} stale_quarantine={} \
-         interrupted_before_verdict={} completed_over_cost_requirement={} \
+         interrupted_before_verdict={} interrupted_cpu_deadline={} \
+         interrupted_wall_deadline={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
@@ -1510,6 +1519,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.failures.len(),
         outcome.stale_quarantine.len(),
         outcome.interrupted_before_verdict.len(),
+        interrupted_causes.cpu_deadline,
+        interrupted_causes.wall_deadline,
         outcome.completed_over_cost_requirement.len(),
         outcome.host_tool_unresolved.len(),
         outcome.route_gap.len(),
@@ -1576,8 +1587,17 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for stale in &outcome.stale_quarantine {
         eprintln!("required-floor: STALE-QUARANTINE {stale}");
     }
+    // THE CAUSE IS ON THE ROW'S OWN LINE, not only in the summary. A reader triaging one
+    // identity reads this line and nothing else; leaving the mechanism only in the aggregate
+    // would put the evidence on a surface disjoint from the one anyone reads for that identity.
     for refused in &outcome.interrupted_before_verdict {
-        eprintln!("required-floor: INTERRUPTED-BEFORE-VERDICT {refused}");
+        eprintln!(
+            "required-floor: INTERRUPTED-BEFORE-VERDICT {} raised_by={} enrolled_expected_red={} {}",
+            refused.qualified,
+            refused.raised_by.label(),
+            refused.enrolled_expected_red,
+            refused.detail
+        );
     }
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");

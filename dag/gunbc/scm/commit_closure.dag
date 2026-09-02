@@ -81,10 +81,19 @@ import std.types { Bool, Int, List, list_length }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
+  ScmObject,
+  SemanticNodeObject,
+  AuthoredSourceObject,
   ObjectStore,
   StoredEdge,
+  SemanticNodeTarget,
+  NodeRecordLookup,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
   object_id_eq,
-  store_contains,
+  resolve_node_target,
+  node_target_locator,
   store_records_in_dependency_order,
 }
 
@@ -152,14 +161,18 @@ type AdmittedPartialCommitClosure sole_constructor {
   reason: PartialClosureReason
 }
 
-// THE REFUSAL IS AN ARM OF THE OUTCOME, not a one-member coproduct beside it. There is exactly one
-// way to be refused here -- the closure has nothing missing -- and wrapping that in its own type
-// would either read as a type alias or invite a second arm invented to justify the wrapper. If a
-// second genuine refusal appears, it joins this coproduct and every match fails to compile HERE,
-// which is the behaviour the nesting was for.
+// THE REFUSALS ARE ARMS OF THE OUTCOME, not a coproduct beside it. The note here used to say there
+// was exactly one way to be refused -- the closure has nothing missing -- and predicted that a second
+// genuine refusal would join this coproduct and break every match at the use sites. That is exactly
+// what happened: a closure requiring a semantic node at a locator an authored source occupies is
+// UNSATISFIABLE rather than partial, since no fetch can repair an occupied locator, so admitting it
+// would mint a transfer nobody can complete. It names the whole population rather than the first,
+// because a caller repairing one and retrying should not have to discover the rest one round at a
+// time.
 type PartialClosureAdmissionOutcome
   = PartialClosureAdmitted { admitted: AdmittedPartialCommitClosure }
   | ClosureCompleteSoNothingToAdmit
+  | ClosureRequiresNodeAtAuthoredSource { identities: List<ObjectId> }
 
 // WHY A CLOSED VOCABULARY RATHER THAN A STRING. A reason nobody can enumerate is a reason nobody can
 // refuse, and the two admitted causes have genuinely different owners: one is a transfer decision,
@@ -172,15 +185,19 @@ fn admit_partial_commit_closure(
   closure: CommitClosure,
   reason: PartialClosureReason
 ) -> PartialClosureAdmissionOutcome {
-  let unresolved = unresolved_identities(closure: closure)
-  if list_length(items: unresolved) == 0 {
-    ClosureCompleteSoNothingToAdmit
+  let census = closure_census(closure: closure)
+  if list_length(items: census.source_occupied) > 0 {
+    ClosureRequiresNodeAtAuthoredSource { identities: census.source_occupied }
   } else {
-    PartialClosureAdmitted {
-      admitted: AdmittedPartialCommitClosure {
-        closure: closure,
-        unresolved: unresolved,
-        reason: reason,
+    if list_length(items: census.absent) == 0 {
+      ClosureCompleteSoNothingToAdmit
+    } else {
+      PartialClosureAdmitted {
+        admitted: AdmittedPartialCommitClosure {
+          closure: closure,
+          unresolved: census.absent,
+          reason: reason,
+        }
       }
     }
   }
@@ -198,10 +215,53 @@ fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId>
   admitted.unresolved
 }
 
+// An admitted partial closure is well-kinded BY CONSTRUCTION: admit_partial_commit_closure refuses the
+// source_occupied population before it mints one, so this re-seals rather than re-judges.
+fn admitted_well_kinded(admitted: AdmittedPartialCommitClosure) -> WellKindedClosure {
+  WellKindedClosure { closure: admitted.closure }
+}
+
+// A CLOSURE WHOSE EVERY REQUIREMENT IS SATISFIABLE, WHICH IS NOT THE SAME AS COMPLETE.
+//
+// The encoder must never see a closure requiring a semantic node where an authored source sits: it
+// has no honest spelling for that. Emitting the contained arm publishes bytes the decoder refuses;
+// emitting the uncontained arm publishes a fetchable absence that no fetch can repair. Both were
+// shipped on this branch in turn, which is why the guarantee is now a CARRIER rather than a check --
+// `.dag` has no module privacy, so a judgment written at the two intended entry points leaves the raw
+// encoder importable and the bad state perfectly representable through it.
+//
+// sole_constructor seals it: the only way to obtain one is admit_well_kinded_closure, which runs the
+// census. An ABSENT population is fine here and is the partial-closure case the format exists for --
+// this carrier is about KIND, not about completeness.
+type WellKindedClosure sole_constructor {
+  closure: CommitClosure
+}
+
+type WellKindedAdmission
+  = WellKinded { admitted: WellKindedClosure }
+  | NotWellKinded { identities: List<ObjectId> }
+
+fn admit_well_kinded_closure(closure: CommitClosure) -> WellKindedAdmission {
+  let census = closure_census(closure: closure)
+  if list_length(items: census.source_occupied) > 0 {
+    NotWellKinded { identities: census.source_occupied }
+  } else {
+    WellKinded { admitted: WellKindedClosure { closure: closure } }
+  }
+}
+
+fn well_kinded_store(admitted: WellKindedClosure) -> ObjectStore {
+  admitted.closure.store
+}
+
+fn well_kinded_root(admitted: WellKindedClosure) -> SemanticNodeTarget {
+  admitted.closure.root
+}
+
 // A closure is the store plus the root the commit names. Nothing about how it is written down.
 type CommitClosure {
   store: ObjectStore
-  root: ObjectId
+  root: SemanticNodeTarget
 }
 
 // WHY THE WIRE ARM IS "UNCONTAINED" AND THIS FUNCTION SAYS "UNRESOLVED", which is not two names for
@@ -229,9 +289,6 @@ type CommitClosure {
 // An EMPTY list is the complete closure. That is the ordinary case and it is not a special arm --
 // completeness is "nothing is missing", derived, never a stored flag that could disagree with the
 // objects beside it.
-fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
-  concat(uncontained_targets(store: closure.store), unresolved_root(closure: closure))
-}
 
 // TABLE COMPLETENESS WITHOUT A ROOT, because two different consumers ask two different questions and
 // only one of them has a root to ask about.
@@ -264,33 +321,125 @@ fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
 //
 // The realized n is not the argument. A delta encoder folds this over the whole store, and DESIGN §6
 // rejects "n is small here" as a non-time-stable fact: reuse is what changes n.
-fn uncontained_targets(store: ObjectStore) -> List<ObjectId> {
-  reverse(
-    fold(
-      store_records_in_dependency_order(store: store),
-      init: [],
-      f: fn(acc, record) { uncontained_in_record(store: store, acc: acc, record: record) }
-    )
-  )
+
+// AN AUTHORED SOURCE HAS NO OUTBOUND REFERENCES, so it contributes nothing to the unresolved set --
+// and that is a fact about its shape rather than a skip. Writing it as a match makes the reason
+// visible at the site: a later object kind that DOES carry references cannot be added without this
+// fold refusing to compile, whereas a filter on "is it a node" would silently ignore it.
+
+// A REQUIREMENT IS UNSATISFIED FOR ONE OF TWO REASONS, AND THEY HAVE DIFFERENT REMEDIES.
+//
+// This fold used to ask store_contains_node_target, a Bool, and treat every false as a fetchable
+// absence. That merged "no object is at L" with "an authored source is at L" -- states whose remedies
+// are not merely different but incompatible. An absence is repaired by fetching the object. An
+// occupied locator cannot be repaired by fetching anything: something is already there, and it is the
+// wrong kind. Putting the second into the population every consumer reads as fetchable is what let an
+// admitted partial closure emit bytes this same build refuses at decode, because the encoder's
+// position index is over OBJECTS and happily found the file to emit a contained reference to.
+//
+// So the traversal classifies rather than tests, and the two populations stay apart all the way up.
+type ClosureCensus {
+  absent: List<ObjectId>
+  source_occupied: List<ObjectId>
 }
 
-fn uncontained_in_record(store: ObjectStore, acc: List<ObjectId>, record: ObjectRecord) -> List<ObjectId> {
+fn empty_census() -> ClosureCensus {
+  ClosureCensus { absent: [], source_occupied: [] }
+}
+
+// Both lists accumulate by prepend and are reversed once at the top, the idiom this module already
+// documents for store_census and then had to be reminded of twice.
+fn census_of_target(store: ObjectStore, acc: ClosureCensus, target: SemanticNodeTarget) -> ClosureCensus {
+  match resolve_node_target(store: store, target: target) {
+    NodeRecordFound(_) => acc
+    NodeRecordAbsent { identity: identity } =>
+      ClosureCensus {
+        absent: concat([identity], acc.absent),
+        source_occupied: acc.source_occupied,
+      }
+    NodeRecordIsAuthoredSource { identity: identity } =>
+      ClosureCensus {
+        absent: acc.absent,
+        source_occupied: concat([identity], acc.source_occupied),
+      }
+  }
+}
+
+fn census_in_record(store: ObjectStore, acc: ClosureCensus, record: ObjectRecord) -> ClosureCensus {
   fold(
     record.children,
     init: acc,
-    f: fn(inner, child) {
-      if store_contains(store: store, identity: child.target) { inner } else { concat([child.target], inner) }
-    }
+    f: fn(inner, child) { census_of_target(store: store, acc: inner, target: child.target) }
   )
 }
 
-// THE ROOT IS A REFERENCE LIKE ANY OTHER, and a closure missing its own root is the sharpest case of
-// incompleteness there is -- a document that names a commit whose top object it does not carry.
-// The predecessor encoded the root positionally too, so this case was as unnameable as the rest.
-fn unresolved_root(closure: CommitClosure) -> List<ObjectId> {
-  if store_contains(store: closure.store, identity: closure.root) { [] } else { [closure.root] }
+fn census_in_object(store: ObjectStore, acc: ClosureCensus, object: ScmObject) -> ClosureCensus {
+  match object {
+    AuthoredSourceObject(_) => acc
+    SemanticNodeObject(record) => census_in_record(store: store, acc: acc, record: record)
+  }
 }
 
+fn store_census(store: ObjectStore) -> ClosureCensus {
+  match fold(
+    store_records_in_dependency_order(store: store),
+    init: empty_census(),
+    f: fn(acc, object) { census_in_object(store: store, acc: acc, object: object) }
+  ) {
+    ClosureCensus { absent: a, source_occupied: w } =>
+      ClosureCensus { absent: reverse(a), source_occupied: reverse(w) }
+  }
+}
+
+// THE ROOT IS A REQUIREMENT LIKE ANY OTHER, so it is classified by the same three-way resolve. A
+// closure whose store does not hold its own root is the sharpest incompleteness there is; a closure
+// whose root locator holds a FILE is not incomplete at all, it is wrong-kind, and the two must not
+// arrive at the caller as one list.
+fn root_census(closure: CommitClosure) -> ClosureCensus {
+  census_of_target(store: closure.store, acc: empty_census(), target: closure.root)
+}
+
+fn closure_census(closure: CommitClosure) -> ClosureCensus {
+  let table = store_census(store: closure.store)
+  let root = root_census(closure: closure)
+  ClosureCensus {
+    absent: concat(table.absent, root.absent),
+    source_occupied: concat(table.source_occupied, root.source_occupied),
+  }
+}
+
+// THE TABLE'S OWN QUESTION, WITHOUT A ROOT, because two consumers ask two different things and only
+// one of them has a root to ask about. A COMMIT closure asks "is anything this program reaches
+// missing", which includes its own root. A REPOSITORY object table carries many commits over one
+// population, so it has no single root and checks its roots separately against the commit list.
+//
+// This replaces uncontained_targets, which answered one list. It answers the absent population only,
+// for the same reason unresolved_identities does: a locator occupied by the wrong kind is not
+// something the repository can fetch, and reporting it here would put it back into the population
+// whose whole meaning is "get these and the table completes".
+fn table_unresolved_identities(store: ObjectStore) -> List<ObjectId> {
+  store_census(store: store).absent
+}
+
+fn table_source_occupied_identities(store: ObjectStore) -> List<ObjectId> {
+  store_census(store: store).source_occupied
+}
+
+// THE FETCHABLE POPULATION IS THE ABSENT ONE, AND ONLY THE ABSENT ONE. Every consumer of this list
+// treats membership as "get this object and the closure completes"; a wrong-kind locator would make
+// that false, so it is not here.
+fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
+  closure_census(closure: closure).absent
+}
+
+fn source_occupied_identities(closure: CommitClosure) -> List<ObjectId> {
+  closure_census(closure: closure).source_occupied
+}
+
+// COMPLETE MEANS EVERY REQUIREMENT IS SATISFIED, which is both populations empty. A closure whose
+// root or child locator holds a file is not complete -- it is not even partial, since nothing can be
+// fetched to finish it.
 fn closure_is_complete(closure: CommitClosure) -> Bool {
-  list_length(items: unresolved_identities(closure: closure)) == 0
+  let census = closure_census(closure: closure)
+  (list_length(items: census.absent) == 0) && (list_length(items: census.source_occupied) == 0)
 }
