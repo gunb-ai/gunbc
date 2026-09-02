@@ -13,7 +13,7 @@ module gunbc.rung_drop
 // THIS CUT IS MECHANICAL AND ITS ORACLE IS CONTENT PRESERVATION. Each row carries its authored
 // paragraph BYTE-FOR-BYTE in `authored`; only the typed `identity`, `subject` and `declared` fields
 // are new, and they are read off the paragraph own opening sentence rather than composed. The
-// projection renders the roster in source order into docs/design-ledgers.md, so every sentence that
+// projection renders the roster in source order into docs/design-rung-drops.md, so every sentence that
 // was in DESIGN.md is still generated from this repository and still adjudicated by the
 // generated-artifact phase -- what changed is WHICH file it lands in, and therefore what every
 // session loads on every turn.
