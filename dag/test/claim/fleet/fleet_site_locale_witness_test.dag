@@ -1,0 +1,81 @@
+module test.claim.fleet.fleet_site_locale_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york, locale_en_us }
+import gunbc.fleet.fleet_site_locale {
+  HostFollowsSiteCivilZone,
+  HostRunsCoordinatedUniversalTime,
+  HostZonePolicyUnruled,
+  ProvisionedZone,
+  ZoneRefusedPolicyUnruled,
+  site_us_east_operator_premises,
+  fleet_host_zone_policy,
+  provisioned_time_zone,
+  provisioned_zone_is_settled,
+  provisioned_locale,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The wall this lane exists to build: a provisioning workflow must not be handed a timezone
+// nobody ruled on. The fleet's own hosts disagree -- srv4 and spark-a3ee run Etc/UTC while
+// spark-3bd5 and pi1 run America/New_York -- so any single derived value would silently declare
+// half the fleet misconfigured.
+
+// THE DISCRIMINATING RED. With the policy unruled the derivation REFUSES. This is the witness
+// that goes red if anyone gives HostZonePolicyUnruled a default, which is the exact repair a
+// future author reaches for when the workflow refuses and they want it to proceed.
+test fn w_unruled_policy_refuses_rather_than_defaulting() -> Bool {
+  !provisioned_zone_is_settled(
+    outcome: provisioned_time_zone(
+      site: site_us_east_operator_premises,
+      policy: HostZonePolicyUnruled,
+    )
+  )
+}
+
+// POSITIVE CONTROLS, without which the refusal above would also be satisfied by a derivation
+// that refuses on every input. Both settled arms must produce their own distinct zone.
+test fn w_site_following_policy_yields_the_sites_civil_zone() -> Bool {
+  match provisioned_time_zone(site: site_us_east_operator_premises, policy: HostFollowsSiteCivilZone) {
+    ProvisionedZone { zone: z } => z == zone_america_new_york
+    ZoneRefusedPolicyUnruled => false
+  }
+}
+
+test fn w_utc_policy_yields_utc_not_the_sites_zone() -> Bool {
+  match provisioned_time_zone(site: site_us_east_operator_premises, policy: HostRunsCoordinatedUniversalTime) {
+    ProvisionedZone { zone: z } => z == zone_etc_utc && z != zone_america_new_york
+    ZoneRefusedPolicyUnruled => false
+  }
+}
+
+// The two settled arms must not agree, or the policy axis would be decorative -- a witness that
+// would stay green if someone collapsed both arms onto one zone.
+test fn w_the_two_settled_policies_disagree() -> Bool {
+  match provisioned_time_zone(site: site_us_east_operator_premises, policy: HostFollowsSiteCivilZone) {
+    ProvisionedZone { zone: a } =>
+      match provisioned_time_zone(site: site_us_east_operator_premises, policy: HostRunsCoordinatedUniversalTime) {
+        ProvisionedZone { zone: b } => a != b
+        ZoneRefusedPolicyUnruled => false
+      }
+    ZoneRefusedPolicyUnruled => false
+  }
+}
+
+// The fleet's CURRENT standing is unruled, and that is a fact about the world this repository
+// must not quietly change. If someone rules the policy, this witness goes red and forces them to
+// state it here rather than leaving the ruling implicit in a workflow.
+test fn w_fleet_policy_is_currently_unruled() -> Bool {
+  match fleet_host_zone_policy {
+    HostZonePolicyUnruled => true
+    HostFollowsSiteCivilZone => false
+    HostRunsCoordinatedUniversalTime => false
+  }
+}
+
+// The locale has no policy axis because the measurement found no second arm; it derives directly.
+test fn w_locale_derives_from_the_site_without_a_policy() -> Bool {
+  provisioned_locale(site: site_us_east_operator_premises) == locale_en_us
+}

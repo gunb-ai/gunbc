@@ -1,0 +1,94 @@
+module gunbc.fleet.fleet_site_locale
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.iana.time_zone_database {
+  IanaTimeZoneId,
+  PosixLocaleId,
+  TzdataRelease,
+  zone_etc_utc,
+  zone_america_new_york,
+  locale_en_us,
+  tzdata_2026c,
+}
+
+// WHERE A MACHINE'S CIVIL TIME COMES FROM, and why it is not a constant in a provisioning
+// workflow.
+//
+// The operator's ruling is that language and timezone "need to be inherited from a physical
+// location". That is a modeling instruction, not a value: a unit's zone is a consequence of
+// where the unit physically sits, so the authority is the SITE, and any workflow that wants a
+// zone derives one rather than carrying its own. Moving a rack then changes one row here, and
+// every consumer follows; a literal in the onboarding workflow would have to be found and
+// edited per consumer, which is the parallel authority §3 forbids.
+
+type SiteIdentity = NonEmptyStr where brand("SiteIdentity")
+
+// A site's zone is the zone of its JURISDICTION, which is a fact about the world and not a
+// preference. This is the half that is genuinely "inherited from a physical location".
+type PhysicalSite {
+  identity: SiteIdentity
+  civil_time_zone: IanaTimeZoneId
+  civil_locale: PosixLocaleId
+}
+
+data site_us_east_operator_premises: PhysicalSite = PhysicalSite {
+  identity: "us-east-operator-premises" as SiteIdentity,
+  civil_time_zone: zone_america_new_york,
+  civil_locale: locale_en_us,
+}
+
+// THE SECOND HALF, AND THE REASON THIS IS TWO FACTS RATHER THAN ONE. A site's civil zone is
+// where the machine IS; the zone a machine is CONFIGURED to is a separate decision, and this
+// fleet demonstrably makes it differently on different hosts. Measured 2026-09-02 across four
+// reachable hosts at one site: srv4 and spark-a3ee report Etc/UTC, while spark-3bd5 and pi1
+// report America/New_York. The two already-onboarded Sparks disagree WITH EACH OTHER.
+//
+// That is the evidence that a single derived value would have been wrong: a model that read the
+// zone straight off the site would have silently declared half the fleet misconfigured, and a
+// model that hardcoded UTC would have silently declared the other half misconfigured. Neither
+// is a finding this repository has earned -- nobody has ruled which is intended.
+//
+// So the policy is its own axis with an explicit UNDECIDED arm. HostZonePolicyUnruled is
+// ⊥-as-ignorance and is kept distinct from both answers (DESIGN §5): it is what the fleet's
+// state actually supports today, and a consumer that needs a zone must refuse against it rather
+// than pick the arm that happens to be convenient.
+type HostZonePolicy
+  = HostFollowsSiteCivilZone
+  | HostRunsCoordinatedUniversalTime
+  | HostZonePolicyUnruled
+
+data fleet_host_zone_policy: HostZonePolicy = HostZonePolicyUnruled
+
+type ProvisionedTimeZone
+  = ProvisionedZone { zone: IanaTimeZoneId }
+  | ZoneRefusedPolicyUnruled
+
+// The derivation a provisioning workflow calls. It never returns a default: with the policy
+// unruled it REFUSES, which is what stops the DGX Spark onboarding wizard from being handed a
+// zone nobody chose. The refusal is the point -- the workflow stopping and naming the missing
+// ruling is cheaper than eight more units configured to a guess.
+fn provisioned_time_zone(site: PhysicalSite, policy: HostZonePolicy) -> ProvisionedTimeZone {
+  match policy {
+    HostFollowsSiteCivilZone => ProvisionedZone { zone: site.civil_time_zone }
+    HostRunsCoordinatedUniversalTime => ProvisionedZone { zone: zone_etc_utc }
+    HostZonePolicyUnruled => ZoneRefusedPolicyUnruled
+  }
+}
+
+fn provisioned_zone_is_settled(outcome: ProvisionedTimeZone) -> Bool {
+  match outcome {
+    ProvisionedZone { zone: _ } => true
+    ZoneRefusedPolicyUnruled => false
+  }
+}
+
+// The LOCALE has no such ambiguity and is therefore derived without a policy axis: every host
+// observed at this site runs an en-US userland, and nothing in the measurement suggests a second
+// arm exists. Adding one when a site needs it is a row, not a redesign.
+fn provisioned_locale(site: PhysicalSite) -> PosixLocaleId {
+  site.civil_locale
+}
+
+// The release the zone identifiers were read against. A zone identifier without the database
+// release it came from is a name with no version behind it, and jurisdictions do rename zones.
+data fleet_observed_tzdata_release: TzdataRelease = tzdata_2026c

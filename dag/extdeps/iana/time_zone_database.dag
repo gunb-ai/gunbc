@@ -1,0 +1,78 @@
+module extdeps.iana.time_zone_database
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE TIME ZONE DATABASE, modeled because this repository had no authority for a zone at all and
+// the first consumer that needed one could therefore only have written a magic string.
+//
+// WHY IANA AND NOT AN INTERNAL ENUM. DESIGN §1 asks that convention be replaced by the deepest
+// available shared framework, and §3 asks that the real upstream be modeled with its real names
+// and a declared version. A civil time zone is not a fact this repository may coin: it is a
+// political jurisdiction's rule about offsets, it changes when governments change it, and the
+// intersubjective authority for its identifiers is the IANA database that every operating system
+// on this fleet already ships. An internal ZoneEastern | ZonePacific enum would be a second
+// naming scheme for identifiers that already exist, and it would go stale silently the next time
+// a jurisdiction moved.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/time-zones"
+  }
+}
+
+data tz_database_theory_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "data.iana.org/time-zones/tzdb/theory.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iana.time_zone_database",
+      decl_name: "tzdata_2026c",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.iana.time_zone_database.extdeps_external_authority_anchor,
+  further_citations: [extdeps.iana.time_zone_database.tz_database_theory_authority]
+}
+
+// The release identifier is IANA's own, and it is OBSERVED rather than chosen: it is what
+// /usr/share/zoneinfo/+VERSION reports on the fleet host this repository read. Declaring a
+// version this repository had not seen installed anywhere would be a citation to a document
+// nobody opened.
+type TzdataRelease = NonEmptyStr where brand("TzdataRelease")
+
+data tzdata_2026c: TzdataRelease = "2026c" as TzdataRelease
+
+// A zone identifier in the database's own Area/Location spelling. It is a BRANDED STRING and
+// not a coproduct on purpose: the database carries hundreds of zones and gains more when
+// jurisdictions change, so enumerating the ones this fleet happens to use today would make
+// every future zone an edit to this file rather than a row at the consumer.
+//
+// The brand is what stops an arbitrary String reaching a field that means "a zone": "US East",
+// "EST" and "GMT-5" are all things a human would write and none of them is an identifier this
+// database defines.
+type IanaTimeZoneId = NonEmptyStr where brand("IanaTimeZoneId")
+
+// The two zones this repository has actually observed in use on its own fleet, carried as rows
+// so a consumer names a declaration rather than respelling a string. Etc/UTC is the database's
+// own identifier for UTC and is deliberately NOT modeled as an absence of a zone: "no zone" and
+// "the UTC zone" are different states, and conflating them is how a host with an unset zone gets
+// read as a host deliberately set to UTC.
+data zone_etc_utc: IanaTimeZoneId = "Etc/UTC" as IanaTimeZoneId
+data zone_america_new_york: IanaTimeZoneId = "America/New_York" as IanaTimeZoneId
+
+// POSIX locale identifier, modeled here beside the zone because the DGX Spark's setup screen
+// prompts for the pair and a consumer needs both. It is a distinct concept from the zone --
+// language and territory decide formatting and translation, the zone decides offsets -- and a
+// model that fused them could not express en-US on a machine set to UTC, which is precisely the
+// combination this fleet runs.
+type PosixLocaleId = NonEmptyStr where brand("PosixLocaleId")
+
+data locale_en_us: PosixLocaleId = "en-US" as PosixLocaleId
