@@ -10,7 +10,9 @@ import std.scoped_authorization {
   AuthorizationRefusalCause,
   AuthorizationNotGranted,
   AuthorizationExpired,
-  AuthorizationAlreadyConsumed,
+  AuthorizationAlreadyCompleted,
+  AuthorizationClaimedByOtherAttempt,
+  AuthorizationAborted,
   AuthorizationEscalationMismatch,
   AuthorizationScopeMismatch,
   AuthorizationAttemptMismatch,
@@ -36,10 +38,10 @@ import std.scoped_authorization {
 // below answers "therefore, what does the step do". The two are separable -- the same decision
 // drives a step, a fleet phase, or a wizard screen -- and only the second is workflow vocabulary.
 
-type WorkflowStepDisposition
+type WorkflowStepDisposition<Subject>
   = StepRunnable
   | StepBlocked { reason: String }
-  | StepAwaitingApproval { request: AuthorizationRequest }
+  | StepAwaitingApproval { request: AuthorizationRequest<Subject> }
 
 // THE FAIL-CLOSED SPLIT, and it is the whole safety content of this projection. Exactly ONE
 // refusal cause -- nobody has granted anything yet -- routes to StepAwaitingApproval, the arm a
@@ -50,11 +52,11 @@ type WorkflowStepDisposition
 // Folding them into the awaiting arm would make the natural remedy "ask again and it will
 // proceed", which is the absorbing fallback DESIGN §5 names: the precise deficit disappears and
 // the widened arm succeeds. So the disagreement blocks, carrying its own located cause.
-fn workflow_step_disposition_for_authorization(
-  request: AuthorizationRequest,
-  authorization: ScopedAuthorization,
+fn workflow_step_disposition_for_authorization<Subject>(
+  request: AuthorizationRequest<Subject>,
+  authorization: ScopedAuthorization<Subject>,
   observed_at: Timestamp,
-) -> WorkflowStepDisposition {
+) -> WorkflowStepDisposition<Subject> {
   workflow_step_disposition_for_decision(
     request: request,
     decision: authorize(
@@ -65,10 +67,10 @@ fn workflow_step_disposition_for_authorization(
   )
 }
 
-fn workflow_step_disposition_for_decision(
-  request: AuthorizationRequest,
-  decision: AuthorizationDecision,
-) -> WorkflowStepDisposition {
+fn workflow_step_disposition_for_decision<Subject>(
+  request: AuthorizationRequest<Subject>,
+  decision: AuthorizationDecision<Subject>,
+) -> WorkflowStepDisposition<Subject> {
   match decision {
     AuthorizationPermitted { grant: _ } => StepRunnable
     AuthorizationRefused { cause: cause } =>
@@ -77,7 +79,11 @@ fn workflow_step_disposition_for_decision(
           StepAwaitingApproval { request: request }
         AuthorizationExpired { expires_at: _, observed_at: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
-        AuthorizationAlreadyConsumed { consumed_by_step: _ } =>
+        AuthorizationAlreadyCompleted { completed_by: _, completed_at: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationClaimedByOtherAttempt { requested: _, holder: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationAborted { aborted_by: _, cause: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationEscalationMismatch { requested: _, granted: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
@@ -93,7 +99,7 @@ fn workflow_step_disposition_for_decision(
   }
 }
 
-fn workflow_step_is_runnable(disposition: WorkflowStepDisposition) -> Bool {
+fn workflow_step_is_runnable<Subject>(disposition: WorkflowStepDisposition<Subject>) -> Bool {
   match disposition {
     StepRunnable => true
     StepBlocked { reason: _ } => false
@@ -104,7 +110,7 @@ fn workflow_step_is_runnable(disposition: WorkflowStepDisposition) -> Bool {
 // The refusal sentence a caller puts in front of a human. The empty string is reserved for the
 // runnable arm ALONE, and every caller reads it as "no refusal" -- so no refusing arm may render
 // "" and no arm may fall through to a default (§5: one refusal, one destination).
-fn workflow_destructive_step_refusal_reason(disposition: WorkflowStepDisposition) -> String {
+fn workflow_destructive_step_refusal_reason<Subject>(disposition: WorkflowStepDisposition<Subject>) -> String {
   match disposition {
     StepRunnable => ""
     StepBlocked { reason: r } => r

@@ -22,30 +22,37 @@ data witness_scope: AuthorizationScope = AuthorizationScope {
   action: "redfish.boot-source-override.set" as AuthorizedAction,
 }
 
-data witness_request: AuthorizationRequest = authorization_request_for_attempt(
+type WitnessSubject { label: NonEmptyStr }
+
+data witness_subject: WitnessSubject = WitnessSubject { label: "srv3-boot" as NonEmptyStr }
+
+data witness_request: AuthorizationRequest<WitnessSubject> = authorization_request_for_attempt(
   intent: witness_intent,
   escalation_id: witness_escalation_id,
   scope: witness_scope,
+  subject: witness_subject,
   purpose: "witness: boot srv3 from CD once" as NonEmptyStr,
   destructive: true,
 )
 
-fn witness_grant(granted_at: Timestamp, expires_at: Timestamp) -> ScopedAuthorization {
+fn witness_grant(granted_at: Timestamp, expires_at: Timestamp) -> ScopedAuthorization<WitnessSubject> {
   AuthorizationGranted {
     grant: OperatorGrant {
       escalation_id: witness_escalation_id,
       scope: witness_scope,
+      subject: witness_subject,
       purpose: witness_request.purpose,
       attempt: witness_request.attempt,
       intent_hash: witness_intent_hash,
       granted_by: "operator" as NonEmptyStr,
       granted_at: granted_at,
       expires_at: expires_at,
-    }
+    },
+    claim: Unclaimed,
   }
 }
 
-data witness_pending: ScopedAuthorization = AuthorizationPending { request: witness_request }
+data witness_pending: ScopedAuthorization<WitnessSubject> = AuthorizationPending { request: witness_request }
 
 data witness_step_boot: NonEmptyStr = "boot-once-cd" as NonEmptyStr
 data witness_step_serve: NonEmptyStr = "nbd-serve" as NonEmptyStr
@@ -293,8 +300,8 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
     request: witness_request,
     observed_at: witness_observed_at,
   ) {
-    AuthorizationRefused { cause: AuthorizationAlreadyConsumed { consumed_by_step: step } } =>
-      step == witness_step_boot
+    AuthorizationRefused { cause: AuthorizationAlreadyCompleted { completed_by: who, completed_at: _ } } =>
+      who == witness_request.attempt
     _ => false
   }
     && match plan_next_step_from_prior_receipt_and_lease(
@@ -516,14 +523,19 @@ test fn held_lease_rebuilds_the_observation_without_a_second_epoch_spelling() ->
   rebuilt == restated
 }
 
-// consume_authorization is the ONLY producer of the consumed state, so the single-use guarantee is
-// exercised through it rather than by hand-writing the terminal arm -- a hand-written
-// AuthorizationConsumed would pass this test while the real transition was broken.
-fn consumed_witness_authorization() -> ScopedAuthorization {
+// The completed state is produced by claim_transition_completed, the same constructor a real
+// holder calls after its CAS commits -- hand-writing the terminal arm here would pass this test
+// while the real transition was broken.
+fn consumed_witness_authorization() -> ScopedAuthorization<WitnessSubject> {
   match witness_grant(granted_at: "2026-07-02T23:00:00Z", expires_at: "2026-07-03T23:00:00Z") {
-    AuthorizationGranted { grant: g } =>
-      consume_authorization(grant: g, consumed_by_step: witness_step_boot)
+    AuthorizationGranted { grant: g, claim: _ } =>
+      AuthorizationGranted {
+        grant: g,
+        claim: claim_transition_completed(
+          attempt: witness_request.attempt,
+          at: witness_observed_at,
+        ),
+      }
     AuthorizationPending { request: _ } => witness_pending
-    AuthorizationConsumed { escalation_id: _, attempt: _, consumed_by_step: _ } => witness_pending
   }
 }

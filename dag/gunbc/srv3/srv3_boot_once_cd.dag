@@ -11,7 +11,12 @@ import gunbc.workflow_escalation {
 import gunbc.srv3_os_install_actuate_workflow {
   srv3_boot_once_cd_default_approval,
   srv3_boot_once_cd_operator_granted_approval,
-  srv3_boot_once_cd_workflow_disposition
+  srv3_boot_once_cd_workflow_disposition,
+  srv3_boot_cd_target,
+  srv3_boot_cd_enabled,
+  srv3_boot_cd_mode,
+  srv3_boot_cd_reset_type,
+  Srv3BootOverrideSubject,
 }
 import gunbc.srv3_bmc_credential_resolve {
   BmcCredentialAccessUpsertRequired,
@@ -44,10 +49,6 @@ data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
 data srv3_boot_cd_body_path: String = "/tmp/srv3_boot_cd_body.json"
 data srv3_reset_body_path: String = "/tmp/srv3_reset_body.json"
 
-data srv3_boot_cd_target: RedfishBootSourceOverrideTarget = BootTargetCd
-data srv3_boot_cd_enabled: RedfishBootSourceOverrideEnabled = BootOverrideOnce
-data srv3_boot_cd_mode: RedfishBootSourceOverrideMode = BootOverrideModeUefi
-data srv3_boot_cd_reset_type: RedfishResetType = ResetForceRestart
 
 fn srv3_boot_cd_override_mode_valid_for_arm64(mode: RedfishBootSourceOverrideMode) -> Bool {
   match mode {
@@ -82,7 +83,7 @@ func srv3_boot_once_cd_operator_approved() -> ProcessExit
 // caller-supplied observed_at would let the grant be revalidated against whatever time made it
 // pass. An unreadable clock REFUSES: "we could not tell whether the grant had expired" is not
 // evidence that it had not (§5 -- a failure arm refuses, never widens).
-func srv3_boot_once_cd_gated(approval: ScopedAuthorization) -> ProcessExit
+func srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject>) -> ProcessExit
   uses net: std.resources.Network, clock: std.resources.Clock
 {
   let observed_at = match clock_now_probed_at() {

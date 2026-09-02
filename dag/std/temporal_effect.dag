@@ -124,16 +124,18 @@ type PriorStepReceipt
 // for one attempt cannot cover another and a grant issued for one planned action cannot cover a
 // changed one. scope and purpose come from the caller because they are facts about the SUBJECT of
 // the approval, which this module -- a generic effect spine -- does not know.
-fn authorization_request_for_attempt(
+fn authorization_request_for_attempt<Subject>(
   intent: EffectAttemptIntent,
   escalation_id: NonEmptyStr,
   scope: AuthorizationScope,
+  subject: Subject,
   purpose: NonEmptyStr,
   destructive: Bool,
-) -> AuthorizationRequest {
+) -> AuthorizationRequest<Subject> {
   AuthorizationRequest {
     escalation_id: escalation_id,
     scope: scope,
+    subject: subject,
     purpose: purpose,
     attempt: intent.attempt_id as AttemptIdentity,
     intent_hash: intent.intent_hash,
@@ -204,11 +206,11 @@ fn plan_for_held_lease_observation(
   )
 }
 
-fn plan_next_step_from_prior_receipt_and_lease(
-  request: AuthorizationRequest,
+fn plan_next_step_from_prior_receipt_and_lease<Subject>(
+  request: AuthorizationRequest<Subject>,
   pending_step_id: NonEmptyStr,
   requires_destructive_approval: Bool,
-  authorization: ScopedAuthorization,
+  authorization: ScopedAuthorization<Subject>,
   lease: HeldLease,
   prior: PriorStepReceipt,
   observed_at: Timestamp,

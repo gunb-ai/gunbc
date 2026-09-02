@@ -9,6 +9,14 @@ import gunbc.spark.bootstrap_credential {
   CredentialMaterializationPending,
 }
 import std.algebra { trim }
+import std.effect_grant { NamespacePosition, FilesystemPathTree, Write }
+import std.content_hash { content_hash_of_value }
+import std.scoped_authorization {
+  AttemptIdentity,
+  AuthorizedAction,
+  AuthorizationScope,
+  AuthorizationRequest,
+}
 import std.resources { Network }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -54,12 +62,44 @@ import gunbc.spark.managed_access_bootstrap {
 // materialized with a carried ref or explicitly pending. So the lease takes the standing, and a
 // pending administrator credential is an honest refusal rather than a reference to a secret nobody
 // has authored.
-type OperatorBootstrapCredentialLease sole_constructor {
+//
+// THE CARRIER ITSELF IS NOW std.scoped_authorization, AND IT IS A REQUEST RATHER THAN A GRANT.
+// AuthorizationRequest<SparkBootstrapSubject> used to be declared here as its own type carrying host,
+// bootstrap_principal, administrator, authorized_purpose and attempt_identity -- the third
+// independent spelling of "a scoped operator authorization consumed by exactly one attempt" in this
+// repository, beside gunbc.workflow_escalation's WorkflowApprovalState and std.temporal_effect's
+// DurableApprovalGrant. It had independently reached attempt identity and purpose, and was missing
+// expiry, any consumption state, and any ENFORCING scope: authorized_purpose was a sentence built
+// by join(), and a rendered sentence cannot decide anything.
+//
+// It folds to AuthorizationRequest, not OperatorGrant, and the distinction is the honest part. This
+// value is constructed by the RUN, not by an operator -- nothing here has been approved yet, so
+// there is no granted_by to name and no expiry to carry. Calling it a grant would have manufactured
+// consent that nobody gave. What the run states is what it NEEDS authorized; the grant is what comes
+// back.
+//
+// The subject is owned here rather than in std, so the generic module never grows a row per lane.
+
+type SparkBootstrapSubject {
   host: HostIdentity
   bootstrap_principal: NonEmptyStr
   administrator: SparkCredentialStanding
-  authorized_purpose: NonEmptyStr
-  attempt_identity: NonEmptyStr
+}
+
+// THE ENFORCING HALF, which the lease never had. The privileged act being authorized is the
+// installation of one sudoers drop-in on one host, so the scope names that position in the cited
+// filesystem tree with verb Write -- not the secret, which is the MEANS, and not a sentence. A
+// request against any other drop-in path fails the namespace prefix relation rather than passing
+// because the prose happened to read plausibly.
+fn spark_bootstrap_sudoers_scope(dropin_path: NonEmptyStr) -> AuthorizationScope {
+  AuthorizationScope {
+    verb: Write,
+    resource: NamespacePosition {
+      tree: FilesystemPathTree,
+      path: ["etc", "sudoers.d", dropin_path as String],
+    },
+    action: "posix.sudoers.install" as AuthorizedAction,
+  }
 }
 
 fn spark_bootstrap_credential_lease(
@@ -67,26 +107,36 @@ fn spark_bootstrap_credential_lease(
   administrator: SparkCredentialStanding,
   grant: SparkManagedGrant,
   attempt_identity: NonEmptyStr,
-) -> OperatorBootstrapCredentialLease {
-  OperatorBootstrapCredentialLease {
-    host: host,
-    bootstrap_principal: spark_operator_bootstrap_login as NonEmptyStr,
-    administrator: administrator,
-    authorized_purpose: join([
+) -> AuthorizationRequest<SparkBootstrapSubject> {
+  AuthorizationRequest {
+    escalation_id: "spark-bootstrap-sudoers-install" as NonEmptyStr,
+    scope: spark_bootstrap_sudoers_scope(
+      dropin_path: spark_managed_grant_wire(grant: grant),
+    ),
+    subject: SparkBootstrapSubject {
+      host: host,
+      bootstrap_principal: spark_operator_bootstrap_login as NonEmptyStr,
+      administrator: administrator,
+    },
+    attempt: attempt_identity as AttemptIdentity,
+    intent_hash: content_hash_of_value(
+      value: spark_managed_grant_sudoers_command(grant: grant),
+    ),
+    destructive: true,
+    purpose: join([
       "install the narrow sudoers grant '", spark_managed_grant_wire(grant: grant) as String,
       "' (", spark_managed_grant_sudoers_command(grant: grant) as String,
       ") on ", host as String,
       " -- one-time, through the modeled secret boundary, not retained",
     ], "") as NonEmptyStr,
-    attempt_identity: attempt_identity,
   }
 }
 
 // WHERE THE CREDENTIAL LIVES, if anywhere. A pending standing has no resource to name, and saying so
 // is the useful answer: the remedy for "no secret is enrolled" is to enrol one, which is different
 // from the remedy for "the enrolled one was rejected".
-fn lease_secret_resource(lease: OperatorBootstrapCredentialLease) -> String? {
-  match lease.administrator {
+fn lease_secret_resource(lease: AuthorizationRequest<SparkBootstrapSubject>) -> String? {
+  match lease.subject.administrator {
     CredentialMaterializationPending => none
     CredentialMaterialized { ref: r } => Present { value: secret_ref_secret_resource(ref: r) }
   }
@@ -158,9 +208,9 @@ fn admitted_root_argv_label(command: AdmittedRootArgv) -> String {
 // enrolment problem; a credential sudo rejected is a wrong or stale version; a command that failed
 // after sudo admitted it is a host problem. Collapsing these sends a reader to the wrong place.
 type PrivilegedStepOutcome
-  = CredentialNotEnrolled { lease: OperatorBootstrapCredentialLease }
-  | CredentialNotMaterialized { lease: OperatorBootstrapCredentialLease, cause: String }
-  | CredentialRejected { lease: OperatorBootstrapCredentialLease }
+  = CredentialNotEnrolled { lease: AuthorizationRequest<SparkBootstrapSubject> }
+  | CredentialNotMaterialized { lease: AuthorizationRequest<SparkBootstrapSubject>, cause: String }
+  | CredentialRejected { lease: AuthorizationRequest<SparkBootstrapSubject> }
   | PrivilegedCommandFailed { command: AdmittedRootArgv, exit_code: Int, stderr: String }
   | PrivilegedCommandSucceeded { command: AdmittedRootArgv }
 
@@ -191,16 +241,16 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
   match outcome {
     CredentialNotEnrolled { lease: l } =>
       join([
-        "    privileged-step CREDENTIAL-NOT-ENROLLED host=", l.host as String,
-        " principal=", l.bootstrap_principal as String,
-        " purpose=", l.authorized_purpose as String,
+        "    privileged-step CREDENTIAL-NOT-ENROLLED host=", l.subject.host as String,
+        " principal=", l.subject.bootstrap_principal as String,
+        " purpose=", l.purpose as String,
         " -- no administrator credential is materialized for this host, so the privileged step was",
         " never attempted; enrol one and the process applies the mutation itself\n",
       ], "")
     CredentialNotMaterialized { lease: l, cause: why } =>
       join([
-        "    privileged-step CREDENTIAL-NOT-MATERIALIZED host=", l.host as String,
-        " principal=", l.bootstrap_principal as String,
+        "    privileged-step CREDENTIAL-NOT-MATERIALIZED host=", l.subject.host as String,
+        " principal=", l.subject.bootstrap_principal as String,
         match lease_secret_resource(lease: l) {
           Absent => ""
           Present { value: r } => join([" secret=", r], "")
@@ -211,8 +261,8 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
       ], "")
     CredentialRejected { lease: l } =>
       join([
-        "    privileged-step CREDENTIAL-REJECTED host=", l.host as String,
-        " principal=", l.bootstrap_principal as String,
+        "    privileged-step CREDENTIAL-REJECTED host=", l.subject.host as String,
+        " principal=", l.subject.bootstrap_principal as String,
         match lease_secret_resource(lease: l) {
           Absent => ""
           Present { value: r } => join([" secret=", r], "")
@@ -245,8 +295,8 @@ data spark_grant_credential_path_env: NonEmptyStr = "GUNBC_SPARK_BOOTSTRAP_CREDE
 // WHICH SECRET THE STEP MUST MATERIALIZE, read off the lease rather than spelled a second time. The
 // CI step that fetches the version and the code that consumes it are then one authority: a step
 // fetching a different secret than the lease authorized is unwritable rather than merely unlikely.
-fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> String? {
-  match lease.administrator {
+fn lease_secret_version_resource(lease: AuthorizationRequest<SparkBootstrapSubject>) -> String? {
+  match lease.subject.administrator {
     CredentialMaterializationPending => none
     CredentialMaterialized { ref: r } => Present { value: secret_ref_version_resource(ref: r) }
   }
@@ -254,8 +304,8 @@ fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> Str
 
 // The URL the materializing step must fetch, derived rather than spelled, so the step and the lease
 // cannot name different versions.
-fn lease_secret_access_url(lease: OperatorBootstrapCredentialLease) -> String? {
-  match lease.administrator {
+fn lease_secret_access_url(lease: AuthorizationRequest<SparkBootstrapSubject>) -> String? {
+  match lease.subject.administrator {
     CredentialMaterializationPending => none
     CredentialMaterialized { ref: r } => Present { value: secret_ref_access_url(ref: r) }
   }
@@ -365,12 +415,12 @@ func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
 func run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
-  lease: OperatorBootstrapCredentialLease,
+  lease: AuthorizationRequest<SparkBootstrapSubject>,
   command: AdmittedRootArgv,
 ) -> PrivilegedStepOutcome
   uses net: Network
 {
-  match lease.administrator {
+  match lease.subject.administrator {
     CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
     CredentialMaterialized { ref: _ } =>
       match read_bootstrap_credential() {
@@ -390,7 +440,7 @@ func run_privileged_step(
                   context: context,
                   target: SshTarget {
                     endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-                    principal: lease.bootstrap_principal,
+                    principal: lease.subject.bootstrap_principal,
                   },
                   words: words,
                 ),

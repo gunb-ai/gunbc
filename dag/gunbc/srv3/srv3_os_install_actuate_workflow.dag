@@ -4,6 +4,16 @@ import std.types { NonEmptyStr, List, Int, Bool, Timestamp }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget,
+  RedfishBootSourceOverrideEnabled,
+  RedfishBootSourceOverrideMode,
+  RedfishResetType,
+  BootTargetCd,
+  BootOverrideOnce,
+  BootOverrideModeUefi,
+  ResetForceRestart,
+}
 import std.scoped_authorization {
   AuthorizedAction,
   AttemptIdentity,
@@ -13,6 +23,8 @@ import std.scoped_authorization {
   ScopedAuthorization,
   AuthorizationPending,
   AuthorizationGranted,
+  AuthorizationClaimState,
+  Unclaimed,
 }
 import gunbc.workflow_escalation {
   WorkflowStepDisposition,
@@ -34,9 +46,29 @@ type OsInstallActuateWorkflowStep
   | WorkflowBmcCredentialProbeAndResolve
   | WorkflowBmcwebSessionLogin
   | WorkflowNbdProxyServe
-  | WorkflowOperatorApproval { request: AuthorizationRequest }
+  | WorkflowOperatorApproval { request: AuthorizationRequest<Srv3BootOverrideSubject> }
   | WorkflowBootOnceCd
   | WorkflowSolConsoleCapture
+
+// The approved override, declared HERE rather than beside the transport, because it is what the
+// operator is being asked to authorize -- the subject of the grant, not a detail of the PATCH that
+// carries it. gunbc.srv3_boot_once_cd imports these rather than re-declaring them.
+data srv3_boot_cd_target: RedfishBootSourceOverrideTarget = BootTargetCd
+data srv3_boot_cd_enabled: RedfishBootSourceOverrideEnabled = BootOverrideOnce
+data srv3_boot_cd_mode: RedfishBootSourceOverrideMode = BootOverrideModeUefi
+data srv3_boot_cd_reset_type: RedfishResetType = ResetForceRestart
+
+// THE SUBJECT THIS DOMAIN OWNS. std.scoped_authorization never names it -- a coproduct of subjects
+// there would make the generic module grow a row per consuming lane. What the boot step needs in
+// order to ACT once permitted is the exact override it was approved to write, carried as the same
+// typed Redfish carriers the request body is built from rather than re-spelled as strings. No
+// decision in std.scoped_authorization reads this; the ENFORCING half is the scope below.
+type Srv3BootOverrideSubject {
+  target: RedfishBootSourceOverrideTarget
+  enabled: RedfishBootSourceOverrideEnabled
+  mode: RedfishBootSourceOverrideMode
+  reset: RedfishResetType
+}
 
 // The RESOURCE this step's approval reaches, named as a position in the cited Redfish service
 // operation tree rather than as a service name. The prefix relation in std.effect_grant is what
@@ -67,16 +99,24 @@ data srv3_boot_once_cd_intent_hash: ContentHash = content_hash_of_value(
 
 // purpose is what the operator READS before deciding. It is the field the request exists for --
 // an approval prompt that cannot state what the access is for is not a request for consent.
-data srv3_boot_once_cd_authorization_request: AuthorizationRequest = AuthorizationRequest {
+data srv3_boot_once_cd_subject: Srv3BootOverrideSubject = Srv3BootOverrideSubject {
+  target: srv3_boot_cd_target,
+  enabled: srv3_boot_cd_enabled,
+  mode: srv3_boot_cd_mode,
+  reset: srv3_boot_cd_reset_type,
+}
+
+data srv3_boot_once_cd_authorization_request: AuthorizationRequest<Srv3BootOverrideSubject> = AuthorizationRequest {
   escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
   scope: srv3_boot_override_scope,
+  subject: srv3_boot_once_cd_subject,
   purpose: "Set srv3's BMC boot source override to CD (Once, UEFI) and force a restart, to boot the seeded install media. This interrupts anything srv3 is currently running." as NonEmptyStr,
   attempt: srv3_boot_once_cd_attempt,
   intent_hash: srv3_boot_once_cd_intent_hash,
   destructive: true,
 }
 
-data srv3_boot_once_cd_default_approval: ScopedAuthorization = AuthorizationPending {
+data srv3_boot_once_cd_default_approval: ScopedAuthorization<Srv3BootOverrideSubject> = AuthorizationPending {
   request: srv3_boot_once_cd_authorization_request,
 }
 
@@ -86,10 +126,11 @@ data srv3_boot_once_cd_default_approval: ScopedAuthorization = AuthorizationPend
 // planned action, and it ENDS -- after expires_at the granted entry point refuses loudly instead
 // of continuing to work forever. That refusal is the pressure that lands the channel; it is not
 // an outage to be papered over by editing the constant.
-data srv3_boot_once_cd_operator_granted_approval: ScopedAuthorization = AuthorizationGranted {
+data srv3_boot_once_cd_operator_granted_approval: ScopedAuthorization<Srv3BootOverrideSubject> = AuthorizationGranted {
   grant: OperatorGrant {
     escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
     scope: srv3_boot_override_scope,
+    subject: srv3_boot_once_cd_subject,
     purpose: srv3_boot_once_cd_authorization_request.purpose,
     attempt: srv3_boot_once_cd_attempt,
     intent_hash: srv3_boot_once_cd_intent_hash,
@@ -97,6 +138,7 @@ data srv3_boot_once_cd_operator_granted_approval: ScopedAuthorization = Authoriz
     granted_at: "2026-09-02T00:00:00Z",
     expires_at: "2026-10-02T00:00:00Z",
   },
+  claim: Unclaimed,
 }
 
 data srv3_boot_once_cd_source_declared_grant_dissolve_on: DissolutionCondition = unbound_dissolution(
@@ -121,9 +163,9 @@ fn srv3_os_install_actuate_workflow_step_count() -> Int {
 }
 
 fn srv3_boot_once_cd_workflow_disposition(
-  approval: ScopedAuthorization,
+  approval: ScopedAuthorization<Srv3BootOverrideSubject>,
   observed_at: Timestamp,
-) -> WorkflowStepDisposition {
+) -> WorkflowStepDisposition<Srv3BootOverrideSubject> {
   workflow_step_disposition_for_authorization(
     request: srv3_boot_once_cd_authorization_request,
     authorization: approval,
@@ -132,7 +174,7 @@ fn srv3_boot_once_cd_workflow_disposition(
 }
 
 fn srv3_boot_once_cd_is_runnable_with_approval(
-  approval: ScopedAuthorization,
+  approval: ScopedAuthorization<Srv3BootOverrideSubject>,
   observed_at: Timestamp,
 ) -> Bool {
   workflow_step_is_runnable(

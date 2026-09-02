@@ -11,6 +11,21 @@ import std.content_hash {
   serialize_content_hash,
 }
 import std.effect_grant { Verb, NamespacePosition, verb_eq, position_under }
+import std.durable_compare_and_set {
+  CasAttempt,
+  CasExpectation,
+  CasGeneration,
+  CasOutcome,
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+  CasReadableSlot,
+  CasReadableAbsent,
+  CasReadablePresent,
+  ExpectSlotAbsent,
+  ExpectSlotGeneration,
+  cas_attempt,
+}
 
 // A SCOPED OPERATOR AUTHORIZATION CONSUMED BY EXACTLY ONE ATTEMPT.
 //
@@ -33,10 +48,22 @@ import std.effect_grant { Verb, NamespacePosition, verb_eq, position_under }
 // position_under) and never re-coined here. What this module adds that a Grant does not carry is
 // the consent axis -- who granted, why, until when, and for which single attempt.
 //
-// Two instances are in flight and are the reason this is generic rather than a gcp-token type:
-// the just-in-time Secret Manager version-access token grant (verb Read, UriTree position naming
-// ONE secret VERSION, action "secretmanager.versions.access") and the Spark first-boot agreement
-// acceptance (verb Write, position naming the device's agreement, action "accept-agreement").
+// THREE instances are in flight, and they are why this is PARAMETERIZED rather than a coproduct of
+// subjects: the just-in-time Secret Manager version-access token grant, the Spark first-boot
+// agreement acceptance, and the Spark bootstrap credential lease that
+// gunbc.spark.grant_privileged_operation used to carry as its own type. A
+// `AuthorizationSubject = EulaSubject | SecretSubject | ...` would make this module depend on every
+// consuming domain and require an edit here every time any lane needs a grant -- the module would
+// grow a row per consumer, which is the growth surface §3 exists to prevent. So the domain owns its
+// Subject and this module never names one.
+//
+// SCOPE AND SUBJECT ARE TWO FACTS, and only the first enforces. AuthorizationScope is the ENFORCING
+// authority: typed, closed, compared by verb equality and the namespace prefix relation, and never a
+// free string. Subject is the domain payload the consumer needs in order to ACT once permitted --
+// a device occurrence, a credential standing, an agreement identity -- and no decision in this
+// module reads it. purpose is neither: it is the sentence the operator reads before clicking, and
+// it can never be the enforcing authority. The lease this module dissolves had ONLY a rendered
+// purpose string where its scope should have been, which is exactly that failure.
 
 type AuthorizedAction = NonEmptyStr where brand("AuthorizedAction")
 
@@ -59,9 +86,10 @@ type AuthorizationScope {
 // human-readable sentence the operator reads before clicking -- it is the only field here whose
 // consumer is a person, and it is REQUIRED because an approval request that cannot say what it is
 // for is not a request for consent.
-type AuthorizationRequest {
+type AuthorizationRequest<Subject> {
   escalation_id: NonEmptyStr
   scope: AuthorizationScope
+  subject: Subject
   purpose: NonEmptyStr
   attempt: AttemptIdentity
   intent_hash: ContentHash
@@ -73,9 +101,10 @@ type AuthorizationRequest {
 // intent_hash binds it to the exact planned action content (inherited from the dissolved
 // std.temporal_effect check -- dropping it would have been a §4b(3) regression), and expires_at
 // ends it without anyone having to remember to revoke it.
-type OperatorGrant {
+type OperatorGrant<Subject> {
   escalation_id: NonEmptyStr
   scope: AuthorizationScope
+  subject: Subject
   purpose: NonEmptyStr
   attempt: AttemptIdentity
   intent_hash: ContentHash
@@ -84,17 +113,34 @@ type OperatorGrant {
   expires_at: Timestamp
 }
 
-// The one approval-state carrier. AuthorizationConsumed is a TERMINAL state, not a flag on the
-// grant: single-use is enforced by the state having no path back to Granted, so a replayed step
-// cannot re-consume by re-reading a boolean.
-type ScopedAuthorization
-  = AuthorizationPending { request: AuthorizationRequest }
-  | AuthorizationGranted { grant: OperatorGrant }
-  | AuthorizationConsumed {
-      escalation_id: NonEmptyStr
-      attempt: AttemptIdentity
-      consumed_by_step: NonEmptyStr
+// SINGLE USE IS A STATE TRANSITION, NOT A CHECK, and this is the correction that matters most.
+//
+// An earlier revision carried AuthorizationConsumed as a third arm here and treated
+// "already consumed" purely as a refusal cause. That validates single-use and it RACES: two
+// concurrent runs, or one run restarted after a crash, each read the same valid grant, each observe
+// "not yet consumed", and each proceed -- the exact interleaving a destructive step must not admit.
+// A cause without a transition is a check, and the check is decided at the reader.
+//
+// So consumption lives in AuthorizationClaimState below, carried BESIDE the grant and moved through
+// std.durable_compare_and_set, whose losing arm IS the concurrent-claim refusal. AuthorizationConsumed
+// is gone rather than kept alongside CompletedBy, because two spellings of one fact is the fork this
+// module exists to remove.
+type ScopedAuthorization<Subject>
+  = AuthorizationPending { request: AuthorizationRequest<Subject> }
+  | AuthorizationGranted {
+      grant: OperatorGrant<Subject>
+      claim: AuthorizationClaimState
     }
+
+// The claim lifecycle of ONE grant. AbortedBy is a distinct terminal from CompletedBy because the
+// operator remedies differ: an aborted attempt may warrant re-issuing a grant, a completed one
+// never does, and collapsing them would make "it already ran" and "it failed and stopped" produce
+// the same next action.
+type AuthorizationClaimState
+  = Unclaimed
+  | ClaimedBy { attempt: AttemptIdentity, claimed_at: Timestamp }
+  | CompletedBy { attempt: AttemptIdentity, completed_at: Timestamp }
+  | AbortedBy { attempt: AttemptIdentity, aborted_at: Timestamp, cause: NonEmptyStr }
 
 // ABSENCE, STALENESS and MISMATCH are three different facts about a refused step and lead to three
 // different operator actions -- ask for the grant, ask again because it aged out, or stop because
@@ -106,15 +152,17 @@ type ScopedAuthorization
 type AuthorizationRefusalCause
   = AuthorizationNotGranted { escalation_id: NonEmptyStr }
   | AuthorizationExpired { expires_at: Timestamp, observed_at: Timestamp }
-  | AuthorizationAlreadyConsumed { consumed_by_step: NonEmptyStr }
+  | AuthorizationAlreadyCompleted { completed_by: AttemptIdentity, completed_at: Timestamp }
+  | AuthorizationClaimedByOtherAttempt { requested: AttemptIdentity, holder: AttemptIdentity }
+  | AuthorizationAborted { aborted_by: AttemptIdentity, cause: NonEmptyStr }
   | AuthorizationEscalationMismatch { requested: NonEmptyStr, granted: NonEmptyStr }
   | AuthorizationScopeMismatch { requested: AuthorizationScope, granted: AuthorizationScope }
   | AuthorizationAttemptMismatch { requested: AttemptIdentity, granted: AttemptIdentity }
   | AuthorizationIntentMismatch { requested: ContentHash, granted: ContentHash }
   | AuthorizationIntentIncomparable { requested: ContentHash, granted: ContentHash }
 
-type AuthorizationDecision
-  = AuthorizationPermitted { grant: OperatorGrant }
+type AuthorizationDecision<Subject>
+  = AuthorizationPermitted { grant: OperatorGrant<Subject> }
   | AuthorizationRefused { cause: AuthorizationRefusalCause }
 
 // Scope coverage is the std.effect_grant reach relation, unchanged: same verb, requested position
@@ -141,11 +189,11 @@ fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
 // under none, and neither is the truth. The dissolved std.temporal_effect check compared intent
 // hashes with `==` and carried exactly that hole. Matching the three-valued outcome is why
 // AuthorizationIntentIncomparable exists as its own cause rather than as a widened mismatch.
-fn authorize_granted(
-  grant: OperatorGrant,
-  request: AuthorizationRequest,
+fn authorize_granted<Subject>(
+  grant: OperatorGrant<Subject>,
+  request: AuthorizationRequest<Subject>,
   observed_at: Timestamp,
-) -> AuthorizationDecision {
+) -> AuthorizationDecision<Subject> {
   if grant.escalation_id != request.escalation_id {
     AuthorizationRefused {
       cause: AuthorizationEscalationMismatch {
@@ -176,17 +224,18 @@ fn authorize_granted(
             granted: grant.intent_hash,
           },
         }
-      ContentHashEqual => authorize_reached_scope(grant: grant, request: request, observed_at: observed_at)
+      ContentHashEqual =>
+        authorize_reached_scope(grant: grant, request: request, observed_at: observed_at)
     }
   }
 }
 
 // Reach and time, decided only once identity has already agreed.
-fn authorize_reached_scope(
-  grant: OperatorGrant,
-  request: AuthorizationRequest,
+fn authorize_reached_scope<Subject>(
+  grant: OperatorGrant<Subject>,
+  request: AuthorizationRequest<Subject>,
   observed_at: Timestamp,
-) -> AuthorizationDecision {
+) -> AuthorizationDecision<Subject> {
   if !scope_covers(granted: grant.scope, requested: request.scope) {
     AuthorizationRefused {
       cause: AuthorizationScopeMismatch {
@@ -206,37 +255,132 @@ fn authorize_reached_scope(
   }
 }
 
-fn authorize(
-  authorization: ScopedAuthorization,
-  request: AuthorizationRequest,
+// The claim state is consulted BEFORE the grant's own fields, because a completed or foreign-held
+// claim is decisive regardless of how well the grant matches: a perfectly valid grant that another
+// attempt already holds must refuse, and refuse with THAT cause rather than with a scope or expiry
+// answer that would send the operator to the wrong remedy.
+fn authorize<Subject>(
+  authorization: ScopedAuthorization<Subject>,
+  request: AuthorizationRequest<Subject>,
   observed_at: Timestamp,
-) -> AuthorizationDecision {
+) -> AuthorizationDecision<Subject> {
   match authorization {
     AuthorizationPending { request: _ } =>
       AuthorizationRefused {
         cause: AuthorizationNotGranted { escalation_id: request.escalation_id },
       }
-    AuthorizationConsumed { escalation_id: _, attempt: _, consumed_by_step: step } =>
-      AuthorizationRefused { cause: AuthorizationAlreadyConsumed { consumed_by_step: step } }
-    AuthorizationGranted { grant: grant } =>
-      authorize_granted(grant: grant, request: request, observed_at: observed_at)
+    AuthorizationGranted { grant: grant, claim: claim } =>
+      match claim {
+        Unclaimed =>
+          authorize_granted(grant: grant, request: request, observed_at: observed_at)
+        ClaimedBy { attempt: holder, claimed_at: _ } =>
+          if holder == request.attempt {
+            authorize_granted(grant: grant, request: request, observed_at: observed_at)
+          } else {
+            AuthorizationRefused {
+              cause: AuthorizationClaimedByOtherAttempt {
+                requested: request.attempt,
+                holder: holder,
+              },
+            }
+          }
+        CompletedBy { attempt: who, completed_at: when } =>
+          AuthorizationRefused {
+            cause: AuthorizationAlreadyCompleted { completed_by: who, completed_at: when },
+          }
+        AbortedBy { attempt: who, aborted_at: _, cause: why } =>
+          AuthorizationRefused {
+            cause: AuthorizationAborted { aborted_by: who, cause: why },
+          }
+      }
   }
 }
 
-fn authorization_is_permitted(decision: AuthorizationDecision) -> Bool {
+fn authorization_is_permitted<Subject>(decision: AuthorizationDecision<Subject>) -> Bool {
   match decision {
     AuthorizationPermitted { grant: _ } => true
     AuthorizationRefused { cause: _ } => false
   }
 }
 
-// The state transition that makes single-use real. Consuming a grant is the only producer of
-// AuthorizationConsumed, and it carries the step that spent it so a later refusal can say who.
-fn consume_authorization(grant: OperatorGrant, consumed_by_step: NonEmptyStr) -> ScopedAuthorization {
-  AuthorizationConsumed {
-    escalation_id: grant.escalation_id,
-    attempt: grant.attempt,
-    consumed_by_step: consumed_by_step,
+// THE CLAIM TRANSITION, and the reason it is a std.durable_compare_and_set attempt rather than a
+// function that returns a new state.
+//
+// Returning a new state would make the caller the arbiter of who won, and two callers each holding
+// a valid grant would each mint ClaimedBy{self} and each believe they hold it. cas_attempt names
+// the slot, the EXPECTED prior generation, and the proposed state; the store decides. Losing is
+// then CasPreconditionFailed carrying both sides -- which is how a loser distinguishes "another
+// attempt claimed this grant" from "I addressed the wrong slot", a distinction a boolean cannot
+// carry and a retry loop needs.
+//
+// The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
+// exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
+// nothing, which is the shape of the race rather than its resolution.
+fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  concat("scoped-authorization/", escalation_id as String) as NonEmptyStr
+}
+
+fn claim_authorization(
+  escalation_id: NonEmptyStr,
+  expected: CasExpectation,
+  proposed: AuthorizationClaimState,
+  proposed_content: ContentHash,
+) -> CasAttempt<AuthorizationClaimState> {
+  cas_attempt(
+    key: authorization_claim_key(escalation_id: escalation_id),
+    expected: expected,
+    proposed: proposed,
+    proposed_content: proposed_content,
+  )
+}
+
+// The three transitions a holder may propose, each naming the state it moves TO. There is no
+// transition back to Unclaimed: a spent grant is spent, and a re-issue is a new grant with a new
+// expiry, not a reset of this one.
+fn claim_transition_claimed(attempt: AttemptIdentity, at: Timestamp) -> AuthorizationClaimState {
+  ClaimedBy { attempt: attempt, claimed_at: at }
+}
+
+fn claim_transition_completed(attempt: AttemptIdentity, at: Timestamp) -> AuthorizationClaimState {
+  CompletedBy { attempt: attempt, completed_at: at }
+}
+
+fn claim_transition_aborted(
+  attempt: AttemptIdentity,
+  at: Timestamp,
+  cause: NonEmptyStr,
+) -> AuthorizationClaimState {
+  AbortedBy { attempt: attempt, aborted_at: at, cause: cause }
+}
+
+// A claim outcome read as an authorization fact. The CasStoreRefused arm REFUSES rather than
+// proceeding: "the claim store was unreadable" is not evidence that nobody else holds the grant,
+// and treating it as such is the absorbing fallback on the exact operation whose purpose is
+// exclusion.
+type AuthorizationClaimOutcome
+  = ClaimHeld { state: AuthorizationClaimState, generation: CasGeneration }
+  | ClaimLost { holder: AuthorizationClaimState }
+  | ClaimUndecided { reason: NonEmptyStr }
+
+fn authorization_claim_outcome(
+  outcome: CasOutcome<AuthorizationClaimState>,
+) -> AuthorizationClaimOutcome {
+  match outcome {
+    CasCommitted { committed: v } =>
+      ClaimHeld { state: v.value, generation: v.generation }
+    CasPreconditionFailed { expected: _, observed: observed } =>
+      ClaimLost { holder: claim_state_of_readable(readable: observed) }
+    CasStoreRefused { cause: _ } =>
+      ClaimUndecided {
+        reason: "authorization claim slot unreadable; cannot establish exclusive claim" as NonEmptyStr,
+      }
+  }
+}
+
+fn claim_state_of_readable(readable: CasReadableSlot<AuthorizationClaimState>) -> AuthorizationClaimState {
+  match readable {
+    CasReadableAbsent => Unclaimed
+    CasReadablePresent { version: v } => v.value
   }
 }
 
@@ -257,8 +401,12 @@ fn authorization_refusal_reason(cause: AuthorizationRefusalCause) -> String {
       concat("operator authorization absent for escalation ", id as String)
     AuthorizationExpired { expires_at: exp, observed_at: at } =>
       concat("operator authorization expired at ", concat(exp, concat(", observed at ", at)))
-    AuthorizationAlreadyConsumed { consumed_by_step: step } =>
-      concat("operator authorization already consumed by step ", step as String)
+    AuthorizationAlreadyCompleted { completed_by: who, completed_at: when } =>
+      concat("operator authorization already completed by attempt ", concat(who as String, concat(" at ", when)))
+    AuthorizationClaimedByOtherAttempt { requested: req, holder: holder } =>
+      concat("operator authorization is claimed by another attempt: requested ", concat(req as String, concat(", held by ", holder as String)))
+    AuthorizationAborted { aborted_by: who, cause: why } =>
+      concat("operator authorization aborted by attempt ", concat(who as String, concat(": ", why as String)))
     AuthorizationEscalationMismatch { requested: req, granted: got } =>
       concat("operator authorization escalation mismatch: requested ", concat(req as String, concat(", granted ", got as String)))
     AuthorizationScopeMismatch { requested: req, granted: got } =>
