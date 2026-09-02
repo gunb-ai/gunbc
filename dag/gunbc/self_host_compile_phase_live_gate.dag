@@ -119,6 +119,13 @@ fn epoch_probe_subject(latest: CompilePhaseFrontierReceipt, live: LiveToolchainR
 // own self-report; if that composition is wrong by one character the answer is Incomparable, which
 // the gate reports as UNMEASURED and exits nonzero on. No spelling error in this derivation can
 // produce a green.
+//
+// THE RESIDUAL ARM -- the final else of this fold -- REFUSES RATHER THAN NARROWING. The authority said the epochs differ
+// and every reason this module can spell says they agree, which means the frontier compares
+// something this module has no sentence for -- a field added to the subject since these arms
+// were written. Rendering that as Comparable would be the absorbing fallback: the gate would
+// proceed on an epoch the authority just rejected, and the newer the field the more likely it
+// is the one that mattered. So the arm names its own ignorance and stops the line.
 fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainReading) -> LiveComparability {
   if comparison_inputs_same(a: latest.subject, b: epoch_probe_subject(latest: latest, live: live)) {
     LiveComparable
@@ -162,12 +169,6 @@ fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainRe
       reason: "the live feature selection is not the latest receipt's" as NonEmptyStr
     }
   } else {
-    // THE RESIDUAL ARM, AND IT REFUSES RATHER THAN NARROWING. The authority said the epochs differ
-    // and every reason this module can spell says they agree, which means the frontier compares
-    // something this module has no sentence for -- a field added to the subject since these arms
-    // were written. Rendering that as Comparable would be the absorbing fallback: the gate would
-    // proceed on an epoch the authority just rejected, and the newer the field the more likely it
-    // is the one that mattered. So the arm names its own ignorance and stops the line.
     LiveIncomparable {
       reason: "the frontier's comparison inputs differ between the live observation and the latest receipt on a field this gate cannot name, which means the receipt subject has gained a comparison input the live side does not yet source" as NonEmptyStr
     }
