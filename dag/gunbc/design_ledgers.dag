@@ -4,13 +4,17 @@ module gunbc.design_ledgers
 //
 // DESIGN.md is reasoned serially: section 1 fixes the axioms and each later section is a
 // consequence of the ones before it. Two of its sections were never consequences of anything --
-// the recurring failure modes and the declared rung drops are ROSTERS: every lane that finds a new
-// class or declares a new drop APPENDS one, so their size is monotonically nondecreasing in the
-// number of lanes, while the sections around them are fixed by section 1 and do not grow at all.
-// That asymmetry is the whole argument and it is structural -- it holds at every tree, before and
-// after any particular measurement -- so no share, percentage or character count is stated here.
-// A magnitude would only say how far the unbounded half had got on the day someone looked, and
-// DESIGN.md is the file every session loads IN FULL on every turn.
+// the recurring failure modes and the declared rung drops are ROSTERS. Each newly distinct failure
+// class or declared rung drop adds one row, and those populations have no closed maximum. The
+// surrounding reasoning sections do not ENUMERATE those populations and carry no obligation to
+// append once per new class or drop -- which is the asymmetry, stated without two overclaims an
+// earlier draft made: that those sections "do not grow at all" (they can be clarified or extended,
+// and this very change edits their prose), and that roster size tracks the NUMBER OF LANES (several
+// lanes may discover one class, update an existing row, or find nothing).
+//
+// That is why no share, percentage or character count is stated here. A magnitude would only say
+// how far the unbounded half had got on the day someone looked, and DESIGN.md is the file every
+// session loads IN FULL on every turn.
 //
 // So they are projected HERE, one file per roster: docs/design-failure-modes.md from
 // gunbc.recurring_failure_mode and docs/design-rung-drops.md from gunbc.rung_drop. Each is one
@@ -21,11 +25,12 @@ module gunbc.design_ledgers
 // JOINTLY NECESSARY. The proof is a path-set intersection, not a census. Let F be the set of
 // generated paths a failure-mode append rewrites and R the set a rung-drop append rewrites.
 //
-// F n R non-empty is NECESSARY for two such lanes to serialise, and NOT SUFFICIENT. Serialising
-// additionally requires overlapping branch lifetimes and divergent edits to a shared path, at
-// which point the generated-artifact driver refuses because both sides changed it. So a non-empty
-// intersection states EXPOSURE -- the pair CAN be serialised -- and says nothing about how often
-// any pair was. That direction is the one worth having: emptying the intersection removes the
+// F n R IS THE GENERATED-PATH EXPOSURE SET, and exposure is the structural fact. Refusal is a
+// contingent event on top of it: when opposite-roster branches both change a member of that set,
+// with divergent histories and overlapping lifetimes, AND the merge is routed through the
+// generated-artifact driver, the driver refuses. That last conjunct is not decorative -- the driver
+// is repository-LOCAL config, so an ordinary GitHub merge of those paths does not invoke it at all.
+// A non-empty intersection therefore says the pair CAN be serialised, never how often any pair was. That direction is the one worth having: emptying the intersection removes the
 // possibility outright, for every pair and every interleaving, without any claim about observed
 // frequency. The four configurations differ only in what remains exposed.
 //
