@@ -8138,9 +8138,22 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // whose ENTIRE claim-side CPU was 130s — a 14x overcount, which is the nesting and nothing else.
 // So a per-row figure is a valid statement about THAT producer, and no sum of rows is a valid
 // statement about the run. The run's own total claim CPU travels in the summary line as the
-// ceiling any true total must sit under; anyone wanting a displaceable-cost figure needs
-// self-time (inclusive minus the callees the same pass already counted), which this ledger does
-// not carry and which is the next thing to build here.
+// ceiling any true total must sit under.
+//
+// SO THE DISPLACED-COST SENTENCE IS UNDERIVABLE TODAY, NOT MERELY UNSTATED, and the difference is
+// the whole reason this paragraph is a trigger rather than a caveat. "This floor recomputes N
+// seconds of pure producer work per run" is the sentence that makes the stake legible, and NO
+// arithmetic over this artifact produces it: the quantity it needs does not exist in the column.
+//
+// NEXT-RUNG TRIGGER, AS A CAPABILITY: SELF TIME — a producer's inclusive duration minus the
+// callees the same pass already counted. With it the column is ADDITIVE, the sum becomes a true
+// statement about the run, and the displaced-cost sentence is derivable. WHERE IT ALREADY LIVES,
+// so this is a tracked stall and not a wish: `CrossClaimFillGuard`'s `Drop` in this file computes
+// exactly that quantity one tier over — `inclusive_cpu.saturating_sub(children_cpu)` against the
+// `CROSS_CLAIM_FILL_FRAMES` child stack — for the shared-fill ledger. The mechanism exists; what
+// is missing is a child stack over the RECOMPUTE ledger's frames. Deliberately not built here:
+// this bridge is what stops the next four lanes paying, and a new measurement tier would put it
+// behind a fresh review cycle on the fleet condition it exists to explain.
 //
 // WHAT THIS CENSUS CANNOT SEE, DECLARED HERE RATHER THAN DISCOVERED BY A LATER READER. Two
 // boundaries, and neither is a defect in the aggregation — they are properties of the ledger it
