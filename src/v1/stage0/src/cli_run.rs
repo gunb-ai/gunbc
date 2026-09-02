@@ -17875,7 +17875,6 @@ pub fn handle_serve(
                                     "application/json; charset=utf-8",
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
                                         &refusal,
-                                        |value| serve_json_string(value),
                                     ),
                                 )
                             }

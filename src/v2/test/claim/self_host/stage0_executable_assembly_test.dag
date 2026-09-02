@@ -10,7 +10,10 @@ import v2.compiler.self_host.stage0_executable_assembly {
   RetainedHostOwner,
   RetainedModuleHasNoRetentionRow,
   WetActuatorLibModuleOwner,
+  stage0_live_assembly_ownership_census,
+  stage0_live_wet_lib_module_registrations,
   Stage0AssemblyOwnershipRefusalCause,
+  WetModuleRegisteredTwice,
   Stage0ExecutableModuleOwner,
   stage0_assembly_ownership_census,
   stage0_assembly_ownership_disjoint_and_total,
@@ -20,6 +23,7 @@ import v2.compiler.self_host.stage0_executable_assembly {
   stage0_live_retained_pub_mod_basenames
 }
 import v2.compiler.self_host.stage0_crate_layout {
+  stage0_lib_declared_module_basenames,
   MacroUsePubModSpliced,
   PlainPubMod,
   WetActuatorDeclarationRoute,
@@ -211,6 +215,7 @@ fn refusal_is_two_surfaces(cause: Stage0AssemblyOwnershipRefusalCause, module_ba
     ModuleOwnedByNoSurface { module_basename: _ } => false
     ModuleOwnedByTwoPartitionPackages { module_basename: _, packages: _ } => false
     RetainedModuleHasNoRetentionRow { module_basename: _ } => false
+    WetModuleRegisteredTwice { module_basename: _, routes: _ } => false
   }
 }
 
@@ -236,6 +241,7 @@ fn refusal_is_no_surface(cause: Stage0AssemblyOwnershipRefusalCause, module_base
     ModuleOwnedByTwoSurfaces { module_basename: _, surfaces: _ } => false
     ModuleOwnedByTwoPartitionPackages { module_basename: _, packages: _ } => false
     RetainedModuleHasNoRetentionRow { module_basename: _ } => false
+    WetModuleRegisteredTwice { module_basename: _, routes: _ } => false
   }
 }
 
@@ -262,6 +268,7 @@ fn refusal_is_two_packages(cause: Stage0AssemblyOwnershipRefusalCause, module_ba
     ModuleOwnedByTwoSurfaces { module_basename: _, surfaces: _ } => false
     ModuleOwnedByNoSurface { module_basename: _ } => false
     RetainedModuleHasNoRetentionRow { module_basename: _ } => false
+    WetModuleRegisteredTwice { module_basename: _, routes: _ } => false
   }
 }
 
@@ -305,6 +312,7 @@ test fn w_module_owned_by_two_partition_packages_refuses() -> Bool {
 fn refusal_is_missing_retention_row(cause: Stage0AssemblyOwnershipRefusalCause, module_basename: String) -> Bool {
   match cause {
     RetainedModuleHasNoRetentionRow { module_basename: m } => m == module_basename
+    WetModuleRegisteredTwice { module_basename: _, routes: _ } => false
     ModuleOwnedByTwoSurfaces { module_basename: _, surfaces: _ } => false
     ModuleOwnedByNoSurface { module_basename: _ } => false
     ModuleOwnedByTwoPartitionPackages { module_basename: _, packages: _ } => false
@@ -464,3 +472,121 @@ test fn w_module_both_ordinary_emitted_and_retained_refuses() -> Bool {
     && any(xs: refusals, predicate: fn(c) { refusal_is_two_surfaces(cause: c, module_basename: "probe_unpartitioned") })
 }
 
+
+fn refusal_is_registered_twice(cause: Stage0AssemblyOwnershipRefusalCause, module_basename: String, route_count: Int) -> Bool {
+  match cause {
+    WetModuleRegisteredTwice { module_basename: m, routes: rs } =>
+      (m == module_basename) && (length(xs: rs) == route_count)
+    ModuleOwnedByNoSurface { module_basename: _ } => false
+    ModuleOwnedByTwoSurfaces { module_basename: _, surfaces: _ } => false
+    ModuleOwnedByTwoPartitionPackages { module_basename: _, packages: _ } => false
+    RetainedModuleHasNoRetentionRow { module_basename: _ } => false
+  }
+}
+
+// CONTROL: THE SAME ROW TWICE IS A POPULATION DEFECT, even when both copies agree. Nothing about
+// the crate changes -- one declaration is rendered either way -- so every downstream projection is
+// happy and the duplicate survives until someone edits one copy. This is the cell that proves the
+// resolver counts rows rather than distinct answers.
+test fn w_wet_module_registered_twice_with_one_route_refuses() -> Bool {
+  let refusals = probe_census_refusals(
+    declared: ["probe_wet_plain"],
+    partition_rows: probe_partition_rows,
+    emitted: probe_emitted,
+    retained: [],
+    wet_rows: [
+      WetActuatorGeneratedRegistration { basename: "probe_wet_plain", declaration_route: PlainPubMod },
+      WetActuatorGeneratedRegistration { basename: "probe_wet_plain", declaration_route: PlainPubMod }
+    ],
+    roster: probe_retention_roster
+  )
+  (length(xs: refusals) == 1)
+    && any(xs: refusals, predicate: fn(c) { refusal_is_registered_twice(cause: c, module_basename: "probe_wet_plain", route_count: 2) })
+}
+
+// CONTROL: TWO ROWS DISAGREEING ABOUT THE ROUTE. Under the fold this replaced, this resolved as
+// whichever row came last -- so the crate's answer to "how is this module declared" depended on
+// authoring order in a list. A macro-spliced duplicate is invisible to rustc, so no compile error
+// stands behind this: the census is the only thing that can refuse it.
+test fn w_wet_module_registered_twice_with_conflicting_routes_refuses() -> Bool {
+  let refusals = probe_census_refusals(
+    declared: ["probe_wet_plain"],
+    partition_rows: probe_partition_rows,
+    emitted: probe_emitted,
+    retained: [],
+    wet_rows: [
+      WetActuatorGeneratedRegistration { basename: "probe_wet_plain", declaration_route: PlainPubMod },
+      WetActuatorGeneratedRegistration { basename: "probe_wet_plain", declaration_route: MacroUsePubModSpliced }
+    ],
+    roster: probe_retention_roster
+  )
+  (length(xs: refusals) == 1)
+    && any(xs: refusals, predicate: fn(c) { refusal_is_registered_twice(cause: c, module_basename: "probe_wet_plain", route_count: 2) })
+}
+
+fn probe_live_owner_for(module_basename: String) -> List<Stage0ExecutableModuleOwner> {
+  let census = stage0_live_assembly_ownership_census(
+    declared_modules: stage0_lib_declared_module_basenames(),
+    emitted_module_basenames: []
+  )
+  fold(
+    census.owners,
+    init: [],
+    f: fn(acc, owner) {
+      if probe_owner_names(owner: owner, module_basename: module_basename) { concat(acc, [owner]) } else { acc }
+    }
+  )
+}
+
+fn probe_owner_names(owner: Stage0ExecutableModuleOwner, module_basename: String) -> Bool {
+  match owner {
+    WetActuatorLibModuleOwner { module_basename: m, host_package: _, declaration_route: _ } => m == module_basename
+    EmittedPartitionOwner { module_basename: m, package_name: _ } => m == module_basename
+    HostShellEmittedOwner { module_basename: m, host_package: _ } => m == module_basename
+    RetainedHostOwner { module_basename: m, host_package: _, retention_row: _ } => m == module_basename
+    BinaryEntrypointOwner { target: _, package_name: _ } => false
+  }
+}
+
+fn probe_basename_occurrences(module_basename: String, xs: List<String>) -> Int {
+  fold(xs, init: 0, f: fn(acc, m) { if m == module_basename { acc + 1 } else { acc } })
+}
+
+// THE LIVE JOIN, AUTHORITY TO AUTHORITY, no filesystem read anywhere in it. The fixtures above
+// prove the fifth arm answers correctly when handed a constructed population; they say nothing
+// about whether the REAL registrations are members of the REAL root-module population, which is
+// the fact an author would actually be relying on. This witness requires, for every live wet lib
+// registration: it appears EXACTLY ONCE in stage0_lib_declared_module_basenames, it resolves
+// through the wet arm, and it keeps its exact declaration route. It does NOT establish the
+// no-retention-row property: the live census binds the real roster, so an empty-roster arm cannot
+// be posed here. That property is the fixture control's subject and is left there rather than
+// claimed twice at a grain that cannot show it.
+//
+// It is also the final consumer of stage0_lib_declared_module_basenames. Without it that
+// projection would be a definition-only statement about the crate, which is the inert-lens shape.
+test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
+  let rows = stage0_live_wet_lib_module_registrations()
+  let declared = stage0_lib_declared_module_basenames()
+  (length(xs: rows) > 0)
+    && fold(
+         rows,
+         init: true,
+         f: fn(acc, row) {
+           let owners = probe_live_owner_for(module_basename: row.basename)
+           acc
+             && (probe_basename_occurrences(module_basename: row.basename, xs: declared) == 1)
+             && (length(xs: owners) == 1)
+             && any(xs: owners, predicate: fn(o) { probe_owner_is_wet_lib_module(owner: o, module_basename: row.basename, declaration_route: row.declaration_route) })
+         }
+       )
+}
+
+// THE TWO SPECIMENS NAMED, so the witness above cannot pass vacuously on a population that has
+// quietly lost a member. The dispatch module is the one that was in the crate all along with no
+// owner this census could name.
+test fn w_live_wet_population_carries_both_declaration_routes() -> Bool {
+  let rows = stage0_live_wet_lib_module_registrations()
+  (length(xs: rows) == 2)
+    && any(xs: rows, predicate: fn(r) { (r.basename == "v1_interpreter_dispatch_generated") && probe_route_is(a: r.declaration_route, b: MacroUsePubModSpliced) })
+    && any(xs: rows, predicate: fn(r) { (r.basename == "evaluation_budget_consequence_generated") && probe_route_is(a: r.declaration_route, b: PlainPubMod) })
+}

@@ -15,7 +15,7 @@
 
 /// The opaque consequence. Its fields are private TO THIS MODULE, so `cli_run` can hold and render
 /// one but cannot assemble one.
-pub(crate) struct ServeBudgetRefusal {
+pub(super) struct ServeBudgetRefusal {
     entry: String,
     clock_key: &'static str,
     elapsed_nanos: u128,
@@ -34,7 +34,7 @@ pub(crate) struct ServeBudgetRefusal {
 ///
 /// THE ENTRY IS PROJECTED, NOT SUPPLIED. It comes from the cause, which the interpreter binds to
 /// the evaluation whose budget was armed.
-pub(crate) fn serve_budget_refusal_from_exceeded(
+pub(super) fn serve_budget_refusal_from_exceeded(
     err: &crate::v1_interpreter::InterpError,
 ) -> Option<ServeBudgetRefusal> {
     match err {
@@ -61,21 +61,30 @@ pub(crate) fn serve_budget_refusal_from_exceeded(
 /// `std.evaluation_budget evaluation_budget_refusal_code`. A `code` field would make a consequence
 /// with an arbitrary or self-contradictory machine identity constructible, and would relocate the
 /// invariant into callers.
-pub(crate) fn serve_budget_refusal_machine_body(
-    refusal: &ServeBudgetRefusal,
-    json_string: impl Fn(&str) -> String,
-) -> String {
+/// THE ENCODER IS NOT A PARAMETER EITHER, and the earlier revision's `json_string: impl Fn(&str) ->
+/// String` was a SECOND bypass of the same wall wearing a different shape. Sealing the constructor
+/// stopped a caller assembling a refusal with a chosen code; passing the renderer's encoder let a
+/// caller holding a LEGITIMATE refusal supply a closure that ignores its argument and returns any
+/// text it likes, so the response could still carry another machine code without the sealed value
+/// ever being touched. Construction and rendering are two boundaries and both had to close.
+///
+/// The child reaches `super::serve_json_string` directly -- a descendant may read ancestor-private
+/// items -- so the parent supplies neither the code, nor the entry, nor a function able to replace
+/// either.
+pub(super) fn serve_budget_refusal_machine_body(refusal: &ServeBudgetRefusal) -> String {
     format!(
         "{{\"code\":{},\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        json_string(crate::evaluation_budget_consequence_generated::EVALUATION_BUDGET_REFUSAL_CODE),
-        json_string(&refusal.entry),
+        super::serve_json_string(
+            crate::evaluation_budget_consequence_generated::EVALUATION_BUDGET_REFUSAL_CODE
+        ),
+        super::serve_json_string(&refusal.entry),
         refusal.clock_key,
         refusal.elapsed_nanos,
         refusal.limit_ms
     )
 }
 
-pub(crate) fn serve_budget_refusal_diagnostic_line(refusal: &ServeBudgetRefusal) -> String {
+pub(super) fn serve_budget_refusal_diagnostic_line(refusal: &ServeBudgetRefusal) -> String {
     format!(
         "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
         refusal.entry, refusal.clock_key, refusal.elapsed_nanos, refusal.limit_ms

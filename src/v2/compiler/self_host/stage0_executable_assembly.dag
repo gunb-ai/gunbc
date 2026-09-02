@@ -187,22 +187,54 @@ type Stage0AssemblyOwnershipRefusalCause
   | ModuleOwnedByTwoSurfaces { module_basename: String, surfaces: List<String> }
   | ModuleOwnedByTwoPartitionPackages { module_basename: String, packages: List<String> }
   | RetainedModuleHasNoRetentionRow { module_basename: String }
+  | WetModuleRegisteredTwice { module_basename: String, routes: List<WetActuatorDeclarationRoute> }
 
 // WET GENERATION IS ITS OWN POPULATION, PASSED IN, never inferred from membership in the broad
 // lib.rs union. Inferring it would make "declared by lib.rs and matching no other surface" mean
 // "wet-generated", which is exactly the ModuleOwnedByNoSurface refusal this module exists to keep
 // loud -- a new unowned module would silently acquire an owner arm by appearing.
+// A LOOKUP THAT RETURNS A LIST HAS ALREADY DECIDED TO TOLERATE DUPLICATES. The first shape here
+// returned every matching row's route and let two consumers reduce it -- surface counting treated
+// any nonempty result as one wet surface, and owner construction folded the routes down to the
+// last one. So a basename registered twice with the SAME route was accepted silently, and one
+// registered twice with DIFFERENT routes silently took whichever row the fold saw last. Both are
+// authored-population ambiguity hidden by a projection, which is the shape this whole census
+// exists to refuse; the typed result makes the ambiguity a state the caller must answer for.
+//
+// A RUST DUPLICATE-MODULE ERROR IS NOT COVER FOR THIS. The macro-spliced route contributes no line
+// to the ordinary pub-mod block, so a duplicate row on that route is invisible to lib.rs and rustc
+// never sees a second declaration to reject.
+type WetRouteResolution
+  = WetRouteAbsent
+  | WetRouteUnique { route: WetActuatorDeclarationRoute }
+  | WetRouteDuplicate { module_basename: String, routes: List<WetActuatorDeclarationRoute> }
+
 fn stage0_wet_route_for_basename(
   module_basename: String,
   wet_lib_rows: List<WetActuatorGeneratedRegistration>
-) -> List<WetActuatorDeclarationRoute> {
-  fold(
+) -> WetRouteResolution {
+  let matching = fold(
     wet_lib_rows,
     init: [],
     f: fn(acc, row) {
       if row.basename == module_basename { concat(acc, [row.declaration_route]) } else { acc }
     }
   )
+  if length(xs: matching) == 0 {
+    WetRouteAbsent
+  } else if length(xs: matching) > 1 {
+    WetRouteDuplicate { module_basename: module_basename, routes: matching }
+  } else {
+    fold(matching, init: WetRouteAbsent, f: fn(acc, r) { WetRouteUnique { route: r } })
+  }
+}
+
+fn stage0_wet_route_is_present(resolution: WetRouteResolution) -> Bool {
+  match resolution {
+    WetRouteAbsent => false
+    WetRouteUnique { route: _ } => true
+    WetRouteDuplicate { module_basename: _, routes: _ } => true
+  }
 }
 
 // OWNERSHIP IS DECIDED BY SURFACE CARDINALITY, NOT BY BRANCH ORDER. The previous shape tested each
@@ -235,7 +267,7 @@ fn stage0_active_ownership_surfaces(
   let with_retained = if any(xs: retained_pub_mod_basenames, predicate: fn(m) { m == module_basename }) {
     concat(with_emitted, [stage0_host_shell_retained_surface_name])
   } else { with_emitted }
-  if length(xs: stage0_wet_route_for_basename(module_basename: module_basename, wet_lib_rows: wet_lib_rows)) > 0 {
+  if stage0_wet_route_is_present(resolution: stage0_wet_route_for_basename(module_basename: module_basename, wet_lib_rows: wet_lib_rows)) {
     concat(with_retained, [stage0_wet_actuator_surface_name])
   } else { with_retained }
 }
@@ -259,7 +291,7 @@ fn stage0_resolve_executable_module_owner(
     retained_pub_mod_basenames: retained_pub_mod_basenames,
     wet_lib_rows: wet_lib_rows
   )
-  let wet_routes = stage0_wet_route_for_basename(module_basename: module_basename, wet_lib_rows: wet_lib_rows)
+  let wet_route = stage0_wet_route_for_basename(module_basename: module_basename, wet_lib_rows: wet_lib_rows)
   if length(xs: partition_packages) > 1 {
     Stage0AssemblyOwnerRefused {
       cause: ModuleOwnedByTwoPartitionPackages {
@@ -285,13 +317,24 @@ fn stage0_resolve_executable_module_owner(
         package_name: fold(partition_packages, init: "", f: fn(acc, p) { if acc == "" { p } else { acc } })
       }
     }
-  } else if length(xs: wet_routes) > 0 {
-    Stage0AssemblyOwnerResolved {
-      owner: WetActuatorLibModuleOwner {
-        module_basename: module_basename,
-        host_package: stage0_host_shell_package_name,
-        declaration_route: fold(wet_routes, init: PlainPubMod, f: fn(acc, r) { r })
-      }
+  } else if stage0_wet_route_is_present(resolution: wet_route) {
+    match wet_route {
+      WetRouteUnique { route: route } =>
+        Stage0AssemblyOwnerResolved {
+          owner: WetActuatorLibModuleOwner {
+            module_basename: module_basename,
+            host_package: stage0_host_shell_package_name,
+            declaration_route: route
+          }
+        }
+      WetRouteDuplicate { module_basename: dup, routes: routes } =>
+        Stage0AssemblyOwnerRefused {
+          cause: WetModuleRegisteredTwice { module_basename: dup, routes: routes }
+        }
+      WetRouteAbsent =>
+        Stage0AssemblyOwnerRefused {
+          cause: ModuleOwnedByNoSurface { module_basename: module_basename }
+        }
     }
   } else if any(xs: retained_pub_mod_basenames, predicate: fn(m) { m == module_basename }) {
     let retention_row = stage0_retention_row_path(module_basename: module_basename, roster: roster)
