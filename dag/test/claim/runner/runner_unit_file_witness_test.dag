@@ -217,7 +217,7 @@ test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> B
 // here. Distinct values are what make the field occupancy discriminating.
 fn live_realization() -> CompileParallelismRealization {
   BorrowerHeldCooperativeHostFifo {
-    fifo_path: "/fixture/other.fifo",
+    fifo_path: "/fixture/other.fifo" as NonEmptyStr,
     daemon_service: "fixture-other.service" as NonEmptyStr,
   }
 }

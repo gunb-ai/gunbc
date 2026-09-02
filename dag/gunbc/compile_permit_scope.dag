@@ -18,7 +18,7 @@ import std.measure { HardwareThreadCount }
 // OBSERVED to be true of the running fleet. Collapsing the first into the third is what lets a
 // desired-state row authorize a policy the hosts have not yet earned.
 type CompileParallelismRealization
-  = BorrowerHeldCooperativeHostFifo { fifo_path: String, daemon_service: NonEmptyStr }
+  = BorrowerHeldCooperativeHostFifo { fifo_path: NonEmptyStr, daemon_service: NonEmptyStr }
   | InvocationLocalCargo { jobs_per_slot: HardwareThreadCount }
 
 // THE SEMANTIC OUTCOME, WHICH IS WHAT POLICY IS ALLOWED TO SEE. Business policy that matched
@@ -155,5 +155,4 @@ fn fleet_cancellation_standing(
 // than by a literal someone has to remember to keep. Publishing real observations is what moves it,
 // and that is the second stage of the cutover -- deploy and restart the safe realization on every
 // eligible host, read the active units back, bind the receipts, and only then does the policy move.
-data fleet_compile_cancellation_standing: FleetCompileCancellationStanding =
-  fleet_cancellation_standing(observations: [])
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_cancellation_standing(observations: [])

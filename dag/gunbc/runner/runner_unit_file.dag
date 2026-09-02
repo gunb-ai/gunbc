@@ -177,10 +177,10 @@ fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> Li
   match scope {
     BorrowerHeldCooperativeHostFifo { fifo_path: p, daemon_service: _ } =>
       [
-        runner_unit_environment(name: "CTRL_JOBSERVER_FIFO", value: p),
+        runner_unit_environment(name: "CTRL_JOBSERVER_FIFO", value: p as String),
         runner_unit_environment(
           name: "MAKEFLAGS",
-          value: jobserver_makeflags_fifo_auth(fifo_path: p),
+          value: jobserver_makeflags_fifo_auth(fifo_path: p as String),
         ),
       ]
     // NO MAKEFLAGS, AND THAT ABSENCE IS THE POINT. Under invocation-local parallelism there is no
