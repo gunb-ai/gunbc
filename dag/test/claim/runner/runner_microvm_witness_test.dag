@@ -391,22 +391,24 @@ test fn the_cell_core_count_still_resolves() -> Bool {
   }
 }
 
-// NO GUEST IS ADMISSIBLE WHILE THE MEMORY AXIS REFUSES, INCLUDING THE FLEET-CONSTRUCTED ONE. This
-// is the honest replacement for the old positive control: the constructed configuration reaches
-// the envelope arm rather than being admitted by it, so nothing downstream may treat a
-// fleet-constructed VM as cleared.
-test fn no_fleet_constructed_vm_is_admissible_while_the_footprint_is_unmodeled() -> Bool {
-  match specimen_resolution() {
-    MicroVmConfigUnresolved { cause: _ } => true
-    MicroVmConfigResolved { config: c } =>
-      admission_is_envelope_unresolved_refusal(
-        a: runner_microvm_admission(
-          topology: VmmUnderLifecycleController,
-          intent: repaired_lifecycle_intent,
-          listener_is_main_process: false,
-          transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-          config: c,
-        ),
-      )
-  }
-}
+// THE WITNESS THAT STOOD HERE WAS DELETED, NOT REPAIRED, AND THE DELETION IS THE POINT.
+//
+// no_fleet_constructed_vm_is_admissible_while_the_footprint_is_unmodeled asserted that the
+// fleet-constructed VM is not admitted while sizing refuses. Its unresolved arm returned TRUE, so
+// it returned true WITHOUT EVER REACHING runner_microvm_admission -- the fleet constructor derives
+// the size, so an unresolved sizing makes the config unresolved, and the witness took that arm
+// every time. It could not fail. It passed the floor and two approvals in exactly that state,
+// standing in a PR body as the replacement for five witnesses withdrawn for demonstrating a FALSE
+// claim, which is the worst possible place for one that demonstrates NOTHING.
+//
+// A witness whose refusal arm returns true is not a control; it is a restatement of the refusal.
+//
+// It is deleted rather than repaired because the asymmetry decides it: a MISSING witness costs
+// nothing while it waits for the redesign, while a GREEN one that cannot fail is active
+// misinformation for as long as it exists and gets cited as coverage (DESIGN 4b). Repairing it
+// here would be work against a block being rewritten wholesale; deleting it removes a false claim
+// and forecloses nothing, because the redesign authors the honest form regardless.
+//
+// THE HONEST FORM, for whoever writes it: assert that the resolution IS unresolved AND that its
+// cause NAMES the missing footprint. That has an authorable red -- a cause that stops naming the
+// footprint fails it -- where "an unresolved config cannot be admitted" has none.
