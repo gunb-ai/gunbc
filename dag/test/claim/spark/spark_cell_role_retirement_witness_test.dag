@@ -610,39 +610,18 @@ fn w_row_is_retirement(row: FleetConvergeSparkServingTypedAction) -> Bool {
       })
 }
 
-// ── DECLARED §4b(3) RUNG DROP: PRODUCTION-ROOT RETIREMENT EVIDENCE ──────────────────────────────
+// ── THREE PRODUCTION-ROOT RETIREMENT CLAIMS ARE GONE, UNDER A DECLARED §4b(3) DROP ──────────────
 //
-// Three claims stood here and are removed rather than left silently red:
 // w_the_production_artifact_plans_four_retirements_for_the_training_cell,
-// w_the_production_artifact_plans_no_rows_for_the_converged_serving_cell, and
-// w_the_production_retirement_touches_no_baseline_address. Each entered through
-// `fleet_converge_plan_artifact` -- the root the converge actuator itself walks -- and each needed a
-// PRODUCTION host holding SparkTrainingCell to have a subject. After the operator's 2026-09-02
-// withdrawal of srv6's training dedication the roster holds none, so their subject no longer exists.
+// w_the_production_artifact_plans_no_rows_for_the_converged_serving_cell and
+// w_the_production_retirement_touches_no_baseline_address each needed a PRODUCTION host holding
+// SparkTrainingCell to have a subject, and after the operator's 2026-09-02 withdrawal of srv6's
+// training dedication the roster holds none.
 //
-//   previous rung:      mechanically preventable -- the training arm's four retirement rows and the
-//                       serving arm's zero rows were both exercised through the production root
-//   temporary rung:     mitigatable -- the arms are still exercised, but only at
-//                       spark_serving_role_scoped_desired_members_in over a fixture roster
-//                       (w_the_planner_scopes_desired_state_by_role), which is not the path the
-//                       converge actuator calls
-//   reason:             operator decision, recorded at gunbc.spark.cell_role
-//                       spark_cell_role_assignment_basis -- role is converged desired state, not a
-//                       node dedication, so no host is reserved for training
-//   population:         the training arm of Spark serving role scoping, and the retirement rows it
-//                       produces, as reached through fleet_converge_plan_artifact. The serving arm,
-//                       the no-role refusal, the reconcile, the freeze and the apply are unaffected
-//                       and their production-root claims remain enrolled below.
-//   restoration trigger: a roster-parameterized plan artifact -- the assignment roster threaded from
-//                       fleet_converge_plan_artifact down to spark_serving_role_scoped_desired_members_in,
-//                       SUFFICIENT FOR a witness to drive the production root over an authored roster
-//                       and read back the four retirement rows without any production host holding
-//                       SparkTrainingCell. Half of that capability exists: cell_role
-//                       spark_cell_role_in and the `_in` planner variant take the roster already;
-//                       what is missing is the threading through the generic artifact entry point.
-//                       Restoring a training cell to the production roster does NOT retire this drop
-//                       -- that would make the evidence depend on the assignment again, which is the
-//                       defect the drop exists to record.
+// The drop is rostered in full -- previous rung, temporary rung, reason, bounded population and
+// restoration trigger -- at gunbc.rung_drop `spark_role_scoped_retirement_production_root`, which is
+// where §4b says declared drops live so they stay countable and prioritizable. It is named here and
+// not restated, because a second copy of a declaration is a second authority for it.
 
 // A HOST WITH NO ROLE REFUSES AT THE PRODUCTION ROOT.
 //

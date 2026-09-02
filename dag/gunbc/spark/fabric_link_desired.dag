@@ -1,6 +1,7 @@
 module gunbc.spark.fabric_link_desired
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 {
   Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
@@ -47,7 +48,7 @@ type FabricEndpoint sole_constructor {
   interface: NonEmptyStr
   address: Ipv4Address
   prefix: PrefixLength
-  mtu: Int
+  mtu: ByteSize
 }
 
 // A RAIL THAT COULD NOT CARRY COLLECTIVE TRAFFIC HAS NO CONSTRUCTOR. Five conditions decide it, and
@@ -84,7 +85,7 @@ fn fabric_link(
     none
   } else if endpoint_a.prefix != endpoint_b.prefix {
     none
-  } else if endpoint_a.mtu != endpoint_b.mtu {
+  } else if byte_size_count(b: endpoint_a.mtu) != byte_size_count(b: endpoint_b.mtu) {
     none
   } else {
     match ipv4_same_network(
@@ -106,7 +107,7 @@ fn fabric_endpoint(
   interface: NonEmptyStr,
   address: Ipv4Address,
   prefix: PrefixLength,
-  mtu: Int,
+  mtu: ByteSize,
 ) -> FabricEndpoint {
   FabricEndpoint {
     host: host, interface: interface, address: address, prefix: prefix, mtu: mtu }
@@ -135,7 +136,10 @@ fn fabric_endpoint_on(link: FabricLink, host: HostIdentity) -> FabricEndpoint? {
 // 192.168.101.0/24, same interface name at both ends of each rail, MTU 9000, IPv6 disabled. The NM
 // profile names on the hosts are cx7-rail0 and cx7-rail1.
 data fabric_prefix: PrefixLength = 24
-data fabric_mtu_bytes: Int = 9000
+// AN MTU IS A BYTE COUNT, so it carries std.measure's ByteSize rather than a bare Int. The scale is
+// exactly what a 9000-vs-1500 mismatch turns on, and a bare number leaves it to the reader -- the
+// same defect PrefixLength above exists to close for the network half of this record.
+data fabric_mtu_bytes: ByteSize = byte_size(count: 9000)
 
 data fabric_rail0: FabricLink? = fabric_link(
   name: "cx7-rail0" as NonEmptyStr,

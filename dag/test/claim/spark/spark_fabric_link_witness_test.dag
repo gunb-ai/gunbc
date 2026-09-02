@@ -1,6 +1,7 @@
 module test.claim.spark.spark_fabric_link_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 {
   Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
@@ -12,7 +13,7 @@ import gunbc.spark.fabric_link_desired {
   spark_fabric_links, spark_fabric_endpoints_on, fabric_prefix, fabric_mtu_bytes,
 }
 
-data w_mtu: Int = 9000
+data w_mtu: ByteSize = byte_size(count: 9000)
 
 fn w_end(host: HostIdentity, iface: NonEmptyStr, o3: Int, o4: Int) -> FabricEndpoint {
   fabric_endpoint(
@@ -61,7 +62,7 @@ test fn w_a_rail_that_could_not_carry_collective_traffic_has_no_constructor() ->
       b: fabric_endpoint(
         host: operator_host_srv8, interface: "ifa" as NonEmptyStr,
         address: ipv4_address(octet1: 192, octet2: 168, octet3: 100, octet4: 11),
-        prefix: 24, mtu: 1500))
+        prefix: 24, mtu: byte_size(count: 1500)))
 }
 
 // THE SUBNET BOUNDARY IS WHERE ADJACENCY STOPS. The two rails are 192.168.100.0/24 and
