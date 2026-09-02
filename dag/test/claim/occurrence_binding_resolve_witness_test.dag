@@ -384,6 +384,8 @@ fn occurrence_binding_resolve_reference_identity_as_candidate_refuses_wrong_role
     OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
     OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
     OccurrenceReferenceBindingTransportRefused { refusal: UnknownOccurrenceIdentity { occurrence: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: ReferenceRole, observed: DeclarationRole, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: ReferenceRole, observed: ReferenceRole, diagnostic_span: _ } } => false
   }
 }
 
@@ -408,5 +410,7 @@ test fn occurrence_binding_resolve_wrong_roles_refuse_holds() -> Bool {
     OccurrenceReferenceBindingTransportRefused { refusal: DuplicateSuppliedCandidateIdentity { occurrence: _, diagnostic_span: _ } } => false
     OccurrenceReferenceBindingTransportRefused { refusal: InconsistentOccurrenceContainment { occurrence: _, diagnostic_span: _ } } => false
     OccurrenceReferenceBindingTransportRefused { refusal: UnknownOccurrenceIdentity { occurrence: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: DeclarationRole, observed: DeclarationRole, diagnostic_span: _ } } => false
+    OccurrenceReferenceBindingTransportRefused { refusal: WrongOccurrenceRole { occurrence: _, expected: DeclarationRole, observed: ReferenceRole, diagnostic_span: _ } } => false
   }
 }

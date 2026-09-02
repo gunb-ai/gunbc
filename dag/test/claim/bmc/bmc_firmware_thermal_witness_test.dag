@@ -731,6 +731,26 @@ test fn srv4_durability_gate_preserves_typed_linkage_refusal_verdict() -> Bool {
     } => count == 6 && list_length(items: assertions) == 6
     BmcFanPolicyDurabilityQualified { qualification: _ } => false
     BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityQualified { qualification: _ } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityIntentUnspecified } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityRequirementDuplicate { boundary: _, count: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityCapabilityMissing } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityCapabilityAdmissionMismatch { expected_realization: _, observed_realization: _, expected_capability_version: _, observed_capability_version: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityCommitBarrierMissing { realization: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityBoundaryUnsupported { realization: _, boundary: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityEvidenceMissing { admission: _, boundary: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityEvidenceAmbiguous { admission: _, boundary: _, count: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityPerturbationTargetMismatch { expected: _, observed: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityPerturbationBoundaryMismatch { expected: _, observed: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityPerturbationGenerationMismatch { expected: _, observed: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityReadbackReceiptLinkMismatch { position: _, expected_receipt_id: _, observed_receipt_id: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityReadbackTargetMismatch { position: _, expected: _, observed: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityReadbackSubjectMismatch { position: _, expected: _, observed: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityDesiredStateMismatch { desired: _, before: _, after: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityActivationReceiptLinkMismatch { expected_receipt_id: _, observed_receipt_id: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityActivationScopeMismatch { expected: _, observed: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityActivationUnverified { reason: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityStateLost { before: _, after: _, reason: _ } } } => false
+    BmcFanPolicyDurabilityVerdictRefused { verdict: StateDurabilityRefused { cause: DurabilityObservationRefused { reason: _ } } } => false
   }
 }
 

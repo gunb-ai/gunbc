@@ -41,6 +41,8 @@ test fn dhcp_lease_observation_discriminates_option_12_vs_reservation_label() ->
     DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: Active } => false
     DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: Inactive } => false
     DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: Expired } => false
+    DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Inactive } => false
+    DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Expired } => false
   }
     && match sample_static_srv3_reservation.lease {
       StaticDhcpReservation { reservation_label: l, status: Active } =>
