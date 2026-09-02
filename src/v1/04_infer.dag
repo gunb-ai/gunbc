@@ -2233,11 +2233,34 @@ fn arm_body_diverges(n: Node) -> Bool {
 // its first required-floor execution. Judging either here would be a fabricated refusal, which
 // DESIGN section 5 forbids exactly as it forbids a fabricated success.
 //
-// So the relation is the one the record-literal and call-argument walls already own: both sides
-// resolve to concrete (non-generic) declared coproducts, neither name is a VARIANT of the other,
-// and `coproduct_variant_name_sets_differ` establishes POSITIVELY that the two declarations
-// disagree about their own arms. Two spellings of one coproduct have identical variant sets and are
-// admitted, whatever their names.
+// So the relation is the one the record-literal and call-argument walls already own, with one
+// deliberate difference from `foreign_concrete_coproduct_where_parent_required`: both sides resolve
+// to concrete (non-generic) declared coproducts, neither name is a VARIANT of the other, and the two
+// resolved declarations are NOT THE SAME DECLARATION -- asked of `node_declaration_identity`, the
+// file-plus-name key this stage already uses, rather than of their variant NAME SETS.
+//
+// THE SET COMPARISON WAS THE FIRST FORM AND IT IS SPELLING-KEYED WHERE DECLARATION IDENTITY IS IN
+// HAND. What it means to ask is "are these two spellings of one coproduct"; what it actually asks is
+// "do these two declarations list different variant names", and those come apart in exactly the case
+// this corpus is known to contain -- v1.compiler.emit_rust `derive_variant_to_enum` maps a variant
+// name shared by two enums to the empty string precisely BECAUSE variant names are not unique across
+// declarations. Two genuinely distinct coproducts that happen to share all their variant names would
+// have been admitted silently, which is the original defect surviving inside its own repair. Both
+// declaration nodes are already in hand here, so the real question is answerable directly, and a
+// false negative documented is worse than one removed.
+// WHAT THIS DOES NOT REPAIR, stated rather than left to be discovered (DESIGN section 4b(2), no
+// untracked stall). The JOIN still answers with the first arm: this carrier adds a judgment beside
+// `prefer_specific_type`, it does not change what the fold returns. For every pair the relation
+// above excludes, the inferred type flowing downstream is still the first arm's. For two spellings
+// of one `T?` that is the Present arm's type reaching a `T?` boundary that judges it, which is the
+// correct answer and not a residue. FOR A KERNEL `String`/`Int` ARM BESIDE A STRUCTURAL NEWTYPE IT
+// IS UNMEASURED HERE -- the pairing is accepted at every seam this stage owns (node_type_equals
+// records why), so no refusal is being suppressed, but which of the two the join returns, and
+// whether a consumer can tell, is not established by anything in this change. NEXT-RUNG TRIGGER, a
+// capability and not an artifact: a join that returns a JUDGED type carrying every arm's verdict
+// rather than a representative selected from the arms, sufficient that no arm reaches a consumer
+// without having been compared to the join's answer. Rostered as
+// `gunbc.recurring_failure_mode` `join_answers_with_one_arm_others_unjudged`.
 fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let unified_name = authored_name_at(source_indices: source_indices, node: unified_arm_type)
@@ -2265,11 +2288,12 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
                 n: arm_decl, name: qualified_last_segment(name: unified_name), source_indices: source_indices)
               || has_child_named(
                 n: unified_decl, name: qualified_last_segment(name: arm_name), source_indices: source_indices)
+            let same_declaration = node_declaration_identity(n: unified_decl, source_indices: source_indices)
+              == node_declaration_identity(n: arm_decl, source_indices: source_indices)
             unified_is_concrete_coproduct
               && arm_is_concrete_coproduct
               && either_is_a_variant_of_the_other == false
-              && coproduct_variant_name_sets_differ(
-                left: unified_decl, right: arm_decl, source_indices: source_indices)
+              && same_declaration == false
         }
     }
   }

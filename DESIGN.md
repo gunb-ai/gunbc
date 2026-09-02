@@ -236,6 +236,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `compensating_errors_cancel_in_the_aggregate`
 - `one_refusal_two_destinations`
 - `join_answers_with_one_arm_others_unjudged`
+- `liveness_probe_read_as_currency`
 
 ## Building & checks
 

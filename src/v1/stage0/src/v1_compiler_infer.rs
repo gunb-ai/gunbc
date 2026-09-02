@@ -3101,14 +3101,17 @@ pub fn match_arm_types_are_disjoint_coproducts(
                                 crate::v1_std_core::qualified_last_segment(arm_name.clone()),
                                 source_indices.clone(),
                             ));
+                        let same_declaration = (node_declaration_identity(
+                            unified_decl.clone(),
+                            source_indices.clone(),
+                        ) == node_declaration_identity(
+                            arm_decl.clone(),
+                            source_indices.clone(),
+                        ));
                         (((unified_is_concrete_coproduct.clone()
                             && arm_is_concrete_coproduct.clone())
                             && (either_is_a_variant_of_the_other.clone() == false))
-                            && coproduct_variant_name_sets_differ(
-                                unified_decl.clone(),
-                                arm_decl.clone(),
-                                source_indices.clone(),
-                            ))
+                            && (same_declaration.clone() == false))
                     }
                 },
             }
