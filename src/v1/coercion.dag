@@ -2,10 +2,15 @@ module v1.compiler.coercion
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
-import v1.std.core { qualified_last_segment, Node, Resolved }
+import v1.std.core { qualified_last_segment, Node, Resolved, declaration_provenance_of, type_reference_provenance }
 
 import std.coercion {
-  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, TypeRealizationDecision
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, TypeRealizationDecision,
+  Realized, Unrealized, RealizationRefused, RealizationRefusalCause, DeclarationIdentityUnavailable,
+  ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow,
+  ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow,
+  GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, TypeDeclarationProvenance,
+  CorpusDeclared, KernelMinted, DeclarationIdentityAbsent
 }
 
 import std.decl_ref { DeclarationRef }
@@ -104,21 +109,28 @@ fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> Stri
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 
-fn decl_identity_file(item: Node) -> String {
-  match item.ident_span {
-    Present { value: sp } => sp.file
-    Absent => ""
-  }
-}
+// THE IDENTITY OF A DECLARATION, AS A STATE SPACE RATHER THAN AS A STRING. The value threaded to
+// every realization gate used to be a file path, and it carried three disjoint inhabitants in one
+// String: a real corpus file, the synthetic pseudo-file the kernel mints for a node with no
+// declaration, and the empty string meaning identity is unknown. Every consumer discriminated only
+// empty from non-empty, so the other two were told apart -- where they were told apart at all -- by
+// four separate spelling tests scattered across the emitter.
+//
+// The kernel arm is EXACT EQUALITY AGAINST THE MINTER, not a prefix test. v1.std.core kernel_span
+// is what synthesizes the pseudo-file, and every kernel construction in the seed sets
+// ident_span: kernel_span(name: <the node's own name>) beside name: <that same name> -- so
+// comparing the span's file to kernel_span(name: item.name).file asks the constructor whether it
+// built this node. That is why no fifth spelling test appears here: the four that existed are
+// deleted rather than joined.
+//
+// CAVEAT ON THAT DERIVATION, recorded because it bounds what this construction may CLAIM. There are
+// TWO declarations of kernel_span -- v1.std.core's and v1.compiler.infer's -- with byte-identical
+// bodies, and v1.compiler.infer's own call sites bind its local twin by shadowing. This module
+// consumes v1.std.core's. The derivation is exact TODAY BECAUSE the two bodies agree, which is a
+// coincidence the tree does not enforce: nothing refuses if one is edited. So this is a consumption
+// of the authority this module imports, and NOT a consolidation of the two.
 
-fn type_reference_decl_file(n: Node) -> String {
-  match n.inferred {
-    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
-    _ => decl_identity_file(item: n)
-  }
-}
-
-data type_reference_identity_note: String = "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity. Homed in v1.compiler.coercion, not v1.compiler.emit_rust, because lookup_checkpoint -- the identity-gated consumer -- is target-generic and shared by v1.compiler.emit as well as v1.compiler.emit_rust; the helper lived beside one caller only because that caller was written first."
+data type_reference_identity_note: String = "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring identity. THAT IDENTITY IS NO LONGER A STRING AND NO LONGER TRAVELS. It was a decl_file path threaded to ninety-five call sites, each of which then asked a gate here to make the same decision at the periphery; DESIGN section 3 says the dispatch that selects a realization is itself realization and sits peripheral rather than in the interface, and a ninety-five-site-wide identity channel was that sentence inverted. The decision is taken once, at type_reference_realization (reference sites) or declaration_realization (declaration sites), and what travels to the renderers is a std.coercion TypeRealizationDecision. A NAME MAY STILL BE A STRING; AN IDENTITY MAY NOT -- dag_name stays a parameter because which peel of a reference is meant (authored spelling, fn-sig leaf, qualified last segment) is a fact the SITE holds and no mint can derive without guessing. The regression this note has always existed to prevent is unchanged and is now unwritable rather than merely warned about: passing the empty string used to mean identity unknown, and a site that omitted identity rendered structurally in silence -- the seed's own dag/std/integer.dag aliases once rendered as crate::std_nat::Nat instead of i64 because eight reference sites passed an empty identity. There is no empty string to pass. An absent identity is std.coercion DeclarationIdentityAbsent, and the answer it still reaches from the bare table is stamped GroundedByUnidentifiedBareRow so that a declared drop is countable instead of indistinguishable from a keyed answer. Homed in v1.compiler.coercion rather than v1.compiler.emit_rust because the decision is target-generic and shared by v1.compiler.emit as well; the provenance itself and its recognizer are homed further down still, in std.coercion and v1.std.core beside the kernel_span minter they read."
 
 fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
@@ -131,11 +143,19 @@ fn structural_declaration_modules_for(dag_name: String) -> List<String> {
 
 data structural_declaration_gate_note: String = "Companion to checkpoint_table_bypasses_identity_note (v1.compiler.emit_rust): a checkpoint row states how a target spells a name, never which declaration that name resolves to at a given reference site, so a bare-name-keyed table cannot by itself discriminate a name with two competing declarations. structural_declaration_modules_for is the corpus-side half DESIGN section 3 requires kept OUT of the extdeps row -- a row per colliding dag_name naming the module(s) whose declaration of that name is a structural (non-checkpoint-eligible) realization, never a positive roster of every module that realizes natively (that shape already exists for Nat/Int as numeric_realization_declaring_modules, below in this same module since the 2026-08-21 relocation off v1.compiler.emit_rust, because those two have a genuine native declaring module to match against). Hash has no native dag declaration anywhere -- lookup_checkpoint's row for Hash exists only because the seed's own runtime type happens to share the spelling -- so the correct gate is inverted: refuse the row when the reference resolves to the KNOWN structural declaration, and let every other decl_file (including unknown, the empty string) continue to answer from the row exactly as before. Widening this roster is bound by the same discipline numeric_realization_roster_extension_note states for the positive form: a name is added here because its structural declaration is a fact already true, never to silence a diagnostic at some call site by declaring victory over it."
 
-fn decl_file_declares_structurally(dag_name: String, decl_file: String) -> Bool {
-  if decl_file == "" {
-    false
-  } else {
-    structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(decl_file, m))
+// The roster is a list of corpus FILE PATHS matched by contains, and that is the residue this
+// change deliberately does not remove: what the declaration REALIZES AS is still answered
+// positionally. What it does remove is the two arms that were never paths at all -- a kernel mint
+// can no longer be compared against a roster of real paths (it never matched, so the gate was
+// unreachable for it by construction rather than by decision), and an absent identity is refused
+// upstream rather than falling through a string comparison. v1.compiler.infer_env
+// global_bare_fallback_invariant already states the terminal key for the surviving arm: filepaths
+// are irrelevant, the declared module path is the containment tree.
+fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenance) -> Bool {
+  match p {
+    CorpusDeclared { decl_file: f } => structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(f, m))
+    KernelMinted { minted_name: _ } => false
+    DeclarationIdentityAbsent => false
   }
 }
 
@@ -143,32 +163,60 @@ data numeric_realization_identity_note: String = "Realization is keyed on the DE
 
 data numeric_realization_roster_extension_note: String = "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape."
 
+// THE ROSTER IS NOW MODULES ONLY. It used to carry a fourth entry, the literal "<kernel:", which
+// was a magic string sitting in a list of real module paths so that a kernel-minted node would
+// substring-match it and be answered natively. That is the same fact the KernelMinted arm below
+// states as a constructor, so the row is deleted rather than kept beside it: a roster of module
+// paths that also has to be readable as a sentinel is two authorities wearing one type.
 fn numeric_realization_declaring_modules() -> List<String> {
-  ["dag/std/nat.dag", "dag/std/integer.dag", "<kernel:"]
+  ["dag/std/nat.dag", "dag/std/integer.dag"]
 }
 
-// THE FILE A KERNEL-MINTED TYPE NODE CARRIES (v1.compiler.core kernel_span): the parser's own
-// `<kernel:Name>` pseudo-file, never a declaration in the corpus. One predicate for the three
-// places that read it, so the spelling lives here and not in each consumer.
-fn is_kernel_minted_file(file: String) -> Bool {
-  contains(file, "<kernel:")
-}
-
-fn decl_file_realizes_natively(decl_file: String) -> Bool {
-  if decl_file == "" {
-    false
-  } else {
-    numeric_realization_declaring_modules() |> any(m => contains(decl_file, m))
+// ANSWER PRESERVED EXACTLY. A kernel-minted node matched the deleted "<kernel:" row and was
+// answered natively; it is answered natively here, by an arm that says so. An absent identity
+// returned false through an empty-string guard; it returns false through its own arm.
+fn provenance_realizes_natively(p: TypeDeclarationProvenance) -> Bool {
+  match p {
+    CorpusDeclared { decl_file: f } => numeric_realization_declaring_modules() |> any(m => contains(f, m))
+    KernelMinted { minted_name: _ } => true
+    DeclarationIdentityAbsent => false
   }
 }
 
-fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
-  if (name == "Nat" || name == "Int") && decl_file_realizes_natively(decl_file: decl_file) {
+fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> String? {
+  if (name == "Nat" || name == "Int") && provenance_realizes_natively(p: p) {
     Present { value: "i64" }
   } else {
     none
   }
 }
+
+// SUPERSESSION HEADER FOR EVERY NOTE BETWEEN HERE AND type_realization_decision BELOW, added rather
+// than editing them in place, because these paragraphs carry REASONING whose conclusions still hold
+// and whose premises named a shape that no longer exists. A silent rewrite would erase the argument
+// that produced the decision; a stale citation would send a reader to a symbol that is gone. So the
+// history stands and this paragraph states what moved.
+//
+// WHAT MOVED (2026-09-02). The identity key is no longer a `decl_file: String` threaded to the
+// periphery. It is std.coercion TypeDeclarationProvenance, minted from the node by v1.std.core
+// declaration_provenance_of, and the DECISION is taken once at the mint rather than at each caller.
+// Read the notes below with these substitutions: `lookup_checkpoint` is type_realization_decision
+// reached through realized_checkpoint; `decl_file_declares_structurally` is
+// provenance_declares_structurally; `decl_file_realizes_natively` is provenance_realizes_natively;
+// `rust_seed_host_numeric_alias` is provenance_host_numeric_alias, and its peripheral question is
+// now answered by realization_is_host_numeric off the decision's ground; `is_kernel_minted_file` is
+// DELETED with no successor predicate, because the state it tested for is a constructor.
+//
+// WHAT DID NOT MOVE, AND IS THE REASON THESE NOTES ARE KEPT: every ANSWER is preserved bit for bit.
+// The `decl_file == ""` bypass these paragraphs argue about at length still answers from the bare
+// table -- it is now the DeclarationIdentityAbsent arm of type_realization_decision, and it stamps
+// its answer GroundedByUnidentifiedBareRow so the declared drop is countable rather than
+// indistinguishable. Its restoration trigger below is UNCHANGED and is NOT discharged by this
+// change: threading identity was never the missing capability, and what these notes call
+// "threaded with decl_file" is now "reached with a provenance that is not DeclarationIdentityAbsent".
+// The surviving positional residue is likewise unchanged: CorpusDeclared still carries a path
+// matched by contains, so WHAT a declaration realizes as is still answered by file rather than by
+// the declared module path v1.compiler.infer_env global_bare_fallback_invariant names as the key.
 
 // The DeclarationRef -> target-realization query the map-key-alias-hop and derive-set-narrowing
 // lanes are both blocked on (v1.compiler.trait_derive_emit map_key_alias_hop_gap_note):
@@ -185,7 +233,7 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
 // already discriminate every specimen the gap note names (Hash vs Int/Nat, same-spelling-
 // different-declaration). Adopting the full std.decl_ref.DeclarationRef triple is deferred to the
 // first consumer that needs the human-readable module_path rather than identity equality (DESIGN
-// section 6 pricing discipline), and this note is that deferral's record. Refused is a genuinely
+// section 6 pricing discipline), and this note is that deferral's record. RealizationRefused is a genuinely
 // NEW answer this decision introduces -- no existing lookup_checkpoint call site can regress into
 // it, because lookup_checkpoint below preserves its exact prior decl_file=="" fallback rather than
 // routing that case through this decision.
@@ -228,25 +276,37 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
 // does not, and structural alias to a plain record stays full-derive. No population count is claimed
 // here: the earlier per-code boards use incompatible subjects and refs, and cross-code partitioning
 // owns any later census rather than this producer repair.
+// THIS IS THE ONE PLACE THE ROSTERS ARE CONSULTED, and after this change it is the only place any
+// caller reaches them. The absent-identity arm is the bare-table bypass that used to live in
+// lookup_checkpoint as a String comparison against "": it answers exactly what it answered before,
+// and now says so with GroundedByUnidentifiedBareRow, so an answer given without a declaration is
+// countable instead of indistinguishable. Nothing here changed WHAT is answered; what changed is
+// that each answer names the ground it stands on.
 fn type_realization_decision(
-  target: RenderTarget, dag_name: String, decl_file: String
+  target: RenderTarget, dag_name: String, provenance: TypeDeclarationProvenance
 ) -> TypeRealizationDecision {
-  if decl_file == "" {
-    Refused { cause: "declaration identity unknown: empty decl_file" }
-  } else if decl_file_declares_structurally(dag_name: dag_name, decl_file: decl_file) {
+  match provenance {
+    DeclarationIdentityAbsent =>
+      match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
+        Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByUnidentifiedBareRow }
+        Absent => RealizationRefused { cause: DeclarationIdentityUnavailable }
+      }
+    _ =>
+  if provenance_declares_structurally(dag_name: dag_name, p: provenance) {
     Unrealized
   } else if target == Rust && !rust_checkpoint_row_keeps_bare_row(dag_name: dag_name) {
-    Refused { cause: concat("declaration-keyed name '", dag_name, "' reached the spelling-keyed arm without a DeclarationRef: its bare row is MigratedToExactBinding (gunbc.rust_source_type_bindings checkpoint_row_migration_rows); answer from rust_exact_realization_decision") }
+    RealizationRefused { cause: BareRowMigratedToExactBinding { dag_name: dag_name } }
   } else {
     match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
-      Present { value: cp } => Realized { checkpoint: cp }
+      Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByCheckpointRow }
       Absent =>
-        let native = if (target == Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
+        let native = if (target == Rust) { provenance_host_numeric_alias(name: dag_name, p: provenance) } else { none }
         match native {
-          Present { value: host } => Realized { checkpoint: TypeCheckpoint { dag_name: dag_name, target_type: host, grounding_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
+          Present { value: host } => Realized { checkpoint: TypeCheckpoint { dag_name: dag_name, target_type: host, grounding_type: host, default_expr: none, is_copy: none, literal_suffix: none }, ground: GroundedByHostNumericAlias }
           Absent => Unrealized
         }
     }
+  }
   }
 }
 
@@ -266,7 +326,7 @@ fn type_realization_decision(
 // a bare String, not a full checkpoint row, so this decision is not inventing information the prior
 // mechanism lacked.
 
-// decl_file == "" is NOT routed through type_realization_decision's Refused arm here: dozens of
+// decl_file == "" is NOT routed through type_realization_decision's RealizationRefused arm here: dozens of
 // production call sites across v1.compiler.emit_rust and v1.compiler.emit already pass an empty
 // decl_file expecting the bare-name table answer (the behavior type_reference_identity_note
 // documents and depends on), and widening this function's refusal to cover them is an unmeasured,
@@ -300,15 +360,49 @@ fn type_realization_decision(
 // legitimate steady state for a production call site and lookup_checkpoint's bypass arm deletes,
 // leaving type_realization_decision as the sole authority. Until then this is a declared, bounded
 // narrowing, not a completed supersession.
-fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) -> TypeCheckpoint? {
-  if decl_file == "" {
-    target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
-  } else {
-    match type_realization_decision(target: target, dag_name: dag_name, decl_file: decl_file) {
-      Realized { checkpoint: cp } => Present { value: cp }
-      Unrealized => none
-      Refused { cause: _ } => none
-    }
+// THE MINT. This is the single entry point every realization question now enters through, and it is
+// the whole of the change: the decision is taken HERE, from the node, and what travels to the
+// renderers is the answer. Before, a String identity key was threaded to ninety-five sites so that
+// each could ask lookup_checkpoint to make this same decision at the periphery -- DESIGN section 3
+// says the dispatch that selects a realization is itself realization and sits peripheral, never in
+// the interface, and a ninety-five-site-wide identity channel was that sentence inverted.
+//
+// A NAME MAY BE A STRING; AN IDENTITY MAY NOT. dag_name stays a parameter deliberately. Which peel
+// of a reference is meant -- the authored spelling, the fn-sig leaf, the qualified last segment --
+// is a fact the SITE holds and this function cannot derive; guessing it would be a heuristic
+// standing exactly where a richer source was available.
+fn type_reference_realization(n: Node, dag_name: String, target: RenderTarget) -> TypeRealizationDecision {
+  type_realization_decision(target: target, dag_name: dag_name, provenance: type_reference_provenance(n: n))
+}
+
+// The declaration-site counterpart, for a caller holding the declaration item itself rather than a
+// reference to it.
+fn declaration_realization(item: Node, dag_name: String, target: RenderTarget) -> TypeRealizationDecision {
+  type_realization_decision(target: target, dag_name: dag_name, provenance: declaration_provenance_of(item: item))
+}
+
+fn realized_checkpoint(decision: TypeRealizationDecision) -> TypeCheckpoint? {
+  match decision {
+    Realized { checkpoint: cp, ground: _ } => Present { value: cp }
+    Unrealized => none
+    RealizationRefused { cause: _ } => none
+  }
+}
+
+// Whether this realization is the host numeric alias rather than a checkpoint row. Consumers used
+// to ask this by calling the numeric roster a second time with the same name and file; the ground
+// answers it from the decision they already hold.
+fn realization_is_host_numeric(decision: TypeRealizationDecision) -> Bool {
+  match decision {
+    Realized { checkpoint: _, ground: GroundedByHostNumericAlias } => true
+    _ => false
+  }
+}
+
+fn realization_host_numeric_spelling(decision: TypeRealizationDecision) -> String? {
+  match decision {
+    Realized { checkpoint: cp, ground: GroundedByHostNumericAlias } => Present { value: cp.target_type }
+    _ => none
   }
 }
 
@@ -332,12 +426,12 @@ fn rust_exact_realization_decision(source: DeclarationRef?) -> TypeRealizationDe
   match rust_lookup_exact_binding(source: source) {
     ResolvedExactBinding { binding: b } =>
       match rust_exact_type_checkpoint(binding: b) {
-        Present { value: cp } => Realized { checkpoint: cp }
-        Absent => Refused { cause: concat("declaration '", b.source.decl_name as String, "' is bound to a Rust representation with no realization row") }
+        Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByCheckpointRow }
+        Absent => RealizationRefused { cause: BoundRepresentationHasNoRealizationRow { decl_name: b.source.decl_name as String } }
       }
     ExactBindingAbsent => Unrealized
-    ExactBindingAmbiguous { candidate_count: _ } => Refused { cause: "ambiguous exact binding: more than one row for one declaration (gunbc.rust_source_type_bindings authoring defect)" }
-    ExactSourceIdentityUnavailable { cause: c } => Refused { cause: c }
+    ExactBindingAmbiguous { candidate_count: _ } => RealizationRefused { cause: ExactBindingAmbiguousForOneDeclaration }
+    ExactSourceIdentityUnavailable { cause: c } => RealizationRefused { cause: ExactSourceIdentityAbsent { detail: c } }
   }
 }
 
@@ -351,10 +445,10 @@ fn rust_exact_realization_decision(source: DeclarationRef?) -> TypeRealizationDe
 // bare-row verdicts). This is the ONE question std.literal_elaboration and std.operator_realization
 // ask of the target (XL-0N): a native declaration takes the kernel literal and the host operator
 // directly; anything else is a structural operand.
-fn declaration_realizes_natively_on_rust(declaration: DeclarationRef, decl_file: String) -> Bool {
+fn declaration_realizes_natively_on_rust(declaration: DeclarationRef, spelling_decision: TypeRealizationDecision) -> Bool {
   match rust_exact_realization_decision(source: Present { value: declaration }) {
-    Realized { checkpoint: _ } => true
-    _ => lookup_checkpoint(target: Rust, dag_name: declaration.decl_name as String, decl_file: decl_file) != none
+    Realized { checkpoint: _, ground: _ } => true
+    _ => realized_checkpoint(decision: spelling_decision) != none
   }
 }
 
@@ -370,22 +464,22 @@ fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> Bool {
 
 data coerce_primitive_type_dotted_fallback_note: String = "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note in v1.compiler.05_emit_rust, which as of 2026-08-21 covers every position that emits a Rust Parent::Variant path, enumerated by producer rather than by position). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority rust_variant_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
-fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
-  match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
+fn coerce_primitive_type(decision: TypeRealizationDecision, dag_name: String) -> String {
+  match realized_checkpoint(decision: decision) {
     Present { value: cp } => cp.target_type
     Absent => qualified_last_segment(name: dag_name)
   }
 }
 
-fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Bool? {
-  match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
+fn is_copy(decision: TypeRealizationDecision) -> Bool? {
+  match realized_checkpoint(decision: decision) {
     Present { value: cp } => cp.is_copy
     Absent => none
   }
 }
 
-fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> String? {
-  match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
+fn literal_suffix(decision: TypeRealizationDecision) -> String? {
+  match realized_checkpoint(decision: decision) {
     Present { value: cp } => match cp.literal_suffix {
       Present { value: s } => Present { value: s }
       Absent => Present { value: "" }
@@ -496,8 +590,8 @@ fn template_application_tests() -> List<CoercionTestEntry> {
   let targets = [Rust, Python, Go]
   let assertions = targets |> flat_map(t =>
     let inhs = unique_inhabitants_for_template_tests(inhs: target_inhabitants(target: t))
-    let int_target = coerce_primitive_type(target: t, dag_name: "Int", decl_file: "")
-    let str_target = coerce_primitive_type(target: t, dag_name: "String", decl_file: "")
+    let int_target = coerce_primitive_type(decision: type_realization_decision(target: t, dag_name: "Int", provenance: DeclarationIdentityAbsent), dag_name: "Int")
+    let str_target = coerce_primitive_type(decision: type_realization_decision(target: t, dag_name: "String", provenance: DeclarationIdentityAbsent), dag_name: "String")
     inhs |> flat_map(inh =>
       if inh.arity == 1 {
         let expected = apply_inhabitant_template1(template: inh.template, inner: int_target)

@@ -1,0 +1,89 @@
+module gunbc.scm.cli
+
+// THE ONE PLACE A READ VERB BECOMES BYTES AN OPERATOR CAN SEE.
+//
+// `gunbc.scm.read_command` composes load-then-ask and names no destination; `gunbc.scm.render`
+// turns that answer into a `CliWireResponse`. Both existed before this module and neither had a
+// consumer outside a witness test, so every SCM read answer was computed and discarded --
+// the unwired-renderer state `gunbc.cli_dispatch_surface` already records. This module is the
+// entry the host actually invokes: `gunbc run --entry dag/gunbc/scm/cli.dag --function scm_log
+// --arg path=<repo>`.
+//
+// WHY A `path` PARAMETER AND NOT A DISCOVERED ROOT. `load_repository` takes a path, and
+// inventing a default here (cwd, an env var, a conventional `.gunbc` directory) would make this
+// module decide a question its authority left open -- the same reason `scm_read_status` takes
+// `pending` as a parameter rather than reading it from somewhere.
+//
+// THE CAPABILITY IS DECLARED, NOT DETECTED. `plain_terminal_capability` claims no colour, ASCII
+// tier and no cursor addressing, which is the floor every terminal meets. Detecting the real
+// terminal's capability is a host observation this module cannot make and must not fabricate;
+// when a host learns to report one, it passes it in and this row becomes the fallback rather
+// than the answer.
+import std.render { RenderCapability }
+import std.symbols { Ascii }
+import extdeps.render.surface { RenderTarget, PlainTerminal }
+import gunbc.cli_wire { CliWireResponse }
+import gunbc.scm.authoring { empty_proposal }
+import gunbc.scm.log { CommitLog }
+import gunbc.scm.status { RepositoryStatus }
+import gunbc.scm.read_command { ScmReadResult, scm_read_log, scm_read_status }
+import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response, scm_init_cli_response }
+import gunbc.scm.init { ScmInitOutcome, initialize_repository }
+
+data plain_terminal_capability: RenderCapability = RenderCapability {
+  color: false,
+  tier: Ascii,
+  cursor_addressable: false
+}
+
+data plain_terminal_target: RenderTarget = PlainTerminal
+
+// THE COMPOSITION IS SPLIT FROM THE READ so the composition is WITNESSABLE. `scm_log` reads a
+// file, and the SCM witnesses are SubstrateInputsOnly -- they refuse at the hermetic boundary --
+// so a claim can never call it. `scm_log_response` takes the read's RESULT and is pure, which
+// makes this module's actual decisions (which target, which capability) reachable by a witness
+// that constructs a result in substrate. Without the split, changing `plain_terminal_capability`
+// to `color: true` would turn nothing red.
+fn scm_log_response(result: ScmReadResult<CommitLog>) -> CliWireResponse {
+  scm_log_cli_response(
+    result: result,
+    target: plain_terminal_target,
+    capability: plain_terminal_capability
+  )
+}
+
+fn scm_log(path: String) -> CliWireResponse {
+  scm_log_response(result: scm_read_log(path: path))
+}
+
+// STATUS OF A REPOSITORY WITH NOTHING STAGED. `repository_status` needs a pending `Proposal`,
+// and a CLI reading a repository document has no staging area to read one from -- the document
+// does not carry what is staged. `empty_proposal()` is therefore the honest argument for this
+// entry, and it is a REAL limitation rather than a placeholder: a verb that reports staged roles
+// needs a staging authority to exist first, and none does.
+fn scm_status_response(result: ScmReadResult<RepositoryStatus>) -> CliWireResponse {
+  scm_status_cli_response(
+    result: result,
+    target: plain_terminal_target,
+    capability: plain_terminal_capability
+  )
+}
+
+fn scm_status(path: String) -> CliWireResponse {
+  scm_status_response(result: scm_read_status(path: path, pending: empty_proposal()))
+}
+
+// INIT REFUSES AN OCCUPIED PATH. The decision lives in gunbc.scm.init, not here: whether there is
+// anything to destroy is a fact about the repository, and a CLI module deciding it would put policy
+// in the realization layer. This module supplies the terminal capability and nothing else.
+fn scm_init_response(outcome: ScmInitOutcome) -> CliWireResponse {
+  scm_init_cli_response(
+    outcome: outcome,
+    target: plain_terminal_target,
+    capability: plain_terminal_capability
+  )
+}
+
+fn scm_init(directory: String, name: String) -> CliWireResponse {
+  scm_init_response(outcome: initialize_repository(directory: directory, name: name))
+}

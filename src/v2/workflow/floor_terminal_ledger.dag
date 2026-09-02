@@ -6,6 +6,9 @@ import extdeps.git.object_store { GitObjectId }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_route_gap {
+  FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval
+}
 import v2.workflow.required_floor {
   ClaimSafetyOutcome,
   CompletedPastSafetyLimit,
@@ -118,6 +121,27 @@ import v2.workflow.required_floor {
 // publish as the same artifact. `halted_by` carries the identity whose unwind stopped the line,
 // so the ledger names the cause beside every consequence rather than leaving a reader to infer it
 // from a gap.
+// WHY THE HERMETIC ROUTE HAD NO ARM, AS A CLOSED SET RATHER THAN AS PROSE.
+//
+// `RouteGap` carried one `route: String`, and that was a collapse this repo had ALREADY refused
+// elsewhere: `v2.workflow.floor_route_gap` models the same fact as a typed pair -- the operation
+// attempted, and the closed ground on which the hermetic route declined it -- because an
+// identity-only row "cannot object when the witness reaches a different operation or when the
+// ground changes to one with a different remedy". Its own words. The executor observes the pair
+// (`ClaimOutcome.HostEffectRefused { operation, ground }`), so a single string was the one place
+// between observation and artifact where the two facts were fused back together.
+//
+// THE VOCABULARY IS IMPORTED, NOT MINTED. `FloorRouteGapGround` stays where it is and this module
+// takes a dependency on it. Relocating it here was tried first and REFUSED BY ACYCLICITY: this
+// module imports `required_floor`, which imports `floor_route_gap`, so moving the type would have
+// closed a cycle -- and DESIGN section 4 makes acyclicity the import graph's only structural law.
+// The edge already exists transitively; naming it directly adds no new dependency, only an honest
+// one. A third spelling beside that authority and the seed's `v1_interpreter.HermeticEffectGround`
+// mirror would be exactly the fork this widening exists to close.
+//
+// WHAT THIS DOES NOT TOUCH: `floor_route_gap` keeps its expectation type and its whole population.
+// What an identity is EXPECTED to gap on is a different fact from what an attempt REACHED, and
+// neither derives from the other, so nothing there is redundant with this arm.
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
@@ -125,7 +149,7 @@ type ClaimAttemptTerminal
   | NotAttempted { halted_by: String }
   | BudgetRefused { safety: ClaimSafetyOutcome }
   | HostToolUnresolved { name: String, probed: List<String> }
-  | RouteGap { route: String }
+  | RouteGap { operation: String, ground: FloorRouteGapGround }
 
 // AN ATTEMPT THAT RETURNED STILL MAY NOT HAVE OBSERVED ANYTHING. A claim whose result is not a
 // verdict the floor can read -- the wrapper refusal a run reports when a function returns a bare
@@ -323,7 +347,7 @@ fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
     Panicked { payload: _ } => PanickedBeforeVerdict
     NotAttempted { halted_by: _ } => NotAttemptedAfterAbort
     HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
-    RouteGap { route: _ } => RouteGapBeforeVerdict
+    RouteGap { operation: _, ground: _ } => RouteGapBeforeVerdict
     Returned { observation: o } =>
       match o {
         ObservationUnrepresentable { reason: _ } => ObservationUnreadableBeforeVerdict
