@@ -116,6 +116,14 @@ pub fn run_codex_app_server_stdio_session(
     .join()
     .map_err(|_| "stdin writer panicked".to_string())?;
 
+    // Keep the exited leader as a zombie until its process group has been signalled. Reaping it
+    // first releases `pid` for reuse, at which point kill(-pid, ...) can target an unrelated group.
+    // Waiting for the leader before joining the readers also prevents a descendant which inherited
+    // either pipe from keeping teardown blocked forever.
+    let exit_observation = wait_for_child_exit_without_reaping(pid);
+    kill_process_group(pid);
+    let wait_result = child.wait();
+
     if let Some(h) = stdout_reader {
         let _ = h.join();
     }
@@ -123,13 +131,11 @@ pub fn run_codex_app_server_stdio_session(
         let _ = h.join();
     }
 
-    let mut exit_code = child
-        .wait()
+    exit_observation?;
+    let mut exit_code = wait_result
         .map_err(|e| format!("wait codex child: {e}"))?
         .code()
         .unwrap_or(1);
-
-    kill_process_group(pid);
 
     let stdout = stdout_buf.lock().unwrap().clone();
     let stderr = stderr_buf.lock().unwrap().clone();
@@ -220,8 +226,28 @@ fn spawn_codex_child(req: &CodexStdioSessionRequest<'_>, stdin_rx: File) -> Resu
 
 fn kill_process_group(pid: u32) {
     unsafe {
-        let _ = libc::kill(pid as i32, libc::SIGTERM);
         let _ = libc::kill(-(pid as i32), libc::SIGTERM);
+    }
+}
+
+fn wait_for_child_exit_without_reaping(pid: u32) -> Result<(), String> {
+    loop {
+        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::uninit();
+        let rc = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid,
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if rc == 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(format!("observe codex child exit: {error}"));
+        }
     }
 }
 
@@ -481,6 +507,7 @@ pub fn run_cli_main() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     #[test]
     fn build_turn_start_line_escapes_json_in_user_input() {
@@ -506,5 +533,18 @@ mod tests {
         let false_positive_needle = "\"id\":4";
         assert!(line_id41.contains(false_positive_needle));
         assert_eq!(extract_thread_id_for_rpc_response(line_id41, 4), None);
+    }
+
+    #[test]
+    fn observing_child_exit_does_not_reap_it() {
+        let mut child = Command::new("sh").arg("-c").arg("exit 23").spawn().unwrap();
+        let pid = child.id();
+
+        wait_for_child_exit_without_reaping(pid).unwrap();
+
+        // A zombie still owns its PID. This is the property teardown needs while using that same
+        // number as the process-group ID.
+        assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
+        assert_eq!(child.wait().unwrap().code(), Some(23));
     }
 }
