@@ -516,6 +516,10 @@ fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) ->
 // against its own earlier revision -- and it would restart a converged host whose file was merely
 // rewritten.
 //
+// AND IT IS NOT A MEMBER OF THE EXECUTABLE EFFECT DOMAIN, which is a stronger statement than the
+// one above and is made where it is enforced: see SparkServingExecutablePlannedEffect. Unreachability
+// is a fact about today's producers; non-membership is a fact about what can be written at all.
+//
 // There is no container arm. A rootless container's reactivation is a different operation on a
 // different subject, and minting an arm for it here would be a constructor whose actuation nobody
 // has modeled. `spark_serving_reactivation_remedy` refuses for that realization instead.
@@ -705,10 +709,31 @@ fn spark_serving_reactivation_required(
 // vocabulary having to grow arms for the other, and so the wire rendering of a plan says which kind
 // each effect was rather than flattening both into one namespace of strings where `start-user-unit`
 // and `stop-user-unit` look like members of the same closed set.
-type SparkServingPlannedEffect
+//
+// MEMBERSHIP HERE IS A CLAIM OF EXECUTABILITY, WHICH IS WHY REACTIVATION IS NOT A MEMBER.
+//
+// The carrier that consumes this sum, gunbc.fleet_converge_plan PlannedEffectExecution, holds the
+// effect and the steps as INDEPENDENT fields, and apply consumes the steps without ever checking
+// that they realize the effect beside them. So a member of this sum is not merely renderable: it is
+// admitted as the LABEL beside commands whose authority is independent of that label. Adding
+// ServingReactivationEffect here would not have produced a restart command -- it would have made
+// `effect: <a restart>, first_step: <any step at all>` a writable, apply-accepted value, which is a
+// worse defect than an unreachable arm: it legitimates arbitrary steps under a restart's name.
+// Zero producers would have established only that no CURRENT site constructs that value, never that
+// it cannot reach apply.
+//
+// The exclusion is therefore structural rather than a promise: reactivation has no constructor into
+// the executable domain, so no pairing of a restart label with unrelated steps can be written. It
+// is enforced by execution in test.claim.spark_serving_reactivation_not_executable_witness_test, whose
+// RED is exactly that pairing and which greens again the moment this sum is re-widened.
+//
+// It is admitted properly one gate later, by DCH-0r-c, and the shape is already settled: not
+// membership in this sum but PlannedBoundReactivationExecution { plan, steps }, whose steps are
+// DERIVED from the bound plan rather than authored independently beside it -- the same defect this
+// exclusion holds shut, closed at its root for reactivation instead of inherited from installs.
+type SparkServingExecutablePlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
-  | PlannedReactivationEffect { reactivation: ServingReactivationEffect }
 
 // PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
 // the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an

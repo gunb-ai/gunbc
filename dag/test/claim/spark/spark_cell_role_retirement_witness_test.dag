@@ -102,10 +102,9 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_refusal_text,
   fleet_converge_plan_artifact_hash,
   fleet_converge_spark_serving_row_effects,
-  SparkServingPlannedEffect,
+  SparkServingExecutablePlannedEffect,
   PlannedInstallEffect,
   PlannedRetirementEffect,
-  PlannedReactivationEffect,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -575,7 +574,6 @@ fn w_row_is_retirement(row: FleetConvergeSparkServingTypedAction) -> Bool {
       match e {
         PlannedRetirementEffect { retirement: _ } => true
         PlannedInstallEffect { install: _ } => false
-        PlannedReactivationEffect { reactivation: _ } => false
       })
 }
 

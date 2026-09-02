@@ -2,6 +2,7 @@ module test.claim.spark_serving_effect_wire_witness
 
 import std.logic { Bool }
 import gunbc.fleet_converge_plan { fleet_converge_spark_serving_effect_wire }
+import gunbc.spark.serving_realization { serving_reactivation_effect_wire }
 import gunbc.spark.serving_realization {
   PlannedInstallEffect,
   EnableLingerForOwnAccount,
@@ -18,7 +19,6 @@ import gunbc.spark.serving_realization {
   StartUserUnit,
   WriteSystemUnitFile,
   WriteUserUnitFile,
-  PlannedReactivationEffect,
   RestartSystemUnitForChangedDefinition,
   RestartUserUnitForChangedDefinition,
 }
@@ -60,21 +60,24 @@ test fn w_no_two_effects_share_a_wire_label() -> Bool {
       != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableUserUnit })
 }
 
-// THE THIRD VOCABULARY RENDERS AS ITS OWN KIND. A reactivation is not an install and not a
-// retirement, and a plan a human reads must say which of the three it was: `StartUserUnit` beside a
-// bare `RestartUserUnit...` would read as two members of one closed install set. The prefix comes
-// from the sum's own arm, so the rendering cannot claim a kind the value does not have.
-test fn w_reactivation_effects_render_with_their_own_kind_prefix() -> Bool {
-  fleet_converge_spark_serving_effect_wire(effect: PlannedReactivationEffect { reactivation: RestartUserUnitForChangedDefinition })
-    == "reactivate:restart-user-unit-for-changed-definition"
-    && fleet_converge_spark_serving_effect_wire(effect: PlannedReactivationEffect { reactivation: RestartSystemUnitForChangedDefinition })
-      == "reactivate:restart-system-unit-for-changed-definition"
+// THE THIRD VOCABULARY RENDERS THROUGH ITS OWN FUNCTION, NOT THROUGH THE PLAN RENDERER.
+//
+// A reactivation is not a member of SparkServingExecutablePlannedEffect, so it has no arm in
+// fleet_converge_spark_serving_effect_wire and cannot be rendered as a planned effect at all. Its
+// wire labels are still pinned, because DCH-0r-c inherits them: the names must be stable before
+// anything binds steps to them.
+test fn w_reactivation_effects_wire_to_their_own_names() -> Bool {
+  serving_reactivation_effect_wire(effect: RestartUserUnitForChangedDefinition)
+    == "restart-user-unit-for-changed-definition"
+    && serving_reactivation_effect_wire(effect: RestartSystemUnitForChangedDefinition)
+      == "restart-system-unit-for-changed-definition"
 }
 
-// AND THE THREE KINDS ARE MUTUALLY DISTINGUISHABLE IN THE RENDERED STRING, which is the claim the
-// prefix exists to support: a restart of the user unit must not read as its start.
+// AND A RESTART NEVER RENDERS AS A START, which is the claim the separate vocabulary exists to
+// support: `StartUserUnit` and a restart of that same unit are different effects on the same
+// subject, and a plan a human reads must not spell them alike.
 test fn w_a_restart_never_renders_as_a_start() -> Bool {
-  fleet_converge_spark_serving_effect_wire(effect: PlannedReactivationEffect { reactivation: RestartUserUnitForChangedDefinition })
+  serving_reactivation_effect_wire(effect: RestartUserUnitForChangedDefinition)
     != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartUserUnit })
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartSystemUnit })
       != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit })

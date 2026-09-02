@@ -80,8 +80,7 @@ import gunbc.spark.cell_role {
 import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
   SparkServingRetirementEffect,
-  SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
-  PlannedReactivationEffect,
+  SparkServingExecutablePlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
 }
 import gunbc.fleet_converge_plan {
   FleetConvergeSparkServingTypedAction,
@@ -573,7 +572,7 @@ fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool 
 //
 // spark_serving_install_effects_include takes List<ServingInstallEffect> and a bare needle. Since the
 // retirement vocabulary landed, fleet_converge_spark_serving_row_effects answers in the WRAPPER,
-// List<SparkServingPlannedEffect>, so every comparison was a wrapped value against a bare constructor
+// List<SparkServingExecutablePlannedEffect>, so every comparison was a wrapped value against a bare constructor
 // and no row could ever match. This function returned `none` for every input, including rows that
 // plainly carry EnableLingerForOwnAccount -- a silent always-absent, not a refusal.
 //
@@ -587,7 +586,6 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
     match e {
       PlannedInstallEffect { install: i } => i == EnableLingerForOwnAccount
       PlannedRetirementEffect { retirement: _ } => false
-      PlannedReactivationEffect { reactivation: _ } => false
     }) {
     Present { value: EnableLingerForOwnAccount }
   } else {
