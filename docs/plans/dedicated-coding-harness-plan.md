@@ -154,8 +154,18 @@ predicted failure**, not as facts on loan.
 Two more joined that list on 2026-09-01 from the transcript §5 reads, on the same terms: that a
 streaming request may terminate a response early where an otherwise identical non-streaming request
 returns it complete, and that an assistant turn may stop at `end_turn` having announced work it did
-not perform. Neither is established. The second has exactly one observation and the first has none
-— their session's last planned step, isolating streaming as the single variable, was never run.
+not perform.
+
+**The second is superseded on 2026-09-02, and the correction is worth more than the hypothesis.**
+A mechanical cause was found: a serving package carrying `PARAMETER stop ###` terminates generation
+on ordinary Markdown H3 output while returning a well-formed stream and `stop_reason: end_turn`.
+That is a *package configuration* colliding with content, reproduced by a tiny prompt and removed by
+rebuilding the package — not a model deciding to stop, which is what the single surviving
+observation appeared to show. The heading-then-stop symptom therefore had a determinate external
+cause the whole time, and the hypothesis about model behaviour was an artifact of reading a
+transport symptom as a semantic one. It leaves the hypothesis list and becomes DCH-0p's subject.
+The streaming hypothesis is untouched and still has **no** observation: its isolating step was never
+run.
 
 ## 3. Serial gate chain
 
@@ -396,6 +406,63 @@ it into a gate of row-writes would make the row-writes wait on it.
 The structural tell that no carrier exists: the materializer carries a single manifest, digest and
 blob closure, so nothing in it could hold seven.
 
+**AND THE SUBJECT IS A BEHAVIOUR-BEARING PACKAGE, NOT RESIDENT WEIGHTS** (ruling, 2026-09-02). The
+discriminating pair is: same weight blob, same template, same runtime, same host, **different
+effective stop set** — materially different observable behaviour. So a weights digest, a GGUF
+manifest or a model tag is not the model identity this lane needs. The carrier is a
+`ServingModelPackageIdentity` over the target model artifact, quantization, prompt-template identity,
+parser/renderer identity, effective parameter identity, **effective stop-sequence set**, runtime
+release and decoding realization. A tag is an allocated handle to that package and must never be
+treated as the semantic identity — a package rebuilt from the same weights without a stop string is
+a **different serving package**, and treating it as identical makes the repair invisible to
+convergence. The gate's question becomes *which exact behaviour-bearing package is resident and
+active on each router-eligible host*, not which weights occupy disk.
+
+### DCH-0p — Effective package qualification
+
+**Question owned:** what is this endpoint actually serving, and can a stop string in its package
+silently truncate our output?
+
+Created by the 2026-09-02 ruling. It runs after DCH-0b makes package identity representable and
+after DCH-0r makes a required restart safe, and it must complete before DCH-2's production
+qualification.
+
+**The defect it exists to prevent, which is not hypothetical.** A serving package carrying
+`PARAMETER stop ###` terminates generation on ordinary Markdown H3 output, while the serving surface
+returns a well-formed stream and `stop_reason: end_turn`. A tiny prompt reproduces it; removing the
+package stop restores the answer. The client can neither identify the cause from the response nor
+remove a server-side stop through an additive request option. **This is a mechanical cause for the
+heading-then-stop symptom §5 records as a hypothesis** — see the reclassification there.
+
+**Read the effective configuration, never the intended one.** Before admitting a backend, read what
+the running endpoint actually serves (Ollama exposes template, serialized parameters and model
+information on `/api/show`). A source Modelfile, a tag name, or the command used to build the package
+are all statements of intent, not observations. The receipt binds host, service invocation, model
+handle, target artifact, runtime release, template, the complete effective parameter set, the
+canonicalized stop-sequence population, parser and decode realizations, and the observation
+transaction. Where a behaviour-bearing field is not fully exposed, the answer is
+`PackageConfigurationIncomplete` — never an inferred value.
+
+**Stop-sequence admission is the wall.** Every effective stop carries a typed role: either a
+protocol-boundary sentinel binding uniquely to a declared boundary in that exact package's
+template/parser contract, or an unbound content stop. A copied allowlist of strings is not a role.
+`###` has no protocol-boundary role and is ordinary output content, so a package carrying it refuses
+**before** DCH starts a turn. Sentinel-looking values inherited from a prior lane are admitted only
+once DCH independently establishes their relationship to the exact conversation protocol — "the
+other lane called them legitimate" is not our evidence.
+
+**Controls this gate does not exit without:** stop sets differing only by `###` produce different
+package identities; a package carrying unbound `###` refuses; a fixed package completes a request
+requiring H3 output with the H3 bytes present; the original package discriminates by terminating
+before those bytes; an unreadable, incomplete, or handle-inconsistent `/api/show` refuses; one tag
+resolving to different package identities on two router-eligible hosts refuses; a router endpoint
+missing the selected package becomes ineligible rather than silently retained; and a package
+configuration changing under an active session changes the session generation, so old evidence
+cannot carry.
+
+The runtime H3 pair is evidence that the endpoint realizes the modeled rule. It is not a substitute
+for reading the effective configuration.
+
 ### DCH-1 — Hoist the wire shape off the vendor
 
 **Question owned:** what is the interface, and which module owns it?
@@ -453,6 +520,23 @@ a positive control and a discriminating refused case:
   produces a typed interruption.
 - **Turn and transport semantics.** The stream/non-stream differential; `EndTurn` with outstanding
   typed obligations; performance separated by cold, warm and cache-reused state.
+  - **The harness may never state that `end_turn` means the model naturally finished.** On this
+    transport at least two upstream causes produce that same observed label — natural completion,
+    and a configured server-side stop colliding with content. So the raw provider observation and
+    the semantic disposition stay different axes: a provider terminal observation carries the wire
+    stop reason and, honestly, that the native cause is *not exposed*; the DCH disposition is
+    decided by obligations, and external pinned verification — never the model's stop reason —
+    decides success. This is the second of two independent walls: DCH-0p prevents known
+    content-colliding package stops, and DCH-2 still refuses to equate a provider label with task
+    completion, because the client cannot prove the native cause from a surface that erased it.
+  - **Throughput is a construction, not a threshold.** "No four-digit rate is reachable" is a
+    threshold over a measured value — a view, which #9946's ruling forbids as a correctness wall,
+    and which faster hardware would falsify while a smaller fabricated value passed. The durable
+    shape is a cache lineage (backend host, service invocation, package identity, conversation
+    prefix identity, cache generation) joined to per-turn accounting that separates total input
+    tokens from **newly evaluated** and **reused** ones. A prefill rate may be constructed only over
+    newly evaluated tokens against the prefill duration; anything else divides mismatched subjects
+    and produces a valid arithmetic operation that is not a hardware measurement.
 - **Tool-contract honesty.** The six dispositions above, at this grain: explicit working directory
   on every invocation or a separately leased persistent shell; typed stdin or a typed refusal; a
   per-operation budget rather than one universal kill; termination of the **owned process
