@@ -22,11 +22,10 @@ module gunbc.filesystem_create_new_admission
 // gunbc#9864 before this row was written.
 import std.symbols { Ascii }
 import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.seed_growth {
-  SeedGrowthJustification,
-  DeclarationRef,
-  WholeDeclaration
-}
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import v2.std.collection { List }
 
 data filesystem_create_new_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
