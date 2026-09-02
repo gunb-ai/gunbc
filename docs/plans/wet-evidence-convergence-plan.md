@@ -92,3 +92,32 @@ This is an extraction. It changes no behavior of `local_repo_wet_terminal`: its 
 refusals, its deliberately single-armed expectation and its invocation wall come out intact and land
 back on the same population. Anything found wrong in that module during the lift is NAMED here and
 routed separately, never repaired under cover of a mechanical extraction.
+
+## What the migration step changed, recorded because the paragraph above no longer describes the head
+
+The scope boundary above is stated for the EXTRACTION, and it was true of it. The migration that
+followed is a different step with a different boundary, and leaving only the earlier paragraph would
+leave a reader with a sentence that reads as current and is not.
+
+At this head `local_repo_wet_terminal` no longer owns a join. Its verdict, expectation, scheduled,
+terminal and join types and its seven join refusals are DELETED; the module retains its roster, the
+requirement it derives, the co-resident executor and the invocation wall, and it reaches
+`wet_evidence_validate` for everything else. `floor_changed_witness` carries one route-neutral
+standing over `WetEvidenceValidation`.
+
+**All seven refusals remain emittable as typed causes**, six under their own names and
+`LocalRepoWetTerminalForeignCandidate { identity, observed, required }` as
+`WetBindingPreparedSubjectDiffers { identity, observed, required }` — the same three fields compared
+by the same equality, because the local requirement sets `prepared_subject` to the candidate. None
+became a detail string, which is the condition this plan set for the work to have succeeded rather
+than reduced.
+
+**One declared widening.** `wet_disposition_is_agreement` treats `KnownRedHeld` as agreement, which
+the deleted single-armed expectation could not express. No roster row constructs it, so no landed
+behaviour moves; it is recorded here because a widening discovered later reads as a defect.
+
+**Two refusals had no asserting witness** when the migration reached them —
+`WetTerminalForeignEntry` and `WetTerminalForeignFunction`, emittable by the shared validator and
+covered by the local route's old acceptance matrix. A refusal an authority can construct and no test
+discriminates can be deleted with nothing going red, so they are now asserted in
+`v2.test.wet_evidence` with both cross-negatives.
