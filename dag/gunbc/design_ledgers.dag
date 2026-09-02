@@ -19,9 +19,15 @@ module gunbc.design_ledgers
 //
 // ONE FILE PER ROSTER IS A CONTENTION FACT, NOT A TIDINESS ONE, AND BOTH HALVES OF THIS CHANGE ARE
 // JOINTLY NECESSARY. The proof is a path-set intersection, not a census. Let F be the set of
-// generated paths a failure-mode append rewrites and R the set a rung-drop append rewrites. Two
-// lanes are serialised exactly when F and R intersect, because a generated projection is bound to
-// merge=generated-artifact and that driver REFUSES whenever both sides changed the same path.
+// generated paths a failure-mode append rewrites and R the set a rung-drop append rewrites.
+//
+// F n R non-empty is NECESSARY for two such lanes to serialise, and NOT SUFFICIENT. Serialising
+// additionally requires overlapping branch lifetimes and divergent edits to a shared path, at
+// which point the generated-artifact driver refuses because both sides changed it. So a non-empty
+// intersection states EXPOSURE -- the pair CAN be serialised -- and says nothing about how often
+// any pair was. That direction is the one worth having: emptying the intersection removes the
+// possibility outright, for every pair and every interleaving, without any claim about observed
+// frequency. The four configurations differ only in what remains exposed.
 //
 //   before                  F = {design-ledgers.md, DESIGN.md}
 //                           R = {design-ledgers.md, DESIGN.md}      F n R = both paths
