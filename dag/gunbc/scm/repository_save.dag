@@ -43,6 +43,7 @@ module gunbc.scm.repository_save
 
 import std.types { String, Int }
 import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesystem_established_absence_path }
 import extdeps.languages.json.emit { serialize_json }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }
@@ -102,6 +103,24 @@ type RepositorySave
 // remedy is the same -- the bytes are not yours to write and the host says why -- and the error text
 // is the host's own. A second arm would be a second spelling of one outcome (section 3), and one that
 // classified the cause from the error TEXT would be a heuristic standing in for an observation.
+// THE CREATE THAT AN ESTABLISHED ABSENCE AUTHORIZES, AND THE ONLY ONE IT CAN.
+//
+// create_repository below takes a bare String, which is right for its own subject -- a caller that
+// has some other reason to create at a path may use it. It is the WRONG entry for a caller whose
+// permission came from an absence, because taking the token and a separate path lets the two name
+// different subjects and nothing detects it. Review on gunbc#10026 found exactly that: init matched
+// ScmInitMayCreate(_), threw the token away, and wrote to an independently computed path.
+//
+// So the absence-authorized create derives its target from the token itself. There is no second
+// target to disagree with, which is the difference between a capability that is CONSUMED and one
+// that is merely carried past the actuation.
+fn create_repository_at_absence(
+  absence: FilesystemEstablishedAbsence,
+  repo: RepositoryEnvelope,
+) -> RepositorySave {
+  create_repository(path: filesystem_established_absence_path(absence: absence), repo: repo)
+}
+
 fn create_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
   match encode_repository_checked(repo: repo) {
     RepositoryEncodeRefused { cause: cause } =>
