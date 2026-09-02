@@ -86,8 +86,8 @@ import v1.std.core {
   is_container_type, container_expected_arity,
   DeclRefCoords, fn_admit_callers, decl_ref_coords_label,
   AdmitCallersEntry, admit_callers_entry_uninterpretable_spans, admit_callers_entry_coords,
-  default_ident_span, node_name_span,
-, type_reference_provenance }
+  default_ident_span, node_name_span, type_reference_provenance
+}
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
