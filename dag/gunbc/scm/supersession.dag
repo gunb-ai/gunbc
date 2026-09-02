@@ -138,12 +138,16 @@ fn observe_generation(
 
 // THE AUDIT OF THE AUTHORIZATION RELATION, at the denominator the hazard actually has: this
 // destination's whole producer side, not any one defect site. Measured on the live tree rather than
-// recalled, by enumerating every declaration that returns a `LoadStanding`.
+// recalled.
 //
-//   PRODUCERS, TOTAL: five, across three modules, enumerated from the live tree. This line has been
-//     wrong twice -- it said "two, both in `gunbc.scm.commit_closure_json_v2`" while a third module
-//     already classified -- so it now states the denominator it is measured at: declarations whose
-//     return type is `LoadStanding`.
+//   THE DENOMINATOR IS PRODUCTION CLASSIFIERS, and it is stated because the obvious phrasing is
+//     wrong. "Every declaration that returns a `LoadStanding`" is too wide: witness modules declare
+//     their own, and `test.claim.scm_commit_closure_json_v2_witness scm_image_standing_of` is one.
+//     A fixture helper is not a producer this destination can be reached from, so the population
+//     below is declarations under `gunbc.scm.*` whose return type is `LoadStanding`. Witness helpers
+//     are excluded BY NAME rather than by being overlooked.
+//
+//   PRODUCERS, TOTAL: five, across three modules.
 //     In `gunbc.scm.commit_closure_json_v2`: `closure_document_load_standing` classifies one format's
 //       refusals, descending through `MemberReadRefusal`'s four modes and `TargetReferenceRefusal`'s
 //       four; `loaded_closure_standing` answers `LoadComplete`, `LoadPartial`, or
@@ -152,25 +156,21 @@ fn observe_generation(
 //     In `gunbc.scm.repository_envelope`: `repository_envelope_load_standing`.
 //     In `gunbc.scm.object_table_json`: `object_table_load_standing`.
 //
-//   THE PERMITTING SURFACE IS THREE OF THE FIVE, and this correction is the load-bearing one. The
-//     sole permitting standing is `LoadDocumentMalformed` -- `standing_permission_refusal` returns
-//     `none` for it and names a refusal for every other arm. This audit previously claimed
-//     `closure_document_load_standing` was the ONLY declaration that could return it, and concluded
-//     that the producer count had grown while the permitting surface had not. THAT CONCLUSION IS
-//     FALSE: `repository_envelope_load_standing` returns `LoadDocumentMalformed` for its member-read
-//     and target-reference modes, and `object_table_load_standing` returns it for six of its seven
-//     causes. The permitting surface grew with the producer count, and recording the growth of one
-//     while denying the other is precisely the stale-count corruption this census exists to catch.
+//   THE PERMITTING STANDING IS ONE, AND IT IS OWNED BY NO ONE MODULE. `LoadDocumentMalformed` alone
+//     maps to `none` in `standing_permission_refusal`; every other arm names a refusal. Three of the
+//     five producers can answer with it: `closure_document_load_standing`,
+//     `repository_envelope_load_standing` for its member-read and target-reference modes, and
+//     `object_table_load_standing` for six of its seven causes. No single declaration or module is
+//     the permitting surface.
 //
-//   WHAT SURVIVES THE CORRECTION, and it is not the old conclusion. The success path stays outside
-//     this relation by construction: `loaded_closure_standing`'s three arms are `LoadComplete`,
-//     `LoadPartial` and `LoadRequiresNodeAtAuthoredSource`, none of which permits, so no load that
-//     SUCCEEDED can authorize destroying what it read, and a load whose requirement sits on a file is
-//     refused for its own named reason rather than by falling through. What does NOT survive is any
-//     claim that one module owns the permitting surface. Three do, each deciding per cause, and the
-//     collision arms are the load-bearing ones: `ObjectTableObjectCollision` reaches
-//     `LoadIdentityCollision` rather than `LoadDocumentMalformed` exactly because the permitting
-//     standing must not absorb a cause that means "two objects claimed one identity".
+//   WHAT THAT LEAVES STANDING. The success path is outside the permitting relation by construction:
+//     `loaded_closure_standing`'s three arms are `LoadComplete`, `LoadPartial` and
+//     `LoadRequiresNodeAtAuthoredSource`, none of which permits, so no load that SUCCEEDED can
+//     authorize destroying what it read, and a load whose requirement sits on a file is refused for
+//     its own named reason rather than by falling through. The collision arm is the load-bearing one:
+//     `ObjectTableObjectCollision` reaches `LoadIdentityCollision` and not `LoadDocumentMalformed`,
+//     because the permitting standing must not absorb a cause meaning "two objects claimed one
+//     identity".
 //
 //   CONSUMERS BEFORE THIS MODULE: none in production. The permitting predicate had witnesses and no
 //     caller, so the hazard was not live -- it was pre-positioned, waiting for the first actuator to
