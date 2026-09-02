@@ -287,7 +287,19 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // executor exposes no cgroup memory limit at all), and under a cgroup of 12 GiB and again of
 // 30 GiB it refuses MemoryStallRefusedPageThrash during the whole-corpus resolve -- correctly,
 // because `free` on that runner reports 7 GiB TOTAL, so both caps were larger than the machine and
-// the refusal is the budget arm doing its job rather than a limit worth raising. Landing the carrier edit without its projection would have been the drift
+// the refusal is the budget arm doing its job rather than a limit worth raising.
+//
+// THAT PARAGRAPH IS ABOUT A RUNNER, NOT ABOUT THIS LANE, AND THE DISTINCTION IS CORRECTED HERE
+// RATHER THAN LEFT TO BE READ THE WRONG WAY -- review 58670 quoted this receipt back as "the
+// projection actuator refuses on this runner", which is what it said and is no longer the operative
+// fact. MEASURED SINCE: the actuator RUNS in the session container -- 125 GiB host under a 31 GiB
+// cap -- and this lane executed it, re-deriving DESIGN.md and docs/design-ledgers.md from their
+// authority as part of integrating main. So capacity is NOT what defers the ledger append any more.
+// What defers it is OWNERSHIP: gunbc#10020 holds the third instance, authored from this lane's
+// executed receipts by the session that ran them, and projection-touching branches land ONE AT A
+// TIME because whichever merges second is stale. A receipt that keeps citing a limit the lane has
+// since cleared is the same class this file exists to catch, so the limit stays recorded against
+// the runner it was measured on and stops standing in for a reason it no longer supplies. Landing the carrier edit without its projection would have been the drift
 // the gate exists to catch, so the instance is recorded HERE and in the two fixture files, and the
 // ledger append is OWNED ELSEWHERE RATHER THAN MERELY DEFERRED, which is the difference between a
 // named obligation and an orphan: the class row already exists on main (gunbc#9909 filed
