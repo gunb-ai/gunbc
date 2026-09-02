@@ -8,6 +8,7 @@ use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
+use self::PositiveShardCount::*;
 use self::PositiveSlotCount::*;
 use self::Quantity::*;
 use self::Scale::*;
@@ -599,6 +600,46 @@ pub fn events_per_minute(count: Nat) -> EventsPerMinute {
 
 pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
     measure_count(r.clone())
+}
+
+pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;
+
+pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PositiveShardCount {
+    PositiveShardCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveShardCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveShardCount::PositiveShardCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn positive_shard_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveShardCount> {
+    Rc::new(PositiveShardCount::PositiveShardCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_shard_count_value(shards: Rc<PositiveShardCount>) -> i64 {
+    match (*shards.clone()).clone() {
+        PositiveShardCount::PositiveShardCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
 }
 
 pub fn watt(count: Nat) -> Watt {
