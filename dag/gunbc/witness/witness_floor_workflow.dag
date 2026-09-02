@@ -848,7 +848,9 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 // The three rows above record files the floor wrote on every run and nobody collected. This one is
 // a rung below: `cli_run.rs` reads GUNBC_REQUIRED_FLOOR_CLAIM_COST and calls
 // `write_required_floor_claim_cost_tsv` -- one row per EXECUTED claim, carrying identity, module,
-// outcome, verdict_reached, and BOTH clocks (wall_ms and cpu_ms) -- but this job never set the
+// outcome, verdict_reached, BOTH clocks (wall_ms and cpu_ms) and the evaluator-step work measure
+// (eval_steps, marginal of stored shared fills, the one column that is not a clock and therefore
+// the one column invariant across the execution envelope) -- but this job never set the
 // variable, so the writer was never armed and the population was recomputed and discarded on every
 // required run since the floor cut.
 //

@@ -17138,12 +17138,17 @@ mod budget_completion_tests {
             "claim",
             9_000_000,
             4_000_000,
+            77,
         );
         assert_eq!(
             receipt.wall_nanos, 9_000_000,
             "wall is the measurement basis"
         );
         assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
+        assert_eq!(
+            receipt.eval_steps, 77,
+            "the work measure is carried beside both clocks, not derived from either"
+        );
         assert_ne!(
             receipt.wall_nanos, receipt.cpu_nanos,
             "the two clocks must be carried independently, not aliased"
@@ -27562,6 +27567,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 1_000,
                     cpu_nanos: 1_000,
                     eval_self_nanos: 1_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
                 PerformanceReceipt {
@@ -27570,6 +27576,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 50_000,
                     cpu_nanos: 50_000,
                     eval_self_nanos: 50_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
                 PerformanceReceipt {
@@ -27578,6 +27585,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 5_000,
                     cpu_nanos: 5_000,
                     eval_self_nanos: 5_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
             ],
@@ -37908,6 +37916,12 @@ pub struct WitnessExecutionOccurrence {
     pub outcome: String,
     pub wall_nanos: u128,
     pub cpu_nanos: u128,
+    /// Evaluator steps this claim took, marginal of stored shared-artifact fills — the
+    /// deterministic work measure beside the two clocks, invariant across the execution
+    /// envelope in a way neither clock is. Recorded, published, and compared against nothing:
+    /// `gunbc.rung_drop` `floor_cost_contention_verdict` stays standing, and this column is the
+    /// evidence a step-denominated verdict would later be built on, not that verdict.
+    pub eval_steps: u64,
     /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
     /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
     /// claim has no cost to be over, and inferring that from the duration would make a slow
@@ -38576,19 +38590,20 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms"
+        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
             row.verdict_reached,
             row.wall_nanos / 1_000_000,
             row.cpu_nanos / 1_000_000,
+            row.eval_steps,
             row.cost_line_ms
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;

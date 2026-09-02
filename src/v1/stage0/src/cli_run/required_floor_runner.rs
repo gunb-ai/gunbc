@@ -351,6 +351,8 @@ pub fn run_claim_measured(
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
+    let steps_started = v1_interpreter::evaluator_steps();
+    let fill_steps_before = v1_interpreter::shared_artifact_fill_eval_steps();
     let fill_before_nanos = shared_artifact_fill_cpu_nanos();
     let fill_wall_before_nanos = shared_artifact_fill_wall_nanos();
     let outcome = run_claim(ctx, function);
@@ -380,6 +382,15 @@ pub fn run_claim_measured(
     // `measured_wall_nanos`.
     let fill_wall_nanos = shared_artifact_fill_wall_nanos().saturating_sub(fill_wall_before_nanos);
     let wall_nanos = marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos);
+    // THE WORK MEASURE, SPLIT BY THE SAME RULE AS THE TWO CLOCKS. Evaluator steps are counted
+    // unconditionally by `eval_expr`, so this delta is a property of what the claim evaluated
+    // and carries no term for the machine it evaluated on. Netting the stored fills is what
+    // keeps that true across execution ORDER as well: without it the claim that happened to
+    // fill a shared memo would carry the fill's steps and every later reader would carry none.
+    let measured_eval_steps = v1_interpreter::evaluator_steps().wrapping_sub(steps_started);
+    let fill_eval_steps =
+        v1_interpreter::shared_artifact_fill_eval_steps().wrapping_sub(fill_steps_before);
+    let eval_steps = measured_eval_steps.saturating_sub(fill_eval_steps);
     // EITHER clock, not the CPU one. A fill that blocked on I/O can spend wall time while
     // charging almost no CPU, and under a `fill_cpu_nanos > 0` guard that fill would be
     // subtracted from the enforced wall figure and reported nowhere — a cost dropped rather
@@ -394,6 +405,7 @@ pub fn run_claim_measured(
         eprintln!(
             "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
              measured_cpu_ms={} marginal_wall_ms={} fill_wall_ms={} measured_wall_ms={} \
+             marginal_eval_steps={} fill_eval_steps={} measured_eval_steps={} \
              provenance=filled-shared-artifact triggered_by={function}",
             cpu_nanos / 1_000_000,
             fill_cpu_nanos / 1_000_000,
@@ -401,6 +413,9 @@ pub fn run_claim_measured(
             wall_nanos / 1_000_000,
             fill_wall_nanos / 1_000_000,
             measured_wall_nanos / 1_000_000,
+            eval_steps,
+            fill_eval_steps,
+            measured_eval_steps,
         );
     }
     ctx.clear_eval_deadline();
@@ -418,6 +433,7 @@ pub fn run_claim_measured(
         function,
         wall_nanos,
         cpu_nanos,
+        eval_steps,
     );
     (outcome, receipt)
 }
@@ -5420,6 +5436,7 @@ pub fn run_required_floor(
             outcome: witness_execution_outcome_label(&result).to_string(),
             wall_nanos: receipt.wall_nanos,
             cpu_nanos: receipt.cpu_nanos,
+            eval_steps: receipt.eval_steps,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
         });
@@ -6596,10 +6613,11 @@ pub fn run_required_floor(
     const OVER_COST_PRINT_LIMIT: usize = 25;
     for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
         eprintln!(
-            "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
+            "[over-cost] {} wall_ms={} cpu_ms={} eval_steps={} line_ms={} outcome={}",
             row.identity,
             row.wall_nanos / 1_000_000,
             row.cpu_nanos / 1_000_000,
+            row.eval_steps,
             row.cost_line_ms,
             row.outcome
         );
