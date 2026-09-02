@@ -1,8 +1,13 @@
 # SCM demo CLI — rebuild plan and API inventory
 
 A working `gunbc scm` CLI existed and was lost with an uncommitted `/tmp` worktree. This doc is
-the durable record so the rebuild does not start from a survey again. It is a plan, not a
-receipt: nothing here claims to be built.
+the durable record so the rebuild does not start from a survey again.
+
+It is a PLAN AND A HISTORICAL LEDGER, and the two are separated by section. Everything above
+`## LANDED` is the plan and the baseline survey, written BEFORE this work and describing main as
+it stood then; it claims nothing is built. `## LANDED` onward is the ledger, and it carries
+execution receipts for what has actually shipped. Read a present-tense statement in the plan half
+as a statement about the BASELINE, not about the tree today.
 
 ## What already exists on main (verified by reading the modules)
 
@@ -28,10 +33,11 @@ The read side is modelled and already reaches `CliWireResponse`:
 
 ## The gap, stated precisely
 
-`scm_log_cli_response` and `scm_status_cli_response` have NO consumer outside
-`dag/test/claim/scm/scm_render_witness_test.dag`. That is the unwired-renderer state
-`gunbc.cli_dispatch_surface` already records: the answer is computed and discarded because no
-host binds it.
+**This was the baseline gap, and this change closes it.** As of the survey above,
+`scm_log_cli_response` and `scm_status_cli_response` had NO consumer outside
+`dag/test/claim/scm/scm_render_witness_test.dag` — the unwired-renderer state
+`gunbc.cli_dispatch_surface` recorded: the answer computed and discarded because no host bound it.
+`gunbc.scm.cli` is that consumer, and the `LANDED` section below carries its receipts.
 
 `dag/gunbc/cli_dispatch_surface.dag` declares an `scm` verb with an operand and `--path`, marked
 `AbsentFromEmitMainRs`.
@@ -53,10 +59,14 @@ So the host binding is REQUIRED, and it is the piece to rebuild:
    `load_repository` -> verb -> render, with a `RenderCapability { color: false, tier: Ascii,
    cursor_addressable: false }` for a plain terminal. Write verbs (`init`, `add`, `commit`,
    `checkout`) need their own `Document` builders; only log/status have them today.
-2. Host side in `src/v1/stage0/src/main.rs`: a `Commands::Scm` variant and a `scm_verb` that
-   evaluates the entry and writes the `CliWirePrintable { bytes, exit }` bytes to stdout,
-   refusing on `CliWireUnprintable { cause }`. `serve_wire_fields` / `classify_exit` in
-   `cli_run.rs` are the precedent for reading wire values out of an evaluated `Value`.
+2. Host side. **NOT the shape that landed, and deliberately so — this bullet is a FUTURE
+   ERGONOMIC SURFACE, not unfinished work required by the binding that shipped.** The original
+   plan was a `Commands::Scm` variant in `src/v1/stage0/src/main.rs` plus a `scm_verb` evaluating
+   the entry and writing `CliWirePrintable { bytes, exit }` to stdout. What landed instead binds
+   `CliWireResponse` ONCE in the generic `run_verb` outcome seam, so EVERY wire-returning entry
+   becomes reachable rather than only the scm family — one binding instead of one per verb. A
+   dedicated `gunbc scm` subcommand would be a nicer surface over the same answer; it is not
+   needed for the answer to reach an operator, and it is not part of this change.
 
 ## LANDED — the read side reaches an operator
 
