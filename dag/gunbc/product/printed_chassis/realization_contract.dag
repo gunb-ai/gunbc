@@ -1,0 +1,157 @@
+module product.printed_chassis.realization_contract
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import product.printed_chassis.coupon {
+  LengthLadder,
+  CouponSpecimen,
+  CouponOperation,
+  OpThroughHole,
+  OpDatumMark,
+  PlateDimensions,
+  ladder_rungs,
+  ladder_base,
+  ladder_step,
+  ladder_rung_count,
+}
+// REALIZATION CONTRACT v0 — the transport between the .dag authority and the CAD handler.
+//
+// IT DEFINES NO GEOMETRY VOCABULARY OF ITS OWN, AND THAT IS THE MAIN DECISION IN THIS FILE.
+//
+// The obvious shape for a transport is a parallel set of "contract feature" types — ContractHole
+// beside OpThroughHole, ContractPlate beside PlateDimensions — on the reasoning that the wire format
+// should be decoupled from the model. That reasoning is wrong here and it is wrong in the specific
+// way DESIGN §3 names: two structures answering one semantic question, where one is intended to
+// track the other. They would drift. A hole gains a countersink in the coupon vocabulary, the
+// contract vocabulary does not, and the handler silently realizes a hole with no countersink while
+// every type still checks.
+//
+// So the contract CARRIES the coupon's own closed operation coproduct. CouponOperation is already
+// exactly what a schema-bound feature graph needs to be: closed, so an unknown operation kind has no
+// constructor; total, so every arm carries its own required fields; and owned by the module that
+// decides what a coupon is. Serializing it is a realization concern that adds no vocabulary.
+//
+// WHAT THE CONTRACT ADDS is the three facts the specimen does not carry and the handler cannot be
+// trusted to supply: which contract version this is, which derivation law produced the derived
+// values, and the derived values themselves for cross-checking.
+// THE SCHEMA VERSION IS TRANSPORT DATA AND NOT A CHECKED COPRODUCT, AND THE REASON IS A RULE ABOUT
+// EVIDENCE RATHER THAN ABOUT VERSIONING.
+//
+// The first draft declared `type ContractVersion = ContractV0` and gave the conformance check a
+// ContractVersionUnsupported arm. That arm can never fire: exactly one version exists, so the
+// forbidden state has no constructor, and no fixture can author a contract carrying an unknown
+// version because the type admits only the one. DESIGN §4b names this exactly — a check whose RED is
+// unauthorable is not a weak wall, it is a decoration, permanently green by construction and worse
+// than absent because it will be cited as coverage.
+//
+// It was also, incidentally, not a coproduct at all: `type X = Y` with a single arm and no `|` is an
+// ALIAS, and no single-arm coproduct exists anywhere in this corpus. The type error is what exposed
+// the evidence problem, which would otherwise have shipped as a green arm nobody questioned.
+//
+// So the version travels as data, and the check returns when a SECOND version exists — at which
+// point an older handler meeting a newer schema becomes an authorable state and the refusal becomes
+// a real wall. Trigger: the first contract schema change.
+data contract_schema_version: NonEmptyStr = "v0"
+// THE DERIVATION IDENTITY IS CARRIED, NOT THE DERIVATION.
+//
+// The permitted-realization rule lets the handler IMPLEMENT a modeled derivation whose identity and
+// inputs the model already fixed; it forbids the handler CHOOSING which derivation to run. Those two
+// are separated by exactly this field. An arithmetic series and a geometric series over the same
+// base and step produce different ladders, and a contract that named neither would leave the choice
+// in Python — where it would be invisible, because the resulting part still looks like a ladder.
+//
+// The coproduct is closed so that adding a second derivation law is a modeling act with its own
+// review, not a handler edit.
+// THE DERIVATION LAW IS FIXED BY THIS CARRIER'S TYPE, not by a field, for the same reason.
+//
+// The intent is unchanged and is the load-bearing one: the handler may IMPLEMENT a derivation whose
+// identity the model fixed, and may not CHOOSE which derivation to run. An arithmetic series and a
+// geometric series over one base and step produce different ladders, and a contract naming neither
+// would leave that choice in Python, invisible, because the result still looks like a ladder.
+//
+// With exactly one law in v0, a DerivationIdentity FIELD would be a single-arm coproduct — an alias
+// wearing a choice's clothes, whose "wrong law" refusal is unauthorable. Instead LadderRealization
+// IS the arithmetic-series realization: the law is the type. A handler cannot select a different law
+// because the contract has no field in which to express one, which is construction rather than
+// validation. Adding a second law is then a modeling act that splits this type, with review, rather
+// than a handler edit.
+// THE DERIVED VALUES TRAVEL ALONGSIDE THE DECLARATION THAT PRODUCES THEM, and this deliberately
+// carries the same fact twice.
+//
+// Ordinarily that is the horizontal redundancy §2 forbids. It is admitted here for one reason: the
+// two copies are produced in DIFFERENT TRUST DOMAINS. The declaration plus derivation identity is
+// what the handler recomputes from; the derived list is what this side computed. They are not two
+// authored spellings of one value that can silently disagree — a disagreement is precisely the
+// signal being bought, and it is checked rather than assumed.
+//
+// The distinction from ordinary duplication is that neither copy is authored. Both are derived, by
+// the same named law, from one authored declaration. If the handler's implementation of
+// LadderArithmeticSeries drifts from this module's, the contract refuses at the boundary instead of
+// producing a part whose holes are in the wrong places and whose measurement then miscalibrates
+// every later tolerance.
+//
+// PROVISIONAL: whether this is a legitimate boundary checksum or a redundancy violation wearing a
+// checksum's clothes is out with the design thread. If it comes back as redundancy, the derived list
+// leaves and the handler becomes the sole computer of the rungs, with output conformance as the only
+// check. The declaration and the derivation identity stay either way.
+type LadderRealization sole_constructor {
+  declaration: LengthLadder
+  derived_rungs: List<Micrometer>
+}
+type RealizationContract sole_constructor {
+  schema_version: NonEmptyStr
+  specimen: CouponSpecimen
+  ladder: LadderRealization
+}
+// THE MINT RECOMPUTES RATHER THAN ACCEPTING. A caller cannot hand in a declaration and a rung list
+// that disagree, because the rungs are not a parameter — they are derived here from the declaration
+// the caller supplied. That makes the disagreement unwritable ON THIS SIDE, so the only disagreement
+// the boundary check can ever find is a genuine handler divergence, which is the fault it exists to
+// catch. Accepting both as parameters would have made this mint the very forgery point it guards.
+fn ladder_realization(declaration: LengthLadder) -> LadderRealization {
+  LadderRealization { declaration: declaration, derived_rungs: ladder_rungs(l: declaration) }
+}
+fn realization_contract(specimen: CouponSpecimen, ladder: LadderRealization) -> RealizationContract {
+  RealizationContract { schema_version: contract_schema_version, specimen: specimen, ladder: ladder }
+}
+// THE HANDLER-SIDE CHECK, expressed here so both sides read the same law. The handler recomputes the
+// rungs from the declaration under the named derivation and compares. A length mismatch and a value
+// mismatch are separate causes because they fail for different reasons: a length mismatch means the
+// two sides disagree about the POPULATION, a value mismatch means they agree on how many rungs there
+// are and disagree about where.
+type ContractConformance
+  = ContractConforms
+  | ContractRungCountDiverges { modeled: Int, realized: Int }
+  | ContractRungValueDiverges { index: Int, modeled: Micrometer, realized: Micrometer }
+// The scan is recursive and carries the index, following the std.realization_schedule string_list_eq
+// precedent rather than folding: a fold cannot stop at the first divergence and cannot report WHERE
+// it was, and "the ladders differ" without an index sends a human to diff two lists by eye.
+fn compare_rungs_from(index: Int, modeled: List<Micrometer>, realized: List<Micrometer>) -> ContractConformance {
+  if modeled.count() == 0 {
+    ContractConforms
+  } else if micrometer_count(m: modeled.first()) != micrometer_count(m: realized.first()) {
+    ContractRungValueDiverges { index: index, modeled: modeled.first(), realized: realized.first() }
+  } else {
+    compare_rungs_from(index: index + 1, modeled: modeled.skip(n: 1), realized: realized.skip(n: 1))
+  }
+}
+
+// Count is compared BEFORE values, and the order matters for the diagnostic rather than for
+// correctness: with unequal lengths the first differing index is an artefact of where the shorter
+// list ran out, so reporting it as a value divergence would name a position that means nothing.
+fn compare_rungs(modeled: List<Micrometer>, realized: List<Micrometer>) -> ContractConformance {
+  if modeled.count() != realized.count() {
+    ContractRungCountDiverges { modeled: modeled.count(), realized: realized.count() }
+  } else {
+    compare_rungs_from(index: 0, modeled: modeled, realized: realized)
+  }
+}
+
+// THE BOUNDARY CHECK the handler's output is admitted through. No version arm today, per the note on
+// contract_schema_version: with one schema there is no unknown-version state to refuse.
+fn admit_realized_ladder(
+  contract: RealizationContract,
+  realized_rungs: List<Micrometer>,
+) -> ContractConformance {
+  compare_rungs(modeled: contract.ladder.derived_rungs, realized: realized_rungs)
+}

@@ -1,0 +1,205 @@
+module product.printed_chassis.measurement
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { Millimeter }
+import std.claim_evidence { EvidenceLink, InferenceRuleId }
+import product.spatial_dimension { LengthInterval, length_uncertainty_admissible }
+import std.spatial_knowledge {
+  SpatialKnowledge,
+  SpatialMeasured,
+  SpatialEstimated,
+  SpatialHypothesis,
+  SpatialUnknown,
+  SpatialRequirement,
+  SpatialAdmission,
+  SpatialRefused,
+  SpatialGeometryUnknown,
+  MinimumSpatialStanding,
+  MeasuredOnly,
+  MeasuredOrEstimated,
+  admit_spatial_decision_input,
+}
+
+// THE PHYSICAL AUTHORITY PACK for the printed node chassis: the second product-layer binding of
+// SPATIAL-1, after product.spatial_dimension bound it for rooms. It supplies the same four things
+// that binding did — identity, evidence, obligation, method — for a different subject universe, and
+// it exists because the chassis program's failure mode is precisely the one SPATIAL-1 was landed
+// against: a generator that draws a confident bracket around a cooler nobody measured.
+//
+// WHY THIS IS A BINDING AND NOT A NEW CARRIER. Every part of the epistemics is already modelled.
+// SpatialKnowledge distinguishes measured from estimated from hypothesised from UNKNOWN, and the
+// unknown arm carries an obligation rather than a number — which is the entire fail-closed
+// requirement of this program stated in a type that already exists. SpatialRequirement carries a
+// precision budget, so "the consuming decision sets the tolerance, not the instrument" is enforced
+// rather than asserted. Minting a chassis-specific measurement record beside these would have been
+// the parallel-representation fork DESIGN §3 forbids, and would have re-derived the estimate-is-a-
+// region distinction that module's header records paying for once already.
+//
+// THE ONE RULE THIS MODULE ADDS, and it is the one the fabrication program turns on: a subject the
+// roster does not mention is UNKNOWN, and unknown REFUSES. It does not fall back to a nominal
+// catalogue figure, a form-factor standard, or a neighbouring subject's value. DESIGN §5's
+// absorbing fallback is exactly the tempting arm here — an 80 mm fan is 80 mm, surely — and it
+// fails open twice: the generator draws a part against a number no authority supplied, and the
+// deficit stops being countable, so the measurement never gets taken.
+type MeasurementObligationId = NonEmptyStr where brand("MeasurementObligationId")
+
+// The evidence payload is a claim-evidence link, matching the room binding: provenance, inference
+// rule, freshness, fidelity and probe independence, rather than a prose string that reads as
+// authoritative because it is spelled confidently.
+type ChassisMeasurementEvidence =
+  EvidenceLink<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
+
+type ChassisLengthStanding =
+  SpatialKnowledge<Millimeter, LengthInterval, ChassisMeasurementEvidence, InferenceRuleId, MeasurementObligationId>
+
+type ChassisLengthAdmission =
+  SpatialAdmission<Millimeter, LengthInterval, InferenceRuleId, MeasurementObligationId>
+
+// THE SUBJECTS. Each is an independently measured physical object, and the cooler variants are
+// SEPARATE subjects rather than one subject with a height parameter: they are different products
+// with different envelopes, and collapsing them would let a 2U measurement satisfy a 4U obligation.
+// This roster is deliberately closed — a subject the chassis needs and this list lacks fails to
+// compile at the point of use rather than resolving to a default.
+type FabricationSubject
+  = Altrad8udBoard
+  | CpuCoolerFourU
+  | CpuCoolerTwoU
+  | NodePowerSupply
+  | Fan80mm
+  | InstalledDimm
+  | RearIoAperture
+
+type FabricationAxis
+  = FabWidth
+  | FabDepth
+  | FabHeight
+
+type FabricationMeasurementKey sole_constructor {
+  subject: FabricationSubject
+  axis: FabricationAxis
+}
+
+fn fabrication_measurement_key(subject: FabricationSubject, axis: FabricationAxis) -> FabricationMeasurementKey {
+  FabricationMeasurementKey { subject: subject, axis: axis }
+}
+
+type FabricationMeasurement sole_constructor {
+  key: FabricationMeasurementKey
+  standing: ChassisLengthStanding
+}
+
+// FabricationMeasurement is sole_constructor, so consumers reach it through this mint rather than
+// a literal. That is what keeps the key and its standing from being paired by anyone who happens to
+// hold both — a measurement whose key disagrees with the subject it was taken from is exactly the
+// mis-binding witness 3 exists to catch, and it should be constructible in one place only.
+fn fabrication_measurement(key: FabricationMeasurementKey, standing: ChassisLengthStanding) -> FabricationMeasurement {
+  FabricationMeasurement { key: key, standing: standing }
+}
+
+fn fabrication_subject_eq(a: FabricationSubject, b: FabricationSubject) -> Bool {
+  match a {
+    Altrad8udBoard => match b { Altrad8udBoard => true, _ => false }
+    CpuCoolerFourU => match b { CpuCoolerFourU => true, _ => false }
+    CpuCoolerTwoU => match b { CpuCoolerTwoU => true, _ => false }
+    NodePowerSupply => match b { NodePowerSupply => true, _ => false }
+    Fan80mm => match b { Fan80mm => true, _ => false }
+    InstalledDimm => match b { InstalledDimm => true, _ => false }
+    RearIoAperture => match b { RearIoAperture => true, _ => false }
+  }
+}
+
+fn fabrication_axis_eq(a: FabricationAxis, b: FabricationAxis) -> Bool {
+  match a {
+    FabWidth => match b { FabWidth => true, _ => false }
+    FabDepth => match b { FabDepth => true, _ => false }
+    FabHeight => match b { FabHeight => true, _ => false }
+  }
+}
+
+fn fabrication_measurement_key_eq(a: FabricationMeasurementKey, b: FabricationMeasurementKey) -> Bool {
+  fabrication_subject_eq(a: a.subject, b: b.subject) && fabrication_axis_eq(a: a.axis, b: b.axis)
+}
+
+// TWO ARMS FAIL OPEN HERE IF THIS IS WRITTEN AS A PLAIN LOOKUP, AND ONLY ONE IS OBVIOUS.
+//
+// THE ABSENT CASE is the obvious one. A key the roster does not carry resolves to SpatialUnknown
+// carrying the obligation that would clear it — never to Absent, which a caller can pattern-match
+// past with a default, and never to a nominal figure. The obligation names the subject and axis, so
+// an unmeasured dimension is a countable, located deficit rather than a silence that only surfaces
+// when a printed part does not fit.
+//
+// THE DUPLICATE CASE is the one the first revision of this module got wrong. A fold that returns
+// row.standing on every match silently keeps the LAST one, so two conflicting measurements of the
+// same cooler height — a re-measure that disagreed, a row pasted under the wrong subject, two
+// operators measuring different units of the same product — resolve to whichever sorts later in the
+// list. Nothing refuses, nothing is counted, and the generator draws a part against a number whose
+// contradiction is sitting three lines above it in the same roster. That is DESIGN §5's silent
+// wrongness rather than a rung on the ladder: the roster contains the evidence that the value is in
+// dispute, and the reader throws it away.
+//
+// So the scan carries the COUNT as well as the standing, and disagreement becomes its own refusal
+// arm rather than a resolution rule. There is deliberately no "prefer the most precise" or "prefer
+// the most recent" tie-break: both are heuristics standing where a human decision belongs, and a
+// tie-break would make the conflict permanently invisible — which is exactly the property that let
+// the bug exist.
+type RosterScan sole_constructor {
+  count: Int
+  standing: ChassisLengthStanding
+}
+
+fn scan_roster(
+  roster: List<FabricationMeasurement>,
+  key: FabricationMeasurementKey,
+  obligation: MeasurementObligationId,
+) -> RosterScan {
+  fold(roster, init: RosterScan { count: 0, standing: SpatialUnknown { obligation: obligation } }, f: fn(acc, row) {
+    match fabrication_measurement_key_eq(a: row.key, b: key) {
+      true => RosterScan { count: acc.count + 1, standing: row.standing }
+      false => acc
+    }
+  })
+}
+
+// The generator's answer. ChassisRosterConflict is NOT a variant of "unknown": an unknown dimension
+// is cleared by taking a measurement, and a conflicted one is cleared by deciding which measurement
+// is right and deleting the other. Different obligations, so different arms.
+type ChassisMeasurementOutcome
+  = ChassisMeasurementJudged { admission: ChassisLengthAdmission }
+  | ChassisRosterConflict { key: FabricationMeasurementKey, count: Int }
+
+// THE GENERATOR'S ENTRY POINT, and the reason the CAD layer cannot invent a dimension: it asks for
+// a length by key and receives an OUTCOME whose every non-judged arm is typed. There is no arm that
+// yields a bare Millimeter without having passed the conflict, standing and precision checks, so
+// "the generator substituted a plausible value" is not a thing this interface can express.
+fn required_chassis_length(
+  roster: List<FabricationMeasurement>,
+  key: FabricationMeasurementKey,
+  obligation: MeasurementObligationId,
+  requirement: SpatialRequirement<LengthInterval>,
+) -> ChassisMeasurementOutcome {
+  let scan = scan_roster(roster: roster, key: key, obligation: obligation)
+  if scan.count > 1 {
+    ChassisRosterConflict { key: key, count: scan.count }
+  } else {
+    ChassisMeasurementJudged {
+      admission: admit_spatial_decision_input(
+        knowledge: scan.standing,
+        requirement: requirement,
+        uncertainty_admissible: length_uncertainty_admissible,
+      )
+    }
+  }
+}
+
+// THE MVP ROSTER IS EMPTY, AND THAT IS THE HONEST STATE ON 2026-09-01.
+//
+// Not one chassis-critical dimension has been measured yet. The board OUTLINE is vendor-dimensioned
+// in extdeps.boards.asrock_rack and is deliberately NOT copied here — that would be the transcribed
+// measurement DESIGN §6 forbids, a number unreachable from the authority that owns it. Everything
+// else in FabricationSubject is an open obligation.
+//
+// An empty roster is not a placeholder standing in for work not yet done: it is the correct value,
+// and it makes every required_chassis_length call refuse today. That is the property the program
+// wants — the generator cannot produce a part until the measurement exists — and it is why this row
+// lands before the CAD toolchain rather than after it.
+data mvp_measurement_roster: List<FabricationMeasurement> = []

@@ -1,0 +1,121 @@
+module test.claim.printed_chassis_coupon_witness
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count, Millimeter, millimeter }
+import extdeps.printing.fdm {
+  BuildEnvelope,
+  build_envelope,
+  EnvelopeFit,
+  PartFits,
+  PartExceedsEnvelope,
+  EnvelopeZ,
+  part_extent,
+  envelope_fit,
+}
+import product.printed_chassis.coupon {
+  LengthLadder,
+  LadderConstruction,
+  LadderReady,
+  LadderStepIsZero,
+  LadderTooFewRungs,
+  length_ladder,
+  ladder_rungs,
+  CouponSpecimen,
+  PlateDimensions,
+  hole_ladder_spec,
+  hole_ladder_specimen,
+  specimen_extent,
+  specimen_fits,
+  micrometer_to_millimeter_ceiling,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// NO FALLBACK LADDER. The first draft of this file minted a placeholder LengthLadder for the
+// non-ready arm, which is the absorbing fallback the module under test exists to forbid — every
+// downstream witness would then have been testing the placeholder rather than the declared coupon,
+// and would have stayed green while the real specification was refused. Each witness that needs the
+// ladder matches the live declaration and FAILS on the refused arm, so a broken specification reds
+// the suite instead of quietly substituting for it.
+// WITNESS 1 — THE DECLARED LADDER IS WELL-FORMED. The live specification must actually mint, not
+// merely be written; a refused ladder would leave every later witness testing the fallback above.
+test fn w_the_declared_hole_ladder_mints() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: _ } => true
+    _ => false
+  }
+}
+// WITNESS 2 — THE RUNGS ARE DERIVED, AND THE LAST ONE PROVES IT. Eleven rungs from 3000 um in 100 um
+// steps must END at 4000 um. An authored list that drifted from the declared step would fail here,
+// which is the redundancy this derivation exists to make impossible.
+test fn w_the_ladder_rungs_derive_from_base_and_step() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let rungs = ladder_rungs(l: l)
+      fold(rungs, init: 0, f: fn(acc, _r) { acc + 1 }) == 11
+        && micrometer_count(m: fold(rungs, init: micrometer(count: 0), f: fn(_acc, r) { r })) == 4000
+    }
+    _ => false
+  }
+}
+// WITNESS 3 — A ZERO STEP REFUSES. Every rung would be identical, so the specimen would present as a
+// ladder while measuring one diameter eleven times — a coupon that cannot discriminate.
+test fn w_a_zero_step_ladder_refuses() -> Bool {
+  match length_ladder(base: micrometer(count: 3000), step: micrometer(count: 0), rung_count: 11) {
+    LadderStepIsZero => true
+    _ => false
+  }
+}
+// WITNESS 4 — A ONE-RUNG LADDER REFUSES, carrying the count it was given so the refusal is located.
+test fn w_a_single_rung_ladder_refuses() -> Bool {
+  match length_ladder(base: micrometer(count: 3000), step: micrometer(count: 100), rung_count: 1) {
+    LadderTooFewRungs { supplied: n } => n == 1
+    _ => false
+  }
+}
+// WITNESS 5 — THE PLATE IS SIZED FROM THE LADDER. Eleven rungs at 9 mm pitch with 6 mm margins is
+// 2*6000 + 10*9000 = 102000 um. If the plate were authored beside the ladder rather than derived
+// from it, adding a rung would leave this stale.
+test fn w_the_plate_width_follows_the_rung_count() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => micrometer_count(m: hole_ladder_specimen(l: l).plate.size_x) == 102000
+    _ => false
+  }
+}
+// WITNESS 6 — THE SPECIMEN FITS THE A1 MINI. 102 x 18 x 4 mm against 180 cubed.
+test fn w_the_hole_ladder_coupon_fits_the_a1_mini() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } =>
+      match specimen_fits(
+        envelope: build_envelope(x: millimeter(count: 180), y: millimeter(count: 180), z: millimeter(count: 180)),
+        s: hole_ladder_specimen(l: l)
+      ) {
+        PartFits => true
+        _ => false
+      }
+    _ => false
+  }
+}
+// WITNESS 7 — THE CONVERSION ROUNDS UP, AND THIS IS THE CASE TRUNCATION GETS WRONG. 180_500 um
+// truncates to 180 mm and would compare EQUAL to a 180 mm envelope — reported as fitting a machine
+// it does not fit. Rounding up yields 181 and refuses. The witness asserts the conversion directly
+// so the property is pinned even if no current specimen exercises it.
+test fn w_the_micrometre_conversion_rounds_up_not_down() -> Bool {
+  micrometer_to_millimeter_ceiling(m: micrometer(count: 180500)) == millimeter(count: 181)
+    && micrometer_to_millimeter_ceiling(m: micrometer(count: 180000)) == millimeter(count: 180)
+    && micrometer_to_millimeter_ceiling(m: micrometer(count: 1)) == millimeter(count: 1)
+}
+// WITNESS 8 — AND THE ROUNDING ACTUALLY REACHES THE FIT ANSWER. Witness 7 pins the arithmetic; this
+// pins that the fit path CONSUMES it. A part 180.5 mm tall must be refused on Z against a 180 mm
+// envelope — the exact print that truncation would have greenlit.
+test fn w_an_oversize_part_is_refused_on_the_axis_that_exceeds() -> Bool {
+  let envelope = build_envelope(x: millimeter(count: 180), y: millimeter(count: 180), z: millimeter(count: 180))
+  let part = part_extent(
+    x: millimeter(count: 100),
+    y: millimeter(count: 100),
+    z: micrometer_to_millimeter_ceiling(m: micrometer(count: 180500))
+  )
+  match envelope_fit(envelope: envelope, part: part) {
+    PartExceedsEnvelope { first: e, rest: _ } => match e.axis { EnvelopeZ => true, _ => false }
+    _ => false
+  }
+}

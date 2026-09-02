@@ -1,0 +1,93 @@
+module test.claim.printed_chassis_contract_witness
+import std.types { Bool, Int, List }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import product.printed_chassis.coupon {
+  LengthLadder, LadderConstruction, LadderReady,
+  hole_ladder_spec, hole_ladder_specimen, ladder_rungs,
+}
+import product.printed_chassis.realization_contract {
+  LadderRealization, RealizationContract,
+  ladder_realization, realization_contract,
+  ContractConformance, ContractConforms,
+  ContractRungCountDiverges, ContractRungValueDiverges,
+  compare_rungs, admit_realized_ladder,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// WITNESS 1 — A FAITHFUL HANDLER IS ADMITTED. The positive control: without it every witness below
+// is satisfied by a check that refuses everything.
+test fn w_a_handler_reproducing_the_ladder_conforms() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(
+        specimen: hole_ladder_specimen(l: l),
+        ladder: ladder_realization(declaration: l)
+      )
+      match admit_realized_ladder(contract: contract, realized_rungs: ladder_rungs(l: l)) {
+        ContractConforms => true
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+// WITNESS 2 — A HANDLER THAT DROPS A RUNG IS CAUGHT ON THE COUNT, and the refusal carries both
+// populations. Silently realizing ten holes where the model declared eleven would produce a coupon
+// that measures fine and calibrates against a ladder that never existed.
+test fn w_a_handler_that_drops_a_rung_diverges_on_count() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(
+        specimen: hole_ladder_specimen(l: l),
+        ladder: ladder_realization(declaration: l)
+      )
+      match admit_realized_ladder(contract: contract, realized_rungs: ladder_rungs(l: l).skip(n: 1)) {
+        ContractRungCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+// WITNESS 3 — THE ONE THAT MATTERS: A HANDLER USING THE WRONG STEP IS CAUGHT, AND LOCATED.
+//
+// This is the realistic parallel-authority failure. The handler keeps the right rung COUNT and the
+// right base, and derives with 0.05 mm steps instead of the declared 0.10 — a plausible Python edit,
+// a coupon that looks entirely correct, and a calibration that would be wrong for every part printed
+// afterwards. Count agreement is exactly why the count check cannot catch it. The divergence must be
+// reported at index 1, the first rung where the two laws part.
+test fn w_a_handler_using_the_wrong_step_diverges_at_the_first_bad_rung() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(
+        specimen: hole_ladder_specimen(l: l),
+        ladder: ladder_realization(declaration: l)
+      )
+      let wrong = fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], init: [], f: fn(acc, i) {
+        concat(acc, [micrometer(count: 3000 + i * 50)])
+      })
+      match admit_realized_ladder(contract: contract, realized_rungs: wrong) {
+        ContractRungValueDiverges { index: i, modeled: m, realized: r } =>
+          i == 1 && micrometer_count(m: m) == 3100 && micrometer_count(m: r) == 3050
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+// WITNESS 4 — THE MINT DERIVES RATHER THAN ACCEPTS. The contract's rungs are not a parameter, so a
+// caller cannot supply a declaration and a disagreeing rung list. This asserts the derived rungs
+// equal the declaration's own derivation, which is what makes any later divergence attributable to
+// the handler rather than to a forged contract.
+test fn w_the_contract_derives_its_own_rungs_from_the_declaration() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let r = ladder_realization(declaration: l)
+      match compare_rungs(modeled: r.derived_rungs, realized: ladder_rungs(l: l)) {
+        ContractConforms => true
+        _ => false
+      }
+    }
+    _ => false
+  }
+}

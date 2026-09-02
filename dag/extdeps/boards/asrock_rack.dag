@@ -32,7 +32,10 @@ import extdeps.firmware.types {
   firmware_semantic_version,
 }
 import std.measure { ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { point2 }
+import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
@@ -571,3 +574,70 @@ data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAlt
 }
 
 data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."
+
+// ---------------------------------------------------------------------------------------------
+// BOARD GEOMETRY, read first-party from the vendor manual this module already cites.
+//
+// PROVENANCE, stated before the numbers because it is the fact that decides how they may be used.
+// extdeps_external_authority_anchor names download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf. That
+// document was FETCHED AND READ by the authoring session — download.asrock.com answers 200 from
+// this environment, unlike the general web, which is refused — so these are a first-party read of
+// the manual and not the relayed grade extdeps.climbing_holds.atomik is stamped with. Section 1.4
+// "Motherboard Layout" carries the outline as leader dimensions: 26.7 cm (10.5 in) by 24.4 cm
+// (9.6 in).
+//
+// WHAT THIS REPLACES. asrock_altrad8ud_1l2t_mechanical carries form_factor_label, a String reading
+// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which DESIGN §4c names
+// as the thing a typed carrier must hold instead — a String cannot be asked whether a chassis panel
+// clears the board. The label is left standing because it also carries a FORM-FACTOR CLAIM, which
+// is a different fact from an outline and is not established by these two lengths.
+//
+// AND THE FORM-FACTOR CLAIM IS EXACTLY WHAT THIS DOES NOT MAKE. 267 by 244 mm is the board's drawn
+// outline. It is NOT a statement that the board carries the micro-ATX mounting-hole pattern, and
+// the two must not be conflated: micro-ATX is 244 by 244, so this board is 23 mm WIDER than the
+// form factor its own label names, and a chassis built to the micro-ATX hole pattern on the
+// strength of that label would be built to the wrong width. gunbc.product.altra_motherboard's
+// placement module states the same separation for our own board — a declared size is not a
+// conformance claim — and it is repeated here because here there IS a label inviting the inference.
+// ---------------------------------------------------------------------------------------------
+fn asrock_altrad8ud_board_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 31) }
+
+// Micrometres, for the reason std.spatial_frame records and extdeps.printing.fdm repeats: the
+// quantum is chosen from the smallest distinction the frame must preserve, not from the largest
+// value it must hold. Whole millimetres are sufficient for these two extents and are NOT sufficient
+// for what will be drawn in this frame next — DIMM slot pitch and standoff positions — and a frame
+// whose quantum is retro-fitted after coordinates exist in it silently rescales every one of them.
+fn asrock_altrad8ud_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
+  axis_aligned_rectangle2(
+    min: point2(frame: asrock_altrad8ud_board_frame(), x: 0, y: 0),
+    max: point2(frame: asrock_altrad8ud_board_frame(), x: 267000, y: 244000)
+  )
+}
+
+data asrock_altrad8ud_board_outline_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.boards.asrock_rack",
+    decl_name: "asrock_altrad8ud_board_outline",
+    field: WholeDeclaration
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+// THE MOUNTING HOLES ARE NOT HERE, AND THEIR ABSENCE IS THE POINT.
+//
+// Section 1.4 draws the standoff holes as unlabelled circles on the layout figure and dimensions
+// NONE of them: the manual states the outline and stops. So the coordinates a chassis actually
+// needs are, for this subject, an OBLIGATION and not a fact — and this module refuses to hold them
+// rather than deriving them from the micro-ATX pattern the form-factor label gestures at. That
+// derivation is available, plausible, and would be wrong in a way nothing downstream could detect:
+// it would place standoffs against a 244 mm-wide pattern on a 267 mm-wide board, produce a chassis
+// that assembles until the last two screws, and cite this manual while doing it.
+//
+// DESIGN §5's absorbing fallback is precisely this move — substituting the superset, or the nearby
+// standard, when the precise answer is unavailable — so the arm refuses and names what would clear
+// it. The operator holds four of these boards and four more are inbound; caliper positions from a
+// declared origin corner are a first-party measurement, admissible at the OperatorMeasured grade
+// that extdeps.ampere.mt_collins_product_brief.platform already establishes for a tape-measured
+// chassis depth. That is the trigger: measured standoff coordinates, not a second reading of this
+// manual, which does not contain them.
+data asrock_altrad8ud_mounting_hole_obligation: NonEmptyStr = "UNMODELLED, REFUSING: standoff hole coordinates and diameter. The vendor manual draws the holes on the section 1.4 layout figure without dimensioning them, so no reading of the cited authority can supply them. They are NOT to be derived from the micro-ATX hole pattern: the board is 267 mm wide against that pattern's 244 mm, so the derivation would be silently wrong at the chassis-assembly boundary. Cleared by operator caliper measurement from a declared origin corner, recorded at the OperatorMeasured provenance grade."

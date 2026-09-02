@@ -1,0 +1,196 @@
+module product.printed_chassis.coupon
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Micrometer, micrometer, micrometer_count, Millimeter, millimeter }
+import extdeps.printing.fdm {
+  BuildEnvelope,
+  PartExtent,
+  EnvelopeFit,
+  PartFits,
+  PartExceedsEnvelope,
+  part_extent,
+  envelope_fit,
+}
+// THE CALIBRATION COUPON AUTHORITY — TOOLCHAIN v0's only consumer, and the reason v0 exists at all.
+//
+// WHY A COUPON IS THE FIRST THING MODELLED. It is the one part class whose dimensions depend on no
+// unmeasured server component and no site dimension: a hole-diameter ladder is a fact about a
+// PRINTER, not about a board. So it can be generated, printed and measured while the board's
+// standoff map, the PETG decision and the deployment envelope are all still open — and it produces
+// exactly the printer/material qualification that every later tolerance rests on. Building the
+// realization contract against an empty measurement pack instead would have been speculative: a
+// geometry-taint wall is not commissioned until it watches real geometry calls and rejects real
+// mutations, and a wall with no handler is only a rule definition.
+//
+// THE LADDER IS AN EXPERIMENTAL DESIGN, NOT A CONVENIENCE. This is the whole point of the module.
+// The tempting shape is a Python list of plausible diameters, on the reasoning that it is only a
+// test part. That reasoning is exactly backwards: a ladder whose steps were chosen in the handler
+// would make the MEASUREMENT meaningless, because the deviation being measured is deviation FROM A
+// NOMINAL, and the nominal would then have no authority. "It is only a calibration coupon" is not
+// permission for the realization layer to choose test dimensions. So the base, the step and the
+// population size are modelled here, and every diameter in the ladder is DERIVED from them.
+//
+// WHY DERIVED RATHER THAN ENUMERATED. An authored list of diameters and an authored step are two
+// representations of one fact, and they can disagree — DESIGN §2's horizontal redundancy, in the
+// place where a disagreement is least visible, because both spellings look like data. Deriving the
+// rungs means the step is the single authority and a mis-typed rung has no way to exist.
+//
+// UNITS ARE MICROMETRES THROUGHOUT, for the reason extdeps.printing.fdm records: the quantum is
+// chosen from the smallest distinction the quantity must preserve. A clearance ladder steps in
+// fifty-micrometre increments, which whole millimetres cannot represent at all — every rung would
+// collapse onto its neighbours and the ladder would measure nothing.
+type CouponSpecimenId = NonEmptyStr where brand("CouponSpecimenId")
+type CouponRevision = NonEmptyStr where brand("CouponRevision")
+// A ladder: a base rung, a uniform step, and how many rungs. The rung VALUES are derived.
+type LengthLadder sole_constructor {
+  base: Micrometer
+  step: Micrometer
+  rung_count: Nat
+}
+// The mint refuses a degenerate ladder rather than emitting one. A zero step makes every rung
+// identical, so the coupon would carry N copies of one measurement while presenting as a ladder —
+// a specimen that cannot discriminate, which is the physical twin of a check that never goes red.
+// Fewer than two rungs is not a ladder either: a single-rung "ladder" measures one diameter and
+// establishes no trend, and the caller almost certainly meant to author a plain feature.
+type LadderConstruction
+  = LadderReady { ladder: LengthLadder }
+  | LadderStepIsZero
+  | LadderTooFewRungs { supplied: Nat }
+fn length_ladder(base: Micrometer, step: Micrometer, rung_count: Nat) -> LadderConstruction {
+  if micrometer_count(m: step) == 0 {
+    LadderStepIsZero
+  } else if rung_count < 2 {
+    LadderTooFewRungs { supplied: rung_count }
+  } else {
+    LadderReady { ladder: LengthLadder { base: base, step: step, rung_count: rung_count } }
+  }
+}
+// The rungs, derived. This is the only place a coupon's nominal values come from.
+fn ladder_rungs(l: LengthLadder) -> List<Micrometer> {
+  fold(nat_range_inclusive(lo: 0, hi: l.rung_count - 1), init: [], f: fn(acc, i) {
+    concat(acc, [micrometer(count: micrometer_count(m: l.base) + i * micrometer_count(m: l.step))])
+  })
+}
+fn ladder_rung_count(l: LengthLadder) -> Nat { l.rung_count }
+fn ladder_base(l: LengthLadder) -> Micrometer { l.base }
+fn ladder_step(l: LengthLadder) -> Micrometer { l.step }
+// THE v0 OPERATION POPULATION, CLOSED, and closed on a rule rather than on taste: an operation is
+// admitted to v0 only because a selected specimen below consumes it. Nothing here anticipates the
+// chassis — no fillet, no sweep, no loft, no rack joint — because TOOLCHAIN generalizes exactly one
+// consumer ahead. FIT will widen this population, and CASSETTE will widen it again, each time with
+// the wall coverage that admits the new operation.
+//
+// The realization handler MAY map these to kernel calls and choose provably equivalent orderings.
+// It may NOT introduce an operation absent from this coproduct: an unknown operation kind has no
+// constructor here, so a handler that invented one could not describe it in a contract at all.
+type CouponOperation
+  = OpThroughHole { diameter: Micrometer, center_x: Micrometer, center_y: Micrometer }
+  | OpDatumMark { text: NonEmptyStr, at_x: Micrometer, at_y: Micrometer }
+
+// THE PLATE IS ITS OWN TYPE, not a member of CouponOperation, and the first draft of this module
+// had it as a member. That draft then needed a match to recover the plate's dimensions, whose other
+// arm had nothing sensible to return — and what it returned was a zero extent, which fits every
+// build envelope. A specimen with a malformed plate would have been reported PRINTABLE. The arm was
+// a textbook absorbing fallback: no authority said the extent was zero, and answering zero destroyed
+// the only signal that the specimen was malformed.
+//
+// Making the plate a dedicated type deletes the arm rather than fixing it. There is no non-plate
+// plate to fall back FROM, so the fallback has no place to live — DESIGN §5's construction over
+// validation, and the reason this is rung 4 rather than a checked refusal.
+type PlateDimensions sole_constructor {
+  size_x: Micrometer
+  size_y: Micrometer
+  size_z: Micrometer
+}
+// A specimen is a plate plus the operations cut into it, carrying its own identity and revision so
+// a measured result can never be attributed to the wrong geometry.
+type CouponSpecimen sole_constructor {
+  id: CouponSpecimenId
+  revision: CouponRevision
+  plate: PlateDimensions
+  features: List<CouponOperation>
+}
+fn coupon_specimen(
+  id: CouponSpecimenId,
+  revision: CouponRevision,
+  plate: PlateDimensions,
+  features: List<CouponOperation>,
+) -> CouponSpecimen {
+  CouponSpecimen { id: id, revision: revision, plate: plate, features: features }
+}
+// SPECIMEN 1 — THE HOLE-DIAMETER LADDER. Eleven rungs from 3.00 mm in 0.10 mm steps, so the ladder
+// spans 3.00 to 4.00 mm and brackets the M3 clearance region a printed chassis actually fastens
+// with. The rungs are DERIVED from this declaration; changing the step here moves every hole and
+// cannot leave a stale rung behind.
+data hole_ladder_spec: LadderConstruction = length_ladder(
+  base: micrometer(count: 3000),
+  step: micrometer(count: 100),
+  rung_count: 11
+)
+data hole_ladder_pitch: Micrometer = micrometer(count: 9000)
+data hole_ladder_margin: Micrometer = micrometer(count: 6000)
+data hole_ladder_plate_depth: Micrometer = micrometer(count: 18000)
+data hole_ladder_plate_thickness: Micrometer = micrometer(count: 4000)
+// The plate is SIZED FROM THE LADDER rather than authored beside it. An authored plate width would
+// be a second representation of the ladder's extent, and the two would silently disagree the moment
+// a rung was added — the coupon would then either crowd its last hole into the edge or carry dead
+// plastic, and in both cases the geometry would stop matching the declaration that named it.
+fn hole_ladder_plate_width(l: LengthLadder) -> Micrometer {
+  micrometer(count: 2 * micrometer_count(m: hole_ladder_margin) + (ladder_rung_count(l: l) - 1) * micrometer_count(m: hole_ladder_pitch))
+}
+fn hole_ladder_features(l: LengthLadder) -> List<CouponOperation> {
+  fold(nat_range_inclusive(lo: 0, hi: ladder_rung_count(l: l) - 1), init: [], f: fn(acc, i) {
+    concat(acc, [OpThroughHole {
+      diameter: micrometer(count: micrometer_count(m: ladder_base(l: l)) + i * micrometer_count(m: ladder_step(l: l))),
+      center_x: micrometer(count: micrometer_count(m: hole_ladder_margin) + i * micrometer_count(m: hole_ladder_pitch)),
+      center_y: micrometer(count: 9000),
+    }])
+  })
+}
+fn hole_ladder_specimen(l: LengthLadder) -> CouponSpecimen {
+  coupon_specimen(
+    id: "machine-process-hole-diameter-ladder",
+    revision: "r1",
+    plate: PlateDimensions {
+      size_x: hole_ladder_plate_width(l: l),
+      size_y: hole_ladder_plate_depth,
+      size_z: hole_ladder_plate_thickness,
+    },
+    features: concat(
+      hole_ladder_features(l: l),
+      [OpDatumMark { text: "HOLE-LADDER r1", at_x: micrometer(count: 3000), at_y: micrometer(count: 2000) }]
+    )
+  )
+}
+// MICROMETRES TO MILLIMETRES ROUNDS UP, AND THE DIRECTION IS THE WHOLE SAFETY ARGUMENT.
+//
+// The build envelope is stated in whole millimetres and the coupon is drawn in micrometres, so the
+// fit question needs a conversion. Truncating is the arithmetic default and is WRONG HERE: a part
+// 180_500 um across truncates to 180 mm, compares equal to a 180 mm envelope, and is reported as
+// fitting when it physically does not. The error is silent, it is in the unsafe direction, and it
+// appears only as a failed print.
+//
+// Rounding up cannot make that mistake. It can only ever over-state the part, so it may refuse a
+// part that would in fact have squeezed in — a wasted refusal, which is recoverable by measuring,
+// where a wasted print is not. This is the ordinary fail-closed asymmetry: the conservative
+// direction is the one whose error is visible.
+fn micrometer_to_millimeter_ceiling(m: Micrometer) -> Millimeter {
+  millimeter(count: (micrometer_count(m: m) + 999) / 1000)
+}
+
+// A specimen's printed extent is its plate's. Features are cut INTO the plate — a through-hole
+// removes material and a datum mark is engraved — so none of them can enlarge the bounding box.
+// That is a property of the closed v0 operation population, not a general truth, and it stops being
+// true the moment v0 admits an operation that adds material outside the plate. Whichever change
+// introduces such an operation owes this function a real bounding-box fold.
+fn specimen_extent(s: CouponSpecimen) -> PartExtent {
+  part_extent(
+    x: micrometer_to_millimeter_ceiling(m: s.plate.size_x),
+    y: micrometer_to_millimeter_ceiling(m: s.plate.size_y),
+    z: micrometer_to_millimeter_ceiling(m: s.plate.size_z)
+  )
+}
+
+fn specimen_fits(envelope: BuildEnvelope, s: CouponSpecimen) -> EnvelopeFit {
+  envelope_fit(envelope: envelope, part: specimen_extent(s: s))
+}
