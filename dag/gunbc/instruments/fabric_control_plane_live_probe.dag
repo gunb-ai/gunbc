@@ -586,6 +586,7 @@ func fci1_assert_replace_held(
       ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterReplacementAuthorityBeforeCommit" }
       ExitFailure { code: _, reason: why } => exit_failure(reason: why)
     }
+  }
   else { let outcome = fci1_live_replace_held(root: root)
   match outcome {
     CellReserved { offer: offer, slot_key: slot, generation: generation, account: _ } =>
