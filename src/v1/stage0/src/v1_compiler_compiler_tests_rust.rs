@@ -53,7 +53,7 @@ pub fn ct_parse_tests() -> String {
 }
 
 pub fn ct_fixture_closure_rustc_discrimination_test() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.\n".to_string(), "    ///\n".to_string()), "    /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the\n".to_string()), "    /// emitted text and asserts on substrings. A meaning-level emitter defect is invisible to\n".to_string()), "    /// that whenever the wrong bytes still contain the right substring -- and it is exactly\n".to_string()), "    /// what rustc's type checker refuses. This arm is the one that asks rustc.\n".to_string()), "    ///\n".to_string()), "    /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below\n".to_string()), "    /// proves only that something in the tree is broken. The red must be refused BY RUSTC and\n".to_string()), "    /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the\n".to_string()), "    /// hundreds of modules in its closure would pass for the fixture's own defect.\n".to_string()), "    ///\n".to_string()), "    /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and\n".to_string()), "    /// compiles two emitted crates, which is minutes rather than milliseconds, and\n".to_string()), "    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It\n".to_string()), "    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib\n".to_string()), "    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and\n".to_string()), "    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.\n".to_string()), "    #[test]\n".to_string()), "    #[ignore]\n".to_string()), "    fn fixture_closure_rustc_discrimination() {\n".to_string()), "        let probe_root = crate::cli_run::local_emit_compile_probe_root();\n".to_string()), "        let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);\n".to_string()), "        for line in crate::cli_run::fixture_discrimination_report(&pair) {\n".to_string()), "            eprintln!(\"{}\", line);\n".to_string()), "        }\n".to_string()), "        assert!(\n".to_string()), "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n".to_string()), "            \"the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}\",\n".to_string()), "            crate::cli_run::fixture_closure_summary(&pair.red)\n".to_string()), "        );\n".to_string()), "        assert!(\n".to_string()), "            crate::cli_run::fixture_discrimination_passed(&pair),\n".to_string()), "            \"the control must compile and the meaning-level red must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}\",\n".to_string()), "            crate::cli_run::fixture_closure_summary(&pair.green),\n".to_string()), "            crate::cli_run::fixture_closure_summary(&pair.red),\n".to_string()), "            crate::cli_run::fixture_closure_attributed_line(&pair.red)\n".to_string()), "        );\n".to_string()), "    }\n\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.\n".to_string(), "    ///\n".to_string()), "    /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the\n".to_string()), "    /// emitted text and asserts on substrings. A meaning-level emitter defect is invisible to\n".to_string()), "    /// that whenever the wrong bytes still contain the right substring -- and it is exactly\n".to_string()), "    /// what rustc's type checker refuses. This arm is the one that asks rustc.\n".to_string()), "    ///\n".to_string()), "    /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below\n".to_string()), "    /// proves only that something in the tree is broken. The red must be refused BY RUSTC and\n".to_string()), "    /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the\n".to_string()), "    /// hundreds of modules in its closure would pass for the fixture's own defect -- and the\n".to_string()), "    /// attributed diagnostic must be the ERROR CLASS this arm claims (rustc E0308, mismatched\n".to_string()), "    /// types), because a location says WHERE rustc refused and never WHAT. Without the code a\n".to_string()), "    /// fixture edited into a syntax error, or an emitter regression producing an unresolved\n".to_string()), "    /// path, reds in the right file and passes for the text-boundary subject it is not.\n".to_string()), "    ///\n".to_string()), "    /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and\n".to_string()), "    /// compiles two emitted crates, which is minutes rather than milliseconds, and\n".to_string()), "    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It\n".to_string()), "    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib\n".to_string()), "    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and\n".to_string()), "    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.\n".to_string()), "    #[test]\n".to_string()), "    #[ignore]\n".to_string()), "    fn fixture_closure_rustc_discrimination() {\n".to_string()), "        let probe_root = crate::cli_run::local_emit_compile_probe_root();\n".to_string()), "        let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);\n".to_string()), "        for line in crate::cli_run::fixture_discrimination_report(&pair) {\n".to_string()), "            eprintln!(\"{}\", line);\n".to_string()), "        }\n".to_string()), "        assert!(\n".to_string()), "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n".to_string()), "            \"the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}\",\n".to_string()), "            crate::cli_run::fixture_closure_summary(&pair.red)\n".to_string()), "        );\n".to_string()), "        assert!(\n".to_string()), "            crate::cli_run::fixture_discrimination_passed(&pair),\n".to_string()), "            \"the control must compile and the meaning-level red must be refused by rustc, attributed to its own emitted module, and carry the claimed error class; control={} red={} attribution={:?} diagnostic={:?}\",\n".to_string()), "            crate::cli_run::fixture_closure_summary(&pair.green),\n".to_string()), "            crate::cli_run::fixture_closure_summary(&pair.red),\n".to_string()), "            crate::cli_run::fixture_closure_attributed_line(&pair.red),\n".to_string()), "            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)\n".to_string()), "        );\n".to_string()), "    }\n\n".to_string())
 }
 
 pub fn ct_function_value_adapter_fixture_closure_discrimination_test() -> String {
@@ -183,125 +183,30 @@ pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
 
 pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
     match (*a.clone()).clone() {
-        CoercionAssertion::CheckpointAssertion {
-            target: t,
-            dag_name: name,
-            expected_type: expected,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "        assert_eq!(coerce_primitive_type(".to_string(),
-                                render_target_rust_enum(t.clone()),
-                            ),
-                            ", \"".to_string(),
-                        ),
-                        name.clone(),
-                    ),
-                    "\".into(), \"\".into()), \"".to_string(),
-                ),
-                expected.clone(),
-            ),
-            "\");\n".to_string(),
-        ),
-        CoercionAssertion::ContainerAssertion {
-            target: t,
-            container_name: name,
-            expected_template: expected,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "        assert_eq!(coerce_container_template(".to_string(),
-                                render_target_rust_enum(t.clone()),
-                            ),
-                            ", \"".to_string(),
-                        ),
-                        name.clone(),
-                    ),
-                    "\".into()), Some(\"".to_string(),
-                ),
-                expected.clone(),
-            ),
-            "\".to_string()));\n".to_string(),
-        ),
-        CoercionAssertion::CopyAssertion {
-            target: t,
-            dag_name: name,
-            expected_copy: expected,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "        assert_eq!(is_copy(".to_string(),
-                                render_target_rust_enum(t.clone()),
-                            ),
-                            ", \"".to_string(),
-                        ),
-                        name.clone(),
-                    ),
-                    "\".into(), \"\".into()), Some(".to_string(),
-                ),
-                if expected.clone() {
-                    "true".to_string()
-                } else {
-                    "false".to_string()
-                },
-            ),
-            "));\n".to_string(),
-        ),
-        CoercionAssertion::TemplateAssertion {
-            template: tmpl,
-            args: arg_list,
-            expected,
-            ..
-        } => {
-            if ((arg_list.clone().len() as i64) == 1) {
-                {
-                    let arg0 = first_or_empty(arg_list.clone());
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "        assert_eq!(apply_inhabitant_template1(\""
-                                                .to_string(),
-                                            tmpl.clone(),
-                                        ),
-                                        "\".into(), \"".to_string(),
-                                    ),
-                                    arg0.clone(),
-                                ),
-                                "\".into()), \"".to_string(),
-                            ),
-                            expected.clone(),
-                        ),
-                        "\");\n".to_string(),
-                    )
-                }
-            } else {
-                if ((arg_list.clone().len() as i64) == 2) {
-                    {
-                        let arg0 = first_or_empty(arg_list.clone());
-                        let arg1 = second_or_empty(arg_list.clone());
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into(), \"".to_string()), arg1.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
-                    }
-                } else {
-                    "".to_string()
-                }
-            }
+    CoercionAssertion::CheckpointAssertion { target: t, dag_name: name, expected_type: expected, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(coerce_primitive_type(type_realization_decision(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into(), std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)), \"".to_string()), name.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string()),
+    CoercionAssertion::ContainerAssertion { target: t, container_name: name, expected_template: expected, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(coerce_container_template(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(\"".to_string()), expected.clone()), "\".to_string()));\n".to_string()),
+    CoercionAssertion::CopyAssertion { target: t, dag_name: name, expected_copy: expected, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(is_copy(type_realization_decision(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into(), std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent))), Some(".to_string()), if expected.clone() {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }), "));\n".to_string()),
+    CoercionAssertion::TemplateAssertion { template: tmpl, args: arg_list, expected, .. } => if ((arg_list.clone().len() as i64) == 1) {
+        {
+            let arg0 = first_or_empty(arg_list.clone());
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template1(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+}
+    } else {
+        if ((arg_list.clone().len() as i64) == 2) {
+            {
+                let arg0 = first_or_empty(arg_list.clone());
+let arg1 = second_or_empty(arg_list.clone());
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into(), \"".to_string()), arg1.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+}
+        } else {
+            "".to_string()
         }
-    }
+    },
+}
 }
 
 pub fn ct_profile_helpers() -> String {
