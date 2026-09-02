@@ -58,18 +58,6 @@
 //! Adjudicating the consequence as well as the generator would be a second representation of
 //! one fact (DESIGN §2/§3).
 
-// CLIPPY ROSTER -- 5 finding(s) this module trips today, listed one lint per line with
-// its count. Until this commit the generated crate root allowed `clippy::all` plus six
-// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
-// warnings` decided nothing here; the root now excuses only the generated modules it
-// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
-// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
-// site is repaired, and a lint not named below reds the build, which is the whole point.
-#![allow(
-    clippy::manual_contains,  // 1
-    clippy::useless_format,  // 4
-)]
-
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::cli_run::declaration_index::{
