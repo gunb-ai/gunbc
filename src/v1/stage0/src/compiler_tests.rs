@@ -1342,6 +1342,41 @@ mod compiler_tests {
     }
 
     #[test]
+    fn resolved_pipeline_preserves_leaf_type_reference_occurrence_identity() {
+        let result = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {
+            let producer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_producer.dag".to_string(),
+                content: "module identity.producer\ntype Foreign { value: Int }\n".to_string(),
+            });
+            let consumer_text = "module identity.consumer\nimport identity.producer { Foreign }\nfn leaf(x: Foreign) -> Foreign { x }\nfn applied(x: List<Foreign>) -> Int { 0 }\n".to_string();
+            let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_consumer.dag".to_string(),
+                content: consumer_text.clone(),
+            });
+            let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                std::rc::Rc::new(im::vector![producer, consumer]),
+            );
+            let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
+            assert!(blocking.is_empty(), "identity fixture must traverse the live acceptance path: {:?}", blocking);
+            let graph = resolved.graph.as_ref().expect("identity fixture must produce a typed graph");
+            let typed = graph.modules.iter().find(|m| m.module.name == "identity.consumer").expect("consumer typed module");
+            let transport = typed.occurrence_transport.as_ref().expect("consumer occurrence transport");
+            let occurrence_at = |needle: &str, ordinal: usize| {
+                let start = consumer_text.match_indices(needle).nth(ordinal).expect("fixture occurrence").0 as i64;
+                transport.index.entries.iter().find(|e| e.projection.diagnostic_span.start == start).expect("transport projection at fixture occurrence").projection.occurrence
+            };
+            let leaf = typed.items.iter().find(|item| item.name == "leaf").expect("leaf function");
+            let leaf_type = crate::v1_std_core::param_node_type_expr(leaf.params[0].clone());
+            let leaf_reference = occurrence_at("Foreign", 1);
+            assert_eq!(leaf_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: leaf_reference }), "typed leaf must carry the authored parameter reference, not the resolved declaration occurrence");
+            let applied = typed.items.iter().find(|item| item.name == "applied").expect("applied function");
+            let applied_type = crate::v1_std_core::param_node_type_expr(applied.params[0].clone());
+            let applied_reference = occurrence_at("List", 0);
+            assert_eq!(applied_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: applied_reference }), "neighbouring children-present type must retain its authored outer occurrence");
+        }).expect("spawn identity pipeline test").join().expect("identity pipeline test panicked");
+    }
+
+    #[test]
     fn method_existence_wall_witness() {
         // DISCRIMINATING RED for method_existence_wall_note. Before the wall an
         // unresolved method inherited the RECEIVER's type with no diagnostic, so
