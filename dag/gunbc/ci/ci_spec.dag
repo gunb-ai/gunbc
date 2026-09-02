@@ -1521,8 +1521,46 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   )
 }
 
-data ci_heal_regen_note: String = "The heal REGEN invoke: gunbc run on the generated-artifact drift gate's main_wet, which writes each committed_generated_artifacts() projection to its path (fail-closed fold -- a write error stops the line, never a partial commit). Runs on the same witness_layer_roots and released gunbc binary the deploy job consumes. Idempotent by construction: on a tree already at the fixed point the writes are byte-identical, so the downstream commit-push step sees no git diff and pushes nothing -- the loop terminates in one heal. THAT FIXED POINT IS ENFORCED, AND WHAT THIS CLAUSE GOT WRONG IS WORTH MORE THAN WHAT IT GOT RIGHT. A STALE CITATION DOES NOT MERELY FAIL TO NOTICE A DELETION -- IT FAILS TO NOTICE A RESTORATION, and the second failure is the damaging one, because it makes a LIVE guarantee read as absent to everyone consulting the authority. This clause did both, in order. Until 2026-08-17 this clause named generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point as the enforcing contract. 611fd027708211a0c435d937ed3e45b8b936e28a (#8283, the FLOOR-Y cut) DELETED that witness, and the sentence citing it survived the deletion unchanged for a fortnight -- nothing at this citing end went red, because removing a route orphans every inbound citation of it silently. The GUARANTEE was restored by a different mechanism while the CITATION stayed stale, so this note was wrong in both directions at once: it named a dead witness, and it would have kept naming one after the capability came back. WHAT ENFORCES IT NOW, named by symbol so the next deletion is decidable: RequiredCiPhase GeneratedArtifactPhase (gunbc.required_ci_phase_roster), enrolled by #9415 and restored to the required roster by #9814 on 2026-08-31, running in the BuildLane of the required merge context -- claim_executor --required-ci --required-lane build. Its host boundary asks the authority for committed_generated_artifact_paths and adjudicates each path's committed bytes against what artifact_generate produces, refusing on any Drifted or Absent verdict. THE GRAIN MATCHES EXACTLY, which is what makes it a termination argument and not a nearby comfort: that roster and the one main_wet writes are one fold over one registry, so the phase being green on a merge candidate IS the statement that every path this invoke would write is already at its fixed point, hence no git diff and no second heal. TWO BOUNDARIES, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The phase covers the REGISTRY, roughly 35 artifacts including DESIGN.md, ROADMAP.md and the workflow emissions; the stage0 mirror population is the separate RegenPhase, and a generated .rs file outside the registry -- gunbc_rust_source_type_bindings.rs on #9949 -- is in neither, which is why an authored .dag landed there without its projection and merged green. That is a real coverage gap and it is NOT this loop's: main_wet writes the registry and nothing else, so the population the heal touches is the population the phase adjudicates. And the loop has no runner today regardless -- the heal job went with ci.yml at the same cut, so .github/workflows carries fleet-converge, fleet-desired and witnesses and none of them heals."
-
+// THE HEAL REGEN INVOKE: `gunbc run` on the generated-artifact drift gate's `main_wet`, which
+// writes each `committed_generated_artifacts()` projection to its path -- a fail-closed fold, so a
+// write error stops the line and never leaves a partial commit. It runs on the same
+// `witness_layer_roots` and released `gunbc` binary the deploy job consumes. Idempotent by
+// construction: on a tree already at the fixed point the writes are byte-identical, the downstream
+// commit-push step sees no git diff and pushes nothing, and the loop terminates in one heal.
+//
+// THAT FIXED POINT IS ENFORCED, AND WHAT THIS NOTE GOT WRONG IS WORTH MORE THAN WHAT IT GOT RIGHT.
+// A STALE CITATION DOES NOT MERELY FAIL TO NOTICE A DELETION -- IT FAILS TO NOTICE A RESTORATION,
+// and the second failure is the damaging one, because it makes a LIVE guarantee read as absent to
+// everyone consulting the authority. This note did both, in order. Until 2026-08-17 it named
+// `generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point` as the
+// enforcing contract. 611fd027708211a0c435d937ed3e45b8b936e28a (#8283, the FLOOR-Y cut) DELETED
+// that witness, and the sentence citing it survived unchanged for a fortnight -- nothing at this
+// citing end went red, because removing a route orphans every inbound citation of it silently. The
+// GUARANTEE was then restored by a DIFFERENT mechanism while the citation stayed stale, so the note
+// was wrong in both directions at once: it named a dead witness, and it would have gone on naming
+// one after the capability came back.
+//
+// WHAT ENFORCES IT NOW, named by symbol so the next deletion is decidable: `RequiredCiPhase`
+// `GeneratedArtifactPhase` (`gunbc.required_ci_phase_roster`), enrolled by #9415 and restored to
+// the required roster by #9814 on 2026-08-31, running in the BuildLane of the required merge
+// context -- `claim_executor --required-ci --required-lane build`. Its host boundary asks the
+// authority for `committed_generated_artifact_paths` and adjudicates each path's committed bytes
+// against what `artifact_generate` produces, refusing on any Drifted or Absent verdict.
+//
+// THE GRAIN MATCHES EXACTLY, which is what makes this a termination argument and not a nearby
+// comfort: that roster and the one `main_wet` writes are one fold over one registry, so the phase
+// being green on a merge candidate IS the statement that every path this invoke would write is
+// already at its fixed point -- hence no git diff, and no second heal.
+//
+// TWO BOUNDARIES, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The phase covers the
+// REGISTRY, roughly 35 artifacts including DESIGN.md, ROADMAP.md and the workflow emissions; the
+// stage0 mirror population is the separate RegenPhase. A generated `.rs` outside both --
+// `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
+// landed there without its projection and merged green. That is a real coverage gap about a THIRD
+// population and it is not this loop's: `main_wet` writes the registry and nothing else, so the
+// population the heal touches is the population the phase adjudicates. And the loop has no runner
+// today regardless -- the heal job went with `ci.yml` at the same cut, so `.github/workflows`
+// carries fleet-converge, fleet-desired and witnesses, and none of them heals.
 fn gunbc_ci_heal_regen_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
