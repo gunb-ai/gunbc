@@ -689,7 +689,7 @@ pub struct WalkPlan<F: Clone> {
 pub struct WalkPopulationBudgetRefusal {
     pub population: String,
     pub plan_site: String,
-    pub population_index: i64,
+    pub population_index: Nat,
     pub active_unit: String,
     pub elapsed: Millisecond,
     pub budget: Millisecond,
