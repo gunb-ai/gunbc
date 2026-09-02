@@ -369,9 +369,6 @@ fn position_is_in(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> Bool {
 
 // EVERY POPULATED IDENTITY MUST BE A ROUTED ONE, reported per offending identity rather than as a
 // single "not a subset" boolean, so the refusal names which channel or position is unroutable
-// instead of only that something is.
-// EVERY POPULATED IDENTITY MUST BE A ROUTED ONE, reported per offending identity rather than as a
-// single "not a subset" boolean, so the refusal names which channel or position is unroutable
 // instead of only that something is. Applied to EACH population in the lifecycle: copper is the
 // ceiling for the bring-up population exactly as it is for the shipped one.
 fn population_subset_causes(routed: RoutedDdrTopology, populated: ActiveDdrTopology) -> List<DesignRefusal> {
