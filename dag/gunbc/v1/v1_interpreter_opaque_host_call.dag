@@ -1,0 +1,171 @@
+module gunbc.v1_interpreter_opaque_host_call
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.v1_interpreter_primitive_surface {
+  FreeCall,
+  InterpreterPrimitiveDispatchArm,
+  v1_interpreter_primitive_arms,
+}
+
+// WHICH HOST OPERATIONS SPEND UNBOUNDED TIME WHERE NO SAFETY POLL CAN LAND, DERIVED FROM A
+// STATED CRITERION RATHER THAN FROM WHICH ONE HAPPENED TO BE CAUGHT.
+//
+// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and
+// `v2.workflow.required_floor`'s PREEMPTION-1 rung drop both name the mechanism: `v1_interpreter`
+// `eval_expr` polls both cooperative deadlines on a stride BETWEEN calls to itself, so the poll is
+// the only place either clock is read. A native `free_call.*` arm dispatched to Rust never calls
+// back into `eval_expr` while it runs; no stride point falls inside it, and its whole duration is
+// invisible to both clocks. That is a property of the ARM, not of the claim that reaches it.
+//
+// THE POPULATION THAT DEFECT WAS DECLARED OVER NAMED ONE MEMBER, AND ONE MEMBER WAS A SELECTION
+// VIEW OF THE DISCOVERY INSTRUMENT. `compile_dag_rust_emit_check` is in the population because a
+// floor run recorded a claim dominated by it at 60317ms CPU against a 500ms limit, uninterrupted
+// (run 32301212975). "Was measured over its limit in a floor run" is how the operation was FOUND;
+// it is not what makes it unbounded. Reading the finding aid as the population is DESIGN's
+// `selection_view_read_as_population`, and here it under-reported by eight to one: every arm in
+// this module's roster reaches a nested `.dag` compile through the identical dispatch shape and
+// has been in that state for as long as it has existed, measured or not.
+//
+// THE CRITERION, STATED SO A LATER READER CAN FALSIFY MEMBERSHIP INSTEAD OF TRUSTING IT: a
+// `free_call.*` dispatch arm whose Rust realization SYNCHRONOUSLY RUNS A NESTED COMPILE OF `.dag`
+// SOURCES -- `v1_compiler_compile` `compile_sources` / `compile_to_resolved` /
+// `compile_to_resolved_with_options`, or a whole-tree compile-clean receipt produced through them.
+// A nested compile is the shape whose cost is bounded by the size of the corpus rather than by
+// anything the calling claim controls, which is what makes the missed poll consequential rather
+// than merely true.
+//
+// WHAT THE CRITERION DELIBERATELY DOES NOT COVER, named rather than left as an implied
+// exhaustiveness claim: an opaque arm that builds a WHOLE-CORPUS INDEX without compiling --
+// `free_call.extdeps_qualified_name_resolves_in_derived_module_set` reaches
+// `build_module_path_index_from_witness_roots`, which is unbounded in the same way and is not a
+// compile. It is outside THIS roster because it is outside THIS criterion, not because it is
+// bounded. Widening the criterion to "unbounded opaque host work" is the next expansion and is a
+// separate finding with its own survey; asserting it here without that survey would repeat, at a
+// wider grain, exactly the unfounded exhaustiveness this module exists to retire.
+data opaque_host_call_criterion_residue_dissolves_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: this module's criterion widens from `reaches a nested .dag compile` to `reaches unbounded opaque host work` once every free_call arm carries a modeled preemption-reachability fact on gunbc.v1_interpreter_primitive_surface InterpreterPrimitiveDispatchArm, derived from the arm's realization rather than authored per roster. Until that field exists the wider population cannot be DERIVED, only re-authored, and a hand roster over a wider criterion is a weaker claim than a hand roster over a narrow one." as NonEmptyStr,
+)
+
+// ONE ROW PER ARM, CARRYING THE REALIZATION THAT MAKES IT A MEMBER. `nested_compile_entry` is the
+// Rust entry point a reader re-checks the criterion against; it is the evidence for membership,
+// not decoration, and a row whose entry no longer runs a compile is a row that must leave.
+type NestedCompileReach {
+  arm_identity: NonEmptyStr
+  nested_compile_entry: NonEmptyStr
+}
+
+fn v1_interpreter_nested_compile_reaches() -> List<NestedCompileReach> {
+  [
+    NestedCompileReach {
+      arm_identity: "free_call.compile_dag_rust_emit_check",
+      nested_compile_entry: "cli_run.emit_host.compile_dag_rust_emit_check",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.compile_dag_diagnostic_census",
+      nested_compile_entry: "cli_run.emit_host.compile_dag_diagnostic_census",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.compile_dag_multi_module_fixture",
+      nested_compile_entry: "cli_run.emit_host.compile_dag_multi_module_fixture",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.observe_declared_import_closure_symbol_binding",
+      nested_compile_entry: "cli_run.observe_declared_import_closure_symbol_binding",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.witness_layer_roots_compile_clean_check",
+      nested_compile_entry: "cli_run.witness_gates.witness_layer_roots_compile_clean_check",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.witness_layer_roots_compile_clean_emit_check",
+      nested_compile_entry: "cli_run.witness_gates.witness_layer_roots_compile_clean_emit_check",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.install_or_consume_floor_compile_clean_gate_receipt",
+      nested_compile_entry: "cli_run.install_or_consume_floor_compile_clean_gate_receipt",
+    },
+    NestedCompileReach {
+      arm_identity: "free_call.witness_compile_clean_cli_floor_verdicts_agree",
+      nested_compile_entry: "cli_run.compile_clean.compile_clean_cli_floor_verdicts_agree",
+    },
+  ]
+}
+
+fn roster_arms_for_identity(identity: NonEmptyStr) -> List<InterpreterPrimitiveDispatchArm> {
+  v1_interpreter_primitive_arms() |> filter(a => a.arm.identity == identity)
+}
+
+// THE GROUNDING JOIN, AND IT IS THE WHOLE REASON THIS MODULE SITS BESIDE THE DISPATCH ROSTER
+// RATHER THAN BESIDE THE FLOOR. `gunbc.v1_interpreter_primitive_surface` is the single authority
+// for the seed's dispatch surface and is drift-gated against the generated lookup tables in
+// `src/v1/stage0/src/v1_interpreter_dispatch_generated.rs`. So an arm identity resolved against
+// that roster is joined, transitively, to the arm the seed actually dispatches -- whereas a bare
+// string literal naming a host operation is joined to nothing and stays green after the operation
+// it names is renamed or deleted.
+fn nested_compile_reaches_unresolved() -> List<NonEmptyStr> {
+  v1_interpreter_nested_compile_reaches()
+    |> filter(r => count(roster_arms_for_identity(identity: r.arm_identity)) == 0)
+    |> map(r => r.arm_identity)
+}
+
+fn nested_compile_reaches_not_free_call() -> List<NonEmptyStr> {
+  v1_interpreter_nested_compile_reaches()
+    |> filter(r =>
+      roster_arms_for_identity(identity: r.arm_identity) |> any(a => !(a.form == FreeCall))
+    )
+    |> map(r => r.arm_identity)
+}
+
+// FAIL-CLOSED PROJECTION (DESIGN section 5). The operations list is reachable ONLY through the
+// grounded arm, so a roster that has drifted cannot be read as a shorter population: the consumer
+// matches, and the ungrounded arm carries the two located populations that explain why. A
+// `List<String>` return that silently dropped unresolved rows would be the absorbing fallback --
+// the safety population would quietly shrink at exactly the moment the join broke, which is the
+// moment it matters.
+type OpaqueHostCallSurface
+  = OpaqueHostCallSurfaceGrounded { operations: List<String> }
+  | OpaqueHostCallSurfaceUngrounded {
+      unresolved: List<NonEmptyStr>
+      not_free_call: List<NonEmptyStr>
+    }
+
+fn opaque_host_call_surface() -> OpaqueHostCallSurface {
+  let unresolved = nested_compile_reaches_unresolved()
+  let wrong_form = nested_compile_reaches_not_free_call()
+  if count(unresolved) == 0 && count(wrong_form) == 0 {
+    OpaqueHostCallSurfaceGrounded {
+      operations: v1_interpreter_nested_compile_reaches()
+        |> flat_map(r =>
+          roster_arms_for_identity(identity: r.arm_identity)
+            |> map(a => a.authored_spelling as String)
+        ),
+    }
+  } else {
+    OpaqueHostCallSurfaceUngrounded {
+      unresolved: unresolved,
+      not_free_call: wrong_form,
+    }
+  }
+}
+
+fn opaque_host_call_surface_is_grounded() -> Bool {
+  match opaque_host_call_surface() {
+    OpaqueHostCallSurfaceGrounded { operations: _ } => true
+    OpaqueHostCallSurfaceUngrounded { unresolved: _, not_free_call: _ } => false
+  }
+}
+
+// MEMBERSHIP, AND THE UNGROUNDED ARM ANSWERS `false` IN THE REFUSING DIRECTION, NOT THE
+// REASSURING ONE. `false` here means "this module will not certify that operation as a declared
+// member", which is what a consumer building a migration wall wants when the join has broken: a
+// new operation is refused admission. It does NOT mean "no such operation exists" -- that reading
+// would need `opaque_host_call_surface()` itself, which is why no count projection is offered
+// beside this predicate. A count that answered `0` on a broken join would report an empty
+// population where the truthful answer is that the population is unreadable.
+fn opaque_host_call_surface_contains(operation: String) -> Bool {
+  match opaque_host_call_surface() {
+    OpaqueHostCallSurfaceGrounded { operations: ops } => ops |> any(o => o == operation)
+    OpaqueHostCallSurfaceUngrounded { unresolved: _, not_free_call: _ } => false
+  }
+}
