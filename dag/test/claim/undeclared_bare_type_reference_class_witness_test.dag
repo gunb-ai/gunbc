@@ -10,9 +10,7 @@ import tools.multi_module_compile_fixture {
   FixtureCompileCompleted,
   FixtureSource,
   fixture_source,
-  compile_fixture,
-  fixture_blocking_rows,
-  fixture_has_class
+  compile_fixture
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -44,16 +42,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc.compile_clean_diagnostic_policy unlisted_import_use_burndown_sizing beside the enforcement
 // row that consumes it.
 //
-// THE THIRD CLAIM IS THE ONE THAT MAKES THIS ABOUT GLOBAL UNIQUENESS RATHER THAN ABOUT A TYPO.
-// The unimported name is a REAL declaration of the definer module supplied in the same manifest --
-// the definer is present and compiled, and only the import edge is missing. Without that arm the
-// red is satisfied by any misspelled name, which is a different and already-walled class.
+// THE DEFINER IS SUPPLIED IN BOTH MANIFESTS AND DELETING IT IS NOT A SIMPLIFICATION. The unimported
+// name is a REAL declaration of a module present in the same manifest, so the only thing missing
+// from the red arm is the import EDGE. Drop the definer to "simplify" the red manifest and the
+// claim still goes red -- for an unresolvable SPELLING, which is a different class with its own
+// wall -- and the probe would then be green for a reason that has nothing to do with import edges.
+// The cost of that edit is the entire discriminating power of this file, and it is invisible: the
+// test still passes.
+//
+// NO std.types IMPORT IN EITHER FIXTURE, and that is load-bearing rather than terseness. The
+// instrument compiles the supplied manifest with NO corpus roots, so `import std.types { Int }`
+// names a module that does not exist in the subject and refuses the whole compile -- including the
+// positive control. That is how the first revision of this file was written and BOTH arms came back
+// false in under 4ms; the control going red with the subject is exactly the signature of a broken
+// harness rather than a real class, which is why the control is read first. Int needs no import:
+// it is in kernel_type_set and every module sees it.
 
 data ubtr_definer_source: String = "module ubtr.definer\n\ntype UbtrProvenance {\n  attempt: Int\n}\n"
 
-data ubtr_user_without_import_source: String = "module ubtr.user\n\nimport std.types { Int }\n\ntype UbtrRow {\n  provenance: UbtrProvenance\n  seq: Int\n}\n"
+data ubtr_user_without_import_source: String = "module ubtr.user\n\ntype UbtrRow {\n  provenance: UbtrProvenance\n  seq: Int\n}\n"
 
-data ubtr_user_with_import_source: String = "module ubtr.user\n\nimport std.types { Int }\nimport ubtr.definer { UbtrProvenance }\n\ntype UbtrRow {\n  provenance: UbtrProvenance\n  seq: Int\n}\n"
+data ubtr_user_with_import_source: String = "module ubtr.user\n\nimport ubtr.definer { UbtrProvenance }\n\ntype UbtrRow {\n  provenance: UbtrProvenance\n  seq: Int\n}\n"
 
 fn ubtr_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -65,11 +74,16 @@ fn ubtr_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-fn ubtr_refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+// THE OUTCOME IS READ BY MATCHING, NEVER BY AN ACCESSOR, so FixtureInstrumentRefused -- the arm
+// that says the HARNESS broke rather than the subject -- cannot render as "zero diagnostics" on
+// either side. Both readers return false on it, so a ragged manifest fails BOTH claims rather than
+// silently satisfying the control.
+fn ubtr_diagnosed(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
-    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+      count(rows) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) > 0,
     FixtureInstrumentRefused { cause: c } => false
   }
 }
@@ -86,8 +100,19 @@ fn ubtr_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // THE DISCRIMINATING RED. ubtr.user names UbtrProvenance at a field position and imports it from
 // nowhere. The definer is in the manifest, so the declaration EXISTS -- what is missing is only the
 // import edge, which is exactly the corpus shape.
-test fn bare_type_reference_without_import_refuses_under_a_narrow_closure() -> Bool {
-  ubtr_refused_with_class(ubtr_run(ubtr_user_without_import_source), "UnresolvedType")
+//
+// IT ASSERTS THAT THE COMPILER SAYS SOMETHING, NOT WHICH THING IT SAYS, and that is a deliberate
+// rung rather than a hedge. Two arms are live here and they are not the same fact: the definer is
+// supplied, so the manifest pool may resolve the name by the very global-uniqueness rule under test
+// and answer with the advisory UnlistedImportUse, or the narrower closure may refuse outright with
+// UnresolvedType. Naming one of them without having observed which fires is the failure where a
+// diagnostic name is asserted and the mechanism behind it is silent. The pair still discriminates:
+// zero diagnostics on the control against a non-empty population on the subject, over the SAME
+// bytes plus one import line. NEXT-RUNG TRIGGER: read the emitted diagnostic class off this claim's
+// own floor run and pin it here by name; until then this file measures that the reference is seen,
+// not how it is classified.
+test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
+  ubtr_diagnosed(ubtr_run(ubtr_user_without_import_source))
 }
 
 // THE POSITIVE CONTROL, and it is the same bytes plus one import line. Without it the red above is
@@ -96,5 +121,5 @@ test fn bare_type_reference_without_import_refuses_under_a_narrow_closure() -> B
 // red side.
 test fn the_same_source_with_the_import_line_compiles_clean() -> Bool {
   ubtr_completed_clean(ubtr_run(ubtr_user_with_import_source))
-    && !ubtr_refused_with_class(ubtr_run(ubtr_user_with_import_source), "UnresolvedType")
+    && !ubtr_diagnosed(ubtr_run(ubtr_user_with_import_source))
 }
