@@ -503,10 +503,18 @@ test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
 }
 
 // ------------------------------------------------------------------------------------------------
-// THE CHECKED ENCODER, with one claim per cause rather than one claim that "it refuses". The three
-// causes have different remedies -- an incomplete object table, a commit naming a missing object, a
-// checkout naming a non-commit -- so a single boolean would let any two of them regress silently
-// while the third kept the claim green.
+// THE CHECKED ENCODER, with one claim per cause rather than one claim that "it refuses". The causes
+// have different remedies -- an incomplete object table, a table target occupied by a file, a commit
+// naming a missing object, a commit root occupied by a file, a checkout naming a non-commit -- so a
+// single boolean would let any of them regress silently while another kept the claim green.
+//
+// THE ROSTER IS NO LONGER ONE CLAIM PER CAUSE, AND THAT IS DECLARED RATHER THAN LEFT TO INFERENCE.
+// RepositoryEncodeCommitRootIsAuthoredSource has NO claim, because reaching it needs a store where an
+// honestly minted SemanticNodeObjectRef's locator holds a file -- a 64-bit digest collision. No
+// fixture can build that without a chosen-locator forge, and exporting one to redden this arm would
+// weaken the construction authority the arm exists to defend. It is declared in the module as
+// mitigatable-with-unauthorable-RED; this header says so too, so a reader counting claims against
+// causes finds the gap named rather than discovering it.
 // ------------------------------------------------------------------------------------------------
 
 fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {

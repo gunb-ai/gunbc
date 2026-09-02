@@ -118,10 +118,14 @@ import gunbc.scm.load_standing {
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
 // than left for someone to discover by diffing two repositories that ought to match.
 //
-// Objects are emitted in store_records_in_dependency_order, which is INSERTION order. Storing
-// program A then B, versus B then A, yields the same semantic repository -- the same objects, the
-// same derived identities, the same commits -- but a different position assignment, hence different
-// bytes. So two repositories that are semantically equal can serialize differently.
+// Objects are emitted in store_records_in_dependency_order. That is now a DERIVED post-order walk
+// rather than insertion order -- this note said insertion order and was left stale when the walk
+// landed. What survives of the original claim is narrower and still true: the walk fixes the order of
+// each object relative to the ones it REFERENCES, and nothing more, so insertion history still decides
+// TIE ORDER AMONG INDEPENDENT COMPONENTS. Storing program A then B, versus B then A, yields the same
+// semantic repository -- same objects, same derived identities, same commits -- but a different
+// position assignment, hence different bytes. So two repositories that are semantically equal can
+// still serialize differently, for a smaller reason than before.
 //
 // What that costs: byte comparison cannot be used to decide repository equality, and a mirror or a
 // content-addressed repository image is not yet expressible. What it does NOT cost: nothing about
@@ -490,9 +494,11 @@ fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Lis
 // the v1 body must stay frozen, and the seam that lets a v2 arrive beside it has to be somewhere no
 // author is tempted to "just add the field here".
 //
-// THIS FABRICATES NO v2. There is no second arm, no version enum member for a format that does not
-// exist, and no migration claim -- building a synthetic second version now would test an invented
-// migration rather than the one the product eventually needs.
+// THIS FABRICATES NO v3. There is no third arm, no version enum member for a format that does not
+// exist, and no migration claim -- building a synthetic next version now would test an invented
+// migration rather than the one the product eventually needs. The sentence said "no v2" while the
+// live encoder beneath it emitted v2, which is the stale-authority shape this sweep is clearing: the
+// number moved and the prose did not.
 fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
   encode_repository_v2(repo: repo)
 }

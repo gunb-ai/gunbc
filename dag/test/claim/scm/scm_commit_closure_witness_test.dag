@@ -855,7 +855,14 @@ fn build_grafted_then_completed_store() -> ObjectStore {
 // the SAME closure -- same objects, same root, same identities -- so they must serialize to the same
 // document. Under the insertion-order encoder they do not: one spells the child target contained and
 // the other spells it uncontained, and the byte comparison is what refuses that.
-test fn one_closure_has_one_image_however_its_store_was_assembled() -> Bool {
+//
+// THE NAME IS SCOPED TO THE TWO HISTORIES THE FIXTURE ACTUALLY BUILDS. It was
+// `one_closure_has_one_image_however_its_store_was_assembled`, which claims GLOBAL image invariance
+// across every assembly history -- more than this fixture establishes and more than the repository
+// authority grants, since insertion history still decides tie order among INDEPENDENT components.
+// External review named the overreach. A claim whose name promises more than its body executes is the
+// same inflation as a rung reported above its evidence.
+test fn a_completed_parent_first_graft_has_the_naturally_built_image() -> Bool {
   let full = build_full_store()
   let completed = build_grafted_then_completed_store()
   let closure = CommitClosure { store: completed, root: full.root }
@@ -900,7 +907,7 @@ test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool 
 // ------------------------------------------------------------------------------------------------
 // THE SPELLING ITSELF, BECAUSE BYTE EQUALITY DOES NOT PIN IT.
 //
-// one_closure_has_one_image_however_its_store_was_assembled compares two serializations and requires
+// a_completed_parent_first_graft_has_the_naturally_built_image compares two serializations and requires
 // them equal. That catches a DISAGREEMENT between the two assembly routes, which is what the graft
 // defect produced -- and external review named the hole it leaves: if the encoder spelled EVERY
 // target uncontained, both images would still agree and the claim would still pass. Agreement is not

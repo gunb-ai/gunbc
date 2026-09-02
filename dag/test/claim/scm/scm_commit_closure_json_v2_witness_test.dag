@@ -93,6 +93,17 @@ import gunbc.scm.checkout {
   MissingObject,
   ObjectIsAuthoredSource,
 }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.scm.supersession {
+  HeadSlot,
+  SupersessionOutcome,
+  SupersessionApplied,
+  SupersessionRefused,
+  SupersessionRefusalCause,
+  StandingDoesNotPermit,
+  observe_generation,
+  supersede_head_slot,
+}
 import gunbc.scm.commit_closure {
   CommitClosure,
   admit_well_kinded_closure,
@@ -1683,5 +1694,104 @@ test fn scm_image_a_requirement_over_nothing_is_partial_and_loaded() -> Bool {
   match scm_image_standing_of(v: doc) {
     LoadPartial => standing_loaded(standing: LoadPartial)
     _ => false
+  }
+}
+
+// CONTROL TWO, and it is the cell that keeps the pair from being about presence rather than KIND. A
+// SEMANTIC NODE carried at that locator resolves the SAME uncontained spelling to a complete closure.
+// Without it, the two cells above are satisfied by a decoder that treats every uncontained target as
+// unresolved regardless of what the document carries -- which would make LoadComplete unreachable
+// through this spelling and delete the reason dependency order is derived at all.
+fn scm_image_leaf_entry(tag: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "atom")),
+            json_kv(key: "identity", value: json_string(s: tag)),
+          ]
+        )
+      ),
+      json_kv(key: "children", value: json_array(elements: [])),
+    ]
+  )
+}
+
+fn scm_image_leaf_digest(tag: Symbol) -> String {
+  match store_node(
+    store: empty_store(),
+    n: node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: []),
+  ) {
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i.digest as String
+    Stored { store: _, node: n } => n.locator.digest as String
+  }
+}
+
+test fn scm_image_a_requirement_over_a_carried_node_is_complete_and_loaded() -> Bool {
+  let doc = scm_image_two_object_document(
+    first: scm_image_leaf_entry(tag: "carried_leaf"),
+    second: scm_image_node_over_uncontained(digest: scm_image_leaf_digest(tag: ^carried_leaf)),
+  )
+  match scm_image_standing_of(v: doc) {
+    LoadComplete => standing_loaded(standing: LoadComplete)
+    _ => false
+  }
+}
+
+// THE DOWNSTREAM DESTINATION, because a standing that no actuator consumes is a value with a name and
+// no consequence. This drives the standing THAT DOCUMENT ACTUALLY PRODUCES -- not a literal handed to
+// the actuator -- into the real supersession path, with every other condition admitting, so the only
+// thing that can refuse is the standing itself.
+fn scm_image_wrong_kind_document() -> JsonValue {
+  scm_image_two_object_document(
+    first: scm_image_source_entry(text: "a carried file\n"),
+    second: scm_image_node_over_uncontained(digest: scm_image_source_digest(text: "a carried file\n")),
+  )
+}
+
+fn scm_image_slot() -> HeadSlot {
+  HeadSlot { slot: "head", generation: scm_image_generation(tag: ^scm_image_current) }
+}
+
+fn scm_image_generation(tag: Symbol) -> ObjectId {
+  match store_node(
+    store: empty_store(),
+    n: node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: []),
+  ) {
+    Stored { store: _, node: n } => n.locator
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+  }
+}
+
+test fn scm_image_a_wrong_kind_document_cannot_supersede_a_head_slot() -> Bool {
+  let slot = scm_image_slot()
+  let standing = scm_image_standing_of(v: scm_image_wrong_kind_document())
+  match supersede_head_slot(
+    slot: slot,
+    evidence: observe_generation(
+      slot: slot,
+      examined_root: slot.generation,
+      schema_identity: closure_document_format_tag,
+      standing: standing,
+      authority: decl_ref(
+        module_path: "test.claim.scm_commit_closure_json_v2_witness",
+        decl_name: "scm_image_a_wrong_kind_document_cannot_supersede_a_head_slot",
+      ),
+    ),
+    proposed_generation: scm_image_generation(tag: ^scm_image_proposed),
+  ) {
+    SupersessionApplied { slot: _, warrant: _ } => false
+    SupersessionRefused { cause: c } =>
+      match c {
+        StandingDoesNotPermit { standing: s } =>
+          match s {
+            LoadRequiresNodeAtAuthoredSource => true
+            _ => false
+          }
+        _ => false
+      }
   }
 }

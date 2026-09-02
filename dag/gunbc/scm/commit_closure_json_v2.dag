@@ -414,12 +414,17 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
 // the CONTAINED spelling -- bytes whose own decoder then refuses them, because decode resolves that
 // position to an authored source in a node position. The refusal was correct; the emission was not.
 //
-// SPLITTING THE INDEX IS WHY THIS IS NOW UNWRITABLE RATHER THAN CHECKED. `.dag` has no module
-// privacy, so encode_closure_document and encode_object_table are importable and will accept any
-// store a caller hands them; guarding only the two intended entry points would leave the bad
-// publication perfectly representable through the raw one. External review named exactly that call
-// -site census. With the target index carrying only nodes, no reachable caller can emit a contained
-// reference to a file, because there is no entry to find.
+// SPLITTING THE INDEX IS WHAT MAKES THE CONTAINED SPELLING OF A FILE UNWRITABLE, and that is all it
+// does -- an earlier version of this note credited the split alone with closing the raw route, which
+// it never did. `.dag` has no module privacy, so guarding the two intended entry points left
+// encode_closure_document importable and the wrong-kind state representable through it.
+//
+// The raw route is closed by a CARRIER, not by this split: encode_closure_document now takes a
+// WellKindedClosure, which is sole_constructor and mintable only through admit_well_kinded_closure.
+// The two facts are separate and both are needed. The index means no caller can emit a CONTAINED
+// reference to a file, because there is no entry to find; the carrier means no caller can hand the
+// writer a wrong-kind closure at all, so it cannot emit the UNCONTAINED spelling for one either --
+// which was the leak the index split moved the defect into rather than removed.
 type EncodePositions {
   by_identity: Map<String, String>
   nodes_by_identity: Map<String, String>
@@ -445,13 +450,18 @@ fn node_position_of(positions: EncodePositions, identity: ObjectId) -> String? {
   map_lookup(m: positions.nodes_by_identity, key: object_id_key(identity: identity))
 }
 
-// A missing position is UNREACHABLE rather than defended against, and the reason is worth stating
-// because the fallback would be invisible: store_records_in_dependency_order yields children before
-// parents, so by the time an edge is encoded its target already holds a position. Answering some
-// plausible reference here would emit an image that decodes to a DIFFERENT program, which is exactly
-// the fabricated plausible output DESIGN section 5 forbids. The empty string is not a sentinel the
-// decoder tolerates -- ObjectTableEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
-// a typed refusal at load rather than as a silently wrong store.
+// A MISSING NODE POSITION IS THE UNCONTAINED ARM, NOT AN ERROR -- and this note said the opposite.
+//
+// It read "a missing position is UNREACHABLE rather than defended against", which was true when a
+// closure could only be encoded complete. It is false now and dangerously so: an ADMITTED PARTIAL
+// closure encodes targets whose objects it deliberately does not carry, and a missing node position is
+// exactly how such a target becomes {"uncontained": digest}. Reading this as unreachable would make a
+// future author treat the Absent arm as dead and "simplify" the format's whole reason for existing.
+//
+// The narrower statement that survives: a missing node position for a target that dependency ordering
+// says SHOULD be contained is an ordering failure, and that case is held by execution rather than by
+// this paragraph -- a_complete_closure_spells_its_child_contained requires the contained arm for a
+// closure whose child is carried, and its partial sibling requires the uncontained arm when it is not.
 // A TARGET IS ONE OF TWO ARMS, AND WHICH ONE IS A FACT ABOUT THIS DOCUMENT, NOT ABOUT THE WORLD.
 //
 //   {"at": "3"}          this document CARRIES that object, at that position

@@ -145,9 +145,13 @@ fn observe_generation(
 //       payload could hide a second distinction -- through `MemberReadRefusal`'s four modes and
 //       `TargetReferenceRefusal`'s four -- and is the ONLY declaration in the tree that can return
 //       `LoadDocumentMalformed`, so it is the entire permitting surface.
-//     `loaded_closure_standing` answers only `LoadComplete` or `LoadPartial`. The success path is
-//       therefore OUTSIDE this relation by construction, not by a check: no load that succeeded can
-//       authorize destroying what it read.
+//     `loaded_closure_standing` answers `LoadComplete`, `LoadPartial`, or
+//       `LoadRequiresNodeAtAuthoredSource`. THIS LINE SAID "only LoadComplete or LoadPartial" and was
+//       left stale when the third arm landed; the census it belongs to is exactly the thing a stale
+//       count corrupts. The conclusion is UNCHANGED and is now broader: none of the three permits, so
+//       the success path stays OUTSIDE this relation by construction rather than by a check -- no load
+//       that succeeded can authorize destroying what it read, and a load whose requirement sits on a
+//       file is refused for its own named reason rather than by falling through.
 //     `closure_document_standing` is the join of the two and mints no standing of its own.
 //
 //   CONSUMERS BEFORE THIS MODULE: none in production. The permitting predicate had witnesses and no
@@ -156,8 +160,11 @@ fn observe_generation(
 //     WITH the actuator rather than a guard added to one.
 //
 //   A NEIGHBOUR THAT IS NOT A ROUTE, checked rather than assumed. `gunbc.scm.repository_envelope`
-//     decodes the envelope that names a head and carries its own `RepositoryDecodeRefusal`, and it
-//     classifies NOTHING into `LoadStanding`. DESIGN's recurring-failure-mode census records
+//     decodes the envelope that names a head and carries its own `RepositoryDecodeRefusal`. IT DOES
+//     CLASSIFY INTO `LoadStanding`, through `repository_envelope_load_standing` -- this line said it
+//     classified NOTHING and that premise is obsolete. It remains not a ROUTE for a different and
+//     better reason: every arm it produces is a REFUSAL standing, and no refusal standing permits, so
+//     the producer count grew while the permitting surface did not. DESIGN's recurring-failure-mode census records
 //     `repository_load_disposition` collapsing thirteen `ImageRefusal` arms as a specimen of the
 //     total-but-blind class; that symbol no longer exists in the tree, and the envelope decoder has
 //     no route to this destination today. The specimen stands as a historical record; it is not a
