@@ -11,7 +11,15 @@ import gunbc.generated_artifact {
   V1InterpreterDispatchGeneratedRsArtifact,
   EvaluationBudgetConsequenceGeneratedRsArtifact,
   artifact_path,
+  artifact_commit_policy,
+  CommitRequired, NotCommitted,
+  GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   committed_generated_artifacts
+}
+import gunbc.generated_workflow_provenance {
+  generated_workflow_provenance_header,
+  GeneratedWorkflowProvenanceHeaderProduced,
+  GeneratedWorkflowProvenanceHeaderNotApplicable,
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
@@ -56,7 +64,7 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
   ArtifactGenerated { content: content }
 }
 
-fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
     WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
       WitnessFloorGenerated { content } => artifact_generated(content: content)
@@ -111,6 +119,29 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
         }
     }
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
+  }
+}
+
+// One bytes boundary owns workflow provenance. A workflow admitted by the commit-policy registry
+// without a provenance projection refuses here; non-workflow artifacts pass through unchanged.
+// This is a rung-3 wall, not a rung-4 constructor removal: the inconsistent pair remains writable
+// in the two authorities, but it cannot produce committed workflow bytes.
+fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+  let generated = artifact_generate_unadorned(a: a)
+  match generated_workflow_provenance_header(a: a) {
+    GeneratedWorkflowProvenanceHeaderProduced { content: header } => match generated {
+      ArtifactGenerated { content } => artifact_generated(content: concat(header, content))
+      ArtifactGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    GeneratedWorkflowProvenanceHeaderNotApplicable => match artifact_commit_policy(a: a) {
+      CommitRequired { consumer: GithubActionsWorkflow } => ArtifactGenerationRefused {
+        reason: "GithubActionsWorkflow artifact has no generated-workflow provenance projection"
+      }
+      CommitRequired { consumer: GitProtocol } => generated
+      CommitRequired { consumer: ProjectDocumentation } => generated
+      CommitRequired { consumer: HostReconciler } => generated
+      NotCommitted => generated
+    }
   }
 }
 
