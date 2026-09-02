@@ -609,6 +609,7 @@ fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisp
       } else {
         AccountTripResultOk
       }
+    JsonMemberFound { value: _ } => AccountTripMissing
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
