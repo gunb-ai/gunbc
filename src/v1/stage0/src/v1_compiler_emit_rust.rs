@@ -34296,6 +34296,13 @@ pub fn emit_plain_response_body(
     }
 }
 
+pub fn emit_rust_boxed_error_return(message_expr: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("Err(".to_string(), message_expr.clone()),
+        ".into())".to_string(),
+    )
+}
+
 pub fn emit_response_code_handling(
     op_node: Rc<Node>,
     transport: Rc<Node>,
@@ -34349,13 +34356,20 @@ pub fn emit_response_code_handling(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                "let status = response.status().as_u16();\n".to_string(),
-                                "match status {\n".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "let status = response.status().as_u16();\n".to_string(),
+                                        "match status {\n".to_string(),
+                                    ),
+                                    arms.clone().join(&"\n".to_string()),
+                                ),
+                                "\n    _ => ".to_string(),
                             ),
-                            arms.clone().join(&"\n".to_string()),
+                            emit_rust_boxed_error_return(
+                                "format!(\"unexpected status code: {}\", status)".to_string(),
+                            ),
                         ),
-                        "\n    _ => Err(format!(\"unexpected status code: {}\", status).into())\n"
-                            .to_string(),
+                        "\n".to_string(),
                     ),
                     "}".to_string(),
                 )
@@ -34436,7 +34450,19 @@ pub fn emit_response_arm(
                 )
             }
         } else {
-            v1_rt::concat(v1_rt::concat("    ".to_string(), pattern.clone()), " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("    ".to_string(), pattern.clone()),
+                        " => { let err_body = response.text().await.unwrap_or_default(); "
+                            .to_string(),
+                    ),
+                    emit_rust_boxed_error_return(
+                        "format!(\"HTTP {}: {}\", status, err_body)".to_string(),
+                    ),
+                ),
+                " },".to_string(),
+            )
         }
     }
 }
@@ -34508,7 +34534,7 @@ pub fn emit_exit_code_handling(
                                 ),
                                 " ".to_string(),
                             ),
-                            shell_boxed_stderr_error_arm(),
+                            emit_rust_boxed_error_return("stderr".to_string()),
                         ),
                         " },".to_string(),
                     )
@@ -34570,7 +34596,7 @@ pub fn emit_exit_arm(
                         ),
                         " ".to_string(),
                     ),
-                    shell_boxed_stderr_error_arm(),
+                    emit_rust_boxed_error_return("stderr".to_string()),
                 ),
                 " },".to_string(),
             )
@@ -34931,15 +34957,6 @@ pub fn shell_stderr_binding_line() -> String {
     thread_local! {
         static CACHED: String = {
             "let stderr = String::from_utf8_lossy(&output.stderr).to_string();".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn shell_boxed_stderr_error_arm() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Err(stderr.into())".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

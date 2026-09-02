@@ -21,7 +21,7 @@ fn native_agreement_divergence_from_run<Subj>(
   match run.verdict {
     Pass => Absent
     SemanticMismatch {
-      actual: Accepted { value: native_val, diagnostics: None },
+      actual: Accepted { value: native_val, diagnostics: _ },
       falsification: Present {
         value: receipt
       }

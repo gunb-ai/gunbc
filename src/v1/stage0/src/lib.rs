@@ -356,17 +356,6 @@ pub mod v1_compiler_compile;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_compiler_tests_rust;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_compiler_complexity;
 #[allow(
     unused_imports,

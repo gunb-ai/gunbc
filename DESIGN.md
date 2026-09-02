@@ -131,6 +131,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
 - **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
 - **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
+- **Spark serving role-scoped retirement evidence at the production plan root** — declared 2026-09-02
 - **Arity agreement between a declared builtin parameter name and its derived algebra template** — declared 2026-09-01
 - **n-ary concat call sites judged against concat's binary declared signature** — declared 2026-09-01
 
