@@ -1,0 +1,118 @@
+module v2.test.floor.pure_producer_share_refusal
+
+import v2.workflow.floor_pure_producer_share {
+  RefusedShareCandidate,
+  ShareRefusalVerdict,
+  MeasuredServeAboveRecompute,
+  NoMeasuredEffectOverItsConsumers,
+  SupersededBySingleAuthorityRepair,
+  floor_cross_claim_refused_candidates,
+  floor_cross_claim_admitted_producers,
+  refused_share_producers,
+  share_roster_refusal_collisions
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WALL UNDER TEST: `v2.workflow.floor_pure_producer_share` measures share candidates and
+// turns some of them down, and until the refused roster existed a withdrawal had nowhere to live
+// but an annotation -- a channel DESIGN section 4c says no `Accepted` program can read. These
+// probes are what make the refusal mechanical instead of advisory.
+//
+// THE PAIR IS THE POINT. A disjointness assertion over the LIVE rosters alone is green today and
+// can be reddened only by editing the corpus it guards, which DESIGN section 4b calls a
+// decoration -- permanently green by construction, carrying no information, and worse than absent
+// because it would be cited as coverage. So the collision fold takes its two populations as
+// ARGUMENTS: the fixtures below are the source a fixture harness may hand it, where the forbidden
+// state is perfectly writable, and the live tree is the positive control.
+
+fn probe_refused_row(producer: String) -> RefusedShareCandidate {
+  RefusedShareCandidate {
+    producer: producer,
+    verdict: MeasuredServeAboveRecompute,
+    carrier_modules: ["v2.test.probe.carrier"],
+    measurement: "authored fixture; no run",
+    next_trigger: "authored fixture; no trigger"
+  }
+}
+
+data probe_refused: List<RefusedShareCandidate> = [
+  probe_refused_row(producer: "v2.probe.languages.rust.probe_target_model"),
+  probe_refused_row(producer: "v2.probe.languages.rust.probe_core_edges")
+]
+
+// RED: an admitted roster that re-proposes a refused identity must be reported, and the report
+// must NAME the identity rather than answer a count -- the remedy is "go read that refused row",
+// which needs the row's key.
+test fn a_re_proposed_refused_identity_collides_and_is_named() -> Bool {
+  let collisions = share_roster_refusal_collisions(
+    admitted: [
+      "v2.probe.languages.bash.probe_fold_lex",
+      "v2.probe.languages.rust.probe_core_edges"
+    ],
+    refused: probe_refused
+  )
+  (length(xs: collisions) == 1)
+    && any(xs: collisions, predicate: fn(c) { c == "v2.probe.languages.rust.probe_core_edges" })
+}
+
+// RED, both refused rows at once: the fold reports every collision rather than stopping at the
+// first. A wall that names one of two re-proposals sends the next author back for a second round.
+test fn every_re_proposed_refused_identity_is_reported_not_just_the_first() -> Bool {
+  let collisions = share_roster_refusal_collisions(
+    admitted: [
+      "v2.probe.languages.rust.probe_target_model",
+      "v2.probe.languages.bash.probe_fold_lex",
+      "v2.probe.languages.rust.probe_core_edges"
+    ],
+    refused: probe_refused
+  )
+  length(xs: collisions) == 2
+}
+
+// GREEN CONTROL beside those REDs, and it is the conjunct that makes them mean something: an
+// admitted roster sharing NO identity with the refused roster reports nothing. Without this a
+// fold that returned its whole input would pass both probes above.
+test fn a_roster_that_re_proposes_nothing_reports_no_collision() -> Bool {
+  length(xs: share_roster_refusal_collisions(
+    admitted: [
+      "v2.probe.languages.bash.probe_fold_lex",
+      "v2.probe.languages.bash.probe_fold_productions"
+    ],
+    refused: probe_refused
+  )) == 0
+}
+
+// The empty-refusal control: with nothing refused, nothing collides however the admitted roster
+// is spelled. DESIGN's `predicate_vacuously_true_on_an_empty_domain` cuts the other way here --
+// this is the arm that must stay quiet, and the probes above establish the domain is not empty.
+test fn an_empty_refused_roster_collides_with_nothing() -> Bool {
+  length(xs: share_roster_refusal_collisions(
+    admitted: ["v2.probe.languages.rust.probe_target_model"],
+    refused: []
+  )) == 0
+}
+
+// THE LIVE POSITIVE CONTROL. Today's admitted rosters and today's refused roster are disjoint,
+// and this is the probe that reds if anyone re-enrols `rust_target_model`,
+// `rust_target_model_core_edges`, `rust_target_model_staging`, or the argument-taking
+// `compile_phase_frontier_standing` without first retiring its refused row.
+test fn the_live_rosters_admit_nothing_this_roster_has_refused() -> Bool {
+  length(xs: share_roster_refusal_collisions(
+    admitted: floor_cross_claim_admitted_producers(),
+    refused: floor_cross_claim_refused_candidates
+  )) == 0
+}
+
+// THE REFUSED ROSTER IS NOT EMPTY, asserted separately and deliberately. The live control above
+// is satisfied by an empty refused roster, so on its own it cannot tell "nothing is re-proposed"
+// from "nothing is recorded as refused" -- the `predicate_vacuously_true_on_an_empty_domain`
+// failure mode at the population grain. This is the conjunct that makes the control discriminate.
+// It asserts NON-EMPTINESS rather than a count: a literal here would be a tree-copied oracle that
+// re-reds every time a fifth candidate is measured and turned down.
+test fn the_refused_roster_carries_identities() -> Bool {
+  length(xs: refused_share_producers(refused: floor_cross_claim_refused_candidates)) > 0
+}

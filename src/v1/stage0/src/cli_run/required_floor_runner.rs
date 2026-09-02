@@ -3148,6 +3148,20 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             })?;
         admitted_nodes.push(node);
     }
+    let refused = floor_decode_refused_share_candidates(
+        &roster_frame,
+        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_refused_candidates"),
+    )?;
+    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+        *r.borrow_mut() = Some(PureProducerShareRoster {
+            admitted_qualified: warm_rows
+                .iter()
+                .chain(claim_forced_rows.iter())
+                .cloned()
+                .collect(),
+            refused,
+        });
+    });
     v1_interpreter::install_cross_claim_pure_share_roster(admitted_nodes);
     v1_interpreter::install_cross_claim_share_observer(Some(
         v1_interpreter::CrossClaimShareObserver {
@@ -3220,6 +3234,226 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                      producer={qualified} — {why}"
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+/// One row of `v2.workflow.floor_pure_producer_share.floor_cross_claim_refused_candidates`:
+/// a producer that was proposed for the cross-claim share tier, MEASURED, and refused.
+#[derive(Clone)]
+pub(crate) struct RefusedShareRow {
+    producer: String,
+    verdict: String,
+    /// The consuming modules the refusal was measured over, read from the deciding run's own
+    /// `[floor-shared-fill]` `modules=` field.
+    carrier_modules: std::collections::BTreeSet<String>,
+}
+
+/// What the fold needs at the END of the run to adjudicate the refused roster: the admitted
+/// spellings (to name the subject of an overlap) and the refused rows (to join against).
+#[derive(Clone, Default)]
+pub(crate) struct PureProducerShareRoster {
+    admitted_qualified: Vec<String>,
+    refused: Vec<RefusedShareRow>,
+}
+
+thread_local! {
+    /// Set by `install_pure_producer_share` and read once the fold is over. Thread-local for the
+    /// same reason the shared-fill ledger is: it is the SAME thread's observation, and a state
+    /// that could be written by one thread and read by another would let the wall adjudicate a
+    /// roster that never governed the fills it is reading.
+    static PURE_PRODUCER_SHARE_ROSTER: std::cell::RefCell<Option<PureProducerShareRoster>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Decode the refused roster. Every arm refuses: a missing declaration, a non-record row, a
+/// wrong record type, a non-String field, an unknown verdict variant. An unknown variant is
+/// deliberately NOT tolerated — a fourth verdict arrives with a meaning this wall does not know
+/// how to weigh, and treating it as "some refusal" would let the authority claim a judgement the
+/// executor cannot perform.
+fn floor_decode_refused_share_candidates(
+    hermetic: &v1_interpreter::InterpContext,
+    qualified_name: &str,
+) -> Result<Vec<RefusedShareRow>, String> {
+    let value = v1_interpreter::run_in_context(hermetic, qualified_name, false)
+        .map_err(|e| format!("{qualified_name}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|why| format!("{qualified_name} decode: {why}"))?;
+    let mut out = Vec::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = &item else {
+            return Err(format!(
+                "{qualified_name}: expected RefusedShareCandidate rows, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "RefusedShareCandidate") {
+            return Err(format!(
+                "{qualified_name}: expected RefusedShareCandidate, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let producer = match hermetic.field(fields, "producer") {
+            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+            other => {
+                return Err(format!(
+                    "{qualified_name}: producer must be String, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        let verdict = match hermetic.field(fields, "verdict") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                let name = hermetic.resolve(*variant_name);
+                match name.as_str() {
+                    "MeasuredServeAboveRecompute"
+                    | "NoMeasuredEffectOverItsConsumers"
+                    | "SupersededBySingleAuthorityRepair" => name,
+                    other => {
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
+                             producer={producer} verdict={other} — the refused roster grew a \
+                             verdict arm this executor cannot weigh; the arm and the handling \
+                             land together or the wall is claiming a judgement it cannot make"
+                        ));
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "{qualified_name}: verdict must be a ShareRefusalVerdict variant, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        let carriers = floor_decode_list(hermetic, hermetic.field(fields, "carrier_modules"))
+            .map_err(|why| format!("{qualified_name}: {producer} carrier_modules: {why}"))?;
+        let mut carrier_modules = std::collections::BTreeSet::new();
+        for carrier in carriers {
+            match carrier {
+                v1_interpreter::Value::Str(s) => {
+                    carrier_modules.insert(s.to_string());
+                }
+                other => {
+                    return Err(format!(
+                        "{qualified_name}: {producer} carrier_modules must be String rows, got {}",
+                        floor_value_shape(Some(&other))
+                    ))
+                }
+            }
+        }
+        // A REFUSED ROW WITH NO CARRIERS WOULD BE PERMANENTLY UNJOINABLE. It would sit in the
+        // roster reading as covered while intersecting nothing, which is the vacuously-green
+        // shape DESIGN §4b warns about, so it stops the line at decode rather than at nothing.
+        if carrier_modules.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusedRowCarrierless \
+                 producer={producer} — a refused row with an empty carrier_modules set can never \
+                 join against an observed fill, so it would be enrolled coverage that cannot fire"
+            ));
+        }
+        out.push(RefusedShareRow {
+            producer,
+            verdict,
+            carrier_modules,
+        });
+    }
+    Ok(out)
+}
+
+/// THE OVERLAP WALL, run once the fold is over and the shared-fill ledger is final.
+///
+/// The identity-grain check lives in the `.dag` and refuses a producer that is admitted and
+/// refused at once. It is not sufficient, and this file's own roster contains the case it
+/// misses: `rust_target_model_staging` measured clean while `rust_target_model` was enrolled,
+/// then INHERITED that row's consumers and its regression the moment the wider row was
+/// withdrawn. A distinct identity reaching the same measured neighbourhood is the same refusal
+/// arriving by a second name, so the join is on the OBSERVED carriers, not on the spelling.
+///
+/// WHOSE RUN THIS FIRES ON, STATED BECAUSE IT IS NOT THE OBVIOUS ONE. The overlap can be created
+/// by a diff that touches neither the admitted key nor its cost: withdrawing a wide row hands
+/// its consumers to a narrower one, and the refusal then lands on the WITHDRAWER's run. That is
+/// an externalized cost (DESIGN §5) unless the diagnostic says so, so it names three things —
+/// the admitted key that now overlaps, the refused row it inherited the carriers from, and that
+/// the trigger was a roster change rather than that key's own cost.
+fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
+    const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
+    let observed = crate::cli_run::shared_fill::consumer_modules_by_key(CROSS_CLAIM_SHARE_CACHE);
+    let roster = PURE_PRODUCER_SHARE_ROSTER.with(|r| r.borrow().clone());
+    let roster = match roster {
+        Some(roster) => roster,
+        // NOT A SKIP. No roster installed and no fill observed is a lane that never entered the
+        // share tier; no roster installed WITH fills observed means something filled the tier
+        // outside the install this wall reads, and the wall would be adjudicating one run's
+        // fills against another run's roster.
+        None if observed.is_empty() => return Ok(()),
+        None => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareLedgerWithoutRoster keys={} — the \
+                 cross-claim share ledger recorded fills but no roster was installed on this \
+                 thread, so the refused-carrier join has no population to adjudicate",
+                observed.len()
+            ));
+        }
+    };
+    // Bare ledger key -> the admitted spellings that end in it. The interpreter bills the share
+    // ledger under the BARE function name, and the roster's whole admission discipline is that
+    // identity is the resolved declaration, never the bare name — so an overlapping key whose
+    // bare name is claimed by two admitted rows cannot be attributed, and naming either one
+    // would be a fabricated subject.
+    let mut by_bare: std::collections::BTreeMap<&str, Vec<&String>> =
+        std::collections::BTreeMap::new();
+    for qualified in &roster.admitted_qualified {
+        let bare = qualified
+            .rsplit_once('.')
+            .map_or(qualified.as_str(), |(_, b)| b);
+        by_bare.entry(bare).or_default().push(qualified);
+    }
+    for (key, modules) in &observed {
+        for row in &roster.refused {
+            let shared: Vec<&str> = modules
+                .intersection(&row.carrier_modules)
+                .map(|m| m.as_str())
+                .collect();
+            if shared.is_empty() {
+                continue;
+            }
+            let subject = match by_bare.get(key.as_str()).map(|v| v.as_slice()) {
+                Some([one]) => (*one).clone(),
+                Some(many) => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareOverlapSubjectAmbiguous \
+                         key={key} candidates={} — this key's fills overlap the carriers of \
+                         refused row {}, and the bare ledger key is claimed by more than one \
+                         admitted spelling, so the overlap cannot be attributed to an identity",
+                        many.iter()
+                            .map(|q| q.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        row.producer
+                    ));
+                }
+                // Reachable and NOT an error: the store admits producers reached transitively
+                // from a rostered one, so a key with no roster spelling is a real member of the
+                // tier. It is named by its ledger key, which is what the operator can grep.
+                _ => format!("<reached-from-roster>:{key}"),
+            };
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusedCarrierOverlap \
+                 admitted_key={key} admitted_producer={subject} refused_row={} \
+                 refused_verdict={} shared_carrier_modules={} — WHAT CHANGED IS THE ROSTER, NOT \
+                 THIS KEY'S OWN COST. The named refused row was measured over those modules and \
+                 withdrawn; this admitted key is now serving into the same measured \
+                 neighbourhood, which is how a narrower identity inherits a withdrawn row's \
+                 regression without any measurement of its own moving. Either re-measure this \
+                 key over those consumers and carry the result, or withdraw it: \
+                 v2.workflow.floor_pure_producer_share names the run pair and the next trigger \
+                 on the refused row",
+                row.producer,
+                row.verdict,
+                shared.join(",")
+            ));
         }
     }
     Ok(())
@@ -6233,6 +6467,10 @@ pub fn run_required_floor(
     // next claim to touch it pays the same seconds — so a paring decision that reads only the
     // per-row wall time is deciding on an attribution artifact.
     eprint!("{}", shared_fill::report());
+    // AND THE LEDGER IS ADJUDICATED, NOT ONLY RENDERED. The lines above are what a paring
+    // decision reads; this call is what refuses one. It runs after the render so an operator has
+    // the whole ledger in the log above the refusal that cites two of its rows.
+    refuse_pure_producer_share_refused_carrier_overlap()?;
     // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
     // by module and each scope was built exactly once; higher means it was not, and the excess
     // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
@@ -8086,5 +8324,140 @@ mod expected_red_roster_join_suppression_tests {
         );
         assert_eq!(expected_red_roster_join_not_evaluated(report.clone()), 1);
         assert_eq!(expected_red_roster_join_suppressed(report), 1);
+    }
+}
+
+#[cfg(test)]
+mod pure_producer_share_refused_carrier_overlap_tests {
+    use super::*;
+    use crate::cli_run::shared_fill;
+
+    const CACHE: &str = "cross_claim_pure_share";
+
+    fn refused_row(producer: &str, carriers: &[&str]) -> RefusedShareRow {
+        RefusedShareRow {
+            producer: producer.to_string(),
+            verdict: "MeasuredServeAboveRecompute".to_string(),
+            carrier_modules: carriers.iter().map(|m| (*m).to_string()).collect(),
+        }
+    }
+
+    /// Bill one fill of `key` to a claim in `module`, exactly as the interpreter's share
+    /// observer does: the ledger key is the BARE function name.
+    fn fill_from(module: &str, key: &str) {
+        shared_fill::set_current_claim(Some(&format!("{module}.a_witness")));
+        shared_fill::begin_fill();
+        shared_fill::record_fill(CACHE, key, 0);
+        shared_fill::set_current_claim(None);
+    }
+
+    fn install(admitted: &[&str], refused: Vec<RefusedShareRow>) {
+        PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+            *r.borrow_mut() = Some(PureProducerShareRoster {
+                admitted_qualified: admitted.iter().map(|q| (*q).to_string()).collect(),
+                refused,
+            });
+        });
+    }
+
+    /// THE DISCRIMINATING RED. A distinct admitted identity, whose own cost nothing measured,
+    /// serving into a module a refused row was measured over and withdrawn from — the
+    /// `rust_target_model_staging` shape, in miniature.
+    #[test]
+    fn an_admitted_key_serving_a_refused_rows_carriers_stops_the_line() {
+        install(
+            &["v2.extdeps.languages.rust.rust_target_model_staging"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        fill_from(
+            "v2.test.emit.produced_decl_two_target",
+            "rust_target_model_staging",
+        );
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("an overlap with a refused row's carriers must refuse");
+        // The three things the diagnostic owes: the admitted subject, the row it inherited the
+        // carriers from, and that the trigger was the roster rather than this key's own cost.
+        assert!(
+            why.contains("cause=PureProducerShareRefusedCarrierOverlap"),
+            "{why}"
+        );
+        assert!(
+            why.contains("admitted_producer=v2.extdeps.languages.rust.rust_target_model_staging"),
+            "{why}"
+        );
+        assert!(
+            why.contains("refused_row=v2.extdeps.languages.rust.rust_target_model"),
+            "{why}"
+        );
+        assert!(
+            why.contains("WHAT CHANGED IS THE ROSTER, NOT THIS KEY'S OWN COST"),
+            "{why}"
+        );
+        assert!(
+            why.contains("shared_carrier_modules=v2.test.emit.produced_decl_two_target"),
+            "{why}"
+        );
+    }
+
+    /// THE POSITIVE CONTROL, varying exactly the consuming module. Same roster, same refused
+    /// row, same admitted key — a fill that reaches none of the measured carriers is ordinary.
+    #[test]
+    fn the_same_key_serving_modules_no_refusal_measured_is_ordinary() {
+        install(
+            &["v2.extdeps.languages.rust.rust_target_model_staging"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        fill_from(
+            "v2.test.claim.bash_command_fold",
+            "rust_target_model_staging",
+        );
+        assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
+    }
+
+    /// AN OVERLAP THE WALL CANNOT ATTRIBUTE REFUSES RATHER THAN PICKING ONE. The ledger key is
+    /// the bare function name while admission is by resolved declaration, so two admitted rows
+    /// spelling one bare name leave the overlap real and its subject unknown — and a diagnostic
+    /// that named either would be naming a fabricated subject.
+    #[test]
+    fn an_overlap_whose_bare_key_two_admitted_rows_claim_refuses_as_unattributable() {
+        install(
+            &["a.module.shared_spelling", "b.module.shared_spelling"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        fill_from("v2.test.emit.produced_decl_two_target", "shared_spelling");
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("an unattributable overlap must refuse");
+        assert!(
+            why.contains("cause=PureProducerShareOverlapSubjectAmbiguous"),
+            "{why}"
+        );
+        assert!(
+            why.contains("a.module.shared_spelling, b.module.shared_spelling"),
+            "{why}"
+        );
+    }
+
+    /// A LEDGER WITH NO ROSTER IS NOT A CLEAN RUN. The tier filled under a roster this wall
+    /// cannot read, so there is no population to adjudicate and the arm refuses rather than
+    /// reporting the absence as no overlap.
+    #[test]
+    fn fills_without_an_installed_roster_refuse_rather_than_read_as_clean() {
+        PURE_PRODUCER_SHARE_ROSTER.with(|r| *r.borrow_mut() = None);
+        fill_from("v2.test.claim.bash_command_fold", "bash_fold_lex");
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("fills with no installed roster must refuse");
+        assert!(
+            why.contains("cause=PureProducerShareLedgerWithoutRoster"),
+            "{why}"
+        );
     }
 }

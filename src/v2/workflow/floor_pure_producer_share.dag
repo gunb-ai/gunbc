@@ -265,3 +265,182 @@ data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "v2.std.grammar.formal_productions_from_catalog_node",
   "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness"
 ]
+
+// ── REFUSED CANDIDATES: THE ROWS THIS ROSTER MEASURED AND TURNED DOWN ─────────────────────
+//
+// WHY A REFUSAL NEEDS A CARRIER AT ALL, and it is not tidiness. Until this type existed the file
+// had three `List<String>` rosters for rows it ADMITS and nothing typed for a row it REFUSES, so
+// every withdrawal had nowhere to go but prose and the header grew by one essay per negative
+// result. That is not an authoring habit, it is a missing coproduct: a withdrawn candidate is a
+// structured, recurring fact with an identity, a verdict, the claims the refusal was measured
+// over, a citation, and a next trigger.
+//
+// AND THE PROSE COULD NOT DO THE JOB IT WAS DOING. DESIGN section 4c is explicit that semantic
+// passes receive only the annotation-erased projection and that no `Accepted` program can read an
+// annotation, so the paragraph that said it "stands in the withdrawn row's place so the next
+// reader does not re-propose it" was asking a reader to do what no mechanism could. A paragraph
+// stops nobody. A refused row, joined against the admitted rosters, refuses the re-proposal by
+// execution.
+//
+// WHAT THESE ROWS DELIBERATELY DO NOT CARRY: the measurements. Not the normalised deltas, not the
+// consumer-claim counts, not the per-identity cpu figures. DESIGN section 6 says to name the
+// instrument and never transcribe its output, and moving seventy numbers out of an erased comment
+// channel into typed fields would be transcription with a schema -- the same rot, now
+// type-checked. `measurement` names the run pair and the artifact that re-derives the verdict;
+// the numbers stay where they are produced.
+type ShareRefusalVerdict =
+    MeasuredServeAboveRecompute
+  | NoMeasuredEffectOverItsConsumers
+  | SupersededBySingleAuthorityRepair { repaired_by: String }
+
+// `carrier_modules` is the set of consuming modules the refusal was MEASURED OVER -- the claims
+// that carried it, read from the deciding run's own `[floor-shared-fill]` `modules=` field, which
+// names the modules rather than counting them. It is descriptive at THIS grain and load-bearing
+// at the ledger's: see the overlap note below `share_roster_refusal_collisions`.
+type RefusedShareCandidate {
+  producer: String
+  verdict: ShareRefusalVerdict
+  carrier_modules: List<String>
+  measurement: String
+  next_trigger: String
+}
+
+data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
+  RefusedShareCandidate {
+    producer: "v2.extdeps.languages.rust.rust_target_model",
+    verdict: MeasuredServeAboveRecompute,
+    carrier_modules: [
+      "v2.test.emit.produced_decl_two_target",
+      "v2.test.emit.rust_produced_decl_emit"
+    ],
+    measurement: "gunbc#10094 required_floor_claim_cost.tsv, absent run 33657893880 against present runs 33661252708 and 33664119594, normalised on the rows in no consumer module of any enrolled key",
+    next_trigger: "the remaining serve cost identified, and a measured serve-below-recompute on the produced-decl consumers specifically -- never on their family total, which has already been observed pointing the wrong way"
+  },
+  RefusedShareCandidate {
+    producer: "v2.extdeps.languages.rust.rust_target_model_core_edges",
+    verdict: NoMeasuredEffectOverItsConsumers,
+    carrier_modules: [
+      "v2.test.emit.rust_bind_let_emit",
+      "v2.test.emit.rust_call_emit",
+      "v2.test.execution.rust_emit_host_call_equals_eval",
+      "v2.test.manual.rust_add_emit_translate"
+    ],
+    measurement: "gunbc#10094 required_floor_claim_cost.tsv, same run pair; four consumer modules, no movement beyond the control in either direction",
+    next_trigger: "a measured recompute this row actually removes -- a producer that neither costs nor saves is cache population, which this roster refuses on its own terms"
+  },
+  RefusedShareCandidate {
+    producer: "v2.extdeps.languages.rust.rust_target_model_staging",
+    verdict: MeasuredServeAboveRecompute,
+    carrier_modules: [
+      "v2.test.emit.produced_decl_support_preserved",
+      "v2.test.emit.produced_decl_two_target",
+      "v2.test.emit.rust_produced_decl_emit"
+    ],
+    measurement: "gunbc#10094 required_floor_claim_cost.tsv, run 33667640710 (this row alone enrolled) against 33671317370 (none of the three); its consumer set is the one it INHERITED after rust_target_model was withdrawn, 133 claims across 44 modules, read from that run's own shared-fill ledger",
+    next_trigger: "the same trigger as rust_target_model, because it is the same measured effect reached through a second identity -- these two do not retire independently"
+  },
+  RefusedShareCandidate {
+    producer: "gunbc.self_host_compile_phase_frontier.compile_phase_frontier_standing",
+    verdict: SupersededBySingleAuthorityRepair {
+      repaired_by: "gunbc.self_host_compile_phase_frontier.current_compile_phase_frontier_standing"
+    },
+    carrier_modules: [
+      "test.claim.compiler_frontend_program_status_witness",
+      "test.claim.self_host_compile_phase_frontier_witness",
+      "test.claim.self_host_compile_phase_live_gate_witness"
+    ],
+    measurement: "gunbc#10094 measured this enrolment as a large WIN and withdrew it anyway; the refusal is DESIGN section 3, not cost -- gunbc#10108 removes the receipt-series argument instead of paying to reify and verify it per consuming frame, so one fact gets one row at the declaration that makes it cheap",
+    next_trigger: "none that restores THIS spelling: the general declaration takes the series as an argument and is meant to keep taking it. The row retires when its repair lands, and re-proposing this producer means proposing to serve the argument-taking shape again"
+  }
+]
+
+// The admitted population, as one list, so a caller cannot check one roster and miss the other.
+fn floor_cross_claim_admitted_producers() -> List<String> {
+  concat(
+    floor_cross_claim_pure_producers_warm,
+    floor_cross_claim_pure_producers_claim_forced
+  )
+}
+
+// Folded rather than mapped, and with no new import: `fold`, `concat`, `reverse` and `any`
+// resolve as kernel builtins here exactly as they do in `v2.workflow.floor_changed_witness`.
+// This module is a DECLARED CLOSURE SEED of the required floor
+// (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so every import it grows widens the subject every
+// required run must frame; a wall that costs the floor a new module edge to express is a worse
+// trade than one spelled in the kernel.
+fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String> {
+  reverse(fold(refused, init: [], f: fn(acc, row) { concat([row.producer], acc) }))
+}
+
+// THE WALL: an identity may not stand in an admitted roster and in the refused roster at once.
+// Re-proposing a measured-and-refused producer then REFUSES by execution, naming the row that
+// already measured it, instead of depending on the next author reading a paragraph.
+//
+// TAKES ITS POPULATIONS AS ARGUMENTS SO ITS RED IS AUTHORABLE. DESIGN section 4b says to ask
+// whether the forbidden state can be written anywhere the check could run before writing the
+// check. Over the live rosters alone it cannot -- they are disjoint today and a check that can
+// only be reddened by editing the corpus it guards is a decoration. As a function of two lists it
+// is red on an authored fixture, and the live tree is its positive control.
+fn share_roster_refusal_collisions(
+  admitted: List<String>,
+  refused: List<RefusedShareCandidate>
+) -> List<String> {
+  let refused_names = refused_share_producers(refused: refused)
+  reverse(fold(admitted, init: [], f: fn(acc, name) {
+    if any(xs: refused_names, predicate: fn(r) { r == name }) {
+      concat([name], acc)
+    } else {
+      acc
+    }
+  }))
+}
+
+// THIS WALL IS AT IDENTITY GRAIN AND IDENTITY GRAIN IS NOT SUFFICIENT. Stated here rather than
+// discovered later, because this file already contains the case it misses.
+//
+// `rust_target_model_staging` above was refused for the SAME MEASURED EFFECT as
+// `rust_target_model` and is a DIFFERENT IDENTITY. When the two were enrolled together its
+// consumer set was 17 modules and did not include the produced-decl cluster; it became 44
+// modules including that cluster only on the run where the first row was withdrawn and staging
+// INHERITED its consumers. Two identities, one effect, and the fold above is green on that every
+// time.
+//
+// SO THE WALL THAT CATCHES WHAT ACTUALLY HAPPENED IS AN OVERLAP JOIN AGAINST `carrier_modules`,
+// AND IT DOES NOT BELONG IN THIS FILE. A proposal's consumer set is not declared anywhere and is
+// not derivable from a roster of qualified names; it exists in the run's own `[floor-shared-fill]`
+// ledger. Making the author declare it here would mint a field nothing verifies -- every green
+// witness an author writing literals -- and the staging case shows that form would also have been
+// STALE-CORRECT: a set written at enrolment time was accurate when authored and wrong at the
+// moment the inheritance happened.
+//
+// THAT CAPABILITY IS THE SECOND WALL, AND IT LANDS WITH THIS ONE. The required-floor executor
+// reads this roster and, once the fold is over and the shared-fill ledger is final, joins every
+// observed cross-claim share key's OBSERVED consumer modules against these `carrier_modules` and
+// refuses on overlap -- `refuse_pure_producer_share_refused_carrier_overlap` in
+// `v1_compiler::cli_run::required_floor_runner`, called immediately after the ledger is rendered
+// so the refusal cites two lines the operator can already see above it. It is in the seed rather
+// than here for the reason above: the population it adjudicates is observed, not declarable.
+//
+// ITS REFUSAL NAMES THE SUBJECT, BECAUSE IT DOES NOT FIRE ON THE RUN THAT CAUSED IT. An overlap
+// is created by the diff that WITHDRAWS a wide row and hands its consumers to a narrower one, so
+// the red lands on the withdrawer, not on whoever proposed the surviving key. Charging a cost to
+// a principal that did not cause it is DESIGN section 5 externalization unless the transfer is
+// visible, so the diagnostic names three things: the admitted key that now overlaps, the refused
+// row it inherited the carriers from, and -- in its own sentence -- that what changed is the
+// roster and not that key's own cost.
+//
+// AND THE CLASS'S RUNG IS THE MINIMUM ACROSS ITS PATHS, NOT THE STRONGER WALL'S. DESIGN section
+// 4b(1) is explicit that a class's current rung is the minimum over its in-scope paths. The class
+// is "a producer this roster has measured and refused is re-admitted", and it has two paths:
+// literal re-proposal of the same spelling, which the fold above refuses structurally over the
+// declared rosters, and re-admission through a second identity that inherits the refused row's
+// consumers, which the executor refuses at RUNTIME over one run's observed ledger. A runtime
+// refusal is rung 2, mechanically preventable -- the invalid state stays writable and safety
+// depends on the required floor executing and staying enrolled. So the sentence to carry out of
+// this file is that the class is MECHANICALLY PREVENTABLE, not that it is structural; the fold's
+// stronger rung is one path's, and citing it as the class's would be inflation.
+//
+// NEXT TRIGGER, naming the capability: a consumer set that is DERIVABLE rather than observed --
+// the modeled effect/realization facts that would let a producer's consumers be computed from
+// the graph instead of read off a run. That, and only that, moves the second path from a runtime
+// refusal to a structural one; a second observed-ledger check would not.
