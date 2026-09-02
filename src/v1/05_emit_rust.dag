@@ -18,6 +18,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  declaration_provenance_of, type_reference_provenance, provenance_is_kernel_minted,
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
   param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,

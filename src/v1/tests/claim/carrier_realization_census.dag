@@ -9,7 +9,7 @@ import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
 import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
-import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused, TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
 import std.types { List, String, Map, Bool }
 
 // THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
