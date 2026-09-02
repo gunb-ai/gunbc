@@ -3,14 +3,16 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import product.printed_chassis.coupon {
   LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero, LadderTooFewRungs,
-  hole_ladder_spec, hole_ladder_specimen, ladder_rungs, specimen_hole_diameters,
+  hole_ladder_spec, hole_ladder_specimen, ladder_rungs, ladder_base, specimen_ladder_hole_diameters,
   CouponSpecimen, CouponOperation, OpThroughHole, PlateDimensions,
+  HoleDiameterCouponGeometry, hole_ladder_orientation_datum, hole_ladder_datum_center_y,
 }
 import product.printed_chassis.realization_contract {
   RealizationContract,
   realization_contract,
   GeometryConformance, GeometryConforms,
-  GeometryPlateDiverges, GeometryOperationCountDiverges, GeometryOperationDiverges,
+  GeometryPlateDiverges, GeometryDatumDiverges,
+  GeometryOperationCountDiverges, GeometryOperationDiverges,
   PlateAxis, PlateAxisX, PlateAxisY, PlateAxisZ,
   OperationField, FieldDiameter, FieldCenterX, FieldCenterY,
   compare_operations, compare_plate, judge_realized_geometry,
@@ -47,39 +49,93 @@ fn row_of(op: CouponOperation) -> RawOperationRow {
 }
 
 fn rows_of(s: CouponSpecimen) -> List<RawOperationRow> {
-  fold(s.features, init: [], f: fn(acc, op) { concat(acc, [row_of(op: op)]) })
+  fold(s.geometry.ladder_holes, init: [], f: fn(acc, op) { concat(acc, [row_of(op: op)]) })
+}
+
+fn datum_row_of(s: CouponSpecimen) -> RawOperationRow {
+  row_of(op: s.geometry.orientation_datum)
+}
+
+// EVERY MUTATION HELPER TAKES BOTH POPULATIONS, so a witness that means to perturb the datum cannot
+// silently perturb the ladder and vice versa. An earlier shape here had one `operations` argument
+// and the split would have let a datum witness pass rows into it by position.
+fn envelope_from(
+  s: CouponSpecimen,
+  plate_z_um: Int,
+  datum: RawOperationRow,
+  ladder: List<RawOperationRow>,
+) -> RawRealizationEnvelope {
+  raw_realization_envelope(
+    schema_version: contract_schema_version,
+    plate_x_um: micrometer_count(m: s.geometry.plate.size_x),
+    plate_y_um: micrometer_count(m: s.geometry.plate.size_y),
+    plate_z_um: plate_z_um,
+    orientation_datum: datum,
+    ladder_holes: ladder,
+  )
 }
 
 fn envelope_of(s: CouponSpecimen) -> RawRealizationEnvelope {
-  raw_realization_envelope(
-    schema_version: contract_schema_version,
-    plate_x_um: micrometer_count(m: s.plate.size_x),
-    plate_y_um: micrometer_count(m: s.plate.size_y),
-    plate_z_um: micrometer_count(m: s.plate.size_z),
-    operations: rows_of(s: s),
+  envelope_from(
+    s: s,
+    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    datum: datum_row_of(s: s),
+    ladder: rows_of(s: s),
   )
 }
 
 // The mutation helpers rebuild the envelope with ONE value replaced, so every witness below differs
 // from the faithful envelope in exactly one place and the wall's answer names that place or fails.
 fn envelope_with_plate_z(s: CouponSpecimen, z: Int) -> RawRealizationEnvelope {
-  raw_realization_envelope(
-    schema_version: contract_schema_version,
-    plate_x_um: micrometer_count(m: s.plate.size_x),
-    plate_y_um: micrometer_count(m: s.plate.size_y),
-    plate_z_um: z,
-    operations: rows_of(s: s),
-  )
+  envelope_from(s: s, plate_z_um: z, datum: datum_row_of(s: s), ladder: rows_of(s: s))
 }
 
 fn envelope_with_rows(s: CouponSpecimen, rows: List<RawOperationRow>) -> RawRealizationEnvelope {
-  raw_realization_envelope(
-    schema_version: contract_schema_version,
-    plate_x_um: micrometer_count(m: s.plate.size_x),
-    plate_y_um: micrometer_count(m: s.plate.size_y),
-    plate_z_um: micrometer_count(m: s.plate.size_z),
-    operations: rows,
+  envelope_from(
+    s: s,
+    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    datum: datum_row_of(s: s),
+    ladder: rows,
   )
+}
+
+fn envelope_with_datum(s: CouponSpecimen, datum: RawOperationRow) -> RawRealizationEnvelope {
+  envelope_from(
+    s: s,
+    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    datum: datum,
+    ladder: rows_of(s: s),
+  )
+}
+
+fn datum_moved_to(s: CouponSpecimen, x: Int, y: Int) -> RawOperationRow {
+  raw_operation_row(
+    kind: "through_hole",
+    diameter_um: datum_diameter_um(s: s),
+    center_x_um: x,
+    center_y_um: y,
+  )
+}
+
+fn datum_diameter_um(s: CouponSpecimen) -> Int {
+  match s.geometry.orientation_datum {
+    OpThroughHole { diameter: d, center_x: _, center_y: _ } => micrometer_count(m: d)
+  }
+}
+
+fn datum_center_x_um(s: CouponSpecimen) -> Int {
+  match s.geometry.orientation_datum {
+    OpThroughHole { diameter: _, center_x: x, center_y: _ } => micrometer_count(m: x)
+  }
+}
+
+// The far-end x is computed from the plate rather than read off the list, because `.last()` returns
+// an option and the Absent arm would have to answer with something -- and there is no honest
+// something. The ladder spans margin to plate_width - margin by construction, so the last rung's
+// centre is the plate width less one margin. w_the_datum_is_at_rung_zero below is what keeps this
+// from being a second unchecked derivation: it asserts the two ends against the built geometry.
+fn last_rung_center_x_um(s: CouponSpecimen) -> Int {
+  micrometer_count(m: s.geometry.plate.size_x) - datum_center_x_um(s: s)
 }
 
 fn bump_first_center_x(rows: List<RawOperationRow>, delta: Int) -> List<RawOperationRow> {
@@ -123,6 +179,7 @@ test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
         RealizationJudged { conformance: c } => match c {
           GeometryConforms => true
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
@@ -143,7 +200,7 @@ test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
-      let bad = envelope_with_plate_z(s: contract.specimen, z: micrometer_count(m: contract.specimen.plate.size_z) + 500)
+      let bad = envelope_with_plate_z(s: contract.specimen, z: micrometer_count(m: contract.specimen.geometry.plate.size_z) + 500)
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
           GeometryPlateDiverges { axis: a, modeled: m, realized: r } =>
@@ -153,6 +210,7 @@ test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
               PlateAxisY => false
             }
           GeometryConforms => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
@@ -185,6 +243,7 @@ test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
             }
           GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
@@ -214,6 +273,7 @@ test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
             }
           GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
@@ -237,6 +297,7 @@ test fn w_a_dropped_operation_diverges_on_count() -> Bool {
         RealizationJudged { conformance: c } => match c {
           GeometryOperationCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
           GeometryConforms => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
@@ -258,15 +319,17 @@ test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
       let rows = bump_first_diameter(rows: rows_of(s: contract.specimen), delta: 50)
       let bad = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: micrometer_count(m: contract.specimen.plate.size_x),
-        plate_y_um: micrometer_count(m: contract.specimen.plate.size_y),
-        plate_z_um: micrometer_count(m: contract.specimen.plate.size_z) + 500,
-        operations: rows,
+        plate_x_um: micrometer_count(m: contract.specimen.geometry.plate.size_x),
+        plate_y_um: micrometer_count(m: contract.specimen.geometry.plate.size_y),
+        plate_z_um: micrometer_count(m: contract.specimen.geometry.plate.size_z) + 500,
+        orientation_datum: datum_row_of(s: contract.specimen),
+        ladder_holes: rows,
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationJudged { conformance: c } => match c {
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => true
           GeometryConforms => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
@@ -290,7 +353,8 @@ test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
         plate_x_um: 40000,
         plate_y_um: 20000,
         plate_z_um: 4000,
-        operations: [raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -317,7 +381,8 @@ test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
         plate_x_um: 40000,
         plate_y_um: 20000,
         plate_z_um: 4000,
-        operations: [raw_operation_row(kind: "chamfer", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [raw_operation_row(kind: "chamfer", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -346,7 +411,8 @@ test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
         plate_x_um: 40000,
         plate_y_um: 20000,
         plate_z_um: 4000,
-        operations: [],
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -381,7 +447,8 @@ test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
         plate_x_um: 40000,
         plate_y_um: 20000,
         plate_z_um: 4000,
-        operations: [raw_operation_row(kind: "datum_mark", diameter_um: 0, center_x_um: 3000, center_y_um: 2000)],
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [raw_operation_row(kind: "datum_mark", diameter_um: 0, center_x_um: 3000, center_y_um: 2000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -405,7 +472,7 @@ test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
-      let holes = specimen_hole_diameters(s: contract.specimen)
+      let holes = specimen_ladder_hole_diameters(s: contract.specimen)
       let rungs = ladder_rungs(l: l)
       holes.length() == rungs.length() && holes.length() == 11
     }
@@ -448,10 +515,189 @@ test fn w_an_unauthorised_operation_order_refuses() -> Bool {
             }
           GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
         RealizationRefusedAtWire { refusal: _ } => false
       }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// THE ORIENTATION DATUM. Four controls, and the reason there are four is that the datum's job is not
+// "a hole exists somewhere off centre" -- it is that a 180-degree reading of the coupon is visibly
+// inconsistent with the geometry. Each control breaks that property in a different way, and a datum
+// implementation that satisfied only some of them would leave a real coupon ambiguous.
+// ---------------------------------------------------------------------------
+
+// WITNESS 13 — THE CANONICAL COUPON'S DATUM IS ADMITTED. The positive control, and as weak as every
+// positive control here: the envelope is projected from the specimen, so it agrees by construction.
+// It earns its place by proving the datum survives the wire round trip at all -- without it, a datum
+// the decoder silently dropped would make all three refusals below pass for the wrong reason.
+test fn w_the_canonical_datum_conforms() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
+        RealizationJudged { conformance: c } => match c {
+          GeometryConforms => true
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { refusal: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 14 — A DATUM AT THE OPPOSITE END REFUSES, WHICH IS THE 180-DEGREE READING ITSELF. This is
+// the control the whole datum exists for: a handler that mirrored the coupon end to end would place
+// the datum under the LAST rung instead of the first, and every measurement would then be attributed
+// to the reversed ordinal. The refusal names FieldCenterX, and it must -- the diameter and the y are
+// unchanged by a mirror, so x is the only field that can carry the fault.
+test fn w_a_datum_at_the_far_end_is_refused_as_a_reversed_reading() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let s = contract.specimen
+      let mirrored = datum_moved_to(
+        s: s,
+        x: last_rung_center_x_um(s: s),
+        y: micrometer_count(m: hole_ladder_datum_center_y),
+      )
+      match judge_realization(contract: contract, envelope: envelope_with_datum(s: s, datum: mirrored)) {
+        RealizationJudged { conformance: c } => match c {
+          GeometryDatumDiverges { field: f, modeled: m, realized: r } =>
+            match f {
+              FieldCenterX =>
+                micrometer_count(m: m) == datum_center_x_um(s: s)
+                  && micrometer_count(m: r) == last_rung_center_x_um(s: s)
+              FieldDiameter => false
+              FieldCenterY => false
+            }
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { refusal: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 15 — A DATUM ON THE LADDER CENTRE-LINE REFUSES AS AMBIGUOUS. A datum at the correct x but
+// at the rungs' own y is not an orientation mark at all: it sits in the ladder band, so by eye it
+// reads as a twelfth hole in the row rather than as an asymmetry, and the coupon is once again
+// symmetric to a measurer. The x is right, so this control passes only if the wall compares the y --
+// which is exactly the field an implementation that "put a hole near the 3 mm end" would get wrong.
+test fn w_a_datum_on_the_ladder_centreline_is_refused_as_ambiguous() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let s = contract.specimen
+      let flat = datum_moved_to(s: s, x: datum_center_x_um(s: s), y: 9000)
+      match judge_realization(contract: contract, envelope: envelope_with_datum(s: s, datum: flat)) {
+        RealizationJudged { conformance: c } => match c {
+          GeometryDatumDiverges { field: f, modeled: m, realized: r } =>
+            match f {
+              FieldCenterY =>
+                micrometer_count(m: m) == micrometer_count(m: hole_ladder_datum_center_y)
+                  && micrometer_count(m: r) == 9000
+              FieldDiameter => false
+              FieldCenterX => false
+            }
+          GeometryConforms => false
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationRefusedAtWire { refusal: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 16 — THE DATUM DOES NOT ENTER THE MEASUREMENT POPULATION. The datum is a through-hole of
+// exactly the base diameter, so the single most likely implementation error is to let it into the
+// ladder: the projection would then return twelve diameters beginning 3.00, 3.00, the eleven-rung
+// count would read twelve, and every rung ordinal after the first would be off by one. None of that
+// is visible to any other witness here, because a twelve-row envelope compared against a twelve-row
+// specimen agrees perfectly. This is the check that the two populations stayed two.
+test fn w_the_datum_stays_out_of_the_measured_ladder() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let s = contract.specimen
+      let diameters = specimen_ladder_hole_diameters(s: s)
+      let rungs = ladder_rungs(l: l)
+      diameters.length() == 11
+        && diameters.length() == rungs.length()
+        && s.geometry.ladder_holes.length() == 11
+        && datum_diameter_um(s: s) == micrometer_count(m: ladder_base(l: l))
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 17 — THE DATUM CLEARS BOTH THE LADDER AND THE PLATE EDGE. The clearances are stated in the
+// coupon module's annotation, and an annotation is a thing no Accepted program can read -- so they
+// are asserted here against the derived geometry rather than trusted. The widest rung is 4.00 mm at
+// y = 9.00 mm, so the ladder band is [7000, 11000]; the datum must sit clear of it and clear of
+// y = 0. A datum that overlapped either would print as a merged slot or break out of the edge, and
+// in both cases the coupon is scrap rather than ambiguous.
+test fn w_the_datum_clears_the_ladder_band_and_the_plate_edge() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let s = hole_ladder_specimen(l: l)
+      let datum_top = micrometer_count(m: hole_ladder_datum_center_y) + datum_diameter_um(s: s) / 2
+      let datum_bottom = micrometer_count(m: hole_ladder_datum_center_y) - datum_diameter_um(s: s) / 2
+      datum_top < 7000 && datum_bottom > 0
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+
+// WITNESS 18 — THE DATUM IS AT RUNG ZERO'S X, AND THIS IS THE CHECK THE COUPON MODULE'S ANNOTATION
+// PROMISES. The datum's centre_x reads `hole_ladder_margin`; rung zero's comes out of the ladder
+// fold's `margin + i * pitch` at i = 0. One shared row, two readers -- and a shared row is only
+// shared while both keep reading it, which is a property no type carries. If a later revision gives
+// the ladder its own origin, or offsets the datum "slightly clear of the first hole", this goes red
+// and the orientation guarantee stops silently meaning something weaker.
+//
+// It also pins the FAR end, because last_rung_center_x_um above computes that end from the plate
+// width rather than reading the list, and an unchecked derivation used by a refusal control is
+// exactly how a control comes to pass for the wrong reason.
+test fn w_the_datum_is_at_rung_zero() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let s = hole_ladder_specimen(l: l)
+      let rung_xs = fold(s.geometry.ladder_holes, init: [], f: fn(acc, op) {
+        match op {
+          OpThroughHole { diameter: _, center_x: x, center_y: _ } =>
+            concat(acc, [micrometer_count(m: x)])
+        }
+      })
+      let first_x = fold(rung_xs, init: 0 - 1, f: fn(acc, x) { if acc == 0 - 1 { x } else { acc } })
+      let far_x = fold(rung_xs, init: 0, f: fn(acc, x) { if x > acc { x } else { acc } })
+      datum_center_x_um(s: s) == first_x
+        && last_rung_center_x_um(s: s) == far_x
+        && first_x != far_x
     }
     LadderStepIsZero => false
     LadderTooFewRungs { supplied: _ } => false

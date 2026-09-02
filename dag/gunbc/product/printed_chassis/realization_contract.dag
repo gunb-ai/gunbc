@@ -11,6 +11,8 @@ import product.printed_chassis.coupon {
   OpThroughHole,
   PlateDimensions,
   plate_dimensions,
+  HoleDiameterCouponGeometry,
+  hole_diameter_coupon_geometry,
   ladder_rungs,
   ladder_base,
   ladder_step,
@@ -86,12 +88,26 @@ fn raw_operation_row(
   }
 }
 
+// THE DATUM AND THE LADDER ARE SEPARATE WIRE FIELDS, AND THIS IS NOT A RETURN TO PARALLEL LISTS.
+//
+// The shape this file already deleted was operation_kinds beside rung_diameters_um: two lists of the
+// SAME population whose correspondence was positional and enforced by nothing. These two fields are
+// two DIFFERENT populations -- one orientation datum and one ordered experimental ladder -- which is
+// the distinction that makes separating them the fix rather than the defect. Nothing here pairs an
+// element of one with an element of the other, so there is no ragged state to represent.
+//
+// Carrying the datum inside `operations` would have made "the last row is the datum" a positional
+// convention on the wire, one layer below the same convention the canonical geometry refuses to
+// adopt. A handler that emitted them in the wrong order would then produce a coupon whose datum is a
+// twelfth rung and whose ordinal zero is a datum, and the wall would compare twelve rows against
+// twelve rows and find them equal.
 type RawRealizationEnvelope sole_constructor {
   schema_version: NonEmptyStr
   plate_x_um: Int
   plate_y_um: Int
   plate_z_um: Int
-  operations: List<RawOperationRow>
+  orientation_datum: RawOperationRow
+  ladder_holes: List<RawOperationRow>
 }
 
 fn raw_realization_envelope(
@@ -99,14 +115,16 @@ fn raw_realization_envelope(
   plate_x_um: Int,
   plate_y_um: Int,
   plate_z_um: Int,
-  operations: List<RawOperationRow>,
+  orientation_datum: RawOperationRow,
+  ladder_holes: List<RawOperationRow>,
 ) -> RawRealizationEnvelope {
   RawRealizationEnvelope {
     schema_version: schema_version,
     plate_x_um: plate_x_um,
     plate_y_um: plate_y_um,
     plate_z_um: plate_z_um,
-    operations: operations,
+    orientation_datum: orientation_datum,
+    ladder_holes: ladder_holes,
   }
 }
 
@@ -161,8 +179,7 @@ fn raw_realization_envelope(
 // subject_name DecodedRealizationV0, against a green source with identical imports and no literal, and
 // asserts the difference between them -- the two forms that module's own annotation names as exact.
 type DecodedRealizationV0 sole_constructor {
-  plate: PlateDimensions
-  features: List<CouponOperation>
+  geometry: HoleDiameterCouponGeometry
 }
 
 // The refusal reasons are their own closed coproduct, SEPARATE from the admission outcome, because
@@ -232,6 +249,14 @@ fn decode_operation_row(row: RawOperationRow) -> CouponOperation {
   }
 }
 
+// THE KIND SCAN COVERS BOTH POPULATIONS, DATUM FIRST. Scanning only the ladder would have left the
+// datum row's kind unchecked, so a handler could have spelled it anything at all and the wall would
+// have decoded it as a through-hole regardless -- the vocabulary check exempting the one feature
+// whose whole job is to be unambiguous.
+//
+// AND THE EMPTY REFUSAL IS NOW ONLY EVER ABOUT THE LADDER. A missing DATUM is not representable
+// here: it is a scalar field, so the wire cannot omit it. One of the two populations lost its empty
+// state entirely, which is the split doing its work at the transport layer rather than at the check.
 fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
   if envelope.schema_version != contract_schema_version {
     EnvelopeRefused {
@@ -241,28 +266,35 @@ fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
       },
     }
   } else {
-    let scan = fold(envelope.operations, init: OperationScan { unknown: [] }, f: fn(acc, row) {
-      if operation_kind_admitted(kind: row.kind) {
-        acc
-      } else {
-        OperationScan { unknown: concat(acc.unknown, [row.kind]) }
+    let scan = fold(
+      concat([envelope.orientation_datum], envelope.ladder_holes),
+      init: OperationScan { unknown: [] },
+      f: fn(acc, row) {
+        if operation_kind_admitted(kind: row.kind) {
+          acc
+        } else {
+          OperationScan { unknown: concat(acc.unknown, [row.kind]) }
+        }
       }
-    })
+    )
     if scan.unknown.length() != 0 {
       EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: scan.unknown.first() } }
-    } else if envelope.operations.length() == 0 {
+    } else if envelope.ladder_holes.length() == 0 {
       EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
     } else {
       EnvelopeDecodedV0 {
         decoded: DecodedRealizationV0 {
-          plate: plate_dimensions(
-            size_x: micrometer(count: envelope.plate_x_um),
-            size_y: micrometer(count: envelope.plate_y_um),
-            size_z: micrometer(count: envelope.plate_z_um),
+          geometry: hole_diameter_coupon_geometry(
+            plate: plate_dimensions(
+              size_x: micrometer(count: envelope.plate_x_um),
+              size_y: micrometer(count: envelope.plate_y_um),
+              size_z: micrometer(count: envelope.plate_z_um),
+            ),
+            orientation_datum: decode_operation_row(row: envelope.orientation_datum),
+            ladder_holes: fold(envelope.ladder_holes, init: [], f: fn(acc, row) {
+              concat(acc, [decode_operation_row(row: row)])
+            }),
           ),
-          features: fold(envelope.operations, init: [], f: fn(acc, row) {
-            concat(acc, [decode_operation_row(row: row)])
-          }),
         },
       }
     }
@@ -346,9 +378,17 @@ type PlateAxis = PlateAxisX | PlateAxisY | PlateAxisZ
 
 type OperationField = FieldDiameter | FieldCenterX | FieldCenterY
 
+// A WRONG DATUM GETS ITS OWN ARM RATHER THAN BEING FOLDED INTO THE RUNG SCAN, because it is not a
+// rung fault and reporting it as one names a position that does not exist. GeometryOperationDiverges
+// carries an INDEX into the ladder; the datum has no index, and giving it a synthetic one -- 0, or
+// eleven, or minus one -- would be exactly the fabricated-plausible-output move DESIGN section 5
+// forbids. The two faults also mean different things to a reader: a divergent rung says the handler
+// cut one hole wrong, a divergent datum says the coupon cannot be oriented and every rung ordinal is
+// therefore in doubt.
 type GeometryConformance
   = GeometryConforms
   | GeometryPlateDiverges { axis: PlateAxis, modeled: Micrometer, realized: Micrometer }
+  | GeometryDatumDiverges { field: OperationField, modeled: Micrometer, realized: Micrometer }
   | GeometryOperationCountDiverges { modeled: Int, realized: Int }
   | GeometryOperationDiverges {
       index: Int,
@@ -405,11 +445,35 @@ fn operation_divergence(index: Int, m: CouponOperation, r: CouponOperation) -> G
   }
 }
 
+// The datum is compared field by field in the same order as a rung, so a reader learns the same
+// three things in the same sequence, and the ONLY difference is which arm carries the answer. It
+// reuses no code with operation_divergence deliberately: that function's whole signature is built
+// around an index the datum does not have, and threading an optional index through it to serve one
+// caller would put a nullable in the middle of the comparison the wall depends on.
+fn datum_divergence(m: CouponOperation, r: CouponOperation) -> GeometryConformance {
+  match m {
+    OpThroughHole { diameter: md, center_x: mx, center_y: my } => match r {
+      OpThroughHole { diameter: rd, center_x: rx, center_y: ry } =>
+        if micrometer_count(m: md) != micrometer_count(m: rd) {
+          GeometryDatumDiverges { field: FieldDiameter, modeled: md, realized: rd }
+        } else if micrometer_count(m: mx) != micrometer_count(m: rx) {
+          GeometryDatumDiverges { field: FieldCenterX, modeled: mx, realized: rx }
+        } else if micrometer_count(m: my) != micrometer_count(m: ry) {
+          GeometryDatumDiverges { field: FieldCenterY, modeled: my, realized: ry }
+        } else {
+          GeometryConforms
+        }
+    }
+  }
+}
+
 fn rung_scan_step(acc: RungScan, pair: RungComparison) -> RungScan {
   match acc.outcome {
     GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
     GeometryPlateDiverges { axis: _, modeled: _, realized: _ } =>
+      RungScan { index: acc.index + 1, outcome: acc.outcome }
+    GeometryDatumDiverges { field: _, modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
     GeometryOperationCountDiverges { modeled: _, realized: _ } =>
       RungScan { index: acc.index + 1, outcome: acc.outcome }
@@ -490,14 +554,34 @@ fn compare_plate(modeled: PlateDimensions, realized: PlateDimensions) -> Geometr
 // REFUSED (see w_an_unauthorised_operation_order_refuses) because position is compared -- which is
 // not the same as features HAVING identities, and the difference reappears the moment two features
 // share a geometry.
+// THE ORDER IS PLATE, THEN DATUM, THEN THE LADDER, and each step is a diagnostic decision about
+// which fault explains the others. A wrong plate makes every hole depth wrong at once. A wrong datum
+// means the coupon cannot be oriented, so every rung ordinal below it is unreliable even where the
+// geometry happens to match -- reporting rung 7 as divergent while the datum is wrong would name the
+// symptom of an unreadable coupon. Only once plate and datum agree does a rung divergence mean what
+// it says.
 fn judge_realized_geometry(
   contract: RealizationContract,
-  plate: PlateDimensions,
-  features: List<CouponOperation>,
+  realized: HoleDiameterCouponGeometry,
 ) -> GeometryConformance {
-  let plate_outcome = compare_plate(modeled: contract.specimen.plate, realized: plate)
+  let modeled = contract.specimen.geometry
+  let plate_outcome = compare_plate(modeled: modeled.plate, realized: realized.plate)
   match plate_outcome {
-    GeometryConforms => compare_operations(modeled: contract.specimen.features, realized: features)
+    GeometryConforms => {
+      let datum_outcome = datum_divergence(
+        m: modeled.orientation_datum,
+        r: realized.orientation_datum,
+      )
+      match datum_outcome {
+        GeometryConforms =>
+          compare_operations(modeled: modeled.ladder_holes, realized: realized.ladder_holes)
+        GeometryDatumDiverges { field: _, modeled: _, realized: _ } => datum_outcome
+        GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => datum_outcome
+        GeometryOperationCountDiverges { modeled: _, realized: _ } => datum_outcome
+        GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => datum_outcome
+      }
+    }
+    GeometryDatumDiverges { field: _, modeled: _, realized: _ } => plate_outcome
     GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => plate_outcome
     GeometryOperationCountDiverges { modeled: _, realized: _ } => plate_outcome
     GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => plate_outcome
@@ -520,7 +604,7 @@ fn judge_realization(
   match admission {
     EnvelopeDecodedV0 { decoded: a } =>
       RealizationJudged {
-        conformance: judge_realized_geometry(contract: contract, plate: a.plate, features: a.features),
+        conformance: judge_realized_geometry(contract: contract, realized: a.geometry),
       }
     EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
   }

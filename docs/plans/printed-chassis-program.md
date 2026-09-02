@@ -257,6 +257,50 @@ not choose it.
   carrier and not an annotation, because PRINT-5 must not be able to reach a handler without answering
   it, and no `Accepted` program can read a comment.
 
+  **The coupon could not be identified from its own geometry, and the fix is an authority change, not
+  a handler change.** The ladder steps 0.10 mm across eleven rungs, so end to end the holes differ by
+  1 mm and are visually interchangeable; rotated 180° the coupon reads as a valid coupon with its
+  ordinals reversed, and every measurement is attributed to the wrong rung. Routed review found it,
+  and also corrected its own first proposal — one obligation was doing two jobs:
+
+  - **orientation** — which end of *this* coupon is the 3.00 mm end. A property of the canonical
+    geometry, and now discharged by making that geometry asymmetric.
+  - **print-instance attribution** — which printer and spool made *this* piece of plastic. Two
+    correctly-oriented R1 coupons remain interchangeable. No geometry closes this, because the datum
+    must be *identical* on both coupons or the two processes stop sharing a subject. It stays open,
+    routed to the manufacturing manifest and a physical handling route.
+
+  Holding them as one obligation is why the earlier route fold was near-vacuous — a single arm whose
+  RED could not be authored. Splitting is what let one of them close. `HoleDiameterLadderR1` is the
+  coupon *design* identity and never the identity of a printed instance.
+
+  **The datum is its own field, not another entry in the feature list.** Appending one more
+  `OpThroughHole` and remembering the last one is the datum makes "which hole is the datum" a
+  positional convention — the class this module already deleted once — and it is worse here, because
+  the datum exists precisely to remove an ambiguous reading. `HoleDiameterCouponGeometry` carries
+  `plate`, a scalar `orientation_datum`, and `ladder_holes`, which makes four things structural: one
+  datum exactly (zero and two are unwritable, not refused), the datum cannot become a twelfth rung,
+  canonical geometry with no datum has no representation, and every consumer must name which
+  population it means. The wire splits the same way — two *different* populations, not two parallel
+  lists of one.
+
+  **The near-miss worth recording is inside the derivation.** A first cut read rung zero's x back off
+  the built feature list to make the correspondence structural. `.first()` returns an option, so it
+  forced an `Absent` arm for a ladder that cannot be empty — and the arm answered with a fabricated
+  datum at the margin. An absorbing fallback in miniature, inside the one function the whole
+  orientation guarantee rests on. It now reads `hole_ladder_margin`, the same row the ladder fold's
+  `i = 0` term reads: one row, two readers, no unreachable branch to fabricate in. The correspondence
+  is asserted by `w_the_datum_is_at_rung_zero` rather than constructed, which is honestly one rung
+  lower — mechanically preventable, not structurally impossible — with the trigger named.
+
+  **Evidence, and it discriminates.** Six controls: canonical datum conforms; datum at the far end
+  refuses naming `FieldCenterX` (the 180° reading itself); datum on the ladder centre-line refuses
+  naming `FieldCenterY` (right x, so it passes only if the y is compared); the datum stays out of the
+  measured population; it clears the ladder band and the plate edge; and it sits at rung zero's x.
+  A mutation that compares the modeled datum against itself turns the two refusal controls **RED**
+  while the positive control stays green — so they discriminate the wall rather than merely
+  exercising it.
+
   **Probe discipline learned here, recorded because it nearly produced a false finding.** The first
   forgery probe returned exactly the baseline error count — consistent with "forgery permitted" — from
   a file the compiler had never read, because an added source root was silently ignored. Confirmation

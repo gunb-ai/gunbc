@@ -86,7 +86,7 @@ test fn w_a_single_rung_ladder_refuses() -> Bool {
 // from it, adding a rung would leave this stale.
 test fn w_the_plate_width_follows_the_rung_count() -> Bool {
   match hole_ladder_spec {
-    LadderReady { ladder: l } => micrometer_count(m: hole_ladder_specimen(l: l).plate.size_x) == 102000
+    LadderReady { ladder: l } => micrometer_count(m: hole_ladder_specimen(l: l).geometry.plate.size_x) == 102000
     _ => false
   }
 }
