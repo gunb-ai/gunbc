@@ -136,33 +136,21 @@ test fn the_let_hidden_diverging_arm_still_returns_early() -> Bool {
 // `all_arms_diverge` is that case: every arm returns, so the match's own type must
 // still be the arms' join (ProbeResult), never the scrutinee's (ProbeFlag).
 //
-// THIS FIXTURE DOES NOT DISCRIMINATE THE REPAIR, MEASURED, AND THE REASON IS
-// STRUCTURAL RATHER THAN A FAILURE OF IMAGINATION. The pre-repair code
+// THESE TWO DO NOT DISCRIMINATE THE REPAIR, MEASURED -- but the one at the bottom of
+// this file DOES, so the repair is not evidence-free. The pre-repair code
 // (unconditional filter) was rebuilt -- binary hash 8c7e053c1bbc, confirmed by hash
-// change -- and both witnesses below PASS against it. A second instantiation with a
-// `Bool` scrutinee is NOT AUTHORABLE at all: Bool literals do not parse as patterns.
+// change -- and both witnesses below PASS against it. A `Bool`-scrutinee variant is
+// not authorable at all: Bool literals do not parse as patterns.
 //
-// WHY NO FIXTURE CAN WORK TODAY. `v1.compiler.infer` `DeclaredTypePosition` declares
-// TWELVE positions; `DeclaredTypeObligation` is constructed at TWO, carrying
+// WHY TERMINAL POSITION CANNOT SEE IT. `v1.compiler.infer` `DeclaredTypePosition`
+// declares TWELVE positions; `DeclaredTypeObligation` is constructed at TWO, carrying
 // `PositionDirectCallArgument` and `PositionListElement`. `PositionDeclaredReturn`
-// occurs three times in that module -- the comment listing unwired positions, the
-// variant declaration, and a display string -- and has NO PRODUCER. The declared
-// return seam is not checked, so a terminal-position match's own type is consulted
-// by nothing, whatever it is computed to be.
-//
-// DESIGN 4b ROW, stated at the grain the ladder asks for:
-//   invalid state      a match typed as the value it CONSUMES (the scrutinee) rather
-//                      than the value it produces, when every arm diverges
-//   rung found at      unguarded on the source-acceptance path: no obligation
-//                      producer observes the declared-return position
-//   ceiling            mechanically preventable once that position is wired; the
-//                      state is decidable, so this is a wall after grounding
-//   next-rung trigger  THE CAPABILITY, not an artifact: an obligation producer for
-//                      `PositionDeclaredReturn`, sufficient to make a terminal
-//                      expression's inferred type a checked contract against the
-//                      declaration. Ten of the twelve positions are unwired; this is
-//                      one of them, and no fixture in this file can retire the row.
-// These two witnesses are behaviour controls and nothing more.
+// occurs only in the unwired-position comment, the variant declaration, and a display
+// string -- it has NO PRODUCER. So at terminal position nothing consults the match's
+// own type, whatever it is computed to be. That is a real gap and it is why these two
+// are green under both binaries; it is NOT a ceiling on the class, because a WIRED
+// position observes the same state (see `an_all_diverging_match_in_argument_position`).
+// These two are behaviour controls.
 
 type ProbeFlag = ProbeYes | ProbeNo
 
@@ -228,4 +216,46 @@ test fn both_orderings_of_a_two_arm_join_carry_the_element_type() -> Bool {
     && probe_unwrap_or_zero(o: joined_present_first(f: ProbeYes)) == 5
     && probe_unwrap_or_zero(o: joined_absent_first(f: ProbeYes)) == 0
     && probe_unwrap_or_zero(o: joined_present_first(f: ProbeNo)) == 0
+}
+
+// THE DISCRIMINATING RED FOR BLOCKER 1 OF review 5083893018, and the one that reaches
+// a WIRED seam. MEASURED IN BOTH DIRECTIONS: PASS on the repair (binary 01a53030eafa),
+// and under the pre-repair unconditional filter (binary 8c7e053c1bbc) the module
+// REFUSES at resolve with
+//   error: value does not inhabit its declared type at the direct call argument for
+//   parameter 'r': declared 'Coproduct(ProbeResult)', produced 'Coproduct(ProbeFlag)'
+// -- the match typed as the value it CONSUMES rather than the value it produces,
+// exactly the defect the review named. The difference
+// from `all_arms_diverge` above is one thing: the all-diverging match sits in a
+// DIRECT-CALL ARGUMENT position rather than terminal position.
+// `direct_call_argument_inhabitance_diags` builds its obligation with
+// `produced: resolved_type(n: arg_value(n: ta))` -- the resolved type of the
+// argument EXPRESSION -- and `PositionDirectCallArgument` is one of the two
+// positions that IS wired. So the match's own computed type is compared here,
+// where at terminal position nothing consults it.
+//
+// The scrutinee must NOT be Optional: `declared_type_inhabitance` bails to
+// `InhabitanceUndecidable { UndecidableOptionalCarrier }` when either side carries
+// CardOptional, which would swallow the comparison before it happens. A plain
+// coproduct scrutinee walks past that bail.
+fn probe_consume(r: ProbeResult) -> Int {
+  match r {
+    ProbeOk { cell } => cell.n
+    ProbeUnknown { why } => why
+  }
+}
+
+fn probe_all_diverge_as_arg(fl: ProbeFlag) -> ProbeResult {
+  let n = probe_consume(r: match fl {
+    ProbeYes => return ProbeUnknown { why: 30 }
+    ProbeNo => return ProbeUnknown { why: 31 }
+  })
+  ProbeUnknown { why: n }
+}
+
+test fn an_all_diverging_match_in_argument_position_types_as_the_arms() -> Bool {
+  match probe_all_diverge_as_arg(fl: ProbeYes) {
+    ProbeUnknown { why } => why == 30
+    ProbeOk { cell: _ } => false
+  }
 }
