@@ -1,0 +1,43 @@
+module gunbc.filesystem_create_new_admission
+
+// WHY THIS SEED ITEM EXISTS: A RACE CANNOT BE CLOSED FROM ABOVE THE HOST.
+//
+// Establishing that a path is absent and then writing to it is two operations with a gap between
+// them, and an actor creating the file in that gap makes the write truncate exactly the bytes the
+// observation was taken to protect. No amount of re-observing removes the gap, because the check and
+// the write remain two acts. The only construction that closes it is one in which the existence test
+// and the creation are THE SAME operation, and that is a property of the host's open(2) call --
+// O_CREAT|O_EXCL -- not something a .dag fold over two separate operations can express.
+//
+// So the substrate gains a modeled operation (extdeps.filesystem.filesystem_io WriteCreateNew) whose
+// realization the seed must provide, exactly as it provides Write, Read, Delete and List. This is a
+// boundary item and not seed-shrink debt: the fact being realized is a syscall's atomicity.
+//
+// WHY NOT REUSE WriteOwnerOnly, WHICH ALREADY CALLS create_new. Because its create_new is INCIDENTAL
+// to owner-only mode -- a creation-time mode is meaningless on a path that already exists -- and not
+// a contract anyone may depend on. Owner-only MODE and create-only EXISTENCE are independent facts.
+// A caller that obtained create-only from it would silently also get 0600, and would break the day
+// owner-only stopped needing O_EXCL. Reusing a realization detail in place of a modeled fact is the
+// layer inversion DESIGN section 3 names, and it was explicitly rejected in review 5085479276 on
+// gunbc#9864 before this row was written.
+import std.symbols { Ascii }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth {
+  SeedGrowthJustification,
+  DeclarationRef,
+  WholeDeclaration
+}
+
+data filesystem_create_new_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter",
+      decl_name: "write_file_create_new",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED HERE: the fact being realized is the ATOMICITY of a single host syscall. O_CREAT|O_EXCL makes the existence test and the file's creation one indivisible act, and there is no composition of the modeled Read, List and Write operations that reproduces it -- any .dag expression of 'check then write' is two operations with a gap, which is the exact defect this operation exists to close. One hand-authored function, write_file_create_new, is the whole seed side.\n\nWHAT IT REMOVED: gunbc.scm.init established an absence from a directory listing and then called save_repository, which writes unconditionally. The decision was honest; the write was simply not conditioned on it, so a racing creation made init truncate the bytes it advertised that it refuses to touch. That is a destructive fail-open at a boundary whose whole purpose is refusing to destroy, and it was reported by review 5085479276 on gunbc#9864. init now writes through create_repository, so the refusal is the write's own.\n\nWHAT IS DELIBERATELY NOT MODELED, stated rather than left for a reader to discover: the refusal does not classify itself. The operation reports that the create did not happen and carries the host's error verbatim; it does NOT report whether the cause was 'the path already existed' or 'permission denied'. The output channels available to the file transport cannot separate those, and deciding between them by matching on the error TEXT would be a heuristic standing in for an observation -- the smuggled confidence DESIGN section 5 forbids. A caller learns what it needs in order to refuse, and does not learn a classification nothing measured.\n\nWHY NOT write_file_owner_only: its create_new is incidental to setting a mode at creation, not a contract. Owner-only mode and create-only existence are independent facts, and a caller taking create-only from it would silently also take 0600.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete write_file_create_new when the substrate models FILE CREATION EXCLUSIVITY as a declarable property of a write rather than as a distinct transport verb -- that is, when an operation can state 'this write must not replace an existing object' and the realization layer derives the open flags from that statement for every target it emits to, rather than each host binding hand-writing the flag combination. That names the CAPABILITY and not an artifact: moving this function to another file, or adding a second verb beside it, discharges nothing. A SEPARATE and narrower trigger governs the self-classification gap above: a modeled already-exists channel on the file transport, at which point the race and the permission failure become distinct arms and the operation stops carrying an unclassified host string.",
+  current_boundary: "gunbc.filesystem_create_new_admission -> extdeps.filesystem.filesystem_io WriteCreateNew -> v1_compiler.v1_interpreter write_file_create_new -> the host open(2) with O_CREAT|O_EXCL"
+}

@@ -354,6 +354,40 @@ service Filesystem {
     transport file { path: "{path}", verb: "write_owner_only" }
   }
 
+  // CREATE-ONLY, AND IT IS A DIFFERENT FACT FROM OWNER-ONLY. WriteOwnerOnly's realization happens to
+  // use create_new(true), because a mode set at creation is meaningless on a path that already
+  // exists -- but that is a property of ITS realization, not a contract anyone may depend on. Owner-
+  // only MODE and create-only EXISTENCE are independent facts, and reusing one to obtain the other is
+  // a realization detail standing where a modeled fact belongs (DESIGN section 3). A caller that
+  // wanted create-only and got it from WriteOwnerOnly would also silently get 0600, and would break
+  // the day owner-only stopped needing O_EXCL.
+  //
+  // WHAT THIS CLOSES, AND WHY A CHECK COULD NOT. Observing that a path is absent and then writing to
+  // it is two operations with a gap between them: an actor creating the file in the gap makes the
+  // write truncate exactly the bytes the observation was taken to protect. No amount of re-observing
+  // removes the gap -- the check and the write are still not one act. O_CREAT|O_EXCL makes the
+  // EXISTENCE TEST AND THE CREATION the same syscall, so the race has no window rather than a small
+  // one. This is construction over validation (section 5) at a boundary where validation cannot win.
+  //
+  // THE REFUSAL DOES NOT CLASSIFY ITSELF, ON PURPOSE. `error` carries the host's message verbatim and
+  // this operation does NOT report whether the refusal was "already existed" or "permission denied":
+  // the channels available here cannot separate them, and deciding it by matching on the error TEXT
+  // would be a heuristic standing in for an observation -- the smuggled-confidence shape section 5
+  // names. A caller therefore learns that the create did not happen and why the host said so, which
+  // is what it needs to refuse; it does not learn a classification nothing measured.
+  // NEXT-RUNG TRIGGER: a modeled already-exists channel on the file transport, at which point the
+  // race and the permission failure become separate arms and this note is deleted.
+  operation WriteCreateNew {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_create_new" }
+  }
+
   operation Read {
     input { path: String }
     output {

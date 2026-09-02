@@ -10,6 +10,15 @@ module gunbc.scm.init
 // non-fail-closed failure arm is a hard reject regardless of what else it delivers, and an
 // annotation is not a refusal. External review was right to block it.
 //
+// AND THE DECISION ALONE WAS STILL NOT ENOUGH, WHICH IS THE THIRD TIME THIS VERB WAS WRONG. Deciding
+// from a listing and then calling save_repository is two operations with a gap: an actor creating the
+// file between the observation and the write makes the save truncate exactly the bytes the decision
+// was taken to protect. The decision was honest and the write was simply not conditioned on it. That
+// is a TOCTOU, review 5085479276 on gunbc#9864 named it, and it is not repairable by observing more
+// carefully -- the check and the write are still not one act. The write now goes through
+// `create_repository`, whose Filesystem.WriteCreateNew makes the existence test and the creation one
+// syscall, so the race has no window rather than a narrow one.
+//
 // AND THE SECOND REVISION WAS STILL FAIL-OPEN, WHICH IS WHY THIS ONE DOES NOT READ FIRST. It
 // proceeded on `RepositoryFileUnreadable`, reasoning that a file it could not read was one the
 // write could not replace either. That reasoning is a guess about the host's permission model, not
@@ -23,7 +32,8 @@ module gunbc.scm.init
 // entry, and the read is consulted only as the second half of `filesystem_file_observation`'s fold.
 // The four arms are the four actions: nothing is there, so write; bytes are there, so refuse and say
 // which kind; the observation could not be made, so refuse; the two observations disagree, so refuse.
-// Only the first arm reaches `save_repository`.
+// Only the first arm reaches `create_repository`, and that call refuses on its own if the path
+// appeared in the meantime.
 //
 // THIS IS WHY THE ENTRY TAKES A DIRECTORY AND A NAME RATHER THAN A PATH. Presence is a fact about a
 // directory listing, so the listing's subject has to be an argument and not something recovered by
@@ -59,7 +69,7 @@ import gunbc.scm.repository_envelope {
   RepositoryDecoded,
   RepositoryDecodeRefused
 }
-import gunbc.scm.repository_save { RepositorySave, save_repository }
+import gunbc.scm.repository_save { RepositorySave, create_repository }
 
 // THE ARMS ARE THE ANSWER. There is no `initialized: Bool` beside a save outcome: a value whose
 // flag disagreed with its shape would have a spelling, and the refusals are distinguished because
@@ -149,7 +159,7 @@ fn initialize_repository_at(
   ) {
     ScmInitDecided { cause: c } => ScmInitRefused { cause: c }
     ScmInitMayCreate(_) =>
-      ScmInitialized { save: save_repository(path: path, repo: empty_repository()) }
+      ScmInitialized { save: create_repository(path: path, repo: empty_repository()) }
   }
 }
 
