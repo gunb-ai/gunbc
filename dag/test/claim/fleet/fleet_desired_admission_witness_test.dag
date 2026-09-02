@@ -1,5 +1,7 @@
 module test.claim.fleet_desired_admission_witness_test
 
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
 import std.types { String, Bool, CommitSha, NonEmptyStr }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.github.workflow_runs {
@@ -31,6 +33,13 @@ import gunbc.fleet_desired_admission {
 }
 import v2.workflow.ci_workflow_run_emit { ci_isolate_echo_cargo_home_command, ci_isolate_echo_rustup_home_command }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+
+
+// Every witness here is about a non-epoch admission dimension, so the epoch is held at the
+// required value; the epoch dimension carries its own discriminating pair.
+fn fixture_epoch_match() -> RequiredCiEpochObservation {
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch }
+}
 
 data fixture_prior_hex: String = "1111111111111111111111111111111111111111"
 data fixture_candidate_hex: String = "2222222222222222222222222222222222222222"
@@ -86,7 +95,7 @@ fn is_event_refused(o: FleetDesiredAcceptedRevision) -> Bool {
 // It also pins the revision, because an acceptance naming the wrong one would advance the fleet
 // to something the floor never proved.
 test fn a_floor_green_default_branch_run_accepts_the_candidate_revision() -> Bool {
-  match fleet_desired_accepted_from_event(event: admitting_event()) {
+  match fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: admitting_event()) {
     FleetDesiredRevisionRefused { cause: _ } => false
     FleetDesiredRevisionAccepted { accepted: a } =>
       git_object_id_wire_hex(oid: a.revision) as String == fixture_candidate_hex
@@ -127,7 +136,7 @@ test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
 // one ran nothing. Enumerated rather than sampled, because the arm that admits one of these is
 // exactly the arm that never fires in testing.
 fn accepted_with_conclusion(conclusion: WorkflowRunConclusion) -> Bool {
-  !is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+  !is_event_refused(o: fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: fixture_event(
     workflow_name: witness_floor_workflow_name,
     conclusion: conclusion,
     branch: gunbc_default_branch_name,
@@ -152,7 +161,7 @@ test fn only_a_success_conclusion_is_accepted() -> Bool {
 // The floor is identified by PATH, not by name. A workflow that renames itself "witnesses" does
 // not become the floor, and the old wall -- which matched on the name -- would have admitted it.
 test fn a_run_of_another_workflow_path_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+  is_event_refused(o: fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: fixture_event(
     workflow_name: witness_floor_workflow_name,
     conclusion: Success,
     branch: gunbc_default_branch_name,
@@ -164,7 +173,7 @@ test fn a_run_of_another_workflow_path_is_refused() -> Bool {
 }
 
 test fn a_non_default_branch_run_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+  is_event_refused(o: fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: fixture_event(
     workflow_name: witness_floor_workflow_name,
     conclusion: Success,
     branch: "session/nimble-fox-671",
@@ -176,7 +185,7 @@ test fn a_non_default_branch_run_is_refused() -> Bool {
 }
 
 test fn a_fork_head_repository_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+  is_event_refused(o: fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: fixture_event(
     workflow_name: witness_floor_workflow_name,
     conclusion: Success,
     branch: gunbc_default_branch_name,
@@ -188,7 +197,7 @@ test fn a_fork_head_repository_is_refused() -> Bool {
 }
 
 test fn an_incomplete_activity_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+  is_event_refused(o: fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: fixture_event(
     workflow_name: witness_floor_workflow_name,
     conclusion: Success,
     branch: gunbc_default_branch_name,
@@ -203,7 +212,7 @@ test fn an_incomplete_activity_is_refused() -> Bool {
 // default branch -- a manual dispatch, a schedule -- proves the floor green for a tree that was
 // never merged, so its head_sha is not a landed revision.
 test fn a_non_push_originating_event_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+  is_event_refused(o: fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: fixture_event(
     workflow_name: witness_floor_workflow_name,
     conclusion: Success,
     branch: gunbc_default_branch_name,
@@ -223,7 +232,7 @@ test fn a_non_push_originating_event_is_refused() -> Bool {
 // than fabricating an accepted revision, because a fabricated one would let every row below pass
 // against a fixture the producers never admitted.
 fn accepted_fixture() -> AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> {
-  match fleet_desired_accepted_from_event(event: admitting_event()) {
+  match fleet_desired_accepted_from_event(observed_epoch: fixture_epoch_match(), event: admitting_event()) {
     FleetDesiredRevisionAccepted { accepted: a } => a
     FleetDesiredRevisionRefused { cause: _ } => accepted_fixture()
   }

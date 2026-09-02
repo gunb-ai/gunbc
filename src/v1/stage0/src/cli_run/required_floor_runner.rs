@@ -3564,7 +3564,9 @@ pub fn run_required_floor(
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
     // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
-    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower — while its
+    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower, which is the
+    // class `gunbc.rung_drop floor_cost_contention_verdict` now carries with its measurements and
+    // its restoration trigger; this comment states the instance and does not restate the class — while its
     // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
     // The `OnceLock` miss is not bracketed by `record_shared_artifact_fill_cpu`, so
     // `run_claim_measured` could not net it either; paying it here is the ONE mechanism, and a
