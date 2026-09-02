@@ -239,6 +239,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `liveness_probe_read_as_currency`
 - `non_verdict_disposition_surfaces_as_refusal`
 - `empty_capture_read_as_clean_result`
+- `salience_instrument_blind_to_the_record_it_sizes`
 - `ambient_process_state_read_by_a_concurrent_reader`
 - `predicate_vacuously_true_on_an_empty_domain`
 - `check_subject_narrower_than_its_declared_claim`
