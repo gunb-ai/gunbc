@@ -316,6 +316,10 @@ data excl_install_media_reason: String = "real host-effect execution witness (sh
 
 data excl_local_repo_wet_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY -- refused by the hermetic envelope, so excluded from the discovery corpus, and executed instead by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). This row is NOT the dark bin-wet class: every function in the named file is on that schedule, the floor decodes it, runs each member wet, and joins the observed terminals back to the roster at identity grain, so a member that stops executing refuses rather than reading as covered."
 
+data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
+
+data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
+
 data excl_local_repo_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the git plumbing these witnesses reach and the assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
 data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
@@ -843,9 +847,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "host_cli_dependency_wet_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: "WET shell.PosixCommandV.Check probes for observe_host_cli_dependency: hermetic discovery refuses host effects (no mock_response for operation Check). Enrolled on bin-witness wet roster; falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590).",
-    dissolution: excl_bin_wet_dissolve},
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_host_probe_reason,
+    dissolution: excl_local_repo_wet_host_probe_dissolve},
   WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
