@@ -2,10 +2,12 @@ module test.claim.spark_serving_effect_wire_witness
 
 import std.logic { Bool }
 import gunbc.fleet_converge_plan { fleet_converge_spark_serving_effect_wire }
+import gunbc.spark.serving_realization { serving_reactivation_effect_wire }
 import gunbc.spark.serving_realization {
   PlannedInstallEffect,
   EnableLingerForOwnAccount,
   EnableSystemUnit,
+  StartSystemUnit,
   EnableUserUnit,
   GrantContainerRuntimeAccess,
   InstallOwnedRuntimeClosure,
@@ -14,8 +16,11 @@ import gunbc.spark.serving_realization {
   ReloadSystemManager,
   ReloadUserManager,
   RunContainerAsOwnUser,
+  StartUserUnit,
   WriteSystemUnitFile,
   WriteUserUnitFile,
+  RestartSystemUnitForChangedDefinition,
+  RestartUserUnitForChangedDefinition,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -32,6 +37,7 @@ test fn w_each_serving_effect_wires_to_its_own_name() -> Bool {
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: WriteSystemUnitFile }) == "WriteSystemUnitFile"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: ReloadSystemManager }) == "ReloadSystemManager"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit }) == "EnableSystemUnit"
+    && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartSystemUnit }) == "StartSystemUnit"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: WriteUserUnitFile }) == "WriteUserUnitFile"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: ReloadUserManager }) == "ReloadUserManager"
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableUserUnit }) == "EnableUserUnit"
@@ -52,4 +58,27 @@ test fn w_no_two_effects_share_a_wire_label() -> Bool {
       != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: ReloadUserManager })
     && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit })
       != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableUserUnit })
+}
+
+// THE THIRD VOCABULARY RENDERS THROUGH ITS OWN FUNCTION, NOT THROUGH THE PLAN RENDERER.
+//
+// A reactivation is not a member of SparkServingExecutablePlannedEffect, so it has no arm in
+// fleet_converge_spark_serving_effect_wire and cannot be rendered as a planned effect at all. Its
+// wire labels are still pinned, because DCH-0r-c inherits them: the names must be stable before
+// anything binds steps to them.
+test fn w_reactivation_effects_wire_to_their_own_names() -> Bool {
+  serving_reactivation_effect_wire(effect: RestartUserUnitForChangedDefinition)
+    == "restart-user-unit-for-changed-definition"
+    && serving_reactivation_effect_wire(effect: RestartSystemUnitForChangedDefinition)
+      == "restart-system-unit-for-changed-definition"
+}
+
+// AND A RESTART NEVER RENDERS AS A START, which is the claim the separate vocabulary exists to
+// support: `StartUserUnit` and a restart of that same unit are different effects on the same
+// subject, and a plan a human reads must not spell them alike.
+test fn w_a_restart_never_renders_as_a_start() -> Bool {
+  serving_reactivation_effect_wire(effect: RestartUserUnitForChangedDefinition)
+    != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartUserUnit })
+    && fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: StartSystemUnit })
+      != fleet_converge_spark_serving_effect_wire(effect: PlannedInstallEffect { install: EnableSystemUnit })
 }
