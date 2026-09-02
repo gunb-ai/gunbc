@@ -94,24 +94,6 @@ type YearToDateWages {
   this_period: MoneyAmountMicro
 }
 
-fn band_floor_micros(b: ContributionBand) -> Nat {
-  match b {
-    FromFirstDollarUncapped => 0
-    CappedAtAnnualLimit { annual_limit } => 0
-    AboveAnnualThreshold { annual_threshold } => money_amount_micro_count(m: annual_threshold)
-    BetweenAnnualBounds { annual_threshold, annual_limit } => money_amount_micro_count(m: annual_threshold)
-  }
-}
-
-fn band_ceiling_micros(b: ContributionBand) -> Nat? {
-  match b {
-    FromFirstDollarUncapped => none
-    AboveAnnualThreshold { annual_threshold } => none
-    CappedAtAnnualLimit { annual_limit } => Present { value: money_amount_micro_count(m: annual_limit) }
-    BetweenAnnualBounds { annual_threshold, annual_limit } => Present { value: money_amount_micro_count(m: annual_limit) }
-  }
-}
-
 // Saturating subtraction with no branch and no zero literal: subtracting the MINIMUM of the two
 // is exactly x - lower where that is defined and exactly zero where it is not, so the function is
 // total on the naturals by construction rather than by an if-arm that has to invent a zero.
@@ -119,11 +101,22 @@ fn amount_above(x: Nat, lower: Nat) -> Nat {
   x - nat_min(a: x, b: lower)
 }
 
-fn within_band(x: Nat, lower: Nat, upper: Nat?) -> Nat {
-  match upper {
-    Absent => amount_above(x: x, lower: lower)
-    Present { value: c } =>
-      nat_min(a: amount_above(x: x, lower: lower), b: amount_above(x: c, lower: lower))
+// A cumulative earnings figure, clamped into the band. The band is matched ONCE and each arm is
+// the whole clamp for that shape, so there is no Optional ceiling threaded through a helper that
+// then has to ask whether it is present - the four statutory shapes are four total expressions
+// over the naturals, and the absence of an upper bound is the absence of an arm that applies one.
+fn clamped_position(band: ContributionBand, x: Nat) -> Nat {
+  match band {
+    FromFirstDollarUncapped => x
+    CappedAtAnnualLimit { annual_limit } =>
+      nat_min(a: x, b: money_amount_micro_count(m: annual_limit))
+    AboveAnnualThreshold { annual_threshold } =>
+      amount_above(x: x, lower: money_amount_micro_count(m: annual_threshold))
+    BetweenAnnualBounds { annual_threshold, annual_limit } =>
+      amount_above(
+        x: nat_min(a: x, b: money_amount_micro_count(m: annual_limit)),
+        lower: money_amount_micro_count(m: annual_threshold)
+      )
   }
 }
 
@@ -133,11 +126,10 @@ fn within_band(x: Nat, lower: Nat, upper: Nat?) -> Nat {
 // clamps saturate to the same value, and a period straddling a cap contributes exactly the
 // portion below it.
 fn subject_wage_micros(band: ContributionBand, before: Nat, total: Nat) -> Nat {
-  let band_lower = band_floor_micros(b: band)
-  let band_upper = band_ceiling_micros(b: band)
-  let after_position = within_band(x: total, lower: band_lower, upper: band_upper)
-  let before_position = within_band(x: before, lower: band_lower, upper: band_upper)
-  return amount_above(x: after_position, lower: before_position)
+  amount_above(
+    x: clamped_position(band: band, x: total),
+    lower: clamped_position(band: band, x: before)
+  )
 }
 
 type ContributionRefusal =
