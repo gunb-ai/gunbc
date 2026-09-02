@@ -2104,7 +2104,27 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             ident: None,
         })
     } else {
-        resolved.clone()
+        Rc::new(Node {
+            occurrence_identity: authored.occurrence_identity.clone(),
+            name: resolved.name.clone(),
+            span: resolved.span.clone(),
+            ident_span: resolved.ident_span.clone(),
+            children: resolved.children.clone(),
+            connective: resolved.connective.clone(),
+            params: resolved.params.clone(),
+            inferred: resolved.inferred.clone(),
+            return_cardinality: resolved.return_cardinality.clone(),
+            uses: resolved.uses.clone(),
+            body: resolved.body.clone(),
+            transport: resolved.transport.clone(),
+            properties: resolved.properties.clone(),
+            type_annotation: resolved.type_annotation.clone(),
+            is_self_recursive: resolved.is_self_recursive.clone(),
+            has_non_tail_self_call: resolved.has_non_tail_self_call.clone(),
+            match_pattern: resolved.match_pattern.clone(),
+            expr_data: resolved.expr_data.clone(),
+            ident: None,
+        })
     }
 }
 

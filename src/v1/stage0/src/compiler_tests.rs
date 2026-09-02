@@ -1147,6 +1147,129 @@ mod compiler_tests {
     }
 
     #[test]
+    fn rendered_leaf_use_site_preserves_authored_occurrence_identity() {
+        let mut authored_value = (*named_type_node("Time")).clone();
+        authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 101 },
+            },
+        );
+        let authored = std::rc::Rc::new(authored_value);
+        let mut resolved_value = (*named_type_node("Quantity")).clone();
+        resolved_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 202 },
+            },
+        );
+        let resolved = std::rc::Rc::new(resolved_value);
+        let rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            authored.clone(),
+            resolved.clone(),
+        );
+        let mut expected_value = (*resolved).clone();
+        expected_value.occurrence_identity = authored.occurrence_identity.clone();
+        assert_eq!(
+            rendered,
+            std::rc::Rc::new(expected_value),
+            "a rendered leaf must preserve the exact authored occurrence identity while every other field remains the selected declaration's field"
+        );
+        let mut wrong_present_value = (*rendered).clone();
+        wrong_present_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        );
+        assert_ne!(
+            rendered,
+            std::rc::Rc::new(wrong_present_value),
+            "a wrong-but-present occurrence identity must not satisfy exact fidelity"
+        );
+        let mut sibling_a_value = (*named_type_node("Time")).clone();
+        sibling_a_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 301 },
+            },
+        );
+        let sibling_a = std::rc::Rc::new(sibling_a_value);
+        let mut sibling_b_value = (*named_type_node("Time")).clone();
+        sibling_b_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 302 },
+            },
+        );
+        let sibling_b = std::rc::Rc::new(sibling_b_value);
+        let sibling_a_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_a.clone(),
+            resolved.clone(),
+        );
+        let sibling_b_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_b.clone(),
+            resolved.clone(),
+        );
+        assert_eq!(
+            sibling_a_rendered.name, sibling_b_rendered.name,
+            "equal-looking siblings must render the same textual carrier"
+        );
+        assert_eq!(
+            sibling_a_rendered.occurrence_identity,
+            sibling_a.occurrence_identity
+        );
+        assert_eq!(
+            sibling_b_rendered.occurrence_identity,
+            sibling_b.occurrence_identity
+        );
+        assert_ne!(
+            sibling_a_rendered.occurrence_identity, sibling_b_rendered.occurrence_identity,
+            "equal-looking siblings must not exchange occurrences"
+        );
+        let projected_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceProjected {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 401 },
+                caused_by: std::rc::Rc::new(crate::std_occurrence_identity::ScopedOccurrenceRef {
+                    scope: std::rc::Rc::new(crate::std_content_hash::Fnv1a64Structural {
+                        digest: "scope-identity".to_string(),
+                    }),
+                    occurrence: crate::std_occurrence_identity::OccurrenceId { value: 400 },
+                }),
+            },
+        );
+        let mut projected_authored_value = (*named_type_node("Time")).clone();
+        projected_authored_value.occurrence_identity = projected_identity.clone();
+        let projected_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            std::rc::Rc::new(projected_authored_value),
+            resolved.clone(),
+        );
+        assert_eq!(
+            projected_rendered.occurrence_identity, projected_identity,
+            "projected id and caused_by must survive exactly"
+        );
+        let mut nonleaf_authored_value =
+            (*shaped_type_node("Box", vec![named_type_node("Time")])).clone();
+        nonleaf_authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 501 },
+            },
+        );
+        let nonleaf_authored = std::rc::Rc::new(nonleaf_authored_value);
+        let nonleaf_resolved = shaped_type_node("Vec", vec![named_type_node("Int")]);
+        let nonleaf_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            nonleaf_authored.clone(),
+            nonleaf_resolved.clone(),
+        );
+        let mut nonleaf_expected_value = (*nonleaf_authored).clone();
+        nonleaf_expected_value.children = nonleaf_resolved.children.clone();
+        nonleaf_expected_value.inferred = Some(std::rc::Rc::new(
+            crate::v1_std_core::InferredNode::Resolved {
+                node: nonleaf_resolved.clone(),
+            },
+        ));
+        nonleaf_expected_value.properties = nonleaf_resolved.properties.clone();
+        assert_eq!(
+            nonleaf_rendered,
+            std::rc::Rc::new(nonleaf_expected_value),
+            "the children-present arm must remain byte-for-byte structurally stable"
+        );
+    }
+
+    #[test]
     fn method_existence_wall_witness() {
         // DISCRIMINATING RED for method_existence_wall_note. Before the wall an
         // unresolved method inherited the RECEIVER's type with no diagnostic, so
