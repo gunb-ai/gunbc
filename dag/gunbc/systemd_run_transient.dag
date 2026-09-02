@@ -28,15 +28,15 @@ type SystemdRunTransientOutcome =
     SystemdRunTransientStarted { stdout: String }
   | SystemdRunTransientRefused { reason: String }
 
-fn systemd_run_transient_operation_argv(unit: NonEmptyStr, command_argv: List<String>) -> ArgvMaterialization {
-  let rendered_argv = systemd_run_transient_unit_argv(unit: unit, properties: [], command_argv: command_argv)
+fn systemd_run_transient_operation_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> ArgvMaterialization {
   shell_materialize_operation_argv(
     systemd_run_transient_path,
     systemd_run_transient_service,
     systemd_run_transient_operation,
     [
       operation_argv_bind_text(name: "unit", text: unit as String),
-      operation_argv_bind_text_list(name: "command_argv", items: rendered_argv),
+      operation_argv_bind_text_list(name: "property_argv", items: systemd_run_property_argv(properties: properties)),
+      operation_argv_bind_text_list(name: "command_argv", items: command_argv),
     ]
   )
 }
@@ -49,8 +49,8 @@ fn systemd_run_transient_outcome_from_result(success: Bool, stdout: String, stde
   }
 }
 
-fn systemd_run_transient_local(unit: NonEmptyStr, command_argv: List<String>) -> SystemdRunTransientOutcome {
-  let result = systemd.SystemdRun.RunTransient(unit: unit, command_argv: command_argv)
+fn systemd_run_transient_local(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunTransientOutcome {
+  let result = systemd.SystemdRun.RunTransient(unit: unit, property_argv: systemd_run_property_argv(properties: properties), command_argv: command_argv)
   systemd_run_transient_outcome_from_result(success: result.success, stdout: result.stdout, stderr: result.stderr)
 }
 
@@ -69,8 +69,8 @@ fn systemd_run_transient_ssh_argv(host: NonEmptyStr, argv: List<String>) -> Syst
   }
 }
 
-fn systemd_run_transient_ssh(host: NonEmptyStr, unit: NonEmptyStr, command_argv: List<String>) -> SystemdRunTransientOutcome {
-  match systemd_run_transient_operation_argv(unit: unit, command_argv: command_argv) {
+fn systemd_run_transient_ssh(host: NonEmptyStr, unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunTransientOutcome {
+  match systemd_run_transient_operation_argv(unit: unit, properties: properties, command_argv: command_argv) {
     ArgvMaterialized { argv: argv } => systemd_run_transient_ssh_argv(host: host, argv: argv)
     ArgvMaterializationRefused { at: _, cause: c } =>
       SystemdRunTransientRefused { reason: operation_argv_cause_label(cause: c) }
@@ -81,9 +81,10 @@ fn systemd_run_transient_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
   unit: NonEmptyStr,
+  properties: List<SystemdRunProperty>,
   command_argv: List<String>,
 ) -> SystemdRunTransientOutcome {
-  match systemd_run_transient_operation_argv(unit: unit, command_argv: command_argv) {
+  match systemd_run_transient_operation_argv(unit: unit, properties: properties, command_argv: command_argv) {
     ArgvMaterialized { argv: argv } =>
       systemd_run_transient_outcome_from_exec(
         outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
@@ -96,12 +97,13 @@ fn systemd_run_transient_fleet_ssh(
 fn systemd_run_transient_read(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
+  properties: List<SystemdRunProperty>,
   command_argv: List<String>,
 ) -> SystemdRunTransientOutcome {
   match transport {
-    LocalShell => systemd_run_transient_local(unit: unit, command_argv: command_argv)
-    SshShell { ssh_host: h } => systemd_run_transient_ssh(host: h, unit: unit, command_argv: command_argv)
-    FleetSsh { target: t, context: c } => systemd_run_transient_fleet_ssh(target: t, context: c, unit: unit, command_argv: command_argv)
+    LocalShell => systemd_run_transient_local(unit: unit, properties: properties, command_argv: command_argv)
+    SshShell { ssh_host: h } => systemd_run_transient_ssh(host: h, unit: unit, properties: properties, command_argv: command_argv)
+    FleetSsh { target: t, context: c } => systemd_run_transient_fleet_ssh(target: t, context: c, unit: unit, properties: properties, command_argv: command_argv)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       SystemdRunTransientRefused {
         reason: "systemd-run transient start refused EmitArtifactThenThinRun transport",
@@ -109,13 +111,14 @@ fn systemd_run_transient_read(
   }
 }
 
-fn systemd_run_transient_operation_argv_matches_authority(unit: NonEmptyStr, command_argv: List<String>) -> Bool {
-  let authority = fold(
-    command_argv,
-    init: ["systemd-run", concat("--unit=", unit as String), "--collect", "--"],
-    f: (acc, arg) => list_push(acc, arg),
-  )
-  match systemd_run_transient_operation_argv(unit: unit, command_argv: command_argv) {
+// THE MATERIALIZED ARGV IS CHECKED AGAINST THE EXTDEPS AUTHORITY, not against a second hand-built
+// copy of it. The prior spelling rebuilt the launcher words here, so this predicate could only ever
+// confirm that two local folds agreed; a property population would have been invisible to it. It
+// now compares against systemd_run_transient_unit_argv, which is the same function the transport
+// template must agree with, so a property that fails to reach the executed words goes red here.
+fn systemd_run_transient_operation_argv_matches_authority(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
+  let authority = systemd_run_transient_unit_argv(unit: unit, properties: properties, command_argv: command_argv)
+  match systemd_run_transient_operation_argv(unit: unit, properties: properties, command_argv: command_argv) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

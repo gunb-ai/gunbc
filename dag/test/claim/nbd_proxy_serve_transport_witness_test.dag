@@ -195,8 +195,35 @@ test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> B
 test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool {
   systemd_run_transient_operation_argv_matches_authority(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
+    properties: [],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
   )
+}
+
+// THE EMPTY POPULATION ABOVE CANNOT SEE A PROPERTY THAT NEVER REACHES THE EXECUTED WORDS, which is
+// exactly the defect measured on this seam: an operation may DECLARE a property input while its
+// transport template ignores it, and every empty-population caller stays green while a bounded unit
+// is launched unbounded. This control carries a real population so the materialized argv and the
+// extdeps authority must agree on the property word itself.
+test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bool {
+  systemd_run_transient_operation_argv_matches_authority(
+    unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
+  )
+}
+
+// A PREDICATE THAT ONLY EVER RETURNS TRUE IS NOT A CONTROL. The two witnesses above compare one
+// authority against one materialization; if the transport template silently dropped the property
+// words, BOTH sides would drop them together only if the authority also stopped rendering them --
+// which this asserts it does not. The property word must be present in the authority's own output.
+test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
+  join(
+    systemd_run_property_argv(
+      properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    ),
+    " ",
+  ) == "--property=MemoryMax=17179869184"
 }
 
 test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {
