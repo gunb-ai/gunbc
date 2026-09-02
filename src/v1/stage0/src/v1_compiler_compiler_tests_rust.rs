@@ -183,125 +183,30 @@ pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
 
 pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
     match (*a.clone()).clone() {
-        CoercionAssertion::CheckpointAssertion {
-            target: t,
-            dag_name: name,
-            expected_type: expected,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "        assert_eq!(coerce_primitive_type(".to_string(),
-                                render_target_rust_enum(t.clone()),
-                            ),
-                            ", \"".to_string(),
-                        ),
-                        name.clone(),
-                    ),
-                    "\".into(), \"\".into()), \"".to_string(),
-                ),
-                expected.clone(),
-            ),
-            "\");\n".to_string(),
-        ),
-        CoercionAssertion::ContainerAssertion {
-            target: t,
-            container_name: name,
-            expected_template: expected,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "        assert_eq!(coerce_container_template(".to_string(),
-                                render_target_rust_enum(t.clone()),
-                            ),
-                            ", \"".to_string(),
-                        ),
-                        name.clone(),
-                    ),
-                    "\".into()), Some(\"".to_string(),
-                ),
-                expected.clone(),
-            ),
-            "\".to_string()));\n".to_string(),
-        ),
-        CoercionAssertion::CopyAssertion {
-            target: t,
-            dag_name: name,
-            expected_copy: expected,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "        assert_eq!(is_copy(".to_string(),
-                                render_target_rust_enum(t.clone()),
-                            ),
-                            ", \"".to_string(),
-                        ),
-                        name.clone(),
-                    ),
-                    "\".into(), \"\".into()), Some(".to_string(),
-                ),
-                if expected.clone() {
-                    "true".to_string()
-                } else {
-                    "false".to_string()
-                },
-            ),
-            "));\n".to_string(),
-        ),
-        CoercionAssertion::TemplateAssertion {
-            template: tmpl,
-            args: arg_list,
-            expected,
-            ..
-        } => {
-            if ((arg_list.clone().len() as i64) == 1) {
-                {
-                    let arg0 = first_or_empty(arg_list.clone());
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "        assert_eq!(apply_inhabitant_template1(\""
-                                                .to_string(),
-                                            tmpl.clone(),
-                                        ),
-                                        "\".into(), \"".to_string(),
-                                    ),
-                                    arg0.clone(),
-                                ),
-                                "\".into()), \"".to_string(),
-                            ),
-                            expected.clone(),
-                        ),
-                        "\");\n".to_string(),
-                    )
-                }
-            } else {
-                if ((arg_list.clone().len() as i64) == 2) {
-                    {
-                        let arg0 = first_or_empty(arg_list.clone());
-                        let arg1 = second_or_empty(arg_list.clone());
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into(), \"".to_string()), arg1.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
-                    }
-                } else {
-                    "".to_string()
-                }
-            }
+    CoercionAssertion::CheckpointAssertion { target: t, dag_name: name, expected_type: expected, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(coerce_primitive_type(type_realization_decision(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into(), std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)), \"".to_string()), name.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string()),
+    CoercionAssertion::ContainerAssertion { target: t, container_name: name, expected_template: expected, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(coerce_container_template(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(\"".to_string()), expected.clone()), "\".to_string()));\n".to_string()),
+    CoercionAssertion::CopyAssertion { target: t, dag_name: name, expected_copy: expected, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(is_copy(type_realization_decision(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into(), std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent))), Some(".to_string()), if expected.clone() {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }), "));\n".to_string()),
+    CoercionAssertion::TemplateAssertion { template: tmpl, args: arg_list, expected, .. } => if ((arg_list.clone().len() as i64) == 1) {
+        {
+            let arg0 = first_or_empty(arg_list.clone());
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template1(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+}
+    } else {
+        if ((arg_list.clone().len() as i64) == 2) {
+            {
+                let arg0 = first_or_empty(arg_list.clone());
+let arg1 = second_or_empty(arg_list.clone());
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into(), \"".to_string()), arg1.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+}
+        } else {
+            "".to_string()
         }
-    }
+    },
+}
 }
 
 pub fn ct_profile_helpers() -> String {

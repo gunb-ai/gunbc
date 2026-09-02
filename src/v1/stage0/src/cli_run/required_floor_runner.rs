@@ -933,6 +933,22 @@ pub(crate) fn changed_witness_identities_from_edited_test_fns(
     Ok(identities)
 }
 
+/// Is this identity's declared home under a root the tree declares NON-EXECUTING?
+///
+/// The authority is `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes`, read through the same
+/// front-end projection as `witness_layer_roots`. Membership is the grant; everything else blocks.
+/// The roster is grained in the MODULE NAMESPACE because this population is undiscovered by
+/// definition -- no file was enumerated, so no path exists here to compare against a directory.
+fn identity_home_is_declared_non_executing(module_path: &str) -> bool {
+    non_executing_witness_module_prefixes()
+        .iter()
+        .any(|prefix| {
+            !prefix.is_empty()
+                && (module_path == prefix.as_str()
+                    || module_path.starts_with(&format!("{prefix}.")))
+        })
+}
+
 /// The host realization of `v2.workflow.floor_changed_witness`
 /// `changed_witness_execution_standing`, one row per changed identity, joined against the two
 /// receipt populations the run already holds: the disposition rows (the admission authority)
@@ -1041,6 +1057,45 @@ pub(crate) fn changed_witness_projection_rows(
                         .unwrap_or("not_executed")
                         .to_string(),
                     blocks: !green,
+                }
+            }
+            // A DECLINE BLOCKS UNLESS THE TREE GRANTS AN EXEMPTION, and the grant is membership in
+            // a roster, never the absence of a match anywhere else.
+            //
+            // Blocking every decline is right for the silence the 2026-08-30 ruling closes: a PR
+            // adds witnesses, they never run, the floor greens. `DeclinedOutsideGateClosure` is
+            // that case. A root the fold structurally CANNOT reach is a different subject --
+            // `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` declares it, and
+            // `non_executing_witness_module_prefixes_restoration` carries its 4b(2) trigger (bare references
+            // binding by containment; vehicle, the namespace cut). Blocking there surfaces no new
+            // silence: it forbids TOUCHING debt the tree has already declared, including by the
+            // program whose trigger retires it. A rule that forbids the work its own trigger
+            // requires is not enforcement.
+            //
+            // FAIL-CLOSED: the exemption requires the identity's declared home to BE in that
+            // roster. An unreadable roster, an empty one, or a home nobody rostered all block. This
+            // is deliberately not `!witness_layer_roots().contains(home)` -- that grants the
+            // exemption by absence, so an unrostered tree or a typo'd path would go silently
+            // non-blocking, and it substitutes "not declared executing" for "declared
+            // non-executing", which are different claims.
+            //
+            // The exemption evaporates with the row: when `v1` leaves the roster, this arm stops
+            // matching and needs no deletion.
+            Some(RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                module_path,
+            }) if identity_home_is_declared_non_executing(module_path) => {
+                ChangedWitnessProjectionRow {
+                    identity: identity.clone(),
+                    cost: None,
+                    standing: "declined-in-declared-non-executing-root",
+                    disposition: required_floor_disposition_label(
+                        &RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                            module_path: module_path.clone(),
+                        },
+                    )
+                    .to_string(),
+                    outcome: "not_executed".to_string(),
+                    blocks: false,
                 }
             }
             Some(declined) => ChangedWitnessProjectionRow {
@@ -1567,10 +1622,19 @@ pub(crate) fn emit_changed_witness_projection(
         );
     }
     let blocking = rows.iter().filter(|r| r.blocks).count();
+    // THE EXEMPTED POPULATION IS PRINTED BESIDE THE TWO IT SITS BETWEEN, because a non-blocking
+    // decline that nobody counts is the silence the 2026-08-30 ruling forbids, merely relocated.
+    // Countable and named is what separates a declared exemption from a hole.
+    let declared_non_executing = rows
+        .iter()
+        .filter(|r| r.standing == "declined-in-declared-non-executing-root")
+        .count();
     eprintln!(
-        "required-floor: changed_witnesses={} changed_witness_blocking={}",
+        "required-floor: changed_witnesses={} changed_witness_blocking={} \
+         changed_witness_declined_in_declared_nonexecuting_root={}",
         rows.len(),
-        blocking
+        blocking,
+        declared_non_executing
     );
     if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
         if !rows.is_empty() {
@@ -4452,6 +4516,69 @@ pub fn run_required_floor(
             sample(&disposition_duplicated),
         ));
     }
+    // TWO RANGES OVER ONE POPULATION, HANDLED HERE AND NOT REPAIRED HERE.
+    //
+    // `changed_witness_set` is derived from the run's git diff and is ROOT-AGNOSTIC.
+    // `declared_identity_set` is enumerated from the discovered index, which is scoped to this
+    // run's `--source-root`s (`dag` and `src/v2`). The selector's range is therefore strictly
+    // WIDER than the enumerator's, so a witness homed anywhere else — `src/v1/tests/claim/...`
+    // is the live population — is SELECTABLE AND UNDECLARABLE by construction. Such an identity
+    // reached neither side of the join above (it is in `declared_identity_set` for neither the
+    // declared nor the dispositioned side, so `FloorDispositionJoinInexact` stayed silent about
+    // it) and then failed the sublane join below naming identities that NO EDIT INSIDE THE
+    // OFFENDING PR COULD EVER SATISFY.
+    //
+    // The guard that would have named it, `ChangedWitnessOutsidePreparedSubject`, cannot fire:
+    // it sits inside the per-DISCOVERED-file loop, and these modules never enter that loop.
+    //
+    // SO THE UNHANDLED CASE BECOMES A TYPED DECLINE, and nothing else changes. Every identity
+    // the enumerator DID declare keeps exactly the disposition it had, so the dispositioned
+    // population over discovered files is unchanged; only selections that were previously
+    // unrepresentable acquire a row. It is a decline rather than a filter on purpose: silently
+    // dropping the selection would green the floor by making the over-selection invisible, which
+    // is the absorbing arm — the selector keeps over-selecting and nobody ever learns.
+    //
+    // THIS HANDLES THE MISMATCH AND DOES NOT RETIRE IT. NEXT-RUNG TRIGGER, named as the
+    // capability: SELECTION AND DISPOSITION CONSUME ONE RANGE. A green floor over these rows
+    // means the mismatch is represented, never that the two denominators have been reconciled.
+    let undeclarable_changed: Vec<String> = {
+        let mut v: Vec<String> = changed_witness_set
+            .difference(&declared_identity_set)
+            .cloned()
+            .collect();
+        v.sort();
+        v
+    };
+    for identity in &undeclarable_changed {
+        let module_path = identity
+            .rsplit_once('.')
+            .map(|(module, _)| module.to_string())
+            .unwrap_or_else(|| identity.clone());
+        disposition_rows.push(RequiredFloorDispositionRow {
+            identity: identity.clone(),
+            disposition: RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                module_path,
+            },
+        });
+    }
+    // The set the sublane join is entitled to expect: everything the selector chose MINUS the
+    // selections the enumerator could never declare, each of which now carries its own row.
+    let changed_witness_expected: HashSet<String> = changed_witness_set
+        .iter()
+        .filter(|identity| !undeclarable_changed.contains(identity))
+        .cloned()
+        .collect();
+    if !undeclarable_changed.is_empty() {
+        println!(
+            "required-ci: floor changed-witness selections outside discovery: {} identity(ies) \
+             declined — the changed-witness selector ranges over the whole diff and the declared \
+             population ranges over the discovery roots, so these are selectable and \
+             undeclarable; they are represented, NOT reconciled: {}",
+            undeclarable_changed.len(),
+            undeclarable_changed.join(", ")
+        );
+    }
+
     // EXACTNESS OF THE SUBLANE, as an identity join rather than a count. The left side is the
     // single #9717 diff derivation captured before preparation; the right side is what this site
     // projection actually marked for changed execution. A missing, foreign, or duplicated row
@@ -4466,13 +4593,13 @@ pub fn run_required_floor(
         })
         .map(|row| row.identity.clone())
         .collect();
-    if changed_disposition_set != changed_witness_set {
-        let mut selected_without_disposition: Vec<&str> = changed_witness_set
+    if changed_disposition_set != changed_witness_expected {
+        let mut selected_without_disposition: Vec<&str> = changed_witness_expected
             .difference(&changed_disposition_set)
             .map(String::as_str)
             .collect();
         let mut disposition_without_selection: Vec<&str> = changed_disposition_set
-            .difference(&changed_witness_set)
+            .difference(&changed_witness_expected)
             .map(String::as_str)
             .collect();
         selected_without_disposition.sort();
@@ -6759,6 +6886,9 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
         RequiredFloorDisposition::DeclinedOutsideGateClosure => "declined_outside_gate_closure",
         RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => "declined_discovery_excluded",
+        RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+            "declined_changed_witness_outside_discovery"
+        }
     }
 }
 
@@ -6775,6 +6905,12 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         // name, and the label column keeps them apart for any reader joining on it.
         RequiredFloorDisposition::DeclinedDiscoveryExcluded { matched_substring } => {
             matched_substring
+        }
+        // The module that declares the identity, which is the whole content of this row: the
+        // reader needs to know WHERE the undeclarable selection is homed to see that it is
+        // outside the run's roots.
+        RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { module_path } => {
+            module_path
         }
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness

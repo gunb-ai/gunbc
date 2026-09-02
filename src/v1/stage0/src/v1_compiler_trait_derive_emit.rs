@@ -40,7 +40,7 @@ pub use crate::std_trait_derive_shape::{
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
+pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
 pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
 pub use crate::v1_compiler_emit_rust::item_generic_param_names;
@@ -3502,11 +3502,12 @@ pub fn v1_item_alias_hop_type_exprs(
         {
             let dag_name =
                 crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-            let decl_file = crate::v1_compiler_coercion::decl_identity_file(item.clone());
-            match crate::v1_compiler_coercion::lookup_checkpoint(
-                RenderTarget::Rust,
-                dag_name.clone(),
-                decl_file.clone(),
+            match crate::v1_compiler_coercion::realized_checkpoint(
+                crate::v1_compiler_coercion::declaration_realization(
+                    item.clone(),
+                    dag_name.clone(),
+                    RenderTarget::Rust,
+                ),
             ) {
                 Some(_) => Rc::new(vec![]),
                 std::option::Option::None => {
