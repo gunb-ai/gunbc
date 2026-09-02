@@ -135,17 +135,23 @@ test fn the_local_roster_is_not_empty() -> Bool {
     && length(xs: local_repo_wet_scheduled_identities()) == length(xs: local_repo_wet_schedule())
 }
 
-// THE QUALIFIED NAME IS DERIVED FROM THE IDENTITY, NEVER CARRIED BESIDE IT. A roster row whose
-// spelled name disagreed with its structured identity would resolve one way in the gate and another
-// in the ledger, which is the spelling-keyed defect this carrier exists to make unwritable.
-test fn every_roster_identity_agrees_with_its_own_qualified_name() -> Bool {
+// THE ROW'S TWO SPELLINGS OF ITS FUNCTION MUST AGREE. `WetScheduledClaim` carries the function name
+// TWICE -- once inside `identity` and once as its own field -- so a row can be authored whose
+// `function` says one thing and whose `identity.function` says another. That is authorable today,
+// which is what makes this witness a wall rather than a decoration: the gate keys on the identity
+// and a reader keys on the field, so a disagreeing row is admitted under one name and reported
+// under the other.
+//
+// AN EARLIER REVISION OF THIS WITNESS COMPARED `witness_identity_qualified_name` TO A HAND-BUILT
+// RECONSTRUCTION OF THE SAME TWO FIELDS. Nothing could have made that red -- the qualified name is
+// DERIVED from the identity, so both sides were the same computation and the check carried no
+// information. The duplication worth guarding is this one, and it is in the carrier rather than in
+// the derivation.
+test fn every_roster_row_spells_its_function_the_same_way_twice() -> Bool {
   length(
     xs: filter(
       xs: local_repo_wet_schedule(),
-      predicate: fn(s) {
-        witness_identity_qualified_name(identity: s.identity)
-          != s.identity.module_path + "." + s.identity.function
-      }
+      predicate: fn(s) { s.function != s.identity.function }
     )
   ) == 0
 }
