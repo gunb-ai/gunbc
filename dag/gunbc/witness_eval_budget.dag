@@ -78,6 +78,27 @@ fn long_eval_budget(
 // a row grounded in one would be re-derived every time the number moved. What makes a row correct
 // is that the witness's own work is bounded by something the ordinary ceiling cannot see.
 
+// THE THIRTEEN LIVE-GATE CELLS. They are one row each rather than one file-grain row because
+// the axis is declared at function grain everywhere else in this carrier and a file-grain row
+// would silently adopt any cell added to the module later — a budget granted to a witness
+// nobody has written yet is not a declaration about what that witness walks.
+//
+// WHAT THEY WALK, WHICH IS THE ROW'S SUBJECT. Every cell derives from
+// gunbc.self_host_compile_phase_frontier self_host_compile_phase_frontier_receipts — the
+// persisted compile-phase receipt series, an authored roster carrying each receipt's full raw
+// diagnostic-identity census — and then folds that census through the frontier's own fold. The
+// series is the witness's input, it is authored data that grows as receipts are appended, and
+// its size is not visible to a per-claim ceiling derived from what an ordinary witness costs.
+// The claim frame is fresh per claim (required_floor_runner builds one so that "claims sharing
+// one immutable scope must not share the mutable evaluation caches a context owns"), so the
+// derivation is paid once per cell and thirteen times per module, by construction.
+//
+// THESE ARE NOT KNOWN-RED ROWS AND THEY DO NOT LEAVE DISCOVERY. They pass; they are enrolled on
+// the required floor under required_gate_prefixes' `test.claim.self_host_` prefix and stay
+// there. That is the whole point of the carrier split above: before it, saying "this witness
+// needs more eval time" could only be said by a row that also removed the witness from the
+// floor.
+
 data declared_witness_eval_budgets: List<DeclaredWitnessEvalBudget> = [
   long_eval_budget(
     entry: "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag",
@@ -135,27 +156,6 @@ data declared_witness_eval_budgets: List<DeclaredWitnessEvalBudget> = [
     reason: "One normalize->resolve->infer pass over add_probe through the production frontend: the crossing IS the subject, so its cost is the witness's own work rather than overhead. The fast per-PR control that carries the cheap half is infer_transform_non_add_remains_frontier_holds.",
     dissolution: unbound_dissolution(description: "the frontend+infer crossing is realized natively rather than interpreted, at which point the pass costs closure time and this row deletes with the long-lane file")
   ),
-
-  // THE THIRTEEN LIVE-GATE CELLS. They are one row each rather than one file-grain row because
-  // the axis is declared at function grain everywhere else in this carrier and a file-grain row
-  // would silently adopt any cell added to the module later — a budget granted to a witness
-  // nobody has written yet is not a declaration about what that witness walks.
-  //
-  // WHAT THEY WALK, WHICH IS THE ROW'S SUBJECT. Every cell derives from
-  // gunbc.self_host_compile_phase_frontier self_host_compile_phase_frontier_receipts — the
-  // persisted compile-phase receipt series, an authored roster carrying each receipt's full raw
-  // diagnostic-identity census — and then folds that census through the frontier's own fold. The
-  // series is the witness's input, it is authored data that grows as receipts are appended, and
-  // its size is not visible to a per-claim ceiling derived from what an ordinary witness costs.
-  // The claim frame is fresh per claim (required_floor_runner builds one so that "claims sharing
-  // one immutable scope must not share the mutable evaluation caches a context owns"), so the
-  // derivation is paid once per cell and thirteen times per module, by construction.
-  //
-  // THESE ARE NOT KNOWN-RED ROWS AND THEY DO NOT LEAVE DISCOVERY. They pass; they are enrolled on
-  // the required floor under required_gate_prefixes' `test.claim.self_host_` prefix and stay
-  // there. That is the whole point of the carrier split above: before it, saying "this witness
-  // needs more eval time" could only be said by a row that also removed the witness from the
-  // floor.
   long_eval_budget(
     entry: "dag/test/claim/self_host_compile_phase_live_gate_witness_test.dag",
     f: "a_live_census_equal_to_the_latest_receipt_holds",
