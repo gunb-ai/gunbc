@@ -1,6 +1,12 @@
 module test.claim.repository_transition_admission_witness_test
 
 import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.live_deploy.apply {
+  live_deploy_wet_with_access_for_realization,
+  live_deploy_transaction_wet_with_access_for_realization,
+}
+import gunbc.ci_deploy_access { ci_deploy_srv1_access, ci_deploy_srv1_operator_access }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   LegacyGitFileSync,
@@ -55,4 +61,34 @@ test fn the_refusal_names_the_mechanism_rather_than_only_a_verdict() -> Bool {
 // only on the arm that has something to say, so "admitted" cannot smuggle a stale explanation.
 test fn an_admitted_realization_carries_no_refusal_reason() -> Bool {
   refusal_reason(a: repository_transition_admission(realization: GitNativeConvergence)) == ""
+}
+
+fn exit_refusal_reason(e: ProcessExit) -> String {
+  match e {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: r } => r
+  }
+}
+
+// CONSULTATION, NOT ONLY THE DECISION FUNCTION. These call the internal seams both production wet
+// entries use, injecting the retained legacy refusal so the control stays hermetic after production
+// binds GitNativeConvergence. Removing either admission match makes its corresponding witness reach
+// host/workflow effects instead of returning this exact refusal and therefore red.
+test fn both_direct_apply_principals_consult_repository_transition_admission() -> Bool {
+  let expected = refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
+  exit_refusal_reason(e: live_deploy_wet_with_access_for_realization(
+    access: ci_deploy_srv1_access,
+    realization: LegacyGitFileSync,
+  )) == expected
+    && exit_refusal_reason(e: live_deploy_wet_with_access_for_realization(
+      access: ci_deploy_srv1_operator_access,
+      realization: LegacyGitFileSync,
+    )) == expected
+}
+
+test fn receipted_transaction_ingress_consults_repository_transition_admission() -> Bool {
+  exit_refusal_reason(e: live_deploy_transaction_wet_with_access_for_realization(
+    access: ci_deploy_srv1_access,
+    realization: LegacyGitFileSync,
+  )) == refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
 }
