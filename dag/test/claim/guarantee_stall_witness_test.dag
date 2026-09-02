@@ -7,9 +7,9 @@ import gunbc.guarantee_rung {
 }
 import gunbc.guarantee_stall {
   GuaranteeStall,
-  CannotClimbFurther, ClimbableButUnbuilt,
+  CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
   BoundedPopulation, UncountedNotEnumerable,
-  stall_is_below_ceiling, stall_is_permanent, stall_report_message,
+  stall_is_below_ceiling, stall_report_message,
   next_rung_trigger_enforcement_stall,
   all_guarantee_stalls, every_stall_is_below_its_ceiling, every_stall_names_a_trigger,
   heterogeneous_child_list_stall, stall_roster_size,
@@ -37,8 +37,15 @@ data control_stall: GuaranteeStall = GuaranteeStall {
 // THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
 // and a fold stuck at either constant is a different defect, so one assertion sees only one of them.
 test fn stall_permanence_follows_the_blocker() -> Bool {
-  stall_is_permanent(s: control_stall)
-    && !stall_is_permanent(s: next_rung_trigger_enforcement_stall)
+  match control_stall.blocker {
+    CannotClimbFurther { why: _ } => true
+    AwaitsOneGrounding { grounding: _ } => false
+    ClimbableButUnbuilt => false
+  } && match next_rung_trigger_enforcement_stall.blocker {
+    CannotClimbFurther { why: _ } => false
+    AwaitsOneGrounding { grounding: _ } => true
+    ClimbableButUnbuilt => true
+  }
 }
 
 // THE LIVE ROW IS BELOW ITS CEILING AND THE CONTROL IS NOT. This is the assertion that makes the

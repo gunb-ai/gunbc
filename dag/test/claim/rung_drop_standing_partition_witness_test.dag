@@ -9,6 +9,8 @@ import gunbc.rung_drop {
   every_authored_prose_row_names_its_arm,
   every_legacy_arm_is_claimed_exactly_once,
   source_root_ingest_gate_rung_drop,
+  consolidated_typed_drop_identities,
+  every_consolidated_typed_drop_is_rostered_once,
 }
 
 // THE DEFECT THIS WITNESS EXISTS FOR, stated as the state that must stay unwritable: DESIGN.md's
@@ -74,4 +76,21 @@ test fn the_roster_carries_both_declaration_arms() -> Bool {
     && length(xs: rung_drop_roster) > length(xs: legacy_prose_identity_roster)
     && length(xs: filter(map(rung_drop_roster, d => d.identity),
                          i => i == source_root_ingest_gate_rung_drop.identity)) == 1
+}
+
+// THE TYPED SIDE IS PINNED BY NAME, WHICH NO OTHER ASSERTION IN THIS FILE DOES. Raised against this
+// witness rather than found by it: the folds above are blind to the typed population -- they answer
+// the same for four consolidated rows as for three -- so a row rescued by this change could have
+// been lost in a later merge with every other assertion still green. That is this PR's own finding
+// recurring inside its repair, which is the one place it would be least likely to be noticed.
+//
+// THE RED IS DELETING ANY OF THE FOUR FROM THE ROSTER, and it is a different red from the prose
+// side's: losing a prose row trips `every_legacy_arm_is_claimed_exactly_once` because the arm goes
+// unclaimed, and there is no arm to go unclaimed for a typed row. This assertion admits a FIFTH
+// typed row without complaint, deliberately -- a new typed drop is the path this consolidation
+// exists to open, and refusing it here would make the control a ratchet against its own purpose.
+test fn every_consolidated_typed_row_is_still_rostered() -> Bool {
+  every_consolidated_typed_drop_is_rostered_once(ds: rung_drop_roster)
+    && length(xs: consolidated_typed_drop_identities) == 4
+    && !every_consolidated_typed_drop_is_rostered_once(ds: [])
 }

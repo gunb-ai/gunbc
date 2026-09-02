@@ -77,13 +77,13 @@ fn stall_is_below_ceiling(s: GuaranteeStall) -> Bool {
   guarantee_rung_index(r: s.current) < guarantee_rung_index(r: s.ceiling)
 }
 
-fn stall_is_permanent(s: GuaranteeStall) -> Bool {
-  match s.blocker {
-    CannotClimbFurther { why: _ } => true
-    AwaitsOneGrounding { grounding: _ } => false
-    ClimbableButUnbuilt => false
-  }
-}
+// NO `GuaranteeStall -> Bool` PERMANENCE ACCESSOR LIVES HERE, AND ITS ABSENCE IS THE POINT.
+// `stall_is_permanent` stood here until gunbc#10106 and was a second, weaker spelling of the arm
+// the row already carries: DESIGN section 5 prices a check that re-states a constraint the model
+// carries as a second representation of it, and the practical cost is that every later caller
+// reaches for the Bool instead of the variant it came from, so "why is this permanent" stops being
+// answerable at the use site. Consumers match `ClimbBlocker` themselves -- exhaustively, which is
+// what makes a new arm a compile error at every consumer rather than a silent `false`.
 
 fn climb_blocker_label(b: ClimbBlocker) -> String {
   match b {
