@@ -759,3 +759,22 @@ regardless of where it sits in a cost ranking, and the floor's `cpu_deadline`
 counter names how many there are without naming which — the identities are in the
 interruption diagnostics, and only those say whether a discriminating RED is the
 one being cut off.
+
+**The repair for this class has to travel through the gate the class refuses.**
+Recorded because it is a structural property and not a queue accident, and
+because it decides what "prioritise the fix" can and cannot buy. A preemption is
+runner-dependent — the same rows measure anywhere from ~100ms to over 500ms on
+one tree — so any PR can draw a refusal from two rows that are not broken, and
+that includes the PR carrying the repair. Observed in situ: a 138-line
+documentation-only change with no `.dag`, no Rust and no workflow was refused by
+`a_live_tree_that_gained_an_identity_refuses_and_names_it` at
+`cpu_at_least=501ms/500ms`, while the consolidation that would make that fold
+cheap sat open with its own required floor lane running.
+
+The tempting exit is a re-run, and it is the one move this document's evidence
+forbids most specifically. A re-run does not make the row cheaper; it redraws the
+runner. What it buys is a green **over refusals that did not execute** — the
+`interrupted_before_verdict` rows are the discriminating REDs themselves, so the
+mark asserts a verdict for exactly the claims that were preempted. That is worse
+than a slow build, and it is why `cpu_deadline` must be read as a safety counter
+rather than a performance one.
