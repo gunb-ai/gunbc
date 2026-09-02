@@ -4,12 +4,13 @@ module gunbc.design_ledgers
 //
 // DESIGN.md is reasoned serially: section 1 fixes the axioms and each later section is a
 // consequence of the ones before it. Two of its sections were never consequences of anything --
-// the recurring failure modes and the declared rung drops are ROSTERS, appended to by every lane
-// that finds a new class or declares a new drop, and between them they had grown to the MAJORITY
-// of the projected document by character count -- the half of the file that every session loads on
-// every turn, and the half that grows without bound. The magnitude is deliberately not transcribed
-// here for the reason given below; the instrument is `wc -c` on the projection before and after,
-// which any reader can run against the tree in front of them.
+// the recurring failure modes and the declared rung drops are ROSTERS: every lane that finds a new
+// class or declares a new drop APPENDS one, so their size is monotonically nondecreasing in the
+// number of lanes, while the sections around them are fixed by section 1 and do not grow at all.
+// That asymmetry is the whole argument and it is structural -- it holds at every tree, before and
+// after any particular measurement -- so no share, percentage or character count is stated here.
+// A magnitude would only say how far the unbounded half had got on the day someone looked, and
+// DESIGN.md is the file every session loads IN FULL on every turn.
 //
 // So they are projected HERE, one file per roster: docs/design-failure-modes.md from
 // gunbc.recurring_failure_mode and docs/design-rung-drops.md from gunbc.rung_drop. Each is one
