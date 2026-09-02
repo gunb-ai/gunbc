@@ -38067,6 +38067,14 @@ pub struct WitnessExecutionOccurrence {
     /// The policy line this claim was measured against -- an INPUT, not a derivation, and
     /// carried per row because a future per-claim line must not silently re-judge old rows.
     pub cost_line_ms: u64,
+    /// The CPU SAFETY DEADLINE this claim ran under, which is no longer one corpus-wide scalar:
+    /// an identity carrying a `SubstrateLongLaneEvalBudget` row on `gunbc.witness_eval_budget`
+    /// runs against the envelope it declared. Carried per row because without it the artifact
+    /// cannot distinguish a claim that finished inside a declared envelope from one that
+    /// finished inside the ordinary line, so a reader cannot check that a declaration was
+    /// honoured -- and a declaration nobody can check reaching the executor is exactly the
+    /// state this column exists to make observable.
+    pub cpu_limit_ms: u64,
 }
 
 /// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
@@ -38731,20 +38739,21 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms"
+        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\tcpu_limit_ms"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
             row.verdict_reached,
             row.wall_nanos / 1_000_000,
             row.cpu_nanos / 1_000_000,
-            row.cost_line_ms
+            row.cost_line_ms,
+            row.cpu_limit_ms
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     }

@@ -3,9 +3,7 @@ module test.claim.exact_witness_admission_witness
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
   explicit_witness_admission_is_known_red,
-  explicit_witness_admission_requires_long_eval_budget,
   explicit_witness_admission_executing_witness_roster,
-  witness_long_eval_budget_roster,
   explicit_witness_admissions,
   explicit_witness_admission_covers,
   explicit_witness_admission_covers_in,
@@ -22,6 +20,10 @@ import gunbc.explicit_witness_admission {
   known_red_probe_corpus_pre_verdict_long_budget_roster,
   known_red_pre_verdict_refusal_roster,
   known_red_probe_expecting
+}
+import gunbc.witness_eval_budget {
+  witness_long_eval_budget_roster,
+  witness_declares_long_eval_budget
 }
 import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, witness_long_eval_budget_union_in, falsifier_substrate_long_lane_entries }
 import v2.workflow.witness_admission {
@@ -43,8 +45,6 @@ import std.witness_admission {
   OfflineLocalRecipe,
   FalsifierSubstrateLongLane,
   QuarantineProbeExpectRed,
-  SubstrateLongLaneEvalBudget,
-  FastLaneEvalBudget,
   ExpectAssertionFalse,
   ExpectTypedPreVerdictRefusal,
   PreVerdictResolve,
@@ -112,7 +112,6 @@ fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
       entry: fixture_entry,
       f: fixture_expected_red_function,
       kind: CorpusWitnessKind,
-      budget: FastLaneEvalBudget,
       reason: "fixture: an expected-red witness sharing a file with an ordinary green one",
       dissolution: unbound_dissolution(description: "fixture: never - this row is authored by the witness, not by the roster")
     )
@@ -125,7 +124,6 @@ fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
       entry: fixture_entry,
       f: "",
       kind: CorpusWitnessKind,
-      budget: FastLaneEvalBudget,
       reason: "fixture: the file-grain shape this authority replaced",
       dissolution: unbound_dissolution(description: "fixture: never - control only")
     )
@@ -176,7 +174,6 @@ fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: f,
     kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
     reason: "synthetic",
     dissolution: unbound_dissolution(description: "synthetic")
   )
@@ -202,7 +199,6 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
           kind: CorpusWitnessKind
         },
         cadence: OfflineLocalRecipe,
-        budget: FastLaneEvalBudget,
         expected: ExpectAssertionFalse,
         reason: "synthetic",
         dissolution: unbound_dissolution(description: "synthetic")
@@ -253,7 +249,6 @@ fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
       kind: CorpusWitnessKind
     },
     cadence: FalsifierSubstrateLongLane,
-    budget: SubstrateLongLaneEvalBudget,
     expected: ExpectAssertionFalse,
     reason: "synthetic",
     dissolution: unbound_dissolution(description: "synthetic")
@@ -268,7 +263,6 @@ fn synthetic_quarantine_cadence_but_expected_holds() -> ExplicitWitnessAdmission
       kind: CorpusWitnessKind
     },
     cadence: QuarantineProbeExpectRed,
-    budget: FastLaneEvalBudget,
     expected: ExpectWitnessHolds,
     reason: "synthetic",
     dissolution: unbound_dissolution(description: "synthetic")
@@ -282,13 +276,22 @@ test fn expected_verdict_is_independent_of_cadence() -> Bool {
     )
 }
 
-test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool {
-  explicit_witness_admission_requires_long_eval_budget(
-    row: synthetic_long_lane_cadence_but_expected_red()
-  )
-    && !explicit_witness_admission_requires_long_eval_budget(
-      row: synthetic_quarantine_cadence_but_expected_holds()
-    )
+// THE BUDGET AXIS IS NO LONGER ASSERTED FROM THIS FILE, because it is no longer on this row.
+// eval_budget_is_independent_of_cadence_and_of_expected_verdict stood here and read the budget off
+// the two synthetic admission rows above; with the field moved to gunbc.witness_eval_budget the
+// assertion has no subject on an ExplicitWitnessAdmission at all. The independence it claimed is
+// now STRUCTURAL rather than checked — an admission row cannot express a budget, so no cadence or
+// expectation can imply one — and the claim it made about a lookup is carried, with its
+// discriminating reds, by test.claim.witness_eval_budget_witness against the new carrier. The
+// stronger property that replaced it is the one this file could never state: a witness may declare
+// a long envelope WITHOUT an admission row, which is what lets a floor-executed witness declare a
+// budget without deleting itself from the floor.
+
+test fn a_live_gate_identity_declares_its_envelope_without_an_admission_row() -> Bool {
+  let entry = "dag/test/claim/self_host_compile_phase_live_gate_witness_test.dag"
+  let f = "a_live_census_equal_to_the_latest_receipt_holds"
+  witness_declares_long_eval_budget(entry: entry, function: f)
+    && !explicit_witness_admission_covers(entry: entry, function: f)
 }
 
 // The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered
@@ -363,19 +366,15 @@ test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -
     && !schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
 }
 
-test fn declared_long_budget_row_is_known_red_or_executing_green() -> Bool {
-  fold(explicit_witness_admissions, init: true, f: fn(ok, row) {
-    if explicit_witness_admission_requires_long_eval_budget(row: row) {
-      ok
-        && (
-          explicit_witness_admission_is_known_red(row: row)
-            || explicit_witness_admission_is_executing_witness(row: row)
-        )
-    } else {
-      ok
-    }
-  })
-}
+// RETIRED CLAIM: declared_long_budget_row_is_known_red_or_executing_green folded the ADMISSION
+// rows and required every row declaring a long budget to be known-red or an executing green
+// admission. It is retired by the carrier move rather than weakened: budgets are no longer
+// authored on admission rows, so the population it folded is empty by construction and the claim
+// would be permanently green while checking nothing — the decoration DESIGN section 4b calls worse
+// than absent. What it was protecting against was a budget row that admits nothing; under the new
+// carrier that is the ORDINARY case and is the point of the split, and the wall that replaced it
+// is gunbc.witness_eval_budget's own well-formedness (no empty entry, no file-grain function) with
+// its reds in test.claim.witness_eval_budget_witness.
 
 // RETIRED CLAIM: every_declared_long_budget_row_is_also_expected_red_today observed that every
 // SubstrateLongLaneEvalBudget row was also known-red — true until #8395 landed
@@ -463,7 +462,6 @@ fn synthetic_pre_verdict_row() -> ExplicitWitnessAdmission {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: "cannot_resolve_at_all",
     kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
     expected: ExpectTypedPreVerdictRefusal {
       phase: PreVerdictResolve,
       cause: UnboundImportedVariantConstructor
@@ -478,7 +476,6 @@ fn synthetic_assertion_false_row() -> ExplicitWitnessAdmission {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: "runs_and_returns_false",
     kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
     expected: ExpectAssertionFalse,
     reason: "synthetic",
     dissolution: unbound_dissolution(description: "synthetic")
