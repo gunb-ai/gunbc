@@ -328,7 +328,9 @@ the claim as `planned-without-terminal-verdict`, `outcome=failed`; the aggregate
 changed_witness_declined_in_declared_nonexecuting_root=0`, so the row executed rather than being
 declined again. The same run measured the containing universe as 15,383 declared identities,
 3,499 routed and 11,277 declined outside the gate closure, and ended with exactly one semantic
-failure and zero interrupted verdicts. The repair renames the claim to
+failure and zero interrupted verdicts. Those population figures are bound to that run and tree:
+declared, offered and routed populations move with the tree, so figures from another head are
+neither approximations of nor superseded by this receipt. The repair renames the claim to
 `w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline` and asserts the disposition its
 own input entails; direct claim execution then passes. The reusable fact is not the spelling fix:
 selection of a normally nonexecuting identity is an executable falsifier for specifications that
