@@ -62,8 +62,10 @@ type LoadStanding
 // it was equally authoritative and none of them could be joined to the swap it authorized.
 //
 // The relation itself survives unchanged in content: `LoadDocumentMalformed` is still the sole
-// standing that permits superseding a generation, and the four refusals are still refused for four
-// different reasons rather than by one rule --
+// standing that permits superseding a generation, and the FIVE refusals are still refused for five
+// different reasons rather than by one rule. This said "four" and listed four while the coproduct
+// carried a fifth: `LoadRequiresNodeAtAuthoredSource` landed without being added here, so the
+// rationale list was a census of the population as it stood when the sentence was written --
 //
 //   LoadComplete            nothing is wrong; there is nothing to replace.
 //   LoadPartial             the document is CORRECT and deliberately incomplete. Superseding a valid
@@ -76,6 +78,12 @@ type LoadStanding
 //                           is prevented by construction). A collision means the structural locator
 //                           cannot represent both, not that either is damaged -- so superseding
 //                           discards a valid generation over an honest hash coincidence.
+//   LoadRequiresNodeAtAuthoredSource
+//                           the document read fine and what it ASSERTS is unsatisfiable: a position
+//                           that must hold a semantic node names authored source. No fetch repairs
+//                           it, and no rewrite of the bytes is owed -- the writer's generation is
+//                           not damaged, it is describing a graph that cannot exist, so superseding
+//                           would destroy a generation over a defect that is not in its bytes.
 //   LoadDocumentMalformed   the tag matched, so this build claims to understand the EXACT schema,
 //                           and the document does not conform. This is the only standing where the
 //                           bytes are known-bad to a reader that should have understood them.

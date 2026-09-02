@@ -157,20 +157,26 @@ fn observe_generation(
 //     In `gunbc.scm.object_table_json`: `object_table_load_standing`.
 //
 //   THE PERMITTING STANDING IS ONE, AND IT IS OWNED BY NO ONE MODULE. `LoadDocumentMalformed` alone
-//     maps to `none` in `standing_permission_refusal`; every other arm names a refusal. Three of the
-//     five producers can answer with it: `closure_document_load_standing`,
-//     `repository_envelope_load_standing` for its member-read and target-reference modes, and
-//     `object_table_load_standing` for six of its seven causes. No single declaration or module is
-//     the permitting surface.
+//     maps to `none` in `standing_permission_refusal`; every other arm names a refusal. The five
+//     producers partition three ways against it, and the partition is by AUTHORITY rather than by
+//     whether the value can come back out:
+//       DECIDE IT, selecting it from a refusal cause -- `closure_document_load_standing`,
+//         `repository_envelope_load_standing` for its member-read and target-reference modes, and
+//         `object_table_load_standing` for six of its seven causes.
+//       RELAY IT WITHOUT DECIDING -- `closure_document_standing` returns it from its refused-document
+//         branch. It is a fourth return route and not a fourth decision authority, so counting it
+//         beside the three would overstate how many places the policy is actually made.
+//       CANNOT RETURN IT -- `loaded_closure_standing`.
 //
-//   WHAT THAT LEAVES STANDING. The success path is outside the permitting relation by construction:
-//     `loaded_closure_standing`'s three arms are `LoadComplete`, `LoadPartial` and
-//     `LoadRequiresNodeAtAuthoredSource`, none of which permits, so no load that SUCCEEDED can
-//     authorize destroying what it read, and a load whose requirement sits on a file is refused for
-//     its own named reason rather than by falling through. The collision arm is the load-bearing one:
-//     `ObjectTableObjectCollision` reaches `LoadIdentityCollision` and not `LoadDocumentMalformed`,
-//     because the permitting standing must not absorb a cause meaning "two objects claimed one
-//     identity".
+//   WHAT THAT LEAVES STANDING, at arm grain rather than at the grain of "success". The
+//     `ClosureDocLoaded` branch cannot authorize supersession: `loaded_closure_standing` returns only
+//     `LoadComplete`, `LoadPartial` or `LoadRequiresNodeAtAuthoredSource`, and none permits. The arm
+//     is named rather than the word "succeeded" because this module deliberately separates a document
+//     that DECODED from one whose standing answers `standing_loaded` true -- a requirement sitting on
+//     authored source decodes fine and is not loaded -- and a sentence about success blurs exactly
+//     that distinction. The collision arm is the other load-bearing one: `ObjectTableObjectCollision`
+//     reaches `LoadIdentityCollision` and not `LoadDocumentMalformed`, because the permitting standing
+//     must not absorb a cause meaning "two objects claimed one identity".
 //
 //   CONSUMERS BEFORE THIS MODULE: none in production. The permitting predicate had witnesses and no
 //     caller, so the hazard was not live -- it was pre-positioned, waiting for the first actuator to
@@ -182,14 +188,17 @@ fn observe_generation(
 //     total-but-blind class. That symbol no longer exists in the tree. The specimen stands as a
 //     historical record and is not counted in the five above.
 //
-//   WHAT THE AUDIT DOES NOT ESTABLISH. One producer today is not a bound on producers tomorrow, and
+//   WHAT THE AUDIT DOES NOT ESTABLISH. The current producer population is not a bound on producers
+//     tomorrow, and
 //     that is precisely why the destination now demands evidence instead of trusting a cause: a new
 //     classifier reaches `supersede_head_slot` on the same terms as the old one, and neither can
 //     supply a generation it did not read.
 //
 // THE PERMISSION ARM, DESCENDING RATHER THAN ANSWERING true/false. This is the same relation the
 // deleted Bool encoded, and the difference is that a refusal now names which standing refused it, so
-// a sixth standing fails to compile HERE rather than inheriting whichever answer a wildcard gave it.
+// a NEW standing fails to compile HERE rather than inheriting whichever answer a wildcard gave it.
+// (This said "a sixth standing" while the coproduct already had six arms -- the count named the
+// population that existed when the sentence was written, which is what makes a counted claim rot.)
 fn standing_permission_refusal(standing: LoadStanding) -> SupersessionRefusalCause? {
   match standing {
     LoadDocumentMalformed => none

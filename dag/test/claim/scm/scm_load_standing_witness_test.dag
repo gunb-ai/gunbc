@@ -174,13 +174,20 @@ test fn a_partial_load_is_never_supersedable() -> Bool {
     && !ls_permits(standing: LoadComplete)
 }
 
-// MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and the three refusals are refused for three
-// different reasons rather than by one rule. If this were the empty set the negative tests above
-// would pass vacuously.
+// MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and each non-permitting standing is refused for its
+// own reason rather than by one rule. If this were the empty set the negative tests above would pass
+// vacuously.
+//
+// THE CLAIM NAMES THE WHOLE POPULATION, SO IT MUST CHECK IT. This said "the three refusals" and
+// checked two, omitting `LoadRequiresNodeAtAuthoredSource` -- which meant the standing added by this
+// very branch could have permitted replacement with the claim still green. LoadComplete and
+// LoadPartial are checked by a_partial_load_is_never_supersedable above; the remaining three are
+// checked here, so the five are covered between the pair rather than by either alone.
 test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
   ls_permits(standing: LoadDocumentMalformed)
     && !ls_permits(standing: LoadUnsupportedProtocol)
     && !ls_permits(standing: LoadIdentityCollision)
+    && !ls_permits(standing: LoadRequiresNodeAtAuthoredSource)
     && !standing_loaded(standing: LoadDocumentMalformed)
 }
 

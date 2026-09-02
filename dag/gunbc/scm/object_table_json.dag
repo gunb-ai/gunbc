@@ -2,15 +2,15 @@ module gunbc.scm.object_table_json
 
 // DECODING THE OBJECT TABLE IS ONE OPERATION WITH ONE FAILURE POPULATION, and this module owns both.
 // It was previously homed inside gunbc.scm.commit_closure_json_v2 with its failures typed as THAT
-// module's ClosureDocRefusal, so six object-population causes sat in a coproduct that also answers
+// module's ClosureDocRefusal, so seven object-population causes sat in a coproduct that also answers
 // for envelope format and closure-root facts. A consumer matching that type had to handle causes
 // from three different owners, and no reader could tell from the type which owner produced which.
 //
 // THE MEASURED COST WAS NOT STYLISTIC, and it is the reason this cut is a correctness fix rather
 // than tidiness. closure_document_load_standing maps ObjectTableObjectCollision to
-// LoadIdentityCollision and the five tag/reference causes to LoadDocumentMalformed. Per
+// LoadIdentityCollision and the OTHER SIX tag/reference causes to LoadDocumentMalformed. Per
 // gunbc.scm.load_standing, LoadDocumentMalformed is THE ONLY standing that
-// standing_may_supersede_generation answers true for. So any consumer that classified the six
+// standing_may_supersede_generation answers true for. So any consumer that classified the seven
 // together -- at the grain of one wrapping arm rather than per cause -- would hand an identity
 // collision the one standing permitted to overwrite a newer generation. Both colliding records are
 // legitimate and the coincidence is honest, so that is a valid generation destroyed by a reader's
@@ -75,7 +75,7 @@ import gunbc.scm.load_standing {
 // in a node position: inside the model the reference types make it unwritable, but a document is
 // bytes and can say anything, so the wall there is a typed refusal rather than a constructor.
 //
-// ObjectTableObjectCollision is NOT that, and conflating it with the five is the error this type
+// ObjectTableObjectCollision is NOT that, and conflating it with the other SIX is the error this type
 // exists to prevent. Two distinct records claiming one structural locator is an honest hash
 // coincidence between two legitimate objects, not damage to either. It is a limitation of the
 // locator's representation, and the remedy is to widen the locator -- never to discard a generation.
