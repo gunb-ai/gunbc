@@ -86,7 +86,7 @@ import v1.std.core {
   is_container_type, container_expected_arity,
   DeclRefCoords, fn_admit_callers, decl_ref_coords_label,
   AdmitCallersEntry, admit_callers_entry_uninterpretable_spans, admit_callers_entry_coords,
-  default_ident_span, node_name_span,
+  default_ident_span, node_name_span, type_reference_provenance
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
@@ -111,7 +111,7 @@ import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
-import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
+import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
   resolved_node_is_kernel_identity_for_name,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
@@ -126,7 +126,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_file_of,
+  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -2195,6 +2195,133 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, sc
   }
 }
 
+// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
+// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
+// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
+// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
+// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
+// ones, and the check refused that correct module before this predicate existed.
+fn arm_body_diverges(n: Node) -> Bool {
+  match n.expr_data {
+    ExprReturn => true
+    ExprBlock =>
+      match n.children |> last {
+        Present { value: tail } => arm_body_diverges(n: tail)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// THE JOIN ANSWERS WITH ONE TYPE, so an arm whose body type is not that type is never judged
+// anywhere downstream: the match's inferred type is the join's, and a consumer's declared-type check
+// sees only that. The join tie-breaks to the FIRST arm, so before this predicate a later arm
+// producing a disjoint coproduct was silently accepted while the same module with its arms swapped
+// refused at the direct-call argument seam -- the verdict flipped with arm order, which is silent
+// wrongness at the ordinary compiler floor (values inhabit their declared types).
+//
+// THE SUBJECT IS TWO DECLARED, CONCRETE, DISJOINT COPRODUCTS, and the narrowing is measured rather
+// than chosen. The first form of this wall asked node_type_compatible -- the predicate the ExprIf
+// join asks -- and it refused four correct modules on the corpus self-compile, in two classes that
+// are not this class: (i) a `Present { value: T }` arm beside an `Absent` arm, which is two
+// spellings of one `T?` and is why `Optional`, the language's own cardinality carrier, is excluded
+// on both sides by the same authority the declared-type walls at this stage use; (ii) a kernel
+// `String`/`Int` arm beside a structural newtype arm -- `sp.file` (FilePath) against `""` in
+// v1.compiler.coercion decl_identity_file, `s` (NonEmptyStr) against an interpolation in
+// extdeps.version.semver semver_identifier_label -- which is the pairing v1.compiler.infer_types
+// node_type_equals records as ACCEPTED, an identity wall over it having been landed and reverted on
+// its first required-floor execution. Judging either here would be a fabricated refusal, which
+// DESIGN section 5 forbids exactly as it forbids a fabricated success.
+//
+// So the relation is the one the record-literal and call-argument walls already own, with one
+// deliberate difference from `foreign_concrete_coproduct_where_parent_required`: both sides resolve
+// to concrete (non-generic) declared coproducts, neither name is a VARIANT of the other, and the two
+// resolved declarations are NOT THE SAME DECLARATION -- asked of `node_declaration_identity`, the
+// file-plus-name key this stage already uses, rather than of their variant NAME SETS.
+//
+// THE SET COMPARISON WAS THE FIRST FORM AND IT IS SPELLING-KEYED WHERE DECLARATION IDENTITY IS IN
+// HAND. What it means to ask is "are these two spellings of one coproduct"; what it actually asks is
+// "do these two declarations list different variant names", and those come apart in exactly the case
+// this corpus is known to contain -- v1.compiler.emit_rust `derive_variant_to_enum` maps a variant
+// name shared by two enums to the empty string precisely BECAUSE variant names are not unique across
+// declarations. Two genuinely distinct coproducts that happen to share all their variant names would
+// have been admitted silently, which is the original defect surviving inside its own repair. Both
+// declaration nodes are already in hand here, so the real question is answerable directly, and a
+// false negative documented is worse than one removed.
+// WHAT THIS DOES NOT REPAIR, stated rather than left to be discovered (DESIGN section 4b(2), no
+// untracked stall). The JOIN still answers with the first arm: this carrier adds a judgment beside
+// `prefer_specific_type`, it does not change what the fold returns. For every pair the relation
+// above excludes, the inferred type flowing downstream is still the first arm's. For two spellings
+// of one `T?` that is the Present arm's type reaching a `T?` boundary that judges it, which is the
+// correct answer and not a residue. FOR A KERNEL `String`/`Int` ARM BESIDE A STRUCTURAL NEWTYPE IT
+// IS UNMEASURED HERE -- the pairing is accepted at every seam this stage owns (node_type_equals
+// records why), so no refusal is being suppressed, but which of the two the join returns, and
+// whether a consumer can tell, is not established by anything in this change. NEXT-RUNG TRIGGER, a
+// capability and not an artifact: a join that returns a JUDGED type carrying every arm's verdict
+// rather than a representative selected from the arms, sufficient that no arm reaches a consumer
+// without having been compared to the join's answer. Rostered as
+// `gunbc.recurring_failure_mode` `join_answers_with_one_arm_others_unjudged`.
+fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let unified_name = authored_name_at(source_indices: source_indices, node: unified_arm_type)
+  let arm_name = authored_name_at(source_indices: source_indices, node: arm_type)
+  if coproduct_name_is_kernel_or_optional_carrier(name: unified_name)
+    || coproduct_name_is_kernel_or_optional_carrier(name: arm_name)
+    || unified_arm_type.return_cardinality == CardOptional
+    || arm_type.return_cardinality == CardOptional
+    || type_name_compatible(a: unified_name, b: arm_name) {
+    false
+  } else {
+    match lookup_type_by_name(env: scope.type_env, name: unified_name) {
+      Absent => false
+      Present { value: unified_decl } =>
+        match lookup_type_by_name(env: scope.type_env, name: arm_name) {
+          Absent => false
+          Present { value: arm_decl } =>
+            let unified_is_concrete_coproduct = unified_decl.connective == Disj
+              && (unified_decl.params |> count) == 0
+              && (unified_decl.children |> count) > 0
+            let arm_is_concrete_coproduct = arm_decl.connective == Disj
+              && (arm_decl.params |> count) == 0
+              && (arm_decl.children |> count) > 0
+            let either_is_a_variant_of_the_other = has_child_named(
+                n: arm_decl, name: qualified_last_segment(name: unified_name), source_indices: source_indices)
+              || has_child_named(
+                n: unified_decl, name: qualified_last_segment(name: arm_name), source_indices: source_indices)
+            let same_declaration = node_declaration_identity(n: unified_decl, source_indices: source_indices)
+              == node_declaration_identity(n: arm_decl, source_indices: source_indices)
+            unified_is_concrete_coproduct
+              && arm_is_concrete_coproduct
+              && either_is_a_variant_of_the_other == false
+              && same_declaration == false
+        }
+    }
+  }
+}
+
+fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
+  if arm_body_diverges(n: arm_body(n: arm.typed_arm)) {
+    []
+  } else if match_arm_types_are_disjoint_coproducts(
+    unified_arm_type: unified_arm_type,
+    arm_type: arm.body_type,
+    scope: scope
+  ) {
+    [inference_error(
+      message: concat(
+        "match arms produce disjoint declared coproducts: ",
+        node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
+        " vs ",
+        node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices)
+      ),
+      span: arm_body(n: arm.typed_arm).span,
+      module_name: scope.module_name
+    )]
+  } else {
+    []
+  }
+}
+
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   with_expected_where_refinement_diags(
     result: infer_expr_body(texpr: texpr, scope: scope, expected: expected),
@@ -2446,7 +2573,7 @@ fn equality_exposure_refusal(exposure: TypeHeadExposure, name: String, at_operan
 
 fn equality_leaf_admission(peeled: Node, name: String, ident_key: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
   let source_indices = scope.type_env.source_indices
-  if decl_file_realizes_natively(decl_file: type_reference_decl_file(n: peeled)) {
+  if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
     return none
   }
   let resolved = peel_nominal_alias_identity(n: peeled, env: scope.type_env, module_name: scope.module_name)
@@ -3114,7 +3241,7 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 //
 // The corpus does not leave this to convention. v1.compiler.coercion
 // numeric_realization_declaring_modules records that exactly these declaring modules realize
-// natively, and decl_file_realizes_natively answers it. So the class was never undecidable, it
+// natively, and provenance_realizes_natively answers it. So the class was never undecidable, it
 // was UNCONSULTED -- which is why nothing here is counted: a residue would record a deficit
 // that does not exist.
 //
@@ -3123,13 +3250,14 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 //   numeric_realization_identity_note names the exact hazard: std.nat.Nat realizes natively
 //   while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT, so a bare-name rule
 //   admits the wrong one. The enrolled RED for that pair is the regression control.
-//   FAIL-CLOSED ON UNKNOWN IDENTITY. decl_file_realizes_natively answers false for the empty
-//   string, and the empty string is what an unestablished identity yields. No fallback is
-//   added here, so a site that cannot establish identity keeps refusing.
+//   FAIL-CLOSED ON UNKNOWN IDENTITY. provenance_realizes_natively answers false for
+//   DeclarationIdentityAbsent, which is what an unestablished identity yields -- an arm of the
+//   provenance rather than a sentinel inside a path. No fallback is added here, so a site that
+//   cannot establish identity keeps refusing.
 //   A CONJUNCTION, NOT A CARVE-OUT. The produced value must ALSO be a kernel numeric, so a
 //   String literal at a Nat-declared position stays refused.
 //
-// SOURCE-LEVEL, NOT EMISSION. decl_file_realizes_natively takes only decl_file; the neighbouring
+// SOURCE-LEVEL, NOT EMISSION. provenance_realizes_natively takes only the provenance; the neighbouring
 // lookup_checkpoint takes a RenderTarget and would have made an emission fact answer a
 // source-level question, which is why it is deliberately not the surface used here.
 // INTERIM, AND THE ROW THAT DISSOLVES IT IS v2.workflow.floor_expected_red chunk_14.
@@ -3150,7 +3278,7 @@ fn declared_realizes_as_kernel_numeric(
   if produced_is_kernel_numeric == false {
     false
   } else {
-    decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+    provenance_realizes_natively(p: type_reference_provenance(n: declared))
   }
 }
 
@@ -5247,7 +5375,7 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
                 Absent => none
               }
             } else { none }
-            let natively = decl_file_realizes_natively(decl_file: declaration_file_of(d: destination, env: scope.type_env))
+            let natively = provenance_realizes_natively(p: declaration_provenance_of_ref(d: destination, env: scope.type_env))
             match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, element: element, destination_realizes_natively: natively) {
               DirectLiteral => LiteralBoundaryPlain
               ViaHomomorphism { homomorphism: h } =>
@@ -6323,6 +6451,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       } else { arm_infer_results }
       let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
       let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
+      let arm_join_diags = flat_map(arm_infer_results, ar =>
+        match_arm_join_diagnostics(
+          unified_arm_type: unified_arm_type,
+          arm: ar,
+          scope: scope
+        )
+      )
       let result_type = unified_arm_type
       let empty_arms_diags = if count(arm_infer_results) == 0 {
         [inference_error(
@@ -6348,7 +6483,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let match_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprMatch, children: concat([scrut_typed], typed_arms), inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
-        diagnostics: concat(scrut_diags, arm_diags, empty_arms_diags, exhaustiveness_diags)
+        diagnostics: concat(scrut_diags, arm_diags, arm_join_diags, empty_arms_diags, exhaustiveness_diags)
       }
 
     ExprIf =>

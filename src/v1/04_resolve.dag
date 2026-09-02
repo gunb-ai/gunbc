@@ -729,7 +729,7 @@ fn rendered_use_site_type(authored: Node, resolved: Node) -> Node {
   if authored.children |> count > 0 {
     Node { occurrence_identity: authored.occurrence_identity, name: authored.name, span: authored.span, ident_span: authored.ident_span, children: resolved.children, connective: authored.connective, params: authored.params, inferred: Present { value: Resolved { node: resolved } }, return_cardinality: authored.return_cardinality, uses: authored.uses, body: authored.body, transport: authored.transport, properties: resolved.properties, type_annotation: authored.type_annotation, is_self_recursive: authored.is_self_recursive, has_non_tail_self_call: authored.has_non_tail_self_call, match_pattern: authored.match_pattern, expr_data: authored.expr_data }
   } else {
-    resolved
+    Node { occurrence_identity: authored.occurrence_identity, name: resolved.name, span: resolved.span, ident_span: resolved.ident_span, children: resolved.children, connective: resolved.connective, params: resolved.params, inferred: resolved.inferred, return_cardinality: resolved.return_cardinality, uses: resolved.uses, body: resolved.body, transport: resolved.transport, properties: resolved.properties, type_annotation: resolved.type_annotation, is_self_recursive: resolved.is_self_recursive, has_non_tail_self_call: resolved.has_non_tail_self_call, match_pattern: resolved.match_pattern, expr_data: resolved.expr_data }
   }
 }
 

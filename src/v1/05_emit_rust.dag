@@ -18,6 +18,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  declaration_provenance_of, type_reference_provenance,
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
   param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
@@ -105,9 +106,14 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
-  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file, decl_identity_file,
-  rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding,
-  declaration_realizes_natively_on_rust, is_kernel_minted_file
+  coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding,
+  declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization,
+  type_realization_decision, realized_checkpoint, realization_host_numeric_spelling,
+  realization_is_host_numeric
+}
+import std.coercion {
+  TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
+  TypeRealizationDecision
 }
 import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
@@ -210,7 +216,7 @@ import v1.compiler.emit {
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanContent
 }
@@ -374,9 +380,8 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           key_type: key_str,
           val_type: val_str,
           fallback_base: coerce_primitive_type(
-            target: Rust,
-            dag_name: tn,
-            decl_file: type_reference_decl_file(n: n)
+            decision: type_reference_realization(n: n, dag_name: tn, target: Rust),
+            dag_name: tn
           ),
           target: Rust
         )
@@ -400,7 +405,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
-      match rust_seed_host_numeric_alias(name: qualified_last_segment(name: tn), decl_file: type_reference_decl_file_in_env(n: n, env: emit_info.fn_type_env, source_indices: source_indices)) {
+      match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
         Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
         Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
       }
@@ -538,7 +543,7 @@ fn rust_opaque_kernel_alias_type_eligible(name: String) -> Bool {
 
 fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   if rust_opaque_kernel_alias_type_eligible(name: name) {
-    Present { value: coerce_primitive_type(target: Rust, dag_name: name, decl_file: "") }
+    Present { value: coerce_primitive_type(decision: type_realization_decision(target: Rust, dag_name: name, provenance: DeclarationIdentityAbsent), dag_name: name) }
   } else {
     none
   }
@@ -547,7 +552,7 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
 fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
   let carrier = match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }, grounding: true) {
     Present { value: exact } => exact
-    Absent => coerce_primitive_type(target: Rust, dag_name: name, decl_file: "")
+    Absent => coerce_primitive_type(decision: type_realization_decision(target: Rust, dag_name: name, provenance: DeclarationIdentityAbsent), dag_name: name)
   }
   concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", name, " = ", carrier, ";")
 }
@@ -604,25 +609,29 @@ data checkpoint_table_bypasses_identity_note: String = "CEILING, STATED BECAUSE 
 // keyword to reach for. NEXT-RUNG TRIGGER: a module-private function boundary in the language. When
 // it exists this body becomes private, the wrong selection becomes unrepresentable outside the
 // module, and the class climbs without any change to the two surfaces.
-fn rust_scalar_checkpoint_reference_base(dag_name: String, decl_file: String) -> String? {
-  rust_scalar_checkpoint_spelling(dag_name: dag_name, decl_file: decl_file, grounding: false)
+fn rust_scalar_checkpoint_reference_base(decision: TypeRealizationDecision) -> String? {
+  rust_scalar_checkpoint_spelling(decision: decision, grounding: false)
 }
 
 // DECLARATION right-hand side. The alias being defined shadows its own name, so this position needs
 // the spelling no alias can reach -- see std.coercion TypeCheckpoint for why the bare one is wrong
 // here rather than merely unidiomatic.
-fn rust_scalar_checkpoint_grounding_base(dag_name: String, decl_file: String) -> String? {
-  rust_scalar_checkpoint_spelling(dag_name: dag_name, decl_file: decl_file, grounding: true)
+fn rust_scalar_checkpoint_grounding_base(decision: TypeRealizationDecision) -> String? {
+  rust_scalar_checkpoint_spelling(decision: decision, grounding: true)
 }
 
-fn rust_scalar_checkpoint_spelling(dag_name: String, decl_file: String, grounding: Bool) -> String? {
-  match lookup_checkpoint(target: Rust, dag_name: dag_name, decl_file: decl_file) {
+// THE SECOND NUMERIC CONSULT THAT USED TO SIT IN THE ABSENT ARM IS DELETED, AND IT WAS DEAD.
+// It re-asked the numeric roster after the checkpoint lookup returned nothing, which could only
+// change the answer on the migrated-refusal path -- and the two names the numeric roster answers
+// for, Nat and Int, are not migrated: gunbc.rust_source_type_bindings gives Int StillBareNameDebt
+// and Nat no migration row at all, and checkpoint_row_disposition_keeps_bare_row answers true for
+// both. On every other path the decision had already consulted the roster itself. So this arm could
+// not produce an answer the decision had not already produced, and removing it removes a second
+// consult rather than a behaviour.
+fn rust_scalar_checkpoint_spelling(decision: TypeRealizationDecision, grounding: Bool) -> String? {
+  match realized_checkpoint(decision: decision) {
     Present { value: cp } => Present { value: if grounding { cp.grounding_type } else { cp.target_type } }
-    Absent =>
-      match rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) {
-        Present { value: host } => Present { value: host }
-        Absent => none
-      }
+    Absent => none
   }
 }
 
@@ -660,22 +669,28 @@ data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for
 // binding is still decidable from the env: the reference's leaf name resolves to one declaration
 // in the referencing module's scope. Accepted only when that declaration IS named by the leaf,
 // so an alias's right-hand side node can never stand in for the alias.
-fn type_reference_decl_file_in_env(n: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
+fn type_reference_provenance_in_env(n: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeDeclarationProvenance {
   match n.inferred {
-    Present { value: Resolved { node: _ } } => type_reference_decl_file(n: n)
+    Present { value: Resolved { node: _ } } => type_reference_provenance(n: n)
     _ =>
       let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-      if leaf == "" { type_reference_decl_file(n: n) }
+      if leaf == "" { type_reference_provenance(n: n) }
       else {
         match lookup_type_by_name(env: env, name: leaf) {
           Present { value: decl } =>
             if authored_name_at(source_indices: source_indices, node: decl) == leaf {
-              decl_identity_file(item: decl)
-            } else { type_reference_decl_file(n: n) }
-          Absent => type_reference_decl_file(n: n)
+              declaration_provenance_of(item: decl)
+            } else { type_reference_provenance(n: n) }
+          Absent => type_reference_provenance(n: n)
         }
       }
   }
+}
+
+// The env-consulting mint: same decision, taken from the provenance this module can recover when
+// inference did not resolve the reference.
+fn type_reference_realization_in_env(n: Node, dag_name: String, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeRealizationDecision {
+  type_realization_decision(target: Rust, dag_name: dag_name, provenance: type_reference_provenance_in_env(n: n, env: env, source_indices: source_indices))
 }
 
 fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String? {
@@ -683,14 +698,14 @@ fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, Newli
   else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
     if is_container_type(name: leaf) { return none }
-    let decl_file = type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices)
+    let decision = type_reference_realization_in_env(n: n, dag_name: leaf, env: env, source_indices: source_indices)
     match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
       Present { value: exact } => Present { value: exact }
       Absent =>
-    match rust_seed_host_numeric_alias(name: leaf, decl_file: decl_file) {
+    match realization_host_numeric_spelling(decision: decision) {
       Present { value: numeric } => Present { value: numeric }
       Absent =>
-        match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: decl_file) {
+        match rust_scalar_checkpoint_reference_base(decision: decision) {
           Present { value: scalar } =>
             if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: scalar) {
               Present { value: wrap_shared_type(target: Rust, inner: scalar) }
@@ -745,17 +760,17 @@ fn rust_exact_reference_spelling(n: Node, source_indices: Map<String, NewlineInd
 fn rust_reference_checkpoint_spelling_at(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
   match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
     Present { value: exact } => Present { value: exact }
-    Absent => rust_scalar_checkpoint_reference_base(dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), decl_file: type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices))
+    Absent => rust_scalar_checkpoint_reference_base(decision: type_reference_realization_in_env(n: n, dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), env: env, source_indices: source_indices))
   }
 }
 
 // DECLARATION right-hand side, declaration-keyed: the declaring module is the env's own, so the
 // DeclarationRef is constructed rather than looked up. Exact first, then the spelling-keyed
 // grounding base.
-fn rust_declaration_checkpoint_grounding_at(module_path: String, decl_name: String, decl_file: String) -> String? {
+fn rust_declaration_checkpoint_grounding_at(module_path: String, decl_name: String, decision: TypeRealizationDecision) -> String? {
   match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: decl_name) }, grounding: true) {
     Present { value: exact } => Present { value: exact }
-    Absent => rust_scalar_checkpoint_grounding_base(dag_name: decl_name, decl_file: decl_file)
+    Absent => rust_scalar_checkpoint_grounding_base(decision: decision)
   }
 }
 
@@ -804,16 +819,16 @@ fn rust_seed_host_freemonoid_empty(carrier_name: String) -> String? {
   }
 }
 
-fn rust_named_type_base(name: String, decl_file: String) -> String {
+fn rust_named_type_base(name: String, decision: TypeRealizationDecision) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
   } else {
-    coerce_primitive_type(target: Rust, dag_name: name, decl_file: decl_file)
+    coerce_primitive_type(decision: decision, dag_name: name)
   }
 }
 
-fn rust_applied_type_base(name: String, decl_file: String) -> String {
-  rust_named_type_base(name: name, decl_file: decl_file)
+fn rust_applied_type_base(name: String, decision: TypeRealizationDecision) -> String {
+  rust_named_type_base(name: name, decision: decision)
 }
 
 fn rust_witness_parent_leaf(parent: String) -> Bool {
@@ -1230,7 +1245,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 
     match rust_seed_host_container_base(name: base_name) {
       Present { value: host } => host
-      Absent => rust_named_type_base(name: base_name, decl_file: type_reference_decl_file(n: n))
+      Absent => rust_named_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
     }
   } else {
 
@@ -1241,14 +1256,14 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       ClosedAliasPeelZeroParam => {
       let bare = match rust_seed_host_container_base(name: base_name) {
         Present { value: host } => host
-        Absent => rust_applied_type_base(name: base_name, decl_file: type_reference_decl_file(n: n))
+        Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
       }
       render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, shared_types: shared_types)
       }
       ClosedAliasHasParams => {
     let base = match rust_seed_host_container_base(name: base_name) {
       Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, decl_file: type_reference_decl_file(n: n))
+      Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
     }
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
@@ -1263,7 +1278,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       ClosedAliasBindingAbsent => {
     let base = match rust_seed_host_container_base(name: base_name) {
       Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, decl_file: type_reference_decl_file(n: n))
+      Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
     }
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
@@ -1324,7 +1339,7 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared
 // scalar unwritable. The next rung is the modeled layer transition wrap_decision.dag already
 // names, at which point an agreeing flow is DERIVED rather than guarded.
 fn rust_carrier_realizes_as_machine_scalar(n: Node, type_name: String) -> Bool {
-  match rust_seed_host_numeric_alias(name: type_name, decl_file: type_reference_decl_file(n: n)) {
+  match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: type_name, target: Rust)) {
     Present { value: _ } => true
     Absent => false
   }
@@ -1428,7 +1443,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 {
         match closed_alias_peel_verdict(env: env, n: n) {
           ClosedAliasPeelZeroParam =>
-            if rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, decl_file: type_reference_decl_file(n: n)) {
+            if rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, decision: type_reference_realization(n: n, dag_name: outer_name, target: Rust)) {
               render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
             } else {
               render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -1443,7 +1458,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
       let bare_native_alias = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) {
-        rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices))
+        realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: name, env: env, source_indices: source_indices))
       } else { none }
       match exact_leaf {
         Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
@@ -1464,7 +1479,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         if !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
           render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
         } else {
-        let base = rust_applied_type_base(name: name, decl_file: type_reference_decl_file(n: n))
+        let base = rust_applied_type_base(name: name, decision: type_reference_realization(n: n, dag_name: name, target: Rust))
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
         let arg_list = n.children |> map(arg =>
           let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
@@ -1509,7 +1524,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   }
 }
 
-fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decl_file: String) -> Bool {
+fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealizationDecision) -> Bool {
   if is_kernel_type(name: name) {
     false
   } else if rust_opaque_kernel_alias_type_eligible(name: name) {
@@ -1517,7 +1532,7 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decl_file: String) ->
   } else if name == "Nat" {
     true
   } else {
-    rust_seed_host_numeric_alias(name: name, decl_file: decl_file) == none
+    !realization_is_host_numeric(decision: decision)
   }
 }
 
@@ -1548,7 +1563,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
-  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decl_file: type_reference_decl_file(n: n)) {
+  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decision: type_reference_realization(n: n, dag_name: name, target: Rust)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
@@ -1568,7 +1583,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, s
         if outer_name != "" && outer_name != "fn" && !is_container_type(name: outer_name) && n.connective == NoConnective && (n.children |> count) == 0 {
           match closed_alias_peel_verdict(env: env, n: n) {
             ClosedAliasPeelZeroParam =>
-              if rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, decl_file: type_reference_decl_file(n: n)) {
+              if rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, decision: type_reference_realization(n: n, dag_name: outer_name, target: Rust)) {
                 render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
               } else {
                 render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
@@ -1699,14 +1714,14 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: exact } => exact
       Absent =>
-    match rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file(n: n)) {
+    match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: name, target: Rust)) {
       Present { value: host } => host
       Absent =>
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
         Absent => {
           let leaf = qualified_last_segment(name: name)
-          match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+          match rust_scalar_checkpoint_reference_base(decision: type_reference_realization(n: n, dag_name: leaf, target: Rust)) {
             Present { value: scalar } => scalar
             Absent => {
               let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
@@ -1721,7 +1736,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     let leaf = qualified_last_segment(name: name)
     let numeric_host_alias = match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: scalar } => Present { value: scalar }
-      Absent => rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n))
+      Absent => realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: leaf, target: Rust))
     }
     if numeric_host_alias != none {
       return match numeric_host_alias { Present { value: host } => host  Absent => "" }
@@ -1932,7 +1947,7 @@ fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String
 
 fn is_rust_value_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  match is_copy(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: normed), decl_file: type_reference_decl_file(n: normed)) {
+  match is_copy(decision: type_reference_realization(n: normed, dag_name: authored_name_at(source_indices: source_indices, node: normed), target: Rust)) {
     Present { value: v } => v
     Absent => false
   }
@@ -2801,7 +2816,7 @@ fn is_simple_disj(item: Node) -> Bool {
 }
 
 fn is_dag_value_type_name(name: String) -> Bool {
-  match is_copy(target: Rust, dag_name: name, decl_file: "") {
+  match is_copy(decision: type_realization_decision(target: Rust, dag_name: name, provenance: DeclarationIdentityAbsent)) {
     Present { value: v } => v
     Absent => false
   }
@@ -6701,7 +6716,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
     } else {
-      match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decl_file: decl_identity_file(item: item)) {
+      match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>
@@ -6842,7 +6857,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
   if set_contains(shared_types, name) { false }
   else if set_contains(recursive_types, name) { true }
   else if n.children |> count == 0 {
-    if coerce_primitive_type(target: Rust, dag_name: name, decl_file: type_reference_decl_file(n: n)) != name { false }
+    if coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: name, target: Rust), dag_name: name) != name { false }
     else { set_contains(recursive_types, name) }
   } else {
     let is_optional = n.return_cardinality == CardOptional
@@ -7381,7 +7396,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
 // transition that predicate names.
 
 fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
-  let native_scalar = rust_seed_host_numeric_alias(name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), decl_file: type_reference_decl_file_in_env(n: rt_field, env: env, source_indices: source_indices))
+  let native_scalar = realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: rt_field, dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), env: env, source_indices: source_indices))
   if needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices) {
     concat("Box<", ty, ">")
   } else if native_scalar != none {
@@ -7407,7 +7422,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
     match lookup_type_by_name(env: env, name: rt_child_name) {
       Present { value: resolved } =>
         if resolved.params |> count > 0 {
-          let base = coerce_primitive_type(target: Rust, dag_name: rt_child_name, decl_file: type_reference_decl_file(n: rt_child))
+          let base = coerce_primitive_type(decision: type_reference_realization(n: rt_child, dag_name: rt_child_name, target: Rust), dag_name: rt_child_name)
           let param_names = resolved.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices)))
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
           render_rust_shared_type_if_needed(type_name: rt_child_name, rendered: with_params, shared_types: shared_types)
@@ -7716,7 +7731,7 @@ fn render_variant_payload_type(n: Node, shared_types: Set<String>, source_indice
     let tn = authored_name_at(source_indices: source_indices, node: n)
     let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
     let spec = language_spec(target: Rust)
-    concat(coerce_primitive_type(target: Rust, dag_name: tn, decl_file: type_reference_decl_file(n: n)), spec.type_arg_open, args |> join(separator: ", "), spec.type_arg_close)
+    concat(coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn), spec.type_arg_open, args |> join(separator: ", "), spec.type_arg_close)
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
   }
@@ -9740,7 +9755,7 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
     Present { value: field_child } =>
       let field_ty = resolved_type(n: field_child)
       let field_ty_name = authored_name_at(source_indices: scope.type_env.source_indices, node: field_ty)
-      let grounds_to_host_scalar = rust_seed_host_numeric_alias(name: field_ty_name, decl_file: type_reference_decl_file(n: field_ty)) != none
+      let grounds_to_host_scalar = realization_host_numeric_spelling(decision: type_reference_realization(n: field_ty, dag_name: field_ty_name, target: Rust)) != none
       if grounds_to_host_scalar { false }
       else {
         needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
@@ -11587,7 +11602,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
         |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
         |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: si), true))
       let json_param_set = op_params
-        |> filter(p => coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p)), decl_file: type_reference_decl_file(n: param_node_type_expr(n: p))) == "serde_json::Value")
+        |> filter(p => coerce_primitive_type(decision: type_reference_realization(n: param_node_type_expr(n: p), dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p)), target: Rust), dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p))) == "serde_json::Value")
         |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: si), true))
       let arg_strs = filled_args |> map(a =>
         let arg_str = emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -12944,13 +12959,22 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
 // never an alias item. The type renderer already realizes such a node as its base
 // (render_rust_alias_rhs_type hops is_where_refinement_type to the first child), so the operand
 // decision hops the same way, resolving the base through the env as where_refinement_chain does.
+// THE KERNEL-MINTED ARM READS THE CONSTRUCTOR, AND THAT IS THE WHOLE POINT OF THE COPRODUCT.
+// It briefly consulted a Bool-valued `provenance_is_kernel_minted` in v1.std.core, which was a
+// second representation of exactly this pattern: the split replaced a substring test with a
+// constructor, and rebuilding a Boolean view over that constructor preserved the parallel
+// representation the split exists to remove. DESIGN section 5 -- prefer a single authority from
+// which the realization is derived over a check that re-states it. The predicate had one caller,
+// this one, so dissolving it into the match here removed the view entirely rather than relocating
+// it (codex review 58658).
 fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
-  let decl_file = type_reference_decl_file(n: rt)
+  let provenance = type_reference_provenance(n: rt)
   let authored = authored_name_at(source_indices: scope.type_env.source_indices, node: rt)
   let rt_is_type_var = match rt.inferred { Present { value: i } => is_type_variable(inferred: i)  Absent => false }
-  if is_kernel_minted_file(file: decl_file) {
-    HostRealizedOperand { reason: KernelMintedType }
-  } else if rt_is_type_var {
+  match provenance {
+    KernelMinted { minted_name: _ } => HostRealizedOperand { reason: KernelMintedType }
+    _ =>
+  if rt_is_type_var {
     HostRealizedOperand { reason: GenericTypeParameter }
   } else if is_container_type(name: qualified_last_segment(name: authored)) {
     HostRealizedOperand { reason: HostContainer }
@@ -12963,10 +12987,10 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
       connective: connective_name(value: rt.connective),
       child_count: rt.children |> count,
       resolved: rt.inferred != none,
-      decl_file: decl_file
+      provenance: provenance
     } }
     Present { value: d } =>
-      if declaration_realizes_natively_on_rust(declaration: d, decl_file: type_reference_decl_file(n: rt)) {
+      if declaration_realizes_natively_on_rust(declaration: d, spelling_decision: type_realization_decision(target: Rust, dag_name: d.decl_name as String, provenance: provenance)) {
         HostNumericOperand
       } else {
         let decl = match rt.inferred {
@@ -12991,6 +13015,7 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
       }
   }
   }
+  }
 }
 
 
@@ -12999,7 +13024,7 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
 fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
   let realization = match operand {
     Present { value: od } =>
-      if declaration_realizes_natively_on_rust(declaration: od.declaration, decl_file: od.decl_file) {
+      if declaration_realizes_natively_on_rust(declaration: od.declaration, spelling_decision: type_realization_decision(target: Rust, dag_name: od.declaration.decl_name as String, provenance: od.provenance)) {
         HostNumericOperand
       } else {
         StructuralOperand { declaration: od.declaration }
@@ -13962,7 +13987,7 @@ fn escape_json_pointer_segment(seg: String) -> String {
 fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String, source_indices: Map<String, NewlineIndex>) -> String {
   let escaped_path = from_path |> split("/") |> map(seg => escape_json_pointer_segment(seg: seg)) |> join(separator: "/")
   let pointer = concat("/", escaped_path)
-  let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name, decl_file: "")
+  let rust_type = coerce_primitive_type(decision: type_realization_decision(target: Rust, dag_name: dag_type_name, provenance: DeclarationIdentityAbsent), dag_name: dag_type_name)
   let accessor = if dag_type_name == "String" {
     concat(".and_then(|v| v.as_str()).map(|s| ", emit_rust_host_to_dag_string_via_seam(host_expr: "s.to_string()"), ").ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "i64" {
@@ -14351,6 +14376,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
     FileRead           => file_read_match_expr
     FileWrite          => file_write_expr
     FileWriteOwnerOnly => file_write_owner_only_expr
+    FileWriteCreateNew => file_write_create_new_expr
     FileDelete         => file_delete_match_expr
     FileList           => file_list_match_expr
   }
@@ -14409,6 +14435,8 @@ data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\
 data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
 
 data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};"
+
+data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let mut create_new_file = std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path)?;\n        create_new_file.write_all(content.as_bytes())?;\n        Ok(())\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};"
 
@@ -14549,7 +14577,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   let raw_ty_str = if preserves_declared_brand {
     rust_ground_opaque_kernel_type_name(name: ann_name)
   } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
-    coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node), decl_file: type_reference_decl_file(n: annotation_type_node))
+    coerce_primitive_type(decision: type_reference_realization(n: annotation_type_node, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node), target: Rust), dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {
     render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, env: scope.type_env)
   }
@@ -14753,7 +14781,7 @@ fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
 
 fn emit_rust_default_value(param: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let type_name = authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: param))
-  match lookup_checkpoint(target: Rust, dag_name: type_name, decl_file: type_reference_decl_file(n: param_node_type_expr(n: param))) {
+  match realized_checkpoint(decision: type_reference_realization(n: param_node_type_expr(n: param), dag_name: type_name, target: Rust)) {
     Present { value: cp } =>
       match cp.default_expr {
         Present { value: expr } => expr
@@ -15554,7 +15582,7 @@ fn emit_cli_param_type_node(n: Node, source_indices: Map<String, NewlineIndex>) 
     if nname == "String" {
       "String"
     } else {
-      let mapped = coerce_primitive_type(target: Rust, dag_name: nname, decl_file: type_reference_decl_file(n: n))
+      let mapped = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: nname, target: Rust), dag_name: nname)
       if mapped != nname { mapped } else { "String" }
     }
   } else {

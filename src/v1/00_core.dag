@@ -8,6 +8,7 @@ import std.syntax {
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -2171,6 +2172,58 @@ fn leaf_node_with_span(occurrence_identity: NodeOccurrenceIdentity, name: String
 
 fn kernel_span(name: String) -> SourceSpan {
   SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
+}
+
+// THE RECOGNIZER, HOMED BESIDE ITS MINTER. kernel_span above is what synthesizes the pseudo-file a
+// kernel node carries, and every kernel construction in this seed sets
+// ident_span: kernel_span(name: <the node's own name>) beside name: <that same name>. So comparing
+// a span's file against kernel_span(name: item.name).file asks the CONSTRUCTOR whether it built
+// this node -- exact equality against the authority rather than a prefix test over its output.
+// Four separate spelling tests for this state existed across the emitter and are deleted by this
+// function rather than joined by it.
+//
+// CAVEAT THAT BOUNDS WHAT THIS MAY CLAIM. There are two declarations of kernel_span in this seed --
+// this one and v1.compiler.infer's -- with byte-identical bodies, and that module's own call sites
+// bind its local twin by shadowing. The derivation here is exact TODAY BECAUSE the two bodies
+// agree, which is a coincidence nothing enforces: no refusal fires if one is edited. This is a
+// consumption of the authority in this module, not a consolidation of the two.
+fn declaration_provenance_of(item: Node) -> TypeDeclarationProvenance {
+  match item.ident_span {
+    Absent => DeclarationIdentityAbsent
+    Present { value: sp } =>
+      if sp.file == "" {
+        DeclarationIdentityAbsent
+      } else if sp.file == kernel_span(name: item.name).file {
+        KernelMinted { minted_name: item.name }
+      } else {
+        CorpusDeclared { decl_file: sp.file }
+      }
+  }
+}
+
+// The reference-site counterpart: project the resolved node bound to the reference, and fall back
+// to the node's own ident_span when the reference IS the declaration. The shape defect this
+// projection has always had is unchanged and is NOT repaired here -- it cannot tell `this node is
+// its own declaration` from `this reference was not resolved here`, and in the second case answers
+// about the file the REFERENCE sits in. What changes is that its answer is no longer a String a
+// consumer may re-interpret: it is a provenance, and the only thing downstream of it is a decision.
+fn type_reference_provenance(n: Node) -> TypeDeclarationProvenance {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => declaration_provenance_of(item: rt)
+    _ => declaration_provenance_of(item: n)
+  }
+}
+
+// FOR REPORTING ONLY -- an instrument or a diagnostic rendering a provenance as the path it stands
+// on. Nothing that DECIDES may consult this: reading a decision's input back out of a string is
+// precisely the round trip this construction removed, and the empty answer for an absent identity is
+// a rendering choice rather than an identity.
+fn provenance_reported_file(p: TypeDeclarationProvenance) -> String {
+  match p {
+    CorpusDeclared { decl_file: f } => f
+    KernelMinted { minted_name: nm } => kernel_span(name: nm).file
+    DeclarationIdentityAbsent => ""
+  }
 }
 
 data unit_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
