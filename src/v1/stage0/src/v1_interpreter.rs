@@ -1,3 +1,39 @@
+// CLIPPY ROSTER -- 121 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::clone_on_copy,  // 1
+    clippy::cloned_ref_to_slice_refs,  // 8
+    clippy::collapsible_if,  // 1
+    clippy::collapsible_match,  // 1
+    clippy::disallowed_macros,  // 15
+    clippy::doc_lazy_continuation,  // 2
+    clippy::double_parens,  // 21
+    clippy::explicit_auto_deref,  // 2
+    clippy::manual_clamp,  // 1
+    clippy::manual_div_ceil,  // 1
+    clippy::manual_is_multiple_of,  // 1
+    clippy::manual_repeat_n,  // 1
+    clippy::missing_const_for_thread_local,  // 1
+    clippy::needless_borrow,  // 9
+    clippy::needless_borrows_for_generic_args,  // 2
+    clippy::only_used_in_recursion,  // 1
+    clippy::single_match,  // 1
+    clippy::too_many_arguments,  // 1
+    clippy::type_complexity,  // 10
+    clippy::unnecessary_lazy_evaluations,  // 1
+    clippy::unnecessary_to_owned,  // 20
+    clippy::useless_format,  // 6
+    dead_code,  // 4
+    unused_imports,  // 2
+    unused_mut,  // 2
+    unused_parens,  // 6
+)]
+
 use crate::v1_rt::VecCompat;
 use im::HashMap;
 use std::cell::{Cell, RefCell};
@@ -543,7 +579,7 @@ pub struct CanonKey {
 
 impl CanonKey {
     fn new(key: Value) -> Option<CanonKey> {
-        if key == key {
+        if key.is_reflexive() {
             Some(CanonKey { key })
         } else {
             None
@@ -915,6 +951,24 @@ impl fmt::Display for Value {
             Value::Fn { node } => write!(f, "<fn {}>", node.name),
             Value::Unit => write!(f, "()"),
         }
+    }
+}
+
+impl Value {
+    /// A value may key a map only if it equals ITSELF, and `Value` has inhabitants that do not:
+    /// `Float(f64::NAN)` compares false to itself under IEEE semantics, and the variants this
+    /// `PartialEq` does not match (a `Closure`, say) fall to its `false` arm. Admitting either
+    /// would make `impl Eq for CanonKey` a lie and its `Hash` unreachable for its own key.
+    ///
+    /// The test is `self == self`, spelled ONCE and named, because that is the only expression
+    /// that stays correct as `PartialEq` above grows arms: a hand-written structural check would
+    /// be a second authority for reflexivity and would silently disagree the day a variant is
+    /// added. `clippy::eq_op` is deny-by-default and cannot see that a non-reflexive inhabitant
+    /// exists, so the lint is refused here, at the one site whose whole content is that test --
+    /// not at a crate root on behalf of everything under it.
+    #[allow(clippy::eq_op)]
+    fn is_reflexive(&self) -> bool {
+        self == self
     }
 }
 
