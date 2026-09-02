@@ -135,6 +135,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Arity agreement between a declared builtin parameter name and its derived algebra template** — declared 2026-09-01
 - **n-ary concat call sites judged against concat's binary declared signature** — declared 2026-09-01
 - **Dashboard MergeReady omits repository-semantic admissibility** — declared 2026-09-01
+- **Reproduction of the Spark serving cell's model artifact from desired state** — declared 2026-09-02
 
 **The floor first, the differentiator above it.** gunbc must first hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and a failure there is a below-baseline safety regression, never compensated by higher-order capability. The differentiating claim begins above that floor: because the substrate carries causal, cardinality, algebraic, effect, ownership, cost, and realization facts structurally, the same ladder applies to classes ordinary compilers leave to tests, review, profiling, or production postmortems — a possibly-empty collection flowing into a nonempty consumer, recursion without a descent proof, a non-idempotent effect under automatic retry, a computation exceeding its declared complexity bound, a realization that does not preserve modeled behavior.
 
@@ -247,6 +248,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `liveness_probe_read_as_currency`
 - `non_verdict_disposition_surfaces_as_refusal`
 - `empty_capture_read_as_clean_result`
+- `unhandled_state_falls_to_the_not_yet_arm`
 - `salience_instrument_blind_to_the_record_it_sizes`
 - `ambient_process_state_read_by_a_concurrent_reader`
 - `predicate_vacuously_true_on_an_empty_domain`
