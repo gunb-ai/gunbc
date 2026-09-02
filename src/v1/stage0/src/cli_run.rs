@@ -1157,7 +1157,10 @@ pub fn workspace_root() -> PathBuf {
 ///
 /// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
 /// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
-/// `repo_self_test_command`). The `#[ignore]`d live-corpus tests still reach mutators and are the
+/// `repo_self_test_command`), and the EVIDENCE population is the whole of that lane's library
+/// source — every `.rs` file under the crate root, not this file alone. Scanning one file while
+/// claiming the lane was a selection view read as a population, and is the finding of review
+/// 58640. The `#[ignore]`d live-corpus tests still reach mutators and are the
 /// named residue — excluded here because the gating lane does not run them, not because they are
 /// safe. Their next-rung trigger is the capability "every live-tree test resolves paths from an
 /// explicitly passed root", after which the ambient write has no consumer in the test tree and the
@@ -1186,7 +1189,7 @@ mod process_cwd_mutation_reachability_gate {
     /// the name it hunts for would make the gate an offender against itself, and that false RED
     /// would be indistinguishable from a real one.
     const MUTATOR_CALL: &str = concat!("set_", "current_dir");
-    const SELF_REL: &str = "src/v1/stage0/src/cli_run.rs";
+    const LIB_SRC_REL: &str = "src/v1/stage0/src";
 
     #[derive(Debug, Clone)]
     struct FnDecl {
@@ -1413,53 +1416,44 @@ mod process_cwd_mutation_reachability_gate {
         owner
     }
 
-    /// A call, not a substring: `name` bounded by non-identifier characters and followed by `(`.
-    /// Without the boundary `frozen_path_deferral_keys` matches inside
-    /// `frozen_path_deferral_keys_from_source` and the closure over-approximates again.
-    fn call_mention(line: &str, name: &str) -> bool {
+    /// Every identifier in `line` that is APPLIED — an identifier-bounded run followed by `(`.
+    /// Extracted once per line instead of testing each known name against each line: the gate now
+    /// scans the whole crate library source, so the per-name form is quadratic in (lines x
+    /// declarations) and would cost minutes in a lane whose whole `--lib` budget is measured. The
+    /// admitted predicate is identical — same identifier boundary, same `(` follow — so widening
+    /// the population did not quietly widen what counts as a call.
+    fn called_names(line: &str) -> Vec<&str> {
         let bytes = line.as_bytes();
-        let mut from = 0usize;
-        while let Some(rel) = line[from..].find(name) {
-            let at = from + rel;
-            let after = at + name.len();
-            let before_ok = at == 0 || {
-                let b = bytes[at - 1] as char;
-                !(b.is_ascii_alphanumeric() || b == '_')
-            };
-            let after_ok = line[after..].trim_start().starts_with('(');
-            if before_ok && after_ok {
-                return true;
+        let mut out: Vec<&str> = Vec::new();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            if c.is_ascii_alphabetic() || c == '_' {
+                let start = i;
+                while i < bytes.len() {
+                    let b = bytes[i] as char;
+                    if b.is_ascii_alphanumeric() || b == '_' {
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if line[i..].trim_start().starts_with('(') {
+                    out.push(&line[start..i]);
+                }
+            } else {
+                i += 1;
             }
-            from = at + name.len();
         }
-        false
+        out
     }
 
-    /// Declarations that reach the ambient write, directly or through any number of helpers.
-    fn mutator_reaching(code: &[String], decls: &[FnDecl]) -> BTreeSet<String> {
-        let owner = owner_per_line(code.len(), decls);
-        let mut reaching: BTreeSet<String> = BTreeSet::new();
-        for (i, line) in code.iter().enumerate() {
-            if call_mention(line, MUTATOR_CALL) {
-                if let Some(d) = owner[i] {
-                    reaching.insert(decls[d].name.clone());
-                }
-            }
-        }
-        let names: BTreeSet<String> = decls.iter().map(|d| d.name.clone()).collect();
-        let mut callers_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (i, line) in code.iter().enumerate() {
-            let Some(d) = owner[i] else { continue };
-            let caller = decls[d].name.clone();
-            for name in &names {
-                if *name != caller && call_mention(line, name) {
-                    callers_of
-                        .entry(name.clone())
-                        .or_default()
-                        .insert(caller.clone());
-                }
-            }
-        }
+    /// The transitive closure itself, shared by the single-file control and the crate-wide wall so
+    /// the control cannot pass over a different reachability rule than the wall enforces.
+    fn close_over_callers(
+        mut reaching: BTreeSet<String>,
+        callers_of: &BTreeMap<String, BTreeSet<String>>,
+    ) -> BTreeSet<String> {
         loop {
             let mut grew = false;
             for callee in reaching.clone() {
@@ -1475,16 +1469,198 @@ mod process_cwd_mutation_reachability_gate {
         }
     }
 
-    fn closure_over_self() -> (Vec<FnDecl>, BTreeSet<String>) {
-        let path = super::workspace_root().join(SELF_REL);
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {} for the cwd-mutation gate: {e}", path.display()));
-        let raw: Vec<&str> = text.split('\n').collect();
-        let code = code_projection(&text);
-        let depths = depth_at_line_start(&code);
-        let decls = declarations(&raw, &code, &depths);
-        let reaching = mutator_reaching(&code, &decls);
-        (decls, reaching)
+    /// Seeds and call edges for ONE projected file.
+    ///
+    /// NAME RESOLUTION, AND WHY IT IS NOT A BARE GLOBAL MERGE. A first cut at the crate-wide
+    /// population unioned every call edge by name across all files, and that is unsound in the
+    /// direction that looks safe: the crate declares `main` 18 times, `new` 13, `probe`, `fail`
+    /// and `foo` besides, so one production function reaching the mutator (`pre_push::run_inner`)
+    /// bridged through those shared spellings into hundreds of unrelated tests. A wall that names
+    /// `two_identical_runs_mark_nothing_unstable` as a cwd offender is the absorbing fallback
+    /// §5 refuses — it cannot be acted on, so it would be silenced rather than fixed.
+    ///
+    /// An edge is therefore admitted only where the callee is UNAMBIGUOUS: declared in this file,
+    /// or declared exactly once in the whole crate. A name declared in several files resolves to
+    /// no cross-file edge, because this scanner has no scope information and guessing one is how
+    /// the merge above happened. That leaves a hole rather than a widening, so the hole is made
+    /// loud instead of assumed empty: `ambiguous_reaching` collects every reaching name that is
+    /// declared more than once, and the wall refuses on a non-empty set rather than reporting a
+    /// clean population it could not actually decide.
+    fn edges_in_file(
+        code: &[String],
+        decls: &[FnDecl],
+        local: &BTreeSet<String>,
+        unique_crate_wide: &BTreeSet<String>,
+        seeds: &mut BTreeSet<String>,
+        callers_of: &mut BTreeMap<String, BTreeSet<String>>,
+        callers_of_ambiguous: &mut BTreeMap<String, BTreeSet<String>>,
+    ) {
+        let owner = owner_per_line(code.len(), decls);
+        for (i, line) in code.iter().enumerate() {
+            let Some(d) = owner[i] else { continue };
+            let caller = decls[d].name.as_str();
+            for callee in called_names(line) {
+                if callee == MUTATOR_CALL {
+                    seeds.insert(caller.to_string());
+                } else if callee == caller {
+                    continue;
+                } else if local.contains(callee) || unique_crate_wide.contains(callee) {
+                    callers_of
+                        .entry(callee.to_string())
+                        .or_default()
+                        .insert(caller.to_string());
+                } else {
+                    callers_of_ambiguous
+                        .entry(callee.to_string())
+                        .or_default()
+                        .insert(caller.to_string());
+                }
+            }
+        }
+    }
+
+    /// Declarations that reach the ambient write, directly or through any number of helpers,
+    /// within a single projected file. The crate-wide wall uses `edges_in_file` directly so that
+    /// a call edge may cross a module boundary; this single-file form is what the raw-string
+    /// control asserts against.
+    fn mutator_reaching(code: &[String], decls: &[FnDecl]) -> BTreeSet<String> {
+        let names: BTreeSet<String> = decls.iter().map(|d| d.name.clone()).collect();
+        let mut seeds = BTreeSet::new();
+        let mut callers_of = BTreeMap::new();
+        let mut ambiguous_edges = BTreeMap::new();
+        edges_in_file(
+            code,
+            decls,
+            &names,
+            &names,
+            &mut seeds,
+            &mut callers_of,
+            &mut ambiguous_edges,
+        );
+        close_over_callers(seeds, &callers_of)
+    }
+
+    /// Every `.rs` file under the crate's library source root, sorted so the reported offender
+    /// list is stable across runs and filesystems.
+    fn lib_source_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut out: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let entries = std::fs::read_dir(&dir).unwrap_or_else(|e| {
+                panic!("read {} for the cwd-mutation gate: {e}", dir.display())
+            });
+            for entry in entries {
+                let path = entry
+                    .unwrap_or_else(|e| panic!("entry under {}: {e}", dir.display()))
+                    .path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    out.push(path);
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// THE POPULATION IS THE LANE'S, NOT THIS FILE'S. An earlier cut scanned only `cli_run.rs`
+    /// while the scope declaration above claimed every test the required `--lib` lane runs, and
+    /// review 58640 was right that this makes the reported rung broader than the executed
+    /// evidence: a mutator introduced in any other module of the same crate would leave the wall
+    /// green. DESIGN §4b(1) puts the rung at the MINIMUM across in-scope paths, so the honest
+    /// repair is to widen the evidence to the declared boundary rather than to narrow the claim —
+    /// the lane compiles one library and runs its tests in one process, so the crate's library
+    /// source IS the guarded population and anything smaller is a selection view read as one.
+    ///
+    /// Call edges are unioned across files by NAME. Two modules declaring the same helper name
+    /// therefore merge into one node, which OVER-approximates reachability — the direction that
+    /// produces a false RED a reader can dismiss by inspection, never a false green. The
+    /// over-approximation bound in the non-vacuity control is what keeps that from drifting into
+    /// the absorbing fallback §5 refuses.
+    fn closure_over_lib_sources() -> (Vec<FnDecl>, BTreeSet<String>, BTreeSet<String>) {
+        let root = super::workspace_root().join(LIB_SRC_REL);
+        let files = lib_source_files(&root);
+        assert!(
+            files.len() > 100,
+            "the library source scan found only {} file(s) under {} — the wall would be scoped to \
+             a population it did not read",
+            files.len(),
+            root.display()
+        );
+        let mut projected: Vec<(Vec<String>, Vec<FnDecl>)> = Vec::new();
+        let mut decls: Vec<FnDecl> = Vec::new();
+        for file in &files {
+            let text = std::fs::read_to_string(file).unwrap_or_else(|e| {
+                panic!("read {} for the cwd-mutation gate: {e}", file.display())
+            });
+            let raw: Vec<&str> = text.split('\n').collect();
+            let code = code_projection(&text);
+            let depths = depth_at_line_start(&code);
+            let file_decls = declarations(&raw, &code, &depths);
+            decls.extend(file_decls.iter().cloned());
+            projected.push((code, file_decls));
+        }
+        let mut declared_in: BTreeMap<String, usize> = BTreeMap::new();
+        for (f, (_, file_decls)) in projected.iter().enumerate() {
+            for name in file_decls
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<BTreeSet<_>>()
+            {
+                declared_in
+                    .entry(name)
+                    .and_modify(|seen| {
+                        if *seen != f {
+                            *seen = usize::MAX;
+                        }
+                    })
+                    .or_insert(f);
+            }
+        }
+        let unique_crate_wide: BTreeSet<String> = declared_in
+            .iter()
+            .filter(|(_, f)| **f != usize::MAX)
+            .map(|(n, _)| n.clone())
+            .collect();
+        let mut seeds: BTreeSet<String> = BTreeSet::new();
+        let mut callers_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut callers_of_ambiguous: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (code, file_decls) in &projected {
+            let local: BTreeSet<String> = file_decls.iter().map(|d| d.name.clone()).collect();
+            edges_in_file(
+                code,
+                file_decls,
+                &local,
+                &unique_crate_wide,
+                &mut seeds,
+                &mut callers_of,
+                &mut callers_of_ambiguous,
+            );
+        }
+        let reaching = close_over_callers(seeds, &callers_of);
+        // THE UNDECIDED FRONTIER, PINNED AT IDENTITY GRAIN RATHER THAN ASSUMED EMPTY. A reaching
+        // name declared in several files has no resolvable definition site for a scanner with no
+        // scope information, so its cross-file callers are not admitted as edges above. Two arms
+        // were measured and rejected before this one. Merging every declaration of a shared
+        // spelling (`main` 18 times in this crate, `run`, `new`, `probe`, `foo`) bridged one
+        // production seed into hundreds of unrelated tests — the absorbing fallback §5 refuses,
+        // since a wall naming `two_identical_runs_mark_nothing_unstable` as a cwd offender cannot
+        // be acted on and would be silenced. Closing over those callers instead reproduced the
+        // same blowup one step later. Dropping them silently is the narrowing arm.
+        //
+        // So the set is returned and contracted on by NAME. On this corpus it is exactly {`main`,
+        // `run`}: the crate's only two mutator seeds live in `cli_run` and `pre_push`, the
+        // `pre_push` one is `run_inner`, and `run` and `main` are the process entry points above
+        // it — a `--lib` unit test does not call a binary entry point, and a new ambiguous name
+        // entering this set is the event that would change that. The caller asserts membership,
+        // not size, so the contract cannot be satisfied by a coincidence of counts.
+        let undecided: BTreeSet<String> = reaching
+            .iter()
+            .filter(|n| declared_in.get(*n) == Some(&usize::MAX))
+            .cloned()
+            .collect();
+        (decls, reaching, undecided)
     }
 
     /// RAW STRINGS, WHICH THIS FILE ALREADY CONTAINS. `code_projection` must swallow a raw string
@@ -1587,7 +1763,7 @@ mod process_cwd_mutation_reachability_gate {
     /// THE WALL. No test the required unit lane runs may reach a process-cwd mutation.
     #[test]
     fn no_gating_test_reaches_a_process_cwd_mutator() {
-        let (decls, reaching) = closure_over_self();
+        let (decls, reaching, undecided) = closure_over_lib_sources();
         let offenders: Vec<&str> = decls
             .iter()
             .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.name))
@@ -1598,21 +1774,38 @@ mod process_cwd_mutation_reachability_gate {
             "a test the required unit lane RUNS reaches {MUTATOR_CALL}, directly or through a \
              helper: {offenders:?}. The process cwd is one cell shared by every test thread, so \
              this redirects relative-path resolution for the whole binary while it is set. Resolve \
-             paths from an explicitly passed root instead — every consumer in this file already \
-             accepts one."
+             paths from an explicitly passed root instead."
+        );
+        // THE UNDECIDED ARM. `undecided` is the closure over the callers of every reaching name
+        // this scanner could not resolve to one definition. Its emptiness at the TEST grain is
+        // what makes the offender list above a verdict rather than a selection: if a gating test
+        // could reach the mutator through an ambiguous spelling, it is named here instead of
+        // being silently outside the walk.
+        let expected: BTreeSet<String> = ["main", "run"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            undecided, expected,
+            "the set of mutator-reaching names this scanner cannot resolve to one definition has \
+             changed. The offender list above is a verdict only over names it could resolve, so a \
+             new entry here is a hole in the wall, not a bookkeeping difference: either the name \
+             is a binary entry point above `pre_push::run_inner` (in which case pin it here with \
+             that reason) or a test can now reach the ambient write through a spelling nothing \
+             walked."
         );
     }
 
     /// NON-VACUITY, against the SAME computed closure the wall consumes. The wall is an emptiness
     /// assertion, so without this the module stays green if the declaration scan collapses, if the
-    /// extent rule closes every body at zero width, or if `closure_over_self` reads some other
-    /// tree. Each assertion below is a way the wall could go green while proving nothing.
+    /// extent rule closes every body at zero width, or if `closure_over_lib_sources` reads
+    /// some other tree. Each assertion below is a way the wall could go green while proving nothing.
     #[test]
     fn the_closure_still_finds_the_ignored_residue_it_is_scoped_around() {
-        let (decls, reaching) = closure_over_self();
+        let (decls, reaching, _undecided) = closure_over_lib_sources();
         assert!(
-            decls.len() > 1000,
-            "the declaration scan collapsed ({} fns found); the wall would be vacuous",
+            decls.len() > 8_000,
+            "the declaration scan found only {} fns; the crate library source carries 10199, and \
+             `cli_run.rs` alone carries under 2000 — a count in that range means the scan \
+             collapsed or fell back to one file, and the wall would be claiming a population it \
+             did not read",
             decls.len()
         );
         assert!(
@@ -1635,13 +1828,22 @@ mod process_cwd_mutation_reachability_gate {
             "the closure stopped being transitive — this test reaches a write ONLY through \
              `with_workspace_cwd`: {residue:?}"
         );
-        // And the over-approximation control, in the direction the first cut failed: the closure
-        // must NOT swallow the file. If it reaches most of the corpus it is measuring containment
-        // failure rather than call edges, and the wall's emptiness would be unattainable noise.
+        // And the over-approximation control, in the direction two cuts of this gate failed: the
+        // closure must NOT swallow the corpus. If it reaches a large fraction of the declarations
+        // it is measuring containment or name-collision failure rather than call edges, and the
+        // wall's emptiness would be unattainable noise.
+        //
+        // RE-DERIVED AGAINST THE CRATE-WIDE DENOMINATOR, because the previous bound was
+        // calibrated against one file and a bound that no longer discriminates is the absorbing
+        // shape this same guard already caught once. Measured here: 78 reaching of 10199
+        // declarations, 0.76%. The old `decls.len() / 4` would now admit 2549 and would have
+        // passed the global-name-merge arm that produced hundreds of offender tests. One
+        // fiftieth admits 203 — an order of magnitude of headroom over the observed 78, and
+        // still an order of magnitude below the failure it must catch.
         assert!(
-            reaching.len() < decls.len() / 4,
-            "the closure reached {} of {} declarations — that is containment failure, not call \
-             edges",
+            reaching.len() * 50 < decls.len(),
+            "the closure reached {} of {} declarations — that is containment or name-collision \
+             failure, not call edges",
             reaching.len(),
             decls.len()
         );
