@@ -9,12 +9,6 @@ import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_q
 import v2.workflow.floor_route_gap {
   FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval
 }
-import v2.workflow.required_floor {
-  ClaimSafetyOutcome,
-  CompletedPastSafetyLimit,
-  CompletedWithinSafetyLimits,
-  SafetyInterrupted
-}
 
 // THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
 //
@@ -142,6 +136,53 @@ import v2.workflow.required_floor {
 // WHAT THIS DOES NOT TOUCH: `floor_route_gap` keeps its expectation type and its whole population.
 // What an identity is EXPECTED to gap on is a different fact from what an attempt REACHED, and
 // neither derives from the other, so nothing there is redundant with this arm.
+// THE SAFETY VOCABULARY LIVES HERE, BESIDE THE TERMINAL THAT CARRIES IT.
+//
+// These two types were declared in `v2.workflow.required_floor` and imported back. That put a
+// VOCABULARY inside one of its CONSUMERS: outside required_floor the family is referenced 12 times
+// in this module, 12 in the wire, and 12 more across the two test modules, so the declaring module
+// was not where it was used. It survived while only the floor and the ledger were involved, and
+// became impossible the moment a third module needed both -- `local_repo_wet_terminal` consuming the
+// shared terminal vocabulary closed `ledger -> required_floor -> local_repo_wet_terminal -> ledger`.
+// DESIGN section 4 makes acyclicity the import graph's only structural law, so the relocation is the
+// FORCED answer rather than a tidier one.
+//
+// PURE RELOCATION. No arm is added, renamed, reordered or re-payloaded; `required_floor` imports
+// them back and remains a consumer, and the opaque-host-operation population stays there as policy
+// over this vocabulary.
+
+// WHICH REACHABILITY ONE CLAIM HAS, closed and named rather than left implicit per-occurrence.
+// A claim either stays inside `eval_expr`'s own poll loop for its whole duration
+// (`CooperativelyPollable` -- the case the two safety limits above genuinely protect), or it
+// crosses into a synchronous native `free_call.*` arm that never re-enters `eval_expr` while it
+// runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
+// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
+// comment already described in prose; this type is what the ruling asked that prose become.
+type ClaimPreemptionReachability =
+    CooperativelyPollable
+  | OpaqueHostCallUnbounded { operation: String }
+
+// THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
+// prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`
+// is reserved for a claim the poll genuinely stopped before a verdict -- it must never be the
+// label for a claim that ran to completion, however far over its limit, because "terminal" and
+// "interrupted" are different facts and conflating them is exactly the relabeling this ruling
+// forbids. `CompletedPastSafetyLimit` names the other terminal-but-over-limit case and carries
+// its `ClaimPreemptionReachability`, so a reader can tell WHY the poll never had a chance to fire
+// without re-deriving it from a comment.
+type ClaimSafetyOutcome =
+    CompletedWithinSafetyLimits
+  | SafetyInterrupted {
+      raised_by: String
+      elapsed_cpu_at_least: Int
+      elapsed_wall_at_least: Int
+    }
+  | CompletedPastSafetyLimit {
+      observed_cpu: Int
+      observed_wall: Int
+      preemption: ClaimPreemptionReachability
+    }
+
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
