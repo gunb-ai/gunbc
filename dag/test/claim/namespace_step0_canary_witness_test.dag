@@ -40,12 +40,19 @@ import gunbc.namespace_step0_canary {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// RECEIPT ZERO. These three literals are not fixture decoration: they name the commit, the tree
+// and the compiler executable of the run in which the frozen contract's own command
+// (namespace_step0_canary_contract.command) was executed against main and admitted the
+// unavailable receipt below. That run is the prerequisite-scoring baseline -- a later change
+// claiming Step 0 movement is scored against THIS observation, and a change that moves main
+// without moving the canary has produced no movement to cite. Re-binding them is a new baseline
+// and lands alone, per the freeze note in gunbc.namespace_step0_canary.
 fn canary_commit() -> GitObjectId? {
-  git_sha1_object_id(hex: "cfb448de521965163e9a82e0a9eb77b311b49f9d")
+  git_sha1_object_id(hex: "20caf4eb0477c5a46d5b0d1302e337db14fcbd59")
 }
 
 fn canary_tree() -> GitObjectId? {
-  git_sha1_object_id(hex: "140fbae21fbc209319bbe1a9d9bfbdfd2c5d5dc6")
+  git_sha1_object_id(hex: "a6a6e0a531e23cc88fbbe01a2fa582b84867c625")
 }
 
 fn foreign_tree() -> GitObjectId? {
@@ -53,7 +60,7 @@ fn foreign_tree() -> GitObjectId? {
 }
 
 fn canary_compiler() -> Sha256Digest? {
-  sha256_hex_digest(hex: "4a14d9095b820ad92b7b12752c6464cc0b25f91897c85958feb8bac9ad5c9f3e")
+  sha256_hex_digest(hex: "a89dfc88a9ef07b6648f5a7e1f1fa5bafd8272defb74300910b18406786f6fa2")
 }
 
 fn admission_is_admitted(a: NamespaceStep0CanaryAdmission) -> Bool {
