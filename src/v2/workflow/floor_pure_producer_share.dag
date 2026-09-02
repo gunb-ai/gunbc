@@ -109,9 +109,45 @@ import v2.std.collection { List }
 // value_from_portable_ctx carries those symbols directly and therefore stops re-interning, but
 // it still walks the portable value to rebuild containers and re-sort every record. Equality
 // is frame-independent, while zero-walk serving remains a separate performance capability.
+// THE THIRD WARM ROW IS THE PERSISTED FRONTIER STANDING, and it is the first row enrolled from a
+// CANDIDATE THE CENSUS PRODUCED rather than from an incident on somebody else's pull request.
+// gunbc.recurring_failure_mode recurrence_ledger_scoped_below_the_recurrence names that discovery
+// path as the class: a roster whose rows each trace back to a budget refusal landing on a passing
+// lane is a roster whose discovery instrument is blind. The required floor's cross-claim demand
+// census is that instrument, and this row is what it ranked.
+//
+// WHAT WAS MEASURED, AND ON WHICH INSTRUMENT. Main run 33664768371 attempt 1,
+// required_floor_cross_claim_demand.tsv: gunbc.self_host_compile_phase_frontier
+// compile_phase_frontier_standing was evaluated 36 times across 22 claims for 6508ms
+// inclusive-of-callees, with phase_board_series_ratchet (23 claims / 23 evaluations / 6791ms) and
+// apply_regression_transition (23 / 23 / 6749ms) NESTED UNDERNEATH IT. ONLY THE OUTERMOST PRODUCER
+// OF THAT NEST IS ENROLLED, and the two inner rows are deliberately absent rather than overlooked:
+// the census's cost columns are inclusive of callees and its own summary line says they do not sum,
+// so enrolling the nest would be three roster rows claiming one saving three times.
+//
+// WHY IT IS WARM RATHER THAN CLAIM-FORCED, which is the whole reason this candidate is enrollable
+// at all. The census ranked the GENERAL function, whose argument is a List<CompilePhaseFrontierReceipt>
+// that a serve would have to reify and structurally verify in every consuming frame -- exactly the
+// shape this file's header records LOSING, where the serve cost more than the recompute and two
+// rows were removed. The repair was not to enrol that shape and hope. gunbc#10036's lane had already
+// established that only ONE persisted series exists, and its standing was being re-spelled at five
+// call sites; consolidating that fact into the nullary
+// gunbc.self_host_compile_phase_frontier current_compile_phase_frontier_standing is a DESIGN
+// section 3 single-authority repair whose consequence is an EMPTY argument row -- nothing to reify,
+// nothing to verify, and preparation-forceable, so the fill lands outside the fold. The general
+// function stays exactly as it was and its witnesses still exercise it against perturbed series.
+//
+// WHAT IT IS EXPECTED TO BUY, stated as headroom and not as a rung claim. The two closures that
+// consume this standing -- test.claim.self_host_compile_phase_live_gate_witness and
+// test.claim.compiler_frontend_program_status_witness -- carried 42 of the corpus's rows at or
+// above 280ms on runs 33664853305 and 33664768371, at 356-447ms against the 500ms per-claim CPU
+// ceiling, while the corpus p50 is 2ms. Removing a per-closure constant removes the LEVEL that puts
+// them there. It does not make any claim's cost environment-independent, and gunbc.rung_drop
+// floor_cost_claim_qualification_unavailable keeps standing on that separate subject.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
+  "gunbc.self_host_compile_phase_frontier.current_compile_phase_frontier_standing"
 ]
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
