@@ -318,6 +318,35 @@ test fn srv3_every_refused_disposition_renders_a_reason() -> Bool {
     ) == ""
 }
 
+// A REFUSAL MUST DISTINGUISH THE TWO SIDES IT JUST REFUSED. scope_covers judges verb, resource
+// and action, so the render has to carry all three plus the resource's TREE: two positions with
+// identical path segments in different trees are different resources, and a render that drops
+// either field prints one string for both sides of a scope mismatch it refused.
+fn witness_render_scope(verb: Verb, tree: NamespaceTree) -> AuthorizationScope {
+  AuthorizationScope {
+    verb: verb,
+    resource: NamespacePosition { tree: tree, path: ["redfish", "v1", "Systems"] },
+    action: "redfish.boot-source-override.set" as AuthorizedAction,
+  }
+}
+
+test fn srv3_scope_render_separates_verb_and_tree() -> Bool {
+  authorization_scope_render(scope: witness_render_scope(verb: Read, tree: FilesystemPathTree))
+    != authorization_scope_render(scope: witness_render_scope(verb: Write, tree: FilesystemPathTree))
+    && authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: FilesystemPathTree),
+    ) != authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: ServiceOpTree { service: "redfish" }),
+    )
+    && authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: ServiceOpTree { service: "redfish" }),
+    ) != authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: ServiceOpTree { service: "ipmi" }),
+    )
+    && authorization_scope_render(scope: witness_render_scope(verb: Write, tree: UriTree))
+      == authorization_scope_render(scope: witness_render_scope(verb: Write, tree: UriTree))
+}
+
 test fn srv3_os_install_actuate_workflow_orders_approval_before_boot() -> Bool {
   srv3_os_install_actuate_workflow_includes_operator_approval_before_boot()
     && srv3_os_install_actuate_workflow_credential_intent_is_declared()

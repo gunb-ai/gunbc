@@ -10,7 +10,14 @@ import std.content_hash {
   compare_content_hash,
   serialize_content_hash,
 }
-import std.effect_grant { Verb, NamespacePosition, verb_eq, position_under }
+import std.effect_grant {
+  Verb,
+  NamespacePosition,
+  verb_eq,
+  position_under,
+  effect_verb_label,
+  namespace_position_label,
+}
 import std.durable_compare_and_set {
   CasAttempt,
   CasExpectation,
@@ -384,12 +391,23 @@ fn claim_state_of_readable(readable: CasReadableSlot<AuthorizationClaimState>) -
   }
 }
 
+// EVERY FIELD THE SCOPE COMPARISON READS IS RENDERED, and that is the whole rule. scope_covers
+// judges verb, resource and action, so a render omitting any of the three can print two identical
+// strings for a mismatch it just refused -- a diagnostic that cannot distinguish the two sides of
+// its own refusal. The tree comes from the position rather than the path alone for the same reason:
+// `std.effect_grant` namespace_tree_label owns that spelling, and effect_target_label owns the path
+// one, so neither is re-coined here.
 fn authorization_scope_render(scope: AuthorizationScope) -> String {
-  concat(scope.action as String, concat(" on ", namespace_position_render(position: scope.resource)))
-}
-
-fn namespace_position_render(position: NamespacePosition) -> String {
-  fold(position.path, init: "", f: (acc, segment) => concat(acc, concat("/", segment)))
+  concat(
+    effect_verb_label(verb: scope.verb),
+    concat(
+      " ",
+      concat(
+        scope.action as String,
+        concat(" on ", namespace_position_label(position: scope.resource)),
+      ),
+    ),
+  )
 }
 
 // One refusal, one destination: every arm renders the cause the operator or the log needs, and no
