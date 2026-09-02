@@ -2,6 +2,7 @@ module gunbc.namespace_step0_canary
 
 import std.types { NonEmptyStr, Bool, List }
 import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 
 // THIS IS THE FROZEN STEP-0 CANARY, NOT A CENSUS AND NOT XL-1. It asks only whether the
@@ -60,7 +61,7 @@ type NamespaceStep0ObservedSubject
       observed_import_statements: List<NonEmptyStr>
     }
 
-type NamespaceStep0CanaryReceipt {
+type NamespaceStep0CanaryReceipt sole_constructor {
   contract_identity: NonEmptyStr
   source_commit: GitObjectId
   source_tree: GitObjectId
@@ -74,6 +75,73 @@ type NamespaceStep0CanaryReceipt {
   observation_completeness: NamespaceStep0ObservationCompleteness
   observed_subject: NamespaceStep0ObservedSubject
 }
+
+// FIXTURE-ONLY, AND NEVER A PRODUCTION ADVANCE ROUTE. This constructor exists solely so the
+// canary's own witness can prove that a strictly longer frontier is inhabitable before production
+// reaches it. The caller seal admits exactly that witness helper. Production may not mint
+// SubjectEntered through it; the eventual strip producer must own a separate constructor whose
+// inputs are the executed rewrite and its observation. Without that future producer, writing a
+// receipt would be the section-5 escape hatch -- advancing the canary instead of doing the work.
+fn namespace_step0_frontier_fixture_receipt(
+  contract_identity: NonEmptyStr,
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  compiler_program: NonEmptyStr,
+  compiler_executable_sha256: Sha256Digest,
+  input_subject_manifest: NonEmptyStr,
+  observed_tree: GitObjectId,
+  observed_import_statements: List<NonEmptyStr>
+) -> NamespaceStep0CanaryReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.namespace_step0_canary_witness", decl_name: "frontier_receipt")
+  ]
+  = NamespaceStep0CanaryReceipt {
+    contract_identity: contract_identity,
+    source_commit: source_commit,
+    source_tree: source_tree,
+    compiler_program: compiler_program,
+    compiler_executable_sha256: compiler_executable_sha256,
+    input_subject_manifest: input_subject_manifest,
+    completed_production_prefix: [CanaryContractFrozen, SourceTreePinned, CompilerExecutablePinned, InputSubjectManifestPinned, TypedImportStripApplied],
+    first_blocking_transition: CompileContainmentResolution,
+    first_blocking_cause: ContainmentCompileObservationRefused { cause: "fixture-only planted next-frontier compile observation" as NonEmptyStr },
+    subject_entry: Step0SubjectEntered,
+    observation_completeness: Step0ObservationIncomplete,
+    observed_subject: Step0StripObservation {
+      observed_tree: observed_tree,
+      observed_manifest: input_subject_manifest,
+      observed_import_statements: observed_import_statements
+    }
+  }
+
+fn namespace_step0_malformed_fixture_receipt(
+  contract_identity: NonEmptyStr,
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  compiler_program: NonEmptyStr,
+  compiler_executable_sha256: Sha256Digest,
+  input_subject_manifest: NonEmptyStr
+) -> NamespaceStep0CanaryReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.namespace_step0_canary_witness", decl_name: "entered_without_observation_receipt")
+  ]
+  = NamespaceStep0CanaryReceipt {
+    contract_identity: contract_identity,
+    source_commit: source_commit,
+    source_tree: source_tree,
+    compiler_program: compiler_program,
+    compiler_executable_sha256: compiler_executable_sha256,
+    input_subject_manifest: input_subject_manifest,
+    completed_production_prefix: [CanaryContractFrozen, SourceTreePinned, CompilerExecutablePinned, InputSubjectManifestPinned],
+    first_blocking_transition: ApplyTypedImportStrip,
+    first_blocking_cause: TypedSourceRewriteAndStripObservationProducerUnavailable {
+      missing_operation: "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr,
+      missing_producer: "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr
+    },
+    subject_entry: Step0SubjectEntered,
+    observation_completeness: Step0ObservationIncomplete,
+    observed_subject: NoStep0Observation
+  }
 
 type NamespaceStep0ReceiptField
   = CanaryContractIdentityField
@@ -166,8 +234,8 @@ fn admit_namespace_step0_canary_receipt(
       CompileContainmentResolution => NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "containment compilation cannot block before the strip transition completed" as NonEmptyStr }
       ApplyTypedImportStrip => match receipt.first_blocking_cause {
         ContainmentCompileObservationRefused { cause: _ } => NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "strip blocker carries a containment-compile cause" as NonEmptyStr }
-        TypedSourceRewriteAndStripObservationProducerUnavailable { missing_operation: operation, missing_producer: producer } =>
-          if !(operation == "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr)
+        TypedSourceRewriteAndStripObservationProducerUnavailable { missing_operation: op, missing_producer: producer } =>
+          if !(op == "a typed parse-level source rewrite that removes one complete import statement" as NonEmptyStr)
             || !(producer == "an owned Step-0 producer that applies the rewrite and folds the resulting compile observation" as NonEmptyStr) {
             NamespaceStep0ReceiptRefused { field: FirstBlockingTransitionField, cause: "strip blocker cause does not name the frozen missing capabilities" as NonEmptyStr }
           } else { match receipt.subject_entry {
