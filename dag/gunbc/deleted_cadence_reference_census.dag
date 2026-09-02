@@ -194,6 +194,21 @@ data substrate_long_lane_coverage: CoverageNotEstablished = CoverageNotEstablish
   restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierSubstrateLongLane) returns true" as NonEmptyStr,
 }
 
+// A COVERAGE OF ITS OWN RATHER THAN THE SHARED `bin_wet_template_coverage`, because the shared
+// row's trigger is a ROUTE FLAG and this row needs a stronger thing than a flag. DESIGN section
+// 4b(3): a drop retires by its trigger and nothing else, so a trigger naming less than the
+// capability it restores is satisfied while the capability stays dead. Here the gap between the
+// two is exactly measurable -- `witness_cadence_has_scheduled_route(FalsifierRehomedBinWet)`
+// answering true would retire the shared trigger, and this identity would STILL have no wet
+// terminal, so the floor's changed-witness arm would still refuse the subject re-point that has to
+// land with it. The trigger below therefore names what must be TRUE OF THIS IDENTITY, not what
+// must be enrolled or filed. Two rows keep the shared coverage and its looser trigger; this one
+// does not join them.
+data frontier_wet_terminal_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierRehomedBinWet,
+  restoration_trigger: "a scheduled route exists on which FalsifierRehomedBinWet identities reach a terminal verdict, sufficient for test.claim.expectation_frontier_witness.undeclared_effects_emit_the_frontier_receipt_holds to produce a wet terminal admitted against the candidate under evaluation -- which is what the floor's changed-witness arm requires before the measured subject re-point can land, and is strictly more than witness_cadence_has_scheduled_route answering true" as NonEmptyStr,
+}
+
 data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished {
   lost_with: FalsifierRehomedBinWet,
   restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierRehomedBinWet) returns true" as NonEmptyStr,
@@ -274,20 +289,38 @@ data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
 // So the missing subject was never being silently passed over; it was waiting behind a dark cadence.
 // The consequence runs the other way from the usual one: restoring a scheduled route for
 // FalsifierRehomedBinWet WITHOUT this re-point would have reddened the lane on its first run, for a
-// reason with nothing to do with the mechanism under test. The subject half
-// is repaired in the same change by re-pointing at `test.claim.gitattributes_emit_witness`
-// `witness_committed_matches_emit_holds`, a live per-PR row whose `Filesystem.Read` carries no
-// `expect:`; the cadence half is not repairable here and is what this row records.
+// reason with nothing to do with the mechanism under test.
 //
-// A GRAIN MISMATCH THIS ROW JOINS RATHER THAN INTRODUCES, named so the next reader is not misled.
+// THE SUBJECT IS NOT REPAIRED HERE, AND THE REASON IS A WALL WORTH KNOWING BEFORE YOU TRY.
+// The repair is known and was MEASURED: re-point at `test.claim.gitattributes_emit_witness`
+// `witness_committed_matches_emit_holds`, a live per-PR row whose `Filesystem.Read` carries no
+// `expect:` -- running the release `claim_batch` over it emits the `[expectation-frontier]`
+// receipt and the subject itself exits 0, so it satisfies both halves this arm needs.
+// IT STILL CANNOT LAND WHILE THE CADENCE IS DARK. `changed_witness_projection_rows` admits a
+// CHANGED witness whose outcome is `RouteGapBeforeVerdict` on exactly one arm -- the same
+// identity carrying a wet terminal admitted against THIS candidate -- and enrolment in
+// `v2.workflow.floor_route_gap` is not that. So editing this witness reds the required floor
+// with `changed_witness_blocking=1` and `failed=0`: the floor refuses to accept a modification
+// to a row it cannot execute, which is correct and is this row's own finding turned on the
+// author. The one lane that could supply the terminal, `LocalRepoWetLane`, claims only effects
+// confined to a temp directory and a local git repository; this witness spawns a child
+// `claim_batch` over the whole corpus, so enrolling it there would falsify that arm rather than
+// satisfy it, and `std.witness_admission` forbids exactly that widening.
+// THE SUBJECT REPAIR THEREFORE RIDES WITH THE CADENCE DECISION, not ahead of it: whoever
+// restores a scheduled route for FalsifierRehomedBinWet must land the re-point in the SAME
+// change, or the lane reds on its first run. That ordering is the whole content of this row.
+//
+// A GRAIN MISMATCH IN THE CLASS TRIGGER, PRE-EXISTING, named so the next reader is not misled.
 // `deleted_cadence_reference_drop`'s restoration trigger is written in the plural -- a predict-only
 // cold comparison landing, at which point "each row above" is reclassified -- but the population it
 // covers spans THREE cadences, and a row is restored by ITS OWN cadence regaining a route, which is
-// what each `CoverageNotEstablished` carries. This row's condition is
-// `witness_cadence_has_scheduled_route(FalsifierRehomedBinWet)`, which that trigger would not
-// deliver. It is the third member of the `bin_wet_template_coverage` subclass, after
+// what each `CoverageNotEstablished` carries. So the plural is wrong for the MAJORITY of its own
+// population, not for one new member. The two rows carrying `bin_wet_template_coverage` --
 // `gunbc.ci_layer_roots` `bin_witness_wet_note` and `test.claim.long.dag_compile_clean_perturb_corpus`
-// `perturb_cross_tree_import_corpus_green_holds`, so the mismatch predates it and is not repaired here.
+// `perturb_cross_tree_import_corpus_green_holds` -- sit under it today, so the mismatch predates this
+// row and is not repaired here. THIS row does not join them: it carries
+// `frontier_wet_terminal_coverage`, whose trigger names the capability at the grain the floor
+// actually demands, for the reason recorded beside that declaration.
 // WHAT BOUNDS THE HAZARD is that the plural trigger is PROSE and nothing folds it: the executing
 // check, `deleted_cadence_reference_row_holds`, reads `coverage.lost_with` per row, so a returning
 // route flips exactly the rows it actually restores and cannot green this one on another cadence
@@ -422,7 +455,7 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
       site: decl_ref(module_path: "test.claim.expectation_frontier_witness", decl_name: "undeclared_effects_emit_the_frontier_receipt_holds"),
       standing: PremiseInvalidated {
         affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
-        current_coverage: bin_wet_template_coverage,
+        current_coverage: frontier_wet_terminal_coverage,
       },
     },
     DeletedCadenceReference {
