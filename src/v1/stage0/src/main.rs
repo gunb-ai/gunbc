@@ -358,17 +358,17 @@ fn write_output_files(
 
 fn main() {
     let cli = v1_compiler::gunbc_cli_dispatch_generated::Cli::parse();
-    let host = ShippedCliHost {
+    let host = RetainedCliHost {
         dry_run: cli.dry_run,
     };
     v1_compiler::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)
 }
 
-struct ShippedCliHost {
+struct RetainedCliHost {
     dry_run: bool,
 }
 
-impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for ShippedCliHost {
+impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliHost {
     fn retained_host_kernel(
         &self,
         source_roots: Vec<String>,
