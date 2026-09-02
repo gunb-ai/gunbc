@@ -142,7 +142,7 @@ test fn w_the_scan_reports_the_earliest_of_many_divergences() -> Bool {
 test fn w_a_well_formed_envelope_is_admitted() -> Bool {
   match admit_envelope(envelope: raw_realization_envelope(
     schema_version: contract_schema_version,
-    operation_kinds: ["through_hole", "datum_mark"],
+    operation_kinds: ["through_hole"],
     rung_diameters_um: [3000, 3100]
   )) {
     EnvelopeAdmitted { realized_rungs: r } => r.length() == 2
@@ -196,5 +196,32 @@ test fn w_an_envelope_carrying_no_rungs_refuses() -> Bool {
     EnvelopeAdmitted { realized_rungs: _ } => false
     EnvelopeSchemaUnsupported { received: _, supported: _ } => false
     EnvelopeOperationUnknown { received: _ } => false
+  }
+}
+
+// WITNESS 11 — THE DELETED OPERATION REFUSES AT THE WIRE, AND THIS IS THE ONE WITNESS IN THIS FILE
+// THAT WAS GREEN-AS-ADMITTED BEFORE THE CHANGE THAT ADDED IT.
+//
+// V0 deleted OpDatumMark from CouponOperation. The compile stayed clean through that deletion while
+// admitted_operation_kinds still carried the string "datum_mark", because a string in a list has no
+// referent the namespace can refuse -- so for one revision the transport would have ADMITTED an
+// operation the model had no constructor for. That is the wall inverted: the boundary accepting what
+// the authority cannot represent.
+//
+// This witness is the executed agreement between the wire spelling and the coproduct arms. It is NOT
+// redundant with the type and must not be deleted as such: nothing in the type system relates the
+// string list to the constructors, which is exactly why the drift was silent. It retires when the
+// spelling is PROJECTED from the arms rather than authored beside them -- the next-rung trigger named
+// on admitted_operation_kinds -- and not before.
+test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
+  match admit_envelope(envelope: raw_realization_envelope(
+    schema_version: contract_schema_version,
+    operation_kinds: ["through_hole", "datum_mark"],
+    rung_diameters_um: [3000]
+  )) {
+    EnvelopeOperationUnknown { received: r } => r == "datum_mark"
+    EnvelopeAdmitted { realized_rungs: _ } => false
+    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+    EnvelopeCarriesNoRungs => false
   }
 }

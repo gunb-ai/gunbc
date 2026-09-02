@@ -83,11 +83,27 @@ type EnvelopeAdmission
   | EnvelopeOperationUnknown { received: NonEmptyStr }
   | EnvelopeCarriesNoRungs
 
-// The closed operation vocabulary AS SPELLED ON THE WIRE. These strings are the transport spelling
-// of the CouponOperation arms and they are deliberately written once, here, at the boundary that
-// receives them -- a second copy anywhere downstream would be the meaning fork DESIGN section 3
-// names, one operation with two spellings that can drift apart silently.
-data admitted_operation_kinds: List<NonEmptyStr> = ["through_hole", "datum_mark"]
+// The closed operation vocabulary AS SPELLED ON THE WIRE, and this roster is HAND-SYNCED to the
+// CouponOperation arms rather than derived from them. That is a known weakness, stated here rather
+// than discovered later, because it has already failed once.
+//
+// WHAT HAPPENED: this list read ["through_hole", "datum_mark"] while OpDatumMark was being deleted
+// from CouponOperation. The compile stayed clean through the whole deletion, because a string in a
+// list has no referent the namespace can refuse. For one revision the wall would have ADMITTED a
+// datum_mark envelope into a vocabulary that no longer had a constructor for it -- the transport
+// accepting what the model cannot represent, which is the precise inversion of what a wall is for.
+// A stringly roster beside a closed coproduct is a second authority for the operation vocabulary,
+// and it drifts in exactly the direction that fails open.
+//
+// RUNG: mechanically preventable, not structural. The discriminating RED is
+// w_the_deleted_operation_refuses_at_the_wire, which was GREEN-as-admitted before this correction
+// and refuses after, so the roster's agreement with the coproduct is executed rather than asserted.
+// CEILING is structural impossibility and it is reachable: the wire spelling should be PROJECTED
+// from the coproduct's arms so deleting an arm deletes its spelling in the same motion. NEXT-RUNG
+// TRIGGER is an arm-name projection over a closed coproduct -- the capability to enumerate a
+// coproduct's constructors as data. Until that exists the witness is the only thing holding the two
+// spellings together, and it must not be deleted as redundant with the type.
+data admitted_operation_kinds: List<NonEmptyStr> = ["through_hole"]
 
 fn operation_kind_admitted(kind: NonEmptyStr) -> Bool {
   fold(admitted_operation_kinds, init: false, f: fn(acc, k) { acc || k == kind })
