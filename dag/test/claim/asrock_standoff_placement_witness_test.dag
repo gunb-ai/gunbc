@@ -17,9 +17,14 @@ import extdeps.boards.asrock_rack {
   DischargedByContinuityMeter,
   mounting_unknown_discharge,
   asrock_altrad8ud_open_mounting_unknowns,
-  asrock_altrad8ud_board_depth_exact,
+  asrock_altrad8ud_board_depth_nominal_exact,
   asrock_altrad8ud_front_mounting_row_offset,
   asrock_altrad8ud_front_overhang,
+  BoardPlaneOrientation, XAlongRearIoYDepth, XDepthYAlongRearIo,
+  board_extent_along_rear_io, board_extent_depth,
+  asrock_altrad8ud_orientation,
+  asrock_altrad8ud_extent_along_rear_io,
+  asrock_altrad8ud_extent_depth,
 }
 import std.measure { Micrometer, micrometer_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -143,7 +148,7 @@ test fn w_the_bond_unknown_routes_to_its_own_instrument() -> Bool {
 // of asserting a DERIVATION rather than asserting the literal 29210: an equality against the
 // constant would agree with itself no matter which of the two spellings the other rows adopted.
 test fn w_the_overhang_derives_from_the_outline() -> Bool {
-  let depth = micrometer_count(m: asrock_altrad8ud_board_depth_exact)
+  let depth = micrometer_count(m: asrock_altrad8ud_board_depth_nominal_exact)
   let front_row = micrometer_count(m: asrock_altrad8ud_front_mounting_row_offset)
   let overhang = micrometer_count(m: asrock_altrad8ud_front_overhang)
   depth - front_row == overhang
@@ -156,4 +161,42 @@ test fn w_the_rounded_depth_would_not_satisfy_the_derivation() -> Bool {
   let front_row = micrometer_count(m: asrock_altrad8ud_front_mounting_row_offset)
   let overhang = micrometer_count(m: asrock_altrad8ud_front_overhang)
   267000 - front_row != overhang
+}
+
+// WITNESS 10 — THE AXIS SWAP MUTATION, and it is the only check in this program that could have
+// caught the transposition that started all of this.
+//
+// Feeding the SAME two extents through the opposite orientation must exchange which physical edge
+// each one answers for. If the readouts ignored the orientation — returning x for width and y for
+// depth regardless — this goes red, and that failure mode is exactly what a prose annotation saying
+// "x is along the rear I/O edge" left undetectable for as long as it stood.
+test fn w_swapping_the_orientation_exchanges_the_physical_extents() -> Bool {
+  let a = micrometer_count(m: board_extent_along_rear_io(
+    orientation: XDepthYAlongRearIo,
+    x: micrometer(count: 243840),
+    y: micrometer(count: 266700)
+  ))
+  let d = micrometer_count(m: board_extent_depth(
+    orientation: XDepthYAlongRearIo,
+    x: micrometer(count: 243840),
+    y: micrometer(count: 266700)
+  ))
+  a == 266700 && d == 243840
+}
+
+// WITNESS 11 — AND THE DECLARED ORIENTATION IS THE ONE THE BOARD ACTUALLY USES. Witness 10 proves
+// the readouts consume the orientation; this pins which orientation this board is authored in. The
+// pair is what makes the model load-bearing: without this, a correct mechanism could still be
+// declared backwards, which is the original defect wearing a type.
+test fn w_the_board_reads_244_along_the_rear_io_edge_and_266_deep() -> Bool {
+  micrometer_count(m: asrock_altrad8ud_extent_along_rear_io) == 243840
+    && micrometer_count(m: asrock_altrad8ud_extent_depth) == 266700
+}
+
+// WITNESS 12 — THE DEPTH READOUT AND THE OVERHANG DERIVATION AGREE. Two independent routes to this
+// board's depth: the orientation-aware readout, and the row the overhang subtracts from. They must
+// be the same number, or one of them is describing a different board.
+test fn w_the_depth_readout_matches_the_overhang_derivation() -> Bool {
+  micrometer_count(m: asrock_altrad8ud_extent_depth)
+    == micrometer_count(m: asrock_altrad8ud_board_depth_nominal_exact)
 }

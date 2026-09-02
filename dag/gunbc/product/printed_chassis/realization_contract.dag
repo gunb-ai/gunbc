@@ -10,7 +10,6 @@ import product.printed_chassis.coupon {
   CouponSpecimen,
   CouponOperation,
   OpThroughHole,
-  OpDatumMark,
   PlateDimensions,
   ladder_rungs,
   ladder_base,
@@ -37,23 +36,95 @@ import product.printed_chassis.coupon {
 // WHAT THE CONTRACT ADDS is the three facts the specimen does not carry and the handler cannot be
 // trusted to supply: which contract version this is, which derivation law produced the derived
 // values, and the derived values themselves for cross-checking.
-// THE SCHEMA VERSION IS TRANSPORT DATA AND NOT A CHECKED COPRODUCT, AND THE REASON IS A RULE ABOUT
-// EVIDENCE RATHER THAN ABOUT VERSIONING.
+// THE SCHEMA WALL LIVES AT THE RAW BOUNDARY, AND AN EARLIER REVISION DELETED IT FOR THE WRONG
+// REASON. This is the correction, and the reasoning error is worth more than the wall.
 //
-// The first draft declared `type ContractVersion = ContractV0` and gave the conformance check a
-// ContractVersionUnsupported arm. That arm can never fire: exactly one version exists, so the
-// forbidden state has no constructor, and no fixture can author a contract carrying an unknown
-// version because the type admits only the one. DESIGN §4b names this exactly — a check whose RED is
-// unauthorable is not a weak wall, it is a decoration, permanently green by construction and worse
-// than absent because it will be cited as coverage.
+// The first draft declared `type ContractVersion = ContractV0` with a ContractVersionUnsupported
+// arm, and that arm really was unfirable: one version exists, so no value of that TYPE can carry an
+// unknown version. It was deleted as a DESIGN section 4b decoration -- a check whose RED cannot be
+// authored, permanently green, worse than absent because it gets cited as coverage.
 //
-// It was also, incidentally, not a coproduct at all: `type X = Y` with a single arm and no `|` is an
-// ALIAS, and no single-arm coproduct exists anywhere in this corpus. The type error is what exposed
-// the evidence problem, which would otherwise have shipped as a green arm nobody questioned.
+// That reasoning checked one boundary and section 4b names TWO, saying explicitly that "only the
+// second decides it": a state unrepresentable in the ACCEPTED CORPUS may still be perfectly
+// representable as SOURCE HANDED IN BY A FIXTURE. The handler does not send a `ContractVersion`. It
+// sends JSON, and JSON can say "v999" -- so the forbidden state is authorable at the transport
+// boundary, has always been authorable there, and the deleted check was not a decoration but a wall
+// standing in the wrong place. Deleting it removed a real refusal.
 //
-// So the version travels as data, and the check returns when a SECOND version exists — at which
-// point an older handler meeting a newer schema becomes an authorable state and the refusal becomes
-// a real wall. Trigger: the first contract schema change.
+// So the vocabulary is split. RawRealizationEnvelope is what ARRIVES: strings and integers, no
+// modeled types, nothing yet trusted. Admission is the total decision procedure that turns one into
+// modeled values or refuses with a located cause. Nothing downstream sees an unadmitted envelope,
+// which is the construction that makes the typed side safe -- rather than a validation bolted onto
+// a type that was already unable to express the fault.
+type RawRealizationEnvelope sole_constructor {
+  schema_version: NonEmptyStr
+  operation_kinds: List<NonEmptyStr>
+  rung_diameters_um: List<Int>
+}
+
+fn raw_realization_envelope(
+  schema_version: NonEmptyStr,
+  operation_kinds: List<NonEmptyStr>,
+  rung_diameters_um: List<Int>,
+) -> RawRealizationEnvelope {
+  RawRealizationEnvelope {
+    schema_version: schema_version,
+    operation_kinds: operation_kinds,
+    rung_diameters_um: rung_diameters_um,
+  }
+}
+
+// Every refusal names WHAT arrived, not merely that something was wrong. A handler debugging a
+// rejected payload needs the offending spelling; "unsupported schema" alone sends them to read our
+// source instead of their own output.
+type EnvelopeAdmission
+  = EnvelopeAdmitted { realized_rungs: List<Micrometer> }
+  | EnvelopeSchemaUnsupported { received: NonEmptyStr, supported: NonEmptyStr }
+  | EnvelopeOperationUnknown { received: NonEmptyStr }
+  | EnvelopeCarriesNoRungs
+
+// The closed operation vocabulary AS SPELLED ON THE WIRE. These strings are the transport spelling
+// of the CouponOperation arms and they are deliberately written once, here, at the boundary that
+// receives them -- a second copy anywhere downstream would be the meaning fork DESIGN section 3
+// names, one operation with two spellings that can drift apart silently.
+data admitted_operation_kinds: List<NonEmptyStr> = ["through_hole", "datum_mark"]
+
+fn operation_kind_admitted(kind: NonEmptyStr) -> Bool {
+  fold(admitted_operation_kinds, init: false, f: fn(acc, k) { acc || k == kind })
+}
+
+type OperationScan sole_constructor {
+  unknown: List<NonEmptyStr>
+}
+
+fn admit_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
+  if envelope.schema_version != contract_schema_version {
+    EnvelopeSchemaUnsupported {
+      received: envelope.schema_version,
+      supported: contract_schema_version,
+    }
+  } else {
+    let scan = fold(envelope.operation_kinds, init: OperationScan { unknown: [] }, f: fn(acc, k) {
+      if operation_kind_admitted(kind: k) {
+        acc
+      } else {
+        OperationScan { unknown: concat(acc.unknown, [k]) }
+      }
+    })
+    if scan.unknown.length() != 0 {
+      EnvelopeOperationUnknown { received: scan.unknown.first() }
+    } else if envelope.rung_diameters_um.length() == 0 {
+      EnvelopeCarriesNoRungs
+    } else {
+      EnvelopeAdmitted {
+        realized_rungs: fold(envelope.rung_diameters_um, init: [], f: fn(acc, d) {
+          concat(acc, [micrometer(count: d)])
+        })
+      }
+    }
+  }
+}
+
 data contract_schema_version: NonEmptyStr = "v0"
 // THE DERIVATION IDENTITY IS CARRIED, NOT THE DERIVATION.
 //

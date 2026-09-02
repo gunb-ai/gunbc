@@ -83,9 +83,31 @@ fn ladder_step(l: LengthLadder) -> Micrometer { l.step }
 // The realization handler MAY map these to kernel calls and choose provably equivalent orderings.
 // It may NOT introduce an operation absent from this coproduct: an unknown operation kind has no
 // constructor here, so a handler that invented one could not describe it in a contract at all.
+// V0 CARRIES ONE OPERATION, AND DROPPING THE OTHER IS THE POINT OF THIS REVISION.
+//
+// OpDatumMark { text, at_x, at_y } engraved a label. It fixed three things and left FONT, GLYPH
+// METRICS, STROKE WIDTH, ALIGNMENT, ORIENTATION, DEPTH and ENGRAVED-VERSUS-EMBOSSED to the handler.
+// That is the DESIGN section 3 tell in its exact form: the handler was CHOOSING geometry the model
+// had not fixed, rather than implementing a derivation the model specified. A contract that
+// underdetermines its own output is not a contract.
+//
+// It had already produced a silent falsehood. specimen_extent assumed the mark was ENGRAVED and
+// therefore could not enlarge the plate -- an assumption stated nowhere and enforced by nothing. A
+// handler that embossed would produce a part taller than the model says it is, and the envelope-fit
+// answer would be wrong in the unsafe direction, which is the one direction that matters.
+//
+// The alternative was to determine it fully, which means modelling fonts. That is a domain, not a
+// field, and it would be imported to place a label on a calibration coupon.
+//
+// THE NEED BEHIND IT IS REAL AND IS NOT DROPPED: several coupons will exist physically and must be
+// told apart by hand. Recorded as a V1 obligation rather than left implicit, with the route that
+// looks right -- identify the coupon by GEOMETRY, a coded notch or hole pattern, which OpThroughHole
+// already determines completely. That buys physical identification without importing typography, and
+// it is checked by the same contract the holes already pass through.
+data coupon_v1_physical_identification_obligation: NonEmptyStr = "OPEN: physical coupons must be distinguishable by hand after printing. V0 carries no marking operation because a text engraving underdetermines font, glyph metrics, stroke, alignment, orientation, depth and engraved-versus-embossed, and specimen_extent silently assumed engraving. Preferred route: a coded through-hole or notch pattern, fully determined by the operation vocabulary V0 already has. Not a font model."
+
 type CouponOperation
   = OpThroughHole { diameter: Micrometer, center_x: Micrometer, center_y: Micrometer }
-  | OpDatumMark { text: NonEmptyStr, at_x: Micrometer, at_y: Micrometer }
 
 // THE PLATE IS ITS OWN TYPE, not a member of CouponOperation, and the first draft of this module
 // had it as a member. That draft then needed a match to recover the plate's dimensions, whose other
@@ -182,7 +204,6 @@ fn specimen_hole_diameters(s: CouponSpecimen) -> List<Micrometer> {
   fold(s.features, init: [], f: fn(acc, op) {
     match op {
       OpThroughHole { diameter: d, center_x: _, center_y: _ } => concat(acc, [d])
-      OpDatumMark { text: _, at_x: _, at_y: _ } => acc
     }
   })
 }
@@ -196,10 +217,7 @@ fn hole_ladder_specimen(l: LengthLadder) -> CouponSpecimen {
       size_y: hole_ladder_plate_depth,
       size_z: hole_ladder_plate_thickness,
     },
-    features: concat(
-      hole_ladder_features(l: l),
-      [OpDatumMark { text: "HOLE-LADDER r1", at_x: micrometer(count: 3000), at_y: micrometer(count: 2000) }]
-    )
+    features: hole_ladder_features(l: l)
   )
 }
 // MICROMETRES TO MILLIMETRES ROUNDS UP, AND THE DIRECTION IS THE WHOLE SAFETY ARGUMENT.

@@ -785,7 +785,71 @@ data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocati
 // sit near that edge and take insertion force on unsupported PCB. A non-conductive front-edge
 // support is therefore a cassette candidate rather than a nicety — gated on an underside-component
 // keep-out measurement, since a support that fouls a solder joint is worse than none.
-data asrock_altrad8ud_board_depth_exact: Micrometer = micrometer(count: 266700)
+// THE AXIS ASSIGNMENT IS A CONSTRUCTOR, NOT A COMMENT, and this program earned that the hard way.
+//
+// The extents of this board were transposed once and the error survived review, three separate
+// retractions, and an approving review that quoted the stale prose back as evidence of discipline.
+// Every one of those defences was a SENTENCE. The annotation above the outline said "x is along the
+// rear I/O edge, y is depth" and it was true and it prevented nothing, because no Accepted program
+// can read it -- DESIGN section 4c says exactly that about annotations, and a fact that only prose
+// carries is a fact the compiler cannot check.
+//
+// So the assignment moves into the type system. There are exactly two ways to lay a rectangular
+// board into a 2-D frame, and they are the two arms below. A transposition is then a DIFFERENT
+// CONSTRUCTOR rather than a different comment: it cannot be introduced by editing prose, and every
+// consumer that reads an extent must say which axis it means.
+//
+// Why a two-arm coproduct rather than a record of two roles: a record permits x and y to carry the
+// SAME role, which is not a transposition but a nonsense state, and DESIGN section 4b prefers the
+// invalid state to have no constructor over having a validator.
+type BoardPlaneOrientation
+  = XAlongRearIoYDepth
+  | XDepthYAlongRearIo
+
+// The readouts. These are the only sanctioned way to ask this module for an extent, and they are
+// named for the PHYSICAL EDGE rather than for an axis letter, so a caller cannot ask for "x" and
+// receive whatever x happens to mean today.
+fn board_extent_along_rear_io(orientation: BoardPlaneOrientation, x: Micrometer, y: Micrometer) -> Micrometer {
+  match orientation {
+    XAlongRearIoYDepth => x
+    XDepthYAlongRearIo => y
+  }
+}
+
+fn board_extent_depth(orientation: BoardPlaneOrientation, x: Micrometer, y: Micrometer) -> Micrometer {
+  match orientation {
+    XAlongRearIoYDepth => y
+    XDepthYAlongRearIo => x
+  }
+}
+
+// This board's orientation, declared once. The outline's max point is authored in this orientation
+// and the readouts below are the accessors every consumer should use.
+data asrock_altrad8ud_orientation: BoardPlaneOrientation = XAlongRearIoYDepth
+
+data asrock_altrad8ud_extent_along_rear_io: Micrometer = board_extent_along_rear_io(
+  orientation: asrock_altrad8ud_orientation,
+  x: micrometer(count: 243840),
+  y: micrometer(count: 266700)
+)
+
+data asrock_altrad8ud_extent_depth: Micrometer = board_extent_depth(
+  orientation: asrock_altrad8ud_orientation,
+  x: micrometer(count: 243840),
+  y: micrometer(count: 266700)
+)
+
+// NOMINAL, NOT AS-MANUFACTURED, and the distinction is the difference between arithmetic and
+// physics. 243840 x 266700 um is the EXACT CONVERSION of the vendor's published nominal 9.6 x 10.5
+// in. It is not the exact as-built extent of any board on the operator's desk: PCB routing carries a
+// real tolerance, and no board here has been measured. Naming these "exact" without qualification
+// invites the promotion that matters -- exact ARITHMETIC silently read as ZERO PHYSICAL TOLERANCE --
+// and a cassette clearance derived on that reading would be tight by an unknown amount.
+//
+// So: these are nominal-profile facts, admissible for layout and for deciding which standard grid
+// applies. Any clearance that depends on the board's real edge needs a product tolerance or an
+// as-held measurement, which asrock_altrad8ud_open_mounting_unknowns already tracks as unmeasured.
+data asrock_altrad8ud_board_depth_nominal_exact: Micrometer = micrometer(count: 266700)
 data asrock_altrad8ud_front_mounting_row_offset: Micrometer = micrometer(count: 237490)
 data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
 

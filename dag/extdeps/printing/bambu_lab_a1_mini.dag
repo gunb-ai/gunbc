@@ -87,6 +87,18 @@ data a1_mini_max_build_plate_temperature: Celsius = celsius(count: 80)
 
 // Electrical, carried because the rack this program builds shares a supply with these machines and
 // because a printer is a node with a power envelope like any other.
+//
+// THE RATING IS RMS, AND SAYING SO IS NOT PEDANTRY. "100-240 VAC" is a root-mean-square rating; the
+// peak is about 1.41x it, so a 240 V rating implies roughly 340 V of insulation stress. Nothing in
+// this program consumes that distinction today, so no separate RMS carrier is minted -- a type with
+// no consumer is the experimental residue DESIGN section 6 names. It is recorded here so that the
+// first consumer which cares about peak stress reads a stated assumption rather than inferring one
+// from a bare number.
+//
+// Volt is the right carrier and its quantity is already ElectricPotentialDifference, so this is a
+// potential DIFFERENCE and not an absolute potential. Review 58505 read it as "a flat Volt scalar"
+// and asked for an affine split; the response is recorded on the pull request rather than here,
+// because it is a fact about the substrate rather than about this machine.
 data a1_mini_input_voltage_minimum: Volt = volt(count: 100)
 data a1_mini_input_voltage_maximum: Volt = volt(count: 240)
 data a1_mini_input_frequency_minimum: Hertz = hertz(count: 50)

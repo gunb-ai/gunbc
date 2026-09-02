@@ -11,6 +11,10 @@ import product.printed_chassis.realization_contract {
   ContractConformance, ContractConforms,
   ContractRungCountDiverges, ContractRungValueDiverges,
   compare_rungs, admit_realized_ladder,
+  RawRealizationEnvelope, raw_realization_envelope,
+  EnvelopeAdmission, EnvelopeAdmitted, EnvelopeSchemaUnsupported,
+  EnvelopeOperationUnknown, EnvelopeCarriesNoRungs,
+  admit_envelope, contract_schema_version,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -125,5 +129,72 @@ test fn w_the_scan_reports_the_earliest_of_many_divergences() -> Bool {
       }
     }
     _ => false
+  }
+}
+
+// THE FOUR TRANSPORT WITNESSES. Each of these REDs is authorable — a handler really can send any of
+// these payloads — which is the property the deleted ContractVersion check never had. That check was
+// removed as a decoration on the grounds that its RED could not be written; the grounds were wrong,
+// because they tested the typed boundary and the payload arrives at the raw one.
+
+// WITNESS 7 — THE POSITIVE CONTROL, first, because without it the three refusals below are satisfied
+// by an admission procedure that rejects everything.
+test fn w_a_well_formed_envelope_is_admitted() -> Bool {
+  match admit_envelope(envelope: raw_realization_envelope(
+    schema_version: contract_schema_version,
+    operation_kinds: ["through_hole", "datum_mark"],
+    rung_diameters_um: [3000, 3100]
+  )) {
+    EnvelopeAdmitted { realized_rungs: r } => r.length() == 2
+    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+    EnvelopeOperationUnknown { received: _ } => false
+    EnvelopeCarriesNoRungs => false
+  }
+}
+
+// WITNESS 8 — AN UNKNOWN SCHEMA VERSION REFUSES, AND CARRIES BOTH SPELLINGS. This is the exact
+// payload the earlier reasoning called unwritable: "v999" is a string, and a handler can send it.
+test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
+  match admit_envelope(envelope: raw_realization_envelope(
+    schema_version: "v999",
+    operation_kinds: ["through_hole"],
+    rung_diameters_um: [3000]
+  )) {
+    EnvelopeSchemaUnsupported { received: r, supported: s } => r == "v999" && s == contract_schema_version
+    EnvelopeAdmitted { realized_rungs: _ } => false
+    EnvelopeOperationUnknown { received: _ } => false
+    EnvelopeCarriesNoRungs => false
+  }
+}
+
+// WITNESS 9 — AN UNKNOWN OPERATION REFUSES BEFORE ANY GEOMETRY IS BUILT, and names the offending
+// spelling. A handler inventing an operation we never modelled is how a coupon acquires a feature
+// the contract cannot see; refusing at the boundary means it never reaches the operation graph.
+test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
+  match admit_envelope(envelope: raw_realization_envelope(
+    schema_version: contract_schema_version,
+    operation_kinds: ["through_hole", "chamfer"],
+    rung_diameters_um: [3000]
+  )) {
+    EnvelopeOperationUnknown { received: r } => r == "chamfer"
+    EnvelopeAdmitted { realized_rungs: _ } => false
+    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+    EnvelopeCarriesNoRungs => false
+  }
+}
+
+// WITNESS 10 — AN EMPTY RUNG LIST REFUSES. A coupon with no holes measures nothing, and an empty
+// list is what a handler sends when its own derivation silently produced nothing — the failure that
+// looks most like success, because every downstream comparison over an empty list agrees.
+test fn w_an_envelope_carrying_no_rungs_refuses() -> Bool {
+  match admit_envelope(envelope: raw_realization_envelope(
+    schema_version: contract_schema_version,
+    operation_kinds: ["through_hole"],
+    rung_diameters_um: []
+  )) {
+    EnvelopeCarriesNoRungs => true
+    EnvelopeAdmitted { realized_rungs: _ } => false
+    EnvelopeSchemaUnsupported { received: _, supported: _ } => false
+    EnvelopeOperationUnknown { received: _ } => false
   }
 }

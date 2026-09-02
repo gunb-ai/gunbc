@@ -137,13 +137,39 @@ test fn w_an_oversize_part_is_refused_on_the_axis_that_exceeds() -> Bool {
   }
 }
 
-// WITNESS 9 — THE MACHINE GRADES EVERY MATERIAL THE SUBSTRATE CAN NAME. The vendor table grades ten
-// materials and FilamentMaterial has ten arms, so this roster is total: no consumer can ask about a
-// filament the A1 mini row does not answer for. If a material is added to the substrate without a
-// row here, this goes red — which is the point, because the alternative is a silent
-// SuitabilityUnstated standing in for "the vendor never said", which for THIS machine is false.
-test fn w_the_a1_mini_grades_every_modelled_material() -> Bool {
+// WITNESS 9 — THE MACHINE GRADES EVERY MATERIAL ITS OWN TABLE NAMES, and the earlier version of
+// this witness asserted the wrong thing.
+//
+// It asserted totality over FilamentMaterial: ten arms, ten rows. That reads as rigour and is
+// actually a FABRICATION PRESSURE. The substrate's material universe and the vendor's stated
+// population are different things owned by different authorities. If FilamentMaterial later gains an
+// eleventh material, the honest A1 mini answer is SuitabilityUnstated -- the vendor never graded it
+// -- but a totality assertion would go red and hand the next author a choice between deleting the
+// check and INVENTING an eleventh vendor grade. A check whose failure mode is "make something up"
+// is worse than no check.
+//
+// So the assertion is now about the vendor's own table: ten materials are stated, and they are the
+// ten the table lists. Growth in the substrate does not red this; a change to what the vendor said
+// does, which is the only thing this row is authority for.
+test fn w_the_a1_mini_grades_every_material_its_table_names() -> Bool {
   a1_mini_material_suitability.length() == 10
+}
+
+// WITNESS 9b — AND AN UNGRADED MATERIAL RESOLVES TO UNSTATED RATHER THAN REFUSING OR GUESSING. This
+// is the arm that makes witness 9 safe to leave alone as the substrate grows: a material the vendor
+// never mentioned must come back Unstated, which is a fact about the vendor's silence and not a
+// grade. Today every modelled material happens to be graded, so this exercises the lookup's
+// behaviour on a row-free material by asking with a roster that omits one.
+test fn w_a_material_the_vendor_did_not_grade_reads_unstated() -> Bool {
+  match material_suitability(rows: [], material: Pla) {
+    SuitabilityResolved { suitability: s } =>
+      match s {
+        SuitabilityUnstated => true
+        SuitabilityIdeal => false
+        SuitabilityNotRecommended => false
+      }
+    SuitabilityRowsConflict { material: _, count: _ } => false
+  }
 }
 
 // WITNESS 10 — THE GRADING DISCRIMINATES, which a completeness count alone does not show. A roster
