@@ -108,6 +108,23 @@ import product.altra_motherboard.placement {
   altra_reference_plan,
   altra_1p_minimum_ref,
 }
+import product.altra_motherboard.minimal_design {
+  ActiveDdrTopology,
+  AltraMinimalMotherboard,
+  DdrChannel0,
+  DdrChannel1,
+  DdrChannel2,
+  DdrChannel3,
+  DdrChannel4,
+  DdrChannel5,
+  DdrChannel6,
+  DdrChannel7,
+  FirstDimmOnChannel,
+  RevARoutedMemoryDesign,
+  RoutedDdrTopology,
+  ShipsWithProductionPopulation,
+  altra_1p_minimum,
+}
 import product.altra_motherboard.scene_emission { emit_altra_board_scene }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
@@ -937,5 +954,63 @@ test fn w_the_second_function_label_clears_the_first_ones_cause_line() -> Bool {
     Present { value: s } =>
       expected_second_function_label() != ""
         && string_contains(s: s, pattern: expected_second_function_label())
+  }
+}
+
+// CONTROL 3 -- TWO BOARDS THAT SHIP THE SAME MEMORY ARE STILL DIFFERENT BOARDS IF THE COPPER
+// DIFFERS. The twin below is `altra_1p_minimum` in every axis the previous comparison could see:
+// identical production population, identical PCIe breakout, identical governing intent. It differs
+// only in routing eight channels instead of four -- a different stackup, a different layer count,
+// a different fabrication order. Complete-design comparison must therefore separate them, and the
+// world must refuse to hand this board the plan that was drawn for the four-channel one.
+//
+// THIS IS THE ARM THAT WAS SILENTLY WRONG BEFORE THE CUT. The old comparison read intent, populated
+// topology and lane count and had no routed axis at all, so it answered EQUAL here and the twin
+// would have been handed a plan drawn for different copper. The witness is written against the
+// refusal rather than against the comparison so that it is a claim about what a consumer does.
+fn same_population_different_copper() -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3,
+                          DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+test fn w_a_board_differing_only_in_routed_copper_is_refused_the_canonical_plan() -> Bool {
+  match altra_pcb_world_for(d: same_population_different_copper()) {
+    PcbWorldRefused { cause: c } =>
+      match c {
+        PcbDesignPlanUnavailable { only_available: _ } => true
+        PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+        PcbCapabilityStillPending { capability: _ } => false
+        PcbCapabilityRefused { capability: _, cause: _ } => false
+        PcbPlacementNotAdmitted => false
+        PcbBoardOutlineRefused { cause: _ } => false
+        PcbOutlineCopiedFromCitedForeignBoard => false
+      }
+    PartialPcbWorldReady { value: _ } => false
+    AdmittedPcbWorld { value: _ } => false
+  }
+}
+
+// THE PAIRED POSITIVE CONTROL. The canonical board itself still reaches a world, so the witness
+// above is discriminating on the routed axis rather than reporting that this entry point refuses
+// everything handed to it.
+test fn w_the_canonical_board_still_reaches_its_world() -> Bool {
+  match altra_pcb_world_for(d: altra_1p_minimum) {
+    PartialPcbWorldReady { value: _ } => true
+    AdmittedPcbWorld { value: _ } => true
+    PcbWorldRefused { cause: _ } => false
   }
 }

@@ -40,6 +40,7 @@ import product.altra_motherboard.placement {
   ProcessorSocket,
   RequiredRoleUnfilled,
   PlanWasBuiltFromADifferentDesign,
+  DesignIsNotAdmitted,
   RoleFilledMoreThanOnce,
   BodyLayoutAdmittedOverEveryRequiredPart,
   BodyLayoutCheckedOverEstablishedSubsetOnly,
@@ -89,6 +90,11 @@ import product.altra_motherboard.minimal_design {
   Production,
   SecondDimmOnChannel,
   altra_1p_minimum,
+  DdrChannel3,
+  DdrChannel6,
+  DdrChannel7,
+  MemoryPopulationLifecycle,
+  board_governing_intent,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -110,6 +116,7 @@ fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
     RoleFilledMoreThanOnce { role: _, fills: _ } => "RoleFilledTwice"
     PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => "DesignMismatch"
     RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => "FunctionMissing"
+    DesignIsNotAdmitted { causes: _ } => "DesignIsNotAdmitted"
   }
 }
 
@@ -565,6 +572,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
             PlannedIdentityRepeated { component: _ } => false
             PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
             RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
+            DesignIsNotAdmitted { causes: _ } => false
           }
         }
       )
@@ -761,4 +769,108 @@ test fn w_the_role_gate_does_not_touch_the_memory_slots() -> Bool {
   }
   memory_role_count(d: prod) == memory_role_count(d: fixture)
     && memory_role_count(d: prod) == 4
+}
+
+// THE ROUTED AXIS AND THE POPULATED AXIS ARE GIVEN DIFFERENT SIZES ON PURPOSE. Every witness above
+// this point was authored when a board carried one topology, so each of them would pass unchanged
+// if geometry were folded from either axis -- which is exactly why none of them could catch the
+// defect this cut removes. The helper below is the first in this suite that lets the two disagree,
+// and the controls under it assert the number that only the ROUTED reading produces.
+fn design_routed(routed: RoutedDdrTopology, l: MemoryPopulationLifecycle) -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign { routed: routed, lifecycle: l },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+fn eight_routed_one_position() -> RoutedDdrTopology {
+  RoutedDdrTopology {
+    routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3,
+                      DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7],
+    routed_positions_per_channel: [FirstDimmOnChannel],
+  }
+}
+
+fn four_populated_one_position() -> ActiveDdrTopology {
+  ActiveDdrTopology {
+    populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+    positions_per_channel: [FirstDimmOnChannel],
+  }
+}
+
+// CONTROL 1 -- A DIMM CONNECTOR IS SOLDERED WHERE COPPER RUNS, NOT WHERE A MODULE SHIPS. Eight
+// routed channels populated with four in production owes EIGHT physical memory-slot obligations:
+// the four empty connectors are real parts that must be placed, bought and cleared for keepout,
+// and a board that plans only four cannot be filled later without a respin. The count is asserted
+// against eight while the production population is independently asserted at four, so the two
+// numbers cannot coincide -- this is the control that goes red if either placement derivation is
+// reverted to the active population, which is control 7 stated as an executable arm rather than a
+// promise. Before the cut this expression returned 4.
+test fn w_slot_obligations_follow_routed_copper_not_the_shipped_population() -> Bool {
+  let d = design_routed(routed: eight_routed_one_position(),
+                        l: ShipsWithProductionPopulation { production: four_populated_one_position() })
+  memory_role_count(d: d) == 8
+    && list_length(items: four_populated_one_position().populated_channels) == 4
+    && requires_slot(d: d, c: DdrChannel7, p: FirstDimmOnChannel)
+}
+
+// CONTROL 2 -- THE BRING-UP POPULATION DOES NOT SHRINK THE BOARD EITHER. A board that comes up on
+// two DIMMs and ships on four still routes eight, so it still owes eight connectors; and because
+// its governing intent is Production rather than the bring-up of its first phase, it also owes the
+// three production-only roles. Both halves are asserted because a lifecycle arm that leaked the
+// bring-up population into the geometry and a lifecycle arm that leaked the bring-up INTENT into
+// the role gate are different defects, and either alone would leave the other's assertion green.
+test fn w_a_bring_up_then_fill_board_owes_the_routed_slots_and_the_production_roles() -> Bool {
+  let d = design_routed(
+    routed: eight_routed_one_position(),
+    l: BringUpThenFill {
+      bringup: ActiveDdrTopology {
+        populated_channels: [DdrChannel0, DdrChannel1],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+      production: four_populated_one_position(),
+    })
+  memory_role_count(d: d) == 8
+    && (board_governing_intent(d: d) as String) == "Production"
+    && role_is_required_under(r: HostNetworkPhy, intent: board_governing_intent(d: d))
+    && role_is_required_under(r: ManagementNetworkPath, intent: board_governing_intent(d: d))
+    && role_is_required_under(r: StorageEndpoint, intent: board_governing_intent(d: d))
+}
+
+// CONTROL 4 (placement half) -- A REFUSED DESIGN CANNOT PRODUCE A PLACEMENT. The board below routes
+// four channels and claims to populate a fifth that has no copper under it, which the canonical
+// judge refuses as unreachable. Placement calls that judge itself rather than accepting a verdict
+// from its caller, so there is no admitted value to forge and no sibling path into geometry: the
+// refusal arrives as a placement cause carrying the design's own cause set.
+test fn w_a_refused_design_refuses_at_placement_carrying_the_design_causes() -> Bool {
+  let d = design_routed(
+    routed: RoutedDdrTopology {
+      routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      routed_positions_per_channel: [FirstDimmOnChannel],
+    },
+    l: ShipsWithProductionPopulation {
+      production: ActiveDdrTopology {
+        populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+    })
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(cs: placement_causes(d: d, d_ref: altra_1p_minimum_ref(), plan: p),
+                   wanted: "DesignIsNotAdmitted") == 1
+  }
+}
+
+// THE PAIRED POSITIVE CONTROL, without which the one above proves only that SOMETHING refuses.
+// The same shape with the fifth channel routed is admitted and raises no admission cause at all.
+test fn w_the_admission_gate_is_silent_on_a_design_that_is_admitted() -> Bool {
+  let d = design_routed(routed: eight_routed_one_position(),
+                        l: ShipsWithProductionPopulation { production: four_populated_one_position() })
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(cs: placement_causes(d: d, d_ref: altra_1p_minimum_ref(), plan: p),
+                   wanted: "DesignIsNotAdmitted") == 0
+  }
 }
