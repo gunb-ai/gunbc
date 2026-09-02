@@ -364,20 +364,9 @@ fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
   census_phase_of_code(code: census_identity_code(identity: identity))
 }
 
-// ONE PASS OVER THE POPULATION, NOT SIX. Each bucket below used to be its own `filter` over the
-// whole identity list, so a 233-identity receipt was traversed and re-classified six times to
-// answer six questions about the SAME classification. That is DESIGN section 2's authored
-// duplication rather than a caching obligation: the six demands share a visible ancestor, so the
-// first classification is carried instead of recomputed. MEASURED, on this module's own witnesses:
-// collapsing the six passes to one moves a witness from ~270ms to ~10-23ms of cpu, which is the
-// difference between sitting at 93 percent of the required floor's per-claim budget and sitting
-// near its floor. The section 6 rule applies regardless of that number -- the receipt series only
-// grows, so "n is small here" was never time-stable.
-//
-// THE BUCKETS ARE NOT DISJOINT AND THE FOLD MUST NOT ASSUME THEY ARE. `codeless` is decided on the
-// code spelling and `unplaced` on whether the code resolves in the error index, so an identity
-// carrying `uncoded` belongs to BOTH. Writing this as a match with one arm per identity would have
-// silently dropped one of the two memberships.
+// The carried classification of one identity. It exists so the five buckets below are DERIVED from
+// one pass rather than re-deciding the same question per bucket; the rationale for that lives on
+// `census_identity_partition`, which is the function it governs.
 type ClassifiedIdentity {
   identity: String
   phase: RustcErrorCodePhase
@@ -426,6 +415,15 @@ fn classified_at_phase(classified: List<ClassifiedIdentity>, phase: RustcPhase) 
 // bucket with `filter` over the carried classification keeps one pass per bucket over an already
 // classified list and no quadratic append.
 //
+// NO MEASUREMENT IS QUOTED IN THIS ANNOTATION, AND THE REASON IS SHARPER THAN SECTION 6's
+// CITE-THE-INSTRUMENT RULE. An earlier draft carried millisecond figures taken from probes that
+// DELETED the work being timed; the witnesses failed on those runs, so the numbers measured the
+// cost of failing early rather than the cost of the fold. A transcribed number cannot carry the
+// pass/fail context that decides whether it means anything, which is why the rule names the
+// producer instead: `claim_batch` over this module's witness entry re-derives the per-witness cost,
+// and its own PASS/FAIL count is what qualifies the reading. The section 6 argument above needs no
+// number at all -- a copied accumulator and a repeated pass are fixed regardless of realized n.
+//
 // THE BUCKETS ARE NOT DISJOINT AND THE DERIVATION MUST NOT ASSUME THEY ARE. `codeless` is decided on
 // the code spelling and `unplaced` on whether the code resolves in the error index, so an identity
 // carrying `uncoded` belongs to BOTH. A single match with one arm per identity would have silently
@@ -444,27 +442,6 @@ fn census_identity_partition(identities: List<String>) -> CensusIdentityPartitio
       |> map(c => c.identity),
     codeless: classified |> filter(c => c.codeless) |> map(c => c.identity)
   }
-}
-
-fn census_identities_for_phase(identities: List<String>, phase: RustcPhase) -> List<String> {
-  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
-    ErrorCodePlaced { phase: placed, authority: _ } => rustc_phase_order(phase: placed) == rustc_phase_order(phase: phase)
-    ErrorCodeUnplaced { code: _, index: _ } => false
-  }))
-}
-
-fn census_unplaced_identities(identities: List<String>) -> List<String> {
-  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
-    ErrorCodePlaced { phase: _, authority: _ } => false
-    ErrorCodeUnplaced { code: _, index: _ } => true
-  }))
-}
-
-fn census_codeless_identities(identities: List<String>) -> List<String> {
-  canonical_identity_set(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
-    Present { value: code } => code == "uncoded"
-    Absent => false
-  }))
 }
 
 // Persisted receipts are folded from the raw identity rows emitted by the same instrument. This
