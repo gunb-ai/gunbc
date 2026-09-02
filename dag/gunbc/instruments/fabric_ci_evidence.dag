@@ -84,17 +84,17 @@ fn fabric_ci_hex_value(c: String) -> Int? {
 }
 
 fn fabric_ci_decode_scalar(wire: String, at: Int) -> Int? {
-  match fabric_ci_hex_value(c: char_at(s: wire, i: at)) {
+  match fabric_ci_hex_value(c: char_at(s: wire, pos: at)) {
     Absent => Absent
-    Present { value: a } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 1)) {
+    Present { value: a } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 1)) {
       Absent => Absent
-      Present { value: b } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 2)) {
+      Present { value: b } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 2)) {
         Absent => Absent
-        Present { value: c } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 3)) {
+        Present { value: c } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 3)) {
           Absent => Absent
-          Present { value: d } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 4)) {
+          Present { value: d } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 4)) {
             Absent => Absent
-            Present { value: e } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 5)) {
+            Present { value: e } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 5)) {
               Absent => Absent
               Present { value: f } => Present { value: a * 1048576 + b * 65536 + c * 4096 + d * 256 + e * 16 + f }
             }
