@@ -67,6 +67,41 @@ The same failing log contained 634 `[floor-shared-fill]` lines, 122 with
 largest cited example measured 3675ms in total but split into 5ms marginal and 3670ms fill, so it
 was 495ms below the enforced line. The 122-row comparison mixed two different quantities.
 
+## Exposure population
+
+The lens-registry witness is the observed interruption, not the population-level cost outlier. The
+same `required_floor_claim_cost.tsv` from run `33573600142`, artifact `9826348456`, carries all
+3444 executed rows. Reading its `cpu_ms` (marginal CPU) column produces:
+
+| Reading | Rows or value |
+| --- | ---: |
+| Median | 1ms |
+| Greater than 200ms | 121 |
+| Greater than 300ms | 37 |
+| Greater than 400ms | 10 |
+| Maximum | 455ms |
+
+The maximum was
+`self_host_compile_phase_frontier_witness.the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed`
+at 455ms, leaving 45ms (9%) beneath the 500ms merge-blocking deadline. The next two were
+`current_persisted_compile_phase_frontier_holds` at 453ms and
+`compiler_frontend_program_status_witness.the_report_renders` at 430ms. The lens-registry witness
+was 214ms and outside the top ten. On this head, ten other rows had less than 100ms of margin in
+which an uncommitted first-touch fill could reach a cooperative poll.
+
+A second receipt tests whether that exact near-line population is stable. PR #9982 run
+`33578414901`, artifact `9827977646`, also executed 3444 rows. It measured median 1ms, 115 rows
+over 200ms, 24 over 300ms, no rows over 400ms, and a maximum of 397ms. The exact 400ms threshold
+population therefore changed from ten to zero. However, the first run's ten over-400ms identities
+were exactly the second run's top ten identities, now measuring 382–397ms. The expensive cluster
+was stable across these two observations; its membership in a fixed “within 100ms” band was not.
+Two runs establish exposure and cost variability on these heads, not a permanent roster of ten.
+
+The TSV carries two independent lines that must not be interchanged. `cost_line_ms=100` is the
+completed-cost diagnostic line: 279 of 3444 rows in run `33573600142` exceeded it, with no
+admission consequence. The 500ms CPU safety deadline is the merge-blocking line enforced on
+marginal CPU. Diagnostic membership is ordinary and says nothing by itself about deadline risk.
+
 ## Ownership at the commit boundary
 
 Under the model implemented here, an in-progress first touch is not yet a shared artifact and is
