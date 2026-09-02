@@ -33,11 +33,26 @@ type DocumentPublicationStatus
   | PubliclyPublishedWithRestrictiveMarking {
       marking: NonEmptyStr
     }
+  | PubliclyPublishedWithoutStatedTerms {
+      absence_basis: NonEmptyStr
+    }
   | AccessGatedNotPubliclyPublished {
       gate: NonEmptyStr
     }
 
-// THE TWO PROJECTIONS ARE PROPERTIES OF THE STATUS, NOT OF OUR POLICY. Public
+// A PUBLIC DOCUMENT MAY STATE NOTHING AT ALL, and the coproduct has to be able to say so. With
+// only the licence and marking arms, an author facing an artifact that carries neither must invent
+// one of them to describe it - which is exactly what happened: the Mt. Collins 2022 V2 brief was
+// given marking "no licence granted", a CONCLUSION placed in a field that holds an upstream FACT
+// (review 5084368000). The gap in the state space produced the false row, so the repair is the arm,
+// not author discipline.
+//
+// The arm carries absence_basis rather than being nullary, because "this document states no terms"
+// is a claim about a document that was READ, not a default for one that was not. An empty
+// observation with no basis is indistinguishable from an unexamined one, and would make this the
+// cheapest arm to select instead of the one that must be earned.
+//
+// THE PROJECTIONS ARE PROPERTIES OF THE STATUS, NOT OF OUR POLICY. Public
 // availability is the axis the ruling turns on, and the marking is recorded so
 // a reader can see it decides nothing: an open licence and a restrictive
 // marking both project publicly-published, and only the second yields a
@@ -48,6 +63,7 @@ fn publication_status_is_publicly_published(status: DocumentPublicationStatus) -
   match status {
     PubliclyPublishedUnderOpenLicense { license: _ } => true
     PubliclyPublishedWithRestrictiveMarking { marking: _ } => true
+    PubliclyPublishedWithoutStatedTerms { absence_basis: _ } => true
     AccessGatedNotPubliclyPublished { gate: _ } => false
   }
 }
@@ -56,6 +72,7 @@ fn publication_status_restrictive_marking(status: DocumentPublicationStatus) -> 
   match status {
     PubliclyPublishedUnderOpenLicense { license: _ } => Absent
     PubliclyPublishedWithRestrictiveMarking { marking } => Present { value: marking }
+    PubliclyPublishedWithoutStatedTerms { absence_basis: _ } => Absent
     AccessGatedNotPubliclyPublished { gate: _ } => Absent
   }
 }

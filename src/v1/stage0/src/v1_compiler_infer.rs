@@ -12168,88 +12168,6 @@ pub fn record_lit_alias_struct_expansion(
     }
 }
 
-pub fn record_lit_construction_field_names(
-    type_name: String,
-    scope: Rc<InferScope>,
-) -> Option<Rc<Vec<String>>> {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        match crate::v1_compiler_infer_env::lookup_type_by_name(
-            scope.type_env.clone(),
-            type_name.clone(),
-        ) {
-            Some(decl) => {
-                if ((((decl.params.clone().len() as i64) == 0)
-                    && (decl.connective.clone() == Connective::Conj))
-                    && ((decl.children.clone().len() as i64) > 0))
-                {
-                    Some(Rc::new({
-                        let mut __result = Vec::new();
-                        for f in decl.children.clone().iter().cloned() {
-                            __result
-                                .push(crate::v1_std_core::authored_name_at(si.clone(), f.clone()));
-                        }
-                        __result
-                    }))
-                } else {
-                    std::option::Option::None
-                }
-            }
-            std::option::Option::None => std::option::Option::None,
-        }
-    }
-}
-
-pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<InferScope>) -> bool {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        match variant_owner_node(scope.clone(), type_name.clone()) {
-            Some(owner) => {
-                let mut __found = false;
-                for arm in owner.children.clone().iter().cloned() {
-                    if if (crate::v1_std_core::authored_name_at(si.clone(), arm.clone())
-                        == type_name.clone())
-                    {
-                        {
-                            let ea = expand_type_for_field_access(
-                                arm.clone(),
-                                scope.type_env.clone(),
-                                scope.module_name.clone(),
-                            )
-                            .resolved
-                            .clone();
-                            let fields = if (ea.connective.clone() == Connective::Conj) {
-                                ea.children.clone()
-                            } else {
-                                arm.children.clone()
-                            };
-                            {
-                                let mut __found = false;
-                                for f in fields.iter().cloned() {
-                                    if (crate::v1_std_core::authored_name_at(si.clone(), f.clone())
-                                        == field.clone())
-                                    {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            }
-                        }
-                    } else {
-                        false
-                    } {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
-            std::option::Option::None => false,
-        }
-    }
-}
-
 pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bool {
     match crate::v1_compiler_infer_env::lookup_type_by_name(
         scope.type_env.clone(),
@@ -12535,10 +12453,6 @@ pub fn infer_record_lit_structural(
             Some(expansion) => expansion.diagnostics.clone(),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let construction_field_names = match type_name.clone() {
-            Some(tn) => record_lit_construction_field_names(tn.clone(), scope.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
         let tn_str = match type_name.clone() {
             Some(tn) => tn.clone(),
             std::option::Option::None => "".to_string(),
@@ -12632,6 +12546,29 @@ pub fn infer_record_lit_structural(
         } else {
             Rc::new(vec![])
         };
+        let construction_field_names =
+            if ((tn_str.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
+                std::option::Option::None
+            } else {
+                if ((presence_fields.clone().len() as i64) > 0) {
+                    Some(Rc::new({
+                        let mut __result = Vec::new();
+                        for sf in presence_fields.iter().cloned() {
+                            __result.push(crate::v1_std_core::authored_name_at(
+                                si_presence.clone(),
+                                sf.clone(),
+                            ));
+                        }
+                        __result
+                    }))
+                } else {
+                    if (presence_variant_owner.clone() != std::option::Option::None) {
+                        Some(Rc::new(vec![]))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            };
         let missing_field_diags = if ((((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || is_zero_field_variant_tag_reference.clone())
@@ -12697,7 +12634,7 @@ pub fn infer_record_lit_structural(
                 __result.push({
             let fi_name = crate::v1_std_core::field_init_node_name_at(fi.clone(), scope.type_env.clone().source_indices.clone());
 let unknown_field_diags = match construction_field_names.clone() {
-    Some(names) => if ({ let mut __found = false; for n in names.iter().cloned() { if (n.clone() == fi_name.clone()) { __found = true; break; } } __found } || field_in_any_variant_named(tn_str.clone(), fi_name.clone(), scope.clone())) {
+    Some(names) => if { let mut __found = false; for n in names.iter().cloned() { if (n.clone() == fi_name.clone()) { __found = true; break; } } __found } {
                 Rc::new(vec![])
             } else {
                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
@@ -19338,6 +19275,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 authored_import_names: parent_env.authored_import_names.clone(),
                 symbol_index: parent_env.symbol_index.clone(),
                 unit_variant_index: rebuilt_index.clone(),
+                unit_variant_index_observed: true,
             })
         }
     } else {
@@ -19368,6 +19306,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             authored_import_names: filtered.authored_import_names.clone(),
             symbol_index: filtered.symbol_index.clone(),
             unit_variant_index: rebuilt_index.clone(),
+            unit_variant_index_observed: true,
         })
     }
 }
@@ -19394,6 +19333,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             authored_import_names: env.authored_import_names.clone(),
             symbol_index: env.symbol_index.clone(),
             unit_variant_index: rebuilt_index.clone(),
+            unit_variant_index_observed: true,
         })
     }
 }
@@ -20482,6 +20422,7 @@ pub fn census_fn_sig_env(
                 String,
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
+            unit_variant_index_observed: false,
         });
         crate::v1_compiler_infer_env::env_with_type_variable_bindings(
             base.clone(),
@@ -21665,6 +21606,7 @@ pub fn build_type_env(
                 Rc::new(vec![]),
                 source_indices.clone(),
             ),
+            unit_variant_index_observed: true,
         });
         let module_name_str =
             crate::v1_std_core::authored_name_at(source_indices.clone(), module.module.clone());
@@ -22080,6 +22022,7 @@ pub fn build_type_env(
             authored_import_names: authored_import_names.clone(),
             symbol_index: symbol_index.clone(),
             unit_variant_index: module_variant_index.clone(),
+            unit_variant_index_observed: true,
         });
         let resolved = resolve_env_bindings(
             unresolved_env.clone(),
@@ -22104,6 +22047,7 @@ pub fn build_type_env(
             authored_import_names: authored_import_names.clone(),
             symbol_index: resolved_env_out.symbol_index.clone(),
             unit_variant_index: resolved_env_out.unit_variant_index.clone(),
+            unit_variant_index_observed: resolved_env_out.unit_variant_index_observed.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -22317,6 +22261,7 @@ pub fn build_type_env_unresolved(
                 Rc::new(vec![]),
                 source_indices.clone(),
             ),
+            unit_variant_index_observed: true,
         });
         let module_name_str =
             crate::v1_std_core::authored_name_at(source_indices.clone(), module.module.clone());
@@ -22638,6 +22583,7 @@ pub fn build_type_env_unresolved(
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
             unit_variant_index: module_variant_index.clone(),
+            unit_variant_index_observed: true,
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -24054,6 +24000,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                         authored_import_names: env.authored_import_names.clone(),
                         symbol_index: env.symbol_index.clone(),
                         unit_variant_index: stuck_accum.unit_variant_index.clone(),
+                        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
                     }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
@@ -24140,6 +24087,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                 authored_import_names: env.authored_import_names.clone(),
                 symbol_index: env.symbol_index.clone(),
                 unit_variant_index: ready_accum.unit_variant_index.clone(),
+                unit_variant_index_observed: env.unit_variant_index_observed.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
@@ -24969,6 +24917,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
                             unit_variant_index: rewired_index.clone(),
+                            unit_variant_index_observed: true,
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
@@ -25221,6 +25170,7 @@ pub fn compiler_kernel_type_env(
                 Rc::new(vec![]),
                 source_indices.clone(),
             ),
+            unit_variant_index_observed: true,
         })
     }
 }
@@ -25329,6 +25279,7 @@ pub fn rewire_type_env_parent_links(
                             authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
                             unit_variant_index: rewired_index.clone(),
+                            unit_variant_index_observed: true,
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
