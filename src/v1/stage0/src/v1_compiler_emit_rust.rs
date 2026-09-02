@@ -105,6 +105,7 @@ pub use crate::v1_compiler_coercion::{
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
+pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -114,6 +115,11 @@ use crate::v1_compiler_emit::FileResultChannel::{
 };
 use crate::v1_compiler_emit::FileVerb::{
     FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
+};
+use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
+use crate::v1_compiler_emit::ShellResultChannel::{
+    ShellChanExitCode, ShellChanExitSuccess, ShellChanStderr, ShellChanStderrRetainedBytes,
+    ShellChanStderrTotalBytes, ShellChanStderrTruncated, ShellChanStdout, ShellChanStdoutLines,
 };
 pub use crate::v1_compiler_emit::{
     bind_operation_transport, child_from_key, compute_service_fields,
@@ -128,11 +134,13 @@ pub use crate::v1_compiler_emit::{
     keyed_container_has_target_inhabitant, lookup_item, module_emit_scope, order_typed_call_args,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    tco_reassign_core, transport_binding_refusal_fact, unwrap_single_field_product,
+    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
+    transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
-    InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    InterpPart, ServiceFieldSet, ShellEmissionRefusal, ShellResultChannel, ShellResultField,
+    TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -258,21 +266,22 @@ pub use crate::v1_std_core::{
     binop_right, cast_expr, cast_target, empty_intern_table, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
-    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
-    find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
-    generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
-    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
-    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
-    transport_path_template, transport_query, transport_request_body, transport_response_format,
-    transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
+    field_from_key_property_name, field_init_node_name_at, field_init_node_value,
+    field_node_name_at, field_node_type_expr, find_child_named, find_property, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, if_condition, if_else_branch,
+    if_then_branch, import_is_all, import_specific_names_at, index_base, index_expr,
+    is_compiler_error, is_rest_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
+    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, no_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
+    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
+    slice_end, slice_start, transport_auth_basic, transport_auth_header_name, transport_auth_token,
+    transport_base_path, transport_base_url, transport_env, transport_has_auth, transport_headers,
+    transport_method, transport_path_template, transport_query, transport_request_body,
+    transport_response_format, transport_stdin, transport_tls_posture, tuple_type_name,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
@@ -16117,7 +16126,7 @@ pub fn emit_struct_field_from_child(
                     if (crate::v1_std_core::field_init_node_name_at(
                         p.clone(),
                         env.source_indices.clone(),
-                    ) == "from_key".to_string())
+                    ) == field_from_key_property_name())
                     {
                         __result.push(p);
                     }
@@ -32713,7 +32722,6 @@ pub fn emit_operation_method(
             op_node.clone(),
             transport.clone(),
         );
-        let op_inferred = crate::v1_compiler_infer_types::resolved_type(op_node.clone());
         let bound = crate::v1_compiler_emit::bind_operation_transport(
             eff_transport.clone(),
             op_node.clone(),
@@ -32724,7 +32732,6 @@ pub fn emit_operation_method(
             op_text.clone(),
             registry.clone(),
             (depth.clone() + 2),
-            op_inferred.clone(),
             service_item.clone(),
             op_node.clone(),
             env.source_indices.clone(),
@@ -32940,7 +32947,6 @@ pub fn emit_transport_call(
     op_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    inferred: Rc<Node>,
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -32959,12 +32965,16 @@ pub fn emit_transport_call(
             shared_types.clone(),
             env.clone(),
         ),
-        BoundOperation::ShellBound { transport: t, .. } => emit_shell_call(
+        BoundOperation::ShellBound {
+            transport: t,
+            result_fields: rsf,
+            ..
+        } => emit_shell_call(
             op_name.clone(),
             t.clone(),
             registry.clone(),
             depth.clone(),
-            inferred.clone(),
+            rsf.clone(),
             op_node.clone(),
             source_indices.clone(),
         ),
@@ -34313,7 +34323,7 @@ pub fn has_exit_prefix(name: String) -> bool {
 
 pub fn emit_exit_code_handling(
     op_node: Rc<Node>,
-    inferred: Rc<Node>,
+    result_fields: Rc<Vec<Rc<ShellResultField>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -34330,7 +34340,7 @@ pub fn emit_exit_code_handling(
             __result
         });
         if ((exit_props.clone().len() as i64) == 0) {
-            emit_shell_return(inferred.clone(), source_indices.clone())
+            emit_shell_return(result_fields.clone())
         } else {
             {
                 let has_nonzero = {
@@ -34352,7 +34362,7 @@ pub fn emit_exit_code_handling(
                     for p in exit_props.iter().cloned() {
                         __result.push(emit_exit_arm(
                             p.clone(),
-                            inferred.clone(),
+                            result_fields.clone(),
                             source_indices.clone(),
                         ));
                     }
@@ -34361,7 +34371,19 @@ pub fn emit_exit_code_handling(
                 let default_arm = if has_nonzero.clone() {
                     "".to_string()
                 } else {
-                    v1_rt::concat(v1_rt::concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string(), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ") },".to_string())
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "\n    _ => { ".to_string(),
+                                    shell_stderr_binding_line(),
+                                ),
+                                " ".to_string(),
+                            ),
+                            shell_boxed_stderr_error_arm(),
+                        ),
+                        " },".to_string(),
+                    )
                 };
                 v1_rt::concat(
                     v1_rt::concat(
@@ -34383,7 +34405,7 @@ pub fn emit_exit_code_handling(
 
 pub fn emit_exit_arm(
     prop: Rc<Node>,
-    inferred: Rc<Node>,
+    result_fields: Rc<Vec<Rc<ShellResultField>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -34403,12 +34425,27 @@ pub fn emit_exit_arm(
                         v1_rt::concat("    ".to_string(), pattern.clone()),
                         " => { ".to_string(),
                     ),
-                    emit_shell_return(inferred.clone(), source_indices.clone()),
+                    emit_shell_return(result_fields.clone()),
                 ),
                 " },".to_string(),
             )
         } else {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), pattern.clone()), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string()), emit_rust_host_to_dag_string_via_seam("stderr".to_string())), ") },".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("    ".to_string(), pattern.clone()),
+                                " => { ".to_string(),
+                            ),
+                            shell_stderr_binding_line(),
+                        ),
+                        " ".to_string(),
+                    ),
+                    shell_boxed_stderr_error_arm(),
+                ),
+                " },".to_string(),
+            )
         }
     }
 }
@@ -34418,7 +34455,7 @@ pub fn emit_shell_call(
     transport: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    inferred: Rc<Node>,
+    result_fields: Rc<Vec<Rc<ShellResultField>>>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -34584,7 +34621,7 @@ pub fn emit_shell_call(
                     "let stdout = String::from_utf8_lossy(&output.stdout).to_string();".to_string();
                 let return_line = emit_exit_code_handling(
                     op_node.clone(),
-                    inferred.clone(),
+                    result_fields.clone(),
                     source_indices.clone(),
                 );
                 let all_lines = v1_rt::concat(
@@ -34611,7 +34648,7 @@ pub fn emit_shell_call(
                     "let stdout = String::from_utf8_lossy(&output.stdout).to_string();".to_string();
                 let return_line = emit_exit_code_handling(
                     op_node.clone(),
-                    inferred.clone(),
+                    result_fields.clone(),
                     source_indices.clone(),
                 );
                 let all_lines = v1_rt::concat(
@@ -34762,111 +34799,112 @@ pub fn emit_shell_argv_element(
     }
 }
 
-pub fn emit_shell_return(
-    inferred: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn shell_stderr_binding_line() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let stderr = String::from_utf8_lossy(&output.stderr).to_string();".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn shell_boxed_stderr_error_arm() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Err(stderr.into())".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emit_shell_return(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
     {
-        let effective = crate::v1_compiler_emit::unwrap_single_field_product(inferred.clone());
-        let is_product = crate::v1_compiler_infer_types::is_product_type(effective.clone());
-        let single_from =
-            if (is_product.clone() && ((effective.children.clone().len() as i64) == 1)) {
-                match effective.children.clone().first().cloned() {
-                    Some(ch) => {
-                        crate::v1_compiler_emit::child_from_key(ch.clone(), source_indices.clone())
+        let n = (result_fields.clone().len() as i64);
+        if (n.clone() == 0) {
+            emit_shell_channel_expr(ShellResultChannel::ShellChanStdout, false)
+        } else {
+            if (n.clone() == 1) {
+                match result_fields.clone().first().cloned() {
+                    Some(f) => v1_rt::concat(
+                        shell_stderr_prelude(result_fields.clone()),
+                        emit_shell_channel_expr(f.channel.clone(), f.optional.clone()),
+                    ),
+                    std::option::Option::None => {
+                        emit_shell_channel_expr(ShellResultChannel::ShellChanStdout, false)
                     }
-                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
-                std::option::Option::None
-            };
-        match single_from.clone() {
-            Some(channel) => {
-                let is_optional =
-                    (effective.return_cardinality.clone() == Cardinality::CardOptional);
-                emit_shell_channel_expr(channel.clone(), is_optional.clone())
-            }
-            std::option::Option::None => {
-                if (is_product.clone() && ((effective.children.clone().len() as i64) > 1)) {
-                    {
-                        let needs_stderr = {
-                            let mut __found = false;
-                            for ch in effective.children.clone().iter().cloned() {
-                                if match crate::v1_compiler_emit::child_from_key(
-                                    ch.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    Some(ref __some_val) if __some_val == "stderr" => true,
-                                    _ => false,
-                                } {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        };
-                        let stderr_line = if needs_stderr.clone() {
-                            "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
-                                .to_string()
-                        } else {
-                            "".to_string()
-                        };
-                        let field_exprs = Rc::new({
-                            let mut __result = Vec::new();
-                            for ch in effective.children.clone().iter().cloned() {
-                                __result.push({
-                                    let is_optional = (ch.return_cardinality.clone()
-                                        == Cardinality::CardOptional);
-                                    let channel = match crate::v1_compiler_emit::child_from_key(
-                                        ch.clone(),
-                                        source_indices.clone(),
-                                    ) {
-                                        Some(c) => c.clone(),
-                                        std::option::Option::None => "stdout".to_string(),
-                                    };
-                                    emit_shell_channel_expr(channel.clone(), is_optional.clone())
-                                });
-                            }
-                            __result
-                        });
-                        let lines = if (stderr_line.clone() != "".to_string()) {
-                            v1_rt::concat(stderr_line.clone(), "\n".to_string())
-                        } else {
-                            "".to_string()
-                        };
+                {
+                    let field_exprs = Rc::new({
+                        let mut __result = Vec::new();
+                        for f in result_fields.iter().cloned() {
+                            __result.push(emit_shell_channel_expr(
+                                f.channel.clone(),
+                                f.optional.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(lines.clone(), "Ok((".to_string()),
-                                field_exprs.clone().join(&", ".to_string()),
+                                shell_stderr_prelude(result_fields.clone()),
+                                "Ok((".to_string(),
                             ),
-                            "))".to_string(),
-                        )
-                    }
-                } else {
-                    {
-                        let is_optional =
-                            (effective.return_cardinality.clone() == Cardinality::CardOptional);
-                        emit_shell_channel_expr("stdout".to_string(), is_optional.clone())
-                    }
+                            field_exprs.clone().join(&", ".to_string()),
+                        ),
+                        "))".to_string(),
+                    )
                 }
             }
         }
     }
 }
 
-pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
+pub fn shell_stderr_prelude(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
     {
-        let base = if (channel.clone() == "exit_success".to_string()) {
-            "output.status.success()".to_string()
-        } else {
-            if (channel.clone() == "stderr".to_string()) {
-                "stderr.clone()".to_string()
-            } else {
-                if (channel.clone() == "stdout_lines".to_string()) {
-                    rust_shared_wrap_ctor("stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()".to_string())
-                } else {
-                    "stdout.clone()".to_string()
+        let needs_stderr = {
+            let mut __found = false;
+            for f in result_fields.iter().cloned() {
+                if match f.channel.clone() {
+                    ShellResultChannel::ShellChanStderr => true,
+                    _ => false,
+                } {
+                    __found = true;
+                    break;
                 }
+            }
+            __found
+        };
+        if needs_stderr.clone() {
+            v1_rt::concat(shell_stderr_binding_line(), "\n".to_string())
+        } else {
+            "".to_string()
+        }
+    }
+}
+
+pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -> String {
+    {
+        let base = match channel.clone() {
+            ShellResultChannel::ShellChanStdout => "stdout.clone()".to_string(),
+            ShellResultChannel::ShellChanStderr => "stderr.clone()".to_string(),
+            ShellResultChannel::ShellChanExitSuccess => "output.status.success()".to_string(),
+            ShellResultChannel::ShellChanExitCode => {
+                "(output.status.code().unwrap_or(-1) as i64)".to_string()
+            }
+            ShellResultChannel::ShellChanStdoutLines => rust_shared_wrap_ctor(
+                "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()"
+                    .to_string(),
+            ),
+            ShellResultChannel::ShellChanStderrTruncated => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
+            ShellResultChannel::ShellChanStderrTotalBytes => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
+            ShellResultChannel::ShellChanStderrRetainedBytes => {
+                emit_unrealizable_shell_channel(channel.clone())
             }
         };
         if is_optional.clone() {
@@ -34878,6 +34916,18 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
             base.clone()
         }
     }
+}
+
+pub fn emit_unrealizable_shell_channel(channel: ShellResultChannel) -> String {
+    crate::v1_compiler_emit::emit_error_expr(
+        crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: crate::v1_compiler_emit::shell_result_channel_key(channel.clone()),
+                target_name: render_target_name(RenderTarget::Rust),
+            },
+        )),
+        RenderTarget::Rust,
+    )
 }
 
 pub fn emit_file_call(

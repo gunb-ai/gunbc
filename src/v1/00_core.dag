@@ -1124,9 +1124,29 @@ fn field_node_default_value(n: Node) -> Node? {
   } else { none }
 }
 
+// THE ONE SPELLING OF THE OUTPUT-CHANNEL PROPERTY, read by the parser that mints
+// it and by every reader that looks for it.
+//
+// It existed as TWO spellings and the readers silently diverged. The parser minted
+// the property with the stored name "from_key" while its `name_span` covers the
+// source token `from`; every reader goes through `field_init_node_name_at`, which
+// is span-derived, so every comparison against "from_key" was Absent FOR EVERY
+// PROGRAM -- four dead readers, and the emitter answering declared `from` keys
+// with a default it should never have needed. The interpreter's own reader
+// accepted BOTH spellings, which is why the two directions of one procedure
+// disagreed without anything going red (DESIGN section 3 -- a nickname duplicates
+// work at the meaning layer; section 5 -- the emitter fabricated where it should
+// have read).
+//
+// Converging them on the LENIENT side -- teaching the emitter to accept both --
+// would have given the nickname a second permanent home. The stored name is now
+// the authored token, so stored and span-derived agree by construction and there
+// is one spelling to compare against.
+data field_from_key_property_name: String = "from"
+
 fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match find_property(props: n.properties, prop_name: "from_key", source_indices: source_indices) {
-    Present { value: p } => Present { value: authored_name_at(source_indices: source_indices, node: p) }
+  match find_property(props: n.properties, prop_name: field_from_key_property_name, source_indices: source_indices) {
+    Present { value: p } => expr_literal_string_optional(expr: p)
     Absent => none
   }
 }

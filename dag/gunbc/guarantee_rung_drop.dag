@@ -548,6 +548,24 @@ data heterogeneous_child_list_stall: GuaranteeStall = GuaranteeStall {
 // form or field value it cannot project rather than substituting NotVariantValue. At that point this
 // list is DERIVED and an unenrolled row has no spelling. A declaration-identity,
 // initializer-shape, or corpus-wide GuaranteeStall surface alone does not satisfy the trigger.
+data builtin_parameter_name_forked_across_hand_authored_sites_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a builtin parameter's name is authored independently in two more places than its declaration",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "src/v1/stage0/src/v1_interpreter.rs expect_int/expect_value_str diagnostic literals (\"substring start\", \"substring end\", \"char_at pos\")", tail: Cons { head: "src/v1/runtime_rust.dag emitted Rust signatures for 47 of the 132 registry builtins", tail: Empty } } },
+  next_rung_trigger: "a builtin parameter's name is DERIVED from the declared BuiltinParam at both sites -- the interpreter's diagnostic text and the emitted runtime's signature -- rather than authored as a literal in either. ONE trigger, not two: the capability is identical for both sites and splitting it would let each look closable while the capability that closes them stayed dead."
+}
+
+data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = GuaranteeStall {
+  subject: "no declared operation in the tree can be said to be associative",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "std.algebra's Semigroup<T> carries the law its name asserts, so that it is distinguishable from Magma<T>" },
+  population: UncountedNotEnumerable { reason: "every n-ary application of a binary operation in the corpus depends on associativity and none of them can say so. concat alone is roughly 1200 free-call sites above binary across 64 measured arities, but the class is not concat: it is every operation whose surface arity exceeds its declared arity, and nothing enumerates those because nothing can currently ask the question." },
+  next_rung_trigger: "associativity of a declared operation is expressible and checkable -- SUFFICIENT FOR n-ary application of a binary operation declared associative to fold to nested binary application, which is what gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding waits on. Magma<T> is { op: fn(T, T) -> T } and Semigroup<T> is { op: fn(T, T) -> T }: structurally identical, differing by a blank line where the law would sit, so the type whose ENTIRE content is the associativity law carries no law. This is a DESIGN section 5 wall-after-grounding rather than a ratchet -- associativity of a DECLARED operation is a modeled fact, not an undecidable property of an arbitrary function."
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
@@ -563,7 +581,9 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   retained_rust_live_tree_migration_stall,
   variant_owner_identity_stall,
   gitattributes_committed_emit_drift_stall,
-  wall_deadline_shared_fill_attribution_stall
+  wall_deadline_shared_fill_attribution_stall,
+  builtin_parameter_name_forked_across_hand_authored_sites_stall,
+  algebra_operation_associativity_undeclarable_stall,
 ]
 
 // A STALL AT ITS CEILING IS NOT A STALL: the row would describe a class that already arrived, and
