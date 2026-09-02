@@ -540,6 +540,30 @@ mod compiler_tests {
             "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
             crate::cli_run::fixture_closure_summary(&pair.red)
         );
+        // THE PAIR'S OWN PREDICATE IS NOT ENOUGH FOR THIS SUBJECT, AND SAYING SO IS THE POINT.
+        // fixture_discrimination_passed asks four questions -- control compiled, red reached
+        // rustc, red did not compile, red named its own emitted module -- and NONE of them is
+        // about the Fn bound. A syntax error, a dropped import, any unrelated emission defect in
+        // the red fixture's own module answers all four, and this arm would go on passing while
+        // the adapter discrimination it claims to measure had silently stopped existing (codex
+        // review 58546). So the diagnostic is ADJUDICATED here rather than merely printed.
+        //
+        // THE THREE SUBSTRINGS ARE ABOUT THE SEAM, NOT ABOUT RUSTC'S PROSE. `error[E0277]` is a
+        // stable code and is the trait-obligation class specifically; `Rc<dyn Fn` is the
+        // function-VALUE rendering (callable_type_template); `let_apply` is the consumer whose
+        // parameter carries the `impl Fn(..) + Clone` bound. Together they say the two renderings
+        // met and did not compose -- the seam the adapter closes at the call position.
+        // Wording-sensitive phrases are deliberately avoided: a rustc release that rephrases its
+        // message must not silently turn this into a check of nothing.
+        let red_diagnostic =
+            crate::cli_run::fixture_arm_diagnostic_lines("red", &pair.red).join("\n");
+        assert!(
+            red_diagnostic.contains("error[E0277]")
+                && red_diagnostic.contains("Rc<dyn Fn")
+                && red_diagnostic.contains("let_apply"),
+            "the red arm must be refused for the Fn-BOUND SEAM this pair measures -- E0277 naming the Rc<dyn Fn> carrier at let_apply -- not for some other defect in the same emitted module; a red failing this is a pair that stopped discriminating: {}",
+            red_diagnostic
+        );
         assert!(
             crate::cli_run::fixture_discrimination_passed(&pair),
             "the adapted call-position control must compile and the unadapted let-bound arm must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
