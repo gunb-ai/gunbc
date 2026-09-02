@@ -32,6 +32,7 @@ import v2.std.diagnostic {
   Rejected,
   None,
   bind_outcome,
+  bind_outcome_accepted,
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
@@ -488,13 +489,13 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
 fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
   let original = [stub_empty_conj]
   match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
-    Accepted { value: refined, diagnostics: None } =>
+    Accepted { value: refined, diagnostics: d } =>
       Accepted {
         value: RefinementPreservationSubject {
           refined: refined,
           original: original,
         },
-        diagnostics: None,
+        diagnostics: d,
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -654,7 +655,7 @@ fn testgen_emit_algebra_law_claim(
     }
   } else {
     match algebra_law_manual_claim_case(anchor: anchor) {
-      Accepted { value: law_case, diagnostics: None } =>
+      Accepted { value: law_case, diagnostics: d } =>
         Accepted {
           value: EqualsClaim {
             label: label,
@@ -663,7 +664,7 @@ fn testgen_emit_algebra_law_claim(
             rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs),
             classification: classification,
           },
-          diagnostics: None,
+          diagnostics: d,
         }
       Rejected { diagnostics: d } =>
         Rejected { diagnostics: d }
@@ -673,13 +674,13 @@ fn testgen_emit_algebra_law_claim(
 
 fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
   match algebra_law_subject_for_manual_anchor(anchor: anchor) {
-    Accepted { value: subject, diagnostics: None } =>
+    Accepted { value: subject, diagnostics: d } =>
       Accepted {
         value: AlgebraLawCase {
           anchor: manual_claim_anchor(anchor: anchor),
           subject: subject,
         },
-        diagnostics: None,
+        diagnostics: d,
       }
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
@@ -1257,7 +1258,7 @@ fn append_nat_obligation_if_law_matches(
   law: Symbol
 ) -> Outcome<NatAlgebraLawObligation> {
   match found {
-    Accepted { value: _, diagnostics: None } => found
+    Accepted { value: _, diagnostics: _ } => found
     Rejected { diagnostics: _ } =>
       if obligation.law == law {
         Accepted { value: obligation, diagnostics: None }
@@ -1997,11 +1998,14 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
       )
     ManualRefinementNonEmptyListBase =>
       match refinement_preservation_subject_nonempty_list_base() {
-        Accepted { value: subject, diagnostics: None } =>
-          testgen_emit_refinement_preservation_claim(
-            anchor: ManualRefinementNonEmptyListBase,
-            label: refinement_label_nonempty_list_base,
-            subject: subject
+        Accepted { value: subject, diagnostics: d } =>
+          bind_outcome_accepted(
+            od: d,
+            inner: testgen_emit_refinement_preservation_claim(
+              anchor: ManualRefinementNonEmptyListBase,
+              label: refinement_label_nonempty_list_base,
+              subject: subject
+            )
           )
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
@@ -2104,23 +2108,23 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
       match refinement_preservation_subject_nonempty_list_base() {
-        Accepted { value: subject, diagnostics: None } =>
+        Accepted { value: subject, diagnostics: d } =>
           Accepted {
             value: RefinementPreservation {
               subject: subject,
             },
-            diagnostics: None,
+            diagnostics: d,
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
     ManualClaimAnchor { manual_anchor: manual_anchor } =>
       match algebra_law_subject_for_manual_anchor(anchor: manual_anchor) {
-        Accepted { value: subject, diagnostics: None } =>
+        Accepted { value: subject, diagnostics: d } =>
           Accepted {
             value: AlgebraLaw {
               subject: subject,
             },
-            diagnostics: None,
+            diagnostics: d,
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
