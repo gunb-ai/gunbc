@@ -473,14 +473,43 @@ fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
   concat(from_a, from_b)
 }
 
+// MALFORMED BEATS INCOMPLETE, AND THE PRECEDENCE IS NOT A CHOICE - this file already fixed it one
+// layer up. entry_contradicts_its_declaration exempts an ABSENT reading when the entry declares its
+// gaps, and pointedly does NOT exempt a DUPLICATE: "two readings on one axis identity is malformed
+// evidence whatever else the entry declares", because the spine would have to pick one. The gate
+// below must mirror that or the two disagree, which is the defect this whole PR is about.
+//
+// Reported on review of this change (review 58743) and it was right: the first version returned
+// PairEvidenceIncomplete before looking at any reading, so an entry carrying BOTH a declared gap and
+// a duplicate reading stopped reporting PairRefused and started reporting an honest incompleteness -
+// a projector defect wearing the report of an honest one. A declared gap is an honest statement
+// about the world; a duplicate reading is a bug in the projector, and no declaration excuses it.
+fn duplicate_reading_causes(e: ParetoEntry, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
+  fold(axes, init: no_names, f: fn(acc, ax) {
+    match reading_for(e: e, wanted: ax.identity) {
+      ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
+        declaration_ref_display_key(ref: e.identity),
+        " has duplicate readings on funded axis ",
+        declaration_ref_display_key(ref: duplicated_axis)], ""))),
+      ReadingFound { interval_micro } => acc,
+      ReadingAbsent { absent_axis } => acc,
+    }
+  })
+}
+
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
-  let gaps = declared_gap_cause(a: a, b: b)
-  if count(gaps) > 0 {
-    PairEvidenceIncomplete { missing: join(gaps, " ; ") }
+  let malformed = concat(duplicate_reading_causes(e: a, axes: axes), duplicate_reading_causes(e: b, axes: axes))
+  if count(malformed) > 0 {
+    PairRefused { cause: join(malformed, " ; ") }
   } else {
-    pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
-      axis_pair_step(acc: acc, axis: axis, a: a, b: b)
-    }))
+    let gaps = declared_gap_cause(a: a, b: b)
+    if count(gaps) > 0 {
+      PairEvidenceIncomplete { missing: join(gaps, " ; ") }
+    } else {
+      pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
+        axis_pair_step(acc: acc, axis: axis, a: a, b: b)
+      }))
+    }
   }
 }
 

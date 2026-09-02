@@ -625,29 +625,83 @@ pub fn declared_gap_cause(a: Rc<ParetoEntry>, b: Rc<ParetoEntry>) -> Rc<Vec<Stri
     }
 }
 
+pub fn duplicate_reading_causes(
+    e: Rc<ParetoEntry>,
+    axes: Rc<Vec<Rc<SelectionAxis>>>,
+) -> Rc<Vec<String>> {
+    axes.iter()
+        .cloned()
+        .fold(
+            no_names(),
+            |acc: Rc<Vec<String>>, ax: Rc<SelectionAxis>| match (*reading_for(
+                e.clone(),
+                ax.identity.clone(),
+            ))
+            .clone()
+            {
+                ReadingLookup::ReadingDuplicated {
+                    duplicated_axis: duplicated_axis,
+                    ..
+                } => v1_rt::concat(
+                    acc.clone(),
+                    one_name(
+                        Rc::new(vec![
+                            crate::std_decl_ref::declaration_ref_display_key(e.identity.clone()),
+                            " has duplicate readings on funded axis ".to_string(),
+                            crate::std_decl_ref::declaration_ref_display_key(
+                                duplicated_axis.clone(),
+                            ),
+                        ])
+                        .join(&"".to_string()),
+                    ),
+                ),
+                ReadingLookup::ReadingFound {
+                    interval_micro: interval_micro,
+                    ..
+                } => acc.clone(),
+                ReadingLookup::ReadingAbsent {
+                    absent_axis: absent_axis,
+                    ..
+                } => acc.clone(),
+            },
+        )
+}
+
 pub fn compare_pair(
     a: Rc<ParetoEntry>,
     b: Rc<ParetoEntry>,
     axes: Rc<Vec<Rc<SelectionAxis>>>,
 ) -> Rc<PairStanding> {
     {
-        let gaps = declared_gap_cause(a.clone(), b.clone());
-        if ((gaps.clone().len() as i64) > 0) {
-            Rc::new(PairStanding::PairEvidenceIncomplete {
-                missing: gaps.clone().join(&" ; ".to_string()),
+        let malformed = v1_rt::concat(
+            duplicate_reading_causes(a.clone(), axes.clone()),
+            duplicate_reading_causes(b.clone(), axes.clone()),
+        );
+        if ((malformed.clone().len() as i64) > 0) {
+            Rc::new(PairStanding::PairRefused {
+                cause: malformed.clone().join(&" ; ".to_string()),
             })
         } else {
-            pair_from_accum(axes.iter().cloned().fold(
-                Rc::new(PairAccum {
-                    refusal_causes: no_names(),
-                    a_worse_somewhere: false,
-                    winning_axes: no_axis_ids(),
-                    undecided_axes: no_axis_ids(),
-                }),
-                |acc: _, axis: Rc<SelectionAxis>| {
-                    axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
-                },
-            ))
+            {
+                let gaps = declared_gap_cause(a.clone(), b.clone());
+                if ((gaps.clone().len() as i64) > 0) {
+                    Rc::new(PairStanding::PairEvidenceIncomplete {
+                        missing: gaps.clone().join(&" ; ".to_string()),
+                    })
+                } else {
+                    pair_from_accum(axes.iter().cloned().fold(
+                        Rc::new(PairAccum {
+                            refusal_causes: no_names(),
+                            a_worse_somewhere: false,
+                            winning_axes: no_axis_ids(),
+                            undecided_axes: no_axis_ids(),
+                        }),
+                        |acc: _, axis: Rc<SelectionAxis>| {
+                            axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
+                        },
+                    ))
+                }
+            }
         }
     }
 }

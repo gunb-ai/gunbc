@@ -476,6 +476,7 @@ fn pareto_witness_report() -> NonEmptyStr {
     " duplicate_reading_refuses=", flag(b: witness_duplicate_reading_refuses_the_pair()),
     " gap_ineligible_to_dominate=", flag(b: a_declared_gap_is_ineligible_to_dominate()),
     " pair_and_standing_agree=", flag(b: the_pair_api_and_the_standing_path_agree_about_a_gap()),
+    " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
   ], "")
 }
 
@@ -490,6 +491,7 @@ fn pareto_witness_main() -> ProcessExit {
     && witness_field_order_is_irrelevant()
     && a_declared_gap_is_ineligible_to_dominate()
     && the_pair_api_and_the_standing_path_agree_about_a_gap()
+    && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
@@ -722,4 +724,31 @@ test fn a_declared_gap_does_not_excuse_a_duplicate_reading() -> Bool {
     && !standing_is_incomparable(s: with_duplicate)
     && standing_is_incomparable(s: honest_gap)
     && !standing_is_refused(s: honest_gap)
+}
+
+// CONTROL 12 - MALFORMED BEATS INCOMPLETE AT THE PAIR LAYER TOO, IN BOTH OPERAND POSITIONS.
+// The precedence above is not new; what was new is that this cut broke it one layer down. The gap
+// gate added to compare_pair returned before any reading was examined, so entry_gap_and_duplicate
+// stopped reporting PairRefused and started reporting an honest incompleteness - the same defect the
+// control above forbids at the standing layer, reintroduced at the pair layer where no control
+// watched. Reported on review of this change (review 58743).
+//
+// It reuses the fixture directly above rather than minting a second one: the two controls are the
+// same claim asked at the two layers, so they must be asked of the same entry or they can drift.
+test fn a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api() -> Bool {
+  let as_challenger = match compare_pair(a: entry_gap_and_duplicate, b: entry_dear_weak, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  let as_subject = match compare_pair(a: entry_cheap_strong, b: entry_gap_and_duplicate, axes: both_axes) {
+    PairRefused { cause } => true
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  as_challenger && as_subject
 }
