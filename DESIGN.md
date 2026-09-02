@@ -237,6 +237,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `one_refusal_two_destinations`
 - `liveness_probe_read_as_currency`
 - `ambient_process_state_read_by_a_concurrent_reader`
+- `predicate_vacuously_true_on_an_empty_domain`
 
 ## Building & checks
 
