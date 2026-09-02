@@ -9122,6 +9122,63 @@ impl SafetyInterruptTrigger {
     }
 }
 
+/// BOTH CLOCKS AT THE INTERRUPT POINT, AND BOTH LIMITS — the reading `ClaimTerminality`
+/// already takes and the floor's interrupted rows were not carrying.
+///
+/// WHY A SINGLE FIGURE IS NOT ENOUGH, which is the whole reason this is a pair. The floor's
+/// interrupted rows render through `budget_figure_phrase`, which reads `ClaimOutcome` and
+/// therefore sees ONE clock: whichever limit was checked when the stop was raised. That surface
+/// says `cost=UNMEASURED`, correctly — the row's cost is a lower bound with no upper bound. Read
+/// as the system's silence rather than as one surface's, it says the fact does not exist. It
+/// does: `claim_terminality` samples BOTH clocks around the same call regardless of how the
+/// claim ends, and threads both limits in from the `WitnessSafetyPolicy` that armed them.
+///
+/// The pair separates two populations that print identically today. A claim blocked on I/O that
+/// went away burns WALL and no CPU, so its `elapsed_cpu_at_least_ms` stays small while its wall
+/// reading runs to the ceiling. A claim that genuinely computed has `elapsed_cpu_at_least_ms` at
+/// or above `cpu_safety_limit_ms`. One number cannot tell those apart; two can.
+///
+/// STILL LOWER BOUNDS, AND THE FIELD NAMES SAY SO. `at_least` is not decoration: the deadline
+/// preempted the witness, so the true cost is above these readings by an unbounded amount. They
+/// support "this claim had burned at least N ms of CPU when it was stopped" and no statement
+/// with an upper bound in it. The limits are carried beside them because the comparison a reader
+/// wants is reading-against-its-own-ceiling, and reconstructing a limit from the outcome would
+/// get the OTHER clock's limit wrong — `ClaimOutcome`'s `budget_ms` names only the one that was
+/// checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SafetyInterruptReading {
+    /// Which mechanism raised THIS occurrence. Read `SafetyInterruptTrigger`'s own note: it is
+    /// not a claim about which clock was crossed, still less which was crossed first.
+    pub raised_by: SafetyInterruptTrigger,
+    pub elapsed_cpu_at_least_ms: u64,
+    pub elapsed_wall_at_least_ms: u64,
+    pub cpu_safety_limit_ms: u64,
+    pub wall_safety_limit_ms: u64,
+}
+
+/// The reading, for a terminality that has one. `None` for every other arm, and the caller is
+/// expected to REFUSE on `None` rather than substitute a figure — see the `interrupted_before_
+/// verdict` push sites, where a `None` means two derivations over one claim disagree about
+/// whether it was interrupted, which is a defect and not a row to render.
+pub fn safety_interrupt_reading(terminality: &ClaimTerminality) -> Option<SafetyInterruptReading> {
+    match terminality {
+        ClaimTerminality::SafetyInterrupted {
+            raised_by,
+            elapsed_cpu_at_least_ms,
+            elapsed_wall_at_least_ms,
+            cpu_safety_limit_ms,
+            wall_safety_limit_ms,
+        } => Some(SafetyInterruptReading {
+            raised_by: *raised_by,
+            elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
+            elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
+            cpu_safety_limit_ms: *cpu_safety_limit_ms,
+            wall_safety_limit_ms: *wall_safety_limit_ms,
+        }),
+        ClaimTerminality::VerdictReached { .. } | ClaimTerminality::Unwound { .. } => None,
+    }
+}
+
 /// ONE INTERRUPTED CLAIM, WITH THE CAUSE STILL TYPED.
 ///
 /// `RequiredFloorOutcome::interrupted_before_verdict` was a `Vec<String>`: one bucket whose
@@ -9148,9 +9205,13 @@ impl SafetyInterruptTrigger {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterruptedBeforeVerdict {
     pub qualified: String,
-    /// WHICH MECHANISM RAISED THIS OCCURRENCE. Read `SafetyInterruptTrigger`'s own note before
-    /// treating it as a statement about which clock is responsible for the cost: it is not one.
-    pub raised_by: SafetyInterruptTrigger,
+    /// THE WHOLE READING, NOT JUST THE TRIGGER. This was `raised_by: SafetyInterruptTrigger`
+    /// alone, and the trigger is a NECESSARY condition for "this claim was doing real work" and
+    /// never a sufficient one: a claim that computes hard and then hangs on a vanished path
+    /// crosses both limits, and which one raises is a race between polls. The two elapsed
+    /// readings are what settle it. Taken from `ClaimTerminality`, which is the one producer of
+    /// them, rather than re-derived here.
+    pub interrupt: SafetyInterruptReading,
     /// Whether the identity was enrolled as expected-red when it was interrupted. The enrolled
     /// and unenrolled populations have the same terminal state and different remedies, and the
     /// bucket fused them too: `known_red_budget_refused` counted the enrolled half separately
@@ -9173,7 +9234,7 @@ pub struct InterruptedCauseCensus {
 pub fn interrupted_cause_census(rows: &[InterruptedBeforeVerdict]) -> InterruptedCauseCensus {
     let mut census = InterruptedCauseCensus::default();
     for row in rows {
-        match row.raised_by {
+        match row.interrupt.raised_by {
             SafetyInterruptTrigger::CpuDeadlineRaised => census.cpu_deadline += 1,
             SafetyInterruptTrigger::WallDeadlineRaised => census.wall_deadline += 1,
         }
@@ -9184,17 +9245,79 @@ pub fn interrupted_cause_census(rows: &[InterruptedBeforeVerdict]) -> Interrupte
 #[cfg(test)]
 mod interrupted_before_verdict_tests {
     use super::{
-        interrupted_cause_census, InterruptedBeforeVerdict, InterruptedCauseCensus,
+        interrupted_cause_census, safety_interrupt_reading, ClaimTerminality,
+        InterruptedBeforeVerdict, InterruptedCauseCensus, SafetyInterruptReading,
         SafetyInterruptTrigger,
     };
+
+    fn reading(raised_by: SafetyInterruptTrigger) -> SafetyInterruptReading {
+        SafetyInterruptReading {
+            raised_by,
+            elapsed_cpu_at_least_ms: 0,
+            elapsed_wall_at_least_ms: 0,
+            cpu_safety_limit_ms: 500,
+            wall_safety_limit_ms: 5_000,
+        }
+    }
 
     fn row(raised_by: SafetyInterruptTrigger) -> InterruptedBeforeVerdict {
         InterruptedBeforeVerdict {
             qualified: "m.w".to_string(),
-            raised_by,
+            interrupt: reading(raised_by),
             enrolled_expected_red: false,
             detail: String::new(),
         }
+    }
+
+    /// THE DISCRIMINATING CASE FOR THE PAIR, and the one the trigger alone cannot decide. Both
+    /// rows are `CpuDeadlineRaised` — identical on every fact the row carried before this
+    /// change — and they are opposite populations: one burned CPU to its ceiling, the other
+    /// burned almost none while its wall clock ran out on a blocked call. If the readings ever
+    /// stop travelling, these two become the same row again.
+    #[test]
+    fn two_cpu_raised_rows_separate_on_the_elapsed_pair() {
+        let computed = SafetyInterruptReading {
+            raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
+            elapsed_cpu_at_least_ms: 501,
+            elapsed_wall_at_least_ms: 520,
+            cpu_safety_limit_ms: 500,
+            wall_safety_limit_ms: 5_000,
+        };
+        let blocked = SafetyInterruptReading {
+            raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
+            elapsed_cpu_at_least_ms: 3,
+            elapsed_wall_at_least_ms: 5_001,
+            cpu_safety_limit_ms: 500,
+            wall_safety_limit_ms: 5_000,
+        };
+        assert_eq!(
+            computed.raised_by, blocked.raised_by,
+            "the trigger alone cannot tell these apart — that is the point"
+        );
+        assert_ne!(computed, blocked);
+        assert!(computed.elapsed_cpu_at_least_ms >= computed.cpu_safety_limit_ms);
+        assert!(blocked.elapsed_cpu_at_least_ms < blocked.cpu_safety_limit_ms);
+    }
+
+    /// A TERMINALITY THAT IS NOT AN INTERRUPT HAS NO READING, so a caller cannot obtain one for
+    /// a claim that reached a verdict or unwound and render it as an interrupt.
+    #[test]
+    fn only_an_interrupted_terminality_yields_a_reading() {
+        assert!(
+            safety_interrupt_reading(&ClaimTerminality::SafetyInterrupted {
+                raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
+                elapsed_cpu_at_least_ms: 501,
+                elapsed_wall_at_least_ms: 520,
+                cpu_safety_limit_ms: 500,
+                wall_safety_limit_ms: 5_000,
+            })
+            .is_some()
+        );
+        assert!(safety_interrupt_reading(&ClaimTerminality::Unwound {
+            observed_cpu_ms: 1,
+            observed_wall_ms: 2,
+        })
+        .is_none());
     }
 
     /// THE DISCRIMINATING CASE: two populations of the SAME SIZE that the old `Vec<String>`
@@ -16656,12 +16779,12 @@ enum ExpectedRedArm {
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
     ///
-    /// CARRIES THE TRIGGER, because the arm is the caller's ONLY view of the outcome on this
-    /// path and the caller has to record which mechanism raised the stop. Reconstructing it by
-    /// re-matching `ClaimOutcome` at the call site would be a second dispatch over one value,
-    /// which the caller's own comment argues against; taking it as a field means the classifier
-    /// answers once and the axis survives the projection instead of being dropped by it.
-    BudgetRefused { raised_by: SafetyInterruptTrigger },
+    /// CARRIES NOTHING, and it briefly carried the trigger. That payload was the right repair
+    /// while the row's only interrupt fact WAS the trigger; now the row carries the whole
+    /// `SafetyInterruptReading`, whose sole producer is `claim_terminality`, and a trigger
+    /// travelling separately on this arm would be a second authority over one field of it —
+    /// consolidated later at someone else's cost (DESIGN §3). The caller reads the reading.
+    BudgetRefused,
     /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
     /// claim was never decided, so there is no expected failure for the enrollment to hold.
     RuntimeErrored,
@@ -17106,9 +17229,7 @@ pub fn seed_ledger_row(
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::BudgetInterrupted { kind, .. } => ExpectedRedArm::BudgetRefused {
-            raised_by: SafetyInterruptTrigger::from(*kind),
-        },
+        ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
         ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
         // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the

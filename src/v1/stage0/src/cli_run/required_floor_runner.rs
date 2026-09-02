@@ -5589,7 +5589,7 @@ pub fn run_required_floor(
                 // interruption plus a measured lower bound on cost, so the enrolled claim was
                 // never decided at all. Holding it reports agreement about a failure that
                 // nobody observed.
-                ExpectedRedArm::BudgetRefused { raised_by } => {
+                ExpectedRedArm::BudgetRefused => {
                     known_red_budget_refused += 1;
                     // ONE RENDERER, NOT A LOCAL FORMAT STRING. The arm reached here is the
                     // interrupted one BY CONSTRUCTION — `ExpectedRedArm::BudgetRefused` has
@@ -5601,11 +5601,27 @@ pub fn run_required_floor(
                     let detail = result
                         .budget_figure_phrase()
                         .unwrap_or_else(|| format!("{result:?}"));
+                    // TWO DERIVATIONS OVER ONE CLAIM, AND A DISAGREEMENT REFUSES. This arm is
+                    // reached only for `ClaimOutcome::BudgetInterrupted`, and `claim_terminality`
+                    // maps exactly that outcome to `SafetyInterrupted` — so `None` here means the
+                    // outcome classifier and the terminality classifier disagree about whether
+                    // this claim was interrupted at all. Substituting zeroes would publish a
+                    // fabricated reading; the line stops instead, typed and located (DESIGN §5).
+                    let Some(interrupt) = safety_interrupt_reading(&terminality) else {
+                        outcome.failures.push(format!(
+                            "{} classified as BUDGET-REFUSED by ClaimOutcome but its \
+                             ClaimTerminality is not SafetyInterrupted. The two derivations \
+                             over one claim disagree, so no interrupt reading can be published \
+                             for it. This is a defect in the classifiers, not in the witness.",
+                            claim.qualified
+                        ));
+                        continue;
+                    };
                     outcome
                         .interrupted_before_verdict
                         .push(InterruptedBeforeVerdict {
                             qualified: claim.qualified.clone(),
-                            raised_by,
+                            interrupt,
                             enrolled_expected_red: true,
                             // THE IDENTITY IS THE ROW'S FIELD AND IS NOT RESTATED HERE. It used
                             // to lead this sentence, which made `qualified` a second
@@ -5904,16 +5920,26 @@ pub fn run_required_floor(
             // with a number already read in the cost position, and demonstrably loses. The
             // renderer does not put the bound there at all, so the remedy sentences below need
             // only say what to DO, which is the part a caveat was never the right carrier for.
-            ClaimOutcome::BudgetInterrupted { kind, .. } => {
+            ClaimOutcome::BudgetInterrupted { .. } => {
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
+                // SAME REFUSAL AS THE ENROLLED ARM, and for the same reason — see there.
+                let Some(interrupt) = safety_interrupt_reading(&terminality) else {
+                    outcome.failures.push(format!(
+                        "{} classified as BUDGET-REFUSED by ClaimOutcome but its \
+                         ClaimTerminality is not SafetyInterrupted. The two derivations over \
+                         one claim disagree, so no interrupt reading can be published for it. \
+                         This is a defect in the classifiers, not in the witness.",
+                        claim.qualified
+                    ));
+                    continue;
+                };
                 outcome
                     .interrupted_before_verdict
                     .push(InterruptedBeforeVerdict {
                         qualified: claim.qualified.clone(),
-                        // THE ARM ALREADY HELD `kind`; the old push discarded it into prose.
-                        raised_by: SafetyInterruptTrigger::from(kind),
+                        interrupt,
                         enrolled_expected_red: false,
                         detail: format!(
                             "was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
