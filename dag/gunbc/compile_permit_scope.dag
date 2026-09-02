@@ -181,9 +181,46 @@ fn fleet_cancellation_standing(
 // leaks a permit per kill -- the exact denominator failure the parameter was added to prevent,
 // reintroduced one layer up.
 //
-// THE FLEET AS OBSERVED TODAY: nothing. No host readback exists yet, so the standing is NotSafe with
-// an empty roster on both sides, and the policy below stays NeverSupersedeRunning BY REFUSAL rather
-// than by a literal someone has to remember to keep. Publishing real observations is what moves it,
-// and that is the second stage of the cutover -- deploy and restart the safe realization on every
-// eligible host, read the active units back, bind the receipts, and only then does the policy move.
-data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_cancellation_standing(eligible_hosts: fleet_hosts(), observations: [])
+// PRODUCTION READS A PRODUCER, NOT AN AUTHORED LIST, and that distinction is the whole of review
+// 58515's finding. HostCancellationObserved carries a realization an author supplies, so if the live
+// standing were a data row of observations then inserting InvocationLocalCargo constructors would
+// enable supersession with no host having converged -- satisfiable by editing the declaration while
+// the realization lies, which is exactly the validation tell DESIGN section 5 names.
+//
+// No in-repo type can stop a fixture constructing an observation, and it must not: section 4b
+// requires the discriminating RED to be authorable as source handed to the compiler by a fixture,
+// which is what every witness on this fold is. What the model CAN do is refuse to let production
+// reach the safe arm through authorship, and that is what the boundary below does. The eligible
+// hosts are unobserved because no producer reads them, and there is no data row an author can
+// extend to change that answer -- reaching SAFE requires implementing ReadbackObservations, which
+// means writing the host read. The cause is carried on the source row rather than in the refusal,
+// because FleetCancellationNotSafe reports rosters; a reader asking WHY every host is unobserved is
+// one hop away, at fleet_active_unit_readback.
+//
+// This is the column DESIGN 4b keeps deliberately OFF the ladder: external reality, observed or
+// refused at a declared boundary, never fabricated. The boundary is declared here rather than
+// implied by an empty list, because an empty list reads as "we looked and found nothing" while the
+// truth is "nothing has looked".
+type ActiveUnitReadbackSource
+  = ReadbackProducerAbsent { cause: NonEmptyStr }
+  | ReadbackObservations { observations: List<HostCompileCancellationStanding> }
+
+data fleet_active_unit_readback: ActiveUnitReadbackSource = ReadbackProducerAbsent {
+  cause: "no producer reads a host's active runner unit: the cutover's stage two is to deploy and restart the safe realization on every eligible host, read the active units back, and bind each receipt to the host it was read from" as NonEmptyStr,
+}
+
+fn fleet_standing_from_readback(
+  source: ActiveUnitReadbackSource,
+  eligible_hosts: List<HostIdentity>,
+) -> FleetCompileCancellationStanding {
+  match source {
+    ReadbackProducerAbsent { cause: _ } => FleetCancellationNotSafe {
+      unsafe_hosts: [],
+      unobserved_hosts: eligible_hosts,
+    }
+    ReadbackObservations { observations: o } =>
+      fleet_cancellation_standing(eligible_hosts: eligible_hosts, observations: o)
+  }
+}
+
+data fleet_compile_cancellation_standing: FleetCompileCancellationStanding = fleet_standing_from_readback(source: fleet_active_unit_readback, eligible_hosts: fleet_hosts())
