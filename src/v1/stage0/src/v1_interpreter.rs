@@ -2269,6 +2269,205 @@ pub fn warm_cross_claim_pure_producer(
 }
 
 #[cfg(test)]
+mod cross_claim_demand_census_tests {
+    //! THE CENSUS'S OWN EVIDENCE. The discriminating fact is not that a fold aggregates — it is
+    //! that the aggregate SEES a demand shape the per-frame ledger cannot represent, so each
+    //! test below asserts the frame ledger's blindness beside the census's answer. Re-scope the
+    //! census back to one frame and the first test reds; that is what makes it a wall rather
+    //! than a decoration.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_node, ExprData, SourceSpan};
+
+    use super::{
+        absorb_claim_recompute_demand, clear_cross_claim_demand_census, cross_claim_demand_rows,
+        eval_recompute_key, eval_recompute_record, trace_totals, ExecutionMode, InterpContext,
+        Value,
+    };
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn node_at(file: &str, start: i64) -> Rc<crate::v1_std_core::Node> {
+        make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            Rc::new(SourceSpan {
+                file: file.to_string(),
+                start,
+                end: start,
+            }),
+        )
+    }
+
+    /// Evaluate `producer` once inside one claim's frame, at the given cost, and fold that frame
+    /// into the census exactly as the floor's claim loop does.
+    fn one_claim(
+        producer: &str,
+        fn_node: &Rc<crate::v1_std_core::Node>,
+        arg: i64,
+        ns: u128,
+        claim: &str,
+        module: &str,
+    ) -> super::EvalRecomputeTotals {
+        let ctx = fresh_ctx();
+        let call_site = node_at("caller.dag", 1);
+        let args = [(None, Value::Int(arg))];
+        let key = eval_recompute_key(&ctx, fn_node, &args).expect("Int args key soundly");
+        eval_recompute_record(&ctx, &call_site, fn_node, producer, key, ns);
+        absorb_claim_recompute_demand(&ctx, claim, module);
+        let totals = trace_totals(&ctx.eval_recompute_trace.borrow());
+        totals
+    }
+
+    /// THE RED THIS INSTRUMENT EXISTS FOR. One producer, evaluated ONCE in each of two claims —
+    /// the shape that dominates the required floor's tail cost — is invisible to every frame's
+    /// own ledger (`duplicated_keys = 0`, because `count = 1` in each), and the census reports
+    /// it as one identity demanded by two claims across two modules.
+    #[test]
+    fn a_producer_demanded_once_per_claim_is_invisible_per_frame_and_visible_across_claims() {
+        super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        if !super::eval_recompute_trace_enabled() {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        }
+        clear_cross_claim_demand_census();
+        let producer_node = node_at("producer.dag", 100);
+        let first = one_claim(
+            "tm_target_model",
+            &producer_node,
+            7,
+            250_000_000,
+            "m1.claim_a",
+            "m1",
+        );
+        let second = one_claim(
+            "tm_target_model",
+            &producer_node,
+            7,
+            250_000_000,
+            "m2.claim_b",
+            "m2",
+        );
+        assert_eq!(
+            (first.duplicated_keys, second.duplicated_keys),
+            (0, 0),
+            "the per-frame ledger must report NO duplication — this is the blindness under test, \
+             and if it ever reports some, this test is measuring something else"
+        );
+        let rows = cross_claim_demand_rows();
+        let row = rows
+            .iter()
+            .find(|r| r.producer == "tm_target_model")
+            .expect("the census must carry the producer both claims demanded");
+        assert_eq!(row.claims, 2, "one demand per claim, two claims");
+        assert_eq!(row.modules, 2, "two consumer modules");
+        assert_eq!(
+            row.cross_claim_wasted_ns(),
+            250_000_000,
+            "a second claim re-deriving the same identity wastes exactly one derivation"
+        );
+        clear_cross_claim_demand_census();
+    }
+
+    /// THE CONTROL THAT KEEPS `claims > 1` MEANINGFUL: a producer demanded by ONE claim is
+    /// retained and ranks at zero. Its cost is that claim's own work and belongs to the cost
+    /// receipt; a census that scored it would be reporting every expensive call as shareable.
+    #[test]
+    fn a_single_claim_producer_ranks_at_zero_cross_claim_waste() {
+        super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        if !super::eval_recompute_trace_enabled() {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        }
+        clear_cross_claim_demand_census();
+        let only = node_at("producer.dag", 200);
+        one_claim("tm_only_once", &only, 1, 400_000_000, "m1.claim_a", "m1");
+        let rows = cross_claim_demand_rows();
+        let row = rows
+            .iter()
+            .find(|r| r.producer == "tm_only_once")
+            .expect("retained, so the shared population has a control to be measured against");
+        assert_eq!(row.claims, 1);
+        assert_eq!(row.cross_claim_wasted_ns(), 0);
+        clear_cross_claim_demand_census();
+    }
+
+    /// TWO DECLARATIONS SPELLED THE SAME ARE TWO PRODUCERS. Keying on the name alone would merge
+    /// them into one row reporting a producer that does not exist — and it would do so in the
+    /// direction that manufactures cross-claim sharing out of two unrelated single-claim costs.
+    #[test]
+    fn same_named_producers_at_distinct_declaration_sites_do_not_merge() {
+        super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        if !super::eval_recompute_trace_enabled() {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        }
+        clear_cross_claim_demand_census();
+        let here = node_at("alpha.dag", 10);
+        let there = node_at("beta.dag", 10);
+        one_claim("tm_homonym", &here, 1, 200_000_000, "m1.claim_a", "m1");
+        one_claim("tm_homonym", &there, 1, 200_000_000, "m2.claim_b", "m2");
+        let rows: Vec<_> = cross_claim_demand_rows()
+            .into_iter()
+            .filter(|r| r.producer == "tm_homonym")
+            .collect();
+        assert_eq!(rows.len(), 2, "two declarations, two rows");
+        assert!(
+            rows.iter().all(|r| r.claims == 1),
+            "neither is shared: merging them would invent cross-claim demand"
+        );
+        clear_cross_claim_demand_census();
+    }
+
+    /// THE RETENTION FLOOR DISCLOSES WHAT IT DROPS. A sub-millisecond first sighting is not
+    /// retained at identity grain, and the omitted count and its summed cost are reported — an
+    /// artifact that truncated silently would be read as the population.
+    #[test]
+    fn the_retention_floor_omits_loudly_rather_than_silently() {
+        super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        if !super::eval_recompute_trace_enabled() {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        }
+        clear_cross_claim_demand_census();
+        let tiny = node_at("producer.dag", 300);
+        one_claim("tm_tiny", &tiny, 1, 1_000, "m1.claim_a", "m1");
+        let d = super::cross_claim_demand_disclosure();
+        assert_eq!(d.claims_absorbed, 1);
+        assert_eq!(d.overflow_keys, 0);
+        assert_eq!(
+            d.omitted_keys, 1,
+            "the sub-floor key is counted, not forgotten"
+        );
+        assert_eq!(
+            d.omitted_ns, 1_000,
+            "and its cost is carried in the disclosure"
+        );
+        assert!(
+            !cross_claim_demand_rows()
+                .iter()
+                .any(|r| r.producer == "tm_tiny"),
+            "it is genuinely not retained — the disclosure is the only place it exists"
+        );
+        clear_cross_claim_demand_census();
+    }
+}
+
+#[cfg(test)]
 mod cross_claim_memo_tests {
     use crate::v1_rt::RcStr;
     use std::rc::Rc;
@@ -3218,7 +3417,11 @@ struct ParseTableMemo {
 #[derive(Default)]
 struct EvalRecomputeTrace {
     map: std::collections::HashMap<EvalRecomputeKey, EvalRecomputeEntry>,
-    unkeyed_by_fn: std::collections::HashMap<String, u64>,
+    // (calls, inclusive nanos, declaration site) per composite-argument producer. The nanos
+    // half is here for the CROSS-CLAIM census below: a producer whose arguments have no cheap
+    // sound identity is exactly as capable of costing a claim 300ms once as a nullary one, and
+    // a bucket that counted calls without duration could name it and never rank it.
+    unkeyed_by_fn: std::collections::HashMap<String, (u64, u128, String)>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as PureCallMemo.keepalive_fns).
     keepalive_fns: Vec<Rc<Node>>,
@@ -7178,10 +7381,16 @@ fn eval_pure_named_call(
     let key = match eval_recompute_key(ctx, fn_node, args) {
         Some(key) => key,
         None => {
-            if trace_on {
-                eval_recompute_record_unkeyed(ctx, func_name);
+            if !trace_on {
+                return call_function(ctx, fn_node, args, env);
             }
-            return call_function(ctx, fn_node, args, env);
+            // TIMED, not merely counted: the composite-argument bucket feeds the cross-claim
+            // census, which ranks by duration. Recording after the call is what makes the two
+            // buckets comparable; the earlier count-only form could name a producer it could
+            // never rank.
+            let result = call_function(ctx, fn_node, args, env);
+            eval_recompute_record_unkeyed(ctx, fn_node, func_name, started.elapsed().as_nanos());
+            return result;
         }
     };
     if memo_on {
@@ -7847,10 +8056,29 @@ fn eval_recompute_record(
     }
 }
 
-fn eval_recompute_record_unkeyed(ctx: &InterpContext, func_name: &str) {
+fn eval_recompute_record_unkeyed(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    elapsed_ns: u128,
+) {
     let mut t = ctx.eval_recompute_trace.borrow_mut();
     t.unkeyed_calls += 1;
-    *t.unkeyed_by_fn.entry(func_name.to_string()).or_insert(0) += 1;
+    let row = t
+        .unkeyed_by_fn
+        .entry(func_name.to_string())
+        .or_insert_with(|| (0, 0, eval_recompute_decl_site(fn_node)));
+    row.0 += 1;
+    row.1 += elapsed_ns;
+}
+
+/// A producer's DECLARATION site, `file:offset`. The cross-claim census below keys on it beside
+/// the name because `func_name` is the call's spelling: two modules may declare the same bare
+/// name, and merging them would report one producer that does not exist. Unlike `fn_ptr`, a span
+/// is derived from the source and is therefore equal across the fresh evaluation frame the floor
+/// builds per claim — which is the whole boundary this census has to cross.
+fn eval_recompute_decl_site(fn_node: &Rc<Node>) -> String {
+    format!("{}:{}", fn_node.span.file, fn_node.span.start)
 }
 
 /// Print the recompute-trace ledger to stderr. No-op unless GUNBC_RECOMPUTE_TRACE=1.
@@ -7907,12 +8135,15 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             site_labels.join(" @")
         );
     }
-    let mut unkeyed: Vec<(&String, &u64)> = t.unkeyed_by_fn.iter().collect();
-    unkeyed.sort_by(|a, b| b.1.cmp(a.1));
-    for (name, count) in unkeyed.iter().take(10) {
+    let mut unkeyed: Vec<(&String, &(u64, u128, String))> = t.unkeyed_by_fn.iter().collect();
+    unkeyed.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+    for (name, (count, ns, site)) in unkeyed.iter().take(10) {
         eprintln!(
-            "[recompute-trace] unkeyed fn={} calls={} (composite args — identity not tracked in slice 1)",
-            name, count
+            "[recompute-trace] unkeyed fn={} calls={} total_ms={} @{} (composite args — identity not tracked in slice 1)",
+            name,
+            count,
+            ns / 1_000_000,
+            site
         );
     }
     let (hits, misses, overflow) = eval_call_memo_counters(ctx);
@@ -7925,6 +8156,449 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
 // Everything a re-evaluated key cost beyond one evaluation's amortized share.
 fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
     e.total_ns - e.total_ns / u128::from(e.count)
+}
+
+// ── THE CROSS-CLAIM DEMAND CENSUS ────────────────────────────────────────────────────────────
+//
+// WHAT IT IS FOR, stated first because the mechanism is small and the reason is the whole point:
+// it names, as a RUN PRODUCT, the pure producers the required floor re-derives once per claim
+// across many claims — the candidate population for `v2.workflow.floor_pure_producer_share`.
+//
+// THE BLINDNESS IT CLOSES. `EvalRecomputeTrace` is scoped to one `InterpContext` and reports
+// keys with `count >= 2`; the floor builds a FRESH FRAME PER CLAIM and prints and drops the
+// ledger at every claim boundary. So a producer evaluated EXACTLY ONCE per claim, in thousands
+// of claims, has `count = 1` in every ledger and appears in none of them — the instrument that
+// exists to rank redundant recompute cannot see the one recurrence shape that dominates the
+// floor's per-claim cost. Measured on main run 33615659836 (`required_floor_claim_cost.tsv`,
+// 3477 rows): a witness and its discriminating RED, which do materially different work, cost
+// within 2ms of each other at 294/296, 331/333 and 382/384 while p50 for the corpus is 2ms. A
+// cost that does not move when the assertion changes is not the assertion's cost; it is the
+// closure's fixed re-derivation, and DESIGN §2 prices it as authored duplication whose least
+// common ancestor is the RUN. This census is the demand side of that: it does not share, cache
+// or enrol anything — it reports which identity is being re-demanded across the frame boundary,
+// so roster candidacy stops being discovered by a red landing on an unrelated lane's PR.
+//
+// IT IS AN OBSERVATION AND NEVER A GATE. Nothing refuses on these figures. Durations are
+// wall-of-the-calling-thread inclusive of callees and are as environment-sensitive as every
+// other cost reading on a shared runner (`gunbc.rung_drop floor_cost_contention_verdict`); the
+// CLAIM COUNT is the stable half, and it is a property of the corpus and the plan rather than
+// of the machine.
+//
+// THE COST COLUMN IS NOT ADDITIVE, AND THIS PARAGRAPH EXISTS BECAUSE THE ARTIFACT INVITES THE
+// ERROR. Durations are INCLUSIVE OF CALLEES — the ledger times a producer's whole subtree — so a
+// producer and everything it calls both appear, and their figures OVERLAP. Summing the column
+// therefore counts the same nanoseconds once per level of nesting. Measured on the first run that
+// produced the artifact: summing cross-claim over the shared rows gives ~1850s against a run
+// whose ENTIRE claim-side CPU was 130s — a 14x overcount, which is the nesting and nothing else.
+// So a per-row figure is a valid statement about THAT producer, and no sum of rows is a valid
+// statement about the run. The run's own total claim CPU travels in the summary line as the
+// ceiling any true total must sit under.
+//
+// SO THE DISPLACED-COST SENTENCE IS UNDERIVABLE TODAY, NOT MERELY UNSTATED, and the difference is
+// the whole reason this paragraph is a trigger rather than a caveat. "This floor recomputes N
+// seconds of pure producer work per run" is the sentence that makes the stake legible, and NO
+// arithmetic over this artifact produces it: the quantity it needs does not exist in the column.
+//
+// NEXT-RUNG TRIGGER, AS A CAPABILITY: SELF TIME — a producer's inclusive duration minus the
+// callees the same pass already counted. With it the column is ADDITIVE, the sum becomes a true
+// statement about the run, and the displaced-cost sentence is derivable. WHERE IT ALREADY LIVES,
+// so this is a tracked stall and not a wish: `CrossClaimFillGuard`'s `Drop` in this file computes
+// exactly that quantity one tier over — `inclusive_cpu.saturating_sub(children_cpu)` against the
+// `CROSS_CLAIM_FILL_FRAMES` child stack — for the shared-fill ledger. The mechanism exists; what
+// is missing is a child stack over the RECOMPUTE ledger's frames. Deliberately not built here:
+// this bridge is what stops the next four lanes paying, and a new measurement tier would put it
+// behind a fresh review cycle on the fleet condition it exists to explain.
+//
+// AN OUT-OF-SCOPE OBSERVATION THE CEILING COLUMN MADE, RECORDED HERE BECAUSE ITS ONLY OTHER HOME
+// IS TWO LOGS THAT AGE OUT. `claim_cpu_total_ms` — added purely as a bound against summing the
+// cost column — measured 130335 on run 33615659836 and 99943 on run 33631458679 (both
+// `run_attempt=1`), over the same corpus. A THIRTY PERCENT SWING IN A RUN'S TOTAL CLAIM CPU, and
+// a per-closure constant cannot produce it: the constant is by construction identical on two runs
+// of one tree. It is the same variance term measured independently as byte-identical evaluator
+// steps against 1.31-1.80x cpu, reached here from the opposite direction and at whole-run grain.
+// UNEXPLAINED AND DELIBERATELY NOT PURSUED HERE — this census's subject is the LEVEL — but it is
+// a property of the ENVIRONMENT measured from inside the run, which is what a fleet-variance
+// account has so far lacked. THE TWO FIGURES ARE TRANSCRIBED, as a declared exception to naming
+// the instrument instead of copying its output, for the reason the floor-cost carrier grants the
+// same exception: THE SUBJECT IS THE DIVERGENCE BETWEEN TWO RUNS, which no single producer on
+// this side of the boundary can re-derive once the logs expire.
+//
+// WHAT THIS CENSUS CANNOT SEE, DECLARED HERE RATHER THAN DISCOVERED BY A LATER READER. Two
+// boundaries, and neither is a defect in the aggregation — they are properties of the ledger it
+// folds, and a reader who does not know them will read absence as evidence.
+//
+// (1) IT EXPLAINS THE LEVEL, NOT THE VARIANCE. A per-closure constant is BY CONSTRUCTION the
+// same on two runs of the same tree, so it cannot produce a run-to-run delta — and one is
+// measured: 32 rows with byte-identical `eval_steps` and cpu up 1.31-1.80x between two runs over
+// a byte-identical payload module (gentle-wolf-793, 2026-09-02). The two compose into the shape
+// the floor keeps showing: the constant puts a family AT the line, and something run-to-run
+// decides WHICH of its rows cross it, and there are TWO INDEPENDENT RECEIPTS for that, neither of
+// which is a cross-run comparison. (i) ZERO MARGIN, single attempt: two rows of one module
+// COMPLETED over budget — so these are measured values, not preemption bounds — at 502ms and
+// EXACTLY 500ms against the 500ms budget. (ii) A ROW OBSERVED CROSSING THE
+// TWO POPULATIONS ON ONE TREE: run 33620893203, attempt 1, records
+// `test.claim.self_host_compile_phase_live_gate_witness.an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held`
+// as INTERRUPTED-BEFORE-VERDICT with `cost=UNMEASURED`, and ATTEMPT 2 of the SAME RUN records it
+// as COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500 — reaching its verdict. Those are the two
+// populations the 2026-08-19 budget cut separated BECAUSE THEY ARE DIFFERENT FACTS WITH DIFFERENT
+// REMEDIES, and at this margin which one a row lands in is decided by whether the poll fired
+// before or after the work finished. A fact about the poll, not about the row.
+//
+// AND THE PAIR IS NOT TWO MEASUREMENTS OF ONE QUANTITY — one is a BOUND and one is a VALUE, which
+// is why no cost figure is written for attempt 1 here. The interrupted arm knows only that the
+// cost exceeded 500ms by an unknown amount; its `interrupt_point` names where the poll observed
+// the ceiling, so it is a property of the BUDGET and the diagnostic says so in three clauses.
+// Writing it as "502ms in attempt 1 against 500ms in attempt 2" would say the row got two
+// milliseconds cheaper and crossed a line — a story about the row, and the instrument-property-
+// as-subject-property misreading this very census exists to stop. What changed between the
+// attempts is what the OBSERVER could say.
+//
+// CITE THE ATTEMPT, NOT THE RUN. Both readings above are pinned to
+// `/actions/runs/<id>/attempts/<n>/logs`, because a bare run id and a bare job id BOTH resolve to
+// the latest attempt: a rerun silently changes what a stable citation serves, with no error and
+// nothing visible from the citing end. A near-disjointness reading was retracted and then
+// partially restored on exactly that discovery. This file's other figures come from run
+// 33615659836 and run 33622954427, both `run_attempt=1` at the time of writing — recorded so a
+// reader can tell whether the citation still points at what was read. Neither half alone predicts
+// the wandering — a constant alone gives
+// the same rows every run, and runner noise alone over a corpus with p50=2ms tips nobody. This
+// census addresses the charge; the tipping variable is separately open and is not this
+// instrument's subject.
+//
+// (2) A COST THAT LIVES INSIDE A NATIVE BUILTIN CALLED DIRECTLY IS NOT A ROW HERE. The ledger
+// keys PURE NAMED FN evaluations; a `free_call.*` arm dispatched straight to Rust from a claim
+// body is not one, so its cost is invisible to this census — while the same work reached THROUGH
+// a .dag producer is captured, because the producer's own timing spans it. `std.evaluation_budget`
+// `evaluation_budget_opaque_host_call_note` records the matching fact for the deadline: no poll
+// stride falls inside an opaque host call, so such a claim cannot be interrupted at all and
+// surfaces as completed-over-cost instead. So a producer missing from this ranking is not
+// evidence that nothing is re-derived under it.
+//
+// ADMISSION TO THIS CENSUS IS NOT ADMISSION TO THE SHARE ROSTER. A row here is a CANDIDATE.
+// `v2.workflow.floor_pure_producer_share` records the criterion that decides enrolment and the
+// measurement that refuted the obvious case: the two rust target models were enrolled and
+// REMOVED because SERVING them costs more than recomputing them. So this artifact ranks demand;
+// it does not price the serve, and reading a top row as an enrolment instruction would trade a
+// measured red for an unmeasured regression.
+
+/// One producer identity, aggregated across claim frames.
+#[derive(Clone)]
+pub struct CrossClaimDemandRow {
+    /// The call's spelling.
+    pub producer: String,
+    /// `file:offset` of the DECLARATION. Frame-independent, and the disambiguator that keeps two
+    /// same-named producers in different modules from merging into one row that does not exist.
+    pub decl_site: String,
+    /// `keyed` — one row per (declaration, argument row) with sound argument identity — or
+    /// `unkeyed`, the composite-argument bucket, where one row covers ALL argument rows of that
+    /// declaration and the claim count is therefore an upper bound on any single identity's.
+    pub arg_shape: &'static str,
+    /// Distinct claims in which this identity was evaluated at least once.
+    pub claims: u64,
+    /// Evaluations across all of them.
+    pub evals: u64,
+    /// Inclusive nanos across all of them.
+    pub total_ns: u128,
+    /// Distinct consumer modules, and a bounded sample of their names.
+    pub modules: u64,
+    pub module_sample: Vec<String>,
+}
+
+impl CrossClaimDemandRow {
+    /// What a provider whose scope reached the RUN would have saved: everything beyond one
+    /// evaluation's amortized share across the claims that demanded it. Zero for a producer
+    /// demanded by exactly one claim, which is the point — a single-claim cost is a claim's own
+    /// work and belongs to the cost receipt, not to this census.
+    pub fn cross_claim_wasted_ns(&self) -> u128 {
+        if self.claims <= 1 {
+            return 0;
+        }
+        self.total_ns - self.total_ns / u128::from(self.claims)
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct CrossClaimDemandKey {
+    producer: String,
+    decl_site: String,
+    /// THE CANONICAL ARGUMENT ROW, NOT A DIGEST OF IT. A 64-bit hash stood here and it could
+    /// merge two distinct argument rows into one row reporting cross-claim demand that never
+    /// happened — a fabricated identity, which DESIGN §5 forbids outright and which the header
+    /// above simultaneously promised not to do ("sound argument identity"). The ledger already
+    /// keys on this exact vector; carrying it costs the memory the retention floor and key cap
+    /// are here to bound, and it makes the collision unrepresentable rather than unlikely.
+    /// Found by review 58673.
+    args: Vec<EvalRecomputeArgKey>,
+    /// `keyed` and `unkeyed` are DIFFERENT SUBJECTS and must not share a key: a nullary keyed
+    /// call and the composite-argument bucket of the same declaration both carry an empty
+    /// argument vector, and merging them would sum one identity's cost with all of another's.
+    arg_shape: &'static str,
+}
+
+struct CrossClaimDemandCell {
+    claims: u64,
+    evals: u64,
+    total_ns: u128,
+    last_claim: String,
+    /// THE COMPLETE consumer-module set, interned so one name costs one allocation for the whole
+    /// census. It is complete because the reported count must be exact: the earlier form kept a
+    /// bounded SAMPLE and counted against it, so once the sample filled, every later claim from
+    /// an unsampled module incremented the count again and the column reported CLAIM OCCURRENCES
+    /// while promising distinct modules. Bounding and counting cannot share one container.
+    /// Found by review 58673.
+    modules: std::collections::BTreeSet<Rc<str>>,
+}
+
+/// Rows below this are not retained at identity grain. The census's subject is a producer whose
+/// per-claim cost is a visible share of a 500ms ceiling; a sub-millisecond frame cost cannot be
+/// one however often it recurs at this grain, and retaining every such key across thousands of
+/// claims is the memory the floor does not have. THE OMITTED MASS IS DISCLOSED — count and
+/// summed nanos — because an artifact that truncates silently is read as a population
+/// (`gunbc.recurring_failure_mode instrument_output_read_as_subject_content`).
+const CROSS_CLAIM_DEMAND_RETENTION_FLOOR_NS: u128 = 1_000_000;
+
+/// Distinct census keys retained. Overflow is counted and disclosed, never silent.
+const CROSS_CLAIM_DEMAND_KEY_CAP: usize = 200_000;
+
+/// Consumer-module names RENDERED per row. The count is exact and comes from the complete set;
+/// this bounds only how many names a row shows.
+const CROSS_CLAIM_DEMAND_MODULE_SAMPLE_CAP: usize = 8;
+
+#[derive(Default)]
+struct CrossClaimDemandCensus {
+    map: std::collections::HashMap<CrossClaimDemandKey, CrossClaimDemandCell>,
+    claims_absorbed: u64,
+    omitted_keys: u64,
+    omitted_ns: u128,
+    overflow_keys: u64,
+    /// One `Rc<str>` per distinct module name, shared by every row that names it.
+    module_names: std::collections::HashMap<String, Rc<str>>,
+    /// WHAT THE INSTRUMENT ITSELF COSTS, measured rather than argued. A discovery instrument that
+    /// materially raised every claim's cost would recreate the incident it explains, on a floor
+    /// that preempts on marginal cost. Two facts make that checkable rather than assumed: the
+    /// absorb runs AFTER `run_claim_measured` returns, so it is outside the measured window and
+    /// cannot enter any claim's charged clocks or trip the deadline — and its own total and worst
+    /// single claim are reported beside the census, so "outside the window" is not asked to stand
+    /// alone.
+    absorb_ns_total: u128,
+    absorb_ns_max: u128,
+}
+
+thread_local! {
+    /// Process-lifetime on the thread that runs the claim loop. The floor executes its claims
+    /// sequentially in one process over one prepared subject, which is exactly the scope this
+    /// census is about; a run whose claims were distributed would observe only its own share and
+    /// the artifact would say so by its claim count rather than by a silent partial answer.
+    static CROSS_CLAIM_DEMAND: RefCell<CrossClaimDemandCensus> =
+        RefCell::new(CrossClaimDemandCensus::default());
+}
+
+fn cross_claim_demand_absorb_one(
+    census: &mut CrossClaimDemandCensus,
+    key: CrossClaimDemandKey,
+    evals: u64,
+    total_ns: u128,
+    claim: &str,
+    module_path: &str,
+) {
+    if total_ns < CROSS_CLAIM_DEMAND_RETENTION_FLOOR_NS && !census.map.contains_key(&key) {
+        census.omitted_keys += 1;
+        census.omitted_ns += total_ns;
+        return;
+    }
+    if !census.map.contains_key(&key) && census.map.len() >= CROSS_CLAIM_DEMAND_KEY_CAP {
+        census.overflow_keys += 1;
+        return;
+    }
+    let module = match census.module_names.get(module_path) {
+        Some(name) => name.clone(),
+        None => {
+            let name: Rc<str> = Rc::from(module_path);
+            census
+                .module_names
+                .insert(module_path.to_string(), name.clone());
+            name
+        }
+    };
+    let cell = census
+        .map
+        .entry(key)
+        .or_insert_with(|| CrossClaimDemandCell {
+            claims: 0,
+            evals: 0,
+            total_ns: 0,
+            last_claim: String::new(),
+            modules: std::collections::BTreeSet::new(),
+        });
+    // One claim contributes ONE to `claims` however many times it evaluated the identity —
+    // within-frame repetition is the existing ledger's subject and double-counting it here would
+    // make an intra-claim loop look like cross-claim recurrence.
+    if cell.last_claim != claim {
+        cell.claims += 1;
+        cell.last_claim = claim.to_string();
+        // A set insert, so a module already present is not counted twice however many of its
+        // claims arrive — the count is `len()` of the complete set and never an incremented
+        // tally that can drift from it.
+        cell.modules.insert(module);
+    }
+    cell.evals += evals;
+    cell.total_ns += total_ns;
+}
+
+/// Fold ONE finished claim's recompute ledger into the cross-claim census, before the claim's
+/// frame is dropped. Call it after the claim has run and before the next frame is built; a
+/// no-op unless `GUNBC_RECOMPUTE_TRACE=1`, which the floor sets for itself.
+///
+/// THE CALLER MUST OWN A FRESH FRAME PER CLAIM, and that is a real precondition rather than a
+/// style note. The ledger accumulates for the lifetime of its `InterpContext` and is NOT
+/// cleared by `eval_call_memo_frame_exit`, so a surface that shares one context across several
+/// claims — `claim_batch` shares one per ENTRY — would fold each claim's ledger again on the
+/// next call, inflating both `evals` and `total_ns` and, worse, reporting cross-claim demand
+/// where there is only one frame's. The required floor builds a frame per claim
+/// (`required_floor_runner`, "FRESH PER CLAIM"), which is exactly the boundary this census
+/// exists to measure across, so it is the only caller today. A shared-context surface wanting
+/// this census needs a per-claim ledger reset first; getting that wrong would commit the class
+/// this instrument was built to close, one grain up.
+pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_path: &str) {
+    if !eval_recompute_trace_enabled() {
+        return;
+    }
+    let started = Instant::now();
+    let t = ctx.eval_recompute_trace.borrow();
+    // One declaration-site lookup per fn pointer for this frame, rather than a linear scan of
+    // the keepalive vector per ledger key: the map holds one entry per (fn, argument row) and
+    // the vector one per fn, so the scan was quadratic in a frame's producer count -- the
+    // cost-shape defect DESIGN section 6 says is always fixed, inside an instrument whose whole
+    // subject is cost.
+    let mut decl_sites: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+    for node in t.keepalive_fns.iter() {
+        decl_sites
+            .entry(Rc::as_ptr(node) as usize)
+            .or_insert_with(|| eval_recompute_decl_site(node));
+    }
+    CROSS_CLAIM_DEMAND.with(|c| {
+        let mut census = c.borrow_mut();
+        census.claims_absorbed += 1;
+        for (key, entry) in t.map.iter() {
+            cross_claim_demand_absorb_one(
+                &mut census,
+                CrossClaimDemandKey {
+                    producer: entry.fn_name.to_string(),
+                    decl_site: decl_sites.get(&key.fn_ptr).cloned().unwrap_or_default(),
+                    args: key.args.clone(),
+                    arg_shape: "keyed",
+                },
+                entry.count,
+                entry.total_ns,
+                claim,
+                module_path,
+            );
+        }
+        for (name, (calls, ns, site)) in t.unkeyed_by_fn.iter() {
+            cross_claim_demand_absorb_one(
+                &mut census,
+                CrossClaimDemandKey {
+                    producer: name.clone(),
+                    decl_site: site.clone(),
+                    args: Vec::new(),
+                    arg_shape: "unkeyed",
+                },
+                *calls,
+                *ns,
+                claim,
+                module_path,
+            );
+        }
+        let spent = started.elapsed().as_nanos();
+        census.absorb_ns_total += spent;
+        if spent > census.absorb_ns_max {
+            census.absorb_ns_max = spent;
+        }
+    });
+}
+
+/// The census in deterministic identity order. EVERY retained row is returned,
+/// single-claim rows included — they rank at zero and they are the control population that makes
+/// `claims > 1` mean something, so filtering them here would leave an artifact in which every
+/// row looks shared. Selecting the shared ones is the READER's move and it is a view rather than
+/// the population: the runner applies it at the print site and the TSV keeps both.
+///
+/// (An earlier revision of this sentence said single-claim rows were dropped here. They never
+/// were, the tests and the writer both assert they are not, and the sentence pointed a reader at
+/// the wrong side of the census's one load-bearing claim. Found by review 58659.)
+pub fn cross_claim_demand_rows() -> Vec<CrossClaimDemandRow> {
+    CROSS_CLAIM_DEMAND.with(|c| {
+        let census = c.borrow();
+        let mut rows: Vec<CrossClaimDemandRow> = census
+            .map
+            .iter()
+            .map(|(key, cell)| CrossClaimDemandRow {
+                producer: key.producer.clone(),
+                decl_site: key.decl_site.clone(),
+                arg_shape: key.arg_shape,
+                claims: cell.claims,
+                evals: cell.evals,
+                total_ns: cell.total_ns,
+                // EXACT, read from the complete set. The bound below is on how many NAMES a
+                // reader is shown and it cannot reach the count.
+                modules: cell.modules.len() as u64,
+                module_sample: cell
+                    .modules
+                    .iter()
+                    .take(CROSS_CLAIM_DEMAND_MODULE_SAMPLE_CAP)
+                    .map(|m| m.to_string())
+                    .collect(),
+            })
+            .collect();
+        // IDENTITY ORDER, NOT COST ORDER, and that is a DESIGN section 3 distinction rather than
+        // a taste. An ordering by cost is a RANKING, and a ranking is a judgment about which
+        // demands matter -- meaning, which belongs to .dag folding this artifact, not to the seed
+        // whose warrant here is carrying facts across a frame boundary only the seed can reach.
+        // So rows leave in a deterministic identity order with every cost column beside them, and
+        // the runner's log preview sorts a COPY and says in band that it is a preview.
+        rows.sort_by(|a, b| {
+            a.producer
+                .cmp(&b.producer)
+                .then_with(|| a.decl_site.cmp(&b.decl_site))
+                .then_with(|| a.arg_shape.cmp(b.arg_shape))
+                .then_with(|| b.total_ns.cmp(&a.total_ns))
+        });
+        rows
+    })
+}
+
+/// What the census did not retain, and what it cost to run. Both halves travel with the rows,
+/// because either one read alone invites a wrong conclusion: the omissions bound what the ranking
+/// cannot contain, and the overhead answers whether a discovery instrument on a cost-preempting
+/// floor is paying for itself.
+pub struct CrossClaimDemandDisclosure {
+    pub claims_absorbed: u64,
+    pub omitted_keys: u64,
+    pub omitted_ns: u128,
+    pub overflow_keys: u64,
+    pub absorb_ns_total: u128,
+    pub absorb_ns_max: u128,
+}
+
+/// The census's own statement of what it did not retain and what it cost. Every consumer of the
+/// rows above must report this beside them.
+pub fn cross_claim_demand_disclosure() -> CrossClaimDemandDisclosure {
+    CROSS_CLAIM_DEMAND.with(|c| {
+        let census = c.borrow();
+        CrossClaimDemandDisclosure {
+            claims_absorbed: census.claims_absorbed,
+            omitted_keys: census.omitted_keys,
+            omitted_ns: census.omitted_ns,
+            overflow_keys: census.overflow_keys,
+            absorb_ns_total: census.absorb_ns_total,
+            absorb_ns_max: census.absorb_ns_max,
+        }
+    })
+}
+
+/// Reset — for tests, and for any caller that runs two independent floors in one process.
+pub fn clear_cross_claim_demand_census() {
+    CROSS_CLAIM_DEMAND.with(|c| *c.borrow_mut() = CrossClaimDemandCensus::default());
 }
 
 /// Ledger totals for one InterpContext — the materialization demand receipt at
@@ -12112,6 +12786,67 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
     }
 }
 
+/// Create-only write: the existence test and the creation are ONE syscall (O_CREAT|O_EXCL), so a
+/// path that appears between an observation and this call refuses instead of being truncated.
+///
+/// Deliberately NOT `write_file_owner_only` with a different name. That function sets mode 0600 at
+/// creation and uses `create_new` because a creation-time mode is meaningless on an existing path --
+/// its O_EXCL is incidental to owner-only mode, not a contract. Owner-only MODE and create-only
+/// EXISTENCE are independent facts; a caller that obtained create-only from it would silently also
+/// get 0600, and would break if owner-only ever stopped needing O_EXCL. This is portable and sets no
+/// mode, because setting one would be the same conflation in reverse.
+fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(content)?;
+    Ok(())
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PRIMITIVE'S OWN EVIDENCE. gunbc.scm.init's witnesses cover the DECISION -- which observation
+// arms may write -- and cannot reach this, because the decision is pure and the race lives in the
+// write. These two cells are the write's half: an existing path refuses AND KEEPS ITS BYTES, and an
+// absent one is created. Without the second, the first is satisfied by a function that never writes.
+// ------------------------------------------------------------------------------------------------
+#[cfg(test)]
+mod write_file_create_new_tests {
+    #[test]
+    fn create_new_refuses_a_path_that_already_exists_and_leaves_its_bytes() {
+        let dir = std::env::temp_dir().join(format!("gunbc-create-new-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        std::fs::write(&path, b"SOMEONE ELSE'S BYTES").expect("seed the path");
+
+        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+            .expect_err("a path that exists must refuse, not be truncated");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+
+        // THE ASSERTION THAT CARRIES THE FINDING. A refusal that had already truncated would still
+        // return an error; what makes this a fix rather than a report is that the bytes survive.
+        let after = std::fs::read(&path).expect("the file is still there");
+        assert_eq!(
+            after, b"SOMEONE ELSE'S BYTES",
+            "the existing bytes must be untouched by a refused create"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn create_new_writes_when_nothing_is_there() {
+        let dir = std::env::temp_dir().join(format!("gunbc-create-new-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+            .expect("an absent path is created");
+        assert_eq!(
+            std::fs::read(&path).expect("written"),
+            b"a fresh repository"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
 struct FileResult {
     success: bool,
     byte_count: i64,
@@ -12245,10 +12980,48 @@ fn dispatch_file(
                     }),
                 };
             }
+            "write_create_new" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                );
+                return match write_file_create_new(&path, content.as_bytes()) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        content: String::new(),
+                    }),
+                    // The refusal carries the host's message verbatim and does NOT classify itself.
+                    // Deciding "already existed" from the error TEXT would be a heuristic standing in
+                    // for an observation; the caller learns the create did not happen and why the
+                    // host said so, which is what it needs to refuse.
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new)"
                     ),
                 })
             }
