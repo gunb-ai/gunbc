@@ -574,13 +574,13 @@ func fci1_assert_replace_held(
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation + 1
     _ => -1
   }
+  if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
   let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
   let authority_write = Filesystem.Write(
     path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
     content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
   )
-  if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
-  else if !authority_write.success { exit_failure(reason: "ReplacementCleanupAuthorityWriteRefusedBeforeCommit") }
+  if !authority_write.success { exit_failure(reason: "ReplacementCleanupAuthorityWriteRefusedBeforeCommit") }
   else if checkpoint == "generation-authority-two-before-commit" {
     match fci1_checkpoint_reached(token: checkpoint, phase: checkpoint, path: checkpoint_path) {
       ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterReplacementAuthorityBeforeCommit" }
