@@ -131,7 +131,9 @@ should mount the ISO as virtual CD when the NBD handshake completes.
 
 ### Terminal B — boot once from CD + force restart (workflow escalation)
 
-The modeled workflow (`gunbc.srv3_os_install_actuate_workflow`) places **`WorkflowOperatorApproval`** before **`WorkflowBootOnceCd`**. The default entrypoint `srv3_boot_once_cd` is **fail-closed** (`PendingApproval`). After explicit operator ack, use the granted entrypoint:
+The modeled workflow (`gunbc.srv3_os_install_actuate_workflow`) places **`WorkflowOperatorApproval`** before **`WorkflowBootOnceCd`**. The default entrypoint `srv3_boot_once_cd` is **fail-closed** (`AuthorizationPending`). After explicit operator ack, use the granted entrypoint:
+
+The grant behind that entrypoint is a `std.scoped_authorization` `OperatorGrant` and is **scoped, attempt-bound and dated**: it reaches only `/redfish/v1/Systems/system/Boot` with action `redfish.boot-source-override.set`, only for attempt `srv3-os-install-actuate-1`, only for the CD-once + ForceRestart planned action, and only until its `expires_at`. Past that instant the entrypoint refuses with `operator authorization expired at ...`. **That refusal is the signal to land the out-of-band grant channel, not to re-date the constant** — see `srv3_boot_once_cd_source_declared_grant_dissolve_on`. Both entrypoints now read the clock (`std.resources.Clock`) and refuse if it is unreadable.
 
 After serve is stable (give nbd-proxy ~10s to attach):
 

@@ -392,7 +392,7 @@ mod terminal_ledger_publish_law {
                 assert!(bytes > 0);
                 // header + two rows + footer, and the footer states the row count.
                 assert_eq!(text.lines().count(), 4, "ledger shape: {text}");
-                assert!(text.starts_with("gunbc-terminal-ledger/1\t"), "{text}");
+                assert!(text.starts_with("gunbc-terminal-ledger/2\t"), "{text}");
                 assert!(
                     text.contains("1234567890abcdef1234567890abcdef12345678"),
                     "the published commit must appear in the binding: {text}"
@@ -471,7 +471,7 @@ mod terminal_ledger_publish_law {
                 assert!(diagnosis.contains("test.claim.a.holds"), "{diagnosis}");
                 assert!(diagnosis.contains("test.claim.b.holds"), "{diagnosis}");
                 assert!(
-                    diagnosis.starts_with("gunbc-terminal-ledger-partial/1\t"),
+                    diagnosis.starts_with("gunbc-terminal-ledger-partial/2\t"),
                     "a diagnosis must not open with the ledger format token: {diagnosis}"
                 );
                 assert!(
@@ -510,7 +510,24 @@ mod terminal_ledger_publish_law {
                 "host-tool-unresolved",
                 "host-tool-unresolved-before-verdict",
             ),
-            row("test.claim.route", "route-gap", "route-gap-before-verdict"),
+            // All three grounds read back to ONE disposition, which is what makes the widened
+            // arm a widening: the decision every consumer makes is unchanged, and only the
+            // distinction between three remedies became representable.
+            row(
+                "test.claim.route.unpublished",
+                "route-gap-unpublished-mock-case",
+                "route-gap-before-verdict",
+            ),
+            row(
+                "test.claim.route.noresponse",
+                "route-gap-no-mock-response",
+                "route-gap-before-verdict",
+            ),
+            row(
+                "test.claim.route.removal",
+                "route-gap-filesystem-removal",
+                "route-gap-before-verdict",
+            ),
         ];
         let published = publish_terminal_ledger(
             &roots(),
@@ -524,7 +541,12 @@ mod terminal_ledger_publish_law {
         match published {
             LedgerPublication::Published { path, .. } => {
                 let text = std::fs::read_to_string(published_path(&path)).expect("read");
-                assert_eq!(text.lines().count(), 9, "{text}");
+                // DERIVED FROM THE FIXTURE, NOT TRANSCRIBED FROM A RUN. This was the literal
+                // `9`, which is `rows.len() + 2` for the population that existed when it was
+                // written — so adding a row to the vec above failed here with a line count and
+                // no hint that the count was the fixture's own size. The two are the header and
+                // the footer, which frame every ledger regardless of population.
+                assert_eq!(text.lines().count(), rows.len() + 2, "{text}");
             }
             LedgerPublication::RefusedWithDiagnosis {
                 reason, offending, ..

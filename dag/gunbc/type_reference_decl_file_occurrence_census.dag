@@ -95,7 +95,7 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
   {
     class_name: "native-numeric realization of the referenced declaration",
     question: DoesTheDeclarationRealizeNatively {
-      predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "decl_file_realizes_natively"),
+      predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "provenance_realizes_natively"),
       roster: decl_ref(module_path: "v1.compiler.coercion", decl_name: "numeric_realization_declaring_modules"),
     },
     occurrences: 12,
@@ -119,14 +119,14 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
     },
     disposition: ConvertAtRosterGrainFirst {
       roster_to_rekey: decl_ref(module_path: "v1.compiler.coercion", decl_name: "numeric_realization_declaring_modules"),
-      gate_to_rekey: decl_ref(module_path: "v1.compiler.coercion", decl_name: "decl_file_realizes_natively"),
+      gate_to_rekey: decl_ref(module_path: "v1.compiler.coercion", decl_name: "provenance_realizes_natively"),
       why_call_site_first_is_wrong: "THE TREE ALREADY CONTAINS THE FAILED VERSION OF THE CALL-SITE-FIRST REPAIR, and it is this class's most important specimen. v1.compiler.infer literal_boundary_elaboration recovers a DeclarationRef by identity through type_reference_declaration_ref and then calls declaration_file_of on it to obtain a FILE, purely so decl_file_realizes_natively can substring-match it. Identity is computed and then discarded down to a path, because the roster cannot read anything else. Converting the twelve occurrences without converting the roster reproduces that shape twelve more times: the citation becomes a symbol at the call site and stays a position at the authority, and a later edit to either path string silently invalidates every one of them.",
     },
   },
   {
     class_name: "checkpoint applicability for the referenced declaration",
     question: MayTheBareCheckpointRowAnswer {
-      predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "lookup_checkpoint"),
+      predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_realization"),
       roster: decl_ref(module_path: "v1.compiler.coercion", decl_name: "structural_declaration_modules_for"),
     },
     occurrences: 25,
@@ -155,13 +155,13 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
     },
     disposition: ConvertAtRosterGrainFirst {
       roster_to_rekey: decl_ref(module_path: "v1.compiler.coercion", decl_name: "structural_declaration_modules_for"),
-      gate_to_rekey: decl_ref(module_path: "v1.compiler.coercion", decl_name: "decl_file_declares_structurally"),
+      gate_to_rekey: decl_ref(module_path: "v1.compiler.coercion", decl_name: "provenance_declares_structurally"),
       why_call_site_first_is_wrong: "same shape as the sibling class, plus one thing the sibling does not have: the empty-string arm. Handing this gate a DeclarationRef makes the path half decidable from the containment tree, and leaves the absence half spelled as a String that happens to be empty. An Optional DeclarationRef answers both halves at once and is the only form under which `identity unknown` is a state the type can hold rather than a value a caller can forget to supply -- which is precisely how the eight empty-identity sites the helper's own note records came to render structurally.",
     },
   },
   {
     class_name: "kernel-minted provenance",
-    question: IsTheTypeKernelMinted { predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "is_kernel_minted_file") },
+    question: IsTheTypeKernelMinted { predicate: decl_ref(module_path: "std.coercion", decl_name: "TypeDeclarationProvenance") },
     occurrences: 1,
     specimens: [
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_operand_realization_of_type"),
@@ -207,12 +207,12 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
   {
     class_name: "fallback arm of the repaired sibling",
     question: MayTheBareCheckpointRowAnswer {
-      predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "lookup_checkpoint"),
+      predicate: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_realization"),
       roster: decl_ref(module_path: "v1.compiler.coercion", decl_name: "structural_declaration_modules_for"),
     },
     occurrences: 4,
     specimens: [
-      decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_reference_decl_file_in_env"),
+      decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_reference_provenance_in_env"),
     ],
     why_the_positional_form_was_reached_for: "type_reference_decl_file_in_env IS the partial repair -- it consults the TypeEnv when inference did not resolve -- and each of its four arms ends by delegating to the plain helper when the env cannot answer either. These four are the repair's own fallback, not four more consumers.",
     authority: AuthorityExistsAndIsReachable {
@@ -227,8 +227,8 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
 ]
 
 data type_reference_decl_file_census_basis: OccurrenceCensusBasis = EnumeratedFromDeclaration {
-  declaration: decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_decl_file"),
-  sibling_declaration: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_reference_decl_file_in_env"),
+  declaration: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+  sibling_declaration: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_reference_provenance_in_env"),
   selector: "every call occurrence of the two declarations above under src/, classified by the terminal predicate its String result reaches -- not by caller and not by file. Classification was performed by reading each consumer to its deciding predicate: decl_file_realizes_natively, lookup_checkpoint's two arms, is_kernel_minted_file, or no predicate at all.",
   known_blind_spot: "an occurrence whose result flows through a String-valued local into a consumer in another module would be classified by this sweep only if that local is read in the same function. None was found; the claim is that none was found, not that the selector could not miss one.",
 }
@@ -410,4 +410,90 @@ data type_reference_decl_file_adjacent_findings: List<AdjacentFinding> = [
     representation: "concat(decl_file, \"::\", declared_name) -- a file path and a declared name glued into one String and used as a key",
     why_it_is_the_same_defect: "a SIXTH representation of declaration identity in this tree, and the one furthest from a symbol: it is not merely a position standing where a name would do, it is a position and a name FUSED into a value that neither the containment tree nor any roster can read back apart. It is outside the 39 -- no occurrence of the census subject reaches it -- and it is recorded because it dissolves for exactly the same reason the classes above do, so a reader who repairs the identity channel and leaves this one has moved the defect rather than removed it. Not priced and not in scope.",
   },
+]
+
+// DISCHARGE RECEIPT. The roster above is a MEASUREMENT taken on 2026-09-02 against a tree in which
+// v1.compiler.coercion type_reference_decl_file still existed, and its rows are left exactly as
+// measured -- a census edited to match the repair it prompted stops being evidence that the repair
+// was needed. This row records what the repair did, so a reader does not read the roster as a live
+// work list.
+//
+// WHAT WAS DISCHARGED, AND IT WAS NOT BY THE ROUTE THE ROSTER PRESCRIBED. Both decided classes carry
+// ConvertAtRosterGrainFirst, which says re-key the roster before moving any occurrence. That
+// disposition was correct about what NOT to do and wrong about the unit: pricing the conversion
+// showed the roster's new key could only be produced at the 19 sites already carrying a TypeEnv, so
+// re-keying forces the occurrence conversion into the same change or a two-key intermediate. The
+// smaller and terminal move was neither -- consult the roster ONCE at the mint and thread the
+// DECISION, which deletes the identity parameter at all 95 production sites instead of retyping it.
+// The roster's own argument survives intact and is what ruled the alternative out: converting call
+// sites while the authority still substring-matches paths moves the position rather than removing
+// it. What the roster did not see is that the channel's WIDTH was the defect rather than a cost to
+// absorb, and a census that counts occurrences is structurally disposed to miss that -- it prices
+// the sites, and the sites were never the unit.
+//
+// PER-CLASS: the native-realization and checkpoint-applicability classes are discharged, their
+// terminal predicates now consuming a decision. The kernel-minted class's constructor EXISTS --
+// std.coercion TypeDeclarationProvenance, minted by v1.std.core declaration_provenance_of by exact
+// equality against kernel_span -- so its IrreducibleUntilAuthorityExists disposition is retired by
+// the authority arriving, which is exactly the condition that row named. The two CorrectAsPosition
+// classes are unchanged and were never debt. The sibling-fallback class dissolved with the helper.
+//
+// WHAT IS NOT DISCHARGED: CorpusDeclared still carries a path matched by contains, so the surviving
+// arm answers WHAT a declaration realizes as positionally. That is the residue both decided classes
+// named, and its successor is the key v1.compiler.infer_env global_bare_fallback_invariant already
+// declares. This carrier's own dissolution condition is likewise NOT satisfied by the discharge: it
+// names a derived lens, and a hand roster that has been repaired is still a hand roster.
+// THE ROWS ABOVE CITE THE SUCCESSORS, AND THE PROSE STILL NAMES THE DEAD SPELLINGS ON PURPOSE.
+// This census enumerated a defect and the same change deleted the defect's subjects, so every
+// `decl_ref` in it would have pointed at a declaration no module declares -- which the declaration
+// index refuses as CITED-DECLARATION-ABSENT, correctly: a census citing dead symbols is
+// indistinguishable at the citing end from one citing live code, which is DESIGN's
+// `unlanded_citation_indistinguishable_at_the_citing_end` wearing the reverse costume.
+//
+// The split is the peeler ruling applied to citations: A NAME MAY BE A STRING, AN IDENTITY MAY
+// NOT. A retired spelling is a NAME -- it denotes nothing in the current tree, it is what a reader
+// of the old source would have seen, and it belongs in prose. A successor is an IDENTITY -- it
+// resolves, and it belongs in a `decl_ref` the index can walk. So the pointers were re-aimed and
+// the dead spellings were left standing in the `why_*` fields, where they are data about history
+// rather than claims about the tree.
+//
+// The retired spelling on the left, the declaration that answers the same question now:
+//   v1.compiler.coercion type_reference_decl_file       -> v1.std.core type_reference_provenance
+//   v1.compiler.coercion decl_identity_file             -> v1.std.core declaration_provenance_of
+//   v1.compiler.coercion is_kernel_minted_file          -> std.coercion TypeDeclarationProvenance
+//     (the CONSTRUCTOR answers it; the Bool view that briefly replaced the substring test was
+//      itself a second representation and was dissolved into a match at its one caller, codex
+//      review 58658)
+//   v1.compiler.coercion decl_file_realizes_natively    -> provenance_realizes_natively
+//   v1.compiler.coercion decl_file_declares_structurally-> provenance_declares_structurally
+//   v1.compiler.coercion rust_seed_host_numeric_alias   -> provenance_host_numeric_alias
+//   v1.compiler.coercion lookup_checkpoint              -> type_reference_realization
+//   v1.compiler.emit_rust type_reference_decl_file_in_env -> type_reference_provenance_in_env
+// The left column is NOT a second authority for these declarations and nothing resolves through
+// it; it exists so a reader who finds the old name in the prose above can reach the new one
+// without grepping a deleted symbol. It dissolves when the prose that names those spellings does.
+// WHAT THE SPLIT DID AND DID NOT REPAIR FOR THE BARE-NAME CONSUMERS, homed here because it is a
+// claim and the carrier it is about belongs to another lane. Five citations in
+// gunbc.bare_name_identity_consumer_census pointed at declarations this change deletes and were
+// re-aimed at their successors; that is a citation repair and it re-judged nothing. This is the
+// judgement, and it is deliberately the weaker of the two available readings.
+//
+// The split made the ABSENCE of declaration identity a CONSTRUCTIBLE state -- DeclarationIdentityAbsent
+// rather than an empty string -- so a bare-table answer now carries GroundedByUnidentifiedBareRow
+// and is distinguishable from a grounded one. It did NOT stop those sites keying on the bare name.
+// Every `site`, `keys_on`, `outcome` and `reach` in that roster is about a call site this change
+// does not touch, and every one of them still holds.
+//
+// SO THE STAMP IS A RUNG ON VISIBILITY AND NOT A REPAIR OF THE KEYING, AND NEITHER ROSTER CLAIMS
+// THE SECOND FROM THE FIRST. The distinction matters because the two are easy to fuse in a reader's
+// summary: a class that becomes VISIBLE ranks for climbing, and a class that has been REPAIRED
+// stops ranking. Reading this climb as the second would retire rows that are still live, which is
+// rung inflation reached by generosity rather than by claim.
+data type_reference_decl_file_census_discharge: List<DeclarationRef> = [
+  decl_ref(module_path: "std.coercion", decl_name: "TypeDeclarationProvenance"),
+  decl_ref(module_path: "std.coercion", decl_name: "RealizationGround"),
+  decl_ref(module_path: "std.coercion", decl_name: "RealizationRefusalCause"),
+  decl_ref(module_path: "v1.std.core", decl_name: "declaration_provenance_of"),
+  decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_reference_realization"),
+  decl_ref(module_path: "v1.compiler.coercion", decl_name: "declaration_realization"),
 ]

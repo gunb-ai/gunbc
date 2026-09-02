@@ -1153,8 +1153,53 @@ fn run_verb(
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
         Ok(value) => {
-            let (status, message) = exit_status_for(cli_run::classify_exit(&value, &ctx), function);
-            Verdict { status, message }
+            // A `CliWireResponse` is an ANSWER PLUS A VERDICT, and it is the only return shape
+            // that carries bytes for the operator. Binding it HERE rather than under a new
+            // `scm` subcommand keeps dispatch peripheral (§3): one binding serves every
+            // wire-returning entry -- `scm_log_cli_response`, `scm_status_cli_response`, and
+            // whatever else renders next -- instead of the host growing an arm per verb.
+            //
+            // Before this, such a function hit `classify_exit`'s `NotProcessExit` arm and the
+            // run refused with "wrap the result in ExitSuccess / ExitFailure", which is why
+            // gunbc.scm.render's two wire functions had no consumer outside their witness
+            // test: the answer was computed and discarded.
+            //
+            // A non-wire value falls through unchanged, so every existing `ProcessExit` entry
+            // behaves exactly as it did.
+            match cli_run::cli_wire_outcome(cli_run::classify_cli_wire(&value, &ctx), function) {
+                Some(outcome) => {
+                    if let Some(bytes) = outcome.stdout {
+                        use std::io::Write;
+                        let mut out = std::io::stdout();
+                        // Written verbatim: the .dag renderer already decided every byte,
+                        // including trailing newlines. `print!` plus an implicit flush-at-exit
+                        // is not enough when the process exits nonzero, so flush explicitly
+                        // and refuse rather than silently dropping the answer.
+                        if let Err(err) = out.write_all(bytes.as_bytes()).and_then(|()| out.flush())
+                        {
+                            return Verdict {
+                                status: 1,
+                                message: Some(format!(
+                                    "error: `{function}` rendered {} bytes that could not be \
+                                     written to stdout.\n  cause: {err}\n  status: refused — \
+                                     exiting nonzero rather than reporting success for an \
+                                     answer the operator never received.",
+                                    bytes.len()
+                                )),
+                            };
+                        }
+                    }
+                    Verdict {
+                        status: outcome.status,
+                        message: outcome.message,
+                    }
+                }
+                None => {
+                    let (status, message) =
+                        exit_status_for(cli_run::classify_exit(&value, &ctx), function);
+                    Verdict { status, message }
+                }
+            }
         }
         Err(err) => Verdict {
             status: 1,
@@ -1183,34 +1228,13 @@ fn run_verb(
 /// `mechanically preventable` ONLY where the suite is run by hand; in CI it rests on the
 /// totality above. The planted-drift control is a manual procedure recorded in the PR.
 fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<String>) {
-    match class {
-        cli_run::ExitClass::Success => (0, None),
-        // A `Failure` carrying code 0 would say "failed" and report success. Refuse: the .dag
-        // authority cannot express it, so reaching here means the classifier changed, and the
-        // safe reading of an impossible verdict is not 0.
-        cli_run::ExitClass::Failure { code: 0, reason } => (
-            1,
-            Some(format!(
-                "error: `{function}` returned ExitFailure with code 0, which claims failure \
-                 and reports success.\n  status: refused — exiting 1 rather than honoring a \
-                 status that contradicts its own variant.{}",
-                reason
-                    .map(|r| format!("\n  reason: {r}"))
-                    .unwrap_or_default()
-            )),
-        ),
-        cli_run::ExitClass::Failure { code, reason } => (code, reason),
-        cli_run::ExitClass::NotProcessExit { type_name } => (
-            2,
-            Some(format!(
-                "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
-                 cause: the host maps a run's verdict to an exit code, and only ProcessExit \
-                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
-                 status: refused — printing the value and exiting 0 would report success for \
-                 a run whose outcome is unknown."
-            )),
-        ),
-    }
+    // ONE AUTHORITY, in the lib. This function used to carry the match itself, and when the
+    // wire path needed the same decision the copy became a §3 fork -- two places deciding what
+    // a verdict means, free to drift. The body moved to `cli_run::exit_status_for_class`, where
+    // it is also REACHABLE BY AN EXECUTING TEST: `rust-unit-tests` runs
+    // `cargo test -p v1-compiler --lib`, and this file is a BIN target whose tests are compiled
+    // by clippy and run by nobody.
+    cli_run::exit_status_for_class(class, function)
 }
 
 #[cfg(test)]
