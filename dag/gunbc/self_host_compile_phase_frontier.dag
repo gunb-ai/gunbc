@@ -110,12 +110,34 @@ fn diagnostic_is_phase(d: RustcCodedDiagnostic, phase: RustcPhase) -> Bool {
   }
 }
 
+// FIRST-OCCURRENCE ORDER, DECIDED BY MEMBERSHIP RATHER THAN BY RESCANNING WHAT IS ALREADY KEPT.
+// The accumulator carries the membership set beside the ordered survivors because those are two
+// different questions over one traversal: `seen` answers "has this identity been kept", `unique`
+// answers "in what order". The previous spelling asked the first question by scanning `unique` and
+// answered the second with `concat(unique, [identity])`, which is the copied accumulator inside a
+// quadratic fold DESIGN section 6's bare-minimum-cost rule always fixes -- and n here is a
+// whole-corpus rustc diagnostic census, so it grows with the emitted corpus rather than staying
+// small. Order and multiplicity are unchanged: an identity is appended exactly at its first
+// occurrence, and the callers that sort afterwards are unaffected either way.
+type IdentityDedupAcc {
+  seen: Set<String>
+  unique: List<String>
+}
+
 fn deduplicate_identities(identities: List<String>) -> List<String> {
   fold(
     identities,
-    init: [],
-    f: (unique, identity) => if any(unique, prior => prior == identity) { unique } else { concat(unique, [identity]) }
-  )
+    init: IdentityDedupAcc { seen: empty_set(), unique: [] },
+    f: (acc, identity) =>
+      if set_contains(acc.seen, identity) {
+        acc
+      } else {
+        IdentityDedupAcc {
+          seen: set_insert(acc.seen, identity),
+          unique: acc.unique |> list_push(identity)
+        }
+      }
+  ).unique
 }
 
 // RustcPhaseBoard is a census at identity grain, not a transcript of cargo's diagnostic stream.
