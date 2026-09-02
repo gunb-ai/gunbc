@@ -4957,10 +4957,21 @@ where
 /// re-collapse the two sides into one value without deleting this type. A reviewer noticing is
 /// not what keeps them apart.
 ///
-/// DECLARED BOUNDARY: the roster is `checkpoint_basenames` (the committed generated population
-/// UNION the planned surfaces). A build that CREATES a generated file outside that roster is
-/// invisible here and is refused by the `UnplannedPathMutated` git observation instead — a
-/// wider path space, a different producer, and deliberately not merged into this one.
+/// THE OBSERVATION IS AN ENUMERATION, NOT A ROSTER LOOKUP, and the first draft got this wrong.
+/// It named `checkpoint_basenames` as the population and declared that a file CREATED outside
+/// that roster was covered by the `UnplannedPathMutated` git observation. That declaration was
+/// false: `git_changed_stage0_paths` runs `git diff --name-only`, which reports tracked
+/// modifications and says nothing about untracked files. A build creating a new file in the seed
+/// source directory was therefore absent from the roster, absent from git, and absent from the
+/// restoration journal — invisible to every producer at once. So both halves walk the DIRECTORY,
+/// with the roster as a floor rather than as the population, and a path present after the stage
+/// that was absent before is an effect like any other.
+///
+/// EVERY top-level regular file, not only the `.rs` generated ones. A build has no business
+/// writing anything into `stage0_src`, and a file whose basename resolves to no declaring module
+/// is refused as `SurfaceOwnershipUnresolved` — typed and located, naming the path. Files that
+/// merely EXIST unchanged never reach that lookup, so the hand-maintained population costs
+/// nothing here and a build MUTATING one refuses whether or not git tracks it.
 struct ObservedEffectPopulation {
     identities: Vec<(String, String)>,
 }
@@ -4978,9 +4989,29 @@ fn observe_generated_population_state(
     stage0_src: &Path,
     roster: &[String],
 ) -> Result<BTreeMap<String, GeneratedSurfaceState>, String> {
+    let mut basenames = roster.iter().cloned().collect::<BTreeSet<_>>();
+    for entry in fs::read_dir(stage0_src)
+        .map_err(|e| format!("enumerate stage0 src {}: {e}", stage0_src.display()))?
+    {
+        let entry = entry.map_err(|e| format!("read stage0 src entry: {e}"))?;
+        if !entry.path().is_file() {
+            continue;
+        }
+        let basename = entry
+            .file_name()
+            .to_str()
+            .ok_or_else(|| {
+                format!(
+                    "InstallObservationPathNotUtf8: {} holds a non-UTF-8 entry name",
+                    stage0_src.display()
+                )
+            })?
+            .to_string();
+        basenames.insert(basename);
+    }
     let mut observed = BTreeMap::new();
-    for basename in roster {
-        let path = stage0_src.join(basename);
+    for basename in basenames {
+        let path = stage0_src.join(&basename);
         let state = if path.is_file() {
             GeneratedSurfaceState::Present {
                 digest: path_digest(&path)?,
@@ -4988,7 +5019,7 @@ fn observe_generated_population_state(
         } else {
             GeneratedSurfaceState::Absent
         };
-        observed.insert(basename.clone(), state);
+        observed.insert(basename, state);
     }
     Ok(observed)
 }
@@ -5844,6 +5875,54 @@ mod regen_convergence_host_instrument_tests {
             "a planned surface the stage left byte-identical must refuse as a population \
              mismatch, not as a content digest verdict, got: {planned_without_effect}"
         );
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
+
+        // ARM C -- A FILE THE BUILD CREATES, which the first version of this observation could
+        // not see. `git_changed_stage0_paths` runs `git diff --name-only` and reports tracked
+        // modifications only, so an UNTRACKED creation is absent from the git observation; it was
+        // also absent from a roster-lookup observation and from the restoration journal, which is
+        // three producers blind at once. The observation enumerates the directory, so the path is
+        // an effect the moment it appears.
+        let created = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[s_rows[0].0.to_string()],
+            &s_admitted,
+            &fixture_modules(&[
+                ("fixture_producer.rs", "fixture.producer", ""),
+                ("fixture_subject.rs", "fixture.subject", ""),
+                ("fixture_created.rs", "fixture.created", ""),
+            ]),
+            2,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut,
+            "seed-1",
+            "generation-0",
+            "tree-0",
+            "manifest-s",
+            "seed-compatibility-cut",
+            &subject,
+            |root| {
+                fs::write(
+                    root.join("src/v1/stage0/src/fixture_created.rs"),
+                    "// invented by the build, tracked by nothing\n",
+                )
+                .unwrap();
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-2".to_string()),
+        )
+        .unwrap_err();
+        assert!(
+            created.contains("StagePlannedExecutedMismatch"),
+            "an untracked file created by the build must refuse as a population mismatch, \
+             got: {created}"
+        );
+        fs::remove_file(stage0.join("fixture_created.rs")).unwrap();
         restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
         fs::remove_dir_all(&workspace).unwrap();
     }
