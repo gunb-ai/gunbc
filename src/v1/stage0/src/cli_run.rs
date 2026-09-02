@@ -1216,8 +1216,17 @@ mod process_cwd_mutation_reachability_gate {
             while i < chars.len() {
                 let c = chars[i];
                 if let Some(hashes) = in_raw {
-                    // Closing delimiter is `"` followed by exactly the opening hash count.
-                    if c == '"' && chars[i + 1..].iter().take(hashes).all(|h| *h == '#') {
+                    // Closing delimiter is `"` followed by EXACTLY the opening hash count, and the
+                    // length check is load-bearing rather than defensive: `take(n).all(..)` over a
+                    // remainder shorter than `n` iterates fewer items and an empty `all` is TRUE,
+                    // so a `"` close to end-of-line would false-close the raw string and hand the
+                    // rest of the fixture back to the code scanner — reintroducing the very
+                    // brace-depth skew this raw-string handling exists to prevent. Found by review
+                    // 58606. `hashes == 0` (a bare `r".."`) still closes on the bare quote, since
+                    // the bound is trivially satisfied.
+                    let closes = i + 1 + hashes <= chars.len()
+                        && chars[i + 1..i + 1 + hashes].iter().all(|h| *h == '#');
+                    if c == '"' && closes {
                         i += 1 + hashes;
                         in_raw = None;
                         kept.push('"');
@@ -1533,6 +1542,29 @@ mod process_cwd_mutation_reachability_gate {
         assert!(
             mutator_reaching(&code, &decls).is_empty(),
             "a mutator name quoted inside a raw string is data, not a call"
+        );
+
+        // A QUOTE AT END-OF-LINE INSIDE A HASH-DELIMITED RAW STRING must not close it. The
+        // close test takes the next `hashes` characters and requires them all to be `#`; over a
+        // remainder shorter than `hashes` that iterator is empty and `all` is vacuously true, so
+        // without an explicit length bound this quote ends the string and the rest of the fixture
+        // is scanned as code — the same depth skew the case above exists to prevent, arriving by
+        // a different door (review 58606).
+        let quote_at_eol = concat!(
+            "fn holder() {\n",
+            "    let fixture = r##\"a fixture line ending in a quote \"\n",
+            "still inside the raw string {\n",
+            "\"##;\n",
+            "}\n",
+            "fn after() {\n",
+            "}\n"
+        );
+        let code = code_projection(quote_at_eol);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "a quote at end-of-line must not close a `##`-delimited raw string: {depths:?}"
         );
 
         // And the positive control, so the case above is not passing because the seed is broken:
@@ -3459,7 +3491,37 @@ fn try_index_source_root_into_module_index(
 ) -> Result<(), String> {
     let anchored = try_anchor_source_root(root);
     let root = anchored.as_deref().unwrap_or(root);
-    let root_path = std::path::Path::new(root);
+    // STAT AGAINST THE WORKSPACE ROOT, NEVER THE PROCESS CWD, and this is a correctness fix
+    // rather than a convenience. `canonical_shared_index_roots` is the KEY and the BUILD input
+    // both: it normalizes an absolute root under the workspace to its repo-relative form so that
+    // the executor's `$ROOT/dag` and the plan's declared `dag` address ONE index. That key is
+    // right. But the same relative spelling arrived here and was stat'd against the process cwd,
+    // so discovery answered a different question depending on where the process happened to
+    // stand. `try_anchor_source_root` re-anchors above -- except that every one of its arms
+    // requires `is_dir`, so a root that EXISTS BUT IS A FILE falls through unanchored, and the
+    // two refusals below then swap: a file that exists is reported as `does not exist`. That is a
+    // located lie about the filesystem, and it collapses precisely the distinction the caller
+    // built these two arms to hold apart -- create the file versus move it -- which is the
+    // state-space conflation §5 names.
+    //
+    // MEASURED, by isolating the one test that asks for this distinction
+    // (`entry_admission_tests::a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory`):
+    // it fails IDENTICALLY on main and on this branch when run alone, and passes on main only
+    // inside the full suite -- where a concurrent test's `set_current_dir(workspace_root())` moved
+    // the cwd under it. Its green was another test's side effect, not this code working.
+    //
+    // The resolution is added, the JUDGMENT is untouched: still two arms, still fail-closed,
+    // still refusing. The diagnostics keep the caller's own spelling of the root, because that is
+    // what the caller passed and what it can act on.
+    let resolved = {
+        let p = std::path::Path::new(root);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            process_workspace_root().join(p)
+        }
+    };
+    let root_path = resolved.as_path();
     if !root_path.exists() {
         return Err(format!("source root does not exist: {root}"));
     }
