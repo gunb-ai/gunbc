@@ -459,6 +459,46 @@ mod compiler_tests {
         result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
     }
 
+    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.
+    ///
+    /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the
+    /// emitted text and asserts on substrings. A meaning-level emitter defect is invisible to
+    /// that whenever the wrong bytes still contain the right substring -- and it is exactly
+    /// what rustc's type checker refuses. This arm is the one that asks rustc.
+    ///
+    /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below
+    /// proves only that something in the tree is broken. The red must be refused BY RUSTC and
+    /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the
+    /// hundreds of modules in its closure would pass for the fixture's own defect.
+    ///
+    /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds, and
+    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It
+    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and
+    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn fixture_closure_rustc_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("{}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the control must compile and the meaning-level red must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
