@@ -51,70 +51,39 @@ pre-store abandon arm above: interruption suppresses the record because no artif
 
 The passing PR run was GitHub Actions run `33573600142`. Its uploaded artifact
 `required-floor-claim-cost` (artifact id `9826348456`) contains
-`required_floor_claim_cost.tsv`. The authoritative row is:
+`required_floor_claim_cost.tsv`, produced by
+`v1_compiler.cli_run::write_required_floor_claim_cost_tsv`. Its identity-grain row records that
+the witness reached `pass` on that head. The row's absence from the console log was not absence of
+a receipt; the console emits selected diagnostics while the TSV artifact carries passing
+per-claim costs.
 
-```text
-v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds	v2.test.lens_registry.sg_claims	pass	true	215	214	100
-```
+The failing log also exposed a units error in the first diagnosis: `measured_cpu_ms` includes
+completed shared fill, while the ceiling applies to marginal CPU. A completed-fill row whose total
+exceeds the deadline has not necessarily crossed the enforced quantity.
 
-The final columns are wall milliseconds, marginal CPU milliseconds, and the completed-cost line.
-The witness reached `pass` at 214ms marginal CPU against the 500ms safety ceiling: 286ms, or 57.2%,
-below the line on that head. The row's absence from the console log was not absence of a receipt;
-the console emits selected diagnostics while the TSV artifact carries passing per-claim costs.
+## Exposure authority
 
-The same failing log contained 634 `[floor-shared-fill]` lines, 122 with
-`measured_cpu_ms > 500`. Those rows did **not** demonstrate unenforced ceiling crossings.
-`measured_cpu_ms` includes completed shared fill, while the ceiling applies to marginal CPU. The
-largest cited example measured 3675ms in total but split into 5ms marginal and 3670ms fill, so it
-was 495ms below the enforced line. The 122-row comparison mixed two different quantities.
+The near-ceiling concept and its distribution already belong to `gunbc.rung_drop`
+`floor_cost_contention_verdict`, which names it the exposed attention subset. That authority makes
+the load-bearing distinction: the closed population is every required identity whose CPU deadline
+is armed under the shared-runner envelope; a threshold-selected set is only a view whose membership
+moves with each measurement. It also declares the current carrier gap: the attention constant is
+not a modeled field, and no function or report derives the view from the per-claim receipt.
 
-## Exposure population
-
-The lens-registry witness is the observed interruption, not the population-level cost outlier. The
-same `required_floor_claim_cost.tsv` from run `33573600142`, artifact `9826348456`, carries all
-3444 executed rows. Reading its `cpu_ms` (marginal CPU) column produces:
-
-| Reading | Rows or value |
-| --- | ---: |
-| Median | 1ms |
-| Greater than 200ms | 121 |
-| Greater than 300ms | 37 |
-| Greater than 400ms | 10 |
-| Maximum | 455ms |
-
-The maximum was
-`self_host_compile_phase_frontier_witness.the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed`
-at 455ms, leaving 45ms (9%) beneath the 500ms merge-blocking deadline. The next two were
-`current_persisted_compile_phase_frontier_holds` at 453ms and
-`compiler_frontend_program_status_witness.the_report_renders` at 430ms. The lens-registry witness
-was 214ms and outside the top ten. On this head, ten other rows had less than 100ms of margin in
-which an uncommitted first-touch fill could reach a cooperative poll.
-
-A second receipt tests whether that exact near-line population is stable. PR #9982 run
-`33578414901`, artifact `9827977646`, also executed 3444 rows. It measured median 1ms, 115 rows
-over 200ms, 24 over 300ms, no rows over 400ms, and a maximum of 397ms. The exact 400ms threshold
-population therefore changed from ten to zero. However, the first run's ten over-400ms identities
-were exactly the second run's top ten identities, now measuring 382–397ms. The expensive cluster
-was stable across these two observations; its membership in a fixed “within 100ms” band was not.
-This is a cross-head comparison: run `33573600142` predates #9982, while run `33578414901` reads
-#9982's branch head. The 455ms-to-397ms change therefore mixes tree differences,
-machine-to-machine variance, and scheduling or fill-order variance; only repeated runs of one
-exact head could separate run variance from a tree change. The second run's zero rows over 400ms
-does not show that exposure closed: its same cost-dominant cluster still measured 382–397ms, with
-only 103ms of margin at its worst member. These runs establish exposure and cost variability on
-their respective heads, not a permanent roster of ten or a favorable trend.
-
-The TSV carries two independent lines that must not be interchanged. `cost_line_ms=100` is the
-completed-cost diagnostic line: 279 of 3444 rows in run `33573600142` exceeded it, with no
-admission consequence. The 500ms CPU safety deadline is the merge-blocking line enforced on
-marginal CPU. Diagnostic membership is ordinary and says nothing by itself about deadline risk.
+Manual inspection of the `write_required_floor_claim_cost_tsv` receipts from runs `33573600142`
+and `33578414901` rediscovered that view-versus-population distinction; it did not establish a new
+population authority. The comparison is also cross-head, so it cannot separate tree change from
+machine, scheduling, or fill-order variance. This document therefore does not transcribe the
+derived distribution or promote either run's threshold membership into a roster. The two lines in
+the receipt remain distinct: `cost_line_ms` is diagnostic, while
+`required_floor_claim_cpu_safety_limit_ms` is the merge-blocking deadline over marginal CPU.
 
 ## Ownership at the commit boundary
 
 Under the model implemented here, an in-progress first touch is not yet a shared artifact and is
 attributable to the triggering row until its terminal disposition is known. This is not merely an
 accounting convenience: publication can refuse because arguments are not hashable or portable,
-the value is not portable, a capacity or byte bound is reached, or the entry is already present.
+the value is not portable, the producer is not admitted, or a capacity or byte bound is reached.
 An abandoned computation never becomes available to another claim.
 
 Successful store retroactively classifies the admitted computation as shared fill; abandonment
@@ -130,11 +99,10 @@ separate design decision. This findings record intentionally does not make it.
 ## What this establishes—and what it does not
 
 PR #9978 removed a duplicate lens-registry traversal and preserved the duplicate and unbound
-refusals. Its standalone per-witness receipts measured a 27.6–35.7% CPU reduction. That bounded
-optimization is independent evidence and is not, by itself, proof that the intermittent floor
+refusals. That bounded optimization is not, by itself, proof that the intermittent floor
 interruption is closed.
 
 The passing floor artifact does establish comfortable margin for this witness on that head. A
 single green observation does not establish stability across scheduling and cold-fill order, and
-the earlier 4-green/2-red history forbids treating absence of interruption alone as the verdict.
+the observed intermittent history forbids treating absence of interruption alone as the verdict.
 The durable mechanism finding is the store/abandon classification boundary above.
