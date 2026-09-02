@@ -131,28 +131,22 @@ fn realization(
 }
 
 fn served(
-  r: ServingRealizationIdentity,
-  node: NonEmptyStr,
+  b: FixtureBuild,
+  node: HostIdentity,
   instrument: NonEmptyStr,
   depth: Nat,
   sessions: Nat,
   resident: Nat,
 ) -> OllamaRunnerMemoryObservation {
-  OllamaRunnerMemoryObservation {
-    realization: r,
-    node: node,
-    instrument: instrument,
-    context_depth: token_count(count: depth),
-    concurrent_sessions: sessions,
+  attempt_of(b: b, node: node, instrument: instrument, depth: depth, sessions: sessions,
     outcome: RunnerServed {
       reported_total_buffer: byte_size(count: resident),
       reported_gpu_buffer: byte_size(count: resident),
-    },
-  }
+    })
 }
 
 fn iq2_xxs_footprint(depth: Nat, resident: Nat) -> OllamaRunnerMemoryObservation {
-  served(r: r_iq2_xxs, node: serving_node, instrument: ps_instrument,
+  served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
     depth: depth, sessions: 1, resident: resident)
 }
 
@@ -178,54 +172,91 @@ data qwen_release: ReleaseIdentity = ReleaseIdentity {
   revision: "35B" as NonEmptyStr,
 }
 
-data r_iq2_xxs: ServingRealizationIdentity = realization(
-  release_id: deepseek_v4_flash_release,
-  quant: "IQ2_XXS" as NonEmptyStr,
-  artifact: digest(hex: "32af248f4cab44ffcb631298f66ff0bdf92a9350a3763a86b9a5b304fc4c1e64" as Sha256DigestHex),
-  runtime: ollama_runtime,
-  fixed_mode: serial_mode,
-)
-
-data r_iq3_s: ServingRealizationIdentity = realization(
-  release_id: deepseek_v4_flash_release,
-  quant: "UD-IQ3_S" as NonEmptyStr,
-  artifact: digest(hex: "5b7e1042cc9d3fa6081b4e2d7c3950ae61f8d24b0937ce5182a4f6b0d3e79c18" as Sha256DigestHex),
-  runtime: ollama_runtime,
-  fixed_mode: serial_mode,
-)
-
-data r_unmeasured: ServingRealizationIdentity = realization(
-  release_id: deepseek_v4_flash_release,
-  quant: "UD-IQ4_XS" as NonEmptyStr,
-  artifact: digest(hex: "9d2c48b6103fae57c81d0b2e64937fa5081c3d6e9b204f7a15c8e0b3d629f47a" as Sha256DigestHex),
-  runtime: ollama_runtime,
-  fixed_mode: serial_mode,
-)
-
-data r_qwen: ServingRealizationIdentity = realization(
-  release_id: qwen_release,
-  quant: "Q8_0" as NonEmptyStr,
-  artifact: digest(hex: "a41f70c39b2d85e6014c7f3a92b60d58e7139fac402b6d81c53e97a0f42b18d6" as Sha256DigestHex),
-  runtime: ollama_runtime,
-  fixed_mode: serial_mode,
-)
-
-fn fixture_realization(quant: NonEmptyStr) -> ServingRealizationIdentity {
-  realization(
-    release_id: fixture_release,
-    quant: quant,
-    artifact: digest(hex: "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00" as Sha256DigestHex),
-    runtime: serving_runtime_identity_for_release(rel: ollama_v0_32_9_jetpack6_release),
-    fixed_mode: fixed_runtime_mode_from_argv(
-      argv: ["fixture-runner" as NonEmptyStr, "--fixture" as NonEmptyStr],
-      varied_flags: varied_flags),
-  )
+// A BUILD, NOT A REALIZATION. The observation carriers are now sole_constructor and mint the
+// realization's fixed mode and the observation's exact configuration from ONE argv, so a fixture
+// cannot hand them different ones. That means the fixture's unit is the BUILD -- components plus the
+// argv the runner was launched with -- and both the realization and every reading derive from it.
+type FixtureBuild {
+  release_id: ReleaseIdentity
+  quant: NonEmptyStr
+  artifact: ContentHash
+  runtime: ServingRuntimeIdentity
+  argv: List<NonEmptyStr>
 }
 
-data r_fixture_low: ServingRealizationIdentity = fixture_realization(quant: "LOW" as NonEmptyStr)
-data r_fixture_high: ServingRealizationIdentity = fixture_realization(quant: "HIGH" as NonEmptyStr)
-data r_tied_a: ServingRealizationIdentity = fixture_realization(quant: "TIED-A" as NonEmptyStr)
-data r_tied_b: ServingRealizationIdentity = fixture_realization(quant: "TIED-B" as NonEmptyStr)
+fn realization_of(b: FixtureBuild) -> ServingRealizationIdentity {
+  serving_realization_identity(
+    release_id: b.release_id, quant_label: b.quant, artifact_digest: b.artifact,
+    runtime: b.runtime,
+    fixed_mode: fixed_runtime_mode_from_argv(argv: b.argv, varied_flags: varied_flags))
+}
+
+fn attempt_of(
+  b: FixtureBuild,
+  node: HostIdentity,
+  instrument: NonEmptyStr,
+  depth: Nat,
+  sessions: Nat,
+  outcome: RunnerAttemptOutcome,
+) -> OllamaRunnerMemoryObservation {
+  observed_memory_attempt(
+    release_id: b.release_id, quant_label: b.quant, artifact_digest: b.artifact,
+    runtime: b.runtime, argv: b.argv, varied_flags: varied_flags,
+    node: node, instrument: instrument,
+    context_depth: token_count(count: depth), concurrent_sessions: sessions, outcome: outcome)
+}
+
+fn prefill_of(
+  b: FixtureBuild,
+  node: HostIdentity,
+  sessions: Nat,
+  depth: Nat,
+  rate: Nat,
+) -> FreshPrefillObservation {
+  observed_fresh_prefill(
+    release_id: b.release_id, quant_label: b.quant, artifact_digest: b.artifact,
+    runtime: b.runtime, argv: b.argv, varied_flags: varied_flags,
+    node: node, concurrent_sessions: sessions,
+    depth: token_count(count: depth), rate: tokens_per_second(count: rate))
+}
+
+data serving_argv: List<NonEmptyStr> = [
+  "ollama" as NonEmptyStr, "serve" as NonEmptyStr,
+  "--num-ctx" as NonEmptyStr, "400000" as NonEmptyStr,
+  "--parallel" as NonEmptyStr, "1" as NonEmptyStr,
+]
+
+data fixture_argv: List<NonEmptyStr> = [
+  "fixture-runner" as NonEmptyStr, "--fixture" as NonEmptyStr,
+]
+
+data b_iq2_xxs: FixtureBuild = FixtureBuild { release_id: deepseek_v4_flash_release, quant: "IQ2_XXS" as NonEmptyStr, artifact: digest(hex: "32af248f4cab44ffcb631298f66ff0bdf92a9350a3763a86b9a5b304fc4c1e64" as Sha256DigestHex), runtime: ollama_runtime, argv: serving_argv }
+data b_iq3_s: FixtureBuild = FixtureBuild { release_id: deepseek_v4_flash_release, quant: "UD-IQ3_S" as NonEmptyStr, artifact: digest(hex: "5b7e1042cc9d3fa6081b4e2d7c3950ae61f8d24b0937ce5182a4f6b0d3e79c18" as Sha256DigestHex), runtime: ollama_runtime, argv: serving_argv }
+data b_unmeasured: FixtureBuild = FixtureBuild { release_id: deepseek_v4_flash_release, quant: "UD-IQ4_XS" as NonEmptyStr, artifact: digest(hex: "9d2c48b6103fae57c81d0b2e64937fa5081c3d6e9b204f7a15c8e0b3d629f47a" as Sha256DigestHex), runtime: ollama_runtime, argv: serving_argv }
+data b_qwen: FixtureBuild = FixtureBuild { release_id: qwen_release, quant: "Q8_0" as NonEmptyStr, artifact: digest(hex: "a41f70c39b2d85e6014c7f3a92b60d58e7139fac402b6d81c53e97a0f42b18d6" as Sha256DigestHex), runtime: ollama_runtime, argv: serving_argv }
+
+fn fixture_build(quant: NonEmptyStr) -> FixtureBuild {
+  FixtureBuild {
+    release_id: fixture_release, quant: quant,
+    artifact: digest(hex: "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00" as Sha256DigestHex),
+    runtime: serving_runtime_identity_for_release(rel: ollama_v0_32_9_jetpack6_release),
+    argv: fixture_argv,
+  }
+}
+
+data b_fixture_low: FixtureBuild = fixture_build(quant: "LOW" as NonEmptyStr)
+data b_fixture_high: FixtureBuild = fixture_build(quant: "HIGH" as NonEmptyStr)
+data b_tied_a: FixtureBuild = fixture_build(quant: "TIED-A" as NonEmptyStr)
+data b_tied_b: FixtureBuild = fixture_build(quant: "TIED-B" as NonEmptyStr)
+
+data r_iq2_xxs: ServingRealizationIdentity = realization_of(b: b_iq2_xxs)
+data r_iq3_s: ServingRealizationIdentity = realization_of(b: b_iq3_s)
+data r_unmeasured: ServingRealizationIdentity = realization_of(b: b_unmeasured)
+data r_qwen: ServingRealizationIdentity = realization_of(b: b_qwen)
+data r_fixture_low: ServingRealizationIdentity = realization_of(b: b_fixture_low)
+data r_fixture_high: ServingRealizationIdentity = realization_of(b: b_fixture_high)
+data r_tied_a: ServingRealizationIdentity = realization_of(b: b_tied_a)
+data r_tied_b: ServingRealizationIdentity = realization_of(b: b_tied_b)
 
 fn verified_at(r: ServingRealizationIdentity, depth: Nat) -> SemanticContextEvidence? {
   Present { value: SemanticContextEvidence {
@@ -243,9 +274,9 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_iq2_xxs, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_iq2_xxs, node: serving_node, concurrent_sessions: 1, depth: token_count(count: 160060), rate: tokens_per_second(count: 253) },
-    FreshPrefillObservation { realization: r_iq2_xxs, node: serving_node, concurrent_sessions: 1, depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
-    FreshPrefillObservation { realization: r_iq2_xxs, node: serving_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+    prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 160060, rate: 253),
+    prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 255061, rate: 197),
+    prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 400060, rate: 135),
   ],
   runtime_memory_observations: [
     iq2_xxs_footprint(depth: 131072, resident: 86532465622),
@@ -262,7 +293,7 @@ data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
   semantic_context: none,
   fresh_prefill_observations: [],
   runtime_memory_observations: [
-    served(r: r_iq3_s, node: serving_node, instrument: ps_instrument,
+    served(b: b_iq3_s, node: serving_node, instrument: ps_instrument,
       depth: 400000, sessions: 1, resident: 116970000000),
   ],
 }
@@ -524,8 +555,8 @@ test fn w_a_prefill_receipt_from_another_realization_does_not_qualify() -> Bool 
 // one, and the ordering claims they support are about the SELECTOR and not about any hardware.
 data fixture_instrument: NonEmptyStr = "declared fixture, not a reading" as NonEmptyStr
 
-fn fixture_footprint(r: ServingRealizationIdentity, resident: Nat) -> OllamaRunnerMemoryObservation {
-  served(r: r, node: fixture_node, instrument: fixture_instrument,
+fn fixture_footprint(b: FixtureBuild, resident: Nat) -> OllamaRunnerMemoryObservation {
+  served(b: b, node: fixture_node, instrument: fixture_instrument,
     depth: 1048576, sessions: 1, resident: resident)
 }
 
@@ -533,18 +564,12 @@ fn fixture_footprint(r: ServingRealizationIdentity, resident: Nat) -> OllamaRunn
 // refuses at 1,048,576 cannot be pointed at a 400,000 demand and expected to reject it -- that is
 // the very inference the module now declines to draw.
 fn fixture_attempt(
-  r: ServingRealizationIdentity,
+  b: FixtureBuild,
   depth: Nat,
   outcome: RunnerAttemptOutcome,
 ) -> OllamaRunnerMemoryObservation {
-  OllamaRunnerMemoryObservation {
-    realization: r,
-    node: fixture_node,
-    instrument: fixture_instrument,
-    context_depth: token_count(count: depth),
-    concurrent_sessions: 1,
-    outcome: outcome,
-  }
+  attempt_of(b: b, node: fixture_node, instrument: fixture_instrument,
+    depth: depth, sessions: 1, outcome: outcome)
 }
 
 // These two are declared fixtures exercising the ordering rule, NOT fleet observations. They share a
@@ -556,9 +581,9 @@ data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_fixture_low, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_fixture_low, node: fixture_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+    prefill_of(b: b_fixture_low, node: fixture_node, sessions: 1, depth: 400060, rate: 500),
   ],
-  runtime_memory_observations: [fixture_footprint(r: r_fixture_low, resident: 28000000000)],
+  runtime_memory_observations: [fixture_footprint(b: b_fixture_low, resident: 28000000000)],
 }
 
 data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
@@ -567,9 +592,9 @@ data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_fixture_high, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_fixture_high, node: fixture_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
+    prefill_of(b: b_fixture_high, node: fixture_node, sessions: 1, depth: 400060, rate: 400),
   ],
-  runtime_memory_observations: [fixture_footprint(r: r_fixture_high, resident: 38000000000)],
+  runtime_memory_observations: [fixture_footprint(b: b_fixture_high, resident: 38000000000)],
 }
 
 test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
@@ -606,13 +631,7 @@ test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bo
 // (253 -> 197 -> 135 measured on one realization), so a shallow reading flatters the candidate.
 test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool {
   match prefill_rate_at_floor(
-    observations: [FreshPrefillObservation {
-      realization: r_iq2_xxs,
-      node: serving_node,
-      concurrent_sessions: 1,
-      depth: token_count(count: 160060),
-      rate: tokens_per_second(count: 253),
-    }],
+    observations: [prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 160060, rate: 253)],
     realization: r_iq2_xxs,
     node: serving_node,
     hot_sessions: 1,
@@ -694,13 +713,7 @@ test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
 // regime field at all, so a warm rate is not merely unmatched here, it is unwritable anywhere. The
 // non-fresh arms of prefill_rate_at_floor have nothing to read.
 test fn w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor() -> Bool {
-  let deep_fresh = [FreshPrefillObservation {
-    realization: r_iq2_xxs,
-    node: serving_node,
-    concurrent_sessions: 1,
-    depth: token_count(count: 400060),
-    rate: tokens_per_second(count: 135),
-  }]
+  let deep_fresh = [prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 400060, rate: 135)]
   match prefill_rate_at_floor(
     observations: deep_fresh, realization: r_iq2_xxs,
     node: serving_node, hot_sessions: 1,
@@ -775,12 +788,12 @@ data out_of_memory: RunnerAttemptOutcome = RunnerRefusedForMemory {
 
 fn oom_low() -> QuantizedCandidate {
   with_memory_observations(base: fixture_low_rank,
-    observations: [fixture_attempt(r: r_fixture_low, depth: 400000, outcome: out_of_memory)])
+    observations: [fixture_attempt(b: b_fixture_low, depth: 400000, outcome: out_of_memory)])
 }
 
 fn oom_high() -> QuantizedCandidate {
   with_memory_observations(base: fixture_high_rank,
-    observations: [fixture_attempt(r: r_fixture_high, depth: 400000, outcome: out_of_memory)])
+    observations: [fixture_attempt(b: b_fixture_high, depth: 400000, outcome: out_of_memory)])
 }
 
 // ================= WHAT AN UNSUCCESSFUL ATTEMPT MEANS =================
@@ -791,7 +804,7 @@ fn oom_high() -> QuantizedCandidate {
 // other failure is UNANSWERABLE and names its cause.
 test fn w_only_a_typed_memory_refusal_rejects_on_memory() -> Bool {
   let broken = with_memory_observations(base: fixture_low_rank, observations: [
-    fixture_attempt(r: r_fixture_low, depth: 400000, outcome: RunnerFailedForOtherCause {
+    fixture_attempt(b: b_fixture_low, depth: 400000, outcome: RunnerFailedForOtherCause {
       cause: "chat template rendering failed" as NonEmptyStr,
     }),
   ])
@@ -854,12 +867,12 @@ fn is_contradiction_refusal(verdict: CandidateVerdict) -> Bool {
 // visible: a rule that qualified refusals by `depth >= floor` instead of `depth == floor` passes
 // every single-observation witness and fails only here.
 fn fixture_served_at(
-  r: ServingRealizationIdentity,
+  b: FixtureBuild,
   depth: Nat,
   sessions: Nat,
   resident: Nat,
 ) -> OllamaRunnerMemoryObservation {
-  served(r: r, node: fixture_node, instrument: fixture_instrument,
+  served(b: b, node: fixture_node, instrument: fixture_instrument,
     depth: depth, sessions: sessions, resident: resident)
 }
 
@@ -871,8 +884,8 @@ fn fixture_served_at(
 test fn w_a_success_at_the_floor_survives_an_oom_above_it() -> Bool {
   is_admissible(verdict: evaluate_candidate(
     candidate: with_memory_observations(base: fixture_low_rank, observations: [
-      fixture_served_at(r: r_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
-      fixture_attempt(r: r_fixture_low, depth: 1048576, outcome: out_of_memory),
+      fixture_served_at(b: b_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
+      fixture_attempt(b: b_fixture_low, depth: 1048576, outcome: out_of_memory),
     ]),
     node: fixture_node, constraints: floor_400k))
 }
@@ -885,11 +898,8 @@ test fn w_a_success_at_the_floor_survives_an_oom_above_it() -> Bool {
 // ignored the concurrency axis on either filter would have to give both demands the same verdict.
 test fn w_one_candidate_answers_admissible_quiet_and_rejected_busy() -> Bool {
   let mixed = with_memory_observations(base: fixture_low_rank, observations: [
-    fixture_served_at(r: r_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
-    OllamaRunnerMemoryObservation {
-      realization: r_fixture_low, node: fixture_node, instrument: fixture_instrument,
-      context_depth: token_count(count: 400000), concurrent_sessions: 4, outcome: out_of_memory,
-    },
+    fixture_served_at(b: b_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
+    attempt_of(b: b_fixture_low, node: fixture_node, instrument: fixture_instrument, depth: 400000, sessions: 4, outcome: out_of_memory),
   ])
   is_admissible(verdict: evaluate_candidate(
     candidate: mixed, node: fixture_node, constraints: floor_400k))
@@ -898,8 +908,8 @@ test fn w_one_candidate_answers_admissible_quiet_and_rejected_busy() -> Bool {
 }
 
 test fn w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes() -> Bool {
-  let big_success = fixture_footprint(r: r_fixture_low, resident: 99000000000)
-  let small_failure = fixture_attempt(r: r_fixture_low, depth: 400000, outcome: out_of_memory)
+  let big_success = fixture_footprint(b: b_fixture_low, resident: 99000000000)
+  let small_failure = fixture_attempt(b: b_fixture_low, depth: 400000, outcome: out_of_memory)
   is_contradiction_refusal(verdict: evaluate_candidate(
     candidate: with_memory_observations(base: fixture_low_rank,
       observations: [big_success, small_failure]),
@@ -915,7 +925,7 @@ test fn w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes() 
 test fn w_the_large_buffer_success_alone_still_admits() -> Bool {
   match evaluate_candidate(
     candidate: with_memory_observations(base: fixture_low_rank,
-      observations: [fixture_footprint(r: r_fixture_low, resident: 99000000000)]),
+      observations: [fixture_footprint(b: b_fixture_low, resident: 99000000000)]),
     node: fixture_node, constraints: floor_400k) {
     ServingCandidateAdmissible { candidate: _, fit: _ } => true
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
@@ -938,11 +948,11 @@ test fn w_the_large_buffer_success_alone_still_admits() -> Bool {
 // more of the same machine. This is the direction that carries, and it must still carry.
 test fn w_a_refusal_generalizes_to_no_easier_point_but_a_success_does() -> Bool {
   let refused_deep = with_memory_observations(base: fixture_low_rank,
-    observations: [fixture_attempt(r: r_fixture_low, depth: 1048576, outcome: out_of_memory)])
+    observations: [fixture_attempt(b: b_fixture_low, depth: 1048576, outcome: out_of_memory)])
   let refused_at_point = with_memory_observations(base: fixture_low_rank,
-    observations: [fixture_attempt(r: r_fixture_low, depth: 400000, outcome: out_of_memory)])
+    observations: [fixture_attempt(b: b_fixture_low, depth: 400000, outcome: out_of_memory)])
   let served_deep = with_memory_observations(base: fixture_low_rank,
-    observations: [fixture_footprint(r: r_fixture_low, resident: 28000000000)])
+    observations: [fixture_footprint(b: b_fixture_low, resident: 28000000000)])
   is_unobserved_verdict(verdict: evaluate_candidate(
     candidate: refused_deep, node: fixture_node, constraints: floor_400k))
     && is_memory_rejection(verdict: evaluate_candidate(
@@ -955,20 +965,11 @@ test fn w_a_refusal_generalizes_to_no_easier_point_but_a_success_does() -> Bool 
 // nothing about one; a success at four establishes one.
 test fn w_the_concurrency_axis_carries_the_same_asymmetry() -> Bool {
   let refused_at_four = with_memory_observations(base: fixture_low_rank, observations: [
-    OllamaRunnerMemoryObservation {
-      realization: r_fixture_low, node: fixture_node, instrument: fixture_instrument,
-      context_depth: token_count(count: 400000), concurrent_sessions: 4, outcome: out_of_memory,
-    },
+    attempt_of(b: b_fixture_low, node: fixture_node, instrument: fixture_instrument, depth: 400000, sessions: 4, outcome: out_of_memory),
   ])
   let served_at_four = with_memory_observations(base: fixture_low_rank, observations: [
-    OllamaRunnerMemoryObservation {
-      realization: r_fixture_low, node: fixture_node, instrument: fixture_instrument,
-      context_depth: token_count(count: 400000), concurrent_sessions: 4,
-      outcome: RunnerServed {
-        reported_total_buffer: byte_size(count: 28000000000),
-        reported_gpu_buffer: byte_size(count: 28000000000),
-      },
-    },
+    served(b: b_fixture_low, node: fixture_node, instrument: fixture_instrument,
+      depth: 400000, sessions: 4, resident: 28000000000),
   ])
   is_unobserved_verdict(verdict: evaluate_candidate(
     candidate: refused_at_four, node: fixture_node, constraints: floor_400k))
@@ -1021,7 +1022,7 @@ fn is_admissible(verdict: CandidateVerdict) -> Bool {
 // other way. So it must now come back unanswerable. Flip the binding back to `>=` in
 // slowest_fresh_rate_at_floor and this witness goes red.
 data busy_only_prefill: List<FreshPrefillObservation> = [
-  FreshPrefillObservation { realization: r_iq2_xxs, node: serving_node, concurrent_sessions: 4, depth: token_count(count: 400060), rate: tokens_per_second(count: 90) },
+  prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 4, depth: 400060, rate: 90),
 ]
 
 test fn w_a_busier_prefill_reading_does_not_answer_a_quieter_demand() -> Bool {
@@ -1057,13 +1058,7 @@ test fn w_a_prefill_reading_at_lower_concurrency_or_another_node_does_not_qualif
 
 fn quiet_rate_at(node: NonEmptyStr, hot: Nat) -> TokensPerSecond? {
   prefill_rate_at_floor(
-    observations: [FreshPrefillObservation {
-      realization: r_iq2_xxs,
-      node: serving_node,
-      concurrent_sessions: 1,
-      depth: token_count(count: 400060),
-      rate: tokens_per_second(count: 135),
-    }],
+    observations: [prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 400060, rate: 135)],
     realization: r_iq2_xxs,
     node: node,
     hot_sessions: hot,
@@ -1089,14 +1084,19 @@ fn structural_digest(hex: Fnv1a64StructuralDigestHex) -> ContentHash {
   as_content_hash_structural(structural: structural_content_hash(digest: hex))
 }
 
+// The SAME build with the artifact digest recorded in the fnv1a structural family instead of
+// sha256. Everything else -- release, quantization, runtime, argv -- is identical, so the only axis
+// that cannot be lined up is the digest.
+data b_iq2_xxs_structural_artifact: FixtureBuild = FixtureBuild {
+  release_id: b_iq2_xxs.release_id,
+  quant: b_iq2_xxs.quant,
+  artifact: structural_digest(hex: "32af248f4cab44ff" as Fnv1a64StructuralDigestHex),
+  runtime: b_iq2_xxs.runtime,
+  argv: b_iq2_xxs.argv,
+}
+
 fn r_iq2_xxs_structural_artifact() -> ServingRealizationIdentity {
-  realization(
-    release_id: r_iq2_xxs.release_id,
-    quant: r_iq2_xxs.quant_label,
-    artifact: structural_digest(hex: "32af248f4cab44ff" as Fnv1a64StructuralDigestHex),
-    runtime: ollama_runtime,
-    fixed_mode: serial_mode,
-  )
+  realization_of(b: b_iq2_xxs_structural_artifact)
 }
 
 // THE SCOPE OF THE STALL, which the witness above cannot see because its incomparable reading is
@@ -1113,18 +1113,148 @@ fn r_iq2_xxs_structural_artifact() -> ServingRealizationIdentity {
 // Revert first_incomparable_axis to a node-only filter and this goes red.
 test fn w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate() -> Bool {
   let mixed = with_memory_observations(base: build_iq2_xxs, observations: [
-    served(r: r_iq2_xxs_structural_artifact(), node: serving_node, instrument: ps_instrument,
+    served(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
       depth: 8192, sessions: 1, resident: 80000000000),
-    served(r: r_iq2_xxs, node: serving_node, instrument: ps_instrument,
+    served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
       depth: 400000, sessions: 1, resident: 87692389907),
   ])
   is_admissible(verdict: evaluate_candidate(
     candidate: mixed, node: serving_node, constraints: floor_400k))
 }
 
+// THE SAME DEFECT ON THE OTHER TWO AXES. The memory axis learned to say "held but unalignable";
+// semantic context and prefill were still reading serving_realization_equal, which folds
+// RealizationIncomparable to `false`. So a retrieval receipt or a prefill reading whose artifact
+// digest was recorded in a different hash family left the population silently, and the candidate
+// reported SemanticContextUnverifiedAtFloor or PrefillRateUnmeasuredAtFloor -- telling the operator
+// to go measure something that has already been measured. Both must now surface the axis instead.
+fn incomparable_axis_of_verdict(verdict: CandidateVerdict) -> NonEmptyStr? {
+  match verdict {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      match m {
+        EvidenceIdentityIncomparable { axis: a } => Present { value: a }
+        MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => none
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => none
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => none
+        SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => none
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => none
+      }
+    ServingCandidateAdmissible { candidate: _, fit: _ } => none
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => none
+  }
+}
+
+fn refuses_on_artifact_digest(verdict: CandidateVerdict) -> Bool {
+  match incomparable_axis_of_verdict(verdict: verdict) {
+    Present { value: a } => (a as String) == "artifact digest"
+    Absent => false
+  }
+}
+
+// Memory fit is established by a good reading, so the selector reaches the semantic-context test --
+// where the only receipt on hand belongs to a realization whose digest cannot be lined up.
+test fn w_a_cross_family_semantic_receipt_refuses_rather_than_reading_as_unverified() -> Bool {
+  let c = QuantizedCandidate {
+    realization: r_iq2_xxs,
+    quality_rank: 1,
+    declared_context: token_count(count: 1048576),
+    semantic_context: verified_at(r: r_iq2_xxs_structural_artifact(), depth: 400060),
+    fresh_prefill_observations: [prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 400060, rate: 135)],
+    runtime_memory_observations: [served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument, depth: 400000, sessions: 1, resident: 87692389907)],
+  }
+  refuses_on_artifact_digest(verdict: evaluate_candidate(
+    candidate: c, node: serving_node, constraints: floor_400k))
+}
+
+// Memory and semantic context both pass, so the selector reaches prefill -- where the only reading
+// at the demanded point belongs to an unalignable realization.
+test fn w_a_cross_family_prefill_receipt_refuses_rather_than_reading_as_unmeasured() -> Bool {
+  let c = QuantizedCandidate {
+    realization: r_iq2_xxs,
+    quality_rank: 1,
+    declared_context: token_count(count: 1048576),
+    semantic_context: verified_at(r: r_iq2_xxs, depth: 400060),
+    fresh_prefill_observations: [prefill_of(b: b_iq2_xxs_structural_artifact, node: serving_node, sessions: 1, depth: 400060, rate: 135)],
+    runtime_memory_observations: [served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument, depth: 400000, sessions: 1, resident: 87692389907)],
+  }
+  refuses_on_artifact_digest(verdict: evaluate_candidate(
+    candidate: c, node: serving_node, constraints: floor_400k))
+}
+
+// AN INCOMPARABLE ROW THAT CANNOT CHANGE THE ANSWER MUST NOT STALL IT. A comparable 400k one-session
+// success establishes fit. Beside it sits a cross-family 1M one-session success: if it describes
+// this candidate it is a second success, and if it describes another realization it is irrelevant.
+// Fit holds either way, so the identity question has no bearing and the candidate must be
+// admissible. Under the point-relevance-only rule it returned MemoryFitIdentityIncomparable, which
+// made a candidate LESS answerable for holding an extra success.
+test fn w_a_redundant_incomparable_success_does_not_overturn_established_fit() -> Bool {
+  let c = with_memory_observations(base: build_iq2_xxs, observations: [
+    served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
+      depth: 400000, sessions: 1, resident: 87692389907),
+    served(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
+      depth: 1048576, sessions: 1, resident: 88865253620),
+  ])
+  is_admissible(verdict: evaluate_candidate(
+    candidate: c, node: serving_node, constraints: floor_400k))
+}
+
+// THE OTHER HALF, so the rule above is not read as "ignore incomparable evidence". An incomparable
+// EXACT REFUSAL beside a comparable success is still load-bearing: resolving its identity is exactly
+// what separates a contradiction from ordinary fit, so it must still stall.
+test fn w_an_incomparable_exact_refusal_beside_a_success_still_stalls() -> Bool {
+  let c = with_memory_observations(base: build_iq2_xxs, observations: [
+    served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
+      depth: 400000, sessions: 1, resident: 87692389907),
+    attempt_of(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
+      depth: 400000, sessions: 1, outcome: out_of_memory),
+  ])
+  refuses_on_artifact_digest(verdict: evaluate_candidate(
+    candidate: c, node: serving_node, constraints: floor_400k))
+}
+
+// THE ORDERING TIE THAT SURVIVED THE FIRST REPAIR. Two non-memory failures at the same exact point,
+// same realization, host and instrument, differing ONLY in cause. Depth, sessions, footprint and
+// instrument are all equal, so the previous key tied and shallowest_of kept whichever the roster
+// listed first -- and attempt_failure_cause then reported that cause in the diagnosis. Reversing the
+// roster reversed the answer. The reported cause must now be the same in both orders.
+fn failure_cause_reported(observations: List<OllamaRunnerMemoryObservation>) -> NonEmptyStr? {
+  match evaluate_candidate(
+    candidate: with_memory_observations(base: build_iq2_xxs, observations: observations),
+    node: serving_node, constraints: floor_400k) {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      match m {
+        MemoryAttemptFailedForNonMemoryCause { cause: c } => Present { value: c }
+        MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => none
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => none
+        EvidenceIdentityIncomparable { axis: _ } => none
+        SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => none
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => none
+      }
+    ServingCandidateAdmissible { candidate: _, fit: _ } => none
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => none
+  }
+}
+
+test fn w_two_failures_differing_only_in_cause_report_the_same_one_in_both_orders() -> Bool {
+  let template = attempt_of(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
+    depth: 400000, sessions: 1,
+    outcome: RunnerFailedForOtherCause { cause: "template render failed" as NonEmptyStr })
+  let transport = attempt_of(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
+    depth: 400000, sessions: 1,
+    outcome: RunnerFailedForOtherCause { cause: "transport reset" as NonEmptyStr })
+  match failure_cause_reported(observations: [template, transport]) {
+    Absent => false
+    Present { value: a } =>
+      match failure_cause_reported(observations: [transport, template]) {
+        Absent => false
+        Present { value: b } => (a as String) == (b as String)
+      }
+  }
+}
+
 test fn w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved() -> Bool {
   let cross_family = with_memory_observations(base: build_iq2_xxs, observations: [
-    served(r: r_iq2_xxs_structural_artifact(), node: serving_node, instrument: ps_instrument,
+    served(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
       depth: 400000, sessions: 1, resident: 87692389907),
   ])
   match evaluate_candidate(candidate: cross_family, node: serving_node, constraints: floor_400k) {
@@ -1210,6 +1340,11 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
     && w_a_prefill_reading_at_lower_concurrency_or_another_node_does_not_qualify()
     && w_a_busier_prefill_reading_does_not_answer_a_quieter_demand()
     && w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved()
+    && w_a_cross_family_semantic_receipt_refuses_rather_than_reading_as_unverified()
+    && w_a_cross_family_prefill_receipt_refuses_rather_than_reading_as_unmeasured()
+    && w_a_redundant_incomparable_success_does_not_overturn_established_fit()
+    && w_an_incomparable_exact_refusal_beside_a_success_still_stalls()
+    && w_two_failures_differing_only_in_cause_report_the_same_one_in_both_orders()
     && w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate()
     && w_realization_comparison_reaches_all_three_states_and_different_wins()
 }
@@ -1226,7 +1361,7 @@ data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_unmeasured, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_unmeasured, node: serving_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+    prefill_of(b: b_unmeasured, node: serving_node, sessions: 1, depth: 400060, rate: 135),
   ],
   runtime_memory_observations: [],
 }
@@ -1272,10 +1407,10 @@ data other_release: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_qwen, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_qwen, node: serving_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
+    prefill_of(b: b_qwen, node: serving_node, sessions: 1, depth: 400060, rate: 900),
   ],
   runtime_memory_observations: [
-    served(r: r_qwen, node: serving_node, instrument: fixture_instrument,
+    served(b: b_qwen, node: serving_node, instrument: fixture_instrument,
       depth: 1048576, sessions: 1, resident: 30600000000),
   ],
 }
@@ -1323,9 +1458,9 @@ data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_tied_a, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_tied_a, node: fixture_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+    prefill_of(b: b_tied_a, node: fixture_node, sessions: 1, depth: 400060, rate: 500),
   ],
-  runtime_memory_observations: [fixture_footprint(r: r_tied_a, resident: 28000000000)],
+  runtime_memory_observations: [fixture_footprint(b: b_tied_a, resident: 28000000000)],
 }
 
 data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
@@ -1334,9 +1469,9 @@ data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
   declared_context: token_count(count: 1048576),
   semantic_context: verified_at(r: r_tied_b, depth: 400060),
   fresh_prefill_observations: [
-    FreshPrefillObservation { realization: r_tied_b, node: fixture_node, concurrent_sessions: 1, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+    prefill_of(b: b_tied_b, node: fixture_node, sessions: 1, depth: 400060, rate: 500),
   ],
-  runtime_memory_observations: [fixture_footprint(r: r_tied_b, resident: 29000000000)],
+  runtime_memory_observations: [fixture_footprint(b: b_tied_b, resident: 29000000000)],
 }
 
 fn is_tie_refusal(choice: ServingChoice) -> Bool {

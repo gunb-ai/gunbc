@@ -175,6 +175,41 @@ fn argv_digest_of(argv: List<NonEmptyStr>) -> Fnv1a64Structural {
     content_hash_combine_structural(left: acc, right: content_hash_atom(value: word)))
 }
 
+// THE SECOND HALF OF THE ARGV SPLIT. FixedRuntimeModeIdentity answers "is this the same runner
+// mode", which is what lets a reading taken at one point speak for another. It deliberately drops
+// the varied flags, so by construction it CANNOT say which point a reading was taken at.
+//
+// That leaves a gap the source described and the types did not close: an author could derive a fixed
+// mode from one argv and then write any context_depth and concurrent_sessions beside it. The tuple
+// (fixed mode, authored depth, authored sessions) does not establish that all three came from one
+// observed invocation. So the exact full-argv identity is carried BY THE OBSERVATION, and both it
+// and the realization's fixed mode are minted from ONE argv list in one call -- they cannot be
+// authored independently.
+//
+// WHAT THIS STILL DOES NOT DO, named rather than implied: the depth and session values are not
+// PARSED out of the argv and checked against the authored ones. std has no string-to-integer
+// admission, so there is nothing to parse them with, and inventing a parser inside this module would
+// be a second numeric authority. The class therefore sits at mechanically-preventable rather than
+// structurally-impossible, and its next-rung trigger is a std integer-admission capability
+// sufficient to read a flag value back as a Nat -- at which point the point fields are derived from
+// the argv and the mismatched state has no constructor.
+type ExactRuntimeConfigurationIdentity sole_constructor {
+  argv_digest: Fnv1a64Structural
+}
+
+fn exact_runtime_configuration_from_argv(
+  argv: List<NonEmptyStr>,
+) -> ExactRuntimeConfigurationIdentity {
+  ExactRuntimeConfigurationIdentity { argv_digest: argv_digest_of(argv: argv) }
+}
+
+fn exact_runtime_configuration_equal(
+  a: ExactRuntimeConfigurationIdentity,
+  b: ExactRuntimeConfigurationIdentity,
+) -> Bool {
+  content_hash_eq_structural(left: a.argv_digest, right: b.argv_digest)
+}
+
 // The varied flags AND their values are DROPPED, not blanked, so the mode digest is invariant to
 // their values by construction rather than by the caller remembering to pass matching ones.
 //
@@ -416,12 +451,38 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 // caller meets when three other sessions are prefilling: this fleet's own 300x latency scare was
 // exactly that -- a queue on a serialized host, read as a property of the model. And a rate measured
 // on one node does not describe another. Both now join.
-type FreshPrefillObservation {
+type FreshPrefillObservation sole_constructor {
   realization: ServingRealizationIdentity
+  configuration: ExactRuntimeConfigurationIdentity
   node: HostIdentity
   concurrent_sessions: Nat
   depth: TokenCount
   rate: TokensPerSecond
+}
+
+fn observed_fresh_prefill(
+  release_id: ReleaseIdentity,
+  quant_label: NonEmptyStr,
+  artifact_digest: ContentHash,
+  runtime: ServingRuntimeIdentity,
+  argv: List<NonEmptyStr>,
+  varied_flags: List<NonEmptyStr>,
+  node: HostIdentity,
+  concurrent_sessions: Nat,
+  depth: TokenCount,
+  rate: TokensPerSecond,
+) -> FreshPrefillObservation {
+  FreshPrefillObservation {
+    realization: serving_realization_identity(
+      release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
+      runtime: runtime,
+      fixed_mode: fixed_runtime_mode_from_argv(argv: argv, varied_flags: varied_flags)),
+    configuration: exact_runtime_configuration_from_argv(argv: argv),
+    node: node,
+    concurrent_sessions: concurrent_sessions,
+    depth: depth,
+    rate: rate,
+  }
 }
 
 // The slowest rate observed AT THE REQUESTED REGIME at or beyond the floor, or Absent when no such
@@ -434,6 +495,86 @@ type FreshPrefillObservation {
 // substituting a warm number for a fresh question is the dangerous direction and would admit one
 // that cannot. Neither substitution is available here: the non-fresh arms have no observation to
 // read at all, so the widening arm does not exist to be taken.
+// THE THIRD STATE ON THIS AXIS TOO. slowest_fresh_rate_at_floor filtered with
+// serving_realization_equal, so a prefill receipt taken at exactly the right point on exactly the
+// right host, whose artifact digest was recorded in a different hash family, silently left the
+// population and the candidate reported PrefillRateUnmeasuredAtFloor. Held-but-unalignable is not
+// unmeasured, and the distinction is the whole reason this module exists.
+//
+// The same materiality rule the memory axis uses applies here: an incomparable receipt stalls only
+// when no COMPARABLE receipt already answers at this point. If a comparable reading exists, the
+// answer is the slowest of those, and resolving the unalignable one could not change which floor
+// question was answered.
+type PrefillQualification
+  = PrefillRateQualified { rate: TokensPerSecond }
+  | PrefillIncomparable { axis: NonEmptyStr }
+  | PrefillUnmeasured
+
+fn fresh_prefill_at_point(
+  observations: List<FreshPrefillObservation>,
+  node: HostIdentity,
+  hot_sessions: Nat,
+  floor: TokenCount,
+) -> List<FreshPrefillObservation> {
+  filter(observations, o =>
+    host_identity_eq(a: o.node, b: node)
+      && o.concurrent_sessions == hot_sessions
+      && token_count_value(t: o.depth) >= token_count_value(t: floor))
+}
+
+fn first_prefill_incomparable_axis(
+  observations: List<FreshPrefillObservation>,
+  realization: ServingRealizationIdentity,
+) -> NonEmptyStr? {
+  fold(observations, none, (found, o) =>
+    match found {
+      Present { value: a } => Present { value: a }
+      Absent => incomparable_axis(
+        comparison: compare_serving_realization(a: o.realization, b: realization))
+    })
+}
+
+fn fresh_prefill_qualification(
+  observations: List<FreshPrefillObservation>,
+  realization: ServingRealizationIdentity,
+  node: HostIdentity,
+  hot_sessions: Nat,
+  floor: TokenCount,
+) -> PrefillQualification {
+  match slowest_fresh_rate_at_floor(
+    observations: observations, realization: realization,
+    node: node, hot_sessions: hot_sessions, floor: floor) {
+    Present { value: r } => PrefillRateQualified { rate: r }
+    Absent =>
+      match first_prefill_incomparable_axis(
+        observations: fresh_prefill_at_point(
+          observations: observations, node: node,
+          hot_sessions: hot_sessions, floor: floor),
+        realization: realization) {
+        Present { value: a } => PrefillIncomparable { axis: a }
+        Absent => PrefillUnmeasured
+      }
+  }
+}
+
+fn prefill_qualification_at_floor(
+  observations: List<FreshPrefillObservation>,
+  realization: ServingRealizationIdentity,
+  node: HostIdentity,
+  hot_sessions: Nat,
+  floor: TokenCount,
+  regime: ServingRegime,
+) -> PrefillQualification {
+  match regime {
+    WarmContinuation => PrefillUnmeasured
+    RestoredSession => PrefillUnmeasured
+    FreshSessionPrefill =>
+      fresh_prefill_qualification(
+        observations: observations, realization: realization,
+        node: node, hot_sessions: hot_sessions, floor: floor)
+  }
+}
+
 fn prefill_rate_at_floor(
   observations: List<FreshPrefillObservation>,
   realization: ServingRealizationIdentity,
@@ -442,13 +583,12 @@ fn prefill_rate_at_floor(
   floor: TokenCount,
   regime: ServingRegime,
 ) -> TokensPerSecond? {
-  match regime {
-    WarmContinuation => none
-    RestoredSession => none
-    FreshSessionPrefill =>
-      slowest_fresh_rate_at_floor(
-        observations: observations, realization: realization,
-        node: node, hot_sessions: hot_sessions, floor: floor)
+  match prefill_qualification_at_floor(
+    observations: observations, realization: realization, node: node,
+    hot_sessions: hot_sessions, floor: floor, regime: regime) {
+    PrefillRateQualified { rate: r } => Present { value: r }
+    PrefillIncomparable { axis: _ } => none
+    PrefillUnmeasured => none
   }
 }
 
@@ -552,13 +692,45 @@ type RunnerAttemptOutcome
   | RunnerRefusedForMemory { detail: NonEmptyStr }
   | RunnerFailedForOtherCause { cause: NonEmptyStr }
 
-type OllamaRunnerMemoryObservation {
+type OllamaRunnerMemoryObservation sole_constructor {
   realization: ServingRealizationIdentity
+  configuration: ExactRuntimeConfigurationIdentity
   node: HostIdentity
   instrument: NonEmptyStr
   context_depth: TokenCount
   concurrent_sessions: Nat
   outcome: RunnerAttemptOutcome
+}
+
+// ONE ARGV, BOTH GRAINS. The caller hands over the argv the runner was actually launched with and
+// the flags it varies; the fixed mode inside the realization and the exact configuration on the
+// observation are both derived here, from that one list. There is no surface on which they can
+// disagree, because there is no surface on which they are separately supplied.
+fn observed_memory_attempt(
+  release_id: ReleaseIdentity,
+  quant_label: NonEmptyStr,
+  artifact_digest: ContentHash,
+  runtime: ServingRuntimeIdentity,
+  argv: List<NonEmptyStr>,
+  varied_flags: List<NonEmptyStr>,
+  node: HostIdentity,
+  instrument: NonEmptyStr,
+  context_depth: TokenCount,
+  concurrent_sessions: Nat,
+  outcome: RunnerAttemptOutcome,
+) -> OllamaRunnerMemoryObservation {
+  OllamaRunnerMemoryObservation {
+    realization: serving_realization_identity(
+      release_id: release_id, quant_label: quant_label, artifact_digest: artifact_digest,
+      runtime: runtime,
+      fixed_mode: fixed_runtime_mode_from_argv(argv: argv, varied_flags: varied_flags)),
+    configuration: exact_runtime_configuration_from_argv(argv: argv),
+    node: node,
+    instrument: instrument,
+    context_depth: context_depth,
+    concurrent_sessions: concurrent_sessions,
+    outcome: outcome,
+  }
 }
 
 // WHAT THE QUALIFYING ATTEMPTS SAY, reconciled by TYPE rather than by byte magnitude.
@@ -712,7 +884,49 @@ fn participates_at_point(
     served: generalizes, refused_for_memory: exact, failed_otherwise: exact)
 }
 
-fn first_incomparable_axis(
+// POINT RELEVANCE WAS NECESSARY BUT NOT SUFFICIENT: the row must also be able to CHANGE THE ANSWER.
+//
+// The first repair here stopped irrelevant rows from stalling a candidate. It still stalled on every
+// point-relevant incomparable row, before asking whether resolving that row could alter anything.
+// The counterexample is ordinary: a comparable 400k one-session SUCCESS beside a cross-family 1M
+// one-session SUCCESS, asked at 400k. If the second row describes this candidate it is merely a
+// second success; if it describes another realization it is irrelevant. Fit is established either
+// way, so the identity question has no bearing -- and the code returned MemoryFitIdentityIncomparable
+// anyway. That is the same anti-monotone shape as before, one level in: a candidate whose fit is
+// already established got LESS answerable for holding an extra success.
+//
+// So an incomparable row stalls exactly when its arm is the one that would decide, which is the arm
+// with no comparable row already in it:
+//
+//   incomparable SUCCESS  -- stalls only when no comparable success exists, because it could turn
+//                            Unobserved or RefusedForMemory into Established or Contradicted.
+//   incomparable REFUSAL  -- stalls only when no comparable refusal exists, because it could turn
+//                            Established into Contradicted, or Unobserved into RefusedForMemory.
+//   incomparable FAILURE  -- stalls only when nothing comparable was observed at all, since a
+//                            non-memory failure is read only when the other two arms are empty.
+//
+// This is not "ignore incomparable evidence". An incomparable exact refusal beside a comparable
+// success is still load-bearing and still stalls, because resolving its identity is exactly what
+// separates a contradiction from ordinary fit.
+fn incomparable_axis_of(
+  o: OllamaRunnerMemoryObservation,
+  realization: ServingRealizationIdentity,
+) -> NonEmptyStr? {
+  incomparable_axis(comparison: compare_serving_realization(a: o.realization, b: realization))
+}
+
+fn first_axis_in(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+) -> NonEmptyStr? {
+  fold(observations, none, (found, o) =>
+    match found {
+      Present { value: a } => Present { value: a }
+      Absent => incomparable_axis_of(o: o, realization: realization)
+    })
+}
+
+fn deciding_incomparable_axis(
   observations: List<OllamaRunnerMemoryObservation>,
   realization: ServingRealizationIdentity,
   floor: TokenCount,
@@ -722,12 +936,36 @@ fn first_incomparable_axis(
   let relevant = filter(observations, o =>
     host_identity_eq(a: o.node, b: node)
       && participates_at_point(o: o, floor: floor, hot_sessions: hot_sessions))
-  fold(relevant, none, (found, o) =>
-    match found {
-      Present { value: a } => Present { value: a }
-      Absent => incomparable_axis(
-        comparison: compare_serving_realization(a: o.realization, b: realization))
-    })
+  let served_rows = filter(relevant, o => outcome_is_served(o: o))
+  let refused_rows = filter(relevant, o => outcome_is_memory_refusal(o: o))
+  let broken_rows = filter(relevant, o => outcome_is_other_failure(o: o))
+  let comparable_served = served_qualifying_observations(
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node)
+  let comparable_refused = refused_at_exact_point(
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node)
+  let comparable_broken = failed_otherwise_at_exact_point(
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node)
+  let from_served =
+    if length(comparable_served) > 0 { none }
+    else { first_axis_in(observations: served_rows, realization: realization) }
+  let from_refused =
+    if length(comparable_refused) > 0 { none }
+    else { first_axis_in(observations: refused_rows, realization: realization) }
+  let from_broken =
+    if length(comparable_served) > 0 || length(comparable_refused) > 0
+      || length(comparable_broken) > 0 { none }
+    else { first_axis_in(observations: broken_rows, realization: realization) }
+  match from_served {
+    Present { value: a } => Present { value: a }
+    Absent =>
+      match from_refused {
+        Present { value: a } => Present { value: a }
+        Absent => from_broken
+      }
+  }
 }
 
 // The SHALLOWEST qualifying attempt, because it is the one closest to the configuration actually
@@ -755,23 +993,69 @@ fn observation_order_key_before(
     if a.concurrent_sessions != b.concurrent_sessions {
       a.concurrent_sessions < b.concurrent_sessions
     } else {
-      let ab = reported_total_bytes(o: a)
-      let bb = reported_total_bytes(o: b)
-      if ab != bb { ab < bb } else {
-        (a.instrument as String) < (b.instrument as String)
+      let ai = a.instrument as String
+      let bi = b.instrument as String
+      if ai != bi { ai < bi } else {
+        let at = reported_total_bytes(o: a)
+        let bt = reported_total_bytes(o: b)
+        if at != bt { at < bt } else {
+          let ag = reported_gpu_bytes(o: a)
+          let bg = reported_gpu_bytes(o: b)
+          if ag != bg { ag < bg } else {
+            outcome_detail_key(o: a) < outcome_detail_key(o: b)
+          }
+        }
       }
     }
   }
 }
 
-// The footprint axis is only populated for a SERVED attempt; a refusal reports no buffer. Both
-// non-served arms sort as zero, which is not a fabricated measurement -- the three arms never share
-// a comparison, because memory_fit_evidence partitions by outcome before it orders.
+// EVERY VERDICT-VISIBLE PAYLOAD IS IN THE KEY, because anything visible in the answer and absent
+// from the key is a field the roster order gets to choose.
+//
+// The first repair here ordered on depth, sessions, reported TOTAL buffer and instrument, which
+// closed the depth-only tie but left a narrower one open. Two non-memory failures at the same exact
+// point, same realization, host and instrument, differing only in CAUSE, produce an identical key;
+// shallowest_of keeps whichever the roster listed first, and attempt_failure_cause then reports that
+// cause in the MemoryAttemptFailedForNonMemoryCause diagnosis. Reverse the roster, reverse the
+// diagnosis. The same hole existed for two served readings agreeing on total buffer and differing on
+// the GPU buffer, and for two refusals differing only in detail.
+//
+// So the outcome contributes its WHOLE payload as the final key, arm-tagged so the three arms cannot
+// collide across a shared spelling. This is not a fabricated ordering over incommensurable things:
+// the arms are already partitioned by memory_fit_evidence before any comparison happens, so the tag
+// only ever breaks ties WITHIN an arm. Two observations equal on this key are equal on every field
+// the verdict can show, so which one is returned genuinely carries no information -- which is the
+// property the previous key claimed and did not have.
+// The two byte axes compare NUMERICALLY and the prose axis lexicographically, rather than folding
+// everything into one string: string order over decimal digits puts "9" after "10", which would be a
+// deterministic but wrong magnitude ordering, and the whole point of ordering on footprint is that
+// the smaller reading is the closer one. Non-served arms report no buffer and contribute zero, which
+// is not a fabricated measurement -- memory_fit_evidence partitions by outcome before any comparison
+// happens, so a served and a refused reading are never compared against each other.
 fn reported_total_bytes(o: OllamaRunnerMemoryObservation) -> Int {
   match o.outcome {
     RunnerServed { reported_total_buffer: t, reported_gpu_buffer: _ } => byte_size_count(b: t)
     RunnerRefusedForMemory { detail: _ } => 0
     RunnerFailedForOtherCause { cause: _ } => 0
+  }
+}
+
+fn reported_gpu_bytes(o: OllamaRunnerMemoryObservation) -> Int {
+  match o.outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: g } => byte_size_count(b: g)
+    RunnerRefusedForMemory { detail: _ } => 0
+    RunnerFailedForOtherCause { cause: _ } => 0
+  }
+}
+
+// Arm-tagged so a refusal detail and a failure cause that happen to share a spelling still order
+// apart, even though the partition means they are never compared in practice.
+fn outcome_detail_key(o: OllamaRunnerMemoryObservation) -> String {
+  match o.outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => "served"
+    RunnerRefusedForMemory { detail: d } => join(["refused|", d as String], "")
+    RunnerFailedForOtherCause { cause: c } => join(["failed|", c as String], "")
   }
 }
 
@@ -800,7 +1084,7 @@ fn memory_fit_evidence(
   hot_sessions: Nat,
   node: HostIdentity,
 ) -> MemoryFitEvidence {
-  match first_incomparable_axis(
+  match deciding_incomparable_axis(
     observations: observations, realization: realization,
     floor: floor, hot_sessions: hot_sessions, node: node) {
     Present { value: axis } => MemoryFitIdentityIncomparable { axis: axis }
@@ -1009,21 +1293,24 @@ fn evaluate_candidate(
     MemoryFitRefusedForMemory { by: r } =>
       rejected(candidate: candidate, axis: DoesNotFitMemory { observed: r })
     MemoryFitEstablished { by: observed } =>
-      match semantic_context_verified_to(
+      match semantic_context_qualification(
         evidence: candidate.semantic_context,
         realization: candidate.realization,
       ) {
-        Absent => unanswerable(candidate: candidate, missing: SemanticContextUnverifiedAtFloor {
-          floor: constraints.context_floor,
-          declared: candidate.declared_context,
-        })
-        Present { value: verified } =>
+        SemanticContextIncomparable { axis: a } =>
+          unanswerable(candidate: candidate, missing: EvidenceIdentityIncomparable { axis: a })
+        SemanticContextNotForThisRealization =>
+          unanswerable(candidate: candidate, missing: SemanticContextUnverifiedAtFloor {
+            floor: constraints.context_floor,
+            declared: candidate.declared_context,
+          })
+        SemanticContextQualified { verified_to: verified } =>
           match token_count_value(t: verified) < token_count_value(t: constraints.context_floor) {
             true => rejected(candidate: candidate, axis: ContextBelowFloor {
               declared: verified,
               floor: constraints.context_floor,
             })
-            false => match prefill_rate_at_floor(
+            false => match prefill_qualification_at_floor(
               observations: candidate.fresh_prefill_observations,
               realization: candidate.realization,
               node: node,
@@ -1031,11 +1318,14 @@ fn evaluate_candidate(
               floor: constraints.context_floor,
               regime: constraints.prefill_regime,
             ) {
-              Absent => unanswerable(candidate: candidate, missing: PrefillRateUnmeasuredAtFloor {
-                floor: constraints.context_floor,
-                regime: constraints.prefill_regime,
-              })
-              Present { value: prefill } =>
+              PrefillIncomparable { axis: a } =>
+                unanswerable(candidate: candidate, missing: EvidenceIdentityIncomparable { axis: a })
+              PrefillUnmeasured =>
+                unanswerable(candidate: candidate, missing: PrefillRateUnmeasuredAtFloor {
+                  floor: constraints.context_floor,
+                  regime: constraints.prefill_regime,
+                })
+              PrefillRateQualified { rate: prefill } =>
                 match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
                   true => rejected(candidate: candidate, axis: PrefillBelowFloor {
                     measured: prefill,
@@ -1060,16 +1350,28 @@ fn attempt_failure_cause(observation: OllamaRunnerMemoryObservation) -> NonEmpty
 // The retrieval receipt counts only when it was taken against THIS realization. A depth verified on
 // a different quantization or a different artifact is a fact about that realization, and reading it
 // here would let a candidate borrow evidence it never earned.
-fn semantic_context_verified_to(
+// THREE STATES, BECAUSE THE BOOLEAN PROJECTION LOST THE ONE THAT MATTERS. This read
+// serving_realization_equal, which folds RealizationIncomparable to `false` -- so a retrieval
+// receipt whose artifact digest was recorded in a different hash family came back Absent and the
+// candidate reported SemanticContextUnverifiedAtFloor. That is the defect the memory axis already
+// closed, surviving on a second axis: "we hold a receipt we cannot line up" rendered as "no receipt
+// was taken". The operator is told to go measure something that has already been measured.
+type SemanticContextQualification
+  = SemanticContextQualified { verified_to: TokenCount }
+  | SemanticContextIncomparable { axis: NonEmptyStr }
+  | SemanticContextNotForThisRealization
+
+fn semantic_context_qualification(
   evidence: SemanticContextEvidence?,
   realization: ServingRealizationIdentity,
-) -> TokenCount? {
+) -> SemanticContextQualification {
   match evidence {
-    Absent => none
+    Absent => SemanticContextNotForThisRealization
     Present { value: e } =>
-      match serving_realization_equal(a: e.realization, b: realization) {
-        true => Present { value: e.verified_to }
-        false => none
+      match compare_serving_realization(a: e.realization, b: realization) {
+        RealizationSame => SemanticContextQualified { verified_to: e.verified_to }
+        RealizationDifferent => SemanticContextNotForThisRealization
+        RealizationIncomparable { axis: a } => SemanticContextIncomparable { axis: a }
       }
   }
 }
