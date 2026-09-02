@@ -132,7 +132,30 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // live_deploy measurement): 21 apply witnesses rebuild one byte-identical script 21 times
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
+// compile_phase_frontier_standing is the receipt-series half of the SAME defect this roster
+// closes, found from the other direction: the thirteen cells of
+// test.claim.self_host_compile_phase_live_gate_witness (and the frontier-status cells that
+// derive the same series) each fold gunbc.self_host_compile_phase_frontier's persisted receipt
+// series once per claim, and the fold is essentially the whole of each cell.
+//
+// MEASURED RECOMPUTE, by planted probe on an isolated release claim_batch run of that module,
+// re-derivable with the same three probes: a `true` body costs 0ms, so the fresh per-claim frame
+// is not the cost; a body that only counts the receipt series data costs 30ms; and a body that
+// folds it through this function costs ~270ms. The ~240ms difference is this call, paid once per
+// claim, and every cell's own perturbation work is below measurement resolution beside it.
+//
+// ARGUMENT IS CLAIM-INDEPENDENT IN PRACTICE — every consumer passes the one persisted series
+// declaration — so it fills on first touch and later claims hit on the content-hashed argument
+// row, exactly like the four rows below.
+//
+// THE SERVE-COST HALF OF THE ADMISSION BAR IS NOT ASSERTED HERE. Per this roster's own criterion
+// a measured recompute is necessary and not sufficient: the row is admitted only if its serve
+// costs less than its recompute, and if it shares (fills against consumer claims) rather than
+// populating a cache. Both are read from the required floor's own required_floor_claim_cost.tsv
+// and [floor-shared-fill] ledger joined against a run with this row absent -- the instruments
+// this roster names, not a number transcribed here. If either fails, the row leaves by deletion.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
+  "gunbc.self_host_compile_phase_frontier.compile_phase_frontier_standing",
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
   "v2.compiler.translate.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
