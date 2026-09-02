@@ -52,9 +52,12 @@ import gunbc.scm.repository_load { repository_load_refusal_lines }
 import gunbc.scm.init {
   ScmInitOutcome,
   ScmInitialized,
-  ScmInitRefusedRepositoryPresent,
-  ScmInitRefusedForeignFilePresent,
-  ScmInitRefusedPathUnobserved
+  ScmInitRefused,
+  ScmInitRefusal,
+  ScmInitRepositoryPresent,
+  ScmInitForeignFilePresent,
+  ScmInitPathUnobserved,
+  ScmInitNameNotAnEntry
 }
 import gunbc.scm.repository_save {
   RepositorySave,
@@ -267,20 +270,31 @@ fn scm_save_cli_response(
 fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
   match outcome {
     ScmInitialized { save: save } => repository_save_lines(save: save)
-    ScmInitRefusedRepositoryPresent { path: p } =>
+    ScmInitRefused { cause: cause } => scm_init_refusal_lines(cause: cause)
+  }
+}
+
+fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
+  match cause {
+    ScmInitRepositoryPresent { path: p } =>
       [
         concat("refusing to initialize ", p),
         "  a repository is already there, and init would replace its whole history"
       ]
-    ScmInitRefusedForeignFilePresent { path: p } =>
+    ScmInitForeignFilePresent { path: p } =>
       [
         concat("refusing to initialize ", p),
         "  a file is already there that is not a repository, and init would destroy it"
       ]
-    ScmInitRefusedPathUnobserved { path: p, cause: c } =>
+    ScmInitPathUnobserved { path: p, cause: c } =>
       [
         concat("refusing to initialize ", p),
         concat("  the path could not be observed, so nothing about it is established -- ", c)
+      ]
+    ScmInitNameNotAnEntry { name: n, cause: c } =>
+      [
+        concat("refusing to initialize ", n),
+        concat("  that is not one entry of the directory, so no path was built from it -- ", c)
       ]
   }
 }
@@ -288,12 +302,20 @@ fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
 fn scm_init_exit(outcome: ScmInitOutcome) -> ProcessExit {
   match outcome {
     ScmInitialized { save: save } => scm_save_exit(save: save)
-    ScmInitRefusedRepositoryPresent { path: _ } =>
+    ScmInitRefused { cause: cause } => scm_init_refusal_exit(cause: cause)
+  }
+}
+
+fn scm_init_refusal_exit(cause: ScmInitRefusal) -> ProcessExit {
+  match cause {
+    ScmInitRepositoryPresent { path: _ } =>
       exit_failure(reason: "repository already present")
-    ScmInitRefusedForeignFilePresent { path: _ } =>
+    ScmInitForeignFilePresent { path: _ } =>
       exit_failure(reason: "path occupied by a non-repository file")
-    ScmInitRefusedPathUnobserved { path: _, cause: _ } =>
+    ScmInitPathUnobserved { path: _, cause: _ } =>
       exit_failure(reason: "path could not be observed")
+    ScmInitNameNotAnEntry { name: _, cause: _ } =>
+      exit_failure(reason: "name is not one entry of the directory")
   }
 }
 

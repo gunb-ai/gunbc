@@ -24,9 +24,33 @@ import gunbc.scm.status { repository_status }
 import gunbc.scm.authoring { empty_proposal }
 import gunbc.scm.cli { scm_log_response, scm_status_response, scm_init_response, plain_terminal_capability }
 import gunbc.scm.init {
-  ScmInitRefusedRepositoryPresent,
-  ScmInitRefusedForeignFilePresent,
-  ScmInitRefusedPathUnobserved
+  ScmInitRefused,
+  ScmInitRepositoryPresent,
+  ScmInitForeignFilePresent,
+  ScmInitPathUnobserved,
+  ScmInitNameNotAnEntry,
+  ScmInitDecision,
+  ScmInitMayCreate,
+  ScmInitDecided,
+  ScmInitialized,
+  scm_init_decision,
+  initialize_repository
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  FilesystemDirectoryListing,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileObservation,
+  filesystem_listing_observation,
+  filesystem_read_outcome,
+  filesystem_file_observation,
+  admit_filesystem_entry_name,
+  FilesystemEntryNameAdmitted,
+  FilesystemEntryNameRefused
 }
 
 // THE BYTES PIN THE CAPABILITY. This is the same expected string the render-level witness pins for
@@ -134,18 +158,18 @@ fn wire_bytes(r: CliWireResponse) -> String {
 // foreign-file line -- telling an operator their bytes are being protected when in fact nothing was
 // observed -- would turn these red.
 test fn an_init_refusal_never_exits_success() -> Bool {
-  wire_refuses(r: scm_init_response(outcome: ScmInitRefusedRepositoryPresent { path: "repo.json" }))
-    && wire_refuses(r: scm_init_response(outcome: ScmInitRefusedForeignFilePresent { path: "repo.json" }))
+  wire_refuses(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
+    && wire_refuses(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
     && wire_refuses(r: scm_init_response(
-      outcome: ScmInitRefusedPathUnobserved { path: "repo.json", cause: "the directory could not be listed" }
+      outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "the directory could not be listed" } }
     ))
 }
 
 test fn the_three_init_refusals_render_differently() -> Bool {
-  let present = wire_bytes(r: scm_init_response(outcome: ScmInitRefusedRepositoryPresent { path: "repo.json" }))
-  let foreign = wire_bytes(r: scm_init_response(outcome: ScmInitRefusedForeignFilePresent { path: "repo.json" }))
+  let present = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
+  let foreign = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
   let unobserved = wire_bytes(r: scm_init_response(
-    outcome: ScmInitRefusedPathUnobserved { path: "repo.json", cause: "the directory could not be listed" }
+    outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "the directory could not be listed" } }
   ))
   present != foreign && foreign != unobserved && present != unobserved && present != ""
 }
@@ -154,9 +178,139 @@ test fn the_three_init_refusals_render_differently() -> Bool {
 // operator to investigate without saying what could not be observed.
 test fn the_unobserved_refusal_names_what_could_not_be_observed() -> Bool {
   match scm_init_response(
-    outcome: ScmInitRefusedPathUnobserved { path: "repo.json", cause: "Permission denied" }
+    outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "Permission denied" } }
   ) {
     CliWireUnprintable { cause: _ } => false
     CliWirePrintable { bytes: b, exit: _ } => b.contains("Permission denied") && b.contains("repo.json")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE INIT DECISION, DRIVEN DIRECTLY. Review 5085479276 on gunbc#9864 found that every enrolled init
+// claim constructed a REFUSAL OUTCOME and checked how it rendered, so nothing executed the step that
+// CHOOSES an outcome from an observation. A mutation routing the indeterminate or the disagreement
+// arm to the write arm left the whole family green -- the claims were about a renderer, and the
+// safety content is in the decision.
+//
+// scm_init_decision is that step with the two filesystem operations lifted out, so all four
+// observation arms are drivable one fact apart. Only FilesystemFileAbsent may reach ScmInitMayCreate.
+// ------------------------------------------------------------------------------------------------
+
+fn decision_arm(d: ScmInitDecision) -> String {
+  match d {
+    ScmInitMayCreate(_) => "may_create"
+    ScmInitDecided { cause: c } =>
+      match c {
+        ScmInitRepositoryPresent { path: _ } => "repository_present"
+        ScmInitForeignFilePresent { path: _ } => "foreign_present"
+        ScmInitPathUnobserved { path: _, cause: _ } => "unobserved"
+        ScmInitNameNotAnEntry { name: _, cause: _ } => "name_not_an_entry"
+      }
+  }
+}
+
+fn decide(o: FilesystemFileObservation) -> String {
+  decision_arm(d: scm_init_decision(observation: o, path: "d/repo.json"))
+}
+
+// THE OBSERVATION IS BUILT BY THE REAL FOLD, NOT HANDED IN. FilesystemEstablishedAbsence is
+// sole_constructor, so a witness CANNOT mint an absence -- which is the seal doing its job, and it
+// forces this evidence to be stronger than it would otherwise have been: every cell below drives
+// filesystem_file_observation over listing and read channels, so the claims cover the fold and the
+// decision together rather than the decision over a fabricated input.
+fn observe(listed: Bool, entries: String, read_ok: Bool, content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "d",
+      success: listed,
+      entries: entries,
+      error: if listed { "" } else { "Permission denied" },
+    ),
+    name: "repo.json",
+    path: "d/repo.json",
+    read: filesystem_read_outcome(
+      content: content,
+      success: read_ok,
+      error: if read_ok { "" } else { "No such file or directory" },
+    ),
+  )
+}
+
+// AN ESTABLISHED ABSENCE IS THE ONLY THING THAT MAY WRITE. This is the positive control: without it
+// every refusal claim below could be satisfied by a decision that refuses unconditionally.
+test fn only_an_established_absence_may_create() -> Bool {
+  decide(o: observe(listed: true, entries: "other.json", read_ok: false, content: "")) == "may_create"
+}
+
+// THE THREE NON-ABSENT ARMS EACH REFUSE, AND EACH KEEPS ITS OWN CAUSE. Collapsing indeterminate or
+// disagreement into the absent arm is the fail-open this module exists to prevent; collapsing them
+// into EACH OTHER would tell an operator to investigate the wrong thing.
+test fn an_unobservable_path_does_not_authorize_a_write() -> Bool {
+  decide(o: observe(listed: false, entries: "", read_ok: false, content: "")) == "unobserved"
+}
+
+// THE LISTING DID NOT NAME IT AND THE READ OF IT SUCCEEDED. One fact apart from the absence cell
+// above -- same listing, read flipped -- so this pair is what distinguishes "nothing is there" from
+// "the two observations describe different worlds".
+test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool {
+  decide(o: observe(listed: true, entries: "other.json", read_ok: true, content: "{}"))
+    == "unobserved"
+}
+
+test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
+  decide(o: observe(listed: true, entries: "repo.json", read_ok: true, content: "not json at all"))
+      == "foreign_present"
+    && decide(o: observe(
+      listed: true,
+      entries: "repo.json",
+      read_ok: true,
+      content: "{\"format\":\"gunbc-scm-repository-v2\"}",
+    )) != "may_create"
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE ENTRY NAME IS ADMITTED BEFORE IT IS USED TWICE, and these are the spellings that made the
+// listing and the path describe different subjects.
+// ------------------------------------------------------------------------------------------------
+
+fn name_admits(n: String) -> Bool {
+  match admit_filesystem_entry_name(name: n) {
+    FilesystemEntryNameAdmitted(_) => true
+    FilesystemEntryNameRefused { name: _, cause: _ } => false
+  }
+}
+
+test fn an_ordinary_entry_name_is_admitted() -> Bool {
+  name_admits(n: "repo.json")
+}
+
+test fn a_name_that_is_not_one_child_of_the_directory_is_refused() -> Bool {
+  !name_admits(n: "")
+    && !name_admits(n: ".")
+    && !name_admits(n: "..")
+    && !name_admits(n: "subdir/repo.json")
+    && !name_admits(n: "../victim")
+}
+
+// THE NEWLINE CASE IS THIS MODULE'S OWN, because the delimiter belongs to Filesystem.List's encoding:
+// a name carrying one can make the membership test answer about an entry that is not present.
+test fn a_name_carrying_the_listing_delimiter_is_refused() -> Bool {
+  !name_admits(n: "repo.json\nother.json")
+    && !name_admits(n: "repo.json\rother.json")
+}
+
+// A REFUSED NAME NEVER REACHES THE FILESYSTEM. initialize_repository is effectful, but this arm
+// returns before either operation runs, so it is reachable in a SubstrateInputsOnly witness -- and
+// that is exactly the property being claimed.
+test fn a_refused_name_refuses_before_any_filesystem_operation() -> Bool {
+  match initialize_repository(directory: "d", name: "../victim") {
+    ScmInitialized { save: _ } => false
+    ScmInitRefused { cause: c } =>
+      match c {
+        ScmInitNameNotAnEntry { name: _, cause: _ } => true
+        ScmInitRepositoryPresent { path: _ } => false
+        ScmInitForeignFilePresent { path: _ } => false
+        ScmInitPathUnobserved { path: _, cause: _ } => false
+      }
   }
 }
