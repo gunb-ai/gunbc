@@ -63,14 +63,31 @@ import gunbc.guarantee_rung {
 // difference instead of hiding it -- `RungDropDeclaration` has a typed arm and a prose arm, and
 // which arm a row is in is a FOLD over one roster rather than an invisible condition.
 //
-// THE PROSE ARM IS CLOSED BY CONSTRUCTION, WHICH IS THE WHOLE REASON IT IS ADMISSIBLE. An arm that
-// any future row could choose is the cheapest way to declare a drop, so the typed fields would
-// never get filled and the coproduct would stop being a debt record and become the default -- the
-// absorbing fallback with a nicer type name. `LegacyProseIdentity` is therefore a closed coproduct
-// of exactly the 21 identities that predate this consolidation. A 22nd prose row has no
-// constructor: it is structurally impossible, not checked, and the check that would have policed it
-// is unnecessary rather than absent. Each per-row split deletes one arm, and the arm count is the
-// remaining debt.
+// THE PROSE ARM IS ENUMERATED, WHICH IS THE WHOLE REASON IT IS ADMISSIBLE. An arm that any future
+// row could choose without saying so is the cheapest way to declare a drop, so the typed fields
+// would never get filled and the coproduct would stop being a debt record and become the default --
+// the absorbing fallback with a nicer type name. `LegacyProseIdentity` therefore names every prose
+// row individually, and a row cannot enter the arm without an edit to this enumeration that a
+// reader sees in the diff. Each per-row split deletes one arm, and the arm count is the remaining
+// debt.
+//
+// THE RUNG IS MECHANICALLY PREVENTABLE, NOT STRUCTURALLY IMPOSSIBLE, AND THE CORRECTION IS RECORDED
+// HERE BECAUSE THIS CARRIER FIRST CLAIMED OTHERWISE. The first version of this note said a further
+// prose row had NO CONSTRUCTOR and was structurally impossible. That was falsified within hours of
+// being authored, and by ordinary work rather than by an attack: `spark_serving_local_artifact_not_reproducible`
+// was authored on another lane against the pre-consolidation shape and landed in main while the
+// consolidation was still open. Admitting it cost exactly one arm. So what the enumeration
+// guarantees is that the arm cannot grow SILENTLY -- growth is an edit to a closed list, visible in
+// review and counted by the fold below -- and what it does not guarantee is that the arm cannot
+// grow. Leaving the stronger sentence standing would have been the rung inflation DESIGN
+// section 4b(1) names, in the carrier whose whole subject is honest rung accounting.
+//
+// WHY THAT ROW WAS ADMITTED AS PROSE RATHER THAN TYPED, since the alternative was available and was
+// rejected on the same ground the other rows are: its paragraph states its previous rung, its
+// temporary rung and its restoration trigger verbatim, but NOT its population and NOT its reason.
+// Filling those two by reading the prose is the semantic rewriting with no oracle that this arm
+// exists to avoid, and doing it to a row authored on another lane would be doing it to someone
+// else's declaration.
 
 // WHETHER THE ROW'S RESTORATION TRIGGER HAS FIRED, MODELED RATHER THAN LEFT TO ITS PARAGRAPH.
 // DESIGN 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so retirement is a
@@ -105,9 +122,9 @@ type RungDropReason
   | DeletedWithoutReplacement
   | ReplacementStaged { replacement: String }
 
-// THE CLOSED SET OF ROWS WHOSE DECLARATION IS STILL PROSE. One nullary arm per identity that
-// predates this consolidation, and no constructor for anything else -- see the note above on why
-// this arm is closed by construction rather than policed. The spelling of each identity lives in
+// THE ENUMERATED SET OF ROWS WHOSE DECLARATION IS STILL PROSE. One nullary arm per such row -- see
+// the note above on what that enumeration does and does not guarantee, and on the concurrent row
+// that established the difference. The spelling of each identity lives in
 // `legacy_prose_identity` and nowhere else, so the row's `identity` field and its arm are joined by
 // one authority; test.claim.rung_drop_standing_partition_witness_test asserts that join as an exact
 // set equality in both directions, which is what would go red if a row and its arm disagreed.
@@ -133,6 +150,7 @@ type LegacyProseIdentity
   | BuiltinSignatureArityPairingFabricates
   | ConcatBinarySignatureExemptFromArgBinding
   | NamespaceAdmissionConsumedRowDeletion
+  | SparkServingLocalArtifactNotReproducible
 
 fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   match l {
@@ -157,6 +175,7 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     BuiltinSignatureArityPairingFabricates => "builtin_signature_arity_pairing_fabricates"
     ConcatBinarySignatureExemptFromArgBinding => "concat_binary_signature_exempt_from_arg_binding"
     NamespaceAdmissionConsumedRowDeletion => "namespace_admission_consumed_row_deletion"
+    SparkServingLocalArtifactNotReproducible => "spark_serving_local_artifact_not_reproducible"
   }
 }
 
@@ -435,6 +454,8 @@ data deleted_cadence_reference_drop: RungDrop = RungDrop {
   }
 }
 
+data spark_serving_local_artifact_not_reproducible: RungDrop = RungDrop { identity: "spark_serving_local_artifact_not_reproducible" as NonEmptyStr, subject: "Reproduction of the Spark serving cell's model artifact from desired state", declared: "2026-09-02", standing: Standing, declaration: AuthoredProse { legacy: SparkServingLocalArtifactNotReproducible, authored: "Spark serving model materialization — **RUNG DROP, DECLARED (2026-09-02).** SUBJECT: the ability to reconstruct a serving cell's model artifact from desired state alone. WHAT WAS HELD: while `gunbc.spark.serving_desired` `spark_serving_desired_manifest` selected an upstream library tag, `gunbc.spark.serving_converge_realize` `spark_serving_materialize_model_artifact_steps` emitted a complete fetch-and-verify install plan — manifest fetched by reference, checked against the frozen resolved digest, every blob in the closure fetched by digest, staged, verified and only then published. A cell with an empty model store could be converged into a serving one. WHAT IS LOST: desired state now selects `deepseek-v4-gguf:no-h3-stop`, which was produced by `POST /api/create` ON THE CELLS THEMSELVES and has no registry anywhere. The materializer REFUSES for it, so convergence can verify and serve the artifact but cannot rebuild it: a cell that lost its model store cannot be restored by this plan. WHY THE REFUSAL IS NOT ITSELF THE DEFECT: the alternative was emitting `curl` against a registry path that never existed, which fails at apply time on a real host with a transport error that reads as a network fault rather than as the category error it is; and the OTHER alternative — silently degrading to a verify-only plan — is the absorbing fallback, actuating as 'nothing to do' against a host with nothing installed. The line stops, typed and located, naming the producer. WHAT REMAINS: the upstream arm is untouched and still executes its full sequence, and stays enrolled as executing evidence via `test.claim.spark_serving_model_materialization_witness`, which now names `gpt_oss_120b_manifest` explicitly rather than reading desired state — precisely so this arm does not become green-by-vacuity while unselected. PREVIOUS RUNG: mechanically preventable. TEMPORARY RUNG: mitigatable — the gap is refused rather than silent, but the artifact's existence on the cells is an external fact this repository observes and cannot reproduce. RESTORATION TRIGGER — THE CAPABILITY, NOT AN ARTIFACT: a locally materialized manifest can be CONSTRUCTED by the convergence plan from facts this repository owns — the parent artifact's identity and blob closure, and the transformation applied to it — such that a cell with an empty model store converges to the byte-identical resolved identity without a human running `ollama create`. Modeling the Modelfile alone does NOT discharge this row: the plan must construct the artifact and the resulting identity must be checkable against the frozen resolution, or the same unreproducible state persists behind a row that reads as covered." } }
+
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
   floor_cut_effect_gates,
@@ -457,6 +478,7 @@ data rung_drop_roster: List<RungDrop> = [
   builtin_signature_arity_pairing_fabricates,
   concat_binary_signature_exempt_from_arg_binding,
   namespace_admission_consumed_row_deletion,
+  spark_serving_local_artifact_not_reproducible,
   source_root_ingest_gate_rung_drop,
   spark_serving_fleet_global_configuration_drop,
   witness_deferral_freeze_forward_rule_rung_drop,
@@ -529,6 +551,7 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   BuiltinSignatureArityPairingFabricates,
   ConcatBinarySignatureExemptFromArgBinding,
   NamespaceAdmissionConsumedRowDeletion,
+  SparkServingLocalArtifactNotReproducible,
 ]
 
 // EVERY PROSE ROW NAMES ITS OWN IDENTITY. Set equality between the arms and the rows would pass on

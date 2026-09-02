@@ -58,6 +58,18 @@
 //! Adjudicating the consequence as well as the generator would be a second representation of
 //! one fact (DESIGN §2/§3).
 
+// CLIPPY ROSTER -- 5 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::manual_contains,  // 1
+    clippy::useless_format,  // 4
+)]
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::cli_run::declaration_index::{
@@ -651,7 +663,1122 @@ pub struct TransitionAdmission {
 ///
 /// THE RESTING STATE IS RESTORED: empty, and empty is not permissive -- a run with a real delta
 /// still refuses it as UNADJUDICATED.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// FOURTH TRANSITION, SAME RULE (2026-09-02). The `ClaimSafetyOutcome` /
+/// `ClaimPreemptionReachability` relocation of gunbc#10077: both types move from
+/// `v2.workflow.required_floor` to `v2.workflow.floor_terminal_ledger`, beside the
+/// `ClaimAttemptTerminal` arm that carries them, so the ledger stops importing the floor and the
+/// cycle that blocked the wet-route migration opens. Every one of the 57 rows below is a
+/// `TargetChanged` binding whose base is `v2.workflow.required_floor` and whose head is
+/// `v2.workflow.floor_terminal_ledger` — verified as the ONLY shape in the report, so no row here
+/// adjudicates a delta this transition did not cause.
+///
+/// THEY ARE ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Fifty-seven deltas, fifty-seven rows,
+/// each naming its module, its declaration and the exact spelling whose target moved. A wildcard
+/// covering this relocation would also admit the next one nobody reviewed.
+///
+/// TRIGGER: #10077 MERGING. After that, main carries the relocation, so a later run's base and head
+/// both have it and no run can produce these deltas.
+///
+/// THEY WILL REPORT CONSUMED, NOT STALE, AND THE ENTRY ABOVE IS WHY I AM SAYING SO. The seventeenth
+/// dissolution records that its predecessor predicted "stale" and got CONSUMED, and left the wrong
+/// prediction standing because the disposition is what decides WHO PAYS: a stale row matches no
+/// delta, a CONSUMED row is one whose delta is already satisfied at the BASE, and only the second
+/// charges its deletion to the next unrelated roster-toucher. These 57 are authored in the same PR
+/// that performs the move, so once that PR is in main they are satisfied at the base of every
+/// subsequent run — born consumed, exactly as the SJT-1 and DCH-1 cohorts were.
+///
+/// SO THE DELETION IS OWED AND IT SHOULD NOT WAIT FOR ME. They must be removed in the first PR
+/// after #10077 lands, by whoever next touches this roster, which is the convention the sweep above
+/// establishes rather than a favour asked of them. Removing them early is safe and loud — an
+/// unadjudicated delta refuses by name and is closed by re-authoring a row, never by a silent
+/// admission — so the only dangerous direction is leaving them standing.
+const LEDGER_SAFETY_VOCABULARY_LABEL: &str =
+    "ledger safety vocabulary relocation gunbc#10077 2026-09-02";
+
+/// THE SECTION 3 MEANING FORK BETWEEN `gunbc.rung_drop` AND `gunbc.guarantee_rung_drop`, CUT AT THE
+/// ROOT (gunbc#10106). One subject -- a DESIGN section 4b(3) declared rung drop -- had two record
+/// types, two disjoint populations and one projected roster, so four Standing drops were rostered
+/// nowhere while DESIGN section 4b(3) said drops are rostered IN FULL. `gunbc.guarantee_rung_drop`
+/// is DELETED. Its section 4b(2) stall half, a different subject, is `gunbc.guarantee_stall`; the
+/// closed section 4b ladder both subjects are stated in is `gunbc.guarantee_rung`; the drop record
+/// and its population are `gunbc.rung_drop`.
+///
+/// EVERY ROW BELOW IS `TargetChanged`, AND THAT IS THE WHOLE CLAIM: a spelling authored on both
+/// sides now resolves to a different module. NONE of them changes WHICH DECLARATION the spelling
+/// denotes -- the wall reports the module-membership half of the same motion as
+/// `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose meaning had actually
+/// moved would refuse on its own row rather than be covered by these. The rows are enumerated by
+/// exact identity, never by a pattern over the renamed modules, because a pattern would admit a
+/// genuine rebind that happened to land in the same module pair.
+const RUNG_DROP_AUTHORITY_LABEL: &str = "rung drop authority consolidation gunbc#10106 2026-09-02";
+
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "MechanicallyPreventable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.hermetic_mock_fidelity",
+            in_declaration: "HermeticMockRow",
+            spelling: "GuaranteeRung",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.hermetic_mock_fidelity",
+            in_declaration: "hermetic_mock_fidelity_rows",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.hermetic_mock_fidelity",
+            in_declaration: "hermetic_mock_fidelity_rows",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_cut_landing_order",
+            in_declaration: "namespace_cut_landing_order_rung",
+            spelling: "GuaranteeRung",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_cut_landing_order",
+            in_declaration: "namespace_cut_landing_order_rung",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "ClimbableButUnbuilt",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "MechanicallyPreventable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "UncountedNotEnumerable",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "MechanicallyPreventable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_report",
+            spelling: "stall_report_message",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "OutsideTheLadder",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_report",
+            spelling: "stall_report_message",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "ClimbableButUnbuilt",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "green_drop_on_dark_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "red_drop_on_live_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.hermetic_mock_fidelity_witness",
+            in_declaration: "honest_row_names_nothing",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.hermetic_mock_fidelity_witness",
+            in_declaration: "undiagnosed_fabricating_row",
+            spelling: "OutsideTheLadder",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.hermetic_mock_fidelity_witness",
+            in_declaration: "undiagnosed_fabricating_row",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "CannotClimbFurther",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "ClimbableButUnbuilt",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "stall_is_below_ceiling",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "stall_is_permanent",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "OutsideTheLadder",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "stall_is_below_ceiling",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "stall_is_permanent",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "tools.ci_gates",
+            in_declaration: "run_spec_gate",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.effect_reach",
+            in_declaration: "EffectReachClassificationCeiling",
+            spelling: "GuaranteeRung",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.effect_reach",
+            in_declaration: "effect_reach_detection_ceiling",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_both_within_their_own_limits_does_not_block",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_preparation_shared_build",
+            in_declaration: "w_refused_preparation_blocks_though_every_claim_is_healthy",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_a_live_non_nested_compile_operation_is_still_refused",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_a_second_nested_compile_operation_is_admitted",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_completed_past_safety_limit_blocks",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_completed_past_safety_limit_blocks",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_cooperatively_pollable_is_always_admitted",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_blocks_too",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_genuine_interrupt_is_not_relabelled_completed",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_grandfather_population_matches_the_grounded_surface",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_grandfathered_operation_is_admitted",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_new_opaque_operation_is_refused",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration:
+                "w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.preemption_reachability",
+            in_declaration: "w_within_limits_does_not_block",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "ClaimAttemptTerminal",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "claim_disposition",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "claim_disposition",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger",
+            in_declaration: "claim_disposition",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_test",
+            in_declaration: "a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_test",
+            in_declaration: "a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_test",
+            in_declaration: "a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_safety_detail",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_terminal_tag",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_terminal_tag",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire",
+            in_declaration: "render_terminal_tag",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_terminal_ledger_wire_test",
+            in_declaration: "every_shape",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_preemption_admission",
+            spelling: "ClaimPreemptionReachability",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_preemption_admission",
+            spelling: "CooperativelyPollable",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_preemption_admission",
+            spelling: "OpaqueHostCallUnbounded",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "ClaimPreemptionReachability",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "CompletedPastSafetyLimit",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "CompletedWithinSafetyLimits",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "claim_safety_outcome_blocks",
+            spelling: "SafetyInterrupted",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: LEDGER_SAFETY_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.required_floor",
+            in_declaration: "floor_run_blocks",
+            spelling: "ClaimSafetyOutcome",
+            target: "v2.workflow.floor_terminal_ledger",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

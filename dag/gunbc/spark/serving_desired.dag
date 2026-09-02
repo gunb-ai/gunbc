@@ -8,7 +8,13 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_resolution }
-import gunbc.ollama_model_resolution { OllamaResolvedManifest, gpt_oss_120b_manifest, ollama_resolved_manifest_reference }
+import gunbc.ollama_model_resolution { OllamaResolvedManifest, deepseek_v4_no_h3_stop_manifest, ollama_resolved_manifest_reference }
+import gunbc.spark.serving_model_admission {
+  SparkServingModelAxisUpstreamCatalogued,
+  SparkServingModelAxisLocalAttested,
+  SparkServingModelAxisRefused,
+  spark_serving_model_axis,
+}
 import extdeps.ollama.api {
   OllamaModelRef,
 
@@ -66,7 +72,7 @@ import gunbc.spark.serving_realization {
 data spark_serving_desired_hosts: List<HostIdentity> = spark_serving_cell_hosts()
 
 // OPERATOR DECLARATION, as amended (2026-08-12, model amended 2026-09-01 by SPARK-PAIR-0 P1): LAN
-// boundary, ollama runtime, gpt-oss:120b model, executor-owned serving process under
+// boundary, ollama runtime, deepseek-v4-gguf:no-h3-stop model, executor-owned serving process under
 // gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest
 // — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model
 // identity is the manifest digest from /api/tags, not the serving label.
@@ -123,7 +129,7 @@ data spark_serving_desired_endpoint_intent: ServingEndpointIntent = Unauthentica
 // it -- loudly, which is the system working -- but only at apply time on a real host, because
 // nothing in the corpus tied the three facts together. Three independent spellings of "which model"
 // is DESIGN §3's fork sitting in the input to an install plan.
-data spark_serving_desired_manifest: OllamaResolvedManifest = gpt_oss_120b_manifest
+data spark_serving_desired_manifest: OllamaResolvedManifest = deepseek_v4_no_h3_stop_manifest
 
 data spark_serving_desired_model_ref: OllamaModelRef = ollama_resolved_manifest_reference(m: spark_serving_desired_manifest)
 
@@ -147,16 +153,35 @@ data spark_serving_desired_model_ref: OllamaModelRef = ollama_resolved_manifest_
 // authored change of desired state, and where the result already exists on the host, reconciliation
 // plans zero model action rather than a pull.
 //
-// THE SELECTION THIS ROW CARRIES NOW (SPARK-PAIR-0 P1, operator decision): gpt-oss:120b, not 20b.
-// The basis is that the larger model fits on ONE serving cell, so the selection does not depend on a
-// second host -- and the 120b bytes were already resolved onto srv5, so it plans zero model action
-// for the same reason the 2026-08-19 re-selection did.
+// THE SELECTION THIS ROW CARRIES NOW (operator decision, 2026-09-02): deepseek-v4-gguf:no-h3-stop.
+// gpt-oss:120b is RETIRED -- "gpt-oss:120b will not be used anymore" -- and retiring it is a safety
+// fix rather than a preference. Both serving cells were already running the DeepSeek build while
+// this row still named gpt-oss, so desired state and served state disagreed about the one fact the
+// converge slice actuates on. A wet converge in that state would not have drifted toward the
+// selection; it would have ASSERTED it, replacing a working service with a model nobody wanted.
+// Desired state naming something other than what is served is not a stale row, it is a loaded gun.
+//
+// WHAT IS DIFFERENT IN KIND ABOUT THIS SELECTION, and it reaches further than the name. Every
+// previous row here named an upstream library tag. This one names an artifact that was CREATED ON
+// THE CELLS by POST /api/create -- the repair of a parent whose `PARAMETER stop "###"` silently
+// truncated every answer that reached a markdown H3. It has no registry, so three things that were
+// previously implicit had to become modeled facts: the manifest's provenance
+// (gunbc.ollama_model_resolution OllamaManifestProvenance), the refusal of a registry-fetch install
+// plan for it (gunbc.spark.serving_converge_realize), and the runtime-support fact that the ollama
+// catalogue cannot answer for a model ollama does not publish
+// (gunbc.spark.serving_model_admission).
+//
+// THE CONSEQUENCE FOR CONVERGENCE, STATED PLAINLY BECAUSE IT IS A REAL LIMITATION AND NOT A
+// FOOTNOTE: this cell can be converged onto its serving artifact but CANNOT REPRODUCE IT. The
+// materializer refuses rather than emitting a fetch that cannot succeed, so a cell that lost its
+// model store could not be rebuilt from this desired state. That is missing work, it is named here
+// so it stays ranked, and the refusal is what keeps it visible instead of failing at apply time.
 //
 // The capacity claim is re-derived by spark_serving_observe_ci_wet, which reads the cell's /api/tags
-// and its host memory; the resolved identity and its three readings are gpt_oss_120b_resolution.
-// Neither the model's footprint nor the host's memory is transcribed here, because a number copied
-// into prose is unreachable from the instrument that owns it and rots without either end being
-// touched.
+// and its host memory; the resolved identity and its four readings are
+// deepseek_v4_no_h3_stop_resolution. Neither the model's footprint nor the host's memory is
+// transcribed here, because a number copied into prose is unreachable from the instrument that owns
+// it and rots without either end being touched.
 //
 // WHAT THIS ROW STILL DOES NOT DECIDE. How many sessions the cell serves concurrently is not modeled
 // anywhere in desired state, so it is inherited from whatever the launcher defaults to. That default
@@ -181,7 +206,31 @@ fn spark_serving_desired_model_artifact() -> ModelArtifact {
   )
 }
 
+// THE MODEL AXIS IS DECIDED BEFORE THE PLATFORM AXIS, because for a locally materialized artifact
+// the platform verdict cannot answer at all -- the catalogue returns Uncatalogued and the cause it
+// reports would name the model as unsupported when what is actually true is that this repository,
+// not ollama, owns the support fact. Routing the local arm around the catalogue is not skipping a
+// check: gunbc.spark.serving_model_admission applies a STRICTER one, requiring an observed load at
+// the exact required release rather than a version floor.
 fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
+  match spark_serving_model_axis(manifest: spark_serving_desired_manifest) {
+    SparkServingModelAxisRefused { cause: c } =>
+      SparkServingDesiredRefused { cause: c }
+    SparkServingModelAxisLocalAttested { runtime_version: _ } =>
+      SparkServingDesiredAdmitted {
+        serving_release: SparkServingRelease {
+          runtime: RuntimeArtifactIdentity {
+            closure_digest: ollama_runtime_materialization_identity_for_required_release().digest as NonEmptyStr,
+          },
+          model: spark_serving_desired_model_artifact(),
+        },
+      }
+    SparkServingModelAxisUpstreamCatalogued =>
+      spark_serving_desired_upstream_release_admission()
+  }
+}
+
+fn spark_serving_desired_upstream_release_admission() -> SparkServingDesiredAdmission {
   match ollama_runtime_model_compatibility_verdict(
     binary_release: ollama_required_release,
     platform: OllamaNvidiaGb10Spark,

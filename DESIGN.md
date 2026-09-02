@@ -134,6 +134,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Spark serving role-scoped retirement evidence at the production plan root** — declared 2026-09-02
 - **Arity agreement between a declared builtin parameter name and its derived algebra template** — declared 2026-09-01
 - **n-ary concat call sites judged against concat's binary declared signature** — declared 2026-09-01
+- **Reproduction of the Spark serving cell's model artifact from desired state** — declared 2026-09-02
 - **v2.workflow.source_root_ingest_gate** — declared 2026-08-28
 - **the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence** — declared 2026-09-01
 - **gunbc.witness_deferral_freeze forward admission rule** — declared 2026-08-28
@@ -250,6 +251,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `liveness_probe_read_as_currency`
 - `non_verdict_disposition_surfaces_as_refusal`
 - `empty_capture_read_as_clean_result`
+- `unhandled_state_falls_to_the_not_yet_arm`
 - `salience_instrument_blind_to_the_record_it_sizes`
 - `ambient_process_state_read_by_a_concurrent_reader`
 - `predicate_vacuously_true_on_an_empty_domain`

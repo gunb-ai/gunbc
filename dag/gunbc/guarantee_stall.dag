@@ -489,10 +489,14 @@ data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeS
 // rows consolidated from the deleted gunbc.guarantee_rung_drop carry the fields typed, which is
 // what makes this a stall with a known repair rather than a limit.
 //
-// THE OTHER HALF OF THE CLASS IS ALREADY AT ITS CEILING AND IS DELIBERATELY NOT IN THE TRIGGER. A
-// 22ND prose row is structurally impossible -- gunbc.rung_drop LegacyProseIdentity is a closed
-// coproduct of exactly these 21 identities and has no constructor for a new one -- so the prose arm
-// cannot grow. What stalls is the SHRINKING of it, which is per-row work with no mechanical oracle:
+// GROWTH OF THE ARM IS VISIBLE BUT NOT PREVENTED, AND THIS ROW SAID OTHERWISE FIRST. Its first
+// version asserted that a further prose row was structurally impossible because
+// gunbc.rung_drop LegacyProseIdentity had no constructor for one. That was falsified within hours by
+// spark_serving_local_artifact_not_reproducible, authored on another lane against the
+// pre-consolidation shape and landed in main mid-consolidation; admitting it cost one arm. The
+// enumeration makes growth UNSILENT -- an edit to a named list, visible in review, counted by a fold
+// -- and that is mechanically preventable, not structural. What stalls is the SHRINKING of the arm,
+// which is per-row work with no mechanical oracle:
 // deciding which sentence of a paragraph is its reason and which its population is semantic
 // rewriting, and several of these paragraphs argue at length about that very question. Each split
 // deletes one arm from that coproduct, so the arm count IS the remaining debt and nothing has to be
@@ -509,6 +513,7 @@ data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation {
     members: [
+      "gunbc.rung_drop spark_serving_local_artifact_not_reproducible",
       "gunbc.rung_drop floor_cut",
       "gunbc.rung_drop measurement_bankruptcy",
       "gunbc.rung_drop regen_producer",
