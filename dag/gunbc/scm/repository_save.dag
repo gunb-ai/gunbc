@@ -84,6 +84,41 @@ type RepositorySave
   | RepositoryFileUnwritable { path: String, error: String }
   | RepositoryWriteByteCountUnrepresentable { path: String, reported: Int }
 
+// CREATING A REPOSITORY IS NOT SAVING ONE, AND THE DIFFERENCE IS THE WRITE ITSELF.
+//
+// save_repository writes unconditionally, which is correct for its subject: persisting a repository
+// that already exists must replace the bytes that are there. Initialization is the opposite subject
+// -- it must happen ONLY where nothing exists -- and for a long time it was expressed as "observe an
+// absence, then call save_repository". That is two operations with a gap, and an actor creating the
+// file in the gap makes the save truncate exactly the bytes the observation was taken to protect.
+// The observation was honest; the write was not conditioned on it.
+//
+// No re-observation closes that. The fix is that the existence test and the creation become ONE act,
+// which is what Filesystem.WriteCreateNew provides -- so this function refuses a path that exists
+// rather than checking whether it exists. Construction over validation (DESIGN section 5) at a
+// boundary where validation structurally cannot win.
+//
+// The refusal reuses RepositoryFileUnwritable rather than minting a create-specific arm: the caller's
+// remedy is the same -- the bytes are not yours to write and the host says why -- and the error text
+// is the host's own. A second arm would be a second spelling of one outcome (section 3), and one that
+// classified the cause from the error TEXT would be a heuristic standing in for an observation.
+fn create_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      let write = Filesystem.WriteCreateNew(path: path, content: serialize_json(v: v))
+      if !write.success {
+        RepositoryFileUnwritable { path: path, error: write.error }
+      } else if write.bytes_written < 0 {
+        RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
+      } else {
+        RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+      }
+    }
+  }
+}
+
 fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
   match encode_repository_checked(repo: repo) {
     RepositoryEncodeRefused { cause: cause } =>

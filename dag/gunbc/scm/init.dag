@@ -1,0 +1,193 @@
+module gunbc.scm.init
+
+// INITIALIZING A REPOSITORY IS A DECISION BEFORE IT IS A WRITE.
+//
+// `save_repository` writes unconditionally -- correctly, because it is the persistence operation
+// and not a policy. So a verb that offers initialization to an operator has to decide, itself,
+// whether there is anything at the path it would destroy. An earlier revision skipped that
+// decision, called save directly, and NAMED the overwrite in a comment. Naming a destructive
+// default does not make it fail-closed: DESIGN §5's review bar is that a diff landing a
+// non-fail-closed failure arm is a hard reject regardless of what else it delivers, and an
+// annotation is not a refusal. External review was right to block it.
+//
+// AND THE DECISION ALONE WAS STILL NOT ENOUGH, WHICH IS THE THIRD TIME THIS VERB WAS WRONG. Deciding
+// from a listing and then calling save_repository is two operations with a gap: an actor creating the
+// file between the observation and the write makes the save truncate exactly the bytes the decision
+// was taken to protect. The decision was honest and the write was simply not conditioned on it. That
+// is a TOCTOU, review 5085479276 on gunbc#9864 named it, and it is not repairable by observing more
+// carefully -- the check and the write are still not one act. The write now goes through
+// `create_repository`, whose Filesystem.WriteCreateNew makes the existence test and the creation one
+// syscall, so the race has no window rather than a narrow one.
+//
+// AND THE SECOND REVISION WAS STILL FAIL-OPEN, WHICH IS WHY THIS ONE DOES NOT READ FIRST. It
+// proceeded on `RepositoryFileUnreadable`, reasoning that a file it could not read was one the
+// write could not replace either. That reasoning is a guess about the host's permission model, not
+// an observation: a file can be unreadable and perfectly truncatable, so the proceed arm could
+// destroy exactly the bytes it was meant to protect. The residual was NAMED in this module's
+// header and named residuals do not refuse. Review 58060 on gunbc#9864 blocked it.
+//
+// THE FIX IS NOT A BETTER READ, IT IS A DIFFERENT OBSERVATION. `Filesystem.Read`'s success channel
+// cannot separate absent from unreadable -- that is the conflation `extdeps.filesystem.filesystem_io`
+// exists to remove -- so absence is established from a LISTING that succeeded and did not name the
+// entry, and the read is consulted only as the second half of `filesystem_file_observation`'s fold.
+// The four arms are the four actions: nothing is there, so write; bytes are there, so refuse and say
+// which kind; the observation could not be made, so refuse; the two observations disagree, so refuse.
+// Only the first arm reaches `create_repository`, and that call refuses on its own if the path
+// appeared in the meantime.
+//
+// THIS IS WHY THE ENTRY TAKES A DIRECTORY AND A NAME RATHER THAN A PATH. Presence is a fact about a
+// directory listing, so the listing's subject has to be an argument and not something recovered by
+// splitting a string. A path parser here would be a second, positional naming scheme for what the
+// caller already knows, and its failure mode is silent: a caller that passed a bare filename would
+// get a listing of the wrong directory and an absence established about it.
+import std.types { String }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemEntryName,
+  FilesystemEntryNameAdmitted,
+  FilesystemEntryNameRefused,
+  FilesystemEstablishedAbsence,
+  FilesystemFileObservation,
+  admit_filesystem_entry_name,
+  filesystem_entry_name_text,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  filesystem_listing_observation,
+  filesystem_read_outcome,
+  filesystem_file_observation
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable
+}
+import gunbc.scm.repository_envelope {
+  empty_repository,
+  decode_repository,
+  RepositoryDecoded,
+  RepositoryDecodeRefused
+}
+import gunbc.scm.repository_save { RepositorySave, create_repository }
+
+// THE ARMS ARE THE ANSWER. There is no `initialized: Bool` beside a save outcome: a value whose
+// flag disagreed with its shape would have a spelling, and the refusals are distinguished because
+// an operator's next action differs -- one path already IS a repository, one holds something else
+// that would be destroyed, and one could not be observed at all, which is a fault to investigate
+// rather than a state of the path.
+// ONE REFUSAL VOCABULARY, CONSUMED BY BOTH THE DECISION AND THE OUTCOME. The decision about whether
+// bytes may be written and the outcome of the whole verb are different facts -- one is reached
+// without touching the filesystem, the other includes what the write did -- but a refusal means the
+// same thing in both, so it is ONE type. Giving each its own refusal arms would be two spellings of
+// one concept, which is the fork DESIGN section 3 forbids; and folding the decision into the outcome
+// would put an arm on the outcome that is only ever intermediate.
+type ScmInitRefusal
+  = ScmInitRepositoryPresent { path: String }
+  | ScmInitForeignFilePresent { path: String }
+  | ScmInitPathUnobserved { path: String, cause: String }
+  | ScmInitNameNotAnEntry { name: String, cause: String }
+
+// THE ARMS ARE THE ANSWER. There is no `initialized: Bool` beside a save outcome: a value whose flag
+// disagreed with its shape would have a spelling, and the refusals are distinguished because an
+// operator's next action differs -- one path already IS a repository, one holds something else that
+// would be destroyed, one could not be observed at all, and one was never a valid
+// entry name.
+type ScmInitOutcome
+  = ScmInitialized { save: RepositorySave }
+  | ScmInitRefused { cause: ScmInitRefusal }
+
+// WHAT THE OBSERVATION DECIDES, WITHOUT PERFORMING ANYTHING. `ScmInitMayCreate` carries the
+// established absence rather than a bare path, so the permission to write is the SAME value the
+// listing produced and cannot be manufactured beside it -- FilesystemEstablishedAbsence is
+// sole_constructor and its only mint is the substrate fold.
+type ScmInitDecision
+  = ScmInitMayCreate(FilesystemEstablishedAbsence)
+  | ScmInitDecided { cause: ScmInitRefusal }
+
+// PRESENT BYTES ARE CLASSIFIED, NEVER TRUSTED. Both present arms refuse, so this classification
+// changes only what the operator is told -- which is the whole difference between "your repository
+// is already here" and "something else is here and I will not touch it".
+fn init_present_refusal(path: String, content: String) -> ScmInitRefusal {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: _ } => ScmInitForeignFilePresent { path: path }
+    JsonDocumentParsed { value: v } =>
+      match decode_repository(v: v) {
+        RepositoryDecoded { envelope: _ } => ScmInitRepositoryPresent { path: path }
+        RepositoryDecodeRefused { cause: _ } => ScmInitForeignFilePresent { path: path }
+      }
+  }
+}
+
+// THE NAME IS ADMITTED BEFORE IT IS USED TWICE. This function asks the listing about `name` and
+// separately joins `directory + "/" + name` into a path, and an ordinary String does not guarantee
+// those two describe the same subject: `subdir/repo.json` is asked about as a child of `directory`
+// while the join reaches into a subdirectory, `../victim` leaves the listed directory entirely, and
+// a name carrying a newline can make the membership test over the newline-delimited listing answer
+// about an entry that is not there. Admitting once and using the SAME admitted component for both
+// closes the gap between the question and the action; a refused name never reaches either.
+fn initialize_repository(directory: String, name: String) -> ScmInitOutcome {
+  match admit_filesystem_entry_name(name: name) {
+    FilesystemEntryNameRefused { name: n, cause: c } =>
+      ScmInitRefused { cause: ScmInitNameNotAnEntry { name: n, cause: c } }
+    FilesystemEntryNameAdmitted(component) =>
+      initialize_repository_at(directory: directory, component: component)
+  }
+}
+
+fn initialize_repository_at(
+  directory: String,
+  component: FilesystemEntryName,
+) -> ScmInitOutcome {
+  let entry = filesystem_entry_name_text(component: component)
+  let path = join([directory, "/", entry], "")
+  let listed = Filesystem.List(path: directory)
+  let read = Filesystem.Read(path: path)
+  match scm_init_decision(
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(
+        directory: directory,
+        success: listed.success,
+        entries: listed.entries,
+        error: listed.error
+      ),
+      name: entry,
+      path: path,
+      read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+    ),
+    path: path,
+  ) {
+    ScmInitDecided { cause: c } => ScmInitRefused { cause: c }
+    ScmInitMayCreate(_) =>
+      ScmInitialized { save: create_repository(path: path, repo: empty_repository()) }
+  }
+}
+
+// AND THE MUTATION THAT WOULD MATTER MOST CANNOT BE WRITTEN. Routing the indeterminate or the
+// present arm to the write arm is authorable, and both are held red by
+// test.claim.scm.scm_cli_witness (an_unobservable_path_does_not_authorize_a_write and
+// only_an_established_absence_may_create each fail under exactly that edit). Routing the DISAGREEMENT
+// arm there is not authorable at all: ScmInitMayCreate carries a FilesystemEstablishedAbsence, which
+// is sole_constructor and minted only by the substrate fold from a listing that succeeded, so no arm
+// can manufacture the permission to write. The rung is therefore split and stated rather than
+// averaged: structurally impossible for fabricating a write permission (rung 4, no constructor),
+// and mechanically preventable for routing a REAL absence to the wrong outcome (rung 2, held by the
+// claims above).
+//
+// THE DECISION IS ITS OWN FUNCTION SO IT CAN BE WITNESSED WITHOUT A FILESYSTEM. Every arm below is a
+// choice about whether bytes may be written, and while it lived inside the effectful entry the only
+// reachable evidence was that refusals RENDER -- a mutation routing indeterminate or disagreement to
+// the write arm left every enrolled claim green. Separating the fold from the two operations that
+// feed it makes the four arms drivable one fact apart, which is the difference between a tested
+// decision and a tested renderer.
+fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> ScmInitDecision {
+  match observation {
+    FilesystemFileAbsent(absence) => ScmInitMayCreate(absence)
+    FilesystemFileRead { path: p, content: c } =>
+      ScmInitDecided { cause: init_present_refusal(path: p, content: c) }
+    FilesystemFileIndeterminate { cause: c } =>
+      ScmInitDecided { cause: ScmInitPathUnobserved { path: path, cause: c } }
+    FilesystemFileObservationsDisagree { path: p, cause: c } =>
+      ScmInitDecided { cause: ScmInitPathUnobserved { path: p, cause: c } }
+  }
+}

@@ -91,20 +91,26 @@ Receipts, by execution against `dag/test/fixture/scm_repository_load/empty_repos
 The third is the load-bearing one: bytes printed AND a nonzero exit, the case an absorbing
 implementation turns into silence or a spurious 0.
 
-### `init` — DEFERRED, and not part of this change
+### `init` — LANDED separately, via the create-only write (#10026)
 
-**Everything in this subsection describes a PRIOR INIT PROTOTYPE that is NOT landing here.** It is
-preserved on branch `scm-init-create-only` (gunbc#10026) and was cut from this PR deliberately.
-The receipts below established facts about that prototype; they are NOT receipts for the
-log/status-only change landing in this PR, and nothing below may be read as evidence for it.
+**init was CUT from the log/status change and landed on its own, as gunbc#10026.** The receipts
+below were taken against the ORIGINAL prototype and are kept as its historical record; the shape
+that actually landed differs, and the differences are the point.
 
-Why it was cut rather than fixed in place: the prototype observes an absence and then calls
-`save_repository`, which writes UNCONDITIONALLY. A racing actor between the observation and the
-write makes it truncate the very bytes it claims to refuse — a TOCTOU the four-arm fold above
-does not close, because the fold decides on a fact that can stop being true before the write
-happens. Closing it needs an atomic create-only write (`O_CREAT|O_EXCL`), which is a new modeled
-file-transport verb in a load-bearing pipeline stage, so it lands as its own change with its own
-review rather than riding along here.
+Why it could not ride along: the prototype observed an absence and then called `save_repository`,
+which writes UNCONDITIONALLY. A racing actor between the observation and the write makes it
+truncate the very bytes it claims to refuse — a TOCTOU the four-arm fold does not close, because
+the fold decides on a fact that can stop being true before the write happens. Closing it needed an
+atomic create-only write (`O_CREAT|O_EXCL`) as a new modeled file-transport verb, which is why it
+became its own change with its own review.
+
+What #10026 landed, and what review then found still open in it: `Filesystem.WriteCreateNew` makes
+the existence test and the creation one syscall, and `create_repository` routes through it. Review
+`5089156132` then found six further defects in the init MODEL — among them that `ScmInitialized`
+could contain a FAILED save, and that the `FilesystemEstablishedAbsence` authorizing the write was
+matched as `_` and discarded while the actuation used an independently supplied path. Those are
+being repaired in the follow-up on the same branch; do not read this subsection as describing a
+finished init.
 
 `scm_init` takes a DIRECTORY and a NAME rather than a path, because presence is a fact about a
 directory listing and recovering the directory by splitting a string would be a second, positional
@@ -164,10 +170,10 @@ CI step that runs an integration target, not another test file.
 
 Settled by execution, so not open questions any more:
 
-- **A host WRITE is permitted from `gunbc run`** — established by the deferred init prototype
-  above, which created a file. That fact survives the deferral (it is a fact about the HOST, not
-  about init's safety), but it is carried here as prototype evidence, not as something this PR
-  landed. The remaining write verbs are a modeling question, not a permissions one.
+- **A host WRITE is permitted from `gunbc run`** — established by the init prototype above, which
+  created a file, and since confirmed by #10026 landing the create-only write. It is a fact about
+  the HOST, not a claim that init's model is finished. The remaining write verbs are a modeling
+  question, not a permissions one.
 - **Content goes in via `store_node(store, n: Node) -> StoreOutcome`** (`gunbc.scm.object_store`).
 - **A Node is built with `node_synthetic`** (`v2.std.node`):
   `node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])`. The `atom`
