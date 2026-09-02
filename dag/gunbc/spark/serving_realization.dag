@@ -566,16 +566,35 @@ fn serving_reactivation_effect_wire(effect: ServingReactivationEffect) -> String
 // FOUR STATES, BECAUSE THE PROBE CAN DISTINGUISH FOUR AND FOLDING ANY PAIR LOSES A REMEDY.
 //
 // `RunningDefinitionUnstamped` is a POSITIVE READING, not a failure to read: the process is running
-// and carries no definition identity at all, which is what a process started before the identity was
-// stamped looks like. Folding it into `Unobserved` would spend real evidence as ignorance and leave
-// exactly the stale process this vocabulary exists to catch permanently undecidable -- and on the
-// two hosts this lane cares about, that is the state they are most likely actually in.
+// and carries no definition identity at all. Folding it into `Unobserved` would spend real evidence
+// as ignorance and leave exactly the stale process this vocabulary exists to catch permanently
+// undecidable -- and on the two hosts this lane cares about, that is the state they are most likely
+// actually in.
 //
-// THE PREMISE THAT ARM RESTS ON, stated because the conclusion is only as good as it: an unstamped
-// process is stale ONLY BECAUSE the desired definition stamps unconditionally. If a desired spec is
-// ever admitted that does not stamp, an unstamped process could be the desired one and this arm
-// would restart a converged host. That premise belongs to whatever renders the unit; it is named
-// here so its owner is visible rather than assumed.
+// WHAT IT ESTABLISHES IS NOT CHRONOLOGY, and the earlier wording here claimed it was. This arm used
+// to say an unstamped process PREDATES the desired definition. That is stronger than the reading
+// supports: a foreign process, or one started by hand, carries no stamp either and may have been
+// started LATER. Nothing here measures when anything started. What the reading establishes is that
+// the running process carries no definition identity, so it CANNOT BE ESTABLISHED as having been
+// started from the current desired stamped definition -- and the remedy is unchanged, because
+// unestablished is precisely what a restart is the remedy for.
+//
+// FOUR PRECONDITIONS CARRY THAT NARROWED CLAIM, and each is owned somewhere other than this
+// function, which is why they are named rather than assumed:
+//
+//   1. The environment read COMPLETED. An arm minted from a read that did not finish is an
+//      unobserved state wearing a positive one.
+//   2. ABSENCE IS DISTINGUISHED FROM FAILURE TO SEE. Permission denied, a parse that did not
+//      recognise the stamp, a truncated read, and an observation that never ran are four ways to
+//      find no stamp WITHOUT establishing that none is there; every one of them belongs in
+//      `RunningDefinitionUnobserved` with its cause, never here. This arm means the read succeeded
+//      and the stamp was genuinely absent.
+//   3. The desired specification STAMPS UNCONDITIONALLY. If a desired spec is ever admitted that
+//      does not stamp, an unstamped process could be the desired one and this arm would restart a
+//      converged host. That premise belongs to whatever renders the unit.
+//   4. The stamp identity COVERS EVERY PROCESS-START INPUT whose change requires reactivation. A
+//      stamp over a proper subset answers a narrower question than the one this arm is read as
+//      answering, so a process differing only in an uncovered input reads as current.
 //
 // `RunningDefinitionNotRunning` is the absence of the subject. A unit that is not running has no
 // definition it was started from, so the question this type asks does not apply -- which is neither
@@ -634,7 +653,7 @@ fn spark_serving_reactivation_remedy(
     RunningDefinitionUnstamped =>
       spark_serving_reactivation_required(
         realization: realization,
-        cause: "spark_serving_reactivation_remedy: the running process carries no definition identity, so it predates the desired definition" as NonEmptyStr,
+        cause: "spark_serving_reactivation_remedy: the running process carries no definition identity, so it cannot be established as having been started from the current desired stamped definition" as NonEmptyStr,
       )
     RunningDefinitionUnobserved { cause: why } =>
       ReactivationUndecidable {
