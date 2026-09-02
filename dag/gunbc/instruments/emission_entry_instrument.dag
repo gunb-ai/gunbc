@@ -7,6 +7,8 @@ import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.cargo_build
+import extdeps.rustc
+import extdeps.rustc { rustc_version_verbose_field }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { Digest }
 import extdeps.tools.rustfmt
@@ -519,6 +521,16 @@ fn emission_scope_entry(sc: EmissionScope) -> EmissionScopeEntry {
   }
 }
 
+// THE COMPILATION TARGET IS PINNED BY THIS INVOCATION, NOT INFERRED FROM THE HOST. `cargo check`
+// without `--target` selects its target from `CARGO_BUILD_TARGET` or cargo configuration, so a
+// receipt that records rustc's host triple records what the machine IS rather than what was
+// compiled. Two censuses taken under different effective targets would then compare as equal
+// epochs and a regression gate could report Held across them -- a fabricated plausible output in
+// the sense DESIGN section 5 forbids, and rung inflation in the sense of section 4b, since the
+// reported comparability would exceed what the evidence established. Passing the triple makes the
+// recorded target TRUE BY CONSTRUCTION rather than checked afterwards, which is section 5's order
+// of preference; and where the triple cannot be read the half REFUSES, because an unpinned target
+// is exactly the state this pin exists to exclude. Found by review on gunbc#9857.
 fn measure_cargo_half(
   subject: EmissionMeasurementSubject,
   root: String,
@@ -614,51 +626,62 @@ fn measure_cargo_half(
             }
           }
         )
-        let build = cargo.Build.CheckManifestMessages(
-          workdir: out_dir,
-          manifest_path: concat(out_dir, "/Cargo.toml"),
-          target_dir: concat(out_dir, "/target"),
-          extra_args: ["--lib"]
-        )
-        match cargo_scan_diagnostics(stdout: build.stdout) {
-          CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: _ } =>
-            if !ok && count(cargo_error_identity_rows(ds: ds)) == 0 {
+        match rustc_version_verbose_field(stdout: rustc.Identity.VersionVerbose().stdout, key: "host") {
+          Absent => EmissionCargoUnreached {
+            subject: subject,
+            stage: StageCargo,
+            cause: "rustc did not report a host triple, so the compilation target of this measurement cannot be established. The recorded target would be an assumption rather than an observation, and a census compared across targets is not a comparison.",
+            emit_diagnostics: emit_diagnostics,
+            emitted_files: emitted_files
+          }
+          Present { value: measured_target } => {
+          let build = cargo.Build.CheckManifestMessages(
+            workdir: out_dir,
+            manifest_path: concat(out_dir, "/Cargo.toml"),
+            target_dir: concat(out_dir, "/target"),
+            extra_args: ["--lib", "--target", measured_target]
+          )
+          match cargo_scan_diagnostics(stdout: build.stdout) {
+            CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: _ } =>
+              if !ok && count(cargo_error_identity_rows(ds: ds)) == 0 {
+                EmissionCargoUnreached {
+                  subject: subject,
+                  stage: StageCargo,
+                  cause: concat(
+                    concat(
+                      concat("cargo reported the build FAILED while decoding to ZERO error diagnostics (message lines scanned: ", to_string(n)),
+                      "). A failing cargo run must carry at least one error diagnostic, so this stream did not measure the tree: the failure was reported outside the compiler-message channel (dependency resolution, a manifest error, an OOM, a killed process) and no diagnostic population can be derived from it. Refusing rather than emitting a board whose cargo_population and codeless fields would read 0 -- indistinguishable from a clean tree, which is the state this instrument exists to certify. cargo stderr: "
+                    ),
+                    build.stderr
+                  ),
+                  emit_diagnostics: emit_diagnostics,
+                  emitted_files: emitted_files
+                }
+              } else {
+                EmissionMeasured {
+                  subject: subject,
+                  emitted_files: emitted_files,
+                  emit_diagnostics: emit_diagnostics,
+                  emitted_artifact_identity: artifact_identity,
+                  rustfmt_parse_observation: parse_observation,
+                  cargo_clean: ok,
+                  cargo_diagnostics: ds,
+                  cargo_lines_scanned: n
+                }
+              }
+            scan =>
               EmissionCargoUnreached {
                 subject: subject,
-                stage: StageCargo,
+                stage: StageCargoDecode,
                 cause: concat(
-                  concat(
-                    concat("cargo reported the build FAILED while decoding to ZERO error diagnostics (message lines scanned: ", to_string(n)),
-                    "). A failing cargo run must carry at least one error diagnostic, so this stream did not measure the tree: the failure was reported outside the compiler-message channel (dependency resolution, a manifest error, an OOM, a killed process) and no diagnostic population can be derived from it. Refusing rather than emitting a board whose cargo_population and codeless fields would read 0 -- indistinguishable from a clean tree, which is the state this instrument exists to certify. cargo stderr: "
-                  ),
-                  build.stderr
+                  cargo_diagnostic_scan_refusal_reason(scan: scan),
+                  concat(" — cargo stderr: ", build.stderr)
                 ),
                 emit_diagnostics: emit_diagnostics,
                 emitted_files: emitted_files
               }
-            } else {
-              EmissionMeasured {
-                subject: subject,
-                emitted_files: emitted_files,
-                emit_diagnostics: emit_diagnostics,
-                emitted_artifact_identity: artifact_identity,
-                rustfmt_parse_observation: parse_observation,
-                cargo_clean: ok,
-                cargo_diagnostics: ds,
-                cargo_lines_scanned: n
-              }
-            }
-          scan =>
-            EmissionCargoUnreached {
-              subject: subject,
-              stage: StageCargoDecode,
-              cause: concat(
-                cargo_diagnostic_scan_refusal_reason(scan: scan),
-                concat(" — cargo stderr: ", build.stderr)
-              ),
-              emit_diagnostics: emit_diagnostics,
-              emitted_files: emitted_files
-            }
+          }
+          }
         }
           }
         }
