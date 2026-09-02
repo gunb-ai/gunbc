@@ -6,7 +6,15 @@ import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
 import std.content_hash {
   ContentHash, ContentHashComparison, ContentHashEqual, ContentHashDifferent,
   ContentHashCrossFamilyIncomparable, compare_content_hash,
+  Fnv1a64Structural, content_hash_atom, content_hash_eq_structural,
+  content_hash_combine_structural,
 }
+import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity }
+import extdeps.ollama.binary_release {
+  OllamaBinaryRelease, ollama_binary_release_for_observed_asset_digest,
+  ollama_reported_version_matches_release,
+}
+import product.placement_supply { HostIdentity, host_identity_eq }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   TokenCount, token_count, token_count_value,
@@ -97,25 +105,121 @@ import std.measure {
 // observes today. It is a sole_constructor carrier with one mint, so a bare string cannot travel as
 // a runtime identity. NEXT-RUNG TRIGGER for this axis alone: an observed runtime build identity --
 // the binary's own digest or a version endpoint reading -- at which point it joins the two above.
+// SEALING A CARRIER DOES NOT GROUND ITS INPUTS, which is what the predecessor got wrong here.
+// ServingRuntimeIdentity was sole_constructor -- and its one mint accepted a freely authored
+// {name, version}, so two different Ollama binaries both minted `ollama x 0.32.9` and compared
+// equal. The seal stopped an outside record literal and did nothing about the fiction inside it.
+//
+// AND THE REPOSITORY ALREADY OWNS THIS FACT. gunbc.ollama_runtime_bundle
+// ollama_runtime_materialization_identity_for_observed_release maps an observed /api/version wire
+// PLUS a cited release-asset digest to exactly one catalog row, and refuses when they disagree --
+// written precisely because the version wire alone is ambiguous across the generic-cuda and jetpack
+// builds at v0.32.9. A second {name, version} carrier beside it was a nickname for that authority
+// (section 3), so it is deleted rather than repaired.
+//
+// The only mint now delegates there. A runtime identity therefore cannot exist without an observed
+// version and an observed asset digest that agree on one catalog row.
 type ServingRuntimeIdentity sole_constructor {
-  name: NonEmptyStr
-  version: NonEmptyStr
+  materialization: Fnv1a64Structural
 }
 
-fn serving_runtime_identity(name: NonEmptyStr, version: NonEmptyStr) -> ServingRuntimeIdentity {
-  ServingRuntimeIdentity { name: name, version: version }
+// TWO MINTS, AND THE DIFFERENCE IS EPISTEMIC, NOT CONVENIENCE. A CITED release row is a closed
+// authority -- the bytes, arch, variant, codec and entrypoint are all in hand -- so its identity is
+// TOTAL. An OBSERVED runtime is a reading off a live host, and whether that reading names a release
+// we know is exactly the question, so its identity is OPTIONAL. Both route through the same seed, so
+// an observation that does name a cited release mints the identity that release already had.
+fn serving_runtime_identity_for_release(rel: OllamaBinaryRelease) -> ServingRuntimeIdentity {
+  ServingRuntimeIdentity { materialization: ollama_runtime_materialization_identity(rel: rel) }
+}
+
+fn serving_runtime_identity_from_observation(
+  version: String,
+  asset_digest_hex: String,
+) -> ServingRuntimeIdentity? {
+  match ollama_binary_release_for_observed_asset_digest(digest_hex: asset_digest_hex) {
+    Absent => none
+    Present { value: rel } =>
+      if ollama_reported_version_matches_release(version: version, rel: rel) {
+        Present { value: serving_runtime_identity_for_release(rel: rel) }
+      } else {
+        none
+      }
+  }
 }
 
 fn serving_runtime_equal(a: ServingRuntimeIdentity, b: ServingRuntimeIdentity) -> Bool {
-  (a.name as String) == (b.name as String) && (a.version as String) == (b.version as String)
+  content_hash_eq_structural(left: a.materialization, right: b.materialization)
 }
 
-type ResolvedRuntimeConfiguration sole_constructor {
-  argv_digest: ContentHash
+// TWO CONFIGURATION GRAINS, because one digest cannot answer for both and conflating them was a
+// measured inconsistency in this module's own fixture: a single argv digest was carried for readings
+// at 131,072, 262,144, 400,000 and 1,048,576 tokens, while the resolved argv encodes the context and
+// the slot count through `-c` and `-np`. One exact full-argv digest cannot identify four points.
+//
+// FIXED MODE is the argv with the VARIED axes removed -- the flags held constant across a
+// measurement series (`--flash`, `--load-mode`, the model path). It is what two readings must share
+// before one can bound the other, and it is DERIVED from the observed argv rather than authored.
+//
+// EXACT CONFIGURATION is the whole argv of ONE measured point. It belongs on the observation, not on
+// the realization, because it changes per reading by construction.
+//
+// Both are derived by the functions below from an argv the observer actually read. There is no mint
+// that accepts a bare hash: a digest with no argv behind it is the claim-shaped input this repair
+// exists to remove.
+type FixedRuntimeModeIdentity sole_constructor {
+  mode_digest: Fnv1a64Structural
 }
 
-fn resolved_runtime_configuration(argv_digest: ContentHash) -> ResolvedRuntimeConfiguration {
-  ResolvedRuntimeConfiguration { argv_digest: argv_digest }
+fn argv_digest_of(argv: List<NonEmptyStr>) -> Fnv1a64Structural {
+  fold(argv, content_hash_atom(value: "argv" as NonEmptyStr), (acc, word) =>
+    content_hash_combine_structural(left: acc, right: content_hash_atom(value: word)))
+}
+
+// The varied flags AND their values are DROPPED, not blanked, so the mode digest is invariant to
+// their values by construction rather than by the caller remembering to pass matching ones.
+//
+// A LEFT SCAN, NOT AN INDEX LOOKUP. The predecessor walked positions and read argv[i-1] through an
+// at_index helper whose out-of-range arm returned `"" as NonEmptyStr` -- a value that is not a
+// NonEmptyStr at all, fabricated to keep a total signature. The scan carries the one bit that
+// lookup was reconstructing: whether the PREVIOUS word was a varied flag, so its value is the word
+// to drop. Nothing can go out of range, so there is no arm to fabricate for.
+type ArgvScan {
+  kept: List<NonEmptyStr>
+  drop_next: Bool
+}
+
+fn argv_scan_step(acc: ArgvScan, word: NonEmptyStr, varied: List<NonEmptyStr>) -> ArgvScan {
+  if acc.drop_next {
+    ArgvScan { kept: acc.kept, drop_next: false }
+  } else {
+    if word_in(roster: varied, word: word) {
+      ArgvScan { kept: acc.kept, drop_next: true }
+    } else {
+      ArgvScan { kept: flat_map([acc.kept, [word]], g => g), drop_next: false }
+    }
+  }
+}
+
+fn drop_varied_flags(argv: List<NonEmptyStr>, varied: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(argv, ArgvScan { kept: [], drop_next: false }, (acc, word) =>
+    argv_scan_step(acc: acc, word: word, varied: varied)).kept
+}
+
+fn word_in(roster: List<NonEmptyStr>, word: NonEmptyStr) -> Bool {
+  length(filter(roster, r => (r as String) == (word as String))) > 0
+}
+
+fn fixed_runtime_mode_from_argv(
+  argv: List<NonEmptyStr>,
+  varied_flags: List<NonEmptyStr>,
+) -> FixedRuntimeModeIdentity {
+  FixedRuntimeModeIdentity {
+    mode_digest: argv_digest_of(argv: drop_varied_flags(argv: argv, varied: varied_flags)),
+  }
+}
+
+fn fixed_runtime_mode_equal(a: FixedRuntimeModeIdentity, b: FixedRuntimeModeIdentity) -> Bool {
+  content_hash_eq_structural(left: a.mode_digest, right: b.mode_digest)
 }
 
 type ServingRealizationIdentity sole_constructor {
@@ -123,7 +227,7 @@ type ServingRealizationIdentity sole_constructor {
   quant_label: NonEmptyStr
   artifact_digest: ContentHash
   runtime: ServingRuntimeIdentity
-  runtime_config: ResolvedRuntimeConfiguration
+  fixed_mode: FixedRuntimeModeIdentity
 }
 
 // The only mint. sole_constructor already refuses a record literal outside this module; this is the
@@ -133,14 +237,14 @@ fn serving_realization_identity(
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
   runtime: ServingRuntimeIdentity,
-  runtime_config: ResolvedRuntimeConfiguration,
+  fixed_mode: FixedRuntimeModeIdentity,
 ) -> ServingRealizationIdentity {
   ServingRealizationIdentity {
     release_id: release_id,
     quant_label: quant_label,
     artifact_digest: artifact_digest,
     runtime: runtime,
-    runtime_config: runtime_config,
+    fixed_mode: fixed_mode,
   }
 }
 
@@ -212,9 +316,7 @@ fn compare_serving_realization(
     ),
     later: realization_comparison_then(
       earlier: compare_bool_axis(same: serving_runtime_equal(a: a.runtime, b: b.runtime)),
-      later: compare_digest_axis(
-        axis: "resolved runtime configuration digest" as NonEmptyStr,
-        a: a.runtime_config.argv_digest, b: b.runtime_config.argv_digest),
+      later: compare_bool_axis(same: fixed_runtime_mode_equal(a: a.fixed_mode, b: b.fixed_mode)),
     ),
   )
 }
@@ -316,7 +418,7 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 // on one node does not describe another. Both now join.
 type FreshPrefillObservation {
   realization: ServingRealizationIdentity
-  node: NonEmptyStr
+  node: HostIdentity
   concurrent_sessions: Nat
   depth: TokenCount
   rate: TokensPerSecond
@@ -335,7 +437,7 @@ type FreshPrefillObservation {
 fn prefill_rate_at_floor(
   observations: List<FreshPrefillObservation>,
   realization: ServingRealizationIdentity,
-  node: NonEmptyStr,
+  node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
   regime: ServingRegime,
@@ -350,21 +452,41 @@ fn prefill_rate_at_floor(
   }
 }
 
-// DEPTH AND CONCURRENCY QUALIFY IN THE SAME DIRECTION, and it is the conservative one: a rate
-// measured DEEPER and under MORE concurrent load bounds the rate at a shallower, quieter demand,
-// because both axes cost throughput. A shallower or quieter reading flatters the candidate, so it
-// does not qualify. The node must match exactly -- it is not an axis with a direction.
+// DEPTH CARRIES A DIRECTION. CONCURRENCY DOES NOT -- NOT YET, AND THE DIFFERENCE IS EVIDENCE.
+//
+// Depth qualifies conservatively: a rate measured DEEPER bounds the rate at a shallower demand,
+// because prefill re-reads the whole context and attention cost grows with it, so a deep reading
+// cannot flatter a shallow demand. That direction is grounded in what the work IS, not in how a
+// particular server schedules it.
+//
+// The predecessor gave concurrency the same treatment on the same sentence -- "both axes cost
+// throughput" -- and that is an ASSERTION ABOUT A SCHEDULER, not a fact about the work. It has two
+// holes and either one inverts it. First, metric semantics: if `rate` is per-request tokens/s then
+// more concurrency does lower it, but if it is the server's AGGREGATE prefill rate then continuous
+// batching RAISES it with concurrency, and the same number read the other way makes a 4-session
+// reading a flattering one rather than a bounding one. Nothing in FreshPrefillObservation declares
+// which it is. Second, even granting per-request semantics, monotonicity across the batching
+// threshold is unmeasured on this fleet -- a request that fits one slot and a request that waits in
+// a queue are not two points on one curve.
+//
+// So concurrency binds EXACT until both receipts exist: a declared metric semantics on the carrier,
+// and a measured monotonicity across the range the selector would interpolate over. Exact matching
+// shrinks the qualifying population, so more candidates come back PrefillRateUnmeasuredAtFloor --
+// unanswerable rather than answered from a reading that may point the wrong way. That is the
+// fail-closed direction, and the cost of it is visible in the refusal rather than hidden in a rate.
+//
+// The node must match exactly for a third reason: it is not an axis with a direction at all.
 fn slowest_fresh_rate_at_floor(
   observations: List<FreshPrefillObservation>,
   realization: ServingRealizationIdentity,
-  node: NonEmptyStr,
+  node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
 ) -> TokensPerSecond? {
   let deep = filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
-      && (o.node as String) == (node as String)
-      && o.concurrent_sessions >= hot_sessions
+      && host_identity_eq(a: o.node, b: node)
+      && o.concurrent_sessions == hot_sessions
       && token_count_value(t: o.depth) >= token_count_value(t: floor))
   fold(deep, none, (worst, o) =>
     match worst {
@@ -432,7 +554,7 @@ type RunnerAttemptOutcome
 
 type OllamaRunnerMemoryObservation {
   realization: ServingRealizationIdentity
-  node: NonEmptyStr
+  node: HostIdentity
   instrument: NonEmptyStr
   context_depth: TokenCount
   concurrent_sessions: Nat
@@ -478,30 +600,16 @@ type MemoryFitEvidence
 // it is not counted as a different realization: skipping it would silently shrink the population the
 // verdict is drawn from, which is how a held measurement turns into "unobserved". The axis that
 // could not be lined up is carried out so the refusal names what to fix.
-fn first_incomparable_axis(
-  observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
-  node: NonEmptyStr,
-) -> NonEmptyStr? {
-  let on_this_node = filter(observations, o => (o.node as String) == (node as String))
-  fold(on_this_node, none, (found, o) =>
-    match found {
-      Present { value: a } => Present { value: a }
-      Absent => incomparable_axis(
-        comparison: compare_serving_realization(a: o.realization, b: realization))
-    })
-}
-
 fn served_qualifying_observations(
   observations: List<OllamaRunnerMemoryObservation>,
   realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
-  node: NonEmptyStr,
+  node: HostIdentity,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
-      && (o.node as String) == (node as String)
+      && host_identity_eq(a: o.node, b: node)
       && token_count_value(t: o.context_depth) >= token_count_value(t: floor)
       && o.concurrent_sessions >= hot_sessions
       && outcome_is_served(o: o))
@@ -512,11 +620,11 @@ fn refused_at_exact_point(
   realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
-  node: NonEmptyStr,
+  node: HostIdentity,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
-      && (o.node as String) == (node as String)
+      && host_identity_eq(a: o.node, b: node)
       && token_count_value(t: o.context_depth) == token_count_value(t: floor)
       && o.concurrent_sessions == hot_sessions
       && outcome_is_memory_refusal(o: o))
@@ -529,11 +637,11 @@ fn failed_otherwise_at_exact_point(
   realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
-  node: NonEmptyStr,
+  node: HostIdentity,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(observations, o =>
     serving_realization_equal(a: o.realization, b: realization)
-      && (o.node as String) == (node as String)
+      && host_identity_eq(a: o.node, b: node)
       && token_count_value(t: o.context_depth) == token_count_value(t: floor)
       && o.concurrent_sessions == hot_sessions
       && outcome_is_other_failure(o: o))
@@ -576,17 +684,102 @@ fn outcome_is_other_failure(o: OllamaRunnerMemoryObservation) -> Bool {
     served: false, refused_for_memory: false, failed_otherwise: true)
 }
 
+// INCOMPARABILITY IS ONLY LOAD-BEARING WHERE THE OBSERVATION WOULD OTHERWISE HAVE PARTICIPATED.
+//
+// The predecessor filtered on node alone and asked every remaining observation whether its identity
+// compared. That makes an IRRELEVANT reading load-bearing: a footprint taken at 8,192 tokens whose
+// artifact digest was recorded in a different hash family has nothing to say about a 400,000-token
+// demand, but under a node-only filter its undecidable axis stalls the candidate outright. The whole
+// roster then becomes a stall surface, and the more evidence a node accumulates the less answerable
+// it gets -- precisely backwards.
+//
+// The rule is that an observation must clear its POINT conditions before its identity matters. Those
+// conditions are independent of identity, so they can be evaluated on an observation whose identity
+// cannot be compared, and they are the asymmetric ones already established elsewhere in this module:
+// a success qualifies from a deeper and busier point, a refusal or a non-memory failure speaks only
+// at its exact point. An observation that fails them is irrelevant on facts that have nothing to do
+// with the digest, and stays irrelevant.
+fn participates_at_point(
+  o: OllamaRunnerMemoryObservation,
+  floor: TokenCount,
+  hot_sessions: Nat,
+) -> Bool {
+  let generalizes = token_count_value(t: o.context_depth) >= token_count_value(t: floor)
+    && o.concurrent_sessions >= hot_sessions
+  let exact = token_count_value(t: o.context_depth) == token_count_value(t: floor)
+    && o.concurrent_sessions == hot_sessions
+  runner_attempt_fold(outcome: o.outcome,
+    served: generalizes, refused_for_memory: exact, failed_otherwise: exact)
+}
+
+fn first_incomparable_axis(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+  floor: TokenCount,
+  hot_sessions: Nat,
+  node: HostIdentity,
+) -> NonEmptyStr? {
+  let relevant = filter(observations, o =>
+    host_identity_eq(a: o.node, b: node)
+      && participates_at_point(o: o, floor: floor, hot_sessions: hot_sessions))
+  fold(relevant, none, (found, o) =>
+    match found {
+      Present { value: a } => Present { value: a }
+      Absent => incomparable_axis(
+        comparison: compare_serving_realization(a: o.realization, b: realization))
+    })
+}
+
 // The SHALLOWEST qualifying attempt, because it is the one closest to the configuration actually
 // requested. Depth is the axis the demand is expressed in, so ordering on it is ordering on the
 // question rather than on an incidental byte count.
+//
+// ORDER-INDEPENDENCE IS THE WHOLE POINT, AND DEPTH ALONE DOES NOT BUY IT. The qualifying population
+// is filtered by depth >= floor and sessions >= hot_sessions, so two readings can qualify at the
+// SAME depth and differ on concurrency, on reported footprint, or on the instrument that produced
+// them. Comparing on depth alone leaves those tied, and a tie resolved by taking the incumbent is
+// resolved by ROSTER ORDER: the same evidence set handed to the selector in a different sequence
+// reports a different witness, and the receipt a refusal cites stops being a function of the facts.
+// That is the same defect this module refuses elsewhere -- an answer that depends on how the
+// question was spelled -- so the comparison is a TOTAL lexicographic order over every axis a
+// qualifying pair can differ on. The last key is the instrument string, which is what finally
+// separates two otherwise identical readings; identical on all four and the observations are
+// interchangeable, so which one is returned carries no information.
+fn observation_order_key_before(
+  a: OllamaRunnerMemoryObservation,
+  b: OllamaRunnerMemoryObservation,
+) -> Bool {
+  let ad = token_count_value(t: a.context_depth)
+  let bd = token_count_value(t: b.context_depth)
+  if ad != bd { ad < bd } else {
+    if a.concurrent_sessions != b.concurrent_sessions {
+      a.concurrent_sessions < b.concurrent_sessions
+    } else {
+      let ab = reported_total_bytes(o: a)
+      let bb = reported_total_bytes(o: b)
+      if ab != bb { ab < bb } else {
+        (a.instrument as String) < (b.instrument as String)
+      }
+    }
+  }
+}
+
+// The footprint axis is only populated for a SERVED attempt; a refusal reports no buffer. Both
+// non-served arms sort as zero, which is not a fabricated measurement -- the three arms never share
+// a comparison, because memory_fit_evidence partitions by outcome before it orders.
+fn reported_total_bytes(o: OllamaRunnerMemoryObservation) -> Int {
+  match o.outcome {
+    RunnerServed { reported_total_buffer: t, reported_gpu_buffer: _ } => byte_size_count(b: t)
+    RunnerRefusedForMemory { detail: _ } => 0
+    RunnerFailedForOtherCause { cause: _ } => 0
+  }
+}
+
 fn shallowest(
   a: OllamaRunnerMemoryObservation,
   b: OllamaRunnerMemoryObservation,
 ) -> OllamaRunnerMemoryObservation {
-  match token_count_value(t: a.context_depth) < token_count_value(t: b.context_depth) {
-    true => a
-    false => b
-  }
+  if observation_order_key_before(a: a, b: b) { a } else { b }
 }
 
 fn shallowest_of(
@@ -605,10 +798,11 @@ fn memory_fit_evidence(
   realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
-  node: NonEmptyStr,
+  node: HostIdentity,
 ) -> MemoryFitEvidence {
   match first_incomparable_axis(
-    observations: observations, realization: realization, node: node) {
+    observations: observations, realization: realization,
+    floor: floor, hot_sessions: hot_sessions, node: node) {
     Present { value: axis } => MemoryFitIdentityIncomparable { axis: axis }
     Absent => decidable_memory_fit_evidence(
       observations: observations, realization: realization,
@@ -621,7 +815,7 @@ fn decidable_memory_fit_evidence(
   realization: ServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
-  node: NonEmptyStr,
+  node: HostIdentity,
 ) -> MemoryFitEvidence {
   let served = served_qualifying_observations(
     observations: observations, realization: realization,
@@ -787,7 +981,7 @@ fn rejected(candidate: QuantizedCandidate, axis: RejectionAxis) -> CandidateVerd
 
 fn evaluate_candidate(
   candidate: QuantizedCandidate,
-  node: NonEmptyStr,
+  node: HostIdentity,
   constraints: ServingConstraints,
 ) -> CandidateVerdict {
   match memory_fit_evidence(
@@ -972,7 +1166,7 @@ fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
 
 fn choose_serving_candidate(
   candidates: List<QuantizedCandidate>,
-  node: NonEmptyStr,
+  node: HostIdentity,
   constraints: ServingConstraints,
 ) -> ServingChoice {
   let verdicts = map(candidates, c =>

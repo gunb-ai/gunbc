@@ -9,15 +9,19 @@ import std.measure {
 }
 import gunbc.model.publication { ReleaseIdentity }
 import std.content_hash {
-  ContentHash, sha256_hex_digest, as_content_hash_cryptographic, content_hash_of_value,
-  content_hash_from_structural_digest,
+  ContentHash, Sha256Digest, Sha256DigestHex, as_content_hash_cryptographic,
+  Fnv1a64StructuralDigestHex, structural_content_hash, as_content_hash_structural,
+}
+import extdeps.ollama.binary_release {
+  ollama_v0_32_9_release, ollama_v0_32_9_jetpack5_release, ollama_v0_32_9_jetpack6_release,
 }
 import gunbc.model.choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
   FreshPrefillObservation, prefill_rate_at_floor,
   ServingRealizationIdentity, serving_realization_equal, serving_realization_identity,
-  ServingRuntimeIdentity, serving_runtime_identity,
-  ResolvedRuntimeConfiguration, resolved_runtime_configuration,
+  ServingRuntimeIdentity, serving_runtime_identity_for_release,
+  serving_runtime_identity_from_observation,
+  FixedRuntimeModeIdentity, fixed_runtime_mode_from_argv,
   SemanticContextEvidence,
   OllamaRunnerMemoryObservation, memory_fit_evidence,
   RunnerAttemptOutcome, RunnerServed, RunnerRefusedForMemory, RunnerFailedForOtherCause,
@@ -25,6 +29,7 @@ import gunbc.model.choice {
   MemoryFitAttemptFailedOtherwise, MemoryFitUnobserved,
   MemoryFitContradictedAtConfiguration, MemoryAttemptFailedForNonMemoryCause,
   EvidenceIdentityIncomparable, MemoryFitIdentityIncomparable,
+  outcome_is_memory_refusal, DoesNotFitMemory, ContextBelowFloor, PrefillBelowFloor,
   RealizationComparison, RealizationSame, RealizationDifferent, RealizationIncomparable,
   compare_serving_realization,
   FreshSessionPrefill, WarmContinuation, serving_regime_wire,
@@ -71,28 +76,42 @@ data fixture_node: NonEmptyStr = "fixture-node" as NonEmptyStr
 // `size_vram` agreed exactly on this unified-memory node, so nothing turns on which field is read.
 data ps_instrument: NonEmptyStr = "/api/ps size and size_vram after load at explicit num_ctx" as NonEmptyStr
 
-// THE RESOLVED ARGV, hashed -- not the desired environment. The readings below were taken while the
-// runner had been launched with OLLAMA_NUM_PARALLEL unset, which resolved to a single slot; the
-// digest stands for that exact argv. The fleet has since moved to four slots, which is a DIFFERENT
-// configuration and therefore a different key, so these readings correctly stop answering for it.
-data serial_config: ResolvedRuntimeConfiguration = resolved_runtime_configuration(
-  argv_digest: digest(hex: "1c3f5d7981b3d5f719a2c4e60815273949e1b3d5f7092a4c6e80b2d4f6183a5c"),
+// THE FIXED RUNTIME MODE, hashed from the resolved argv with the VARIED flags dropped. The readings
+// below were taken with OLLAMA_NUM_PARALLEL unset and num_ctx set per reading; those two are the
+// axes the selector varies and asks about, so hashing their values into the mode key would make
+// every reading answer for exactly one point and nothing else. They are dropped, not blanked, so the
+// key is invariant to them by construction. Everything else in the argv IS in the key: a runner
+// launched with different flash-attention or KV-cache-type settings is a different mode, and its
+// footprint readings correctly stop answering for this one.
+data varied_flags: List<NonEmptyStr> = [
+  "--num-ctx" as NonEmptyStr,
+  "--parallel" as NonEmptyStr,
+]
+
+data serial_mode: FixedRuntimeModeIdentity = fixed_runtime_mode_from_argv(
+  argv: [
+    "ollama" as NonEmptyStr, "serve" as NonEmptyStr,
+    "--num-ctx" as NonEmptyStr, "400000" as NonEmptyStr,
+    "--parallel" as NonEmptyStr, "1" as NonEmptyStr,
+  ],
+  varied_flags: varied_flags,
 )
 
-data ollama_runtime: ServingRuntimeIdentity = serving_runtime_identity(
-  name: "ollama" as NonEmptyStr,
-  version: "0.32.9" as NonEmptyStr,
-)
+// THE RUNTIME, from the CITED pinned release rather than a name-and-version pair the witness types.
+// `serving_runtime_identity_for_release` is total because the release row is a closed authority; the
+// observation-side mint beside it is the one that can come back Absent, and w_an_unknown_runtime_
+// asset_has_no_identity below holds it to that.
+data ollama_runtime: ServingRuntimeIdentity = serving_runtime_identity_for_release(rel: ollama_v0_32_9_release)
 
-// A DIGEST, NOT A TAG. Every hex string below is 64 lower-hex characters and is admitted through
-// std.content_hash's validated constructor, so a malformed digest has no value here rather than a
-// failing check. The IQ2_XXS one is the digest /api/ps reports for the loaded build on the fleet;
-// re-derive it from that endpoint rather than reading it here.
-fn digest(hex: String) -> ContentHash {
-  match sha256_hex_digest(hex: hex) {
-    Present { value: d } => as_content_hash_cryptographic(digest: d)
-    Absent => content_hash_of_value(value: "malformed digest literal" as NonEmptyStr)
-  }
+// A DIGEST, NOT A TAG, AND A MALFORMED ONE IS UNWRITABLE. Every hex string below is admitted as
+// Sha256DigestHex, a `String where lower_hex_64` refinement the substrate checks at TYPECHECK for a
+// literal -- measured: `"zz" as Sha256DigestHex` is a resolve-time type mismatch, not a runtime
+// none. So this helper is total with no fallback arm, and the predecessor's shared
+// "malformed digest literal" structural hash -- which made every typo compare EQUAL to every other
+// typo -- is gone rather than repaired. The IQ2_XXS digest is what /api/ps reports for the loaded
+// build on the fleet; re-derive it from that endpoint rather than reading it here.
+fn digest(hex: Sha256DigestHex) -> ContentHash {
+  as_content_hash_cryptographic(digest: Sha256Digest { hex: hex })
 }
 
 fn realization(
@@ -100,14 +119,14 @@ fn realization(
   quant: NonEmptyStr,
   artifact: ContentHash,
   runtime: ServingRuntimeIdentity,
-  config: ResolvedRuntimeConfiguration,
+  fixed_mode: FixedRuntimeModeIdentity,
 ) -> ServingRealizationIdentity {
   serving_realization_identity(
     release_id: release_id,
     quant_label: quant,
     artifact_digest: artifact,
     runtime: runtime,
-    runtime_config: config,
+    fixed_mode: fixed_mode,
   )
 }
 
@@ -162,44 +181,44 @@ data qwen_release: ReleaseIdentity = ReleaseIdentity {
 data r_iq2_xxs: ServingRealizationIdentity = realization(
   release_id: deepseek_v4_flash_release,
   quant: "IQ2_XXS" as NonEmptyStr,
-  artifact: digest(hex: "32af248f4cab44ffcb631298f66ff0bdf92a9350a3763a86b9a5b304fc4c1e64"),
+  artifact: digest(hex: "32af248f4cab44ffcb631298f66ff0bdf92a9350a3763a86b9a5b304fc4c1e64" as Sha256DigestHex),
   runtime: ollama_runtime,
-  config: serial_config,
+  fixed_mode: serial_mode,
 )
 
 data r_iq3_s: ServingRealizationIdentity = realization(
   release_id: deepseek_v4_flash_release,
   quant: "UD-IQ3_S" as NonEmptyStr,
-  artifact: digest(hex: "5b7e1042cc9d3fa6081b4e2d7c3950ae61f8d24b0937ce5182a4f6b0d3e79c18"),
+  artifact: digest(hex: "5b7e1042cc9d3fa6081b4e2d7c3950ae61f8d24b0937ce5182a4f6b0d3e79c18" as Sha256DigestHex),
   runtime: ollama_runtime,
-  config: serial_config,
+  fixed_mode: serial_mode,
 )
 
 data r_unmeasured: ServingRealizationIdentity = realization(
   release_id: deepseek_v4_flash_release,
   quant: "UD-IQ4_XS" as NonEmptyStr,
-  artifact: digest(hex: "9d2c48b6103fae57c81d0b2e64937fa5081c3d6e9b204f7a15c8e0b3d629f47a"),
+  artifact: digest(hex: "9d2c48b6103fae57c81d0b2e64937fa5081c3d6e9b204f7a15c8e0b3d629f47a" as Sha256DigestHex),
   runtime: ollama_runtime,
-  config: serial_config,
+  fixed_mode: serial_mode,
 )
 
 data r_qwen: ServingRealizationIdentity = realization(
   release_id: qwen_release,
   quant: "Q8_0" as NonEmptyStr,
-  artifact: digest(hex: "a41f70c39b2d85e6014c7f3a92b60d58e7139fac402b6d81c53e97a0f42b18d6"),
+  artifact: digest(hex: "a41f70c39b2d85e6014c7f3a92b60d58e7139fac402b6d81c53e97a0f42b18d6" as Sha256DigestHex),
   runtime: ollama_runtime,
-  config: serial_config,
+  fixed_mode: serial_mode,
 )
 
 fn fixture_realization(quant: NonEmptyStr) -> ServingRealizationIdentity {
   realization(
     release_id: fixture_release,
     quant: quant,
-    artifact: digest(hex: "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00"),
-    runtime: serving_runtime_identity(
-      name: "fixture-runtime" as NonEmptyStr, version: "0" as NonEmptyStr),
-    config: resolved_runtime_configuration(
-      argv_digest: digest(hex: "beef00beef00beef00beef00beef00beef00beef00beef00beef00beef00beef")),
+    artifact: digest(hex: "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00" as Sha256DigestHex),
+    runtime: serving_runtime_identity_for_release(rel: ollama_v0_32_9_jetpack6_release),
+    fixed_mode: fixed_runtime_mode_from_argv(
+      argv: ["fixture-runner" as NonEmptyStr, "--fixture" as NonEmptyStr],
+      varied_flags: varied_flags),
   )
 }
 
@@ -257,6 +276,15 @@ fn installed() -> List<QuantizedCandidate> {
 data floor_400k: ServingConstraints = ServingConstraints {
   context_floor: token_count(count: 400000),
   hot_sessions: 1,
+  prefill_floor: tokens_per_second(count: 0),
+  prefill_regime: FreshSessionPrefill,
+}
+
+// The same floor at four concurrent sessions, so one candidate can be asked the same memory
+// question at two points on the concurrency axis.
+data floor_400k_four_sessions: ServingConstraints = ServingConstraints {
+  context_floor: token_count(count: 400000),
+  hot_sessions: 4,
   prefill_floor: tokens_per_second(count: 0),
   prefill_regime: FreshSessionPrefill,
 }
@@ -422,27 +450,29 @@ fn iq2_xxs_answers_for(r: ServingRealizationIdentity, node: NonEmptyStr) -> Bool
 test fn w_evidence_from_another_realization_or_node_cannot_qualify() -> Bool {
   let wrong_release = realization(
     release_id: qwen_release, quant: r_iq2_xxs.quant_label, artifact: r_iq2_xxs.artifact_digest,
-    runtime: r_iq2_xxs.runtime, config: r_iq2_xxs.runtime_config)
+    runtime: r_iq2_xxs.runtime, fixed_mode: r_iq2_xxs.fixed_mode)
   let wrong_quant = realization(
     release_id: r_iq2_xxs.release_id, quant: "IQ3_S" as NonEmptyStr, artifact: r_iq2_xxs.artifact_digest,
-    runtime: r_iq2_xxs.runtime, config: r_iq2_xxs.runtime_config)
+    runtime: r_iq2_xxs.runtime, fixed_mode: r_iq2_xxs.fixed_mode)
   let wrong_artifact = realization(
     release_id: r_iq2_xxs.release_id, quant: r_iq2_xxs.quant_label,
-    artifact: digest(hex: "7e3b91d0a5c82f461937be04d2a86c50f18e2b7d940c36a1e582f4b0c7d91836"),
-    runtime: r_iq2_xxs.runtime, config: r_iq2_xxs.runtime_config)
+    artifact: digest(hex: "7e3b91d0a5c82f461937be04d2a86c50f18e2b7d940c36a1e582f4b0c7d91836" as Sha256DigestHex),
+    runtime: r_iq2_xxs.runtime, fixed_mode: r_iq2_xxs.fixed_mode)
   let wrong_runtime = realization(
     release_id: r_iq2_xxs.release_id, quant: r_iq2_xxs.quant_label, artifact: r_iq2_xxs.artifact_digest,
-    runtime: serving_runtime_identity(name: "ollama" as NonEmptyStr, version: "0.33.0" as NonEmptyStr), config: r_iq2_xxs.runtime_config)
-  let wrong_config = realization(
+    runtime: serving_runtime_identity_for_release(rel: ollama_v0_32_9_jetpack5_release),
+    fixed_mode: r_iq2_xxs.fixed_mode)
+  let wrong_mode = realization(
     release_id: r_iq2_xxs.release_id, quant: r_iq2_xxs.quant_label, artifact: r_iq2_xxs.artifact_digest,
-    runtime: r_iq2_xxs.runtime, config: resolved_runtime_configuration(
-      argv_digest: digest(hex: "4444444444444444444444444444444444444444444444444444444444444444")))
+    runtime: r_iq2_xxs.runtime, fixed_mode: fixed_runtime_mode_from_argv(
+      argv: ["ollama" as NonEmptyStr, "serve" as NonEmptyStr, "--flash-attn" as NonEmptyStr],
+      varied_flags: varied_flags))
   iq2_xxs_answers_for(r: r_iq2_xxs, node: serving_node)
     && !iq2_xxs_answers_for(r: wrong_release, node: serving_node)
     && !iq2_xxs_answers_for(r: wrong_quant, node: serving_node)
     && !iq2_xxs_answers_for(r: wrong_artifact, node: serving_node)
     && !iq2_xxs_answers_for(r: wrong_runtime, node: serving_node)
-    && !iq2_xxs_answers_for(r: wrong_config, node: serving_node)
+    && !iq2_xxs_answers_for(r: wrong_mode, node: serving_node)
     && !iq2_xxs_answers_for(r: r_iq2_xxs, node: fixture_node)
 }
 
@@ -607,13 +637,43 @@ test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool
 // What is left is the only thing the instrument can actually report as a non-fit: a configuration
 // that was attempted on the node and DID NOT PRODUCE A TOKEN. That is an observation, not a
 // calculation, and it is the arm a real out-of-memory load would populate.
+// COUNTING TWO REJECTIONS IS NOT CHECKING THEM. `length(r) == 2` was satisfied by any function that
+// emitted two rows -- two copies of the same candidate, two rows on the wrong axis, or two
+// unanswerable verdicts miscast as rejections -- which is the count-instead-of-identity-join that
+// DESIGN's oracle rule names directly. The claim is an IDENTITY JOIN: both declared candidates are
+// present, distinguished by quantization label, and each is rejected on the MEMORY axis carrying the
+// refusal actually observed for it, rather than on a context or prefill axis that happens to fail
+// too. The count survives as a closure check -- no third row -- not as the whole assertion.
+fn rejection_on_memory_for(
+  rejections: List<CandidateVerdict>,
+  quant: NonEmptyStr,
+) -> Bool {
+  length(filter(rejections, v =>
+    match v {
+      ServingCandidateRejected { identity: _, quant_label: q, axis: a } =>
+        (q as String) == (quant as String)
+          && match a {
+            DoesNotFitMemory { observed: o } =>
+              token_count_value(t: o.context_depth) == 400000
+                && outcome_is_memory_refusal(o: o)
+            ContextBelowFloor { declared: _, floor: _ } => false
+            PrefillBelowFloor { measured: _, floor: _ } => false
+          }
+      ServingCandidateAdmissible { candidate: _, fit: _ } => false
+      ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
+    })) == 1
+}
+
 test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
   match choose_serving_candidate(
     candidates: [oom_low(), oom_high()],
     node: fixture_node,
     constraints: floor_400k,
   ) {
-    NoCandidateAdmissible { rejections: r } => length(r) == 2
+    NoCandidateAdmissible { rejections: r } =>
+      rejection_on_memory_for(rejections: r, quant: "LOW" as NonEmptyStr)
+        && rejection_on_memory_for(rejections: r, quant: "HIGH" as NonEmptyStr)
+        && length(r) == 2
     ChoseCandidate { verdict: _ } => false
     SelectionUnanswerable { cause: _, evaluations: _ } => false
   }
@@ -787,6 +847,56 @@ fn is_contradiction_refusal(verdict: CandidateVerdict) -> Bool {
   }
 }
 
+// MIXED RECEIPTS IN ONE CANDIDATE, which is the case every witness above misses. Each of those
+// hands the selector a SINGLE observation, so the served/refused/broken partition is only ever
+// exercised with one list non-empty. The interesting failures live where two lists are populated at
+// DIFFERENT points, because that is where an off-by-one in the qualification rule stops being
+// visible: a rule that qualified refusals by `depth >= floor` instead of `depth == floor` passes
+// every single-observation witness and fails only here.
+fn fixture_served_at(
+  r: ServingRealizationIdentity,
+  depth: Nat,
+  sessions: Nat,
+  resident: Nat,
+) -> OllamaRunnerMemoryObservation {
+  served(r: r, node: fixture_node, instrument: fixture_instrument,
+    depth: depth, sessions: sessions, resident: resident)
+}
+
+// A SUCCESS AT THE FLOOR AND AN OOM ABOVE IT ARE NOT A CONTRADICTION. They are the ordinary shape of
+// a real sweep -- it fits at 400k, it does not fit at 1M -- and the honest reading is that the 400k
+// demand is ANSWERED and admissible. The deeper refusal speaks only at its own point. Widen the
+// refusal filter to `depth >= floor` and this candidate flips to a contradiction refusal, which
+// would make every complete sweep unanswerable at exactly the floor it measured.
+test fn w_a_success_at_the_floor_survives_an_oom_above_it() -> Bool {
+  is_admissible(verdict: evaluate_candidate(
+    candidate: with_memory_observations(base: fixture_low_rank, observations: [
+      fixture_served_at(r: r_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
+      fixture_attempt(r: r_fixture_low, depth: 1048576, outcome: out_of_memory),
+    ]),
+    node: fixture_node, constraints: floor_400k))
+}
+
+// THE SAME SHAPE ON THE CONCURRENCY AXIS, and it must answer DIFFERENTLY at the two demands rather
+// than picking one story. One candidate holds a 1-session success and a 4-session OOM at the same
+// depth. At a 1-session demand the success qualifies and the 4-session refusal is out of scope, so
+// it is admissible. At a 4-session demand the success no longer qualifies -- it was measured
+// quieter -- and the refusal is exactly on point, so it is a memory rejection. A selector that
+// ignored the concurrency axis on either filter would have to give both demands the same verdict.
+test fn w_one_candidate_answers_admissible_quiet_and_rejected_busy() -> Bool {
+  let mixed = with_memory_observations(base: fixture_low_rank, observations: [
+    fixture_served_at(r: r_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
+    OllamaRunnerMemoryObservation {
+      realization: r_fixture_low, node: fixture_node, instrument: fixture_instrument,
+      context_depth: token_count(count: 400000), concurrent_sessions: 4, outcome: out_of_memory,
+    },
+  ])
+  is_admissible(verdict: evaluate_candidate(
+    candidate: mixed, node: fixture_node, constraints: floor_400k))
+    && is_memory_rejection(verdict: evaluate_candidate(
+      candidate: mixed, node: fixture_node, constraints: floor_400k_four_sessions))
+}
+
 test fn w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes() -> Bool {
   let big_success = fixture_footprint(r: r_fixture_low, resident: 99000000000)
   let small_failure = fixture_attempt(r: r_fixture_low, depth: 400000, outcome: out_of_memory)
@@ -902,6 +1012,34 @@ fn is_admissible(verdict: CandidateVerdict) -> Bool {
 // A PREFILL READING FROM A QUIETER HOST DOES NOT ANSWER A BUSIER DEMAND. The rate axis gained the
 // same concurrency and node binding the memory axis already had, and for the measured reason: this
 // fleet read a queue on a serialized host as a 300x model latency regression.
+// THE DISCRIMINATING PROBE FOR THE CONCURRENCY BINDING, and it is the direction the sibling witness
+// above cannot see. That one asks a 1-session reading at 4 sessions, which fails under BOTH the old
+// `>=` rule and the exact one -- it never discriminated. This one asks a 4-SESSION reading at a
+// 1-session demand: under `>=` it QUALIFIED and answered 90 tok/s, on the assumption that a busier
+// reading conservatively bounds a quieter one. That assumption is about a scheduler and is
+// unmeasured, and if `rate` turns out to be an aggregate rather than per-request it points the
+// other way. So it must now come back unanswerable. Flip the binding back to `>=` in
+// slowest_fresh_rate_at_floor and this witness goes red.
+data busy_only_prefill: List<FreshPrefillObservation> = [
+  FreshPrefillObservation { realization: r_iq2_xxs, node: serving_node, concurrent_sessions: 4, depth: token_count(count: 400060), rate: tokens_per_second(count: 90) },
+]
+
+test fn w_a_busier_prefill_reading_does_not_answer_a_quieter_demand() -> Bool {
+  match prefill_rate_at_floor(
+    observations: busy_only_prefill, realization: r_iq2_xxs,
+    node: serving_node, hot_sessions: 1,
+    floor: token_count(count: 400000), regime: FreshSessionPrefill) {
+    Present { value: _ } => false
+    Absent => match prefill_rate_at_floor(
+      observations: busy_only_prefill, realization: r_iq2_xxs,
+      node: serving_node, hot_sessions: 4,
+      floor: token_count(count: 400000), regime: FreshSessionPrefill) {
+      Absent => false
+      Present { value: r } => tokens_per_second_count(r: r) == 90
+    }
+  }
+}
+
 test fn w_a_prefill_reading_at_lower_concurrency_or_another_node_does_not_qualify() -> Bool {
   match quiet_rate_at(node: serving_node, hot: 1) {
     Absent => false
@@ -944,21 +1082,44 @@ fn quiet_rate_at(node: NonEmptyStr, hot: Nat) -> TokensPerSecond? {
 //
 // The fixture below is exactly that pair: identical release, quantization, runtime and resolved
 // configuration; the artifact digest differs only in HASH FAMILY.
-fn structural_digest(hex: String) -> ContentHash {
-  match content_hash_from_structural_digest(digest: hex) {
-    Present { value: h } => h
-    Absent => content_hash_of_value(value: "malformed structural digest" as NonEmptyStr)
-  }
+// Total for the same reason `digest` above is: Fnv1a64StructuralDigestHex is a
+// `String where lower_hex_16` refinement checked at typecheck, so there is no malformed arm to
+// fabricate a value for.
+fn structural_digest(hex: Fnv1a64StructuralDigestHex) -> ContentHash {
+  as_content_hash_structural(structural: structural_content_hash(digest: hex))
 }
 
 fn r_iq2_xxs_structural_artifact() -> ServingRealizationIdentity {
   realization(
     release_id: r_iq2_xxs.release_id,
     quant: r_iq2_xxs.quant_label,
-    artifact: structural_digest(hex: "32af248f4cab44ff"),
+    artifact: structural_digest(hex: "32af248f4cab44ff" as Fnv1a64StructuralDigestHex),
     runtime: ollama_runtime,
-    config: serial_config,
+    fixed_mode: serial_mode,
   )
+}
+
+// THE SCOPE OF THE STALL, which the witness above cannot see because its incomparable reading is
+// also the RELEVANT one. Ruled in the side chat and it is a real defect, not a refinement: an
+// incomparable axis may only stall a candidate when the observation carrying it would OTHERWISE HAVE
+// PARTICIPATED. The predecessor filtered candidate evidence by node alone before asking whether
+// identities compared, so a footprint taken at 8,192 tokens -- nowhere near a 400,000-token demand,
+// and irrelevant on depth alone -- stalled the whole candidate because its digest happened to be
+// recorded in a different hash family. Every extra reading on a node then made that node LESS
+// answerable, which inverts what evidence is for.
+//
+// Here the same cross-family reading sits at a depth that cannot qualify, beside a good reading that
+// can. The candidate must be ADMISSIBLE on the good reading; the irrelevant one stays irrelevant.
+// Revert first_incomparable_axis to a node-only filter and this goes red.
+test fn w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate() -> Bool {
+  let mixed = with_memory_observations(base: build_iq2_xxs, observations: [
+    served(r: r_iq2_xxs_structural_artifact(), node: serving_node, instrument: ps_instrument,
+      depth: 8192, sessions: 1, resident: 80000000000),
+    served(r: r_iq2_xxs, node: serving_node, instrument: ps_instrument,
+      depth: 400000, sessions: 1, resident: 87692389907),
+  ])
+  is_admissible(verdict: evaluate_candidate(
+    candidate: mixed, node: serving_node, constraints: floor_400k))
 }
 
 test fn w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved() -> Bool {
@@ -990,9 +1151,9 @@ test fn w_realization_comparison_reaches_all_three_states_and_different_wins() -
   let other_release_cross_family = realization(
     release_id: qwen_release,
     quant: r_iq2_xxs.quant_label,
-    artifact: structural_digest(hex: "32af248f4cab44ff"),
+    artifact: structural_digest(hex: "32af248f4cab44ff" as Fnv1a64StructuralDigestHex),
     runtime: ollama_runtime,
-    config: serial_config,
+    fixed_mode: serial_mode,
   )
   is_same(c: compare_serving_realization(a: r_iq2_xxs, b: r_iq2_xxs))
     && is_different(c: compare_serving_realization(a: r_iq2_xxs, b: r_qwen))
@@ -1041,11 +1202,15 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
     && w_a_prefill_receipt_from_another_realization_does_not_qualify()
     && w_only_a_typed_memory_refusal_rejects_on_memory()
     && w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes()
+    && w_a_success_at_the_floor_survives_an_oom_above_it()
+    && w_one_candidate_answers_admissible_quiet_and_rejected_busy()
     && w_the_large_buffer_success_alone_still_admits()
     && w_a_refusal_generalizes_to_no_easier_point_but_a_success_does()
     && w_the_concurrency_axis_carries_the_same_asymmetry()
     && w_a_prefill_reading_at_lower_concurrency_or_another_node_does_not_qualify()
+    && w_a_busier_prefill_reading_does_not_answer_a_quieter_demand()
     && w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved()
+    && w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate()
     && w_realization_comparison_reaches_all_three_states_and_different_wins()
 }
 
