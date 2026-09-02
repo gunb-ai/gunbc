@@ -2774,13 +2774,18 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
   }
 }
 
+// Rust serializes enums and structs through ONE profile, so the two fields below are two
+// demands on a single computation identity whose least common ancestor is this call.
+// Carried once rather than re-derived per field: the two spellings said the same thing
+// twice and the evaluator believed them, building the whole profile bundle twice.
 fn rust_semantic_decl_emission_bundle_node() -> Node {
+  let serialize_profile = rust_semantic_decl_serialize_profile_bundle_node()
   semantic_decl_emission_bundle(
     identity: ^rust_semantic_decl_emission_identity,
     enum_translation_rules: rust_enum_general_decl_productions_only_translation_rules(),
     struct_translation_rules: rust_struct_general_decl_productions_only_translation_rules(),
-    enum_serialize_profile: rust_semantic_decl_serialize_profile_bundle_node(),
-    struct_serialize_profile: rust_semantic_decl_serialize_profile_bundle_node(),
+    enum_serialize_profile: serialize_profile,
+    struct_serialize_profile: serialize_profile,
     surface: rust_semantic_decl_surface_projection()
   )
 }
