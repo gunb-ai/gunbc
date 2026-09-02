@@ -322,3 +322,70 @@ test fn srv3_os_install_actuate_workflow_orders_approval_before_boot() -> Bool {
   srv3_os_install_actuate_workflow_includes_operator_approval_before_boot()
     && srv3_os_install_actuate_workflow_credential_intent_is_declared()
 }
+
+// THE HASH ACTUALLY MOVES WITH THE SUBJECT, asserted per field rather than in aggregate. An
+// aggregate check ("some mutation changes it") is satisfied by a hash that reads only ONE field,
+// which is the shape the previous hand-authored literal degenerated to. Each pair below differs in
+// exactly one field from the declared subject, so a field dropped out of the derivation reds here
+// and nowhere else. The final conjunct is the POSITIVE CONTROL: the same subject must hash the
+// same, or every "differs" above would be satisfied by a hash that simply never agrees with
+// itself.
+test fn srv3_intent_hash_moves_with_every_subject_field() -> Bool {
+  let base = srv3_boot_override_intent_hash(subject: srv3_boot_once_cd_subject)
+  srv3_intent_hashes_differ(
+    a: base,
+    b: srv3_boot_override_intent_hash(
+      subject: Srv3BootOverrideSubject {
+        target: BootTargetHdd,
+        enabled: srv3_boot_cd_enabled,
+        mode: srv3_boot_cd_mode,
+        reset: srv3_boot_cd_reset_type,
+      },
+    ),
+  )
+    && srv3_intent_hashes_differ(
+      a: base,
+      b: srv3_boot_override_intent_hash(
+        subject: Srv3BootOverrideSubject {
+          target: srv3_boot_cd_target,
+          enabled: BootOverrideContinuous,
+          mode: srv3_boot_cd_mode,
+          reset: srv3_boot_cd_reset_type,
+        },
+      ),
+    )
+    && srv3_intent_hashes_differ(
+      a: base,
+      b: srv3_boot_override_intent_hash(
+        subject: Srv3BootOverrideSubject {
+          target: srv3_boot_cd_target,
+          enabled: srv3_boot_cd_enabled,
+          mode: BootOverrideModeLegacy,
+          reset: srv3_boot_cd_reset_type,
+        },
+      ),
+    )
+    && srv3_intent_hashes_differ(
+      a: base,
+      b: srv3_boot_override_intent_hash(
+        subject: Srv3BootOverrideSubject {
+          target: srv3_boot_cd_target,
+          enabled: srv3_boot_cd_enabled,
+          mode: srv3_boot_cd_mode,
+          reset: ResetGracefulRestart,
+        },
+      ),
+    )
+    && match compare_content_hash(left: base, right: srv3_boot_once_cd_intent_hash) {
+      ContentHashEqual => true
+      _ => false
+    }
+}
+
+fn srv3_intent_hashes_differ(a: ContentHash, b: ContentHash) -> Bool {
+  match compare_content_hash(left: a, right: b) {
+    ContentHashDifferent => true
+    ContentHashEqual => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}

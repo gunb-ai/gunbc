@@ -1,6 +1,6 @@
 module gunbc.srv3_os_install_actuate_workflow
 
-import std.types { NonEmptyStr, List, Int, Bool, Timestamp }
+import std.types { NonEmptyStr, String, List, Int, Bool, Timestamp }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
@@ -13,6 +13,10 @@ import extdeps.bmc.types {
   BootOverrideOnce,
   BootOverrideModeUefi,
   ResetForceRestart,
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+  redfish_boot_override_mode_wire,
+  redfish_reset_type_wire,
 }
 import std.scoped_authorization {
   AuthorizedAction,
@@ -90,15 +94,6 @@ data srv3_boot_override_scope: AuthorizationScope = AuthorizationScope {
 // every future run of the same step.
 data srv3_boot_once_cd_attempt: AttemptIdentity = "srv3-os-install-actuate-1" as AttemptIdentity
 
-// The content identity of the planned action. It binds the grant to boot-override-to-CD-once plus
-// ForceRestart; if the planned action changes, a grant issued against the old one refuses rather
-// than silently authorizing the new one.
-data srv3_boot_once_cd_intent_hash: ContentHash = content_hash_of_value(
-  value: "srv3-boot-source-override-cd-once-uefi+force-restart" as NonEmptyStr,
-)
-
-// purpose is what the operator READS before deciding. It is the field the request exists for --
-// an approval prompt that cannot state what the access is for is not a request for consent.
 data srv3_boot_once_cd_subject: Srv3BootOverrideSubject = Srv3BootOverrideSubject {
   target: srv3_boot_cd_target,
   enabled: srv3_boot_cd_enabled,
@@ -106,6 +101,41 @@ data srv3_boot_once_cd_subject: Srv3BootOverrideSubject = Srv3BootOverrideSubjec
   reset: srv3_boot_cd_reset_type,
 }
 
+// THE INTENT HASH IS DERIVED FROM THE SUBJECT, and the earlier revision of this declaration was
+// exactly the defect the wall it feeds exists to catch. It hashed a hand-authored string --
+// "srv3-boot-source-override-cd-once-uefi+force-restart" -- which is a NICKNAME for what
+// Srv3BootOverrideSubject already carries structurally. Editing srv3_boot_cd_reset_type to
+// ResetGracefulRestart would have changed the planned action while leaving the hash identical, so
+// AuthorizationIntentMismatch could never have fired for the one class it is named after: a check
+// permanently green by construction, which §4b calls worse than absent because it gets cited as
+// coverage.
+//
+// Hashing the CITED WIRE PROJECTIONS rather than the constructor names is deliberate. Those four
+// functions are the same total renderings the PATCH body is built from, so the hash moves exactly
+// when the bytes that reach the BMC move -- which is what "the planned action changed" means at
+// this boundary. A subject field that did not reach the wire could not change the request, and a
+// field that did cannot fail to change the hash.
+fn srv3_boot_override_intent_hash(subject: Srv3BootOverrideSubject) -> ContentHash {
+  content_hash_of_value(
+    value: concat(
+      redfish_boot_target_wire(t: subject.target) as String,
+      concat(
+        concat("+", redfish_boot_override_enabled_wire(e: subject.enabled) as String),
+        concat(
+          concat("+", redfish_boot_override_mode_wire(m: subject.mode) as String),
+          concat("+", redfish_reset_type_wire(r: subject.reset) as String),
+        ),
+      ),
+    ) as NonEmptyStr,
+  )
+}
+
+data srv3_boot_once_cd_intent_hash: ContentHash = srv3_boot_override_intent_hash(
+  subject: srv3_boot_once_cd_subject,
+)
+
+// purpose is what the operator READS before deciding. It is the field the request exists for --
+// an approval prompt that cannot state what the access is for is not a request for consent.
 data srv3_boot_once_cd_authorization_request: AuthorizationRequest<Srv3BootOverrideSubject> = AuthorizationRequest {
   escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
   scope: srv3_boot_override_scope,
