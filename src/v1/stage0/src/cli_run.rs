@@ -321,6 +321,56 @@ pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<Strin
         .collect()
 }
 
+/// The member names an `import path { A, B }` line names explicitly.
+///
+/// An import edge is the AUTHORITY for a name it names: the author has already said
+/// which module they mean. Consulting the global bare census for such a name asks a
+/// question that was answered at the import site, and can re-open as AMBIGUOUS a name
+/// the author already disambiguated -- which is why this set is subtracted from the
+/// bare-name universe before the census is asked anything.
+pub(crate) fn explicit_import_member_names(content: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut in_block = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // THE MEMBER LIST SPANS LINES. The corpus writes the multi-line form freely --
+        // `dag/std/computation.dag` opens `import std.termination {` and lists
+        // `RankingDimension` on the NEXT line -- so reading members only when `{` shares the
+        // `import` line missed the disambiguating import at the very sites that had one, and
+        // the resolver refused a name the author had already named the module for. This
+        // scans from the opening brace to the closing one, whether or not they share a line.
+        let mut rest = if in_block {
+            trimmed
+        } else if trimmed.starts_with("import ") {
+            match trimmed.find('{') {
+                Some(open) => {
+                    in_block = true;
+                    &trimmed[open + 1..]
+                }
+                None => continue,
+            }
+        } else {
+            continue;
+        };
+        if let Some(close) = rest.find('}') {
+            rest = &rest[..close];
+            in_block = false;
+        }
+        for member in rest.split(',') {
+            // `A as B` binds B locally; the local binder is what a bare reference names.
+            let member = member.trim();
+            let bound = member
+                .rsplit_once(" as ")
+                .map(|(_, alias)| alias.trim())
+                .unwrap_or(member);
+            if !bound.is_empty() {
+                names.insert(bound.to_string());
+            }
+        }
+    }
+    names
+}
+
 pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
@@ -624,7 +674,123 @@ fn test_sig_or_none(
 
 #[cfg(test)]
 mod bare_reference_scanner_tests {
-    use super::{bare_identifier_candidates, module_self_declared_names};
+    use super::{
+        bare_identifier_candidates, explicit_import_member_names, module_self_declared_names,
+    };
+
+    /// A caret symbol literal is a Symbol, not a reference to a declaration. RED before the
+    /// `^` guard landed: `probe` appeared in the reference set, so a file whose only use of
+    /// the spelling is `^probe` was reported AMBIGUOUS against unrelated modules declaring
+    /// `fn probe`. One of the real sites is the caret-symbol lex test itself.
+    #[test]
+    fn a_caret_symbol_literal_is_not_an_identifier_reference() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f() -> Int { match tokenize(text: \"x\", file: ^probe) { _ => 1 } }\n",
+        );
+        assert!(
+            !c.names.contains("probe"),
+            "^probe is a symbol literal, not a reference to whatever declares `fn probe`"
+        );
+        assert!(
+            c.names.contains("tokenize") || c.call_position.contains("tokenize"),
+            "positive control: a real call in the same source IS still collected"
+        );
+    }
+
+    /// The workflow binding form binds with no `let` keyword, so the binder-keyword rule
+    /// cannot see it. RED before the fix: `page` resolved against the whole pool.
+    #[test]
+    fn a_bare_assignment_target_is_bound_not_referenced() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f() -> Int {\n  page = fetch(limit: 1)\n  return page.total\n}\n",
+        );
+        assert!(c.bound.contains("page"), "`page = expr` binds page");
+        assert!(
+            !c.names.contains("page"),
+            "a bound name is never a reference to another module's declaration"
+        );
+        assert!(
+            !c.bound.contains("fetch"),
+            "positive control: the call on the right-hand side is not bound by this rule"
+        );
+    }
+
+    /// `==` and `=>` must not be read as the binding form.
+    #[test]
+    fn a_comparison_and_a_lambda_arrow_are_not_the_binding_form() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f(xs: List<Int>) -> Bool { total == 1 && any(xs, f: e => e > 0) }\n",
+        );
+        assert!(
+            !c.bound.contains("total"),
+            "`total ==` is a comparison, not a binding"
+        );
+        assert!(
+            c.names.contains("total"),
+            "so `total` stays a real reference"
+        );
+    }
+
+    /// An import edge is the authority for a name it names, so the resolve loop subtracts
+    /// these before consulting the global bare census. Without that precedence, an author
+    /// who added the disambiguating import would STILL see the ambiguity refusal, because
+    /// the import does not remove the name from the census's candidate set.
+    #[test]
+    fn explicit_import_members_are_read_including_the_alias_binder() {
+        let names = explicit_import_member_names(
+            "module t\nimport v2.std.logic { Bool, True as Yes }\nimport std.types\n",
+        );
+        assert!(names.contains("Bool"), "a plain member is named");
+        assert!(
+            names.contains("Yes"),
+            "`True as Yes` binds Yes locally — Yes is what a bare reference names"
+        );
+        assert!(
+            !names.contains("True"),
+            "the aliased-away original is not the local binder"
+        );
+        assert!(
+            !names.contains("std.types"),
+            "a memberless import names no members, and the module path is not a member"
+        );
+    }
+
+    /// The multi-line member list is what the corpus actually writes, and missing it was a
+    /// real refusal: dag/std/computation.dag imports `RankingDimension` from std.termination
+    /// on the line AFTER the brace, and the resolver refused it as ambiguous against
+    /// v2.std.cardinality anyway. RED before the block scan landed.
+    #[test]
+    fn a_multi_line_import_block_names_its_members() {
+        let names = explicit_import_member_names(concat!(
+            "module std.computation\n",
+            "import std.termination {\n",
+            "  DescentEvidence, DescentUnknown, RankingDimension,\n",
+            "  descent_evidence_meet\n",
+            "}\n",
+            "import std.algebra { FreeMonoid }\n",
+            "fn f() -> Int { 1 }\n",
+        ));
+        for expected in [
+            "DescentEvidence",
+            "DescentUnknown",
+            "RankingDimension",
+            "descent_evidence_meet",
+            "FreeMonoid",
+        ] {
+            assert!(
+                names.contains(expected),
+                "{expected} is imported explicitly"
+            );
+        }
+        assert!(
+            !names.contains("f"),
+            "the block ends at `}}` — a later declaration is not swept in as a member"
+        );
+        assert!(
+            !names.contains("module std.computation"),
+            "nor is anything before the first import"
+        );
+    }
 
     /// Every coproduct shape the corpus actually writes. The multiline form is the one
     /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
@@ -7302,7 +7468,14 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             just_saw_colon = false;
             continue;
         }
-        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
+        // `^name` is a SYMBOL LITERAL, not a reference to a declaration. Skipping it byte
+        // by byte here (the same mechanism this guard already uses for `.`) keeps a
+        // Symbol's spelling out of the reference set. Receipt: `^probe`, `^check` and
+        // `^unit` in the caret-lex and lens-discriminator tests were reported AMBIGUOUS
+        // against unrelated modules that happen to declare `fn probe` / `fn check` /
+        // `data unit` -- a fork over a name these files use only as a symbol.
+        if !is_ident_start(bytes[i])
+            || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.' || bytes[i - 1] == b'^'))
         {
             if bytes[i] == b'(' {
                 if prev_token == Some("fn") || lambda_paren_starts.contains(&i) {
@@ -7381,6 +7554,26 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             arrow && matches!(prev, b'(' | b',' | b':')
         };
         if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
+        // `name = expr` binds, with no `let` keyword for the binder-keyword rule to catch
+        // -- the workflow binding form (`page = ebay.Inventory.GetInventoryItems(...)` in
+        // gunbc.tools.ebay_listing, then `page.total`). The bound name leaked into the
+        // reference set and resolved against the whole pool. `==` and `=>` are excluded:
+        // the first is a comparison, the second a lambda or match arm.
+        let is_bare_assignment_binder = {
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            j < bytes.len()
+                && bytes[j] == b'='
+                && !matches!(bytes.get(j + 1), Some(b'=') | Some(b'>'))
+        };
+        if is_bare_assignment_binder {
             out.bound.insert(name.to_string());
             prev_token = Some(name);
             just_saw_colon = false;
@@ -7731,11 +7924,24 @@ fn bare_reference_pull_paths_for_source(
             service_prefixes.insert((*service_key).to_string());
         }
     }
+    // A dotted head is asked BOTH as a service prefix (above) and, here, as a plain bare
+    // name, because `X.y` is a service call when X is a service key and a member reference
+    // otherwise. But when the services census DOES answer for the head, the bare attempt is
+    // asking a question the source already settled: `Filesystem.Write(path: ...)` is a
+    // capability invocation on the `resource Filesystem` in std.resources, and it is
+    // ambiguous only if you discard the `.Write` that says so. Keeping the bare attempt
+    // manufactured 7 refusals against `type Filesystem` in v2.extdeps.file_system -- a name
+    // none of those 7 files mentions undotted even once.
+    //
+    // This is specificity, not widening: the more specific reading (a resolved service key)
+    // wins over the less specific one, and a head the services census does NOT answer for
+    // still goes to the census exactly as before.
     let dotted_head_refs: Vec<String> = candidates
         .dotted_chains
         .iter()
         .filter_map(|chain| chain.split('.').next())
         .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
+        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -7750,6 +7956,24 @@ fn bare_reference_pull_paths_for_source(
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
     let self_declared = module_self_declared_names(&sf.content);
+    let explicit_imports = explicit_import_member_names(&sf.content);
+    // SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER. The 8 kernel type names
+    // (`std_types::kernel_type_set` -- String/Int/Bool/Float/Secret/Json/Unit/Bytes) and the
+    // container carrier spellings (`std_types::container_type_arity`, itself derived from the
+    // `std.algebra` carrier roster) are resolved by the type env as primitives: a `-> Bool`
+    // annotation binds to `bool_type()` and pulls no module. Asking the global bare census
+    // about them is a category error, and it is the one that produced every AMBIGUOUS state
+    // in this corpus -- `Bool` is declared identically by `std.types` and `v2.std.logic`, and
+    // `List` by `std.types` and `v2.std.collection`, so the census reports a fork over a name
+    // whose meaning was never the census's to decide.
+    //
+    // This does not under-pull. A module that uses a kernel type's CONSTRUCTORS references
+    // those names (`True`, `False`) directly, and they resolve on their own; what is skipped
+    // here is only the type spelling, which needs no declaring module.
+    let substrate_vocabulary = |name: &str| -> bool {
+        crate::std_types::kernel_type_set().contains_key(name)
+            || crate::std_types::container_type_arity().contains_key(name)
+    };
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
@@ -7757,6 +7981,16 @@ fn bare_reference_pull_paths_for_source(
     for (name, service_head) in all_names {
         // Bound by this module's own declaration — see `module_self_declared_names`.
         if !service_head && self_declared.contains(&name) {
+            continue;
+        }
+        // Bound by an explicit import edge, which is the single authority for this name
+        // (`explicit_import_member_names`). The import closure already pulls the named
+        // module, so there is nothing for the census to add -- and asking it anyway is
+        // what would report AMBIGUOUS for a name the author disambiguated by hand.
+        if !service_head && explicit_imports.contains(&name) {
+            continue;
+        }
+        if !service_head && substrate_vocabulary(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
@@ -7775,53 +8009,82 @@ fn bare_reference_pull_paths_for_source(
         // entirely) and a permissive one overcounts (it reads an alias target and a
         // `data` initializer's head as variants), and the two answers differ by 30x on
         // the same trace. The census already knows; carrying its verdict costs nothing.
-        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
-            if service_head {
-                return (
-                    v1_rt::map_get(&census.services, name.clone())
-                        .map(|entry| entry.module_path.clone()),
-                    "service",
-                );
-            }
-            match v1_rt::map_get(&census.global_bare, name.clone()) {
-                Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path,
-                        binding,
-                    } => (
-                        if pullable(binding) {
-                            Some(module_path.clone())
+        let resolve_in =
+            |census: &Rc<SymbolIndex>| -> Result<(Option<String>, &'static str), String> {
+                if service_head {
+                    return Ok((
+                        v1_rt::map_get(&census.services, name.clone())
+                            .map(|entry| entry.module_path.clone()),
+                        "service",
+                    ));
+                }
+                Ok(match v1_rt::map_get(&census.global_bare, name.clone()) {
+                    Some(state) => match state.as_ref() {
+                        GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path,
+                            binding,
+                        } => (
+                            if pullable(binding) {
+                                Some(module_path.clone())
+                            } else {
+                                None
+                            },
+                            "unique",
+                        ),
+                        GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                            // THE DECISION IS NAMED AND TESTED ELSEWHERE.
+                            // `closure_bare_disposition` owns the zero/one/many classification
+                            // over the chain-filtered candidates; this arm only projects it.
+                            // It was inline here until review 58002 pointed out the obvious:
+                            // every test I had enrolled exercised the SCANNER, and none reached
+                            // the arm this change rewrote. A decision buried in a closure inside
+                            // a 200-line function cannot be witnessed, so the fix is to give it
+                            // a name, not to write a test that approaches it sideways.
+                            match closure_bare_disposition(&referencing_module, candidates.clone())
+                            {
+                                ClosureBareDisposition::UniqueOnChain {
+                                    module_path,
+                                    binding,
+                                } => {
+                                    return Ok((
+                                        if pullable(&binding) {
+                                            Some(module_path)
+                                        } else {
+                                            None
+                                        },
+                                        "unique-on-chain",
+                                    ));
+                                }
+                                ClosureBareDisposition::NoOnChainCandidate => {
+                                    return Ok((None, "no-on-chain-candidate"));
+                                }
+                                ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                                    return Err(format!(
+                                        "bare_reference_closure: bare reference '{name}' in \
+                                         '{file_rel}' is AMBIGUOUS -- {} bindings ON THIS \
+                                         MODULE'S ANCESTOR CHAIN declare that name ({}), and \
+                                         this resolver does not rank candidates. Name the one \
+                                         you mean with an explicit import, e.g. \
+                                         `import {} {{ {name} }}`.",
+                                        modules.len(),
+                                        modules.join(", "),
+                                        modules.first().map(String::as_str).unwrap_or("<module>"),
+                                    ));
+                                }
+                            }
+                        }
+                    },
+                    None => (
+                        if in_call_position {
+                            v1_rt::map_get(&census.services, name.clone())
+                                .map(|entry| entry.module_path.clone())
                         } else {
                             None
                         },
-                        "unique",
+                        "absent",
                     ),
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
-                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
-                            referencing_module.clone(),
-                            candidates.clone(),
-                        )
-                        .and_then(|c| {
-                            if pullable(&c.binding) {
-                                Some(c.module_path.clone())
-                            } else {
-                                None
-                            }
-                        }),
-                        "ambiguous",
-                    ),
-                },
-                None => (
-                    if in_call_position {
-                        v1_rt::map_get(&census.services, name.clone())
-                            .map(|entry| entry.module_path.clone())
-                    } else {
-                        None
-                    },
-                    "absent",
-                ),
-            }
-        };
+                })
+            };
         // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
         // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
         // and a whole-pool fallback hit into one `Option<String>`, so a name that the
@@ -7834,10 +8097,10 @@ fn bare_reference_pull_paths_for_source(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
-        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
             (None, _) => {
-                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                let (m, state) = resolve_in(&pool_bare_census(index)?)?;
                 (m, "pool-fallback", state)
             }
         };
@@ -17841,6 +18104,253 @@ pub fn classify_exit(
         other => ExitClass::NotProcessExit {
             type_name: ctx.format_value(other),
         },
+    }
+}
+
+/// What the closure resolver does with a bare name the census reports as FORKED.
+///
+/// One name for the zero/one/many classification, so it can be witnessed. Review 58002's
+/// sharpest finding was that the five tests I had enrolled all exercised
+/// `bare_identifier_candidates` and `explicit_import_member_names` -- the scanner -- and not
+/// one of them reached the ambiguity arm this branch rewrote. It also noted that `[AMBIG] = 0`
+/// over the repaired corpus proves the current population no longer REACHES the arm, which is
+/// not evidence about what the arm DOES. Both are right, and they are the same mistake I have
+/// a standing note about: an executed conjunct can still be an inert wall.
+///
+/// The CHAIN FILTER is not reimplemented here. It delegates to
+/// `v1_compiler_infer_env::global_bare_chain_candidates`, the §13 authority the type env uses,
+/// so there is one containment rule and this function only classifies its output.
+pub enum ClosureBareDisposition {
+    /// Exactly one candidate on the referencing module's ancestor chain: that is what the
+    /// reference means, and an unrelated same-spelled declaration elsewhere is not a reason to
+    /// reject a program the type env accepts.
+    UniqueOnChain {
+        module_path: String,
+        binding: Rc<crate::v1_compiler_infer_env::TypeBinding>,
+    },
+    /// Two or more on-chain. Refuse, naming the full on-chain population in deterministic
+    /// order -- never rank them.
+    AmbiguousOnChain { modules: Vec<String> },
+    /// Nothing on the chain. `global_bare_lookup` returns `Absent` here and
+    /// `global_bare_is_ambiguous` answers false (ModulePathBindingMiss), so the semantic result
+    /// is UNRESOLVED and the closure must not fabricate a provider. It pulls nothing.
+    NoOnChainCandidate,
+}
+
+pub fn closure_bare_disposition(
+    referencing_module: &str,
+    candidates: Rc<im::Vector<Rc<crate::v1_compiler_infer_env::GlobalBareCandidate>>>,
+) -> ClosureBareDisposition {
+    let on_chain = crate::v1_compiler_infer_env::global_bare_chain_candidates(
+        referencing_module.to_string(),
+        candidates,
+    );
+    if on_chain.is_empty() {
+        return ClosureBareDisposition::NoOnChainCandidate;
+    }
+    if on_chain.len() == 1 {
+        let cand = on_chain[0].clone();
+        return ClosureBareDisposition::UniqueOnChain {
+            module_path: cand.module_path.clone(),
+            binding: cand.binding.clone(),
+        };
+    }
+    // COUNT BINDERS, NOT MODULE LABELS. An earlier revision projected the on-chain candidates to
+    // module paths, deduped THOSE, and returned UniqueOnChain when they all came from one module,
+    // taking `on_chain[0]` as the binding. That is not §13's rule and it diverged from inference
+    // exactly where it matters: `global_bare_unique_chain_candidate` routes the COMPLETE on-chain
+    // owner list through `module_path_owner_binding_decide`, which counts the list and answers
+    // ModulePathBindingAmbiguous at two entries EVEN WHEN THE OWNER STRINGS ARE EQUAL. So two
+    // distinct bindings at one module path are ambiguous to the type env and were a free choice
+    // here — a silent pick inside the change whose whole purpose is banning silent picks.
+    // Caught by external review; my own sixth test had canonized the wrong answer.
+    //
+    // Duplicates are KEPT rather than collapsed: two bindings at one module path is what the
+    // operator has to fix, and naming that module once would describe it as something else.
+    // Sorted for determinism — a candidate list that permutes between runs cannot be diffed.
+    let mut modules: Vec<String> = on_chain.iter().map(|c| c.module_path.clone()).collect();
+    modules.sort();
+    ClosureBareDisposition::AmbiguousOnChain { modules }
+}
+
+#[cfg(test)]
+mod closure_bare_disposition_tests {
+    use super::{closure_bare_disposition, ClosureBareDisposition};
+    use crate::v1_compiler_infer_env::{GlobalBareCandidate, TypeBinding};
+    use std::rc::Rc;
+
+    /// A synthetic binding: this decision reads only `module_path`, so the node carries no
+    /// meaning and must not pretend to. Same shape the generated tests use for a synthetic node.
+    fn candidate(module_path: &str) -> Rc<GlobalBareCandidate> {
+        candidate_bound_as(module_path, "Target")
+    }
+
+    /// Two candidates at ONE module path must be able to DIFFER, or the duplicate case degenerates
+    /// into the same value twice — which the production index already suppresses, so it would not
+    /// be the counterexample that matters.
+    fn candidate_bound_as(module_path: &str, decl_name: &str) -> Rc<GlobalBareCandidate> {
+        let span = crate::v1_std_core::no_span();
+        let node = Rc::new(crate::v1_std_core::Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: decl_name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: crate::v1_std_core::empty_node_list(),
+            connective: crate::v1_std_core::Connective::NoConnective,
+            params: crate::v1_std_core::empty_node_list(),
+            inferred: None,
+            return_cardinality: crate::v1_std_core::Cardinality::Required,
+            uses: crate::v1_std_core::empty_node_list(),
+            body: None,
+            transport: None,
+            properties: crate::v1_std_core::empty_node_list(),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
+        });
+        Rc::new(GlobalBareCandidate {
+            module_path: module_path.to_string(),
+            binding: Rc::new(TypeBinding {
+                name: decl_name.to_string(),
+                resolved: node,
+                provenance: Rc::new(crate::std_induction::SubValueRelation::PreservedValue),
+            }),
+        })
+    }
+
+    /// CASE 1 — one on-chain, one off-chain. The on-chain declaration is what the reference
+    /// means. RED if the flat raw-candidate rule is restored: that rule refuses here.
+    #[test]
+    fn one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a.b"), candidate("x.y")])),
+        );
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(
+                    module_path, "a.b",
+                    "containment decides, not proximity or count"
+                );
+            }
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "refused a reference the type env resolves; a flat rule was restored: {modules:?}"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => {
+                panic!("a.b IS on a.b.c's chain")
+            }
+        }
+    }
+
+    /// CASE 2 — two on-chain at different depths. §13 refuses and names BOTH. RED if
+    /// nearest/LCP ranking is restored: ranking would pick `a.b` as the longer prefix.
+    #[test]
+    fn two_on_chain_candidates_refuse_and_name_the_whole_on_chain_population() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a"), candidate("a.b")])),
+        );
+        match d {
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                assert_eq!(
+                    modules,
+                    vec!["a".to_string(), "a.b".to_string()],
+                    "both on-chain candidates, deterministically ordered"
+                );
+            }
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "ranked instead of refusing — picked {module_path}; the deleted proximity                  heuristic is back"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => panic!("both are on-chain"),
+        }
+    }
+
+    /// CASE 3 — zero on-chain with several global candidates. The type env returns `Absent`
+    /// here, so the semantic result is unresolved and the closure pulls nothing rather than
+    /// fabricating a provider. RED if a raw-candidate refusal is restored.
+    ///
+    /// This is also the case the corpus is FULL of: 129 forked names span std.* and v2.std.*,
+    /// and none has two candidates on one referencing module's chain.
+    #[test]
+    fn zero_on_chain_pulls_nothing_rather_than_refusing_or_choosing() {
+        let d = closure_bare_disposition(
+            "gunbc.ci.ci_spec",
+            Rc::new(im::Vector::from(vec![
+                candidate("std.nat"),
+                candidate("v2.std.nat"),
+            ])),
+        );
+        match d {
+            ClosureBareDisposition::NoOnChainCandidate => {}
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "refused with off-chain candidates {modules:?} — that is a rule the type env                  does not apply"
+            ),
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                panic!("fabricated a provider off-chain: {module_path}")
+            }
+        }
+    }
+
+    /// The chain is LEADING-SEGMENT containment, not string prefix: `a.bc` is not on `a.b.c`'s
+    /// chain, and a rule written with `starts_with` would say it is.
+    #[test]
+    fn a_segment_boundary_is_respected_so_a_bc_is_not_on_a_b_c_s_chain() {
+        let d =
+            closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.bc")])));
+        assert!(
+            matches!(d, ClosureBareDisposition::NoOnChainCandidate),
+            "a.bc shares a string prefix with a.b.c but is not an ancestor of it"
+        );
+    }
+
+    /// The referencing module itself is on its own chain (equal, not strictly above).
+    #[test]
+    fn the_referencing_module_is_on_its_own_chain() {
+        let d =
+            closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.b.c")])));
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(module_path, "a.b.c")
+            }
+            _ => panic!("a module declaring a name is on its own chain"),
+        }
+    }
+
+    /// CASE 6 — two DISTINCT bindings at one module path are AMBIGUOUS, not a free choice.
+    ///
+    /// This asserted the OPPOSITE until review caught it. §13 is unique BINDER on the chain, not
+    /// unique module containing one or more binders: `module_path_owner_binding_decide` counts the
+    /// owner list (`owners |> count`) and answers Ambiguous at two entries EVEN WHEN THE STRINGS
+    /// ARE EQUAL. A closure resolver that deduped the labels and took `on_chain[0]` would silently
+    /// pick — the exact class this change bans — and would disagree with the type env on one input.
+    #[test]
+    fn two_distinct_bindings_at_one_module_path_are_ambiguous_not_a_free_choice() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![
+                candidate_bound_as("a.b", "Target"),
+                candidate_bound_as("a.b", "TargetAgain"),
+            ])),
+        );
+        match d {
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                assert_eq!(
+                    modules,
+                    vec!["a.b".to_string(), "a.b".to_string()],
+                    "both binders are reported; collapsing them to one label would describe two \
+                     bindings at one path as something else"
+                );
+            }
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "chose a binding where inference refuses — module-label dedup is back: {module_path}"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => panic!("a.b is on-chain"),
+        }
     }
 }
 
@@ -34856,6 +35366,7 @@ mod peel_alias_fixpoint_termination {
                 authored_import_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
+                unit_variant_index_observed: false,
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
@@ -34879,6 +35390,17 @@ mod peel_alias_fixpoint_termination {
                     matches!(
                         *d.diagnostic,
                         crate::v1_std_core::CompilerDiagnostic::UnresolvedType { .. }
+                            | crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. }
+                    )
+                })
+                .count();
+            let unavailable_evidence_count = out
+                .diagnostics
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        &*d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. }
                     )
                 })
                 .count();
@@ -34910,14 +35432,20 @@ mod peel_alias_fixpoint_termination {
                 termination_probe,
                 quiet_diagnostic_count,
                 refusal_count,
+                unavailable_evidence_count,
                 retired_count,
             ));
         });
-        let ((name, is_fixpoint), quiet_diagnostic_count, refusal_count, retired_count) =
-            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
-                "peel_alias_once_for_field_access did not terminate within 30s — the \
+        let (
+            (name, is_fixpoint),
+            quiet_diagnostic_count,
+            refusal_count,
+            unavailable_evidence_count,
+            retired_count,
+        ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+            "peel_alias_once_for_field_access did not terminate within 30s — the \
                  fixpoint guard regressed (pre-guard this fixture spins forever)",
-            );
+        );
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
             quiet_diagnostic_count, 0,
@@ -34926,6 +35454,10 @@ mod peel_alias_fixpoint_termination {
         assert_eq!(
             refusal_count, 2,
             "a resolver refusal during speculative peel must remain typed and countable"
+        );
+        assert_eq!(
+            unavailable_evidence_count, 2,
+            "an unobserved marker census must remain a distinct typed refusal"
         );
         assert_eq!(
             retired_count, 0,

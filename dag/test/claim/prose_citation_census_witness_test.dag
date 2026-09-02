@@ -7,15 +7,38 @@ import tools.prose_citation_census {
   prose_citation_names_in_line,
   prose_citation_line_carrier,
   prose_citation_sites_in_source,
-  prose_citation_retired_rows,
+  prose_citation_retirement_scan,
   prose_citation_retired_index,
   prose_citation_census_of,
-  prose_citation_baseline_row,
-  prose_citation_baseline_rows,
+  prose_citation_baseline_scan,
+  prose_citation_baseline_reading,
+  BaselineLineReading, BaselineRowRead, BaselineLineNotAProseRow, BaselineLineBlank, BaselineLineUnparsable,
   prose_citation_site_key,
-  prose_citation_site_is_annotation,
+  ProseRowOrigin, RetiredFromOnePath, RetiredFromSeveralPaths,
+  ProseCitationLocality, InRetiringFile, InAnotherFile, RetiringFileAmbiguous,
+  prose_citation_locality_of,
+  ProseCitationResolution, CitedNameAbsentEverywhere, CitedNameSurvivesElsewhere,
+  prose_citation_module_index,
+  prose_citation_qualified,
 }
 
+// THE ADMITTED SHAPE OF THIS FILE, recorded here because it is a boundary an operator drew and
+// nothing in the language enforces it. The ScaffoldAdmitted disposition of 2026-09-01 admits
+// PERSISTENT REQUIRED-FLOOR ENROLMENT of this module OVER AUTHORED IN-MEMORY FIXTURES, and explicitly
+// does NOT admit live-instrument invocation or git, filesystem or corpus acquisition during these
+// controls. The full scope and boundary sit beside the disposition they qualify, in
+// tools.prose_citation_census.
+//
+// TODAY THAT HOLDS BY CONSTRUCTION RATHER THAN BY DISCIPLINE: the import list above names only pure
+// functions and types, so these controls CANNOT acquire anything -- there is no acquirer in scope to
+// call. That is the property worth preserving, and it is preserved by what this file imports.
+//
+// SO THE RULE FOR A LATER AUTHOR IS ABOUT THE IMPORT LINE, NOT ABOUT THE TEST BODY: adding
+// filesystem_read, a git.Inspect operation, data_decl_type_facts, or either live entry point to this
+// module leaves the admitted scope and needs a new disposition. It would also put a live-tree read
+// inside a required-floor witness, which is the cost shape v2.workflow.floor_cost_debt exists for.
+// Both consequences follow from one edit that would otherwise look like adding a test.
+//
 // THE DISCRIMINATING CONTROLS for the prose-citation census, run against the REAL recogniser on
 // specimens rather than against a re-derived copy of its rule. Nothing here reads git or the corpus:
 // the recogniser is pure over (path, text, retired index) precisely so these can exercise the decision
@@ -26,7 +49,7 @@ import tools.prose_citation_census {
 // together pin the boundary rule. Every positive below therefore has a negative that differs in one
 // property, and the counter pair at the end shows the scan is non-constant in its retired index.
 
-fn retired_index_of(names: List<String>, home: String) -> Map<String, String> {
+fn retired_index_of(names: List<String>, home: String) -> Map<String, ProseRowOrigin> {
   prose_citation_retired_index(rows: names |> map(n => ProseRowRef { path: home, decl_name: n }))
 }
 
@@ -136,25 +159,27 @@ data annotation_specimen: String = "module gunbc.citing_module\n\n// The rationa
 data prose_row_specimen: String = "module gunbc.citing_module\n\ndata kept_note: String = \"restates probe_note without repeating it\"\n"
 
 fn sites_of(path: String, text: String, retired: List<String>, home: String) -> List<ProseCitationSite> {
-  prose_citation_sites_in_source(rel_path: path, text: text, retired: retired_index_of(names: retired, home: home))
+  prose_citation_sites_in_source(rel_path: path, text: text, retired: retired_index_of(names: retired, home: home), live_bare: empty_map())
 }
 
-test fn a_cross_file_annotation_citation_is_one_site_at_its_line() -> Bool {
+test fn an_annotation_citation_in_another_file_is_one_site_at_its_line() -> Bool {
   let sites = sites_of(path: specimen_other, text: annotation_specimen, retired: ["probe_note"], home: specimen_home)
   (sites |> count) == 1
-    && fold(sites, init: true, f: (ok, s) => ok && s.cited_name == "probe_note" && s.line == 3 && s.cross_file && prose_citation_site_is_annotation(s: s))
+    && fold(sites, init: true, f: (ok, s) => ok && s.cited_name == "probe_note" && s.line == 3
+        && match s.locality { InAnotherFile => true, InRetiringFile => false, RetiringFileAmbiguous => false }
+        && match s.carrier { InAnnotationBlock => true, InProseRowLiteral => false })
 }
 
 test fn a_prose_row_citation_is_a_prose_row_site() -> Bool {
   let sites = sites_of(path: specimen_other, text: prose_row_specimen, retired: ["probe_note"], home: specimen_home)
-  (sites |> count) == 1 && fold(sites, init: true, f: (ok, s) => ok && !prose_citation_site_is_annotation(s: s))
+  (sites |> count) == 1 && fold(sites, init: true, f: (ok, s) => ok && match s.carrier { InAnnotationBlock => false, InProseRowLiteral => true })
 }
 
-// SAME-FILE IS THE OTHER ARM OF cross_file, and it is the arm a disposition turns on: a citation in
-// the file the row was retired from can be read against the annotation that replaced it.
-test fn a_citation_in_the_retiring_file_is_not_cross_file() -> Bool {
+// InRetiringFile IS THE ARM A DISPOSITION TURNS ON: a citation in the file the row was retired from
+// can be read against the annotation that replaced it, and one in another file cannot.
+test fn a_citation_in_the_retiring_file_is_local_to_it() -> Bool {
   let sites = sites_of(path: specimen_home, text: annotation_specimen, retired: ["probe_note"], home: specimen_home)
-  (sites |> count) == 1 && fold(sites, init: true, f: (ok, s) => ok && !s.cross_file)
+  (sites |> count) == 1 && fold(sites, init: true, f: (ok, s) => ok && match s.locality { InRetiringFile => true, InAnotherFile => false, RetiringFileAmbiguous => false })
 }
 
 // THE FALSE-POSITIVE CONTROL. Prose naming a row that is STILL DECLARED is a healthy citation and must
@@ -178,10 +203,81 @@ fn live_index(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
 }
 
-test fn a_baseline_row_whose_name_is_still_declared_is_not_retired() -> Bool {
-  let rows = [ProseRowRef { path: specimen_home, decl_name: "moved_note" }, ProseRowRef { path: specimen_home, decl_name: "gone_note" }]
-  let retired = prose_citation_retired_rows(baseline_rows: rows, live: live_index(names: ["moved_note"]))
-  (retired |> count) == 1 && fold(retired, init: true, f: (ok, r) => ok && r.decl_name == "gone_note")
+// RETIREMENT IS DECIDED BY QUALIFIED IDENTITY, and this pair is what makes that claim falsifiable
+// rather than declared. Both rows carry the SAME bare name. One is still declared in its OWN module
+// and is not retired; the other's module no longer declares it while ANOTHER module does, and it IS
+// retired. A bare-name key returns the same answer for both and would report neither -- which is the
+// false negative review 58234 named, and it is the more severe class because such a citation still
+// resolves, to the wrong declaration.
+data live_module_a: String = "gunbc.module_a"
+
+data live_module_b: String = "gunbc.module_b"
+
+fn qualified_live_index(qualified: List<String>) -> Map<String, Bool> {
+  fold(qualified, init: empty_map(), f: (acc, q) => map_insert(acc, q, true))
+}
+
+data two_module_baseline: List<ProseRowRef> = [
+  ProseRowRef { path: "dag/gunbc/module_a.dag", decl_name: "kept_note" },
+  ProseRowRef { path: "dag/gunbc/module_b.dag", decl_name: "moved_note" }
+]
+
+data two_module_index: Map<String, String> = map_insert(map_insert(empty_map(), "dag/gunbc/module_a.dag", live_module_a), "dag/gunbc/module_b.dag", live_module_b)
+
+test fn a_row_still_declared_in_its_own_module_is_not_retired() -> Bool {
+  let live = qualified_live_index(qualified: [
+    prose_citation_qualified(module_path: live_module_a, decl_name: "kept_note"),
+    prose_citation_qualified(module_path: live_module_b, decl_name: "moved_note")
+  ])
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: live)
+  (scan.retired |> count) == 0 && (scan.unidentified |> count) == 0
+}
+
+test fn a_row_whose_bare_name_survives_only_in_another_module_is_retired() -> Bool {
+  let live = qualified_live_index(qualified: [
+    prose_citation_qualified(module_path: live_module_a, decl_name: "kept_note"),
+    prose_citation_qualified(module_path: live_module_a, decl_name: "moved_note")
+  ])
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: live)
+  (scan.retired |> count) == 1
+    && (scan.unidentified |> count) == 0
+    && fold(scan.retired, init: true, f: (ok, r) => ok && r.decl_name == "moved_note")
+}
+
+// A baseline path with no module line establishes no identity, so it is not judged either way. Without
+// this arm the fold would have to invent a module or default to retired, and defaulting to retired
+// would enrol every unparsed file's rows into the population.
+//
+// BUT NOT JUDGED IS NOT THE SAME AS NOT COUNTED, and this control is the discriminating RED for review
+// 58281: an empty module index is exactly what a FAILED module read produces, so a scan that answered
+// "zero retired" here -- and nothing else -- would render an acquisition failure as a clean census.
+// The unidentified list is what carries that state out, and the arm below asserts it is non-empty and
+// holds EVERY row, so a future edit that quietly drops them again cannot leave this green.
+test fn a_baseline_row_whose_module_is_unknown_is_carried_not_dropped() -> Bool {
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: empty_map(), live_qualified: empty_map())
+  (scan.retired |> count) == 0
+    && (scan.unidentified |> count) == (two_module_baseline |> count)
+}
+
+// THE COUNTER PAIR: the same baseline rows against a POPULATED index leave the unidentified list empty
+// while retired becomes non-empty. Without this, the control above is satisfied by a scan that files
+// every row as unidentified unconditionally -- a constant, which discriminates nothing.
+test fn a_populated_module_index_leaves_nothing_unidentified() -> Bool {
+  let scan = prose_citation_retirement_scan(baseline_rows: two_module_baseline, modules: two_module_index, live_qualified: empty_map())
+  (scan.unidentified |> count) == 0
+    && (scan.retired |> count) == (two_module_baseline |> count)
+}
+
+// A PARTIAL index is the state the live refusal actually names -- the module read covering some files
+// and not others. Both lists are non-empty at once, which no single-list return could have expressed.
+test fn a_partial_module_index_splits_the_rows_across_both_lists() -> Bool {
+  let scan = prose_citation_retirement_scan(
+    baseline_rows: two_module_baseline,
+    modules: map_insert(empty_map(), "dag/gunbc/module_a.dag", live_module_a),
+    live_qualified: empty_map()
+  )
+  (scan.retired |> count) > 0 && (scan.unidentified |> count) > 0
+    && ((scan.retired |> count) + (scan.unidentified |> count)) == (two_module_baseline |> count)
 }
 
 // THE CENSUS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY. lists_agree compares membership in both
@@ -213,7 +309,10 @@ test fn the_census_totals_are_projections_of_its_own_site_list() -> Bool {
   census.site_count == (sites |> count)
     && census.annotation_site_count == 1
     && census.prose_row_site_count == 0
-    && census.cross_file_site_count == 1
+    && census.another_file_site_count == 1
+    && census.ambiguous_origin_site_count == 0
+    && census.absent_everywhere_site_count == 1
+    && census.survives_elsewhere_site_count == 0
     && census.cited_name_count == 1
 }
 
@@ -225,11 +324,14 @@ test fn the_census_totals_are_projections_of_its_own_site_list() -> Bool {
 data baseline_ref_specimen: String = "2afe322f774dbc908afc6106bf3fa55372fccf89"
 
 fn baseline_row_of(line: String) -> List<ProseRowRef> {
-  prose_citation_baseline_rows(matches: line, ref_len: string_length(s: baseline_ref_specimen))
+  prose_citation_baseline_scan(matches: line, ref_len: string_length(s: baseline_ref_specimen)).rows
 }
 
+data baseline_prose_line: String = "2afe322f774dbc908afc6106bf3fa55372fccf89:dag/gunbc/retiring_module.dag:data probe_note: String = \""
+data baseline_program_line: String = "2afe322f774dbc908afc6106bf3fa55372fccf89:dag/gunbc/retiring_module.dag:data probe_label: String = \""
+
 test fn a_baseline_match_line_yields_its_path_and_name() -> Bool {
-  let rows = baseline_row_of(line: concat(baseline_ref_specimen, ":dag/gunbc/retiring_module.dag:data probe_note: String = \""))
+  let rows = baseline_row_of(line: baseline_prose_line)
   (rows |> count) == 1
     && fold(rows, init: true, f: (ok, r) => ok && r.decl_name == "probe_note" && r.path == "dag/gunbc/retiring_module.dag")
 }
@@ -237,9 +339,123 @@ test fn a_baseline_match_line_yields_its_path_and_name() -> Bool {
 // A `data NAME: String` row that is NOT a prose row is program data, and enrolling it would put every
 // string-valued declaration in the corpus into the retired universe.
 test fn a_baseline_match_that_is_not_a_prose_row_yields_nothing() -> Bool {
-  (baseline_row_of(line: concat(baseline_ref_specimen, ":dag/gunbc/retiring_module.dag:data probe_label: String = \"")) |> count) == 0
+  (baseline_row_of(line: baseline_program_line) |> count) == 0
 }
 
-test fn a_baseline_line_with_no_path_separator_yields_nothing() -> Bool {
-  (baseline_row_of(line: baseline_ref_specimen) |> count) == 0
+// "YIELDS NOTHING" WAS THE CONFLATION. Three different lines yielded no row, and an Optional could not
+// say which -- so a line git grep should never have emitted read exactly like an ordinary program-data
+// row. These three controls pin each to its OWN arm, which is what lets the caller refuse on the third
+// without refusing on the first two.
+test fn a_program_data_line_is_read_as_not_a_prose_row_not_as_malformed() -> Bool {
+  match prose_citation_baseline_reading(line: baseline_program_line, ref_len: string_length(s: baseline_ref_specimen)) {
+    BaselineLineNotAProseRow => true
+    BaselineRowRead { row: _ } => false
+    BaselineLineBlank => false
+    BaselineLineUnparsable { line: _ } => false
+  }
+}
+
+// THE BLANK ARM EXISTS BECAUSE split YIELDS ONE FOR THE TRAILING NEWLINE. It reaches the
+// no-separator test, so without its own arm every healthy run would carry a malformed line and the
+// refusal would fire on all of them. This control is what keeps that wall from being unshippable.
+test fn the_trailing_blank_line_is_blank_not_malformed() -> Bool {
+  match prose_citation_baseline_reading(line: "", ref_len: string_length(s: baseline_ref_specimen)) {
+    BaselineLineBlank => true
+    BaselineRowRead { row: _ } => false
+    BaselineLineNotAProseRow => false
+    BaselineLineUnparsable { line: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED for the baseline arm: output that is not shaped like git grep output is the
+// acquisition misreporting its own format, and it is the ONLY arm that refuses.
+test fn a_baseline_line_with_no_path_separator_is_unparsable_not_merely_empty() -> Bool {
+  let scan = prose_citation_baseline_scan(matches: baseline_ref_specimen, ref_len: string_length(s: baseline_ref_specimen))
+  (scan.rows |> count) == 0 && (scan.unparsable |> count) == 1
+}
+
+// THE PARTITION MUST CLOSE, and this is the executable form of the measurement that admitted the wall.
+// At the pre-sweep baseline the corpus read 4807 rows + 3058 program-data rows = 7865 lines with zero
+// unparsable. A count gap and a mass silent drop are indistinguishable from the gap alone, so what has
+// to be shown is that the four arms EXHAUST the input -- not that a filter exists. Asserting the sum
+// here means no future arm can quietly absorb a line without failing this control.
+test fn every_baseline_line_lands_in_exactly_one_arm() -> Bool {
+  let matches = concat(concat(baseline_prose_line, "\n"), concat(concat(baseline_program_line, "\n"), concat(baseline_ref_specimen, "\n")))
+  let scan = prose_citation_baseline_scan(matches: matches, ref_len: string_length(s: baseline_ref_specimen))
+  let total = (split(s: matches, delimiter: "\n") |> count)
+  ((scan.rows |> count) + scan.non_prose_count + scan.blank_count + (scan.unparsable |> count)) == total
+    && (scan.rows |> count) == 1
+    && scan.non_prose_count == 1
+    && (scan.unparsable |> count) == 1
+    && scan.blank_count == 1
+}
+
+// THE COLLISION ARM, which had no control at all until review 58228 named it. Two baseline rows sharing
+// a name is not hypothetical -- 38 prose-row names in the pre-sweep baseline are declared in more than
+// one file across 119 rows -- and the retired SUBSET happening to carry 4002 distinct names over 4002
+// rows is a property of today's tree, not of the construction. The pair below is what makes the
+// ambiguity real rather than declared: one origin resolves to a locality, several refuse to.
+test fn a_name_retired_from_one_path_resolves_its_locality() -> Bool {
+  let here = prose_citation_locality_of(origin: RetiredFromOnePath { path: specimen_home }, rel_path: specimen_home)
+  let elsewhere = prose_citation_locality_of(origin: RetiredFromOnePath { path: specimen_home }, rel_path: specimen_other)
+  match here { InRetiringFile => true, InAnotherFile => false, RetiringFileAmbiguous => false }
+    && match elsewhere { InAnotherFile => true, InRetiringFile => false, RetiringFileAmbiguous => false }
+}
+
+// A Bool cross_file would have had to answer this case true or false. It refuses instead, and the
+// refusal is counted in the census rather than folded into either of the other two arms.
+test fn a_name_retired_from_several_paths_refuses_to_pick_a_locality() -> Bool {
+  let rows = [
+    ProseRowRef { path: specimen_home, decl_name: "probe_note" },
+    ProseRowRef { path: specimen_other, decl_name: "probe_note" }
+  ]
+  let sites = prose_citation_sites_in_source(rel_path: specimen_other, text: annotation_specimen, retired: prose_citation_retired_index(rows: rows), live_bare: empty_map())
+  (sites |> count) == 1
+    && fold(sites, init: true, f: (ok, s) => ok && match s.locality { RetiringFileAmbiguous => true, InRetiringFile => false, InAnotherFile => false })
+}
+
+// The merge is idempotent on a repeated path: the SAME row seen twice is one origin, not an ambiguity.
+// Without this, any duplicate in the baseline read would degrade every site to ambiguous.
+test fn the_same_path_seen_twice_is_still_one_origin() -> Bool {
+  let rows = [
+    ProseRowRef { path: specimen_home, decl_name: "probe_note" },
+    ProseRowRef { path: specimen_home, decl_name: "probe_note" }
+  ]
+  let sites = prose_citation_sites_in_source(rel_path: specimen_home, text: annotation_specimen, retired: prose_citation_retired_index(rows: rows), live_bare: empty_map())
+  (sites |> count) == 1
+    && fold(sites, init: true, f: (ok, s) => ok && match s.locality { InRetiringFile => true, InAnotherFile => false, RetiringFileAmbiguous => false })
+}
+
+// THE RESOLUTION SPLIT, which review 58234 is the reason this file has at all. The pair is the whole
+// content: the SAME site, the SAME retired row, differing only in whether the cited spelling is
+// declared anywhere today, must land in different arms. A census keyed on bare-name liveness could not
+// produce the second row at all -- the site would simply not be reported.
+test fn a_cited_name_declared_nowhere_and_one_surviving_elsewhere_are_different_states() -> Bool {
+  let retired = retired_index_of(names: ["probe_note"], home: specimen_home)
+  let dead = prose_citation_sites_in_source(rel_path: specimen_other, text: annotation_specimen, retired: retired, live_bare: empty_map())
+  let survives = prose_citation_sites_in_source(rel_path: specimen_other, text: annotation_specimen, retired: retired, live_bare: map_insert(empty_map(), "probe_note", true))
+  (dead |> count) == 1 && (survives |> count) == 1
+    && fold(dead, init: true, f: (ok, s) => ok && match s.resolution { CitedNameAbsentEverywhere => true, CitedNameSurvivesElsewhere => false })
+    && fold(survives, init: true, f: (ok, s) => ok && match s.resolution { CitedNameSurvivesElsewhere => true, CitedNameAbsentEverywhere => false })
+}
+
+// The qualified key is the join both halves use, so a control on its spelling is a control on the
+// join. `module.name` and nothing else -- a separator drift here would silently retire everything.
+test fn the_qualified_identity_is_the_module_dot_name_spelling() -> Bool {
+  prose_citation_qualified(module_path: "gunbc.retiring_module", decl_name: "probe_note") == "gunbc.retiring_module.probe_note"
+}
+
+// The baseline module read has the same shape as the declaration read and the same failure mode: a
+// line that is not a module line must contribute nothing rather than a wrong path-to-module entry.
+test fn the_module_index_reads_module_lines_and_ignores_others() -> Bool {
+  let ref = baseline_ref_specimen
+  let n = string_length(s: ref)
+  let idx = prose_citation_module_index(
+    matches: concat(concat(ref, ":dag/gunbc/retiring_module.dag:module gunbc.retiring_module\n"), concat(ref, ":dag/gunbc/other.dag:data not_a_module_note: String = \"")),
+    ref_len: n
+  )
+  match lookup(idx, "dag/gunbc/retiring_module.dag") {
+    Absent => false
+    Present { value: m } => m == "gunbc.retiring_module" && !map_contains_key(idx, "dag/gunbc/other.dag")
+  }
 }
