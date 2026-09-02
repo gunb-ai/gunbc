@@ -137,13 +137,36 @@ import v2.std.collection { List }
 // nothing to verify, and preparation-forceable, so the fill lands outside the fold. The general
 // function stays exactly as it was and its witnesses still exercise it against perturbed series.
 //
-// WHAT IT IS EXPECTED TO BUY, stated as headroom and not as a rung claim. The two closures that
-// consume this standing -- test.claim.self_host_compile_phase_live_gate_witness and
-// test.claim.compiler_frontend_program_status_witness -- carried 42 of the corpus's rows at or
-// above 280ms on runs 33664853305 and 33664768371, at 356-447ms against the 500ms per-claim CPU
-// ceiling, while the corpus p50 is 2ms. Removing a per-closure constant removes the LEVEL that puts
-// them there. It does not make any claim's cost environment-independent, and gunbc.rung_drop
-// floor_cost_claim_qualification_unavailable keeps standing on that separate subject.
+// WHAT IT BUYS, MEASURED PRESENT-VS-ABSENT ON ONE BRANCH rather than expected. This roster's
+// admission criterion is that measured per-claim recompute is NECESSARY BUT NOT SUFFICIENT: a row
+// enrols only when its SERVE cost is below its recompute cost. That comparison is two floor runs of
+// this branch differing in exactly this one roster line, so it controls for the tree rather than
+// for main -- absent arm run 33669782300 attempt 1 (head 0205a4dae6), present arm run 33672356296
+// attempt 1 (head a71dfb3623), both required_floor_claim_cost.tsv, joined by identity:
+//
+//   test.claim.compiler_frontend_program_status_witness   382-409ms -> 50-63ms   (8 rows)
+//   test.claim.self_host_compile_phase_live_gate_witness  418-445ms -> 0-81ms    (7 of 13 rows)
+//   corpus rows at or above 400ms                         18 -> 10
+//   the warm fill itself                                  disposition=Stored, 501ms, billed to preparation
+//
+// THE CONTROL THAT MAKES THAT A SERVE MEASUREMENT AND NOT A PAIR OF HOT AND COLD RUNS, and it is
+// the reading this enrolment had to survive: 72 rows at or above 250ms OUTSIDE the three consuming
+// modules -- rows this row cannot serve -- moved present/absent by p50 1.04, p90 1.09, max 1.17.
+// The present run was simply hotter. Rows inside the consuming modules that did NOT improve moved
+// 1.09-1.17, inside that same band, so they moved WITH the corpus rather than against the cache.
+// Re-derive by joining the two artifacts on identity; do not read these figures as the instrument.
+//
+// WHY THE UNIMPROVED ROWS EXISTED AT ALL, since it is this row's own coverage boundary:
+// gunbc.self_host_compile_phase_live_gate live_tree_frontier_verdict took a SERIES and re-derived
+// the standing itself, so a caller meaning the persisted series could not reach this entry however
+// the roster was spelled. That fold now takes the STANDING, which is what its body consumed all
+// along.
+//
+// WHAT THIS DOES NOT DO. Removing a per-closure constant removes the LEVEL that put these closures
+// at the line. It does not make any claim's cost environment-independent -- the control above is
+// that environment term, still present and still moving -- so gunbc.rung_drop
+// floor_cost_claim_qualification_unavailable keeps standing on that separate subject, and this row
+// is headroom rather than a rung claim.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
