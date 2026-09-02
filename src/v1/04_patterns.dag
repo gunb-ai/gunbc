@@ -393,12 +393,21 @@ fn variant_pattern_coverage_key(name: String) -> String {
 // `Cons { tail: _ }` the inner column's signature is incomplete, which takes the default arm
 // and stops.
 //
-// RETAINED BLINDNESS, DECLARED RATHER THAN WIDENED: a column whose type carries no closed
-// constructor roster -- Int, String, Bool -- is not refused when the rows cover it only with
-// literals. That is the PRE-EXISTING top-level behaviour (a non-coproduct scrutinee was never
-// checked at all) carried unchanged to nested depth, not a new failure arm. NEXT-RUNG
-// TRIGGER: a closed constructor roster for the kernel scalar types, sufficient that `true`
-// and `false` decide a Bool column the way a coproduct's declared arms decide a Disj column.
+// WHAT IS AND IS NOT CLOSED, CORRECTED AGAINST THE DECLARATION RATHER THAN ASSUMED. An earlier
+// version of this note claimed Bool was among the OPEN scalars. It is not: `std.types` declares
+// `type Bool = True | False`, an ordinary Disj, so a Bool column resolves to a two-arm roster and
+// a nested `{ gate_verdict: false }` arm that never covers `true` is refused -- correctly, since
+// the emitted `match` faces the same two arms. The claim was measured false by this change's own
+// census (gunbc.host_standup GreenPlaceFromGunbcGate), and it UNDERSTATED what the checker does,
+// which is still a rung-honesty defect: a scope sentence nobody can check against the code is
+// the same failure as an inflated one, pointing the other way.
+//
+// GENUINELY OPEN, and refused nowhere: Int and String columns, whose inhabitants are not a
+// declared roster. Rows covering such a column with literals alone are not refused. That is the
+// PRE-EXISTING top-level behaviour (a non-coproduct scrutinee was never checked at all) carried
+// unchanged to nested depth, not a new failure arm. NEXT-RUNG TRIGGER: a closed constructor
+// roster for those two, sufficient that a finite literal set is decided the way a coproduct's
+// declared arms are.
 
 type ConstructorRoster
   = ConstructorsClosed { names: List<String> }
@@ -422,6 +431,29 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
   if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
 }
 
+// THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN
+// QUESTION HELD OPEN DELIBERATELY, not a settled one.
+//
+// A type position may name one VARIANT rather than its coproduct (`HostCliDependencyAbsent?`), and
+// `lookup_type_for` answers with the declaration owning the name, so the column resolves to the
+// PARENT. By inhabitance only that one variant can occur there, so the parent's other arms are
+// unreachable and requiring them looks like a phantom.
+//
+// A narrowing to the singleton was written and then REMOVED, because the .dag type system already
+// answers this question the other way and answers it out loud: on `Present { value: a } => a.tool`
+// it refuses `no field 'tool' on type 'VObs'` (still-swift-363, executed). The corpus sites survive
+// only because they destructure IN THE PATTERN, which works against a variant even when the column
+// is the parent -- so the same column gives two different answers depending on the spelling, and
+// only one of them makes the type system speak. A roster saying `singleton` while resolution says
+// `parent` would be one concept with two answers inside one compiler (section 3), and it would make
+// the checker STOP REPORTING a class rather than report it -- the silent widen section 5 forbids.
+// Under uncertainty the arm that refuses is the correct one, so the roster follows resolution.
+//
+// WHAT IS ACTUALLY UNDECIDED, named so it does not stall untracked (section 4b(2)): whether a
+// variant should be a FIRST-CLASS TYPE, making `HostCliDependencyAbsent?` genuinely a singleton
+// Optional. Rust cannot express that -- hence the emitter's variant_to_enum -- so it is a substrate
+// question about the type system, not a tweak to this checker, and it is not settled here. Until it
+// is, such a match is refused with the parent's roster, which is what resolution says today.
 fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
   let is_coproduct = resolved.connective == Disj
@@ -586,6 +618,21 @@ fn exhaustiveness_witnesses(rows: List<List<MatchPattern>>, columns: List<Node>,
   }
 }
 
+// A WITNESS ROW AT TOP LEVEL CARRIES EXACTLY ONE CELL, and the residual arm says so instead of
+// naming a pattern. `exhaustiveness_witnesses` prepends one cell per column it consumes and the
+// entry below passes a single column, so a cell-less row means the recursion broke its own
+// invariant. Answering `_` there would print a WILDCARD -- a well-formed pattern a reader would
+// take for a real uncovered case -- which is the fabricated-plausible-output arm section 5
+// forbids, and the fact that the branch is unreachable today is what makes the fabrication
+// durable rather than harmless: nothing would ever contradict it. The refusal is still a
+// refusal in either arm, so what this protects is the NAME the diagnostic carries.
+fn witness_row_missing_name(w: PatternWitnessRow) -> String {
+  match w.cells |> first {
+    Present { value: c } => c
+    Absent => "<unnameable witness: exhaustiveness_witnesses returned a cell-less row>"
+  }
+}
+
 fn check_match_exhaustiveness(
   scrutinee_type: Node,
   arms: List<Node>,
@@ -605,7 +652,7 @@ fn check_match_exhaustiveness(
       if (witnesses |> count) > 0 {
         [make_error_node(
           diagnostic: NonExhaustiveMatch {
-            missing: witnesses |> map(w => match w.cells |> first { Present { value: c } => c  Absent => "_" }),
+            missing: witnesses |> map(w => witness_row_missing_name(w: w)),
             span: span
           },
           module_name: module_name

@@ -214,3 +214,33 @@ test fn w_optional_nested_missing_inner_variant_reports_one_non_exhaustive() -> 
 test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool {
   non_exhaustive_blocking_count(source: optional_nested_complete_source) == 0
 }
+
+// -- A VARIANT NAMED IN A TYPE POSITION IS JUDGED AGAINST ITS PARENT'S ROSTER --
+//
+// This pair PINS A BEHAVIOUR THAT IS UNDER AN OPEN QUESTION, and says so rather than asserting the
+// behaviour is right. `lookup_type_for` answers with the declaration owning a name, so the column
+// of `VAbsent?` resolves to `VObs` and its full roster is required. By inhabitance only `VAbsent`
+// can occur there, so the demanded arm is unreachable -- which is why a narrowing to the singleton
+// was written first and then removed.
+//
+// WHAT DECIDED IT was not the inhabitance argument but the type system's own answer: on
+// `Present { value: a } => a.tool` the compiler refuses `no field 'tool' on type 'VObs'`
+// (still-swift-363, executed). The corpus sites survive only because they destructure IN THE
+// PATTERN, which works against a variant even when the column is the parent. A roster answering
+// `singleton` while resolution answers `parent` is one concept with two answers inside one compiler,
+// and it would make this checker stop reporting a class rather than report it.
+//
+// So the negative below is the LOUD arm, deliberately: if the substrate later makes a variant a
+// first-class type, this witness FAILS and that failure is the signal to revisit -- which is the
+// point of pinning it rather than leaving the behaviour unwitnessed.
+data variant_type_position_parent_roster_source: String = "module exhaust_variant_type_position\ntype Obs = VPresent | VAbsent { tool: Bool }\nfn producer() -> VAbsent? { none }\nfn f() -> Bool {\n  match producer() {\n    Present { value: VAbsent { tool: t } } => t\n    Absent => false\n  }\n}\n"
+
+data variant_type_position_parent_covered_source: String = "module exhaust_variant_type_position_covered\ntype Obs = VPresent | VAbsent { tool: Bool }\nfn producer() -> VAbsent? { none }\nfn f() -> Bool {\n  match producer() {\n    Present { value: VAbsent { tool: t } } => t\n    Present { value: VPresent } => false\n    Absent => false\n  }\n}\n"
+
+test fn w_variant_named_in_type_position_is_judged_against_its_parent_roster() -> Bool {
+  non_exhaustive_blocking_count(source: variant_type_position_parent_roster_source) == 1
+}
+
+test fn w_variant_type_position_covering_the_parent_roster_is_clean() -> Bool {
+  non_exhaustive_blocking_count(source: variant_type_position_parent_covered_source) == 0
+}

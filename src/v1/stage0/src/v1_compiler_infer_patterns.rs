@@ -1367,6 +1367,15 @@ pub fn exhaustiveness_witnesses(
     })
 }
 
+pub fn witness_row_missing_name(w: Rc<PatternWitnessRow>) -> String {
+    match w.cells.clone().first().cloned() {
+        Some(c) => c.clone(),
+        std::option::Option::None => {
+            "<unnameable witness: exhaustiveness_witnesses returned a cell-less row>".to_string()
+        }
+    }
+}
+
 pub fn check_match_exhaustiveness(
     scrutinee_type: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
@@ -1395,10 +1404,7 @@ pub fn check_match_exhaustiveness(
                         missing: Rc::new({
                             let mut __result = Vec::new();
                             for w in witnesses.iter().cloned() {
-                                __result.push(match w.cells.clone().first().cloned() {
-                                    Some(c) => c.clone(),
-                                    std::option::Option::None => "_".to_string(),
-                                });
+                                __result.push(witness_row_missing_name(w.clone()));
                             }
                             __result
                         }),
