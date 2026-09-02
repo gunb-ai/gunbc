@@ -8279,6 +8279,17 @@ fn cross_claim_demand_absorb_one(
 /// Fold ONE finished claim's recompute ledger into the cross-claim census, before the claim's
 /// frame is dropped. Call it after the claim has run and before the next frame is built; a
 /// no-op unless `GUNBC_RECOMPUTE_TRACE=1`, which the floor sets for itself.
+///
+/// THE CALLER MUST OWN A FRESH FRAME PER CLAIM, and that is a real precondition rather than a
+/// style note. The ledger accumulates for the lifetime of its `InterpContext` and is NOT
+/// cleared by `eval_call_memo_frame_exit`, so a surface that shares one context across several
+/// claims — `claim_batch` shares one per ENTRY — would fold each claim's ledger again on the
+/// next call, inflating both `evals` and `total_ns` and, worse, reporting cross-claim demand
+/// where there is only one frame's. The required floor builds a frame per claim
+/// (`required_floor_runner`, "FRESH PER CLAIM"), which is exactly the boundary this census
+/// exists to measure across, so it is the only caller today. A shared-context surface wanting
+/// this census needs a per-claim ledger reset first; getting that wrong would commit the class
+/// this instrument was built to close, one grain up.
 pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_path: &str) {
     if !eval_recompute_trace_enabled() {
         return;
