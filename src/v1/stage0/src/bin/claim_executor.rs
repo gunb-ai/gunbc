@@ -1383,13 +1383,13 @@ fn report_wave_admission_outcome(
         }
         nwa::WaveAdmissionOutcome::NotEvaluated { reason } => {
             eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
-            Some("namespace-wave-admission (NotEvaluated)".to_string())
+            nwa::wave_admission_refusal(outcome)
         }
         nwa::WaveAdmissionOutcome::Adjudicated {
             base,
             head,
             report,
-            roster_touched,
+            roster_touched: _,
         } => {
             let p = &report.population;
             eprintln!(
@@ -1417,38 +1417,18 @@ fn report_wave_admission_outcome(
             for consumed in &report.consumed_admissions {
                 eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
             }
-            let unadjudicated = nwa::report_unadjudicated(report);
-            // AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a
-            // permission standing over nothing — author error, and leaving it means the roster
-            // stops being a fact about the corpus.
-            //
-            // A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already
-            // holds at the base (a positive proof, printed above), so for an unrelated run it is
-            // an inert typed receipt; billing its cleanup to that run was the externalized
-            // degradation eight dissolution PRs paid for. The deletion is due — and enforced —
-            // on the first change that touches the roster file itself, which every future
-            // relocation PR does by construction. The window is honest: consumed rows persist,
-            // visible in every run's receipts, until the roster's next touch.
-            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+            // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
+            // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,
+            // so the arm that decides it can be exercised by a test on the path CI runs rather
+            // than only from inside this binary.
+            let refusal = nwa::wave_admission_refusal(outcome);
+            if refusal.is_none() {
                 eprintln!(
                     "required-ci: namespace-wave-admission ADMITTED — every delta is \
                      auto-admitted or named by a transition admission"
                 );
-                return None;
             }
-            Some(format!(
-                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){})",
-                unadjudicated.len(),
-                report.stale_admissions.len(),
-                report.consumed_admissions.len(),
-                if consumed_due {
-                    " due for deletion on this roster-touching change"
-                } else {
-                    ""
-                }
-            ))
+            refusal
         }
     }
 }
