@@ -18150,6 +18150,18 @@ pub enum CliWireClass {
     Unprintable { cause: String },
     /// Not a `CliWireResponse` at all — reported with what it actually was.
     NotCliWire { type_name: String },
+    /// Nominally a `CliWireResponse`, but its payload does not match the declared shape.
+    ///
+    /// This is a SEPARATE arm from `NotCliWire` because the two send the caller to different
+    /// remedies, and folding them together mis-reported the defect. `NotCliWire` means "ask the
+    /// other classifier" — the value is some other type and `ProcessExit` may well accept it. A
+    /// malformed wire response has already ANSWERED the type question: the value says it is a
+    /// `CliWireResponse`, so falling through to `classify_exit` produces the diagnosis "this is
+    /// not a ProcessExit", which is true and useless — it names the type the value never claimed
+    /// to be, and hides that the value claimed a type it does not inhabit. Review 5085479276 on
+    /// gunbc#9864 found this; the five original tests all constructed an already-classified
+    /// `CliWireClass`, so none of them executed this boundary at all.
+    MalformedCliWire { detail: String },
 }
 
 pub fn classify_cli_wire(
@@ -18175,18 +18187,16 @@ pub fn classify_cli_wire(
                 let bytes = match ctx.field(fields, "bytes") {
                     Some(Value::Str(s)) => s.to_string(),
                     _ => {
-                        return CliWireClass::NotCliWire {
-                            type_name: "CliWireResponse::CliWirePrintable{bytes: <not a String>}"
-                                .to_string(),
+                        return CliWireClass::MalformedCliWire {
+                            detail: "CliWirePrintable{bytes: <absent or not a String>}".to_string(),
                         }
                     }
                 };
                 let exit = match ctx.field(fields, "exit") {
                     Some(v) => classify_exit(v, ctx),
                     None => {
-                        return CliWireClass::NotCliWire {
-                            type_name: "CliWireResponse::CliWirePrintable{exit: <absent>}"
-                                .to_string(),
+                        return CliWireClass::MalformedCliWire {
+                            detail: "CliWirePrintable{exit: <absent>}".to_string(),
                         }
                     }
                 };
@@ -18198,14 +18208,13 @@ pub fn classify_cli_wire(
                     },
                     // `cause` is declared NonEmptyStr, so an empty or absent one means the
                     // value did not come from the modeled constructor.
-                    _ => CliWireClass::NotCliWire {
-                        type_name: "CliWireResponse::CliWireUnprintable{cause: <empty or absent>}"
-                            .to_string(),
+                    _ => CliWireClass::MalformedCliWire {
+                        detail: "CliWireUnprintable{cause: <empty or absent>}".to_string(),
                     },
                 }
             } else {
-                CliWireClass::NotCliWire {
-                    type_name: format!("CliWireResponse::{}", ctx.resolve(*variant_name)),
+                CliWireClass::MalformedCliWire {
+                    detail: format!("unknown variant {}", ctx.resolve(*variant_name)),
                 }
             }
         }
@@ -18234,7 +18243,10 @@ pub struct CliWireOutcome {
 ///
 /// `NotCliWire` deliberately yields no outcome (`None`): that is not a failure, it is "this
 /// value is not a wire response", and the caller must fall through to `classify_exit` so every
-/// pre-existing `ProcessExit` entry keeps behaving exactly as before.
+/// pre-existing `ProcessExit` entry keeps behaving exactly as before. `MalformedCliWire` is the
+/// opposite and must NOT fall through: the value already claimed the wire type, so the fall-through
+/// would answer a question nobody asked ("it is not a ProcessExit") while the real defect — a value
+/// claiming a type it does not inhabit — went unreported.
 pub fn cli_wire_outcome(class: CliWireClass, function: &str) -> Option<CliWireOutcome> {
     match class {
         CliWireClass::Printable { bytes, exit } => {
@@ -18254,6 +18266,20 @@ pub fn cli_wire_outcome(class: CliWireClass, function: &str) -> Option<CliWireOu
                 "error: `{function}` produced CliWireUnprintable — the renderer refused to \
                  produce bytes.\n  cause: {cause}\n  status: refused — exiting 1 rather than \
                  printing nothing and reporting success."
+            )),
+            stdout: None,
+        }),
+        // A malformed wire response REFUSES here rather than falling through. Returning `None`
+        // would send the caller to `classify_exit`, which reports "not a ProcessExit" — a true
+        // statement about a type the value never claimed, in place of the actual defect. Exit 2
+        // matches the other shape refusal (`NotProcessExit`): the program is wrong, not the run.
+        CliWireClass::MalformedCliWire { detail } => Some(CliWireOutcome {
+            status: 2,
+            message: Some(format!(
+                "error: function `{function}` returned a `CliWireResponse` that does not match \
+                 its declared shape: {detail}.\n  cause: the value names the wire type, so it is \
+                 not judged as some other return; it claims a type it does not inhabit. \
+                 status: refused — printing nothing rather than guessing the missing half."
             )),
             stdout: None,
         }),
@@ -18289,6 +18315,174 @@ pub fn exit_status_for_class(class: ExitClass, function: &str) -> (i32, Option<S
                  carries one. Wrap the result in ExitSuccess / ExitFailure."
             )),
         ),
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE CLASSIFIER BOUNDARY, WHICH NOTHING PREVIOUSLY EXECUTED. Every test in the module above starts
+// from an ALREADY-CLASSIFIED `CliWireClass`, so classify_cli_wire itself — the step that decides
+// whether a returned value is a wire response, some other type, or a wire response that lies about
+// its shape — had no coverage at all. Review 5085479276 on gunbc#9864 found that, and it is the
+// reason a malformed response was reported as "not a ProcessExit".
+//
+// These build real interpreter values, so the discriminating fact is the classification and not a
+// constructor call.
+// ------------------------------------------------------------------------------------------------
+#[cfg(test)]
+mod cli_wire_classify_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
+
+    use super::{classify_cli_wire, CliWireClass};
+
+    fn ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn variant(ctx: &InterpContext, ty: &str, va: &str, fields: Vec<(&str, Value)>) -> Value {
+        let mut fs: Vec<_> = fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect();
+        fs.sort_by_key(|(k, _)| *k);
+        Value::Variant {
+            type_name: ctx.sym(ty),
+            variant_name: ctx.sym(va),
+            fields: Rc::new(fs),
+        }
+    }
+
+    fn exit_success(ctx: &InterpContext) -> Value {
+        variant(ctx, "ProcessExit", "ExitSuccess", vec![])
+    }
+
+    fn is_malformed(c: &CliWireClass) -> bool {
+        matches!(c, CliWireClass::MalformedCliWire { .. })
+    }
+
+    fn is_not_wire(c: &CliWireClass) -> bool {
+        matches!(c, CliWireClass::NotCliWire { .. })
+    }
+
+    // THE POSITIVE CONTROL. Without it every refusal assertion below is satisfied by a classifier
+    // that refuses unconditionally.
+    #[test]
+    fn a_well_formed_printable_response_classifies_as_printable() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![
+                ("bytes", str_value("commit 1\n")),
+                ("exit", exit_success(&c)),
+            ],
+        );
+        match classify_cli_wire(&v, &c) {
+            CliWireClass::Printable { bytes, .. } => assert_eq!(bytes, "commit 1\n"),
+            _ => panic!("expected Printable"),
+        }
+    }
+
+    // A DIFFERENT TYPE IS STILL A FALL-THROUGH, and this is the case that must NOT become
+    // malformed: a plain ProcessExit return is how every pre-existing entry point behaves, and
+    // classifying it as a broken wire response would break all of them.
+    #[test]
+    fn a_process_exit_is_not_a_wire_response_and_falls_through() {
+        let c = ctx();
+        assert!(is_not_wire(&classify_cli_wire(&exit_success(&c), &c)));
+        assert!(is_not_wire(&classify_cli_wire(
+            &str_value("just a string"),
+            &c
+        )));
+    }
+
+    // THE FOUR MALFORMED SHAPES. Each names the wire type and then fails to inhabit it, so each
+    // must refuse HERE rather than be handed to the ProcessExit classifier.
+    #[test]
+    fn a_printable_response_missing_its_bytes_is_malformed_not_foreign() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![("exit", exit_success(&c))],
+        );
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    #[test]
+    fn a_printable_response_whose_bytes_are_not_a_string_is_malformed() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![("bytes", Value::Int(7)), ("exit", exit_success(&c))],
+        );
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    #[test]
+    fn a_printable_response_missing_its_exit_is_malformed() {
+        let c = ctx();
+        let v = variant(
+            &c,
+            "CliWireResponse",
+            "CliWirePrintable",
+            vec![("bytes", str_value("x"))],
+        );
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    #[test]
+    fn an_unprintable_response_with_an_empty_or_absent_cause_is_malformed() {
+        let c = ctx();
+        let empty = variant(
+            &c,
+            "CliWireResponse",
+            "CliWireUnprintable",
+            vec![("cause", str_value(""))],
+        );
+        let absent = variant(&c, "CliWireResponse", "CliWireUnprintable", vec![]);
+        assert!(is_malformed(&classify_cli_wire(&empty, &c)));
+        assert!(is_malformed(&classify_cli_wire(&absent, &c)));
+    }
+
+    #[test]
+    fn an_unknown_wire_variant_is_malformed() {
+        let c = ctx();
+        let v = variant(&c, "CliWireResponse", "CliWireSomethingElse", vec![]);
+        assert!(is_malformed(&classify_cli_wire(&v, &c)));
+    }
+
+    // AND THE REFUSAL REACHES THE HOST. A malformed class that still yielded `None` would leave the
+    // fall-through in place and this whole arm decorative.
+    #[test]
+    fn a_malformed_wire_response_refuses_rather_than_falling_through() {
+        let c = ctx();
+        let v = variant(&c, "CliWireResponse", "CliWireSomethingElse", vec![]);
+        let out = super::cli_wire_outcome(classify_cli_wire(&v, &c), "scm_log_cli_response")
+            .expect("a malformed wire response must produce an outcome, not fall through");
+        assert_eq!(out.status, 2);
+        assert!(
+            out.stdout.is_none(),
+            "nothing may be printed for a shape refusal"
+        );
+        assert!(
+            out.message
+                .expect("a refusal names itself")
+                .contains("does not match"),
+            "the message must name the shape defect, not a ProcessExit mismatch"
+        );
     }
 }
 
