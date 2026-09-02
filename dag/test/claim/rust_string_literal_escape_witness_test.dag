@@ -1,0 +1,48 @@
+module test.claim.rust_string_literal_escape_witness_test
+
+import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
+import std.types { Bool, String }
+
+// EXACT-OUTPUT EVIDENCE FOR THE SHARED COOKED-LITERAL ESCAPE.
+//
+// The predecessors of this function were consumed only through whole-artifact parity witnesses, so
+// the escape rule itself was never the subject of a check: every input in the landed corpus is an
+// ordinary identifier-shaped string, which the identity function would also serve. These witnesses
+// state the OUTPUT BYTES for each substitution, so each one is red under a dropped or reordered
+// substitution rather than under a whole-file diff that names no cause.
+
+fn witness_backslash_is_doubled() -> Bool {
+  escape_rust_cooked_string_literal_body("a\\b") == "a\\\\b"
+}
+
+fn witness_double_quote_is_escaped() -> Bool {
+  escape_rust_cooked_string_literal_body("a\"b") == "a\\\"b"
+}
+
+fn witness_line_feed_becomes_backslash_n() -> Bool {
+  escape_rust_cooked_string_literal_body("a\nb") == "a\\nb"
+}
+
+// THE CARRIAGE RETURN CASE IS THE ONE BOTH PREDECESSORS FAILED. Before extraction an isolated CR
+// passed through into the emitted literal unescaped.
+fn witness_carriage_return_becomes_backslash_r() -> Bool {
+  escape_rust_cooked_string_literal_body("a\rb") == "a\\rb"
+}
+
+// CRLF IS NOT ONE SUBSTITUTION. A rule that special-cased the pair would leave an isolated CR
+// unhandled, so the pair must come out as the two independent escapes.
+fn witness_crlf_becomes_two_escapes() -> Bool {
+  escape_rust_cooked_string_literal_body("a\r\nb") == "a\\r\\nb"
+}
+
+// ORDER DISCRIMINATOR. If the quote pass ran before the backslash pass, the backslash it introduces
+// would itself be escaped and this would yield `\\\"` instead of `\\\"`-with-one-backslash-pair.
+fn witness_backslash_before_quote_is_not_double_escaped() -> Bool {
+  escape_rust_cooked_string_literal_body("\\\"") == "\\\\\\\""
+}
+
+// THE POSITIVE CONTROL: text with nothing to escape must survive unchanged, including non-ASCII,
+// which Rust cooked literals admit directly.
+fn witness_ordinary_text_is_unchanged() -> Bool {
+  escape_rust_cooked_string_literal_body("evaluation_budget_exceeded µs") == "evaluation_budget_exceeded µs"
+}

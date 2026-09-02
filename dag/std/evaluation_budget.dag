@@ -1,6 +1,7 @@
 module std.evaluation_budget
 
 import std.types { NonEmptyStr, Bool, Int, String }
+import std.contract_identity { ContractIdentity, ContractName }
 import std.measure {
   Nanosecond,
   nanosecond_count,
@@ -67,41 +68,150 @@ fn evaluation_limit_nanos(limit: PositiveMillisecond) -> Int {
   positive_millisecond_count(m: limit) * nanoseconds_per_millisecond()
 }
 
+// THE EVALUATION BUDGET IS A CONTRACT, SO ITS IDENTITY IS THE CANONICAL TRIPLE. Subject is phantom:
+// an evaluation-budget identity and a Required CI identity are different types even though both are
+// surface/name/epoch, so one can never be substituted for the other.
+type EvaluationBudgetContract
+
+// ONE ENTRY, PROJECTED FROM THE IDENTITY, NEVER AUTHORED BESIDE IT. The policy carried an `entry`
+// field AND the exceeded result carried its own, so a policy about one entry could report a breach
+// naming another -- two representations of one fact, which DESIGN section 3 forbids and which no
+// consumer could have adjudicated. The contract's NAME is the entry, and this projection is the
+// only way to obtain one.
 type EvaluationBudgetPolicy {
-  entry: EvaluationEntryIdentity
+  contract: ContractIdentity<EvaluationBudgetContract>
   cpu_limit: EvaluationLimit
   wall_limit: EvaluationLimit
 }
 
-type EvaluationBudgetVerdict
-  = EvaluationWithinBudget
-  | EvaluationBudgetExceeded {
-      entry: EvaluationEntryIdentity
+fn evaluation_budget_entry(policy: EvaluationBudgetPolicy) -> EvaluationEntryIdentity {
+  EvaluationEntryIdentity { entry: policy.contract.name as NonEmptyStr }
+}
+
+// THE OBSERVATION IS A PAIR, so a clock and the elapsed time measured ON that clock arrive together.
+// They were two loose arguments beside a third loose limit, which made "a ThreadCpu measurement
+// judged against the wall limit" an ordinary call rather than an unwritable state.
+type EvaluationObservation {
+  clock: EvaluationClock
+  elapsed: Nanosecond
+}
+
+// THE POLICY SELECTS THE LIMIT FOR THE OBSERVED CLOCK. No caller passes a limit: the pairing of
+// clock to limit is the policy's own business, and a caller that could choose it could pair them
+// wrongly.
+fn evaluation_policy_limit_for_clock(
+  policy: EvaluationBudgetPolicy,
+  clock: EvaluationClock,
+) -> EvaluationLimit {
+  match clock {
+    ThreadCpu => policy.cpu_limit
+    MonotonicWall => policy.wall_limit
+  }
+}
+
+// THE TYPED CONSEQUENCE OF A BREACH, carried INSIDE the exceeded arm and nowhere else. It has no
+// code field: a `consequence_code` on the policy, the identity or this record would make a contract
+// with an arbitrary or self-contradictory consequence CONSTRUCTIBLE, and would relocate the
+// invariant into callers. The machine identity of the breach is this module's own
+// `evaluation_budget_refusal_code`, reached only once an exceeded assessment exists.
+type EvaluationBudgetRefusalConsequence {
+  contract: ContractIdentity<EvaluationBudgetContract>
+  clock: EvaluationClock
+  elapsed: Nanosecond
+  limit: PositiveMillisecond
+}
+
+// NO FLOOR IS NOT A MET FLOOR, AND THE FOLD BELOW USED TO SAY IT WAS. `LimitUnset` answered
+// `EvaluationWithinBudget`, so "this caller declared no bound on this clock" and "the elapsed time
+// was measured against a bound and came in under it" were one value -- and this module's own
+// `evaluation_limit_unset_is_a_state_not_a_default_note` already forbade exactly that, saying a
+// consumer matching on the coproduct "cannot silently treat unbounded as bounded". The note was
+// right and the fold contradicted it: two unset clocks would establish that an evaluation-budget
+// quality floor was MET while establishing nothing at all, which is the state-space conflation
+// DESIGN section 5 names and the precise way a numerical ceiling gets renamed a quality floor.
+//
+// Every arm carries the contract it assessed. A bare within-budget value, detached from the
+// contract, must not cross a production boundary to be joined by convention later.
+type EvaluationBudgetAxisAssessment
+  = NoFloorOnClock {
+      contract: ContractIdentity<EvaluationBudgetContract>
+      clock: EvaluationClock
+    }
+  | EvaluationWithinBudget {
+      contract: ContractIdentity<EvaluationBudgetContract>
       clock: EvaluationClock
       elapsed: Nanosecond
       limit: PositiveMillisecond
     }
+  | EvaluationBudgetExceeded {
+      contract: ContractIdentity<EvaluationBudgetContract>
+      clock: EvaluationClock
+      elapsed: Nanosecond
+      limit: PositiveMillisecond
+      consequence: EvaluationBudgetRefusalConsequence
+    }
 
-fn evaluation_budget_verdict(
-  entry: EvaluationEntryIdentity,
-  clock: EvaluationClock,
-  elapsed: Nanosecond,
-  limit: EvaluationLimit,
-) -> EvaluationBudgetVerdict {
-  match limit {
-    LimitUnset => EvaluationWithinBudget
+// THE GRADE DECISION TAKES A POLICY AND AN OBSERVATION, not four loose values. Its predecessor
+// accepted entry, clock, elapsed and limit independently, which left three malformed compositions
+// writable as ordinary calls: an entry from contract A judged against a limit authored for B, a
+// ThreadCpu measurement judged against the wall limit, and a within-budget answer detached from
+// every contract. None of those is constructible here.
+//
+// THE INVERSE QUALITY ORDER IS THE LAW, not an example of one. Elapsed time is a cost, so quality
+// runs against it: quality(a) >= quality(b) iff elapsed(a) <= elapsed(b), the floor is MET iff
+// elapsed <= limit and BREACHED iff elapsed > limit. Equality therefore belongs to the admitted
+// side by the law itself rather than by convention.
+fn evaluation_budget_assess(
+  policy: EvaluationBudgetPolicy,
+  observation: EvaluationObservation,
+) -> EvaluationBudgetAxisAssessment {
+  match evaluation_policy_limit_for_clock(policy: policy, clock: observation.clock) {
+    LimitUnset =>
+      NoFloorOnClock { contract: policy.contract, clock: observation.clock }
     LimitSet { limit: l } =>
-      if nanosecond_count(n: elapsed) > evaluation_limit_nanos(limit: l) {
+      if nanosecond_count(n: observation.elapsed) > evaluation_limit_nanos(limit: l) {
         EvaluationBudgetExceeded {
-          entry: entry,
-          clock: clock,
-          elapsed: elapsed,
+          contract: policy.contract,
+          clock: observation.clock,
+          elapsed: observation.elapsed,
           limit: l,
+          consequence: EvaluationBudgetRefusalConsequence {
+            contract: policy.contract,
+            clock: observation.clock,
+            elapsed: observation.elapsed,
+            limit: l,
+          },
         }
       } else {
-        EvaluationWithinBudget
+        EvaluationWithinBudget {
+          contract: policy.contract,
+          clock: observation.clock,
+          elapsed: observation.elapsed,
+          limit: l,
+        }
       }
   }
+}
+
+// THE CONSEQUENCE EXISTS ONLY WHERE A BREACH DOES. NoFloorOnClock and within-budget assessments
+// produce ABSENT, which is the whole content of "no floor" being a distinct state: an unbounded
+// clock cannot yield a budget-refusal consequence, and neither can a met floor.
+fn evaluation_budget_refusal_consequence(
+  assessment: EvaluationBudgetAxisAssessment,
+) -> Optional<EvaluationBudgetRefusalConsequence> {
+  match assessment {
+    NoFloorOnClock { contract: _, clock: _ } => Absent
+    EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => Absent
+    EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: c } =>
+      Present { value: c }
+  }
+}
+
+// THE ENTRY A BREACH REPORTS IS PROJECTED FROM THE CONTRACT IT BREACHED, never carried beside it.
+fn evaluation_budget_consequence_entry(
+  consequence: EvaluationBudgetRefusalConsequence,
+) -> EvaluationEntryIdentity {
+  EvaluationEntryIdentity { entry: consequence.contract.name as NonEmptyStr }
 }
 
 // THE COMPOSITION LAW IS EARLIEST-DEADLINE-WINS, AND IT IS STATED HERE BECAUSE THE SEED CURRENTLY

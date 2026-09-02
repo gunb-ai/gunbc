@@ -17426,22 +17426,76 @@ pub struct ServeEvaluationBudget {
     pub wall_limit_ms: Option<u64>,
 }
 
-/// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
-/// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
-/// consumer can tell a spin from a stall without parsing prose.
-fn serve_budget_refusal_body(
-    entry: &str,
-    clock_key: &str,
+/// THE SEALED CONSEQUENCE OF A BUDGET BREACH, host realization of
+/// `std.evaluation_budget`'s `EvaluationBudgetRefusalConsequence`.
+///
+/// ITS ONLY CONSTRUCTOR TAKES THE TYPED CAUSE. `from_exceeded` is the whole public surface, and it
+/// accepts the kernel's generic exceeded arm — nothing else. There is deliberately no
+/// `from_parts(code, entry, clock, elapsed, limit)`: a constructor over loose scalars is what let
+/// the four favourable values be assembled independently of any execution, so a refusal could be
+/// rendered by a boundary that had merely chosen the same text. The response now exists BECAUSE the
+/// execution produced the exceeded cause.
+///
+/// THE MACHINE CODE IS NOT A FIELD AND NOT A PARAMETER. It is read from
+/// `EVALUATION_BUDGET_REFUSAL_CODE`, the generated projection of
+/// `std.evaluation_budget evaluation_budget_refusal_code`. A `code` field here would make a
+/// consequence with an arbitrary or self-contradictory machine identity constructible, and would
+/// relocate the invariant into callers.
+///
+/// THE ENTRY IS PROJECTED, NOT SUPPLIED. It comes from the cause, which the interpreter binds to
+/// the evaluation whose budget was armed (`v1_interpreter`'s `budget_entry`, whose stated purpose
+/// is that "the neutral `EvaluationBudgetExceeded` can name what crossed rather than leaving the
+/// caller to infer it").
+pub(crate) struct ServeBudgetRefusal {
+    entry: String,
+    clock_key: &'static str,
     elapsed_nanos: u128,
     limit_ms: u64,
-) -> String {
-    format!(
-        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        serve_json_string(entry),
-        clock_key,
-        elapsed_nanos,
-        limit_ms
-    )
+}
+
+impl ServeBudgetRefusal {
+    /// The sole producer. `CompletedOverBudget` is NOT routed here and must not be: a claim that
+    /// reached its verdict and was then reclassified for cost is a different fact with a different
+    /// remedy, and sharing this refusal through a wildcard or an `is_over_budget` boolean would be
+    /// the state-space conflation the budget carrier already refuses upstream.
+    pub(crate) fn from_exceeded(err: &v1_interpreter::InterpError) -> Option<Self> {
+        match err {
+            v1_interpreter::InterpError::EvaluationBudgetExceeded {
+                entry,
+                clock,
+                elapsed_nanos,
+                limit_ms,
+            } => Some(Self {
+                entry: entry.clone(),
+                clock_key: clock.key(),
+                elapsed_nanos: *elapsed_nanos,
+                limit_ms: *limit_ms,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The machine-readable body. Both quantities plus the clock are reported so a consumer can
+    /// tell a spin from a stall without parsing prose.
+    pub(crate) fn machine_body(&self) -> String {
+        format!(
+            "{{\"code\":{},\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
+            serve_json_string(
+                crate::evaluation_budget_consequence_generated::EVALUATION_BUDGET_REFUSAL_CODE
+            ),
+            serve_json_string(&self.entry),
+            self.clock_key,
+            self.elapsed_nanos,
+            self.limit_ms
+        )
+    }
+
+    pub(crate) fn diagnostic_line(&self) -> String {
+        format!(
+            "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
+            self.entry, self.clock_key, self.elapsed_nanos, self.limit_ms
+        )
+    }
 }
 
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
@@ -17603,12 +17657,12 @@ pub fn handle_serve(
                         v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
                     };
                     match result {
-                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
-                            entry,
-                            clock,
-                            elapsed_nanos,
-                            limit_ms,
-                        }) => {
+                        Err(ref e) if ServeBudgetRefusal::from_exceeded(e).is_some() => {
+                            // UNWRAPPED IMMEDIATELY BELOW THE GUARD THAT PROVED IT: the guard and
+                            // the construction ask the same question of the same value, so the
+                            // arm cannot be entered for any other cause.
+                            let refusal = ServeBudgetRefusal::from_exceeded(e)
+                                .expect("the guard above matched this exact cause");
                             // Refusal rendering is HOST-SIDE by necessity, not by preference:
                             // the evaluation that would have rendered it is the one that was
                             // just aborted, so asking it to describe its own abort would put
@@ -17619,23 +17673,12 @@ pub fn handle_serve(
                             // "temporary capacity" would assert something the model does not
                             // know, and no `Retry-After` is attached for the same reason
                             // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                            eprintln!(
-                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-                                entry,
-                                clock.key(),
-                                elapsed_nanos,
-                                limit_ms
-                            );
+                            eprintln!("{}", refusal.diagnostic_line());
                             serve_write_response(
                                 &mut stream,
                                 500,
                                 "application/json; charset=utf-8",
-                                &serve_budget_refusal_body(
-                                    &entry,
-                                    clock.key(),
-                                    elapsed_nanos,
-                                    limit_ms,
-                                ),
+                                &refusal.machine_body(),
                             )
                         }
                         Err(e) => serve_write_response(
