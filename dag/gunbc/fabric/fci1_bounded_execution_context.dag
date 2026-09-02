@@ -85,7 +85,7 @@ fn fci1_bounded_execution_context(checkout_root: FilePath) -> Fci1BoundedExecuti
             Fci1BoundedExecutionContextBuilt { context: Fci1BoundedExecutionContext {
               checkout_root: checkout_root,
               memory_max: max,
-              memory_high: Present { value: high },
+              memory_high: Present { value: max },
               driver_unit: fci1_driver_unit,
               envelope_basis: fci1_runner_envelope_basis,
             } }
