@@ -823,7 +823,8 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
         PhaseRatchetHeld => match board_row(board: current, phase: old.phase) {
           Absent => PhaseRatchetRefused { phase: old.phase, identities: [], reason: "current board omitted a phase" as NonEmptyStr }
           Present { value: now } => {
-            let added = now.identities |> filter(identity => !any(old.identities, prior => prior == identity))
+            let prior = identity_membership_index(identities: old.identities)
+            let added = now.identities |> filter(identity => !map_contains_key(prior, identity))
             if phase_closed_at_zero(row: old) && phase_reached_with_diagnostics(row: now) {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
             } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && phase_count_increased(old: old, now: now) {
@@ -843,17 +844,25 @@ type RegressionTransitionVerdict
   = RegressionTransitionHeld { open_unadmitted: List<OpenUnadmittedRegression> }
   | RegressionTransitionMalformed { reason: NonEmptyStr }
 
-// THE INNER FLATTEN IS BOUND ONCE, NOT ONCE PER ELEMENT, and that is the whole of this edit.
-// `board_all_identities` is a flat_map over every row of a board; written inside the predicate it was
-// re-derived for EACH identity of the other board, making a set difference cost
-// O(|current| x |previous|) flattens where one flatten of each side suffices. DESIGN section 6's
-// bare-minimum-cost rule fixes a proven cost shape regardless of the realized n, and this one is
-// realized: the two boards this fold runs on put its callers at 89-93% of the floor's per-claim CPU
-// ceiling.
+// MEMBERSHIP IS ASKED ONCE PER ROW OF THE OTHER POPULATION, SO IT IS INDEXED ONCE RATHER THAN
+// SCANNED PER ROW. Both differences here used to answer each membership question with `any` over
+// the other board's whole identity list, which makes the comparison count the PRODUCT of two
+// populations that only grow with every receipt -- the quadratic fold DESIGN section 6 fixes
+// regardless of the realized n. A board is a census at identity grain (the note on
+// `deduplicate_identities` above states why encounter order is not semantic), so an
+// identity-keyed index is the same fact in the representation the question actually asks for,
+// never a second authority over it.
+fn identity_membership_index(identities: List<String>) -> Map<String, Bool> {
+  fold(identities, init: {}, f: (seen, identity) => map_insert(seen, identity, true))
+}
+
+fn board_identity_index(board: RustcPhaseBoard) -> Map<String, Bool> {
+  identity_membership_index(identities: board_all_identities(board: board))
+}
+
 fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
-  let prior_identities = board_all_identities(board: previous)
-  board_all_identities(board: current)
-    |> filter(identity => !any(prior_identities, prior => prior == identity))
+  let prior = board_identity_index(board: previous)
+  board_all_identities(board: current) |> filter(identity => !map_contains_key(prior, identity))
 }
 
 fn diagnostic_identity_file(identity: String) -> String {
@@ -867,9 +876,8 @@ fn diagnostic_semantic_key(identity: String) -> String {
 }
 
 fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
-  let now_identities = board_all_identities(board: current)
-  board_all_identities(board: previous)
-    |> filter(identity => !any(now_identities, now => now == identity))
+  let now = board_identity_index(board: current)
+  board_all_identities(board: previous) |> filter(identity => !map_contains_key(now, identity))
 }
 
 type RegressionComparisonPredecessor
@@ -902,14 +910,34 @@ fn regression_comparison_predecessor(
   }
 }
 
+// THE SEMANTIC KEYS OF ONE TRANSITION'S ADDED AND REMOVED POPULATIONS, DERIVED ONCE.
+//
+// The hop test below is asked once per added identity and each answer needs the key of EVERY row
+// in both populations. Deriving those keys inside the test made the count of `diagnostic_semantic_key`
+// calls the PRODUCT of the two populations rather than their sum -- a quadratic fold over a
+// population that only grows, which DESIGN section 6 fixes on sight rather than on the realized n.
+// The keys depend on the transition and not on the identity being tested, so this is exactly the
+// demand DESIGN section 2 says to satisfy at the least common ancestor: `apply_regression_transition`
+// builds one index and every test reads it.
+type HopRelocationIndex {
+  added_keys: List<String>
+  removed_keys: List<String>
+}
+
+fn hop_relocation_index(added: List<String>, removed: List<String>) -> HopRelocationIndex {
+  HopRelocationIndex {
+    added_keys: added |> map(row => diagnostic_semantic_key(identity: row)),
+    removed_keys: removed |> map(row => diagnostic_semantic_key(identity: row))
+  }
+}
+
 fn identity_is_hop_relocation(
   identity: String,
-  added: List<String>,
-  removed: List<String>
+  index: HopRelocationIndex
 ) -> Bool {
   let key = diagnostic_semantic_key(identity: identity)
-  let added_same = added |> filter(row => diagnostic_semantic_key(identity: row) == key) |> count
-  let removed_same = removed |> filter(row => diagnostic_semantic_key(identity: row) == key) |> count
+  let added_same = index.added_keys |> filter(row => row == key) |> count
+  let removed_same = index.removed_keys |> filter(row => row == key) |> count
   removed_same > 0 && added_same <= removed_same
 }
 
@@ -968,10 +996,6 @@ fn complete_open_unadmitted_series(open: List<OpenUnadmittedRegression>) -> Phas
   }
 }
 
-// The two flattened identity lists are bound once per transition rather than recomputed inside
-// the admission predicate, which the filter runs once per added identity: both boards are fixed
-// for the whole transition, so a per-element flatten would be authored duplication (DESIGN §2)
-// rather than an unavoidable recurrence a cache could discharge.
 fn apply_regression_transition(
   previous: CompilePhaseFrontierReceipt,
   current: CompilePhaseFrontierReceipt,
@@ -987,19 +1011,16 @@ fn apply_regression_transition(
     RegressionComparisonAvailable { board: comparable_previous } => {
       let added = board_added_identities(previous: comparable_previous, current: current.board)
       let removed = board_removed_identities(previous: comparable_previous, current: current.board)
-      let previous_identities = board_all_identities(board: comparable_previous)
-      let current_identities = board_all_identities(board: current.board)
+      let hop_index = hop_relocation_index(added: added, removed: removed)
       let admitted = added |> filter(identity => newly_exposed_identity_admitted(
-        previous_identities: previous_identities,
-        previous_furthest_phase: comparable_previous.furthest_phase_reached,
-        current_identities: current_identities,
-        current_furthest_phase: current.board.furthest_phase_reached,
+        previous: comparable_previous,
+        current: current.board,
         dispositions: current.newly_exposed,
         identity: identity
       ))
       let unadmitted = added |> filter(identity =>
         !any(admitted, row => row == identity)
-          && !identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+          && !identity_is_hop_relocation(identity: identity, index: hop_index)
       )
       let ratchet_recoverable = match phase_ratchet_with_dispositions(
         previous: comparable_previous,
@@ -1011,7 +1032,7 @@ fn apply_regression_transition(
           count(ids) > 0 && all(ids, identity =>
             any(unadmitted, row => row == identity)
               || any(admitted, row => row == identity)
-              || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+              || identity_is_hop_relocation(identity: identity, index: hop_index)
           )
       }
       if !ratchet_recoverable {
@@ -1035,36 +1056,66 @@ fn board_all_identities(board: RustcPhaseBoard) -> List<String> {
   board.rows |> flat_map(r => r.identities)
 }
 
-// THE PARAMETERS ARE WHAT THE BODY CONSUMES, NOT THE BOARDS THEY CAME FROM -- the same narrowing
-// this branch applied to `live_tree_frontier_verdict`, found the same way and for the same reason.
-//
-// This predicate never looked at a board. It used each one for exactly two things: the flattened
-// identity list, and `.furthest_phase_reached`. Taking the boards therefore declared a dependency
-// wider than the body has, and the width was not free -- the caller invokes this ONCE PER ADDED
-// IDENTITY through `added |> filter(...)`, so each board was re-flattened per element, twice over,
-// while the flattened lists are constant across the entire call. Naming the flattened list as the
-// parameter is what lets the caller bind it once; passing the board AND its identities would be two
-// representations of one fact, which is the defect rather than the fix.
-fn newly_exposed_identity_admitted(
-  previous_identities: List<String>,
-  previous_furthest_phase: RustcPhase,
-  current_identities: List<String>,
-  current_furthest_phase: RustcPhase,
-  dispositions: List<NewlyExposedDiagnostic>,
-  identity: String
+// WHETHER ONE DISPOSITION'S CAUSE ADMITS ONE IDENTITY. Split out of
+// `newly_exposed_identity_admitted` below so the SELECTION of the disposition row happens before
+// this derivation is demanded at all; the two halves are stated separately because only the
+// selection half is cheap.
+fn newly_exposed_cause_admits(
+  previous: RustcPhaseBoard,
+  current: RustcPhaseBoard,
+  identity: String,
+  cause: NewlyExposedCause
 ) -> Bool {
-  any(dispositions, row => row.identity == identity && match row.cause {
+  match cause {
     ExposedByRemovedMaskingIdentity { removed_identity: masking } =>
-      any(previous_identities, prior => prior == masking)
-        && !any(current_identities, now => now == masking)
+      any(board_all_identities(board: previous), prior => prior == masking)
+        && !any(board_all_identities(board: current), now => now == masking)
     ExposedByPhaseAdvance { previous_phase: old, reached_phase: reached } =>
-      rustc_phase_order(phase: old) == rustc_phase_order(phase: previous_furthest_phase)
-        && rustc_phase_order(phase: reached) == rustc_phase_order(phase: current_furthest_phase)
+      rustc_phase_order(phase: old) == rustc_phase_order(phase: previous.furthest_phase_reached)
+        && rustc_phase_order(phase: reached) == rustc_phase_order(phase: current.furthest_phase_reached)
         && rustc_phase_order(phase: reached) > rustc_phase_order(phase: old)
     ExposedByNewEmittedModule { module: file } =>
       diagnostic_identity_file(identity: identity) == file
-        && !any(previous_identities, prior => diagnostic_identity_file(identity: prior) == file)
-  })
+        && !any(board_all_identities(board: previous), prior => diagnostic_identity_file(identity: prior) == file)
+  }
+}
+
+// THE FILTER IS THE WHOLE POINT AND IT IS NOT A STYLE CHOICE. This read as
+// `any(dispositions, row => row.identity == identity && <cause derivation>)`, and `&&` in this
+// substrate EVALUATES BOTH OPERANDS: `v1_interpreter` `eval_expr_inner` evaluates the left and the
+// right of an `ExprBinOp` before it applies the operator, so a cheap guard conjoined ahead of an
+// expensive derivation guards NOTHING at evaluation time -- it only narrows the result. The
+// short-circuit an author carries over from Rust or C is not a property of this language, and the
+// emitted Rust for the same expression DOES short-circuit, so the two differ in what they evaluate
+// while agreeing on what they answer. So the cause derivation ran once per (added identity x disposition row)
+// pair rather than once per row that actually names the identity, and two of its three arms scan
+// the whole previous board, one of them re-splitting every identity on it. Selecting the rows
+// first makes the demand graph match the question being asked (DESIGN section 2: minimize the
+// demand graph before materializing its answers), and it is EXACTLY equivalent rather than merely
+// close: for boolean p and q, `any(xs, p && q)` and `any(filter(xs, p), q)` agree on every input,
+// including the empty and the multiple-matching-rows cases.
+//
+// MEASURED, because "n is small here" is the claim DESIGN section 6 refuses. This function was the
+// single largest term in `compile_phase_frontier_standing`, which is the whole cost of three
+// required-floor witness modules -- gunbc.self_host_compile_phase_live_gate's witness,
+// this module's own witness, and test.claim.compiler_frontend_program_status_witness through
+// `gunbc.compiler_frontend_program_status` `milestone_status`. The instrument is
+// `claim_batch --entry <the witness> --functions <its rows>`; the figures are not transcribed here.
+fn newly_exposed_identity_admitted(
+  previous: RustcPhaseBoard,
+  current: RustcPhaseBoard,
+  dispositions: List<NewlyExposedDiagnostic>,
+  identity: String
+) -> Bool {
+  any(
+    dispositions |> filter(row => row.identity == identity),
+    row => newly_exposed_cause_admits(
+      previous: previous,
+      current: current,
+      identity: identity,
+      cause: row.cause
+    )
+  )
 }
 
 fn phase_ratchet_with_dispositions(
@@ -1072,19 +1123,10 @@ fn phase_ratchet_with_dispositions(
   current: RustcPhaseBoard,
   dispositions: List<NewlyExposedDiagnostic>
 ) -> PhaseRatchetVerdict {
-  let previous_identities = board_all_identities(board: previous)
-  let current_identities = board_all_identities(board: current)
   match phase_ratchet(previous: previous, current: current) {
     PhaseRatchetRefused { phase: p, identities: ids, reason: why } =>
       if string_contains(s: why as String, pattern: "gained diagnostic identities")
-        && all(ids, identity => newly_exposed_identity_admitted(
-          previous_identities: previous_identities,
-          previous_furthest_phase: previous.furthest_phase_reached,
-          current_identities: current_identities,
-          current_furthest_phase: current.furthest_phase_reached,
-          dispositions: dispositions,
-          identity: identity
-        )) {
+        && all(ids, identity => newly_exposed_identity_admitted(previous: previous, current: current, dispositions: dispositions, identity: identity)) {
         PhaseRatchetHeld
       } else {
         PhaseRatchetRefused { phase: p, identities: ids, reason: why }
