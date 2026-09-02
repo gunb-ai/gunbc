@@ -1,9 +1,33 @@
 # Spark fleet: hand-edited state with no modeled authority
 
-**Status 2026-09-02.** Every row below was established by reading the live hosts and
-comparing against the module named as its authority, not from memory. The instrument for
-the desired side is `gunbc.spark.serving_unit_render spark_serving_desired_user_unit_text`;
+**Status 2026-09-02, corrected.** Every row below was established by reading the live
+hosts and comparing against the module named as its authority. The instrument for the
+desired side is `gunbc.spark.serving_unit_render spark_serving_desired_user_unit_text`;
 for the live side, the unit file and `/api/ps` on each host.
+
+## Correction, and it is the most important thing in this document
+
+**The first version of this analysis was measured against the wrong tree, and its two
+headline findings were false.** It was derived by running the renderer from a session
+branch based on `373b8d11`, and `main` had since advanced. Re-derived against
+`origin/main`:
+
+- **Context is NOT diverged.** `spark_serving_desired_context_length` is `1048576` on
+  main, matching the live hosts. The claimed `131072` was this branch's stale value; main's
+  own annotation records that exact number as the thing it replaced.
+- **`OLLAMA_NUM_PARALLEL` is NOT missing.** `extdeps.ollama.server_env` carries it as a
+  typed axis, `serving_desired` carries a `PositiveSlotCount` of 4, the renderer emits
+  `ollama_num_parallel_env_assignment`, and
+  `test.claim.spark.spark_serving_unit_render_witness_test` holds the renderer to it.
+
+So **the freeze recommendation that followed from those two rows is withdrawn.** On those
+axes a convergence run would not degrade the fleet; it would agree with it.
+
+The failure was mine and it is worth naming as its own class, because it is the exact
+defect this repository spends its review budget on: I ran a real instrument, got a real
+number, and read it as a fact about the fleet when it was a fact about **my branch**. A
+measurement is only as current as the tree it was taken from, and a session branch is not
+the authority. Re-derive against `origin/main` before reporting a divergence.
 
 ## Why this document exists
 
@@ -23,21 +47,14 @@ So this is not a tidiness ledger. It is the list of things that must land before
 
 ## The divergences
 
-### 1. Context window: modeled 131072, live 1048576
+### 1. Context window — WITHDRAWN, see the correction above
 
-An 8x difference, and it is the load-bearing one. `gunbc.model.choice` reasons about a
-400,000-token floor; the modeled desired state cannot serve it. Converging would take the
-fleet below the floor the selector is being built to defend.
+Main desires `1048576`, which is what the hosts serve. No divergence.
 
-### 2. Concurrency: modeled ABSENT, live `OLLAMA_NUM_PARALLEL=4`
+### 2. Concurrency — WITHDRAWN, see the correction above
 
-`OLLAMA_NUM_PARALLEL` does not appear anywhere in the `.dag` corpus. Not as a stale value
-— as no value at all. The renderer emits three `Environment=` lines and this is not one of
-them, so convergence does not overwrite the setting, it DELETES it, and the runner falls
-back to whatever Ollama defaults to.
-
-This is the setting that decides whether the fleet serves concurrent sessions or
-serializes them, which the operator has named as mattering more than throughput.
+Main models the slot count as a typed `PositiveSlotCount` of 4, renders it, and witnesses
+the rendering. No divergence.
 
 ### 3. Served model: modeled `gpt-oss`, live `hf.co/antirez/deepseek-v4-gguf`
 
@@ -101,13 +118,11 @@ first on which variables are configuration and which are ambient.
 
 ## What has to happen, in order
 
-1. **Freeze convergence.** No `gunbc.spark` serving convergence against `srv5`/`srv6`
-   until (2) lands. This is the only item that is urgent rather than important.
-2. **Make the live configuration the modeled desire**, or explicitly rule the hand-edit a
-   deviation. Context, slot count and residency all need modeled fields; slot count needs
-   one invented, since it has no representation at all.
-3. **Decide the served model in the model.** If the fleet is moving to a DeepSeek build or
-   to dspark, the desired row should say so rather than continuing to name gpt-oss.
+1. **Decide the served model in the model.** This is now the largest real divergence:
+   `serving_desired` selects a gpt-oss build and both hosts run DeepSeek-V4. If the fleet
+   is moving to a DeepSeek build or to dspark, the desired row should say so.
+2. **Model residency.** `OLLAMA_KEEP_ALIVE` appears nowhere on main, so a 94 GB model
+   evicts on the default idle timer and every measurement silently depends on when it ran.
 4. **Admit the second pair** — cell roles, host identities, and whatever network identity
    can be bound given that static reservations are refused by design.
 5. **Widen the realization carrier to environment**, after the ruling in (7).
@@ -115,11 +130,11 @@ first on which variables are configuration and which are ambient.
 
 ## The standing risk this document is really about
 
-Items 1 through 4 are one class: the model's desired state has drifted behind the fleet,
-so the authority that is supposed to be able to rebuild a host would instead damage it.
-That is worse than having no model, because a stale authority is one somebody will
-eventually trust.
+After the correction, the remaining divergences are narrower than first reported but they
+are the same class: the served model, residency, the second pair, and credentials are
+facts about the fleet that no authority owns. The danger is not that the model is wrong on
+those axes — it is that it is SILENT on them, so nothing refuses when they drift.
 
-The honest reading is that `gunbc.spark`'s desired state is currently a record of what the
-fleet looked like at one past moment, not a specification of what it should be. Until
-items 2 and 3 land it should be treated as observation, not intent.
+The generalization worth keeping is the one the correction taught: a divergence report is
+a measurement, and a measurement is only as current as the tree it was taken from. This
+document was itself an instance of the failure it exists to catalogue.
