@@ -5,6 +5,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.interval { degenerate_interval, closed_interval, IntervalConstruction, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
+  axis_roster_contradiction,
   AxisGoal, HigherIsBetter, LowerIsBetter,
   SelectionAxis, AxisReading, ParetoEntry, ParetoStanding, Domination,
   ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
@@ -517,6 +518,39 @@ test fn a_duplicated_axis_roster_refuses_the_pair_too() -> Bool {
   refused && standing_agrees
 }
 
+// ONE DUPLICATED IDENTITY IS ONE CAUSE, NOT ONE PER COPY. duplicated_axes carries exactly one
+// defect -- axis_cost and axis_cost_duplicate share axis_cost_id -- so a roster scan that folds over
+// OCCURRENCES reports it twice. Counting the causes is the check; asserting merely that a refusal
+// happened would pass under either spelling, which is what let this through when the cause-returning
+// form replaced the Bool.
+//
+// KILLING MUTATION: drop the identity_already_named guard from axis_roster_contradiction so it emits
+// per occurrence. This control reds; every other axis control stays green, because they only ask
+// whether a refusal occurred.
+test fn a_duplicated_identity_is_named_once_not_once_per_copy() -> Bool {
+  count(axis_roster_contradiction(axes: duplicated_axes)) == 1
+    && count(axis_roster_contradiction(axes: both_axes)) == 0
+}
+
+// THE PAIR PATH MUST REFUSE A SHARED CANDIDATE IDENTITY, as the field path does. entry_standing
+// refuses a field holding two entries under one identity; compare_pair is where a caller reaches
+// that state DIRECTLY, and it used to compare the two happily and answer PairNoDominance -- every
+// axis equal, since it is the same candidate twice. field_step never exposed it because
+// challenger_applies excludes self-comparison before compare_pair is reached, so only the exported
+// entry point could exhibit it, which is precisely why the field-path control could not catch it.
+//
+// KILLING MUTATION: delete the identity-equality arm from compare_pair. This control reds while
+// witness_duplicate_candidate_identity_refuses, which drives the standing path, stays green.
+test fn the_pair_path_refuses_one_candidate_compared_with_itself() -> Bool {
+  match compare_pair(a: entry_cheap_strong, b: entry_cheap_strong, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairNoDominance => false
+    PairDominates { winning_axes } => false
+    PairEvidenceIncomplete { missing } => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+}
+
 fn pareto_witness_report() -> NonEmptyStr {
   join([
     "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
@@ -534,6 +568,8 @@ fn pareto_witness_report() -> NonEmptyStr {
     " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
     " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
     " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
+    " one_cause_per_identity=", flag(b: a_duplicated_identity_is_named_once_not_once_per_copy()),
+    " pair_refuses_self=", flag(b: the_pair_path_refuses_one_candidate_compared_with_itself()),
   ], "")
 }
 
@@ -551,6 +587,8 @@ fn pareto_witness_main() -> ProcessExit {
     && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
     && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
     && a_duplicated_axis_roster_refuses_the_pair_too()
+    && a_duplicated_identity_is_named_once_not_once_per_copy()
+    && the_pair_path_refuses_one_candidate_compared_with_itself()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()

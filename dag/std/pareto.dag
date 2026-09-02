@@ -497,6 +497,11 @@ fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Pa
   let axis_defects = axis_roster_contradiction(axes: axes)
   if count(axis_defects) > 0 {
     PairRefused { cause: join(axis_defects, " ; ") }
+  } else if declaration_ref_eq(a: a.identity, b: b.identity) {
+    PairRefused { cause: join([
+      "both sides of the pair carry one candidate identity ",
+      declaration_ref_display_key(ref: a.identity),
+      " - entry_standing refuses a field holding a duplicate for the same reason, and the pair API is where a caller reaches that state directly"], "") }
   } else {
     let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
     if count(malformed) > 0 {
@@ -544,15 +549,34 @@ fn count_axis_identity(axes: List<SelectionAxis>, id: DeclarationRef) -> Int {
 //
 // Reported on review 5092638535, which was right that the earlier repair closed the reading-level
 // split and left the axis-level one standing.
+// A CONTRADICTION IS A PROPERTY OF THE IDENTITY, NOT OF EACH OCCURRENCE OF IT. Folding over axes
+// and emitting on every axis whose identity repeats names one duplicated identity once PER COPY, so
+// a roster with one defect reports two causes and a roster with two copies of two defects reports
+// four. The Bool this replaced could not exhibit that -- it collapsed to a single refusal string --
+// so the cause-returning form INTRODUCED the defect, which is the price of carrying causes and has
+// to be paid explicitly rather than noticed later.
+//
+// This module already refuses the same shape one layer over: see the control
+// a_contradiction_is_named_once_not_once_per_spelling, which requires one entry's contradiction to
+// read identically whether or not the field happens to contain it. Reported on review of this head.
+type AxisScan = { named: List<DeclarationRef>, causes: List<NonEmptyStr> }
+
+fn identity_already_named(named: List<DeclarationRef>, id: DeclarationRef) -> Bool {
+  fold(named, init: false, f: fn(acc, seen) { acc || declaration_ref_eq(a: seen, b: id) })
+}
+
 fn axis_roster_contradiction(axes: List<SelectionAxis>) -> List<NonEmptyStr> {
-  fold(axes, init: no_names, f: fn(acc, ax) {
-    if count_axis_identity(axes: axes, id: ax.identity) > 1 {
-      concat(acc, one_name(name: join([
-        "two selection axes share one identity ",
-        declaration_ref_display_key(ref: ax.identity),
-        " - a duplicate axis would resolve first-one-wins, so the selection refuses"], "")))
+  fold(axes, init: AxisScan { named: no_axis_ids, causes: no_names }, f: fn(acc, ax) {
+    if count_axis_identity(axes: axes, id: ax.identity) > 1 && !identity_already_named(named: acc.named, id: ax.identity) {
+      AxisScan {
+        named: concat(acc.named, [ax.identity]),
+        causes: concat(acc.causes, one_name(name: join([
+          "two selection axes share one identity ",
+          declaration_ref_display_key(ref: ax.identity),
+          " - a duplicate axis would resolve first-one-wins, so the selection refuses"], ""))),
+      }
     } else { acc }
-  })
+  }).causes
 }
 
 fn count_entry_identity(field: List<ParetoEntry>, id: DeclarationRef) -> Int {

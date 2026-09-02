@@ -637,34 +637,40 @@ pub fn compare_pair(
                 cause: axis_defects.clone().join(&" ; ".to_string()),
             })
         } else {
-            {
-                let malformed = v1_rt::concat(
-                    entry_contradicts_its_declaration(a.clone(), axes.clone()),
-                    entry_contradicts_its_declaration(b.clone(), axes.clone()),
-                );
-                if ((malformed.clone().len() as i64) > 0) {
-                    Rc::new(PairStanding::PairRefused {
-                        cause: malformed.clone().join(&" ; ".to_string()),
-                    })
-                } else {
-                    {
-                        let gaps = declared_gap_cause(a.clone(), b.clone());
-                        if ((gaps.clone().len() as i64) > 0) {
-                            Rc::new(PairStanding::PairEvidenceIncomplete {
-                                missing: gaps.clone().join(&" ; ".to_string()),
-                            })
-                        } else {
-                            pair_from_accum(axes.iter().cloned().fold(
-                                Rc::new(PairAccum {
-                                    refusal_causes: no_names(),
-                                    a_worse_somewhere: false,
-                                    winning_axes: no_axis_ids(),
-                                    undecided_axes: no_axis_ids(),
-                                }),
-                                |acc: _, axis: Rc<SelectionAxis>| {
-                                    axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
-                                },
-                            ))
+            if crate::std_decl_ref::declaration_ref_eq(a.identity.clone(), b.identity.clone()) {
+                Rc::new(PairStanding::PairRefused {
+    cause: Rc::new(vec!["both sides of the pair carry one candidate identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(a.identity.clone()), " - entry_standing refuses a field holding a duplicate for the same reason, and the pair API is where a caller reaches that state directly".to_string()]).join(&"".to_string()),
+})
+            } else {
+                {
+                    let malformed = v1_rt::concat(
+                        entry_contradicts_its_declaration(a.clone(), axes.clone()),
+                        entry_contradicts_its_declaration(b.clone(), axes.clone()),
+                    );
+                    if ((malformed.clone().len() as i64) > 0) {
+                        Rc::new(PairStanding::PairRefused {
+                            cause: malformed.clone().join(&" ; ".to_string()),
+                        })
+                    } else {
+                        {
+                            let gaps = declared_gap_cause(a.clone(), b.clone());
+                            if ((gaps.clone().len() as i64) > 0) {
+                                Rc::new(PairStanding::PairEvidenceIncomplete {
+                                    missing: gaps.clone().join(&" ; ".to_string()),
+                                })
+                            } else {
+                                pair_from_accum(axes.iter().cloned().fold(
+                                    Rc::new(PairAccum {
+                                        refusal_causes: no_names(),
+                                        a_worse_somewhere: false,
+                                        winning_axes: no_axis_ids(),
+                                        undecided_axes: no_axis_ids(),
+                                    }),
+                                    |acc: _, axis: Rc<SelectionAxis>| {
+                                        axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
+                                    },
+                                ))
+                            }
                         }
                     }
                 }
@@ -685,12 +691,33 @@ pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationR
         })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AxisScan {
+    pub named: Rc<Vec<Rc<DeclarationRef>>>,
+    pub causes: Rc<Vec<NonEmptyStr>>,
+}
+
+pub fn identity_already_named(named: Rc<Vec<Rc<DeclarationRef>>>, id: Rc<DeclarationRef>) -> bool {
+    named
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, seen: Rc<DeclarationRef>| {
+            (acc || crate::std_decl_ref::declaration_ref_eq(seen.clone(), id.clone()))
+        })
+}
+
 pub fn axis_roster_contradiction(axes: Rc<Vec<Rc<SelectionAxis>>>) -> Rc<Vec<String>> {
-    axes.clone().iter().cloned().fold(no_names(), |acc: Rc<Vec<String>>, ax: Rc<SelectionAxis>| if (count_axis_identity(axes.clone(), ax.identity.clone()) > 1) {
-        v1_rt::concat(acc.clone(), one_name(Rc::new(vec!["two selection axes share one identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(ax.identity.clone()), " - a duplicate axis would resolve first-one-wins, so the selection refuses".to_string()]).join(&"".to_string())))
+    axes.clone().iter().cloned().fold(Rc::new(AxisScan {
+    named: no_axis_ids(),
+    causes: no_names(),
+}), |acc: Rc<AxisScan>, ax: Rc<SelectionAxis>| if ((count_axis_identity(axes.clone(), ax.identity.clone()) > 1) && !identity_already_named(acc.named.clone(), ax.identity.clone())) {
+        Rc::new(AxisScan {
+    named: v1_rt::concat(acc.named.clone(), Rc::new(vec![ax.identity.clone()])),
+    causes: v1_rt::concat(acc.causes.clone(), one_name(Rc::new(vec!["two selection axes share one identity ".to_string(), crate::std_decl_ref::declaration_ref_display_key(ax.identity.clone()), " - a duplicate axis would resolve first-one-wins, so the selection refuses".to_string()]).join(&"".to_string()))),
+})
     } else {
         acc.clone()
-    })
+    }).causes.clone()
 }
 
 pub fn count_entry_identity(field: Rc<Vec<Rc<ParetoEntry>>>, id: Rc<DeclarationRef>) -> i64 {
