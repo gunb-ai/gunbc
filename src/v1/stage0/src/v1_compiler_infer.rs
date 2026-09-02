@@ -279,7 +279,7 @@ pub use crate::v1_std_core::{
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
+    divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -16889,30 +16889,6 @@ pub fn classify_terminal_per_field(
 pub struct BodyTerminal {
     pub expr: Rc<Node>,
     pub let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-}
-
-pub fn divergent_type() -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "".to_string(),
-        span: crate::v1_std_core::no_span(),
-        ident_span: Some(crate::v1_std_core::no_span()),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: std::option::Option::None,
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
 }
 
 pub fn arm_body_diverges(body: Rc<Node>) -> bool {

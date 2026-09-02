@@ -784,6 +784,8 @@ fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, St
         "{\"kind\": \"CompilerError\", \"message\": ", json_quote(s: message),
         ", \"span\": ", serialize_span(span: span),
         "}")
+    Divergent =>
+      "{\"kind\": \"Divergent\"}"
     TypeVariable { id: id } =>
       concat("{\"kind\": \"TypeVariable\", \"id\": ", json_quote(s: id), "}")
   }

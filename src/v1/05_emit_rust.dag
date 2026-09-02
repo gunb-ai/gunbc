@@ -2300,6 +2300,8 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                         rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                       Present { value: inf } =>
                         match inf {
+                          Divergent =>
+                            rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                           Resolved { node } =>
                             if is_data_def_item(item: node) {
                               resolve_wire_serde_policy_for_coproduct_seen(
@@ -2326,6 +2328,8 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                     rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                   Present { value: inf } =>
                     match inf {
+                      Divergent =>
+                        rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                       Resolved { node } =>
                         if is_data_def_item(item: node) {
                           resolve_wire_serde_policy_for_coproduct_seen(

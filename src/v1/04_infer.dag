@@ -9511,17 +9511,6 @@ type BodyTerminal {
   let_prov: Map<String, Map<String, SubValueRelation>>
 }
 
-// The type of an expression that never produces a value. Deliberately NAMELESS: an
-// all-diverging match yields nothing, so there is no type to report, and every
-// consumer that asks for its name gets "" and DECLINES (InhabitanceUndecidable)
-// rather than refusing against a fabricated one. review 58406: the divergence fact
-// has to survive independently of whether a contextual expected type happens to
-// exist -- an ordinary non-tail `let` initializer passes `expected: none`, so a
-// fallback to the arms' return payloads fabricates a type for unreachable code.
-fn divergent_type() -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-}
-
 fn arm_body_diverges(body: Node) -> Bool {
   match fold_terminal_expr(body: body).expr_data {
     ExprReturn => true

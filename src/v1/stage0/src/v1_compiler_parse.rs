@@ -2704,6 +2704,7 @@ pub fn occurrence_allocator_after_inferred_node(
         }
         Some(InferredNode::CompilerError { .. }) => alloc.clone(),
         Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
+        Some(InferredNode::Divergent) => alloc.clone(),
         std::option::Option::None => alloc.clone(),
     }
 }

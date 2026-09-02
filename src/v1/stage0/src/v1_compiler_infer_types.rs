@@ -316,6 +316,7 @@ pub enum TypeResolutionVerdict {
     FullyResolved,
     UnderResolved,
     ContainerSpellingUnresolvable { name: String },
+    DivergentExpression,
 }
 impl TypeResolutionVerdict {
     pub fn name(&self) -> String {
@@ -325,6 +326,7 @@ impl TypeResolutionVerdict {
             TypeResolutionVerdict::ContainerSpellingUnresolvable { name: __val, .. } => {
                 __val.clone()
             }
+            TypeResolutionVerdict::DivergentExpression => panic!("no name on unit variant"),
         }
     }
 }
@@ -338,6 +340,7 @@ pub fn combine_resolution_verdicts(
         _ => match (*next.clone()).clone() {
             TypeResolutionVerdict::ContainerSpellingUnresolvable { name: _, .. } => next.clone(),
             TypeResolutionVerdict::UnderResolved => Rc::new(TypeResolutionVerdict::UnderResolved),
+            TypeResolutionVerdict::DivergentExpression => next.clone(),
             TypeResolutionVerdict::FullyResolved => acc.clone(),
         },
     }
@@ -352,26 +355,48 @@ pub fn type_resolution_verdict(
             Some(inf) => is_type_variable(inf.clone()),
             std::option::Option::None => false,
         };
-        if self_is_type_var.clone() {
-            Rc::new(TypeResolutionVerdict::UnderResolved)
+        if type_is_divergent(n.clone()) {
+            Rc::new(TypeResolutionVerdict::DivergentExpression)
         } else {
-            match (*crate::v1_std_core::authored_container_spelling_verdict(
-                n.clone(),
-                source_indices.clone(),
-            ))
-            .clone()
-            {
-                ContainerSpellingVerdict::ContainerSpellingUnknown {
-                    container_leaf: _, ..
-                } => Rc::new(TypeResolutionVerdict::ContainerSpellingUnresolvable {
-                    name: crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
-                }),
-                ContainerSpellingVerdict::ContainerSpellingDeclared {
-                    arity: expected, ..
-                } => {
-                    if ((n.children.clone().len() as i64) < expected.clone()) {
-                        Rc::new(TypeResolutionVerdict::UnderResolved)
-                    } else {
+            if self_is_type_var.clone() {
+                Rc::new(TypeResolutionVerdict::UnderResolved)
+            } else {
+                match (*crate::v1_std_core::authored_container_spelling_verdict(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
+                .clone()
+                {
+                    ContainerSpellingVerdict::ContainerSpellingUnknown {
+                        container_leaf: _,
+                        ..
+                    } => Rc::new(TypeResolutionVerdict::ContainerSpellingUnresolvable {
+                        name: crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            n.clone(),
+                        ),
+                    }),
+                    ContainerSpellingVerdict::ContainerSpellingDeclared {
+                        arity: expected, ..
+                    } => {
+                        if ((n.children.clone().len() as i64) < expected.clone()) {
+                            Rc::new(TypeResolutionVerdict::UnderResolved)
+                        } else {
+                            n.children.clone().iter().cloned().fold(
+                                Rc::new(TypeResolutionVerdict::FullyResolved),
+                                |acc: Rc<TypeResolutionVerdict>, ch: Rc<Node>| {
+                                    combine_resolution_verdicts(
+                                        acc,
+                                        type_resolution_verdict(
+                                            child_type_node(ch.clone()),
+                                            source_indices.clone(),
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    ContainerSpellingVerdict::NotAContainerSpelling => {
                         n.children.clone().iter().cloned().fold(
                             Rc::new(TypeResolutionVerdict::FullyResolved),
                             |acc: Rc<TypeResolutionVerdict>, ch: Rc<Node>| {
@@ -386,20 +411,6 @@ pub fn type_resolution_verdict(
                         )
                     }
                 }
-                ContainerSpellingVerdict::NotAContainerSpelling => {
-                    n.children.clone().iter().cloned().fold(
-                        Rc::new(TypeResolutionVerdict::FullyResolved),
-                        |acc: Rc<TypeResolutionVerdict>, ch: Rc<Node>| {
-                            combine_resolution_verdicts(
-                                acc,
-                                type_resolution_verdict(
-                                    child_type_node(ch.clone()),
-                                    source_indices.clone(),
-                                ),
-                            )
-                        },
-                    )
-                }
             }
         }
     })
@@ -413,6 +424,17 @@ pub fn is_fully_resolved(
         TypeResolutionVerdict::FullyResolved => true,
         TypeResolutionVerdict::UnderResolved => false,
         TypeResolutionVerdict::ContainerSpellingUnresolvable { name: _, .. } => false,
+        TypeResolutionVerdict::DivergentExpression => false,
+    }
+}
+
+pub fn type_is_divergent(n: Rc<Node>) -> bool {
+    match n.inferred.clone() {
+        Some(inf) => match (*inf.clone()).clone() {
+            InferredNode::Divergent => true,
+            _ => false,
+        },
+        std::option::Option::None => false,
     }
 }
 
