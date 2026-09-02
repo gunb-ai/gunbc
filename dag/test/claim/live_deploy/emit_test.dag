@@ -361,8 +361,8 @@ test fn git_metadata_file_transport_is_present_in_the_legacy_specimen_and_absent
 // the required floor measured that shape at 505ms against its 500ms CPU line. This decision keeps
 // the same two authorable reversals while asking the production artifact's order only once.
 fn three_markers_in_order(text: String, first: String, second: String, third: String) -> Bool {
-  let after_first = split(s: text, sep: first).last()
-  let after_second = split(s: after_first, sep: second).last()
+  let after_first = join(split(s: text, sep: first).skip(n: 1), first)
+  let after_second = join(split(s: after_first, sep: second).skip(n: 1), second)
   after_first != text
     && after_second != after_first
     && string_contains(s: after_second, pattern: third)
