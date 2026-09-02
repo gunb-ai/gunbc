@@ -954,7 +954,10 @@ data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cos
 // per-closure constant is the same on two runs of one tree, while 32 rows have been measured with
 // byte-identical eval_steps and cpu up 1.31-1.80x across runs over a byte-identical payload. The
 // two compose (the constant puts the family AT the line, something run-to-run decides which rows
-// cross), which is why the refusing set is nearly disjoint between floor runs; the tipping
+// cross). The second half's evidence is single-run rather than a cross-run delta: two rows of one
+// module measured 502ms and EXACTLY 500ms against the 500ms budget, and a row at its budget lands
+// in one bucket or the other according to whether the poll fired before or after the work
+// finished. The tipping
 // variable is separately open. And a cost inside a native builtin called directly from a claim
 // body is not a row here at all, because the ledger keys pure named fn evaluations -- the same
 // boundary std.evaluation_budget's opaque-host-call note draws for the deadline.

@@ -8164,8 +8164,15 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // measured: 32 rows with byte-identical `eval_steps` and cpu up 1.31-1.80x between two runs over
 // a byte-identical payload module (gentle-wolf-793, 2026-09-02). The two compose into the shape
 // the floor keeps showing: the constant puts a family AT the line, and something run-to-run
-// decides WHICH of its rows cross it, which is why the refusing set is nearly disjoint between
-// runs (calm-boar-314, two floor runs). Neither half alone predicts that — a constant alone gives
+// decides WHICH of its rows cross it. THE EVIDENCE FOR THAT SECOND HALF IS A SINGLE RUN AND NOT A
+// CROSS-RUN DELTA, deliberately: two rows of one module measured 502ms and EXACTLY 500ms against
+// the 500ms budget, and a row sitting at its budget lands in interrupted-before-verdict or in
+// completed-over-cost according to whether the poll fired before or after the work finished — a
+// fact about the poll, not about the row. (A cross-run near-disjointness reading was offered and
+// WITHDRAWN by its author: a rerun replaces a job's attempt while the logs API serves the latest
+// one for a fixed job id, so the two readings addressed different attempts through one
+// identifier. This census keys PRODUCERS and never which rows tipped, which is exactly why that
+// retraction changes nothing here.) Neither half alone predicts it — a constant alone gives
 // the same rows every run, and runner noise alone over a corpus with p50=2ms tips nobody. This
 // census addresses the charge; the tipping variable is separately open and is not this
 // instrument's subject.
