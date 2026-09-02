@@ -72,7 +72,7 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           "  local unit=$1 checkout_root=$2; shift 2\n",
           "  systemd-run --quiet --wait --collect --unit=\"$unit\" \\\n",
           "    --property=\"", systemd_unit_property_wire(property: WorkingDirectoryProperty) as String, "=$checkout_root\" \\\n",
-          "    --property=\"MemoryMax=infinity\" -- \"$@\"\n",
+          "    --property=\"", systemd_unit_property_wire(property: MemoryMax) as String, "=infinity\" -- \"$@\"\n",
           "}\n",
         ], "") }
       }
