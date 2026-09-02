@@ -222,6 +222,32 @@ blob closure, so nothing in it could hold seven.
 - This is a replacement migration at the root, not a new fork: the vendor module's shape rows move,
   they are not duplicated.
 
+The authority is `extdeps.llm.anthropic_messages_api`, its own module rather than a row
+in `extdeps.llm.llm` or `extdeps.llm.llm_contracts`: those two are agnostic anchors, and the
+specification is a named, versioned upstream subject with a citation and a version axis of its own,
+which is the `extdeps.whatwg.html_navigation` position rather than the generic-hub one. It keeps the
+publisher's names because coining a neutral second name for a concept that already has one is the
+nicknaming violation, and it names no implementation: `MessagesApiImplementation` is the carrier
+each implementation declares its own row in.
+
+The shape rows MOVE, they are not copied. `extdeps.llm.anthropic` retains only what is true of the
+API product — its model roster — plus its own conformance row; the wire contracts move with the
+shape into the `_contracts` sidecar the emitter merges into the specification module, so no contract
+row is left pointing at the vendor module. `extdeps.ollama.api` gains the `/v1/messages` endpoint
+row and `ollama_messages_api_conformance`, and re-models none of the shape. This section records the
+design the gate implements; git records what merged, and nothing here claims a merge state.
+
+The version binding is the axis worth having, and it lives on the carrier rather than in this
+document. Upstream documents that Ollama ACCEPTS the `anthropic-version` header and does not use it,
+so an accepted request is not evidence of the revision served — an accepted-and-ignored parameter is
+worse than a refused one, because it looks like a control and is not. The two implementations
+therefore declare different arms of `MessagesApiVersionBinding` against the same spec version.
+`test.claim.messages_api_conformance_witness_test` carries the discriminating controls: it goes red
+if the axis collapses, if either arm goes uninhabited, if a conformance row stops pointing at a
+declaration in its own module, or if a wire contract is left behind on the vendor module. Ollama's
+`/v1/messages` behaviour is grounded in upstream's own `docs/api/anthropic-compatibility.mdx`, not in
+a probe transcribed into prose.
+
 ### DCH-2 — The harness, in `.dag` and Rust
 
 **Question owned:** can we drive a turn to a terminal disposition and report it?
