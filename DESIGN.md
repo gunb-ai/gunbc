@@ -217,6 +217,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `unbacked_execution_claim`
 - `admitted_module_without_judged_standing`
 - `mitigation_injected_where_judgment_declined`
+- `transport_close_read_as_completion`
 - `merge_region_excludes_shared_tail`
 - `sealing_property_erases_structure`
 - `disagreement_census_blind_to_agreed_wrong`
