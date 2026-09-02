@@ -86,8 +86,10 @@ data compile_clean_unlisted_import_use_enforcement_dissolve_on: DissolutionCondi
 // cannot attribute a binding source, which is exactly the dimension the authority census can. It
 // was hand-checked at ten randomly drawn rows; one false positive was found (a single-line inline
 // coproduct whose variants read as undeclared references), corrected, and the count re-derived.
-// SizedByStandInExtractor with read_as LowerBoundOnOrder is therefore the honest arm: it says one
-// module in roughly six, not 789 exactly.
+// SizedByStandInExtractor with read_as OrderOnlyBothDirections is therefore the honest arm: it says
+// one module in roughly six, not 789 exactly. The over-reporting direction is not hypothetical --
+// it was MEASURED: a floor run compiled an isolated closure containing extdeps.uri, which this
+// extractor flags, and that closure compiled clean.
 //
 // THE AUTHORITY INSTRUMENT EXISTS AND HAS NEVER BEEN INVOKED. cli_run::compile_clean::
 // compile_clean_unlisted_import_census computes this same census over the whole tree WITH the
@@ -113,8 +115,15 @@ type UnlistedImportUseSizingAuthority
   = SizedByStandInExtractor { authoring_session: NonEmptyStr }
   | SizedByAuthorityCensus { census: DeclarationRef }
 
+// READ_AS IS AN AXIS AND NOT A HEDGE. OrderOnlyBothDirections is the honest arm for a stand-in
+// extractor and it is STRICTLY WEAKER than a one-sided bound: the instrument over-reports (a module
+// it flags was measured compiling in an isolated closure -- extdeps.uri, whose `Optional` reference
+// is not the class) AND under-reports (a genuine instance at a position its filter does not scan is
+// invisible to it, and it cannot attribute a binding source at all). Neither direction is bounded,
+// so the number names an ORDER and nothing finer. CertifiedCount is reserved for the authority
+// census below and is unreachable until that census is reachable.
 type SizingReadAs
-  = LowerBoundOnOrder
+  = OrderOnlyBothDirections
   | CertifiedCount
 
 type AuthorityCensusReachability
@@ -140,7 +149,7 @@ data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = U
   module_name_pairs: 2190,
   hand_checked_rows: 10,
   hand_checked_false_positives: 1,
-  read_as: LowerBoundOnOrder,
+  read_as: OrderOnlyBothDirections,
   authority_census_reachability: AuthorityCensusEntryPointDeleted {
     deleted_path: "src/v1/stage0/src/bin/compile_clean_unlisted_import_census.rs" as NonEmptyStr,
     swept_as: "unrostered seed probe, gunbc#9160, recorded as a Delete in gunbc.live_deploy.srv1_residue_rehearsal" as NonEmptyStr
