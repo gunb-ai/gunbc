@@ -3030,6 +3030,133 @@ pub fn with_expected_where_refinement_diags(
     }
 }
 
+pub fn arm_body_diverges(mut n: Rc<Node>) -> bool {
+    loop {
+        match (*n.expr_data.clone()).clone() {
+            ExprData::ExprReturn => {
+                break true;
+            }
+            ExprData::ExprBlock => match n.children.clone().last().cloned() {
+                Some(tail) => {
+                    let __tco_0 = tail.clone();
+                    n = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break false;
+                }
+            },
+            _ => {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn match_arm_types_are_disjoint_coproducts(
+    unified_arm_type: Rc<Node>,
+    arm_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let unified_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), unified_arm_type.clone());
+        let arm_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), arm_type.clone());
+        if ((((coproduct_name_is_kernel_or_optional_carrier(unified_name.clone())
+            || coproduct_name_is_kernel_or_optional_carrier(arm_name.clone()))
+            || (unified_arm_type.return_cardinality.clone() == Cardinality::CardOptional))
+            || (arm_type.return_cardinality.clone() == Cardinality::CardOptional))
+            || crate::v1_std_core::type_name_compatible(unified_name.clone(), arm_name.clone()))
+        {
+            false
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                unified_name.clone(),
+            ) {
+                std::option::Option::None => false,
+                Some(unified_decl) => match crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    arm_name.clone(),
+                ) {
+                    std::option::Option::None => false,
+                    Some(arm_decl) => {
+                        let unified_is_concrete_coproduct = (((unified_decl.connective.clone()
+                            == Connective::Disj)
+                            && ((unified_decl.params.clone().len() as i64) == 0))
+                            && ((unified_decl.children.clone().len() as i64) > 0));
+                        let arm_is_concrete_coproduct = (((arm_decl.connective.clone()
+                            == Connective::Disj)
+                            && ((arm_decl.params.clone().len() as i64) == 0))
+                            && ((arm_decl.children.clone().len() as i64) > 0));
+                        let either_is_a_variant_of_the_other = (crate::v1_std_core::has_child_named(
+                            arm_decl.clone(),
+                            crate::v1_std_core::qualified_last_segment(unified_name.clone()),
+                            source_indices.clone(),
+                        )
+                            || crate::v1_std_core::has_child_named(
+                                unified_decl.clone(),
+                                crate::v1_std_core::qualified_last_segment(arm_name.clone()),
+                                source_indices.clone(),
+                            ));
+                        (((unified_is_concrete_coproduct.clone()
+                            && arm_is_concrete_coproduct.clone())
+                            && (either_is_a_variant_of_the_other.clone() == false))
+                            && coproduct_variant_name_sets_differ(
+                                unified_decl.clone(),
+                                arm_decl.clone(),
+                                source_indices.clone(),
+                            ))
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub fn match_arm_join_diagnostics(
+    unified_arm_type: Rc<Node>,
+    arm: Rc<ArmInferResult>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
+        Rc::new(vec![])
+    } else {
+        if match_arm_types_are_disjoint_coproducts(
+            unified_arm_type.clone(),
+            arm.body_type.clone(),
+            scope.clone(),
+        ) {
+            Rc::new(vec![inference_error(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "match arms produce disjoint declared coproducts: ".to_string(),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                unified_arm_type.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                        ),
+                        " vs ".to_string(),
+                    ),
+                    crate::v1_compiler_infer_types::node_type_shape(
+                        arm.body_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                ),
+                crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                    .span
+                    .clone(),
+                scope.module_name.clone(),
+            )])
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
 pub fn infer_expr(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -10298,6 +10425,21 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 }
                 __result
             });
+            let arm_join_diags = Rc::new({
+                let mut __result = Vec::new();
+                for ar in arm_infer_results.iter().cloned() {
+                    __result.extend(
+                        (*match_arm_join_diagnostics(
+                            unified_arm_type.clone(),
+                            ar.clone(),
+                            scope.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
             let result_type = unified_arm_type.clone();
             let empty_arms_diags = if ((arm_infer_results.clone().len() as i64) == 0) {
                 Rc::new(vec![inference_error(
@@ -10336,7 +10478,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 typed: match_texpr.clone(),
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(scrut_diags.clone(), arm_diags.clone()),
+                        v1_rt::concat(
+                            v1_rt::concat(scrut_diags.clone(), arm_diags.clone()),
+                            arm_join_diags.clone(),
+                        ),
                         empty_arms_diags.clone(),
                     ),
                     exhaustiveness_diags.clone(),
