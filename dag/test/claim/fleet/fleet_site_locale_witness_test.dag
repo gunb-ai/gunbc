@@ -4,7 +4,30 @@ import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york }
 import extdeps.posix.locale { locale_en_us_utf8 }
-import gunbc.fleet.fleet_site_locale { SiteCivilTimeFacts, HostZoneCensus, zone_observations_pending_host_allocation }
+import extdeps.ietf.language_tag { LanguageTag, language_tag_en_us }
+import gunbc.fleet.fleet_site_locale {
+  SiteCivilTimeFacts,
+  HostZoneCensus,
+  zone_observations_pending_host_allocation,
+  HostZoneSiteRefused,
+  HostZoneReading,
+  HostZoneReadingVerdict,
+  HostZoneReadingUnavailable,
+  HostZoneObservationMissing,
+  HostZoneObservationUnique,
+  HostZoneObservationAmbiguous,
+  SiteFactsAccepted,
+  SiteAssignmentMissing,
+  SiteAssignmentAmbiguous,
+  SiteFactsMismatch,
+  select_site_facts,
+  reach_label_of,
+  ReachLabelFromReservation,
+  ReachLabelUnmodeled,
+  HostZoneConvergence,
+  fleet_host_site_assignments,
+  provisioned_portal_language_tag,
+}
 import product.placement_supply { SiteIdentity, HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import std.types { Int }
@@ -125,6 +148,7 @@ fn relocated_probe_site() -> SiteCivilTimeFacts {
     site: operator_site,
     civil_time_zone: zone_etc_utc,
     civil_locale: locale_en_us_utf8,
+    portal_language_tag: language_tag_en_us,
   }
 }
 
@@ -136,6 +160,7 @@ fn foreign_site_facts() -> SiteCivilTimeFacts {
     site: "some-other-site" as SiteIdentity,
     civil_time_zone: zone_etc_utc,
     civil_locale: locale_en_us_utf8,
+    portal_language_tag: language_tag_en_us,
   }
 }
 
@@ -148,22 +173,61 @@ test fn w_facts_from_another_site_are_refused_not_adjudicated() -> Bool {
 // The mismatch REPORTS BOTH SIDES, because "wrong site" without the pair cannot drive a repair.
 test fn w_site_mismatch_names_assigned_and_supplied() -> Bool {
   match host_zone_disposition_of(host: operator_host_srv4, site: foreign_site_facts(), policy: fleet_host_zone_policy) {
+    HostZoneReadingUnavailable { selection: _ } => false
+    HostZoneReadingVerdict { verdict: v } =>
+      match v {
     HostZoneSiteRefused { selection: sel } =>
       match sel {
         SiteFactsMismatch { assigned: a, supplied: u } => a == operator_site && u != operator_site
         SiteAssignmentMissing => false
+        SiteAssignmentAmbiguous { host: _, count: _ } => false
         SiteFactsAccepted => false
       }
     HostZoneConverged => false
     HostZoneDivergent { observed: _, desired: _ } => false
     HostZoneUndecidable => false
+      }
   }
+}
+
+// An unmodeled host has NO observation, which is a different unavailability from an ambiguous one.
+test fn w_unobserved_host_reading_is_missing_not_a_verdict() -> Bool {
+  match host_zone_disposition_of(host: ("unmodeled-host" as HostIdentity), site: operator_premises_civil_time, policy: fleet_host_zone_policy) {
+    HostZoneReadingUnavailable { selection: sel } =>
+      match sel {
+        HostZoneObservationMissing => true
+        HostZoneObservationUnique { observed: _ } => false
+        HostZoneObservationAmbiguous { host: _, count: _ } => false
+      }
+    HostZoneReadingVerdict { verdict: _ } => false
+  }
+}
+
+// TWO UNAVAILABILITIES THAT MUST NOT COLLAPSE INTO EACH OTHER. A host that has a site assignment
+// but NO observation is an observation gap; a host with no assignment is a modeling gap. The
+// adjudicator checks the observation first, so a machine we forgot to read must never be reported
+// as one we forgot to place.
+test fn w_assigned_but_unobserved_host_reports_an_observation_gap() -> Bool {
+  match host_zone_disposition_of(host: unassigned_probe_host(), site: operator_premises_civil_time, policy: fleet_host_zone_policy) {
+    HostZoneReadingUnavailable { selection: sel } =>
+      match sel {
+        HostZoneObservationMissing => true
+        HostZoneObservationUnique { observed: _ } => false
+        HostZoneObservationAmbiguous { host: _, count: _ } => false
+      }
+    HostZoneReadingVerdict { verdict: _ } => false
+  }
+}
+
+fn unassigned_probe_host() -> HostIdentity {
+  "unmodeled-host" as HostIdentity
 }
 
 // A host with no site assignment is UNMODELED, and that is a different state from a mismatch.
 test fn w_unassigned_host_is_missing_not_mismatched() -> Bool {
   match select_site_facts(host: ("unmodeled-host" as HostIdentity), facts: operator_premises_civil_time) {
     SiteAssignmentMissing => true
+    SiteAssignmentAmbiguous { host: _, count: _ } => false
     SiteFactsMismatch { assigned: _, supplied: _ } => false
     SiteFactsAccepted => false
   }
@@ -191,6 +255,20 @@ test fn w_srv4_reach_label_is_unmodeled_rather_than_invented() -> Bool {
   }
 }
 
+fn reading_verdict_is_divergent(r: HostZoneReading) -> Bool {
+  match r {
+    HostZoneReadingVerdict { verdict: v } => zone_verdict_is_divergent(c: v)
+    HostZoneReadingUnavailable { selection: _ } => false
+  }
+}
+
+fn reading_verdict_is_converged(r: HostZoneReading) -> Bool {
+  match r {
+    HostZoneReadingVerdict { verdict: v } => zone_verdict_is_converged(c: v)
+    HostZoneReadingUnavailable { selection: _ } => false
+  }
+}
+
 fn zone_verdict_is_divergent(c: HostZoneConvergence) -> Bool {
   match c {
     HostZoneDivergent { observed: _, desired: _ } => true
@@ -210,12 +288,12 @@ fn zone_verdict_is_converged(c: HostZoneConvergence) -> Bool {
 }
 
 test fn w_moving_the_site_inverts_each_named_hosts_disposition() -> Bool {
-  zone_verdict_is_divergent(c: host_zone_disposition_of(host: operator_host_srv4, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
-    && zone_verdict_is_divergent(c: host_zone_disposition_of(host: operator_host_srv5, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
-    && zone_verdict_is_converged(c: host_zone_disposition_of(host: operator_host_srv6, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
-    && zone_verdict_is_converged(c: host_zone_disposition_of(host: operator_host_srv4, site: relocated_probe_site(), policy: fleet_host_zone_policy))
-    && zone_verdict_is_converged(c: host_zone_disposition_of(host: operator_host_srv5, site: relocated_probe_site(), policy: fleet_host_zone_policy))
-    && zone_verdict_is_divergent(c: host_zone_disposition_of(host: operator_host_srv6, site: relocated_probe_site(), policy: fleet_host_zone_policy))
+  reading_verdict_is_divergent(r: host_zone_disposition_of(host: operator_host_srv4, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
+    && reading_verdict_is_divergent(r: host_zone_disposition_of(host: operator_host_srv5, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
+    && reading_verdict_is_converged(r: host_zone_disposition_of(host: operator_host_srv6, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
+    && reading_verdict_is_converged(r: host_zone_disposition_of(host: operator_host_srv4, site: relocated_probe_site(), policy: fleet_host_zone_policy))
+    && reading_verdict_is_converged(r: host_zone_disposition_of(host: operator_host_srv5, site: relocated_probe_site(), policy: fleet_host_zone_policy))
+    && reading_verdict_is_divergent(r: host_zone_disposition_of(host: operator_host_srv6, site: relocated_probe_site(), policy: fleet_host_zone_policy))
 }
 
 // The counts move too, and asymmetrically -- which is itself evidence the site is being read,
@@ -240,12 +318,52 @@ test fn w_every_observation_keys_on_a_canonical_fleet_host() -> Bool {
 }
 
 // The Pi reading is retained WITHOUT minting a host identity for it.
+// BY CONTENT, NOT BY COUNT -- the fourth instance of that class in this branch, and it was written
+// in the same commit that documented the class. `length == 1` is satisfied by a row naming any
+// host and any zone, so it defended nothing about the measurement it claims to retain.
 test fn w_pi_observation_is_retained_without_an_invented_identity() -> Bool {
+  fold(zone_observations_pending_host_allocation, init: false,
+    f: (acc, o) => acc || (o.observed_through == ("pi1" as NonEmptyStr) && o.observed_zone == zone_america_new_york))
+}
+
+// The COUNT is kept as a separate population check. Content and cardinality are two questions:
+// the content witness above is blind to a second row appearing, and this one is blind to the row's
+// values changing. Neither subsumes the other, which is why the earlier single count witness was
+// insufficient rather than merely weak.
+test fn w_exactly_one_observation_awaits_host_allocation() -> Bool {
   fold(zone_observations_pending_host_allocation, init: 0, f: (n, _o) => n + 1) == 1
+}
+
+// And it must NOT have acquired a canonical identity by the back door: the Pi is deliberately
+// absent from the population that keys on HostIdentity, because no such identity exists for it.
+test fn w_pi_is_not_in_the_canonical_host_population() -> Bool {
+  fold(observed_host_zones, init: true, f: (acc, h) => acc && is_canonical_fleet_host(h: h.host))
 }
 
 // A divergent host must report BOTH sides, because "wrong" without the pair cannot drive a
 // convergence action -- an operator needs to know what it is and what it should be.
+// THE DIRECTION, NOT MERELY THE PAIR. The previous witness asserted o != d, which is SYMMETRIC --
+// and the property an actuator needs is ASYMMETRIC, because it converges in a direction. Swapping
+// the payloads (observed: desired, desired: observed.observed_zone) left the whole suite green:
+// still divergent, dispositions unchanged, censuses unchanged, payloads still unequal, and an
+// actuator told to set the machine to the zone it already has. This names both sides exactly.
+//
+// srv4 is observed at Etc/UTC under a New York civil zone, so the reading must say observed=UTC
+// and desired=New York, in that order and not the other.
+test fn w_divergence_reports_observed_and_desired_in_the_right_direction() -> Bool {
+  match host_zone_disposition_of(host: operator_host_srv4, site: operator_premises_civil_time, policy: fleet_host_zone_policy) {
+    HostZoneReadingVerdict { verdict: v } =>
+      match v {
+        HostZoneDivergent { observed: o, desired: d } =>
+          o == zone_etc_utc && d == zone_america_new_york
+        HostZoneConverged => false
+        HostZoneUndecidable => false
+        HostZoneSiteRefused { selection: _ } => false
+      }
+    HostZoneReadingUnavailable { selection: _ } => false
+  }
+}
+
 test fn w_divergence_names_observed_and_desired() -> Bool {
   fold(observed_host_zones, init: true,
     f: (acc, h) => acc && match host_zone_convergence(observed: h, site: operator_premises_civil_time, policy: fleet_host_zone_policy) {

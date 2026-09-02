@@ -9,8 +9,15 @@ import std.types { NonEmptyStr, Bool, List, Int }
 // IT DID NOT SURFACE AS A DUPLICATE-DECLARATION DIAGNOSTIC. The bare-name census went from
 // GlobalBareUniqueBinding to GlobalBareAmbiguousBinding, so the pull was dropped, and the error
 // landed on gunbc.host_standup -- an import-free module that resolves this name purely by bare
-// scan and that this change never touched. The fork is reported at the INNOCENT consumer, which
-// is why "the failing file is not in my diff" was the wrong thing to conclude from.
+// scan. CALLING THAT MODULE INNOCENT WAS WRONG and the correction is load-bearing: it carries a
+// pre-existing UNDECLARED BARE TYPE REFERENCE that resolved only because the declaration was
+// globally unique in the module pool -- the class witnessed by
+// test.claim.undeclared_bare_type_reference_class_witness. The failure had TWO CONJUNCTIVE
+// CONDITIONS and removing either prevents it. The causes are not symmetric: this module
+// introduced a new authority fork, while host_standup carried resolution debt the
+// global-uniqueness fallback admits, and a consumer's latent defect never makes a duplicate
+// declaration admissible. What is exculpatory is nothing: "the failing file is not in my diff"
+// was worth exactly zero as evidence.
 import product.placement_supply { HostIdentity, SiteIdentity }
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
@@ -22,6 +29,12 @@ import gunbc.spark.dgx_procurement {
 }
 import extdeps.dhcp.v4 { DhcpLeaseObservation, StaticDhcpReservation, DynamicDhcpLease }
 import extdeps.posix.locale { PosixLocaleId, locale_en_us_utf8 }
+// THE BCP 47 TAG HAS A CONSUMER, which it did not in the first revision -- it was an authority
+// carried and never read, the inert-artifact shape. The OOBE settings screen submits BOTH: a
+// POSIX locale for the userland and locale="en-US", a BCP 47 language tag, in its hidden field.
+// They are different values of different specifications (en_US.UTF-8 vs en-US) and the site policy
+// owes the wizard the one the wizard actually accepts.
+import extdeps.ietf.language_tag { LanguageTag, language_tag_en_us }
 import extdeps.iana.time_zone_database {
   IanaTimeZoneId,
   TzdataRelease,
@@ -34,11 +47,21 @@ import extdeps.iana.time_zone_database {
 // workflow.
 //
 // The operator's ruling is that language and timezone "need to be inherited from a physical
-// location". That is a modeling instruction, not a value: a unit's zone is a consequence of
-// where the unit physically sits, so the authority is the SITE, and any workflow that wants a
-// zone derives one rather than carrying its own. Moving a rack then changes one row here, and
-// every consumer follows; a literal in the onboarding workflow would have to be found and
-// edited per consumer, which is the parallel authority §3 forbids.
+// location". That is a modeling instruction, and THE RUNG THIS MODULE ACTUALLY REACHES IS WEAKER
+// THAN THAT SENTENCE SOUNDS, so it is stated exactly rather than aspirationally:
+//
+//   the operator ASSIGNS a civil-zone policy value to a canonical site, and consumers derive from
+//   that policy through a canonical host-to-site association. Geographic resolution -- coordinates
+//   or jurisdiction to zone, with an ambiguity arm -- REMAINS UNIMPLEMENTED.
+//
+// So nothing here derives a zone from where a machine physically sits; an earlier revision of this
+// comment claimed it did, which was the stronger claim the implementation never supported.
+// LocationZoneResolved / LocationZoneAmbiguous / LocationZoneUnresolved do not exist, and their
+// absence is the named gap rather than a silent one.
+//
+// What the module DOES buy is the property the operator asked for: one authored row moves and
+// every dependent verdict re-derives, with no second edit. A literal in the onboarding workflow
+// would have to be found and edited per consumer, which is the parallel authority §3 forbids.
 
 // THE SITE IS NOT RE-DECLARED HERE, AND THE FIRST REVISION GOT THIS WRONG THREE TIMES OVER. It
 // minted its own SiteIdentity, its own PhysicalSite, and a row named
@@ -55,6 +78,7 @@ type SiteCivilTimeFacts {
   site: SiteIdentity
   civil_time_zone: IanaTimeZoneId
   civil_locale: PosixLocaleId
+  portal_language_tag: LanguageTag
 }
 
 // The site is REFERENCED, never re-spelled: operator_site is the identity authority, so this row
@@ -63,6 +87,7 @@ data operator_premises_civil_time: SiteCivilTimeFacts = SiteCivilTimeFacts {
   site: operator_site,
   civil_time_zone: zone_america_new_york,
   civil_locale: locale_en_us_utf8,
+  portal_language_tag: language_tag_en_us,
 }
 
 // THE SECOND HALF, AND THE REASON THIS IS TWO FACTS RATHER THAN ONE. A site's civil zone is
@@ -117,6 +142,11 @@ fn provisioned_time_zone(site: SiteCivilTimeFacts, policy: HostZonePolicy) -> Pr
 // arm exists. Adding one when a site needs it is a row, not a redesign.
 fn provisioned_locale(site: SiteCivilTimeFacts) -> PosixLocaleId {
   site.civil_locale
+}
+
+// What the OOBE settings screen is handed for its `locale` field, which is NOT the POSIX locale.
+fn provisioned_portal_language_tag(site: SiteCivilTimeFacts) -> LanguageTag {
+  site.portal_language_tag
 }
 
 // The release the zone identifiers were read against. A zone identifier without the database
@@ -234,26 +264,42 @@ data fleet_host_site_assignments: List<HostSiteAssignment> = [
 type SiteFactsSelection
   = SiteFactsAccepted
   | SiteAssignmentMissing
+  | SiteAssignmentAmbiguous { host: HostIdentity, count: Int }
   | SiteFactsMismatch { assigned: SiteIdentity, supplied: SiteIdentity }
 
 // One fold, no Optional hop. The first attempt routed through a SiteIdentity? and the branches
 // would not unify; carrying the three-arm answer directly is both simpler and the shape the
 // caller actually needs -- an intermediate Optional would have to be re-discriminated anyway.
+fn site_assignments_of_host(host: HostIdentity) -> Int {
+  fold(fleet_host_site_assignments, init: 0, f: (n, a) => if a.host == host { n + 1 } else { n })
+}
+
+// FOUR ARMS. An earlier revision folded with last-match-wins, so two conflicting assignments for
+// one host silently resolved by list order -- the same defect the observation selector had, in the
+// table one level up. A host assigned to two sites is not a host assigned to the second one.
 fn select_site_facts(host: HostIdentity, facts: SiteCivilTimeFacts) -> SiteFactsSelection {
-  fold(
-    fleet_host_site_assignments,
-    init: SiteAssignmentMissing,
-    f: (acc, a) =>
-      if a.host == host {
-        if a.site == facts.site {
-          SiteFactsAccepted
-        } else {
-          SiteFactsMismatch { assigned: a.site, supplied: facts.site }
-        }
-      } else {
-        acc
-      }
-  )
+  if site_assignments_of_host(host: host) == 0 {
+    SiteAssignmentMissing
+  } else {
+    if site_assignments_of_host(host: host) > 1 {
+      SiteAssignmentAmbiguous { host: host, count: site_assignments_of_host(host: host) }
+    } else {
+      fold(
+        fleet_host_site_assignments,
+        init: SiteAssignmentMissing,
+        f: (acc, a) =>
+          if a.host == host {
+            if a.site == facts.site {
+              SiteFactsAccepted
+            } else {
+              SiteFactsMismatch { assigned: a.site, supplied: facts.site }
+            }
+          } else {
+            acc
+          }
+      )
+    }
+  }
 }
 
 type HostZoneConvergence
@@ -269,6 +315,8 @@ fn host_zone_convergence(
 ) -> HostZoneConvergence {
   match select_site_facts(host: observed.host, facts: site) {
     SiteAssignmentMissing => HostZoneSiteRefused { selection: SiteAssignmentMissing }
+    SiteAssignmentAmbiguous { host: h, count: c } =>
+      HostZoneSiteRefused { selection: SiteAssignmentAmbiguous { host: h, count: c } }
     SiteFactsMismatch { assigned: a, supplied: u } =>
       HostZoneSiteRefused { selection: SiteFactsMismatch { assigned: a, supplied: u } }
     SiteFactsAccepted =>
@@ -318,19 +366,54 @@ fn host_zone_census(site: SiteCivilTimeFacts, policy: HostZonePolicy) -> HostZon
 // INVERTS a verdict rather than merely preserving a count. A cardinality-preserving swap is
 // invisible to a total, so the identity-grain reader is the load-bearing one and the census is
 // the population check beside it.
-fn host_zone_disposition_of(
-  host: HostIdentity,
-  site: SiteCivilTimeFacts,
-  policy: HostZonePolicy,
-) -> HostZoneConvergence {
+// THREE CONDITIONS, NOT ONE. The previous fold seeded itself with a refusal and let a match
+// overwrite it, so "no observation exists for this host", "two observations exist and list order
+// silently picked the last" and the policy's own answer were indistinguishable at the call site.
+// Duplicate rows are the dangerous one: the fold reported a verdict with no hint that it discarded
+// a competing observation of the same machine.
+type HostZoneObservationSelection
+  = HostZoneObservationMissing
+  | HostZoneObservationUnique { observed: ObservedHostZone }
+  | HostZoneObservationAmbiguous { host: HostIdentity, count: Int }
+
+fn observations_of_host(host: HostIdentity) -> Int {
+  fold(observed_host_zones, init: 0, f: (n, h) => if h.host == host { n + 1 } else { n })
+}
+
+fn select_host_observation(host: HostIdentity) -> HostZoneObservationSelection {
   fold(
     observed_host_zones,
-    init: HostZoneSiteRefused { selection: SiteAssignmentMissing },
+    init: HostZoneObservationMissing,
     f: (acc, h) =>
       if h.host == host {
-        host_zone_convergence(observed: h, site: site, policy: policy)
+        if observations_of_host(host: host) == 1 {
+          HostZoneObservationUnique { observed: h }
+        } else {
+          HostZoneObservationAmbiguous { host: host, count: observations_of_host(host: host) }
+        }
       } else {
         acc
       }
   )
+}
+
+// Convergence is adjudicated ONLY on the unique arm. A missing or ambiguous observation is
+// reported as such rather than answered.
+type HostZoneReading
+  = HostZoneReadingUnavailable { selection: HostZoneObservationSelection }
+  | HostZoneReadingVerdict { verdict: HostZoneConvergence }
+
+fn host_zone_disposition_of(
+  host: HostIdentity,
+  site: SiteCivilTimeFacts,
+  policy: HostZonePolicy,
+) -> HostZoneReading {
+  match select_host_observation(host: host) {
+    HostZoneObservationMissing =>
+      HostZoneReadingUnavailable { selection: HostZoneObservationMissing }
+    HostZoneObservationAmbiguous { host: h, count: c } =>
+      HostZoneReadingUnavailable { selection: HostZoneObservationAmbiguous { host: h, count: c } }
+    HostZoneObservationUnique { observed: o } =>
+      HostZoneReadingVerdict { verdict: host_zone_convergence(observed: o, site: site, policy: policy) }
+  }
 }
