@@ -6263,7 +6263,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           body_type: resolved_type(n: body_typed)
         }
       )
-      let arm_body_types = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm))) |> map(ar => ar.body_type)
+      let non_diverging_arm_results = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm)))
+      let arm_body_types = match non_diverging_arm_results |> first {
+        Present { value: _ } => non_diverging_arm_results |> map(ar => ar.body_type)
+        Absent => arm_infer_results |> map(ar => ar.body_type)
+      }
       let unified_arm_type = match arm_body_types |> first {
         Present { value: first_type } =>
           arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
@@ -6280,7 +6284,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: ar } => ar
             Absent => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
           }
-          if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
+          if arm_body_diverges(body: arm_body(n: arm_node)) {
+            original
+          } else if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)

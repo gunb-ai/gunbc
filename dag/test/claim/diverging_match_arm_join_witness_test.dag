@@ -125,3 +125,89 @@ test fn the_let_hidden_diverging_arm_still_returns_early() -> Bool {
     ProbeUnknown { why } => why == 2
   }
 }
+
+// ---------------------------------------------------------------------------
+// REVIEW 5083893018 (REQUEST_CHANGES on #9964), blocker 1: the filter created a
+// state the old code could not reach -- arms nonempty, NON-DIVERGING arms empty --
+// which fell through to `Absent => scrut_rt` and typed the match as the value it
+// CONSUMES rather than the value it produces. I had verified that case does not
+// CRASH; I had not verified it types correctly. Those are different claims.
+//
+// `all_arms_diverge` is that case: every arm returns, so the match's own type must
+// still be the arms' join (ProbeResult), never the scrutinee's (ProbeFlag).
+//
+// THIS FIXTURE DOES NOT DISCRIMINATE THE REPAIR, MEASURED. The pre-repair code
+// (unconditional filter) was rebuilt -- binary hash 8c7e053c1bbc, rebuild confirmed
+// by hash change -- and both witnesses below PASS against it too. Hypothesis, not a
+// finding: when every arm diverges there is no value to consume, so the wrongly
+// computed match type is never compared against anything and the declared return is
+// satisfied by the `return` statements. If that holds, the invalid state is
+// unobservable from .dag surface and the repair is correctness with no authorable
+// RED -- a DESIGN 4b ceiling question, not a missing test. Not asserted: "I could
+// not find a red" is not "no red exists". These two are behaviour controls.
+
+type ProbeFlag = ProbeYes | ProbeNo
+
+fn all_arms_diverge(f: ProbeFlag) -> ProbeResult {
+  match f {
+    ProbeYes => return ProbeUnknown { why: 10 }
+    ProbeNo => return ProbeUnknown { why: 11 }
+  }
+}
+
+test fn a_match_whose_arms_all_diverge_types_as_the_arms_not_the_scrutinee() -> Bool {
+  match all_arms_diverge(f: ProbeYes) {
+    ProbeUnknown { why } => why == 10
+    ProbeOk { cell: _ } => false
+  }
+}
+
+test fn the_second_all_diverging_arm_is_reached_too() -> Bool {
+  match all_arms_diverge(f: ProbeNo) {
+    ProbeUnknown { why } => why == 11
+    ProbeOk { cell: _ } => false
+  }
+}
+
+// Blocker 3: the ordinary-arm control returned ProbeCell from BOTH arms, so a
+// mutation keeping only the FIRST non-diverging arm and discarding the rest left
+// every witness green. `prefer_specific_type` is selective and order-sensitive, so
+// the discriminating shape is PAIRED ORDERINGS whose arms contribute differently:
+// `Absent` carries no element type, `Present { value: 5 }` carries Int. Keeping
+// only the first arm therefore yields a different join in one ordering than the
+// other, and one of the two should red under "keep first, discard the rest".
+//
+// IT DOES NOT, MEASURED. A keep-first mutant (`.take(1)` on the non-diverging arm
+// results) was built -- binary hash cd33904dbf9a, rebuild confirmed -- and this
+// witness PASSES against it. So this control has the SAME defect review 5083893018
+// found in the one it replaces: it certifies without discriminating. Kept as a
+// behaviour control and labelled, never cited as evidence that arm-join order is
+// enforced.
+
+fn joined_absent_first(f: ProbeFlag) -> Optional<Int> {
+  match f {
+    ProbeYes => Absent
+    ProbeNo => Present { value: 5 }
+  }
+}
+
+fn joined_present_first(f: ProbeFlag) -> Optional<Int> {
+  match f {
+    ProbeYes => Present { value: 5 }
+    ProbeNo => Absent
+  }
+}
+
+fn probe_unwrap_or_zero(o: Optional<Int>) -> Int {
+  match o {
+    Present { value } => value
+    Absent => 0
+  }
+}
+
+test fn both_orderings_of_a_two_arm_join_carry_the_element_type() -> Bool {
+  probe_unwrap_or_zero(o: joined_absent_first(f: ProbeNo)) == 5
+    && probe_unwrap_or_zero(o: joined_present_first(f: ProbeYes)) == 5
+    && probe_unwrap_or_zero(o: joined_absent_first(f: ProbeYes)) == 0
+    && probe_unwrap_or_zero(o: joined_present_first(f: ProbeNo)) == 0
+}

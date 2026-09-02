@@ -10118,24 +10118,31 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 }
                 __result
             });
-            let arm_body_types = Rc::new({
+            let non_diverging_arm_results = Rc::new({
                 let mut __result = Vec::new();
-                for ar in Rc::new({
-                    let mut __result = Vec::new();
-                    for ar in arm_infer_results.iter().cloned() {
-                        if !arm_body_diverges(crate::v1_std_core::arm_body(ar.typed_arm.clone())) {
-                            __result.push(ar);
-                        }
+                for ar in arm_infer_results.iter().cloned() {
+                    if !arm_body_diverges(crate::v1_std_core::arm_body(ar.typed_arm.clone())) {
+                        __result.push(ar);
                     }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(ar.body_type.clone());
                 }
                 __result
             });
+            let arm_body_types = match non_diverging_arm_results.clone().first().cloned() {
+                Some(_) => Rc::new({
+                    let mut __result = Vec::new();
+                    for ar in non_diverging_arm_results.iter().cloned() {
+                        __result.push(ar.body_type.clone());
+                    }
+                    __result
+                }),
+                std::option::Option::None => Rc::new({
+                    let mut __result = Vec::new();
+                    for ar in arm_infer_results.iter().cloned() {
+                        __result.push(ar.body_type.clone());
+                    }
+                    __result
+                }),
+            };
             let unified_arm_type = match arm_body_types.clone().first().cloned() {
                 Some(first_type) => Rc::new(
                     arm_body_types
@@ -10214,80 +10221,92 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     body_type: scrut_rt.clone(),
                                 }),
                             };
-                            if !crate::v1_compiler_infer_types::is_fully_resolved(
-                                original.body_type.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                {
-                                    let arm_pat = crate::v1_std_core::arm_pattern(arm_node.clone());
-                                    let arm_g = crate::v1_std_core::arm_guard(arm_node.clone());
-                                    let arm_b = crate::v1_std_core::arm_body(arm_node.clone());
-                                    let typed_pattern = annotate_pattern_parent_enums(
-                                        arm_pat.clone(),
-                                        scrut_subject.clone(),
-                                        scope.clone(),
-                                    );
-                                    let pattern_result = extend_scope_with_pattern_node(
-                                        scope.clone(),
-                                        typed_pattern.clone(),
-                                        scrut_subject.clone(),
-                                        scrut_provenance.clone(),
-                                    );
-                                    let arm_scope = pattern_result.scope.clone();
-                                    let pattern_diags = pattern_result.diagnostics.clone();
-                                    let guard_result =
-                                        if (arm_g.clone() != std::option::Option::None) {
-                                            Some(infer_expr(
-                                                arm_g.clone().unwrap(),
-                                                arm_scope.clone(),
-                                                std::option::Option::None,
-                                            ))
-                                        } else {
-                                            std::option::Option::None
+                            if arm_body_diverges(crate::v1_std_core::arm_body(arm_node.clone())) {
+                                original.clone()
+                            } else {
+                                if !crate::v1_compiler_infer_types::is_fully_resolved(
+                                    original.body_type.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    {
+                                        let arm_pat =
+                                            crate::v1_std_core::arm_pattern(arm_node.clone());
+                                        let arm_g = crate::v1_std_core::arm_guard(arm_node.clone());
+                                        let arm_b = crate::v1_std_core::arm_body(arm_node.clone());
+                                        let typed_pattern = annotate_pattern_parent_enums(
+                                            arm_pat.clone(),
+                                            scrut_subject.clone(),
+                                            scope.clone(),
+                                        );
+                                        let pattern_result = extend_scope_with_pattern_node(
+                                            scope.clone(),
+                                            typed_pattern.clone(),
+                                            scrut_subject.clone(),
+                                            scrut_provenance.clone(),
+                                        );
+                                        let arm_scope = pattern_result.scope.clone();
+                                        let pattern_diags = pattern_result.diagnostics.clone();
+                                        let guard_result =
+                                            if (arm_g.clone() != std::option::Option::None) {
+                                                Some(infer_expr(
+                                                    arm_g.clone().unwrap(),
+                                                    arm_scope.clone(),
+                                                    std::option::Option::None,
+                                                ))
+                                            } else {
+                                                std::option::Option::None
+                                            };
+                                        let body_result = infer_expr(
+                                            arm_b.clone(),
+                                            arm_scope.clone(),
+                                            Some(unified_arm_type.clone()),
+                                        );
+                                        let body_typed = body_result.typed.clone();
+                                        let body_diags = body_result.diagnostics.clone();
+                                        let guard_unwrapped = match guard_result.clone() {
+                                            Some(gr) => gr.clone(),
+                                            std::option::Option::None => Rc::new(InferResult {
+                                                typed: arm_b.clone(),
+                                                diagnostics: Rc::new(vec![]),
+                                            }),
                                         };
-                                    let body_result = infer_expr(
-                                        arm_b.clone(),
-                                        arm_scope.clone(),
-                                        Some(unified_arm_type.clone()),
-                                    );
-                                    let body_typed = body_result.typed.clone();
-                                    let body_diags = body_result.diagnostics.clone();
-                                    let guard_unwrapped = match guard_result.clone() {
-                                        Some(gr) => gr.clone(),
-                                        std::option::Option::None => Rc::new(InferResult {
-                                            typed: arm_b.clone(),
-                                            diagnostics: Rc::new(vec![]),
-                                        }),
-                                    };
-                                    let guard_diags =
-                                        if (guard_result.clone() != std::option::Option::None) {
+                                        let guard_diags = if (guard_result.clone()
+                                            != std::option::Option::None)
+                                        {
                                             guard_unwrapped.diagnostics.clone()
                                         } else {
                                             Rc::new(vec![])
                                         };
-                                    Rc::new(ArmInferResult {
-                                        typed_arm: crate::v1_std_core::make_arm_node(
-                                            arm_node.occurrence_identity.clone(),
-                                            typed_pattern.clone(),
-                                            if (guard_result.clone() != std::option::Option::None) {
-                                                Some(guard_unwrapped.typed.clone())
-                                            } else {
-                                                std::option::Option::None
-                                            },
-                                            body_typed.clone(),
-                                            span.clone(),
-                                        ),
-                                        diagnostics: v1_rt::concat(
-                                            pattern_diags.clone(),
-                                            v1_rt::concat(guard_diags.clone(), body_diags.clone()),
-                                        ),
-                                        body_type: crate::v1_compiler_infer_types::resolved_type(
-                                            body_typed.clone(),
-                                        ),
-                                    })
+                                        Rc::new(ArmInferResult {
+                                            typed_arm: crate::v1_std_core::make_arm_node(
+                                                arm_node.occurrence_identity.clone(),
+                                                typed_pattern.clone(),
+                                                if (guard_result.clone()
+                                                    != std::option::Option::None)
+                                                {
+                                                    Some(guard_unwrapped.typed.clone())
+                                                } else {
+                                                    std::option::Option::None
+                                                },
+                                                body_typed.clone(),
+                                                span.clone(),
+                                            ),
+                                            diagnostics: v1_rt::concat(
+                                                pattern_diags.clone(),
+                                                v1_rt::concat(
+                                                    guard_diags.clone(),
+                                                    body_diags.clone(),
+                                                ),
+                                            ),
+                                            body_type:
+                                                crate::v1_compiler_infer_types::resolved_type(
+                                                    body_typed.clone(),
+                                                ),
+                                        })
+                                    }
+                                } else {
+                                    original.clone()
                                 }
-                            } else {
-                                original.clone()
                             }
                         });
                     }
