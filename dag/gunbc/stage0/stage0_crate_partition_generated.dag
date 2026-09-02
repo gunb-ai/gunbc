@@ -89,6 +89,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_execution_mode",
         "extdeps_uri_path",
         "std_interface_summary",
+        "std_interval",
         "std_pareto",
         "std_realization_schedule",
         "std_trait_derive_shape",
