@@ -3,6 +3,7 @@ module gunbc.seed_growth_admission
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
+import gunbc.ambiguity_ban_admission { ambiguity_ban_seed_growth_justification }
 import gunbc.decl_facts_shared_memo_seed_growth { decl_facts_shared_memo_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
@@ -200,6 +201,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     whole_corpus_compile_seed_growth_justification,
     reference_closure_binder_seed_growth_justification,
     bare_reference_scanner_seed_growth_justification,
+    ambiguity_ban_seed_growth_justification,
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
     claim_unwind_seed_growth_justification,
