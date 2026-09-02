@@ -36,7 +36,7 @@ test fn witness_declared_probe_names_principal() -> Bool {
   posix_declared_probe_names_principal(p: fleet_posix_ci_runner_principal())
     && posix_declared_probe_names_principal(p: fleet_posix_operator_principal())
     && posix_declared_probe_names_principal(p: fleet_posix_root_principal())
-    && posix_declared_probe_names_principal(p: fleet_posix_host_administrator_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_srv3_host_administrator_principal())
 }
 
 test fn witness_declared_probe_mismatch_red() -> Bool {
@@ -199,9 +199,22 @@ test fn witness_two_phase_principal_derives_job_user() -> Bool {
     && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == srv1_ci_deploy_runner_principal.job_user
 }
 
-test fn witness_host_administrator_roster_row_exists() -> Bool {
-  fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
-    && grounded_posix_principal_name(p: fleet_posix_host_administrator_principal()) == "ubuntu"
+// The host administrator receipt is srv3's, and the ROLE key cannot be answered without a host.
+// Both halves are asserted here because generalizing the key from FleetAccountSrv3Host is exactly
+// what would let a srv4 or DGX Spark caller receive srv3's probe under a role-spelled name.
+// Discriminating RED: restore the host-free arm to PrincipalGrounded and the second conjunct
+// fails; re-add the "ubuntu" arm to fleet_posix_account_from_name and the third fails.
+test fn witness_host_administrator_receipt_is_srv3_and_role_key_needs_a_host() -> Bool {
+  grounded_posix_principal_name(p: fleet_posix_srv3_host_administrator_principal()) == "ubuntu"
+    && match fleet_posix_principal(key: FleetAccountHostAdministrator) {
+      PrincipalRequiresHostScope { principal: _ } => true
+      PrincipalGrounded { principal: _ } => false
+      PrincipalUnallocated { occurrence: _ } => false
+      PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+      PrincipalUnobserved { allocation: _ } => false
+      PrincipalDrifted { allocation: _, first: _, more: _ } => false
+    }
+    && !fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
 }
 
 test fn witness_deploy_sudo_grants_refuse_generic_movers() -> Bool {

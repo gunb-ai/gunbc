@@ -88,8 +88,17 @@ data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrinci
 // every later host that has this account had to either mis-cite srv3 or fork a second key for one
 // concept. The role is: the primary human-facing administrator account the host image provisions,
 // distinct from root, from the CI runner, and from the key-only automation identity. srv3 is still
-// named where it is a receipt -- the declared probe's host field, the allocation rows -- because a
-// receipt is about a place and this key is not.
+// named where it is a receipt -- the observed user row, the declared probe, the grant set, the
+// accessor that composes them, the allocation rows -- because a receipt is about a place and this
+// key is not.
+//
+// Generalizing the key therefore FORCED a second change, and reviewing the rename without it
+// would have shipped the defect the rename created: this key can no longer be answered by
+// fleet_posix_principal at all. That accessor takes no host, and the account it names is
+// per-host, so the honest outcome is PrincipalRequiresHostScope -- the same answer the automation
+// and service identities already get, for the same reason. Under the old place-name spelling a
+// caller could read srv3 off the key and know which receipt it was getting; under a role name
+// they cannot, so the host-free arm had to stop answering rather than start lying.
 type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
@@ -120,7 +129,7 @@ data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   shell: LoginShellUnobserved,
 }
 
-data fleet_posix_host_administrator_user: PosixUser = PosixUser {
+data fleet_posix_srv3_host_administrator_user: PosixUser = PosixUser {
   name: "ubuntu",
   uid: 1000,
   gid: 1000,
@@ -145,7 +154,7 @@ data fleet_posix_ci_runner_declared_probe: PosixAccountDeclaredProbe = PosixAcco
   host: "srv1",
 }
 
-data fleet_posix_host_administrator_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
+data fleet_posix_srv3_host_administrator_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
   probed_at: "2026-07-21",
   probe_command: "id ubuntu",
   host: "srv3",
@@ -276,7 +285,7 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   )
 }
 
-fn fleet_posix_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
+fn fleet_posix_srv3_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -473,7 +482,7 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         principal: key,
         login_policy: LegacyHostAccount,
         name_requirements: legacy_name_requirements,
-        sudo_grants: fleet_posix_host_administrator_sudo_grants(),
+        sudo_grants: fleet_posix_srv3_host_administrator_sudo_grants(),
       }
     FleetAccountAutomation =>
       FleetPrincipalIntent {
@@ -776,11 +785,18 @@ fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalR
   ServicePrincipalRealizationUnselected
 }
 
-// TOTAL PER-ACCOUNT ACCESSORS for the four legacy principals. These exist because their accounts
-// WERE observed on srv1/srv3, so the question "what is this account" has an answer that needs no
-// host parameter and no optional. Callers asking about a legacy srv1 account use these; callers
+// TOTAL PER-ACCOUNT ACCESSORS for the principals whose accounts WERE observed, so the question
+// "what is this account" has an answer that needs no host parameter and no optional. Callers
 // asking about a host-scoped principal must go through ground_posix_principal with an occurrence.
 // The split is what lets the fabricated placeholder be deleted instead of relocated.
+//
+// Each accessor's NAME carries the occurrence its receipt came from. That is why the host
+// administrator's is fleet_posix_srv3_host_administrator_principal and not the bare role name:
+// the KEY is the role (srv3, srv4 and a Spark all have this account), but the probe, uid and
+// grant set inside are one host's observation. A role-spelled accessor handing out srv3's
+// receipt is the meaning fork §3 forbids -- one name, two materially different answers -- and
+// it is the exact shape a Spark consumer would have reached for. srv4 and the Sparks get their
+// own observation rows, or they get ground_posix_principal; they do not get srv3's.
 fn fleet_posix_root_principal() -> GroundedPosixPrincipal {
   GroundedPosixPrincipal {
     posix: fleet_posix_root_user,
@@ -805,17 +821,17 @@ fn fleet_posix_ci_runner_principal() -> GroundedPosixPrincipal {
   }
 }
 
-fn fleet_posix_host_administrator_principal() -> GroundedPosixPrincipal {
+fn fleet_posix_srv3_host_administrator_principal() -> GroundedPosixPrincipal {
   GroundedPosixPrincipal {
-    posix: fleet_posix_host_administrator_user,
-    sudo_grants: fleet_posix_host_administrator_sudo_grants(),
-    declared_probe: fleet_posix_host_administrator_declared_probe,
+    posix: fleet_posix_srv3_host_administrator_user,
+    sudo_grants: fleet_posix_srv3_host_administrator_sudo_grants(),
+    declared_probe: fleet_posix_srv3_host_administrator_declared_probe,
   }
 }
 
-// The legacy call sites all ask about an srv1/srv3 account that WAS observed. This keeps them total
-// without reintroducing a fabricated value: the four legacy keys are grounded, and the two
-// host-scoped principals REFUSE here rather than returning an inventable placeholder. A caller that
+// The legacy call sites all ask about an srv1 account that WAS observed. This keeps them total
+// without reintroducing a fabricated value: the three srv1-observed keys are grounded, and every
+// host-scoped principal REFUSES here rather than returning an inventable placeholder. A caller that
 // wants those must go through ground_posix_principal with an occurrence.
 fn fleet_posix_legacy_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal? {
   match fleet_posix_principal(key: key) {
@@ -828,11 +844,11 @@ fn fleet_posix_legacy_principal(key: FleetPosixAccountKey) -> GroundedPosixPrinc
   }
 }
 
-// THE LEGACY ACCESSOR, now returning an OUTCOME. Its four legacy keys resolve to accounts observed
-// on srv1/srv3 and keep working. Its two new keys cannot be answered here at all -- not because the
+// THE LEGACY ACCESSOR, now returning an OUTCOME. Its three srv1-observed keys resolve and keep
+// working. Its four host-scoped keys cannot be answered here at all -- not because the
 // accounts are missing, but because this function takes no host and an account is per-host. That is
 // PrincipalRequiresHostScope, and it is the honest answer a fabricated principal was standing in
-// for. Dissolve-on: the legacy four migrate to receipt-backed allocation+observation rows and this
+// for. Dissolve-on: the legacy three migrate to receipt-backed allocation+observation rows and this
 // accessor is deleted in favour of ground_posix_principal.
 fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOutcome {
   match key {
@@ -860,14 +876,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
           declared_probe: fleet_posix_ci_runner_declared_probe,
         },
       }
-    FleetAccountHostAdministrator =>
-      PrincipalGrounded {
-        principal: GroundedPosixPrincipal {
-          posix: fleet_posix_host_administrator_user,
-          sudo_grants: fleet_posix_host_administrator_sudo_grants(),
-          declared_probe: fleet_posix_host_administrator_declared_probe,
-        },
-      }
+    FleetAccountHostAdministrator => PrincipalRequiresHostScope { principal: key }
     FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
@@ -896,11 +905,7 @@ fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
         false =>
           match name == fleet_posix_ci_runner_user.name {
             true => Present { value: fleet_posix_ci_runner_principal() }
-            false =>
-              match name == fleet_posix_host_administrator_user.name {
-                true => Present { value: fleet_posix_host_administrator_principal() }
-                false => Absent
-              }
+            false => Absent
           }
       }
   }
