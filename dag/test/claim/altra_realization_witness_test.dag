@@ -55,6 +55,7 @@ import product.altra_motherboard.placement {
   PlannedIdentityRepeated,
   RoleFilledMoreThanOnce,
   PlanWasBuiltFromADifferentDesign,
+  DesignIsNotAdmitted,
   placement_causes,
 }
 import product.altra_motherboard.minimal_design { altra_1p_minimum }
@@ -309,6 +310,7 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
             PlannedIdentityRepeated { component: _ } => acc
             RoleFilledMoreThanOnce { role: _, fills: _ } => acc
             PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
+            DesignIsNotAdmitted { causes: _ } => acc + 100
           }
         }
       ) == 3
