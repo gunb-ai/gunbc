@@ -12862,12 +12862,57 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 /// EXISTENCE are independent facts; a caller that obtained create-only from it would silently also
 /// get 0600, and would break if owner-only ever stopped needing O_EXCL. This is portable and sets no
 /// mode, because setting one would be the same conflation in reverse.
+/// THE TARGET IS PUBLISHED ONLY WHEN ITS CONTENT IS COMPLETE.
+///
+/// The first cut of this was `create_new(true).open(path)` followed by `write_all`, and review on
+/// gunbc#10026 found the state that construction cannot describe: if the open SUCCEEDS and the
+/// write then fails, the target has already been created and holds zero or partial bytes. The
+/// helper returned an ordinary error, the transport reported `success=false, bytes_written=0`, and
+/// the caller classified it as merely unwritable -- so the model said the create did not happen
+/// while a new, incomplete artifact sat at the path. That collapses "nothing was created" into "a
+/// truncated repository now exists", which is a worse lie than the overwrite race this operation
+/// was added to close: the original race could destroy someone else's bytes, and this one
+/// FABRICATES a repository nobody wrote.
+///
+/// Two dispositions are not modeled here, because a construction that cannot reach the bad state
+/// is available (DESIGN section 4b: construction over proof, proof over validation). Content is
+/// written to a sibling temporary that is itself created with O_EXCL, and the target name is
+/// claimed by `hard_link`, which FAILS IF THE TARGET EXISTS -- so exclusivity is preserved by the
+/// publish step rather than by the open. Every failure before the link leaves the target absent,
+/// which is exactly what the operation reports.
+///
+/// The temporary is removed on every path. Its removal failure is deliberately NOT propagated: it
+/// leaves a stray sibling and does not affect what the target is, and reporting it as a write
+/// failure would say the repository was not created when it was.
 fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
     use std::fs::OpenOptions;
     use std::io::Write;
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-    file.write_all(content)?;
-    Ok(())
+
+    let temp = format!("{path}.gunbc-create-{}", std::process::id());
+
+    // The temporary is exclusive too, so two concurrent creators cannot share one staging file.
+    // `?` rather than a match: this arm creates nothing, so there is no staging file to clean up --
+    // which is exactly why it is the one failure below that does NOT remove_file. The emitted
+    // realization already spells it `?`, so this also stops the two spellings differing over a
+    // difference that was never semantic.
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
+    if let Err(e) = file.write_all(content) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    if let Err(e) = file.sync_all() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    drop(file);
+
+    // hard_link refuses an existing target, which is where this operation's exclusivity now lives.
+    let published = std::fs::hard_link(&temp, path);
+    let _ = std::fs::remove_file(&temp);
+    published
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -12895,6 +12940,70 @@ mod write_file_create_new_tests {
         assert_eq!(
             after, b"SOMEONE ELSE'S BYTES",
             "the existing bytes must be untouched by a refused create"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE POST-OPEN FAILURE CONTROL, and it took two attempts to make it real.
+    //
+    // Review on gunbc#10026 found that neither existing cell observes a failure AFTER the target
+    // name would have been claimed -- exactly where the old open-then-write construction left a
+    // created-but-incomplete file while reporting that nothing was created.
+    //
+    // THE FIRST ATTEMPT WAS A DECORATION AND IS RECORDED HERE SO IT IS NOT REBUILT. It put a
+    // DIRECTORY at the target and asserted the target was untouched. Measured against the old
+    // construction, it PASSED: `create_new` fails at the OPEN when the name exists, so nothing was
+    // ever created and the assertion was satisfied by the defect. A check that cannot go red on the
+    // fault it names is worse than absent (DESIGN section 4b) because it gets cited as coverage.
+    //
+    // THIS ONE REACHES THE FAULT. RLIMIT_FSIZE makes `write_all` fail with EFBIG on a path that is
+    // ABSENT, so the create genuinely succeeds and the write genuinely fails -- the one ordering
+    // that distinguishes the two constructions. It runs in a forked child because the limit and the
+    // SIGXFSZ disposition are process-wide and this binary runs tests concurrently; the parent only
+    // reads the filesystem afterwards.
+    #[test]
+    fn a_write_failure_after_creation_leaves_no_target_behind() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-create-new-efbig-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("repo.json");
+        let target_s = target.to_str().unwrap().to_string();
+
+        // 64 bytes allowed, 4 KiB written: the create succeeds, the write cannot.
+        let content = vec![b'x'; 4096];
+
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe {
+                libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+                let lim = libc::rlimit {
+                    rlim_cur: 64,
+                    rlim_max: 64,
+                };
+                libc::setrlimit(libc::RLIMIT_FSIZE, &lim);
+            }
+            let _ = super::write_file_create_new(&target_s, &content);
+            unsafe { libc::_exit(0) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        // THE LOAD-BEARING ASSERTION. Under the old construction the target was created by the open
+        // and survived the failed write as a zero-or-partial file -- a repository nobody wrote.
+        // Publishing only when the content is complete means there is nothing at the target at all.
+        assert!(
+            !target.exists(),
+            "a write that failed after creation must leave NO target behind"
+        );
+        let strays: Vec<String> = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            strays.is_empty(),
+            "no staging temporary may survive either: {strays:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
