@@ -33,7 +33,7 @@ test fn char_unicode_scalar_expression_carries_a_symbol_identity() -> Bool {
       kind: ValueCharUnicodeScalar,
       node: target_model_type_atom_node(identity: ^char_witness_template)
     },
-    value: SourceAtomChar { codepoint: code_point(s: "A") },
+    value: SourceAtomChar { codepoint: code_point(c: "A") },
     source_carrier: target_model_type_atom_node(identity: ^char_witness_carrier)
   ) {
     Rejected { diagnostics: _ } => false

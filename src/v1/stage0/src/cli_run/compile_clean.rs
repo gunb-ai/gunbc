@@ -718,6 +718,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "ImportShadowedByLocalDefinition"
         }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
+        CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
+            "UnitVariantPhantomIdentityEvidenceUnavailable"
+        }
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
         CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
@@ -796,6 +799,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
+        CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
+            name.clone()
+        }
         CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
         CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),

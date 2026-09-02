@@ -11,6 +11,9 @@ import gunbc.fleet_multi_principal_probe {
 import gunbc.membership_reconcile { MemberChanged, MemberAdded }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
+  FleetConvergeApplyTerminal,
+  PartiallyApplied,
+  fleet_converge_apply_terminal_line,
   FleetConvergeSparkServingTypedAction,
   PlannedEffectExecution,
   PlannedRemoteStep,
@@ -258,6 +261,49 @@ test fn linger_slice_apply_shell_never_runs_loginctl() -> Bool {
     Absent => false
     Present { value: artifact } =>
       !string_contains(s: artifact.apply_shell, pattern: "loginctl")
+  }
+}
+
+// ONE TERMINAL, NAMED BY BOTH PROJECTIONS OF THE ARTIFACT THAT CARRIES IT.
+//
+// The plan body and the apply script are two projections of one planned terminal, and the Spark
+// consumer reaches them through gunbc.fleet_converge_plan fleet_converge_plan_artifact -- which
+// computes the terminal once and hands the same value to both. Until #9763 there was a second
+// assembler, and until this change a second apply-shell spelling
+// (spark_serving_fleet_converge_apply_shell) that rebuilt script and terminal from loose families
+// beside it; either could have named a terminal the artifact does not carry, with nothing joining
+// them. This claim is the join, asserted over an artifact whose Spark axis is populated, so it is
+// the Spark consumer's own route and not a generic one that happens to share a function.
+//
+// THE CONTROL BELOW IS WHAT MAKES THE POSITIVE DISCRIMINATE: a terminal no observation produced
+// must NOT be named by this artifact. Without it the predicate would pass on any artifact whose
+// script merely contains some terminal line, which is the shape a disagreeing second assembler
+// produces.
+fn artifact_names_terminal(artifact: FleetConvergePlanArtifact, terminal: FleetConvergeApplyTerminal) -> Bool {
+  let line = fleet_converge_apply_terminal_line(terminal: terminal)
+  string_contains(s: artifact.apply_shell, pattern: line)
+    && string_contains(s: artifact.plan_body, pattern: line)
+}
+
+test fn the_spark_populated_artifact_names_its_own_terminal_in_body_and_script() -> Bool {
+  match slice_artifact(linger_enabled: false) {
+    Absent => false
+    Present { value: artifact } =>
+      artifact_names_terminal(artifact: artifact, terminal: artifact.apply_terminal)
+  }
+}
+
+test fn a_terminal_no_observation_produced_is_named_by_neither_projection() -> Bool {
+  match slice_artifact(linger_enabled: false) {
+    Absent => false
+    Present { value: artifact } =>
+      !artifact_names_terminal(
+        artifact: artifact,
+        terminal: PartiallyApplied {
+          refused_axis_count: 97,
+          detail: "witness control terminal, produced by no observation",
+        },
+      )
   }
 }
 

@@ -9,6 +9,8 @@ import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
 import gunbc.self_host_compile_phase_frontier {
+  TargetDefaultedToHost,
+  TargetPinnedOnInvocation,
   PhaseCount,
   PhaseNotYetReached,
   Observed,
@@ -612,7 +614,7 @@ fn duplicated_refusal_receipt() -> CompilePhaseFrontierReceipt {
       assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
       cargo_identity: "cargo fixture" as NonEmptyStr,
       rustc_identity: "rustc fixture" as NonEmptyStr,
-      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      invocation: CompilePhaseInvocation { target: "fixture-target", target_selection: TargetDefaultedToHost, profile: "check/dev", features: [] },
       classification_policy_digest: rustc_phase_classification_policy_digest,
       comparison_epoch: "fixture-epoch" as NonEmptyStr
     },
@@ -660,7 +662,7 @@ fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
       assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
       cargo_identity: "cargo fixture" as NonEmptyStr,
       rustc_identity: "rustc fixture" as NonEmptyStr,
-      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      invocation: CompilePhaseInvocation { target: "fixture-target", target_selection: TargetDefaultedToHost, profile: "check/dev", features: [] },
       classification_policy_digest: rustc_phase_classification_policy_digest,
       comparison_epoch: "fixture-epoch" as NonEmptyStr
     },
