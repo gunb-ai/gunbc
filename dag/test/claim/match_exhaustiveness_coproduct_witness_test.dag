@@ -244,12 +244,23 @@ test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool {
 // reviewable by reading the arms against the declaration, and by this file's own witnesses covering
 // the CHECKER, not by expecting the repaired sites to prove themselves.
 //
-// A blocking per-site POLARITY read was briefly recorded here and is WITHDRAWN (tidy-lynx-804,
-// retracted; the nullary/closed-term argument above is still-swift-363's and closes it structurally
-// rather than by sampling). It is struck rather than quietly deleted because a witness carrier
-// outlives the thread that wrote it, so a retracted obligation left standing here would be read as a
-// live requirement by everyone who touches the census afterwards -- which is precisely why it was
-// put here, and precisely why leaving it would be worse than never recording it.
+// TWO OBLIGATIONS LIVE HERE AND THEY ARE NOT THE SAME ONE. This entry has been wrong in both
+// directions -- first recording a blocking per-site polarity read, then withdrawing it wholesale --
+// and the operator's ruling separates what each move got right.
+//
+// The added arms are unreachable, so the suite passes identically before and after and cannot
+// discriminate a wrong arm. That retires the EXECUTING witness, not the SOURCE read: an arm whose
+// value is never computed is still an authored claim about what the value would be, and only a
+// reading of the source can judge it. The checker's shrinking refusal set is the discriminating
+// evidence for EXHAUSTIVENESS, not for POLARITY.
+//
+// So the executing per-site witness is correctly retired and cannot exist anyway -- an unreachable
+// arm has no runtime behaviour to observe. The source read survives, and unreachability is not what
+// retires it. Conflating the two is what produced both the over-demand and the over-withdrawal.
+//
+// It is restated rather than quietly deleted because a witness carrier outlives the thread that
+// wrote it, so an obligation left in either wrong state here would be read as settled by everyone
+// who touches the census afterwards.
 
 // -- A VARIANT NAMED IN A TYPE POSITION IS JUDGED AGAINST ITS PARENT'S ROSTER --
 //
