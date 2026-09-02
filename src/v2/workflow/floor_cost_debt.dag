@@ -722,6 +722,24 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
   Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
+// THIS ROW WITHHOLDS REAL COVERAGE. The claim remains authored, with two reversed-order controls
+// and a missing-marker control, but it DOES NOT EXECUTE on the ordinary required floor while it
+// is enrolled here. The two repository-transition admission consultation witnesses still execute;
+// this production-apply ordering property does not. Three attempted predicate-cost reductions
+// all reached the 500ms CPU deadline without a verdict, while the sibling
+// `apply_script_and_tree_sync_unit_stay_within_ci_runner_grants` measured 643ms marginal CPU over
+// the same production apply-script subject doing strictly less marker work. The emitted subject,
+// not this predicate, is the demonstrated cost boundary.
+//
+// TRIGGER (CAPABILITY, NOT ROSTER ERASURE): emission witnesses can reach a terminal verdict over
+// the production apply script, either because that script becomes a shared fill-netted artifact
+// or because an emission lane declares and enforces its own sufficient ceiling. Merely deleting
+// this identity, emptying the roster, or replacing production emission with a smaller fixture
+// does not restore the coverage and does not satisfy the trigger.
+fn floor_cost_debt_censored_chunk_03() -> List<String> {
+  Cons { head: "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback", tail: Empty {} }
+}
+
 // THE TWO EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT.
 //
 // Both are withheld and both take `DeclinedCostDebt`, because the DISPOSITION answers why a site
@@ -825,7 +843,7 @@ fn floor_cost_debt_proven_chunks() -> List<List<String>> {
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Empty {} }}}
+  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Cons { head: floor_cost_debt_censored_chunk_03(), tail: Empty {} }}}}
 }
 
 fn floor_cost_debt_proven_roster() -> List<String> {
