@@ -17805,10 +17805,25 @@ pub fn handle_serve(
     // function name and of the limits reads THIS value; `function` and `serve_budget` are not
     // consulted again below.
     let armed_contract = serve_budget_refusal::serve_armed_contract(function.clone(), serve_budget);
+    // THE ANNOUNCEMENT NAMES THE ADDRESS ACTUALLY BOUND, not the one requested. They differ exactly
+    // when the caller asked the OS to choose (`--port 0`), which is the only collision-free way to
+    // take a loopback port; announcing the request there would publish `:0` and leave no way to
+    // reach the server it just started. A reader of this line can now attribute a connection to
+    // THIS process rather than to whoever happened to hold the requested port.
+    let bound = match listener.local_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!(
+                "error: bound {}:{} but could not read its address: {}",
+                host, port, e
+            );
+            std::process::exit(1);
+        }
+    };
     eprintln!(
         "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        host,
-        port,
+        bound.ip(),
+        bound.port(),
         serve_budget_refusal::serve_contract_entry(&armed_contract),
         release_revision,
         serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)

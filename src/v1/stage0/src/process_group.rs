@@ -93,20 +93,101 @@ pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroup
     }
 }
 
-/// TERM, then wait, then KILL, then wait again. The escalation exists because a polite signal a
-/// process declines to honour must not become an instrument that never returns; the second wait's
-/// verdict is reported as-is, so a group that survives SIGKILL is visible rather than assumed away.
+/// WHAT REMAINED OF THE GROUP once teardown finished. This exists because the leader's exit status
+/// answers a DIFFERENT question than the one teardown is asked: a server spawns helpers, and a
+/// reaped leader beside a surviving child is exactly the state that holds the port and makes the
+/// NEXT run of this instrument fail to bind for a reason unrelated to its subject. Absence is
+/// observed with a null signal to the GROUP, never inferred from the leader.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProcessGroupResidue {
+    /// `kill(-pgid, 0)` reported ESRCH: no process remains in the group.
+    GroupAbsent,
+    /// Members were still present when the observation budget ran out.
+    GroupPresent { after: Duration },
+    /// The observation itself could not be made -- EPERM, or any errno that is not ESRCH. This is
+    /// NOT absence: an instrument that cannot see the group has not established that it is gone.
+    ResidueObservationFailed { detail: String },
+}
+
+/// The full teardown verdict: what the leader did, what survived it, and whether SIGKILL was
+/// needed. Kept as three fields rather than one enum because a caller adjudicating cleanup and a
+/// caller adjudicating the subject's exit are asking different questions of the same event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProcessGroupTermination {
+    pub(crate) leader: ProcessGroupWait,
+    pub(crate) residue: ProcessGroupResidue,
+    pub(crate) escalated_to_kill: bool,
+}
+
+impl ProcessGroupTermination {
+    /// Teardown succeeded only when nothing remains. A leader that exited cleanly while a child
+    /// still holds the port is a FAILED teardown, and this is the single place that says so.
+    pub(crate) fn group_is_gone(&self) -> bool {
+        matches!(self.residue, ProcessGroupResidue::GroupAbsent)
+    }
+}
+
+/// Observe whether ANY process remains in the group, by sending signal 0 to the negated pgid.
+/// ESRCH is the only answer that establishes absence; every other errno is reported as an
+/// observation failure rather than folded into presence, so "cannot tell" never reads as "gone".
+fn observe_group_residue(pid: u32, budget: Duration) -> ProcessGroupResidue {
+    let deadline = Instant::now() + budget;
+    loop {
+        let rc = unsafe { libc::kill(-(pid as i32), 0) };
+        if rc == 0 {
+            if Instant::now() >= deadline {
+                return ProcessGroupResidue::GroupPresent { after: budget };
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        let err = std::io::Error::last_os_error();
+        return match err.raw_os_error() {
+            Some(libc::ESRCH) => ProcessGroupResidue::GroupAbsent,
+            _ => ProcessGroupResidue::ResidueObservationFailed {
+                detail: format!("kill(-{pid}, 0) failed: {err}"),
+            },
+        };
+    }
+}
+
+/// TERM the group, reap the leader, then look for SURVIVORS -- and escalate to KILL on the group
+/// whenever any remain, INCLUDING when the leader itself exited cleanly. The leader is waited for
+/// first because an unreaped zombie is still a group member, so polling before the reap would
+/// report presence for a process that is already dead.
+///
+/// PID REUSE IS A KNOWN, SAFE-DIRECTION RACE. Once the leader is reaped its pid may be recycled,
+/// and a recycled pgid would be observed as presence. That mislabels a torn-down group as
+/// surviving, which REFUSES; it can never report a surviving group as absent.
+///
+/// A group still standing after SIGKILL is returned as such. It is not retried and not assumed
+/// away: the caller adjudicates it, because the only honest thing an instrument can say about a
+/// process that survived SIGKILL is that it did.
 pub(crate) fn terminate_process_group(
     child: &mut Child,
     pid: u32,
     grace: Duration,
-) -> ProcessGroupWait {
+) -> ProcessGroupTermination {
     signal_process_group(pid, libc::SIGTERM);
-    match wait_for_exit(child, grace) {
-        ProcessGroupWait::TimedOut => {
-            signal_process_group(pid, libc::SIGKILL);
-            wait_for_exit(child, grace)
-        }
-        settled => settled,
+    let mut leader = wait_for_exit(child, grace);
+    let mut residue = observe_group_residue(pid, grace);
+
+    if matches!(residue, ProcessGroupResidue::GroupAbsent) {
+        return ProcessGroupTermination {
+            leader,
+            residue,
+            escalated_to_kill: false,
+        };
+    }
+
+    signal_process_group(pid, libc::SIGKILL);
+    if matches!(leader, ProcessGroupWait::TimedOut) {
+        leader = wait_for_exit(child, grace);
+    }
+    residue = observe_group_residue(pid, grace);
+    ProcessGroupTermination {
+        leader,
+        residue,
+        escalated_to_kill: true,
     }
 }

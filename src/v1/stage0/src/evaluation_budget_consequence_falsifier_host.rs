@@ -30,10 +30,13 @@
 //! refused for the wrong reason" and "the instrument could not run" the same value. Detail strings
 //! live INSIDE the typed causes, never in place of them.
 
-use crate::process_group::{spawn_in_new_process_group, terminate_process_group, ProcessGroupWait};
-use std::io::{Read, Write};
+use crate::process_group::{
+    spawn_in_new_process_group, terminate_process_group, ProcessGroupTermination, ProcessGroupWait,
+};
+use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// WHAT A SUBPROCESS DID, kept as four states. A nonzero exit and a timeout are different facts,
@@ -47,14 +50,38 @@ pub(crate) enum CommandObservation {
         stdout: String,
         stderr: String,
     },
+    /// Overran its budget AND its process group is gone. The teardown verdict travels WITH the
+    /// timeout because "the command overran" and "the instrument left it running" are different
+    /// facts about the same event, and the second one invalidates every later step.
     TimedOut {
         after: Duration,
+        termination: ProcessGroupTermination,
+        stdout: String,
+        stderr: String,
+    },
+    /// Overran its budget and something SURVIVED teardown. Separate from `TimedOut` because this
+    /// arm may never be treated as a mere non-zero result: a surviving group holds resources the
+    /// next step assumes are free.
+    TimedOutWithTerminationFailure {
+        after: Duration,
+        termination: ProcessGroupTermination,
+        stdout: String,
+        stderr: String,
     },
     Signaled {
         signal: i32,
+        stdout: String,
+        stderr: String,
     },
-    SpawnRefused {
+    /// The command never started. Reserved for spawn itself failing.
+    SpawnRefused { detail: String },
+    /// The command started and the WAIT failed. Previously folded into `SpawnRefused`, which said
+    /// the opposite of what happened -- a process that ran and could not be observed was reported
+    /// as one that never ran, and its remedy is the reverse.
+    WaitFailed {
         detail: String,
+        stdout: String,
+        stderr: String,
     },
 }
 
@@ -96,10 +123,35 @@ pub(crate) enum EvaluationBudgetConsequenceRefusal {
         detail: String,
     },
     ServeExitedBeforeReadiness {
-        wait: ProcessGroupWait,
+        termination: ProcessGroupTermination,
+        stdout: String,
+        stderr: String,
     },
     ReadinessTimedOut {
         after: Duration,
+        termination: ProcessGroupTermination,
+        stdout: String,
+        stderr: String,
+    },
+    /// A required digest could not be taken. An instrument that cannot identify its own artifacts
+    /// does not get to describe what they did.
+    DigestUnavailable {
+        detail: String,
+    },
+    /// The rebuilt server binary is byte-identical to the one that produced the dry red. The
+    /// generated consequence changed, so the binary embedding it MUST change; equal digests mean
+    /// the rebuild did not take, and every later observation would be the old producer's.
+    SubjectBinaryUnchanged {
+        digest: String,
+    },
+    /// The server announced a contract this run did not arm, or its announcement could not be
+    /// read. Distinct from a readiness TIMEOUT because a server saying something else and a server
+    /// saying nothing have different causes and different remedies.
+    ReadinessObservationFailed {
+        cause: String,
+        termination: ProcessGroupTermination,
+        stdout: String,
+        stderr: String,
     },
     RequestFailed {
         detail: String,
@@ -107,9 +159,19 @@ pub(crate) enum EvaluationBudgetConsequenceRefusal {
     ResponseDisagreed {
         expectation: String,
         observed: String,
+        /// The subject's own output for the exchange that disagreed. Retained because the first
+        /// question asked of a disagreement is what the server thought it was doing, and a
+        /// refusal that drops it sends the reader back to re-run a 30-minute transaction.
+        serve_stdout: String,
+        serve_stderr: String,
     },
     ProcessTerminationFailed {
-        wait: ProcessGroupWait,
+        termination: ProcessGroupTermination,
+    },
+    /// There was no child left to tear down at the point teardown was due. This is an instrument
+    /// defect, not a subject verdict, and it refuses rather than being read as a clean teardown.
+    ProcessTerminationUnobservable {
+        detail: String,
     },
     AuthorityRestorationFailed {
         detail: String,
@@ -136,6 +198,20 @@ pub(crate) struct EvaluationBudgetConsequenceReceipt {
     pub(crate) moved_occurrences: usize,
     pub(crate) former_occurrences: usize,
     pub(crate) elapsed_nanos: u128,
+    /// WHICH BINARIES ACTUALLY ANSWERED. The source has always CLAIMED that the pre-perturbation
+    /// candidate's digest is what identifies the producer that noticed the drift; until now it
+    /// claimed it in prose while the receipt carried no digest at all, so a reader could not tell
+    /// the binary that produced the dry red from the one rebuilt in its place -- they occupy the
+    /// same path, and the second overwrites the first.
+    pub(crate) orchestrator_digest: String,
+    pub(crate) dry_gate_gunbc_digest: String,
+    pub(crate) serving_gunbc_digest: String,
+    pub(crate) generated_artifact_digest: String,
+    /// The child's own listening announcement, which is what binds the connection this receipt
+    /// describes to the process this run started rather than to whoever held the port.
+    pub(crate) serve_announcement: String,
+    /// The subject process's diagnostic for the breach, required to agree with the body.
+    pub(crate) serve_diagnostic: String,
 }
 
 /// THE TERMINAL. A cleanup failure never overwrites the experiment's own cause: both are carried,
@@ -158,6 +234,26 @@ pub(crate) enum EvaluationBudgetConsequenceFalsifierOutcome {
         receipt: EvaluationBudgetConsequenceReceipt,
         cleanup: EvaluationBudgetConsequenceRefusal,
     },
+}
+
+/// THE DIGESTS TAKEN BEFORE THE PERTURBATION, carried forward as one value. They are grouped
+/// rather than passed loose because they share a single property that a loose parameter list would
+/// not express: both were taken while the tree was still unperturbed, and neither can be re-taken
+/// afterwards -- the binary is overwritten in place and the orchestrator is the process running.
+struct PrePerturbationDigests {
+    orchestrator: String,
+    dry_gate_gunbc: String,
+}
+
+/// SHA-256 of a file's bytes. Used to give the receipt an identity for each artifact it depends
+/// on, so "the tool that noticed" and "the tool that served" are distinguishable after the fact
+/// rather than only assertable at the time.
+fn file_digest(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 const AUTHORITY_REL: &str = "dag/std/evaluation_budget.dag";
@@ -195,26 +291,68 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
     });
     let pid = child.id();
     let wait = crate::process_group::wait_for_exit(&mut child, budget);
-    let observation = match wait {
+
+    // THE PIPE THREADS ARE JOINED ON EVERY ARM, not only the happy one. They were previously
+    // dropped on three of four arms, which detached them and threw away the child's own account of
+    // why it failed -- exactly the output an operator needs when the failure is the interesting
+    // case. Joining is safe here because the writer has either exited or been torn down below.
+    let drain = |out: std::thread::JoinHandle<String>, err: std::thread::JoinHandle<String>| {
+        (
+            out.join().unwrap_or_default(),
+            err.join().unwrap_or_default(),
+        )
+    };
+
+    match wait {
         ProcessGroupWait::Exited { code } => {
-            let stdout: String = out_handle.join().unwrap_or_default();
-            let stderr: String = err_handle.join().unwrap_or_default();
+            let (stdout, stderr) = drain(out_handle, err_handle);
             CommandObservation::Completed {
                 exit_code: code,
                 stdout,
                 stderr,
             }
         }
-        ProcessGroupWait::Signaled { signal } => CommandObservation::Signaled { signal },
+        ProcessGroupWait::Signaled { signal } => {
+            let (stdout, stderr) = drain(out_handle, err_handle);
+            CommandObservation::Signaled {
+                signal,
+                stdout,
+                stderr,
+            }
+        }
         ProcessGroupWait::TimedOut => {
             // A command that overran its budget is terminated here rather than left running, so a
-            // timeout cannot leak a process into the next step's environment.
-            let _ = terminate_process_group(&mut child, pid, Duration::from_secs(10));
-            CommandObservation::TimedOut { after: budget }
+            // timeout cannot leak a process into the next step's environment -- and whether that
+            // termination actually SUCCEEDED is carried in the observation rather than discarded.
+            let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
+            let (stdout, stderr) = drain(out_handle, err_handle);
+            if termination.group_is_gone() {
+                CommandObservation::TimedOut {
+                    after: budget,
+                    termination,
+                    stdout,
+                    stderr,
+                }
+            } else {
+                CommandObservation::TimedOutWithTerminationFailure {
+                    after: budget,
+                    termination,
+                    stdout,
+                    stderr,
+                }
+            }
         }
-        ProcessGroupWait::WaitFailed { detail } => CommandObservation::SpawnRefused { detail },
-    };
-    observation
+        ProcessGroupWait::WaitFailed { detail } => {
+            // The child may still be running: a wait that failed established nothing about it.
+            let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
+            let (stdout, stderr) = drain(out_handle, err_handle);
+            CommandObservation::WaitFailed {
+                detail: format!("{detail}; teardown: {termination:?}"),
+                stdout,
+                stderr,
+            }
+        }
+    }
 }
 
 fn completed_zero(observation: &CommandObservation) -> bool {
@@ -253,24 +391,291 @@ impl Drop for ServeGuard {
     }
 }
 
-/// Readiness is OBSERVED, never inferred from "the child has not exited yet". A process that is
-/// alive but not listening would otherwise be read as ready, and the request that follows would
-/// fail for a reason the transaction would then attribute to the subject.
-fn await_listening(port: u16, budget: Duration) -> bool {
-    let deadline = Instant::now() + budget;
-    while Instant::now() < deadline {
-        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(250));
-    }
-    false
+/// A PIPE THAT IS DRAINED WHILE THE CHILD RUNS. The falsifier needs the server's output for two
+/// different purposes at two different times -- the listening announcement DURING readiness, and
+/// the breach diagnostic AFTER the request -- so the reader cannot be a thread whose result is
+/// only available once the pipe closes. It appends into a shared buffer that either purpose can
+/// read at any moment, and blocking is impossible because the reader never stops.
+struct PipeDrain {
+    text: Arc<Mutex<String>>,
+    handle: Option<std::thread::JoinHandle<()>>,
 }
 
-/// One HTTP request over a raw socket. `curl` is deliberately not spawned: the response has to be
-/// DECODED and judged field by field, and a shell string would put the adjudication back inside an
-/// opaque command.
-fn post_for_breach(port: u16, budget: Duration) -> Result<(u16, String), String> {
+impl PipeDrain {
+    fn spawn<R: Read + Send + 'static>(pipe: Option<R>) -> PipeDrain {
+        let text = Arc::new(Mutex::new(String::new()));
+        let sink = Arc::clone(&text);
+        let handle = std::thread::spawn(move || {
+            if let Some(pipe) = pipe {
+                let mut reader = std::io::BufReader::new(pipe);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) | Err(_) => return,
+                        Ok(_) => {
+                            if let Ok(mut held) = sink.lock() {
+                                held.push_str(&line);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        PipeDrain {
+            text,
+            handle: Some(handle),
+        }
+    }
+
+    fn snapshot(&self) -> String {
+        self.text.lock().map(|t| t.clone()).unwrap_or_default()
+    }
+
+    /// Join the reader, so the returned text is the child's COMPLETE output rather than whatever
+    /// had arrived when the caller happened to look.
+    fn finish(&mut self) -> String {
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+        self.snapshot()
+    }
+}
+
+/// WHAT READINESS ACTUALLY OBSERVED. A Boolean stood here, and it could not tell a server that
+/// never listened from one that exited, nor either from a FOREIGN listener that answered on a port
+/// this instrument had merely guessed. Those have different remedies, and only one of them is a
+/// fact about the subject.
+#[derive(Debug)]
+enum ServeReadiness {
+    /// The owned child announced its own listening address, is still running, and a connection to
+    /// the ANNOUNCED port succeeded. All three, jointly.
+    Ready { port: u16, announcement: String },
+    ExitedBeforeReady {
+        termination: ProcessGroupTermination,
+        stdout: String,
+        stderr: String,
+    },
+    ReadinessTimedOut {
+        after: Duration,
+        stdout: String,
+        stderr: String,
+    },
+    /// The observation itself could not be made -- an announcement that did not match the contract
+    /// this instrument armed, or a port field that did not parse. Never folded into "not ready":
+    /// a server announcing something ELSE is a different fact from a server announcing nothing.
+    ReadinessObservationFailed {
+        cause: String,
+        stdout: String,
+        stderr: String,
+    },
+}
+
+/// The announcement `gunbc serve` prints once it has bound. Every field is pinned except the port,
+/// which is what the OS chose and what this instrument is trying to learn -- so matching the line
+/// establishes that the listener belongs to the contract THIS run armed, and not merely that
+/// something is listening somewhere.
+fn announced_port(line: &str, prefix: &str, suffix: &str) -> Option<u16> {
+    let rest = line.strip_prefix(prefix)?;
+    let digits = rest.strip_suffix(suffix)?;
+    digits.parse::<u16>().ok()
+}
+
+/// Readiness is a JOINT observation of three facts, none of which implies the others: the owned
+/// child is still running, it emitted the exact announcement for the contract that was armed, and
+/// a connection to the port IT named succeeds.
+///
+/// The port is not guessed. Asking the OS for one (`--port 0`) and learning it from the child's own
+/// announcement is what makes the connection attributable: a guessed port can already be held by an
+/// unrelated local listener, which would satisfy a connect-only readiness wall and send the
+/// instrument on to blame the subject for a response the subject never sent.
+fn await_serve_ready(
+    child: &mut std::process::Child,
+    pid: u32,
+    out: &PipeDrain,
+    err: &PipeDrain,
+    prefix: &str,
+    suffix: &str,
+    budget: Duration,
+) -> ServeReadiness {
+    let deadline = Instant::now() + budget;
+    loop {
+        // The child's own state first: a process that has exited cannot become ready later, and
+        // reading the pipes first would race a server that died between the two observations.
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let termination = terminate_process_group(child, pid, Duration::from_secs(10));
+                return ServeReadiness::ExitedBeforeReady {
+                    termination,
+                    stdout: out.snapshot(),
+                    stderr: err.snapshot(),
+                };
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return ServeReadiness::ReadinessObservationFailed {
+                    cause: format!("try_wait during readiness: {e}"),
+                    stdout: out.snapshot(),
+                    stderr: err.snapshot(),
+                }
+            }
+        }
+
+        let stderr = err.snapshot();
+        if let Some(line) = stderr
+            .lines()
+            .find(|line| line.starts_with("gunbc serve listening on"))
+        {
+            let port = match announced_port(line, prefix, suffix) {
+                Some(port) => port,
+                None => {
+                    return ServeReadiness::ReadinessObservationFailed {
+                        cause: format!(
+                            "the server announced a contract this run did not arm.\n  announced: {line}\n  expected:  {prefix}<port>{suffix}"
+                        ),
+                        stdout: out.snapshot(),
+                        stderr,
+                    }
+                }
+            };
+            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return ServeReadiness::Ready {
+                    port,
+                    announcement: line.to_string(),
+                };
+            }
+        }
+
+        if Instant::now() >= deadline {
+            return ServeReadiness::ReadinessTimedOut {
+                after: budget,
+                stdout: out.snapshot(),
+                stderr,
+            };
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// A DECODED HTTP RESPONSE. Status, headers and a PARSED body are three separate observations, and
+/// the previous shape returned only the first and the raw third -- so a response that was not JSON
+/// at all, or was JSON of some other shape, reached the field checks as a string in which
+/// substrings happened or did not happen to appear.
+struct BreachResponse {
+    status: u16,
+    content_type: Option<String>,
+    body: String,
+    fields: JsonObject,
+}
+
+/// The smallest object decoder that can answer this instrument's questions HONESTLY: it either
+/// parses the whole top-level object or refuses. `find("\"code\":\"")` could not tell a field from
+/// the same text appearing inside another string, and could not tell a missing field from a
+/// malformed document.
+#[derive(Debug, Default)]
+struct JsonObject {
+    strings: std::collections::BTreeMap<String, String>,
+    numbers: std::collections::BTreeMap<String, u128>,
+}
+
+impl JsonObject {
+    fn string(&self, key: &str) -> Option<&str> {
+        self.strings.get(key).map(|s| s.as_str())
+    }
+    fn number(&self, key: &str) -> Option<u128> {
+        self.numbers.get(key).copied()
+    }
+}
+
+/// Parse a flat JSON object of string and unsigned-integer members. Nested values and arrays are
+/// REFUSED rather than skipped: this instrument asserts about a document whose shape it knows, and
+/// silently tolerating a shape it does not know is how a check stops discriminating.
+fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
+    let mut chars = text.trim().chars().peekable();
+    if chars.next() != Some('{') {
+        return Err(format!(
+            "body is not a JSON object: {}",
+            &text[..text.len().min(200)]
+        ));
+    }
+    let mut object = JsonObject::default();
+    loop {
+        while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+            chars.next();
+        }
+        match chars.peek() {
+            Some('}') => {
+                chars.next();
+                break;
+            }
+            Some(',') => {
+                chars.next();
+                continue;
+            }
+            Some('"') => {}
+            other => return Err(format!("expected a member name, found {other:?}")),
+        }
+        let key = read_json_string(&mut chars)?;
+        while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+            chars.next();
+        }
+        if chars.next() != Some(':') {
+            return Err(format!("member {key} is not followed by ':'"));
+        }
+        while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+            chars.next();
+        }
+        match chars.peek() {
+            Some('"') => {
+                let value = read_json_string(&mut chars)?;
+                object.strings.insert(key, value);
+            }
+            Some(c) if c.is_ascii_digit() => {
+                let mut digits = String::new();
+                while matches!(chars.peek(), Some(c) if c.is_ascii_digit()) {
+                    digits.push(chars.next().unwrap_or_default());
+                }
+                let value = digits
+                    .parse::<u128>()
+                    .map_err(|e| format!("member {key} is not an unsigned integer: {e}"))?;
+                object.numbers.insert(key, value);
+            }
+            other => {
+                return Err(format!(
+                    "member {key} carries {other:?}, which this decoder does not model"
+                ))
+            }
+        }
+    }
+    Ok(object)
+}
+
+fn read_json_string(chars: &mut std::iter::Peekable<std::str::Chars>) -> Result<String, String> {
+    if chars.next() != Some('"') {
+        return Err("expected an opening quote".to_string());
+    }
+    let mut out = String::new();
+    loop {
+        match chars.next() {
+            None => return Err("unterminated string".to_string()),
+            Some('"') => return Ok(out),
+            Some('\\') => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some(c @ ('"' | '\\' | '/')) => out.push(c),
+                other => return Err(format!("unmodelled escape \\{other:?}")),
+            },
+            Some(c) => out.push(c),
+        }
+    }
+}
+
+/// One HTTP request over a raw socket, decoded. `curl` is deliberately not spawned: the response
+/// has to be judged field by field, and a shell string would put the adjudication back inside an
+/// opaque command. Headers are retained rather than discarded, because a 500 carrying the right
+/// text with the wrong content type is a different product than the one this receipt describes.
+fn post_for_breach(port: u16, budget: Duration) -> Result<BreachResponse, String> {
     let mut stream =
         std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|e| format!("connect: {e}"))?;
     stream
@@ -290,40 +695,32 @@ fn post_for_breach(port: u16, budget: Duration) -> Result<(u16, String), String>
         .read_to_end(&mut raw)
         .map_err(|e| format!("read: {e}"))?;
     let text = String::from_utf8_lossy(&raw).into_owned();
-    let status = text
-        .lines()
+    let (head, body) = text
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| format!("no header/body boundary: {}", &text[..text.len().min(200)]))?;
+    let mut lines = head.lines();
+    let status = lines
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse::<u16>().ok())
         .ok_or_else(|| {
             format!(
                 "no status line in response: {}",
-                &text[..text.len().min(200)]
+                &head[..head.len().min(200)]
             )
         })?;
-    let payload = text
-        .split_once("\r\n\r\n")
-        .map(|(_, rest)| rest.to_string())
-        .unwrap_or_default();
-    Ok((status, payload))
-}
-
-fn json_number(payload: &str, key: &str) -> Option<u128> {
-    let needle = format!("\"{key}\":");
-    let start = payload.find(&needle)? + needle.len();
-    let rest = &payload[start..];
-    let end = rest
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(rest.len());
-    rest[..end].parse::<u128>().ok()
-}
-
-fn json_string_field(payload: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\":\"");
-    let start = payload.find(&needle)? + needle.len();
-    let rest = &payload[start..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
+    let content_type = lines.find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.eq_ignore_ascii_case("content-type")
+            .then(|| value.trim().to_string())
+    });
+    let fields = parse_flat_json_object(body)?;
+    Ok(BreachResponse {
+        status,
+        content_type,
+        body: body.to_string(),
+        fields,
+    })
 }
 
 /// THE TRANSACTION. Ten steps, each of which can only refuse in its own typed way.
@@ -544,6 +941,21 @@ fn run_bound_transaction(
         return Outcome::Refused(Refusal::CandidateProductBuildFailed { observation: built });
     }
 
+    // The digest is taken HERE, while this binary is still the only one that has existed at this
+    // path. Taken later it would be the rebuilt one, and the receipt would name the wrong producer
+    // for the dry red with no way for a reader to notice.
+    let dry_gate_gunbc_digest = match file_digest(&gunbc) {
+        Ok(digest) => digest,
+        Err(detail) => return Outcome::Refused(Refusal::DigestUnavailable { detail }),
+    };
+    let orchestrator_digest = match std::env::current_exe()
+        .map_err(|e| format!("locating the orchestrating test executable: {e}"))
+        .and_then(|exe| file_digest(&exe))
+    {
+        Ok(digest) => digest,
+        Err(detail) => return Outcome::Refused(Refusal::DigestUnavailable { detail }),
+    };
+
     // 3. PERTURB EXACTLY ONE FACT, by locating the value rather than by running a blind sed and
     // reading exit zero as success.
     let authority_path = worktree.join(AUTHORITY_REL);
@@ -675,6 +1087,10 @@ fn run_bound_transaction(
     serve_and_judge(
         worktree,
         &gunbc,
+        PrePerturbationDigests {
+            orchestrator: orchestrator_digest,
+            dry_gate_gunbc: dry_gate_gunbc_digest,
+        },
         head,
         tree,
         &original_value,
@@ -704,6 +1120,7 @@ fn json_free_literal_after(source: &str, marker: &str) -> Option<String> {
 fn serve_and_judge(
     worktree: &Path,
     gunbc: &Path,
+    pre: PrePerturbationDigests,
     head: &str,
     tree: &str,
     original_value: &str,
@@ -731,9 +1148,32 @@ fn serve_and_judge(
         });
     }
 
-    // 7. SUPERVISE THE REAL SERVER. Loopback, its own process group, an ephemeral-ish port derived
-    // from the pid so two concurrent runs cannot collide on one listener.
-    let port: u16 = 8300 + (std::process::id() % 400) as u16;
+    // THE REBUILD MUST HAVE TAKEN. The generated consequence now carries the moved value, and the
+    // binary embeds that generated file, so a byte-identical binary means the server about to be
+    // started is the SAME producer that answered the dry gate -- and every field of the response
+    // would then be evidence about the old value dressed as evidence about the new one.
+    let serving_gunbc_digest = match file_digest(gunbc) {
+        Ok(digest) => digest,
+        Err(detail) => return Outcome::Refused(Refusal::DigestUnavailable { detail }),
+    };
+    if serving_gunbc_digest == pre.dry_gate_gunbc {
+        return Outcome::Refused(Refusal::SubjectBinaryUnchanged {
+            digest: serving_gunbc_digest,
+        });
+    }
+    let generated_artifact_digest = match file_digest(&worktree.join(GENERATED_REL)) {
+        Ok(digest) => digest,
+        Err(detail) => return Outcome::Refused(Refusal::DigestUnavailable { detail }),
+    };
+
+    // 7. SUPERVISE THE REAL SERVER. Loopback, its own process group, and a port THE OS CHOOSES.
+    //
+    // A port was previously derived as `8300 + pid % 400`, with a comment claiming that prevented
+    // concurrent collision. It did not: 400 slots collide across pids, and an unrelated local
+    // listener may already hold the one drawn. That mattered here more than it usually would,
+    // because readiness was a bare successful connect -- so a foreign listener could SATISFY the
+    // readiness wall, and every later disagreement would then be charged to the subject.
+    // `--port 0` removes the guess, and the child announces what it actually bound.
     let mut command = Command::new(gunbc);
     command
         .args([
@@ -751,7 +1191,7 @@ fn serve_and_judge(
             "--host",
             "127.0.0.1",
             "--port",
-            &port.to_string(),
+            "0",
             "--eval-budget-cpu-ms",
             &CPU_LIMIT_MS.to_string(),
         ])
@@ -767,29 +1207,94 @@ fn serve_and_judge(
         }
     };
     let pid = child.id();
+    let mut child = child;
+    let mut out_drain = PipeDrain::spawn(child.stdout.take());
+    let mut err_drain = PipeDrain::spawn(child.stderr.take());
+
+    // Every character of the announcement is pinned except the port. Matching it is what binds the
+    // listener to the contract THIS run armed -- entry, release revision and both budget arms --
+    // rather than establishing only that something, somewhere, is listening.
+    let announce_prefix = "gunbc serve listening on 127.0.0.1:";
+    let announce_suffix = format!(
+        " -> {BREACH_FUNCTION}() release_revision={head} eval_budget_cpu_ms={CPU_LIMIT_MS} eval_budget_wall_ms=unset"
+    );
+
+    let ready_budget = Duration::from_secs(900);
+    let readiness = await_serve_ready(
+        &mut child,
+        pid,
+        &out_drain,
+        &err_drain,
+        announce_prefix,
+        &announce_suffix,
+        ready_budget,
+    );
+
     let mut guard = ServeGuard {
         child: Some(child),
         pid,
     };
 
-    // Readiness is a SUCCESSFUL CONNECT, not a live pid. A process that is alive but not listening
-    // would otherwise be called ready and the failed request blamed on the subject.
-    let ready_budget = Duration::from_secs(900);
-    if !await_listening(port, ready_budget) {
-        if let Some(mut child) = guard.child.take() {
-            let wait = terminate_process_group(&mut child, pid, Duration::from_secs(10));
-            let refusal = match wait {
-                ProcessGroupWait::TimedOut => Refusal::ReadinessTimedOut {
-                    after: ready_budget,
-                },
-                settled => Refusal::ServeExitedBeforeReadiness { wait: settled },
-            };
-            return Outcome::Refused(refusal);
+    let (port, announcement) = match readiness {
+        ServeReadiness::Ready { port, announcement } => (port, announcement),
+        ServeReadiness::ExitedBeforeReady {
+            termination,
+            stdout,
+            stderr,
+        } => {
+            // The child is already reaped; nothing is left for the guard to tear down.
+            guard.child = None;
+            return Outcome::Refused(Refusal::ServeExitedBeforeReadiness {
+                termination,
+                stdout,
+                stderr,
+            });
         }
-        return Outcome::Refused(Refusal::ReadinessTimedOut {
-            after: ready_budget,
-        });
-    }
+        ServeReadiness::ReadinessTimedOut {
+            after,
+            stdout,
+            stderr,
+        } => {
+            let termination = match guard.child.take() {
+                Some(mut child) => {
+                    terminate_process_group(&mut child, pid, Duration::from_secs(10))
+                }
+                None => {
+                    return Outcome::Refused(Refusal::ProcessTerminationUnobservable {
+                        detail: "serve child vanished between readiness and teardown".to_string(),
+                    })
+                }
+            };
+            return Outcome::Refused(Refusal::ReadinessTimedOut {
+                after,
+                termination,
+                stdout,
+                stderr,
+            });
+        }
+        ServeReadiness::ReadinessObservationFailed {
+            cause,
+            stdout,
+            stderr,
+        } => {
+            let termination = match guard.child.take() {
+                Some(mut child) => {
+                    terminate_process_group(&mut child, pid, Duration::from_secs(10))
+                }
+                None => {
+                    return Outcome::Refused(Refusal::ProcessTerminationUnobservable {
+                        detail: "serve child vanished between readiness and teardown".to_string(),
+                    })
+                }
+            };
+            return Outcome::Refused(Refusal::ReadinessObservationFailed {
+                cause,
+                termination,
+                stdout,
+                stderr,
+            });
+        }
+    };
 
     let response = post_for_breach(port, Duration::from_secs(600));
 
@@ -797,24 +1302,46 @@ fn serve_and_judge(
     // would leave the port held whichever way the judgement went.
     let teardown = match guard.child.take() {
         Some(mut child) => terminate_process_group(&mut child, pid, Duration::from_secs(30)),
-        None => ProcessGroupWait::WaitFailed {
-            detail: "serve child was already taken".to_string(),
-        },
+        None => {
+            return Outcome::Refused(Refusal::ProcessTerminationUnobservable {
+                detail: "serve child was already taken before teardown".to_string(),
+            })
+        }
     };
+
+    // The server's own stderr, complete. The breach diagnostic is the SUBJECT PROCESS'S account of
+    // the same event the body describes, and joining the two is what distinguishes a server that
+    // refused from one that merely rendered a refusal-shaped body.
+    let serve_stdout = out_drain.finish();
+    let serve_stderr = err_drain.finish();
 
     // 8. JUDGE THE RESPONSE.
     let judged = match response {
         Err(detail) => Err(Refusal::RequestFailed { detail }),
-        Ok((status, payload)) => {
-            let moved_occurrences = payload.matches(&format!("\"{moved_value}\"")).count();
-            let former_occurrences = payload.matches(&format!("\"{original_value}\"")).count();
-            let code = json_string_field(&payload, "code").unwrap_or_default();
-            let entry = json_string_field(&payload, "entry").unwrap_or_default();
-            let clock = json_string_field(&payload, "clock").unwrap_or_default();
-            let limit_ms = json_number(&payload, "limit_ms").unwrap_or_default();
-            let elapsed_nanos = json_number(&payload, "elapsed_ns").unwrap_or_default();
+        Ok(response) => {
+            let BreachResponse {
+                status,
+                content_type,
+                body,
+                fields,
+            } = response;
+            let moved_occurrences = body.matches(&format!("\"{moved_value}\"")).count();
+            let former_occurrences = body.matches(&format!("\"{original_value}\"")).count();
+            let code = fields.string("code").unwrap_or_default().to_string();
+            let entry = fields.string("entry").unwrap_or_default().to_string();
+            let clock = fields.string("clock").unwrap_or_default().to_string();
+            let limit_ms = fields.number("limit_ms").unwrap_or_default();
+            let elapsed_nanos = fields.number("elapsed_ns").unwrap_or_default();
+
+            // The diagnostic the subject printed for THIS breach, reconstructed from the body's own
+            // fields. If the two disagree, the body is not an account of what the server did.
+            let expected_diagnostic =
+                format!("serve: refused {entry} on {clock} clock: elapsed_ns={elapsed_nanos} limit_ms={limit_ms}");
+
             let disagreement = if status != 500 {
                 Some(format!("status {status}"))
+            } else if content_type.as_deref() != Some("application/json; charset=utf-8") {
+                Some(format!("content-type {content_type:?}"))
             } else if code != moved_value {
                 Some(format!("code {code}"))
             } else if moved_occurrences != 1 {
@@ -830,13 +1357,19 @@ fn serve_and_judge(
             } else if elapsed_nanos <= u128::from(CPU_LIMIT_MS) * 1_000_000 {
                 // The elapsed value is not pinned -- only required to exceed the limit it breached.
                 Some(format!("elapsed_ns {elapsed_nanos}"))
+            } else if !serve_stderr.contains(&expected_diagnostic) {
+                Some(format!(
+                    "the server printed no diagnostic agreeing with the body; expected {expected_diagnostic:?}"
+                ))
             } else {
                 None
             };
             match disagreement {
                 Some(observed) => Err(Refusal::ResponseDisagreed {
+                    serve_stdout: serve_stdout.clone(),
+                    serve_stderr: serve_stderr.clone(),
                     expectation: format!(
-                        "500, code={moved_value}, moved=1, former=0, entry={BREACH_FUNCTION}, clock=thread_cpu, limit_ms={CPU_LIMIT_MS}, elapsed_ns>{}",
+                        "500, content-type=application/json; charset=utf-8, code={moved_value}, moved=1, former=0, entry={BREACH_FUNCTION}, clock=thread_cpu, limit_ms={CPU_LIMIT_MS}, elapsed_ns>{}, and a serve diagnostic agreeing with the body",
                         u128::from(CPU_LIMIT_MS) * 1_000_000
                     ),
                     observed,
@@ -850,6 +1383,12 @@ fn serve_and_judge(
                     moved_occurrences,
                     former_occurrences,
                     elapsed_nanos,
+                    orchestrator_digest: pre.orchestrator.clone(),
+                    dry_gate_gunbc_digest: pre.dry_gate_gunbc.clone(),
+                    serving_gunbc_digest: serving_gunbc_digest.clone(),
+                    generated_artifact_digest: generated_artifact_digest.clone(),
+                    serve_announcement: announcement.clone(),
+                    serve_diagnostic: expected_diagnostic,
                 }),
             }
         }
@@ -857,11 +1396,13 @@ fn serve_and_judge(
 
     // A teardown that did not settle is terminal even when the response agreed: an instrument that
     // reports a green while leaving a process group alive has not finished its transaction.
-    if !matches!(
-        teardown,
-        ProcessGroupWait::Exited { .. } | ProcessGroupWait::Signaled { .. }
-    ) {
-        return Outcome::Refused(Refusal::ProcessTerminationFailed { wait: teardown });
+    // The question is GROUP ABSENCE, not leader exit. A leader that exited cleanly while a helper
+    // still holds the port is a failed teardown, and reading the leader's status alone is what
+    // would call it a success.
+    if !teardown.group_is_gone() {
+        return Outcome::Refused(Refusal::ProcessTerminationFailed {
+            termination: teardown,
+        });
     }
 
     // 10a. RESTORE THE AUTHORITY AND REGENERATE, inside the disposable copy, so the tree comparison
