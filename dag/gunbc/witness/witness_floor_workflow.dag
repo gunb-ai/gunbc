@@ -30,6 +30,12 @@ import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
+import gunbc.compile_permit_scope {
+  FleetCompileCancellationStanding,
+  FleetCancellationSafe,
+  FleetCancellationNotSafe,
+  fleet_compile_cancellation_standing
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -273,9 +279,34 @@ type WitnessFloorConcurrencyPolicy {
   running: RunningSupersessionPolicy
 }
 
+// THE RUNNING AXIS IS DERIVED FROM THE OBSERVED FLEET STANDING, not authored beside it and not read
+// off a desired-state row.
+//
+// gunbc#9789 declared NeverSupersedeRunning and a DESIGN 4b(3) drop whose dissolve-on is a
+// capability: no client of the required floor holds a permit whose abandonment costs future compile
+// capacity. Written as a literal, that row survives its own reason -- the fleet stops leaking and CI
+// goes on refusing to supersede, the drop stays standing, and nothing refuses because nothing joins
+// the two facts. Section 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the
+// trigger is the whole check, and a check nothing evaluates is diligence rather than a check.
+//
+// IT READS THE STANDING AND NOT THE REALIZATION, for a reason that is a safety property rather than
+// a taste: a desired realization row and the live hosts are two independently actuated systems, and
+// a generated artifact cannot make them transition together. Deriving from the row would restore
+// cancellation the moment this workflow reached main, while hosts that had not yet restarted onto
+// the new unit went on losing a permit per kill. The unobserved fleet is on the refusing side, so
+// that interval is unwritable rather than merely unlikely.
+fn running_supersession_for_fleet_standing(
+  standing: FleetCompileCancellationStanding,
+) -> RunningSupersessionPolicy {
+  match standing {
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
+    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
 data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
   pending: ReplaceExistingPending,
-  running: NeverSupersedeRunning
+  running: running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing)
 }
 
 data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running
