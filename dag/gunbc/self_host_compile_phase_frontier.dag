@@ -68,8 +68,37 @@ type RustcPhaseBoard {
 type ParsePhaseEvidence
   = ParseReached { evidence: RustfmtParseObservation }
 
+// WHETHER THE TARGET WAS PINNED IS PART OF THE INVOCATION, NOT A NOTE ABOUT IT. A `cargo check`
+// with no `--target` selects its target from `CARGO_BUILD_TARGET` or cargo configuration, so a
+// receipt taken that way records the triple the gate READ from rustc's host line -- what the machine
+// is -- while a receipt taken under a pinned invocation records what was COMPILED. The two spell the
+// same string whenever nothing overrode the default, which is why a String field cannot tell them
+// apart and why this is a constructor rather than a naming convention on `target`. Comparing a
+// pinned population against a defaulted one is a comparison across an instrument change, and the
+// gate must refuse it rather than discover later that the agreement was incidental. No receipt can
+// be written without answering, which is the point: the distinction is unwritable-wrong rather than
+// checked. The constructors are compared STRUCTURALLY, not through their label: the label exists to
+// render a refusal a human reads, and joining on it would make a display string load-bearing.
+//
+// ONLY THE CROSSING REFUSES, AND NOTHING IN THE EXISTING SERIES IS STRANDED. Both persisted receipts
+// are `TargetDefaultedToHost` -- which is what they WERE, observable from the fact that nothing
+// pinned them, rather than a guess about what they probably compiled as -- so they remain comparable
+// to EACH OTHER and the series ratchet is untouched. What refuses is a pinned population meeting a
+// defaulted one, which is the only pair where the agreement of the triples is incidental.
+type TargetSelection
+  = TargetPinnedOnInvocation
+  | TargetDefaultedToHost
+
+fn target_selection_label(t: TargetSelection) -> String {
+  match t {
+    TargetPinnedOnInvocation => "pinned-on-invocation"
+    TargetDefaultedToHost => "defaulted-to-host"
+  }
+}
+
 type CompilePhaseInvocation {
   target: String
+  target_selection: TargetSelection
   profile: String
   features: List<String>
 }
@@ -486,6 +515,7 @@ fn receipt_subject_key(receipt: CompilePhaseFrontierReceipt) -> String {
     receipt.subject.classification_policy_digest.digest as String,
     receipt.subject.comparison_epoch as String,
     receipt.subject.invocation.target,
+    target_selection_label(t: receipt.subject.invocation.target_selection),
     receipt.subject.invocation.profile,
     receipt.subject.invocation.features |> join(separator: ",")
   ], "\t")
@@ -982,6 +1012,7 @@ fn comparison_inputs_same(a: CompilePhaseReceiptSubject, b: CompilePhaseReceiptS
     && a.rustc_identity == b.rustc_identity
     && a.classification_policy_digest == b.classification_policy_digest
     && a.invocation.target == b.invocation.target
+    && a.invocation.target_selection == b.invocation.target_selection
     && a.invocation.profile == b.invocation.profile
     && a.invocation.features == b.invocation.features
 }
@@ -1447,6 +1478,7 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
       rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
       invocation: CompilePhaseInvocation {
         target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetDefaultedToHost,
         profile: "check/dev",
         features: []
       },
@@ -1668,6 +1700,7 @@ fn receipt_1_eced9d24_receipt() -> CompilePhaseFrontierReceipt {
       rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
       invocation: CompilePhaseInvocation {
         target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetDefaultedToHost,
         profile: "check/dev",
         features: []
       },

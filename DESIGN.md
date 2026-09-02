@@ -220,6 +220,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `executed_conjunct_discriminates_nothing`
 - `unbacked_execution_claim`
 - `admitted_module_without_judged_standing`
+- `refusal_deferred_to_emitted_runtime`
 - `mitigation_injected_where_judgment_declined`
 - `transport_close_read_as_completion`
 - `merge_region_excludes_shared_tail`
@@ -227,6 +228,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `disagreement_census_blind_to_agreed_wrong`
 - `undecided_fraction_read_as_denominator`
 - `restoration_promise_names_a_route_that_does_not_exist`
+- `alias_resolution_collides_with_kernel_spelling`
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `yaml_inline_comment_ingested_as_scalar_content`

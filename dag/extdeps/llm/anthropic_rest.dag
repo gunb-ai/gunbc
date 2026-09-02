@@ -1,6 +1,6 @@
 module extdeps.llm.anthropic_rest
 
-import extdeps.llm.anthropic {
+import extdeps.llm.anthropic_messages_api {
   AnthropicChatMessage,
   AnthropicMessages200Body,
   AnthropicStopReason,
