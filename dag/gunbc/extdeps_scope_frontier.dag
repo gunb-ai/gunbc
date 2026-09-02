@@ -213,6 +213,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/llm/anthropic_messages_api.dag",
+  "dag/extdeps/llm/anthropic_messages_api_contracts.dag",
   "dag/extdeps/bazel/bazel.dag",
   "dag/extdeps/bazel/label.dag",
   "dag/extdeps/bazel/test_status.dag",
