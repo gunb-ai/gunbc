@@ -1,6 +1,6 @@
 module gunbc.runner_unit_file
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.measure { hardware_thread_count_value }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
@@ -192,7 +192,7 @@ fn runner_unit_jobserver_environment(scope: CompilePermitScope) -> List<SystemdS
       [
         runner_unit_environment(
           name: "CARGO_BUILD_JOBS",
-          value: to_string(hardware_thread_count_value(t: j) as Int),
+          value: to_string(hardware_thread_count_value(t: j)),
         ),
       ]
   }
