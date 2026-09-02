@@ -32,9 +32,9 @@ fn coercion_widening_unknown_value_set_node() -> Node {
 
 fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
   match find_named_child(root: inhabitant, name: ^rust_inhabitant_field_facts) {
-    Accepted { value: facts, diagnostics: None } =>
+    Accepted { value: facts, diagnostics: _ } =>
       match find_named_child(root: facts, name: ^rust_facts_field_range) {
-        Accepted { value: range, diagnostics: None } =>
+        Accepted { value: range, diagnostics: _ } =>
           integer_interval_value_set_node(interval: range)
         Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
       }
@@ -44,9 +44,9 @@ fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) ->
 
 fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
   match find_named_child(root: inhabitant, name: ^python_inhabitant_field_facts) {
-    Accepted { value: facts, diagnostics: None } =>
+    Accepted { value: facts, diagnostics: _ } =>
       match find_named_child(root: facts, name: ^python_facts_field_encoding) {
-        Accepted { value: encoding, diagnostics: None } =>
+        Accepted { value: encoding, diagnostics: _ } =>
           if encoding == Node { kind: TypeNode { connective: Atom { identity: ^python_repr_int_arbitrary_precision } }, children: [],
  occurrence_id: OccurrenceSynthetic
 } {
