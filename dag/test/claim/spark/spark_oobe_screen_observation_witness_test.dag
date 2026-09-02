@@ -102,13 +102,6 @@ test fn w_non_eula_screens_advance_on_arrival() -> Bool {
 
 // ---- the effects: a legal agreement is not a device setting ------------------------------
 
-fn screen_accepts_legal_agreement(screen: ObservedOobeScreen) -> Bool {
-  match screen.effect {
-    AcceptsLegalAgreement => true
-    PresentsNoConfigurableField => false
-    SubmitsSelections { fields: _ } => false
-  }
-}
 
 // The original named only EULA and welcome, so flipping /welcome/settings to
 // AcceptsLegalAgreement left a witness with "only" in its name green. It now folds the WHOLE
@@ -118,9 +111,9 @@ test fn w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement() -> Bool {
   fold(
     observed_oobe_screen_prefix,
     init: 0,
-    f: (n, s) => if screen_accepts_legal_agreement(screen: s) { n + 1 } else { n }
+    f: (n, s) => if (s.effect == AcceptsLegalAgreement) { n + 1 } else { n }
   ) == 1
-    && screen_accepts_legal_agreement(screen: oobe_screen_eula)
+    && (oobe_screen_eula.effect == AcceptsLegalAgreement)
 }
 
 // length(f) == 2 was the original assertion and it was not a check: [OobeAnalytics,
@@ -345,20 +338,13 @@ test fn w_settings_screen_carries_no_field_beyond_the_three_named() -> Bool {
 // THE OPAQUE-ORDINAL FINDING, defended. language and timezone submit vendor ordinals ("25",
 // "593"); locale submits a BCP 47 tag. A model that let a zone identifier be written into the
 // timezone field would have to change one of these arms, and this goes red when it does.
-fn control_submits_opaque_ordinal(c: OobeControl) -> Bool {
-  match c {
-    ComboBoxOverHiddenField { placeholder: _, backing_field: _, submitted_representation: r } =>
-      match r { VendorOpaqueOrdinal => true, Bcp47LanguageTagValue => false }
-    HiddenBackingField { field: _, submitted_representation: r } =>
-      match r { VendorOpaqueOrdinal => true, Bcp47LanguageTagValue => false }
-    AdvanceButton { identity: _, address: _, label: _ } => false
-    SubmitButton { identity: _, address: _, label: _ } => false
-  }
-}
 
 test fn w_language_and_timezone_submit_vendor_ordinals_not_identifiers() -> Bool {
-  fold(oobe_screen_settings.controls, init: 0,
-    f: (n, c) => if control_submits_opaque_ordinal(c: c) { n + 1 } else { n }) == 2
+  settings_binds_field(field: "language" as FormFieldName, rep: VendorOpaqueOrdinal)
+    && settings_binds_field(field: "timezone" as FormFieldName, rep: VendorOpaqueOrdinal)
+    && !settings_binds_field(field: "language" as FormFieldName, rep: Bcp47LanguageTagValue)
+    && !settings_binds_field(field: "timezone" as FormFieldName, rep: Bcp47LanguageTagValue)
+    && settings_binds_field(field: "locale" as FormFieldName, rep: Bcp47LanguageTagValue)
 }
 
 test fn w_receipt_names_the_observed_browser_and_origin() -> Bool {

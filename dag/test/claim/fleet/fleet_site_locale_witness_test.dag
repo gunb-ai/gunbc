@@ -25,6 +25,7 @@ import gunbc.fleet.fleet_site_locale {
   ReachLabelFromReservation,
   ReachLabelUnmodeled,
   HostZoneConvergence,
+  IanaTimeZoneId,
   fleet_host_site_assignments,
   provisioned_portal_language_tag,
 }
@@ -255,45 +256,41 @@ test fn w_srv4_reach_label_is_unmodeled_rather_than_invented() -> Bool {
   }
 }
 
-fn reading_verdict_is_divergent(r: HostZoneReading) -> Bool {
-  match r {
-    HostZoneReadingVerdict { verdict: v } => zone_verdict_is_divergent(c: v)
-    HostZoneReadingUnavailable { selection: _ } => false
-  }
+
+
+
+
+// COMPARED AS WHOLE READINGS, NOT THROUGH BOOLEAN PROJECTIONS. An earlier revision routed this
+// through reading_verdict_is_divergent / _is_converged -- single-variant tests over a coproduct,
+// which is the shape the 2026-07-12 predicate dissolution deleted (std.execution_mode records why
+// execution_mode_is_wet_dispatch survived it: a two-variant SEMANTIC PARTITION is not a variant
+// test). Two-valuing a four-arm discriminant also throws away exactly the arms this module added:
+// HostZoneSiteRefused and the unavailable readings both collapse to `false`, so a witness built on
+// them cannot tell "converged" from "we refused to answer".
+//
+// Comparing the whole value needs no predicate at all and is strictly stronger -- it carries the
+// payloads, so the direction is checked here too rather than only in the dedicated witness.
+fn divergent_reading(observed: IanaTimeZoneId, desired: IanaTimeZoneId) -> HostZoneReading {
+  HostZoneReadingVerdict { verdict: HostZoneDivergent { observed: observed, desired: desired } }
 }
 
-fn reading_verdict_is_converged(r: HostZoneReading) -> Bool {
-  match r {
-    HostZoneReadingVerdict { verdict: v } => zone_verdict_is_converged(c: v)
-    HostZoneReadingUnavailable { selection: _ } => false
-  }
-}
-
-fn zone_verdict_is_divergent(c: HostZoneConvergence) -> Bool {
-  match c {
-    HostZoneDivergent { observed: _, desired: _ } => true
-    HostZoneConverged => false
-    HostZoneUndecidable => false
-    HostZoneSiteRefused { selection: _ } => false
-  }
-}
-
-fn zone_verdict_is_converged(c: HostZoneConvergence) -> Bool {
-  match c {
-    HostZoneConverged => true
-    HostZoneDivergent { observed: _, desired: _ } => false
-    HostZoneUndecidable => false
-    HostZoneSiteRefused { selection: _ } => false
-  }
+fn converged_reading() -> HostZoneReading {
+  HostZoneReadingVerdict { verdict: HostZoneConverged }
 }
 
 test fn w_moving_the_site_inverts_each_named_hosts_disposition() -> Bool {
-  reading_verdict_is_divergent(r: host_zone_disposition_of(host: operator_host_srv4, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
-    && reading_verdict_is_divergent(r: host_zone_disposition_of(host: operator_host_srv5, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
-    && reading_verdict_is_converged(r: host_zone_disposition_of(host: operator_host_srv6, site: operator_premises_civil_time, policy: fleet_host_zone_policy))
-    && reading_verdict_is_converged(r: host_zone_disposition_of(host: operator_host_srv4, site: relocated_probe_site(), policy: fleet_host_zone_policy))
-    && reading_verdict_is_converged(r: host_zone_disposition_of(host: operator_host_srv5, site: relocated_probe_site(), policy: fleet_host_zone_policy))
-    && reading_verdict_is_divergent(r: host_zone_disposition_of(host: operator_host_srv6, site: relocated_probe_site(), policy: fleet_host_zone_policy))
+  host_zone_disposition_of(host: operator_host_srv4, site: operator_premises_civil_time, policy: fleet_host_zone_policy)
+      == divergent_reading(observed: zone_etc_utc, desired: zone_america_new_york)
+    && host_zone_disposition_of(host: operator_host_srv5, site: operator_premises_civil_time, policy: fleet_host_zone_policy)
+      == divergent_reading(observed: zone_etc_utc, desired: zone_america_new_york)
+    && host_zone_disposition_of(host: operator_host_srv6, site: operator_premises_civil_time, policy: fleet_host_zone_policy)
+      == converged_reading()
+    && host_zone_disposition_of(host: operator_host_srv4, site: relocated_probe_site(), policy: fleet_host_zone_policy)
+      == converged_reading()
+    && host_zone_disposition_of(host: operator_host_srv5, site: relocated_probe_site(), policy: fleet_host_zone_policy)
+      == converged_reading()
+    && host_zone_disposition_of(host: operator_host_srv6, site: relocated_probe_site(), policy: fleet_host_zone_policy)
+      == divergent_reading(observed: zone_america_new_york, desired: zone_etc_utc)
 }
 
 // The counts move too, and asymmetrically -- which is itself evidence the site is being read,
