@@ -1305,6 +1305,3 @@ data frozen_path_deferral_count_is_a_receipt_note: String = "frozen_path_deferra
 fn frozen_path_deferral_identity_count() -> Int {
   frozen_path_deferral_identity_count_in(rows: frozen_path_deferrals)
 }
-//
-// THE ROW ITSELF IS gunbc.rung_drop witness_deferral_freeze_forward_rule_rung_drop, in the roster
-// DESIGN section 4b(3) calls full rather than beside the rule it lowers the rung of.

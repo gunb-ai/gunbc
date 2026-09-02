@@ -333,29 +333,3 @@ fn spark_serving_automation_principal_login() -> NonEmptyStr {
 fn spark_serving_automation_principal() -> NamedPrincipal {
   NamedPrincipal { login: spark_serving_automation_principal_login() }
 }
-
-
-// ============================================================================================
-// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
-// ============================================================================================
-//
-// WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two
-// spellings: a value measured on one node, one artifact, one runtime configuration and one
-// concurrency condition, then applied to two hosts and every realization the cell can load. Two
-// rows would be two places to update when one restoration discharges both, and the restoration IS
-// shared -- neither value becomes qualified until per-realization observation exists.
-//
-// WHAT WAS ACTUALLY MEASURED, so the gap between evidence and scope is legible rather than implied:
-// spark-a3ee, the hf.co/antirez/deepseek-v4-gguf IQ2_XXS build, Ollama 0.32.9, one resident session,
-// buffer figures read from /api/ps. That is one cell of a matrix whose other axes are the six other
-// resident models, the second host, and every concurrency above one.
-//
-// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT. A per-realization observation table is not
-// sufficient by itself: while a global default exists, an unmeasured realization still INHERITS
-// these numbers automatically, so measuring some of the roster leaves the same unqualified
-// inheritance for the rest. The capability is that no realization can be served at a configuration
-// it has not been observed at -- which requires both the observations and the removal of automatic
-// inheritance.
-//
-// THE ROW ITSELF IS gunbc.rung_drop spark_serving_fleet_global_configuration_drop, in the roster
-// DESIGN section 4b(3) calls full rather than beside the fields it lowers the rung of.

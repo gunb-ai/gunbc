@@ -283,6 +283,35 @@ data concat_binary_signature_exempt_from_arg_binding: RungDrop = RungDrop { iden
 
 data namespace_admission_consumed_row_deletion: RungDrop = RungDrop { identity: "namespace_admission_consumed_row_deletion" as NonEmptyStr, subject: "Consumed-row deletion obligation on the namespace transition-admission roster", declared: "2026-09-02", standing: Retired { trigger_fired: "2026-09-02" as NonEmptyStr }, declaration: AuthoredProse { legacy: NamespaceAdmissionConsumedRowDeletion, authored: "Namespace wave admission -- **RUNG DROP, DECLARED (2026-09-02).** gunbc#9824 split ConsumedByMerge from UnmatchedAdmission so that a row whose admitted relocation the base already satisfies stops refusing unrelated pull requests, and it carried its own deletion obligation in one arm: consumed rows are due, and refuse, on the first change whose diff touches the roster source file itself. PREVIOUS RUNG: 2, mechanically preventable. Before that split a row past its life reported stale and refused every run, so the obligation was enforced by a mechanism that executed -- at the cost of billing the enforcement to bystanders, which is the externalized degradation #9824 was authorized to remove. TEMPORARY RUNG: 1, mitigatable. A consumed row is now a typed receipt printed by every run and nothing else, and its removal depends on a human reading that receipt. THIS ROW CORRECTS #9824 RATHER THAN RESTATING IT, AND THE CORRECTION IS THE REASON THE DROP IS DECLARED AT ALL. That pull request states its window as wall-clock unbounded, roster-use bounded, bystander-invisible. The first and third conjuncts hold. The second is FALSE IN EXECUTION: v1_compiler.cli_run.namespace_wave_admission.run_required_wave_admission derives roster_touched from the head side produced by diff_sides, whose final act retains only paths satisfying in_sweep_scope, and that predicate opens by requiring a .dag suffix -- while ADMISSION_ROSTER_REL_PATH names a .rs file. A .rs path cannot survive a .dag filter, so roster_touched is false on every production run, consumed_due in claim_executor.report_wave_admission_outcome can never be true, and the roster-use bound does not exist. REASON, and it is not a bug in the filter: in_sweep_scope answers WHICH FILES THE PARSER RE-READS to reconstruct the baseline, a different question asked for a different purpose, and nothing joins it to the deletion obligation it silently decides. That is the mechanism gunbc.recurring_failure_mode carries as incidental_denominator_as_wall, cited here at the polarity where the accident KILLS a declared wall rather than accidentally holding one up. The discriminating fact is already executed in this repository: tests/namespace_wave_admission.rs a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_head_side asserts that a src/v1/stage0/src path enters neither side of the diff. POPULATION, bounded and enumerable at every head: the rows of NAMESPACE_TRANSITION_ADMISSIONS for which admission_consumed_at_base holds against that run base. The population is closed by construction, since a row can enter it only by being authored into that const and the const is the single production construction site; at the head declaring this row it is exactly the two RLM-2b rows, consumed since the commit that authored them, which is also the merge of the relocation they admit. The lifetime the population sits in is measurable and is not the roster lifetime: an admission is TRUE of a diff only from its authoring until its own pull request merges, and RESIDENT on main only from that merge until a human deletes it, two disjoint intervals separated by that merge, of which the second can never match a delta and is therefore pure liability. The disjointness carries one honest caveat: a branch that MERGES main in moves its merge base past the relocation, so no delta reappears, while a branch that cherry-picks instead could reopen the first interval -- no cohort in the recorded history did this, and the caveat is stated rather than assumed away. Re-derive the record with git log over src/v1/stage0/src/namespace_wave_admission.rs, reading added and removed label lines per commit. RESTORATION TRIGGER: the consumed-row deletion obligation is observed by a mechanism that EXECUTES on the required path -- SUFFICIENT FOR a consumed row standing on a roster-touching change refusing that change, established by a discriminating RED authored on the acceptance path rather than over a hand-built outcome value. That restores rung 2 and waits on no carrier. It is deliberately not the larger climb: admissions bound to the delta content they admit, adjudicated per run and never resident on main -- SUFFICIENT FOR making a row that is not about this run diff unwritable -- is what retires the roster itself, and this row is not retired by it.RETIRED THE SAME DAY IT WAS DECLARED, BY ITS TRIGGER AND BY NOTHING ELSE (2026-09-02). gunbc#10014 landed at 962d9288ab2: diff_sides now reports what a change touched ONCE and unfiltered, each consumer applies the scope its own question needs at its own point of use, and the verdict moved off the executor onto the wall as wave_admission_refusal. roster_touched is therefore reachable on the required path and the consumed-row deletion obligation is observed by a mechanism that executes, which is the capability this row named. THE WINDOW WAS REAL AND THE ROW IS KEPT AS ITS RECORD rather than deleted: it ran from gunbc#9824 on 2026-08-31, when the obligation was declared over an arm that could not fire, to gunbc#10014 today. ONE EVIDENCE OBLIGATION REMAINS OPEN ON THE RESTORED CAPABILITY AND IS NAMED HERE RATHER THAN LEFT TO BE REDISCOVERED: the obligation is observed by a PAIR of executing probes -- one establishing that the roster path reaches the side roster_touched reads, one establishing that a consumed row on a roster-touching run refuses while a bystander stays admitted -- and not yet by a single probe that walks a real diff through to a refusal. That is evidence owed on a capability that exists, which is a different thing from a capability that does not, so it is recorded as an obligation and is neither a new drop nor a next-rung trigger." } }
 
+// THE FLOOR CUT OWED THIS DECLARATION AND FILED NONE. Recorded 2026-08-21 against the cut of
+// 2026-08-15, not against any change since.
+//
+// WHY IT WAS MISSED, which is the part worth keeping: nobody deleted this gate. It was re-homed
+// off the per-PR floor onto the falsifier cadence on 2026-07-26 -- gunbc.ci_materialization
+// Receipt 6 records that re-homing as what dropped the declared floor resolve count from 3 to 1 --
+// and the cadence was deleted outright three weeks later. That is why the gate is absent from the
+// cut's own unguarded list in DESIGN, which names the cadence but not the cadence's passengers.
+//
+// WHY THE TEMPORARY RUNG IS OFF THE LADDER RATHER THAN LOW ON IT. The class is not a guarantee
+// that fell a step; it is an OPERATION that lost its only route. There is nothing to mitigate,
+// because nothing can be attempted. Placing it on the ladder would imply a residual guarantee
+// that does not exist. Same shape as the regen-cut producer declaration in DESIGN.
+//
+// WHAT THIS IS NOT: a missing integration. Everything the gate composes is built and believed
+// correct -- four invocation sites, the composing gate, the admission roster, and a cost receipt
+// that measured it twice. It needs a caller, which makes it the cheapest item on the re-add queue.
+//
+// THE COUPLING, so the passenger error is not committed a second time: re-adding the falsifier
+// cadence does NOT restore this gate. The cadence is being re-derived from first principles rather
+// than restored, so nothing inherits by having once ridden along, and closing the cadence row does
+// not close this one.
+//
+// EVIDENCE GRADE, because this is a claim about an absence: the invocation sites, the callers, the
+// scheduling arm below and the three absent files were each read directly. "No other scheduler
+// exists" rests entirely on .github/workflows holding exactly two files, which is checkable in one
+// command and is the whole basis. No execution was attempted. The day a third workflow lands, this
+// row can become false with nobody having touched it.
+//
 // DECLARED 2026-08-28 IN gunbc.instruments.ci_gates AND ROSTERED NOWHERE UNTIL NOW. It is read by
 // that module's SourceRootIngestGate arm, which refuses with this row's own rendering; the row moves
 // here and the gate imports it, because where a declaration is CONSUMED is not where it is declared.
@@ -311,6 +340,28 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
   }
 }
 
+// ============================================================================================
+// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two
+// spellings: a value measured on one node, one artifact, one runtime configuration and one
+// concurrency condition, then applied to two hosts and every realization the cell can load. Two
+// rows would be two places to update when one restoration discharges both, and the restoration IS
+// shared -- neither value becomes qualified until per-realization observation exists.
+//
+// WHAT WAS ACTUALLY MEASURED, so the gap between evidence and scope is legible rather than implied:
+// spark-a3ee, the hf.co/antirez/deepseek-v4-gguf IQ2_XXS build, Ollama 0.32.9, one resident session,
+// buffer figures read from /api/ps. That is one cell of a matrix whose other axes are the six other
+// resident models, the second host, and every concurrency above one.
+//
+// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT. A per-realization observation table is not
+// sufficient by itself: while a global default exists, an unmeasured realization still INHERITS
+// these numbers automatically, so measuring some of the roster leaves the same unqualified
+// inheritance for the rest. The capability is that no realization can be served at a configuration
+// it has not been observed at -- which requires both the observations and the removal of automatic
+// inheritance.
+//
 // DECLARED 2026-09-01 IN gunbc.spark.serving_desired AND ROSTERED NOWHERE UNTIL NOW.
 data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
   identity: "spark_serving_fleet_global_configuration" as NonEmptyStr,
