@@ -168,21 +168,42 @@ CI step that runs an integration target, not another test file.
 
 ## Next increment: `add` and `commit`, and the one design step they need
 
-Settled by execution, so not open questions any more:
+Still settled, because it is a fact about the HOST rather than about any object model:
 
 - **A host WRITE is permitted from `gunbc run`** — established by the init prototype above, which
-  created a file, and since confirmed by #10026 landing the create-only write. It is a fact about
-  the HOST, not a claim that init's model is finished. The remaining write verbs are a modeling
-  question, not a permissions one.
-- **Content goes in via `store_node(store, n: Node) -> StoreOutcome`** (`gunbc.scm.object_store`).
-- **A Node is built with `node_synthetic`** (`v2.std.node`):
-  `node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])`. The `atom`
-  helpers in the test modules are LOCAL helpers, not a shared authority — do not import one.
-- **A runtime name becomes a Symbol** with `symbol_intern_lexeme(lexeme: name)`
-  (`v2.std.compilers.lexing`). `name as Symbol` refuses.
-- **`mint_repository_commit(repository, root: ObjectId, message, parent: RepositoryCommitRef?)`**
-  requires `store_contains(root)` — so `add` must precede `commit`, and because identity is derived
-  from content, `commit` can re-derive an added object's `ObjectId` by rebuilding the same node.
+  created a file, and since confirmed by #10026 landing the create-only write. It is not a claim
+  that init's model is finished. The remaining write verbs are a modeling question, not a
+  permissions one.
+
+### SUPERSEDED BY #9891 — the recipe below is historical reasoning, not the current model
+
+**This section previously listed the following as "settled by execution". #9891 replaced the
+identity model underneath it, so the recipe is now WRONG at exactly the boundary add/commit needs,
+and it is kept only as the reasoning that led to the replacement.** It survived on main because a
+plan that says "settled" is read as an instruction; that is the failure this heading exists to
+stop.
+
+The superseded recipe said: content goes in via `store_node(store, n: Node) -> StoreOutcome`; a
+file is built as a synthetic semantic `Node` via `node_synthetic`; a runtime name becomes a
+`Symbol` with `symbol_intern_lexeme`; and
+`mint_repository_commit(repository, root: ObjectId, ...)` requires `store_contains(root)`, so `add`
+precedes `commit` and `commit` re-derives an added object's `ObjectId` by rebuilding the same node.
+
+**What #9891 changed, and why the recipe cannot survive it:**
+
+- Authored source is its OWN object arm, not a semantic node wearing a node costume. A file has
+  somewhere to live that is not a synthetic `Node`, which is the whole point of that change.
+- A semantic-node reference and an authored-source reference are DISTINCT, so "rebuild the same
+  node and re-derive its `ObjectId`" no longer identifies one thing.
+- `mint_repository_commit` takes a `SemanticNodeTarget`, not a bare `ObjectId`. Handing it an
+  authored-source identity is not a runtime refusal to be checked for — it does not typecheck.
+
+**The current boundary, stated so the next reader does not follow the dead recipe:** production
+`add` and `commit` remain blocked on a `CorpusManifestObject`
+(path → semantic_root → authored_source_identity) plus a staging authority. Immediate object-store
+insertion is NOT the add model; `add` has nowhere to persist what is staged until that authority
+exists. `ScmWriteOutcome` below is still the right SHAPE for the verb's result and is not what
+blocks the verbs.
 
 ### The design step, stated so it is not improvised
 

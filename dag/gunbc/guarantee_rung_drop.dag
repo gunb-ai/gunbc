@@ -617,6 +617,27 @@ data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall
   next_rung_trigger: "ALL THREE of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from, or guest topology renamed as a separately declared product decision that is NOT derived from the cell -- the CPU clause is separate because a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded; AND (3) an executing witness that an ADMISSIBLE VM IS ADMITTED, restoring coverage of RunnerMicroVmAdmitted, which is unreachable today and would otherwise go live unexercised. And the controls that come back must be FIT controls, not equality controls: a guest SMALLER than the envelope must PASS, since containment and not equality is the safety property"
 }
 
+// THIS IS A PRE-EXISTING CAPABILITY GAP, NOT A RUNG LOWERED BY THE CUT-OVER. The legacy transport
+// did put HEAD/objects/refs beside working bytes in an empty directory, but omitted the index and
+// therefore could not produce the consistent repository state this deployment claims. Calling that
+// a bootstrap would count mutation as success and repeat the exact conflation RLM-2c removes.
+// Git-native convergence now refuses the unobservable pre-state through
+// ConvergencePreStateUnobservable, and placement carries that located cause to the outer deploy in
+// its durable receipt. The refusal is evidence of the gap; it is not the missing capability.
+// THE POPULATION IS ONE PRODUCTION SUBJECT, NOT A SNAPSHOT OF AN OPEN SET. There is one production
+// constructor, deployment_spec_srv1, and the realization binding is global rather than a field a
+// future spec can silently choose. Any later production spec therefore inherits GitNativeConvergence;
+// at a fresh root it reaches the same typed ConvergencePreStateUnobservable wall and cannot proceed.
+// The boundary is the refusal construction, not a hand-maintained roster count.
+data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeStall {
+  subject: "an empty deployed repository root cannot be brought to one consistent candidate revision by live deploy",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "gunbc.live_deploy.spec deployment_spec_srv1 at a fresh repository root", tail: Empty {} } },
+  next_rung_trigger: "a modeled Git-native bootstrap sufficient to initialize an empty deployed repository from the admitted runner checkout at the exact candidate, with HEAD, index and tracked worktree read back as that one revision before any later deployment member runs; copying any .git path as files, relaxing ConvergencePreStateUnobservable, or merely creating an empty git directory does not satisfy the capability"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
@@ -636,6 +657,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   wall_deadline_shared_fill_attribution_stall,
   builtin_parameter_name_forked_across_hand_authored_sites_stall,
   algebra_operation_associativity_undeclarable_stall,
+  deployed_repository_empty_root_bootstrap_stall,
 ]
 
 // A STALL AT ITS CEILING IS NOT A STALL: the row would describe a class that already arrived, and
