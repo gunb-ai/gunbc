@@ -251,10 +251,6 @@ fn routed_slot_identities(r: RoutedDdrTopology) -> List<DdrSlotIdentity> {
   })
 }
 
-fn board_routed_topology(d: AltraMinimalMotherboard) -> RoutedDdrTopology {
-  d.design.routed
-}
-
 fn board_slot_identities(d: AltraMinimalMotherboard) -> List<DdrSlotIdentity> {
   routed_slot_identities(r: d.design.routed)
 }

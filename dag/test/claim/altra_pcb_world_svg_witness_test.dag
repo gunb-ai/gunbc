@@ -106,6 +106,10 @@ import product.altra_motherboard.placement {
   BoardBodyLayoutStanding,
   BodyLayoutCheckedOverEstablishedSubsetOnly,
   altra_reference_plan,
+  BoardPlanConstruction,
+  BoardPlanReady,
+  BoardPlanOutlineRefused,
+  BoardPlanDesignNotAdmitted,
   altra_1p_minimum_ref,
 }
 import product.altra_motherboard.minimal_design {
@@ -120,26 +124,13 @@ import product.altra_motherboard.minimal_design {
   DdrChannel6,
   DdrChannel7,
   FirstDimmOnChannel,
+  Production,
   RevARoutedMemoryDesign,
   RoutedDdrTopology,
   ShipsWithProductionPopulation,
   altra_1p_minimum,
 }
 import product.altra_motherboard.scene_emission { emit_altra_board_scene }
-import product.altra_motherboard.minimal_design {
-  AltraMinimalMotherboard,
-  ActiveDdrTopology,
-  DdrChannel0,
-  DdrChannel1,
-  DdrChannel2,
-  DdrChannel3,
-  DdrChannel4,
-  DdrChannel5,
-  FirstDimmOnChannel,
-  RevARoutedMemoryDesign, RoutedDdrTopology, ShipsWithProductionPopulation,
-  Production,
-  altra_1p_minimum,
-}
 import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
@@ -409,8 +400,9 @@ test fn w_the_world_carries_the_plan_design_identity() -> Bool {
     Absent => false
     Present { value: w } =>
       match altra_reference_plan() {
-        OrthogonalRefused { cause: _ } => false
-        OrthogonalReady { value: plan } =>
+        BoardPlanOutlineRefused { cause: _ } => false
+        BoardPlanDesignNotAdmitted { causes: _ } => false
+        BoardPlanReady { value: plan } =>
           declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design)
             && declaration_ref_eq(a: plan.design, b: altra_1p_minimum_ref())
       }
@@ -1012,5 +1004,37 @@ test fn w_the_canonical_board_still_reaches_its_world() -> Bool {
     PartialPcbWorldReady { value: _ } => true
     AdmittedPcbWorld { value: _ } => true
     PcbWorldRefused { cause: _ } => false
+  }
+}
+
+// A BOARD THE JUDGE REFUSES CANNOT REACH A WORLD, asserted on the TERMINAL route rather than on the
+// placement verdict. The earlier control in this cut showed that `placement_causes` reports
+// DesignIsNotAdmitted, which review 5094151475 correctly said proves nothing about whether an
+// unadmitted board can still produce a plan and a preview -- construction ran before judgment did.
+// The board below populates a fifth controller with no copper under it, so `admit_board` refuses
+// it, and this asserts the whole route ends in a refusal rather than in an emitted world.
+fn a_board_the_judge_refuses() -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+test fn w_a_board_the_judge_refuses_reaches_no_world() -> Bool {
+  match altra_pcb_world_for(d: a_board_the_judge_refuses()) {
+    PcbWorldRefused { cause: _ } => true
+    PartialPcbWorldReady { value: _ } => false
+    AdmittedPcbWorld { value: _ } => false
   }
 }

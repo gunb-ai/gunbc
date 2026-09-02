@@ -43,6 +43,10 @@ import product.altra_motherboard.realization {
 }
 import product.altra_motherboard.placement {
   altra_reference_plan,
+  BoardPlanConstruction,
+  BoardPlanReady,
+  BoardPlanOutlineRefused,
+  BoardPlanDesignNotAdmitted,
   altra_1p_minimum_ref,
   RequiredFunctionWithoutJustifiedPartOnBoard,
   ComponentEnvelopeNotEstablished,
@@ -61,9 +65,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn plan_identities_from_reference() -> List<NonEmptyStr> {
   match altra_reference_plan() {
-    OrthogonalReady { value: p } =>
+    BoardPlanReady { value: p } =>
       fold(p.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
-    OrthogonalRefused { cause: _ } => []
+    BoardPlanOutlineRefused { cause: _ } => []
+    BoardPlanDesignNotAdmitted { causes: _ } => []
   }
 }
 
@@ -271,8 +276,9 @@ test fn w_rail_sequencing_derives_from_cited_enable_order() -> Bool {
 
 test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
   match altra_reference_plan() {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: p } =>
+    BoardPlanOutlineRefused { cause: _ } => false
+    BoardPlanDesignNotAdmitted { causes: _ } => false
+    BoardPlanReady { value: p } =>
       fold(
         placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p),
         init: 0,

@@ -221,12 +221,42 @@ test fn w_a_controller_populated_twice_refuses() -> Bool {
        }
 }
 
-// Causes accumulate rather than stopping at the first, so a design with two independent problems
-// reports two. Counting is what makes that visible.
+// CAUSES ACCUMULATE RATHER THAN STOPPING AT THE FIRST, and this board has four independent
+// defects: no DIMM positions, a lane count past the package bound, a population that cannot reach
+// a production-qualified count, and a two-channel count admitted only for bring-up.
+//
+// THEY ARE ASSERTED BY NAME, NOT COUNTED. An earlier revision compared the cause count to a
+// literal, which greens for the wrong reason the moment a law is added or removed -- the number
+// would keep matching while naming a different set. Naming each cause makes the next law's arrival
+// a red that says which cause went missing.
 test fn w_independent_defects_are_all_reported() -> Bool {
   let d = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: [], lanes: 129)
   refuses_naming(d: d, wanted: "DimmPopulation")
     && refuses_naming(d: d, wanted: "PcieLanes")
     && refuses_naming(d: d, wanted: "NoReachableProduction")
     && refuses_naming(d: d, wanted: "DebugOnly")
+}
+
+// THE FIXTURE ARM SWITCHES OFF EXACTLY ONE QUESTION, AND THIS IS THE EXECUTED PROOF OF THAT.
+// Gating production reachability on governing intent is the shape of an absorbing fallback -- a law
+// turned off for a population -- so the claim that ONLY the reachability question goes quiet needs a
+// witness rather than a reading of the source. Three channels is not an admitted controller count
+// under any intent, and an engineering fixture is refused for it exactly as a production board is.
+// What the fixture no longer owes is the different question "can this board eventually host a
+// production-qualified population", which is inapplicable to a board that intentionally routes two
+// channels and never ships -- not failed, and requiring it would make the arm uninhabitable.
+test fn w_a_fixture_still_owes_ordinary_population_admission() -> Bool {
+  refuses_naming(
+    d: design(intent_is_production: false, chans: [DdrChannel0, DdrChannel1, DdrChannel2], positions: one_dimm(), lanes: 4),
+    wanted: "NotAdmittedCount")
+}
+
+// THE PAIRED POSITIVE CONTROL, without which the one above only says that something refuses. The
+// same fixture at an admitted count is admitted, and the production board at that same count is
+// refused -- so the two arms differ on reachability alone, which is the whole of the claim.
+test fn w_the_fixture_arm_differs_from_production_only_on_reachability() -> Bool {
+  let two_channels = [DdrChannel0, DdrChannel1]
+  admits(d: design(intent_is_production: false, chans: two_channels, positions: one_dimm(), lanes: 4))
+    && refuses_naming(d: design(intent_is_production: true, chans: two_channels, positions: one_dimm(), lanes: 4),
+                      wanted: "DebugOnly")
 }

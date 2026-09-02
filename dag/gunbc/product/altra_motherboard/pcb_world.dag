@@ -364,8 +364,9 @@ fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWo
     PcbWorldRefused { cause: PcbDesignPlanUnavailable { only_available: altra_1p_minimum_ref() } }
   } else {
     match altra_reference_plan() {
-      OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
-      OrthogonalReady { value: plan } =>
+      BoardPlanDesignNotAdmitted { causes: _ } => PcbWorldRefused { cause: PcbPlacementNotAdmitted }
+      BoardPlanOutlineRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
+      BoardPlanReady { value: plan } =>
         if outline_copies_mt_jade_reference(o: plan.outline) {
           PcbWorldRefused { cause: PcbOutlineCopiedFromCitedForeignBoard }
         } else {
@@ -384,8 +385,20 @@ fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
 //
 // A dedicated PcbDesignNotAdmitted arm was the obvious move and would have been a LAYER INVERSION:
 // PcbWorldRefusal is declared in product.pcb.world, a generic hub that may not carry rows about
-// Altra memory admission. The specific cause is not lost; it is DesignIsNotAdmitted in the
-// placement causes, at the layer that owns it.
+// Altra memory admission.
+//
+// WHAT THIS BOUNDARY ACTUALLY PRESERVES IS THE FACT OF THE REFUSAL, NOT ITS CAUSE, and an earlier
+// revision of this comment claimed otherwise -- it said the specific cause "is not lost, it is
+// DesignIsNotAdmitted in the placement causes". That is true of the placement layer and FALSE HERE,
+// which is the only place this sentence could be read: the DesignRefusalSet is dropped by the arm
+// below and the caller emits a payload-free PcbPlacementNotAdmitted, so a consumer holding only the
+// PCB-world result cannot say WHY the design was refused. Review 5094151475 caught the claim.
+//
+// THE EXACT-CAUSE TRANSPORT IS DECLARED DEBT RATHER THAN QUIETLY MISSING. Carrying it needs an
+// Altra-owned outer result wrapping PcbWorldConstruction, because the generic hub may not name the
+// cause and the cause may not be flattened into a string. That is a separate change with its own
+// consumers; until it lands, this boundary answers THAT the design was refused and never WHY, and
+// the sentence above is what stops a reader from assuming otherwise.
 fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
   fold(cs, init: none, f: fn(acc, c) {
     match acc {
@@ -411,8 +424,9 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
 // hardcoded reference it replaced, because it can never fail.
 fn admit_pcb_world(d: AltraMinimalMotherboard, d_ref: DeclarationRef, w: PcbWorld) -> PcbWorldConstruction<PcbWorld> {
   match altra_reference_plan() {
-    OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
-    OrthogonalReady { value: plan } =>
+    BoardPlanDesignNotAdmitted { causes: _ } => PcbWorldRefused { cause: PcbPlacementNotAdmitted }
+    BoardPlanOutlineRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
+    BoardPlanReady { value: plan } =>
       if !declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design) {
         PcbWorldRefused { cause: PcbPlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: pcb_world_design(w: w) } }
       } else {

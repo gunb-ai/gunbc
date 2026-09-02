@@ -49,6 +49,10 @@ import product.altra_motherboard.placement {
   altra_board_frame,
   altra_1p_minimum_ref,
   altra_reference_plan,
+  BoardPlanConstruction,
+  BoardPlanReady,
+  BoardPlanOutlineRefused,
+  BoardPlanDesignNotAdmitted,
   board_body_layout_standing,
   parts_not_geometrically_checked,
   board_control_envelope,
@@ -102,8 +106,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn plan_or_empty() -> BoardPlacementPlan? {
   match altra_reference_plan() {
-    OrthogonalReady { value: p } => Present { value: p }
-    OrthogonalRefused { cause: _ } => none
+    BoardPlanReady { value: p } => Present { value: p }
+    BoardPlanOutlineRefused { cause: _ } => none
+    BoardPlanDesignNotAdmitted { causes: _ } => none
   }
 }
 
