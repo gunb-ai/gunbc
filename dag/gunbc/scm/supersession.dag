@@ -140,36 +140,47 @@ fn observe_generation(
 // destination's whole producer side, not any one defect site. Measured on the live tree rather than
 // recalled, by enumerating every declaration that returns a `LoadStanding`.
 //
-//   PRODUCERS, TOTAL: two, both in `gunbc.scm.commit_closure_json_v2`.
-//     `closure_document_load_standing` classifies one format's refusals. It descends everywhere a
-//       payload could hide a second distinction -- through `MemberReadRefusal`'s four modes and
-//       `TargetReferenceRefusal`'s four -- and is the ONLY declaration in the tree that can return
-//       `LoadDocumentMalformed`, so it is the entire permitting surface.
-//     `loaded_closure_standing` answers `LoadComplete`, `LoadPartial`, or
-//       `LoadRequiresNodeAtAuthoredSource`. THIS LINE SAID "only LoadComplete or LoadPartial" and was
-//       left stale when the third arm landed; the census it belongs to is exactly the thing a stale
-//       count corrupts. The conclusion is UNCHANGED and is now broader: none of the three permits, so
-//       the success path stays OUTSIDE this relation by construction rather than by a check -- no load
-//       that succeeded can authorize destroying what it read, and a load whose requirement sits on a
-//       file is refused for its own named reason rather than by falling through.
-//     `closure_document_standing` is the join of the two and mints no standing of its own.
+//   PRODUCERS, TOTAL: five, across three modules, enumerated from the live tree. This line has been
+//     wrong twice -- it said "two, both in `gunbc.scm.commit_closure_json_v2`" while a third module
+//     already classified -- so it now states the denominator it is measured at: declarations whose
+//     return type is `LoadStanding`.
+//     In `gunbc.scm.commit_closure_json_v2`: `closure_document_load_standing` classifies one format's
+//       refusals, descending through `MemberReadRefusal`'s four modes and `TargetReferenceRefusal`'s
+//       four; `loaded_closure_standing` answers `LoadComplete`, `LoadPartial`, or
+//       `LoadRequiresNodeAtAuthoredSource`; `closure_document_standing` is the join of the two and
+//       mints no standing of its own.
+//     In `gunbc.scm.repository_envelope`: `repository_envelope_load_standing`.
+//     In `gunbc.scm.object_table_json`: `object_table_load_standing`.
+//
+//   THE PERMITTING SURFACE IS THREE OF THE FIVE, and this correction is the load-bearing one. The
+//     sole permitting standing is `LoadDocumentMalformed` -- `standing_permission_refusal` returns
+//     `none` for it and names a refusal for every other arm. This audit previously claimed
+//     `closure_document_load_standing` was the ONLY declaration that could return it, and concluded
+//     that the producer count had grown while the permitting surface had not. THAT CONCLUSION IS
+//     FALSE: `repository_envelope_load_standing` returns `LoadDocumentMalformed` for its member-read
+//     and target-reference modes, and `object_table_load_standing` returns it for six of its seven
+//     causes. The permitting surface grew with the producer count, and recording the growth of one
+//     while denying the other is precisely the stale-count corruption this census exists to catch.
+//
+//   WHAT SURVIVES THE CORRECTION, and it is not the old conclusion. The success path stays outside
+//     this relation by construction: `loaded_closure_standing`'s three arms are `LoadComplete`,
+//     `LoadPartial` and `LoadRequiresNodeAtAuthoredSource`, none of which permits, so no load that
+//     SUCCEEDED can authorize destroying what it read, and a load whose requirement sits on a file is
+//     refused for its own named reason rather than by falling through. What does NOT survive is any
+//     claim that one module owns the permitting surface. Three do, each deciding per cause, and the
+//     collision arms are the load-bearing ones: `ObjectTableObjectCollision` reaches
+//     `LoadIdentityCollision` rather than `LoadDocumentMalformed` exactly because the permitting
+//     standing must not absorb a cause that means "two objects claimed one identity".
 //
 //   CONSUMERS BEFORE THIS MODULE: none in production. The permitting predicate had witnesses and no
 //     caller, so the hazard was not live -- it was pre-positioned, waiting for the first actuator to
 //     be written against the shape that was there. That is why the repair is a shape change landing
 //     WITH the actuator rather than a guard added to one.
 //
-//   A NEIGHBOUR THAT IS NOT A ROUTE, checked rather than assumed. `gunbc.scm.repository_envelope`
-//     decodes the envelope that names a head and carries its own `RepositoryDecodeRefusal`. IT DOES
-//     CLASSIFY INTO `LoadStanding`, through `repository_envelope_load_standing` -- this line said it
-//     classified NOTHING and that premise is obsolete. It remains not a ROUTE for a different and
-//     better reason: every arm it produces is a REFUSAL standing, and no refusal standing permits, so
-//     the producer count grew while the permitting surface did not. DESIGN's recurring-failure-mode census records
+//   A HISTORICAL SPECIMEN, NOT A LIVE PRODUCER. DESIGN's recurring-failure-mode census records
 //     `repository_load_disposition` collapsing thirteen `ImageRefusal` arms as a specimen of the
-//     total-but-blind class; that symbol no longer exists in the tree, and the envelope decoder has
-//     no route to this destination today. The specimen stands as a historical record; it is not a
-//     second live producer, and reporting it as one would have inflated the population from one
-//     measurement and one recollection.
+//     total-but-blind class. That symbol no longer exists in the tree. The specimen stands as a
+//     historical record and is not counted in the five above.
 //
 //   WHAT THE AUDIT DOES NOT ESTABLISH. One producer today is not a bound on producers tomorrow, and
 //     that is precisely why the destination now demands evidence instead of trusting a cause: a new

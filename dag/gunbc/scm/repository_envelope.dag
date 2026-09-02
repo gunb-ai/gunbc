@@ -250,9 +250,14 @@ type RepositoryEnvelope {
 // them were real, and a consumer matching it had to handle format-tag and unknown-connective causes
 // that no encode path can raise. The type was answering for a domain it does not own.
 //
-// The single producible cause is an uncontained target found in the store being written, so that is
-// the arm. It carries ObjectId rather than a rendered key, which also closes a string round-trip the
-// two sibling arms below never had: an identity left as text is one nobody can resolve back.
+// The surviving rule is the domain one: every arm below is a cause ENCODING CAN ACTUALLY RAISE. The
+// population is eight, and this line previously said "the single producible cause ... the two sibling
+// arms below" -- a description of an earlier, smaller coproduct left standing over a grown one. Three
+// arms concern object identity (an uncontained target, a target that resolves to authored source, a
+// commit root that does; each carries ObjectId rather than a rendered key, closing a string round-trip
+// -- an identity left as text is one nobody can resolve back); one concerns a commit root absent from
+// the store; and four concern the commit table (checkout selection, duplication, allocator range,
+// parent order), carrying RepositoryCommitRef for the same reason.
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryEncodeTargetIsAuthoredSource { target: ObjectId }
@@ -534,10 +539,15 @@ type RepositoryEncodeOutcome
 // reported success, and the corruption surfaces on the next load, to whoever loads it rather than to
 // whoever caused it. So the adjudication is lifted ahead of the write.
 //
-// The three ways a repository can be unrepresentable are exactly the three arms below, and they are
-// separate causes rather than one because their remedies differ: an unresolvable EDGE means the
-// object table is an incomplete closure, an unresolvable COMMIT ROOT means a commit names an object
-// the store does not hold, and an unresolvable CHECKOUT means the selection names a non-commit.
+// The ways a repository can be unrepresentable are the eight arms of RepositoryEncodeRefusal, and
+// they are separate causes rather than one because their remedies differ. This line said "the three
+// ways ... exactly the three arms below" and was left stale as the coproduct grew; the population it
+// describes must be the population that exists. Grouped by remedy: an unresolvable EDGE means the
+// object table is an incomplete closure; a target or commit root that resolves to AUTHORED SOURCE
+// means something asked a file to stand where a semantic node belongs; an ABSENT commit root means a
+// commit names an object the store does not hold; an unresolvable CHECKOUT means the selection names
+// a non-commit; and duplication, allocator range and parent order are three ways the commit table
+// itself is inconsistent.
 // THE REPOSITORY STILL REFUSES A PARTIAL OBJECT TABLE, and that is a DELIBERATE non-change in a diff
 // that made partial closures representable everywhere else. A commit closure may now legitimately be
 // shipped incomplete, under a declared admission, because a delta is a real thing to send. A whole

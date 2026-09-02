@@ -503,12 +503,16 @@ test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
 }
 
 // ------------------------------------------------------------------------------------------------
-// THE CHECKED ENCODER, with one claim per cause rather than one claim that "it refuses". The causes
-// have different remedies -- an incomplete object table, a table target occupied by a file, a commit
-// naming a missing object, a commit root occupied by a file, a checkout naming a non-commit -- so a
-// single boolean would let any of them regress silently while another kept the claim green.
+// THE CHECKED ENCODER, one claim per cause for every cause but one, WHICH IS NAMED BELOW. The header
+// used to open by asserting one-claim-per-cause outright and then retract it two lines later; the
+// heading now carries the exception rather than standing false above its own correction.
 //
-// THE ROSTER IS NO LONGER ONE CLAIM PER CAUSE, AND THAT IS DECLARED RATHER THAN LEFT TO INFERENCE.
+// The roster is per cause rather than one claim that "it refuses" because the causes have different
+// remedies -- an incomplete object table, a table target occupied by a file, a commit naming a
+// missing object, a commit root occupied by a file, a checkout naming a non-commit -- so a single
+// boolean would let any of them regress silently while another kept the claim green.
+//
+// THE ONE CAUSE WITHOUT A CLAIM, DECLARED RATHER THAN LEFT TO INFERENCE.
 // RepositoryEncodeCommitRootIsAuthoredSource has NO claim, because reaching it needs a store where an
 // honestly minted SemanticNodeObjectRef's locator holds a file -- a 64-bit digest collision. No
 // fixture can build that without a chosen-locator forge, and exporting one to redden this arm would
