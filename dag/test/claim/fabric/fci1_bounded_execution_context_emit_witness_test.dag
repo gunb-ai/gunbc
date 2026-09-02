@@ -1,6 +1,6 @@
 module test.claim.fabric.fci1_bounded_execution_context_emit_witness_test
 
-import std.types { Bool, list_length }
+import std.types { Bool, list_length, filter }
 import gunbc.fci1_bounded_execution_context_emit {
   expected_fci1_bounded_execution_context_env,
   Fci1BoundedExecutionContextEmitted,
@@ -8,14 +8,18 @@ import gunbc.fci1_bounded_execution_context_emit {
 }
 import gunbc.generated_artifact {
   Fci1BoundedExecutionContextArtifact,
-  artifact_path,
+  artifact_path, artifact_eq, artifact_commit_policy, CommitRequired, HostReconciler,
   committed_generated_artifacts,
 }
 
 test fn fci1_bounded_context_fragment_is_the_rostered_projection() -> Bool {
-  list_length(items: committed_generated_artifacts()) == 37
+  list_length(items: filter(xs: committed_generated_artifacts(), predicate: fn(a) { artifact_eq(a: a, b: Fci1BoundedExecutionContextArtifact) })) == 1
     && artifact_path(a: Fci1BoundedExecutionContextArtifact)
       == "tools/fabric_ci_fci1_bounded_execution_context.env"
+    && match artifact_commit_policy(a: Fci1BoundedExecutionContextArtifact) {
+      CommitRequired { consumer: HostReconciler } => true
+      _ => false
+    }
     && match expected_fci1_bounded_execution_context_env() {
       Fci1BoundedExecutionContextEmitted { content: content } => content == join([
         "#!/usr/bin/env bash\n",
