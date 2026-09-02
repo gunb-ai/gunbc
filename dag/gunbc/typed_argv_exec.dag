@@ -56,7 +56,7 @@ fn typed_argv_portable_argv_token_at(token: String, i: Int, len: Int) -> Bool {
   if i >= len {
     true
   } else {
-    let cp = code_point(ch: char_at(token, i))
+    let cp = code_point(c: char_at(token, i))
     if !typed_argv_portable_argv_char_allowed(cp: cp) {
       false
     } else {

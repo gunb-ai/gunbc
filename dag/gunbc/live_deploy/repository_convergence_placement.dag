@@ -169,7 +169,7 @@ fn candidate_refusal_text(candidate: String, cause: GitObjectIdTextRefusal) -> S
   match cause {
     GitObjectIdTextWrongLength { format: _, observed: n } =>
       join([
-        "the candidate revision `", candidate, "` is ", to_string(n: n),
+        "the candidate revision `", candidate, "` is ", to_string(value: n),
         " characters; a full object id is required, because an abbreviation resolves against the",
         " TARGET's object store rather than against the population that admitted it",
       ], "")
@@ -382,7 +382,7 @@ fn receipt_field_read(doc: JsonValue, key: String) -> ReceiptFieldRead {
     JsonMemberDuplicated { count: n } =>
       ReceiptFieldUnreadable {
         key: key,
-        cause: join(["named ", to_string(n: n), " times; RFC 8259 does not say which wins, so an",
+        cause: join(["named ", to_string(value: n), " times; RFC 8259 does not say which wins, so an",
                      " identity field carrying more than one value is refused, never resolved"], ""),
       }
     JsonMemberNotAnObject =>

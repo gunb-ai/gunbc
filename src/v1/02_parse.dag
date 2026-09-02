@@ -7,6 +7,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   make_param_node, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
+  field_from_key_property_name,
   make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -2893,7 +2894,7 @@ fn parse_optional_from_key(tokens: TokenStream, ctx: ParseContext) -> FromKeyRes
             let value_mint = mint_parsed_node_identity(ctx: ctx)
             let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
             let value = make_named_expr_node(occurrence_identity: value_mint.identity, name: key, expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: token_span(tok: tok2), name_span: token_span(tok: tok2))
-            let property = make_field_init_node(occurrence_identity: property_mint.identity, name: "from_key", value: value, span: token_span(tok: tok), name_span: token_span(tok: tok))
+            let property = make_field_init_node(occurrence_identity: property_mint.identity, name: field_from_key_property_name, value: value, span: token_span(tok: tok), name_span: token_span(tok: tok))
             FromKeyResult { properties: [property], tokens: token_stream_advance(stream: tokens, n: 2), ctx: property_mint.ctx, err: none }
           }
           _ =>
