@@ -173,15 +173,28 @@ test fn an_init_refusal_never_exits_success() -> Bool {
     && wire_refuses(r: scm_init_response(
       outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "the directory could not be listed" } }
     ))
+    && wire_refuses(r: scm_init_response(
+      outcome: ScmInitRefused { cause: ScmInitNameNotAnEntry { name: "../victim", cause: "it is a path, not one child" } }
+    ))
 }
 
-test fn the_three_init_refusals_render_differently() -> Bool {
+// THE POPULATION IS FOUR, AND IT SAYS SO. ScmInitNameNotAnEntry became a fourth refusal arm and
+// these claims still enumerated three, so the direct admission test proved the name refuses EARLY
+// while nothing proved it reaches an operator as its own answer. A claim that names a population
+// has to move when the population does, or it silently covers a shrinking fraction of its subject.
+// Review 5089156132 finding 5.3 on gunbc#10026.
+test fn the_four_init_refusals_render_differently() -> Bool {
   let present = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
   let foreign = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
   let unobserved = wire_bytes(r: scm_init_response(
     outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "the directory could not be listed" } }
   ))
+  let not_an_entry = wire_bytes(r: scm_init_response(
+    outcome: ScmInitRefused { cause: ScmInitNameNotAnEntry { name: "../victim", cause: "it is a path, not one child" } }
+  ))
   present != foreign && foreign != unobserved && present != unobserved && present != ""
+    && not_an_entry != present && not_an_entry != foreign && not_an_entry != unobserved
+    && not_an_entry != ""
 }
 
 // THE UNOBSERVED ARM CARRIES THE HOST'S CAUSE THROUGH. A refusal that dropped it would tell the
@@ -267,6 +280,13 @@ test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool {
     == "unobserved"
 }
 
+// AND THE VALID REPOSITORY IS PINNED TO ITS OWN ARM, NOT MERELY AWAY FROM THE WRITE ARM. This
+// asserted `!= may_create` for a decodable repository, which is satisfied by mapping EVERY present
+// file -- valid repository included -- to ScmInitForeignFilePresent. That would tell an operator a
+// foreign file is in the way of their own repository, and the claim would have stayed green. The
+// two present arms are one fact apart (the same listing and read, differing only in whether the
+// content decodes), so pinning each to its own arm is what makes the classification evidence rather
+// than a not-the-write-arm check. Review 5089156132 finding 5.2 on gunbc#10026.
 test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
   decide(o: observe(listed: true, entries: "repo.json", read_ok: true, content: "not json at all"))
       == "foreign_present"
@@ -275,7 +295,7 @@ test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
       entries: "repo.json",
       read_ok: true,
       content: "{\"format\":\"gunbc-scm-repository-v2\"}",
-    )) != "may_create"
+    )) == "repository_present"
 }
 
 // ------------------------------------------------------------------------------------------------
