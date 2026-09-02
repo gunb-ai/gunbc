@@ -1,0 +1,157 @@
+module test.claim.spark.spark_oobe_screen_observation_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import extdeps.systems.nvidia_dgx_spark_setup {
+  OobeLanguage,
+  OobeTimeZone,
+  OobeKeyboardLayout,
+  OobeTermsAndConditions,
+  OobeUserAccount,
+  OobeAnalytics,
+  OobeWirelessNetwork,
+  OobeHostnameAssignment,
+}
+import gunbc.spark.oobe_screen_observation {
+  ForwardControlEnabledOnArrival,
+  ForwardControlEnabledAfterScrollToEnd,
+  PresentsOnlyNoCommit,
+  PersistsDeviceSetting,
+  AcceptsLegalAgreement,
+  WalkReachedFlowCompletion,
+  WalkHaltedAwaitingOperatorAuthority,
+  oobe_screen_welcome,
+  oobe_screen_settings,
+  oobe_screen_eula,
+  observed_oobe_screen_prefix,
+  observed_walk_termination,
+  observed_walk_is_complete,
+  observed_screen_covers_field,
+  field_is_pending_observation,
+  dgx_spark_0c75_oobe_prefix_run,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SPARK-OOBE-OBSERVE-0 witnesses. These execute the screen model captured by driving the
+// physical unit serving access point spark-0c75 on 2026-09-02.
+//
+// WHAT EACH WITNESS IS FOR, since a Bool that is true today proves nothing on its own. Every
+// row below is chosen because there is a WRONG model that would make it false, and that wrong
+// model is one somebody would plausibly write:
+//
+//   * the advance-gate pair is the discriminator for the finding that justified driving a real
+//     device. An author who had only read NVIDIA's documentation would model every screen as
+//     immediately advanceable, because the documentation never mentions that Accept starts
+//     disabled. w_eula_gate_requires_scroll goes RED against that model, and
+//     w_non_eula_screens_advance_on_arrival is its positive control -- without the second one,
+//     a model that marked EVERY screen as scroll-gated would also pass the first, and the pair
+//     would establish nothing.
+//
+//   * the completeness pair guards the population claim rather than any single row. The walk
+//     stopped at the EULA, so the three modeled screens are a PREFIX. If a later author appends
+//     the remaining screens without also settling the termination, w_walk_is_not_complete stays
+//     honest and fails loudly rather than letting a partial capture be read as the whole wizard.
+//
+//   * the pending-observation rows check the JOIN between the vendor's documented field list
+//     and ours, in both directions. w_hostname_is_not_pending is the direction that is easy to
+//     get backwards: hostname assignment is in the field universe but the cited NVIDIA page does
+//     NOT say the wizard prompts for it, so it must not appear as an outstanding observation
+//     obligation. A predicate that simply reported "every field we have not seen" would return
+//     true there and quietly manufacture work that no evidence asks for.
+
+// ---- the advance gate: the measured finding, and its control ----------------------------
+
+test fn w_eula_gate_requires_scroll_to_a_named_container() -> Bool {
+  match oobe_screen_eula.advance_gate {
+    ForwardControlEnabledOnArrival => false
+    ForwardControlEnabledAfterScrollToEnd { scroll_container: c } => c == "nv-modal-main"
+  }
+}
+
+test fn w_non_eula_screens_advance_on_arrival() -> Bool {
+  match oobe_screen_welcome.advance_gate {
+    ForwardControlEnabledOnArrival => true
+    ForwardControlEnabledAfterScrollToEnd { scroll_container: _ } => false
+  }
+    && match oobe_screen_settings.advance_gate {
+      ForwardControlEnabledOnArrival => true
+      ForwardControlEnabledAfterScrollToEnd { scroll_container: _ } => false
+    }
+}
+
+// ---- the effects: a legal agreement is not a device setting ------------------------------
+
+test fn w_only_the_eula_screen_accepts_a_legal_agreement() -> Bool {
+  match oobe_screen_eula.effect {
+    AcceptsLegalAgreement => true
+    PresentsOnlyNoCommit => false
+    PersistsDeviceSetting { fields: _ } => false
+  }
+    && match oobe_screen_welcome.effect {
+      AcceptsLegalAgreement => false
+      PresentsOnlyNoCommit => true
+      PersistsDeviceSetting { fields: _ } => false
+    }
+}
+
+test fn w_settings_screen_commits_language_and_timezone() -> Bool {
+  match oobe_screen_settings.effect {
+    PersistsDeviceSetting { fields: f } => length(f) == 2
+    AcceptsLegalAgreement => false
+    PresentsOnlyNoCommit => false
+  }
+}
+
+// ---- the route sequence: the redirect that makes "/" one screen early --------------------
+
+test fn w_observed_routes_run_welcome_then_settings_then_eula() -> Bool {
+  length(observed_oobe_screen_prefix) == 3
+    && oobe_screen_welcome.route == "/welcome"
+    && oobe_screen_settings.route == "/welcome/settings"
+    && oobe_screen_eula.route == "/welcome/eula"
+}
+
+// ---- the population claim: this is a prefix, and it says so ------------------------------
+
+test fn w_walk_is_not_complete_and_names_where_it_halted() -> Bool {
+  !observed_walk_is_complete(termination: observed_walk_termination)
+    && match observed_walk_termination {
+      WalkReachedFlowCompletion => false
+      WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/eula"
+    }
+}
+
+// ---- the documented-versus-observed join, in both directions -----------------------------
+
+test fn w_reached_fields_are_covered() -> Bool {
+  observed_screen_covers_field(field: OobeLanguage)
+    && observed_screen_covers_field(field: OobeTimeZone)
+    && observed_screen_covers_field(field: OobeTermsAndConditions)
+}
+
+test fn w_unreached_documented_fields_are_pending() -> Bool {
+  field_is_pending_observation(field: OobeKeyboardLayout)
+    && field_is_pending_observation(field: OobeUserAccount)
+    && field_is_pending_observation(field: OobeAnalytics)
+    && field_is_pending_observation(field: OobeWirelessNetwork)
+}
+
+test fn w_hostname_is_not_pending_because_it_is_not_documented_as_prompted() -> Bool {
+  !field_is_pending_observation(field: OobeHostnameAssignment)
+}
+
+test fn w_covered_fields_are_not_also_pending() -> Bool {
+  !field_is_pending_observation(field: OobeLanguage)
+    && !field_is_pending_observation(field: OobeTimeZone)
+    && !field_is_pending_observation(field: OobeTermsAndConditions)
+}
+
+// ---- the receipt: the observation is attributed, and holds no secret ----------------------
+
+test fn w_run_records_the_relay_and_rendering_hosts_separately() -> Bool {
+  dgx_spark_0c75_oobe_prefix_run.environment.radio_relay_host
+    != dgx_spark_0c75_oobe_prefix_run.environment.rendering_host
+    && dgx_spark_0c75_oobe_prefix_run.environment.unit_access_point == "spark-0c75"
+}
