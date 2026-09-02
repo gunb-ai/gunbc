@@ -123,7 +123,40 @@ fn ladder_step(l: LengthLadder) -> Micrometer { l.step }
 // looks right -- identify the coupon by GEOMETRY, a coded notch or hole pattern, which OpThroughHole
 // already determines completely. That buys physical identification without importing typography, and
 // it is checked by the same contract the holes already pass through.
-data coupon_v1_physical_identification_obligation: NonEmptyStr = "OPEN: physical coupons must be distinguishable by hand after printing. V0 carries no marking operation because a text engraving underdetermines font, glyph metrics, stroke, alignment, orientation, depth and engraved-versus-embossed, and specimen_extent silently assumed engraving. Preferred route: a coded through-hole or notch pattern, fully determined by the operation vocabulary V0 already has. Not a font model."
+// THIS ROW WAS A STRING BEGINNING "OPEN: ...", WHICH IS THE §4c VIOLATION THIS MODULE OTHERWISE
+// REPAIRS. A dissolution condition is exactly what §4c names as belonging in a typed carrier, and
+// `Altrad8udMountingUnknown` two files over is the same shape done correctly: a closed coproduct of
+// open obligations plus a TOTAL fold that says how each one discharges. The prose row was written in
+// the same commit that deleted OpDatumMark for underdetermining its own output, and it underdetermined
+// its own: nothing could read it, so the obligation was invisible to every lens over the tree.
+//
+// The route is carried as its own coproduct rather than as free text so that "how does this
+// discharge" is answered by a total function. A second obligation added later cannot be forgotten by
+// the route fold -- the match stops compiling until it is handled, which is the property a string
+// roster can never have.
+type CouponV1Obligation = PhysicalCouponIdentificationUnsolved {}
+
+type CouponV1Route = IdentifyByCodedThroughHolePattern {}
+
+// TOTAL BY CONSTRUCTION, AND HONEST ABOUT WHAT THAT IS WORTH TODAY. Every open obligation names the
+// route that would close it; no obligation may sit without one, because that is the state where a
+// recorded need quietly becomes a wish. Adding a second obligation variant reds this match until it
+// is handled, which is the property the string roster could never have.
+//
+// BUT THIS FOLD HAS NO RUNTIME CONSUMER YET, and that bounds the guarantee rather than voiding it.
+// Its enforcement is the exhaustive-match rule at compile time, so it holds exactly as long as the
+// function exists -- nothing prevents a later reader deleting an uncalled function and taking the
+// forcing with it. A witness calling it would be near-vacuous with one arm (the fold can only return
+// the single route, so its RED is unauthorable), which is why none is written: a permanently green
+// witness would read as coverage while proving nothing. The consumer arrives with the second
+// obligation, and that is also when the discriminating RED becomes authorable.
+fn coupon_v1_route(o: CouponV1Obligation) -> CouponV1Route {
+  match o {
+    PhysicalCouponIdentificationUnsolved {} => IdentifyByCodedThroughHolePattern {}
+  }
+}
+
+data coupon_v1_open_obligations: List<CouponV1Obligation> = [PhysicalCouponIdentificationUnsolved {}]
 
 type CouponOperation
   = OpThroughHole { diameter: Micrometer, center_x: Micrometer, center_y: Micrometer }
