@@ -195,7 +195,7 @@ test fn inactive_unit_has_no_invocation_identity() -> Bool {
 
 // The RED is authorable: changing the successful `absent` arm to Unobserved makes this fail, and
 // would leave both currently-running legacy hosts indistinguishable from a permission failure.
-test fn absent_identity_marker_is_positive_earlier_definition_evidence() -> Bool {
+test fn absent_identity_marker_is_positive_unstamped_evidence() -> Bool {
   match spark_serving_running_definition_from_probe_results(
     is_active: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "active\n", stderr: "") },
     running_definition: Present { value: running_definition_exec(success: true, exit_code: 0, stdout: "absent\n", stderr: "") },

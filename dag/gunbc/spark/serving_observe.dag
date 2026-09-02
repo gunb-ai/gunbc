@@ -1,6 +1,9 @@
 module gunbc.spark.serving_observe
 
 import std.types { String, List, NonEmptyStr, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash, as_content_hash_cryptographic, sha256_hex_digest }
 import extdeps.languages.json.parse {
@@ -256,6 +259,19 @@ fn spark_serving_active_probe_words() -> List<String> {
   ]
 }
 
+data spark_serving_running_definition_probe_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.spark.serving_observe",
+    decl_name: "spark_serving_running_definition_probe_argv",
+    field: WholeDeclaration,
+  }
+}
+
+data spark_serving_running_definition_probe_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: spark_serving_running_definition_probe_argv -- anti-race read/compare/read is temporarily a bash -lc medium-as-string realization. DISSOLVES WHEN orchestration can sequence typed argv observation legs, compare their typed captures inside one transaction, and refuse when the selected process generation moves, so this bracket is emitted without a hand-authored shell program." as NonEmptyStr,
+)
+
 // READ THE DEFINITION IDENTITY FROM THE PROCESS SYSTEMD IS ACTUALLY SUPERVISING.
 //
 // Neither the unit file nor `systemctl show ExecStart` answers this question after daemon-reload:
@@ -287,6 +303,19 @@ fn spark_serving_running_definition_probe_argv() -> List<String> {
     ], ""),
   ]
 }
+
+data spark_serving_invocation_identity_probe_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.spark.serving_observe",
+    decl_name: "spark_serving_invocation_identity_probe_argv",
+    field: WholeDeclaration,
+  }
+}
+
+data spark_serving_invocation_identity_probe_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: spark_serving_invocation_identity_probe_argv -- supervisor-token and process-generation read/compare/read is temporarily a bash -lc medium-as-string realization. DISSOLVES WHEN orchestration can sequence typed argv observation legs, compare their typed captures inside one transaction, and refuse when identity, process generation, environment readability, or activity moves, so this bracket is emitted without a hand-authored shell program." as NonEmptyStr,
+)
 
 // SYSTEMD'S INVOCATION ID IS THE GENERATION IDENTITY; PID AND START TIME ARE ITS BRACKET.
 //
@@ -2087,6 +2116,16 @@ fn spark_serving_running_definition_from_probe_results(
   }
 }
 
+// THIS PROJECTOR HAS NO PRODUCTION CONSUMER BY RULING, NOT BY OVERSIGHT.
+//
+// ProbeRunningDefinition is captured by the real observation transaction. Its only modeled consumer
+// is gunbc.spark.serving_realization spark_serving_reactivation_remedy, a selector that nothing routes
+// a production convergence through by ruling: DCH-0r-c must land the admission fence and drain first.
+// Until that trigger lands the convergence path remains deliberately dark; this declaration does
+// not make restart selectable from an unfenced observation. This observation discharges conjunct
+// (i) of gunbc.recurring_failure_mode
+// liveness_probe_read_as_currency's next-rung trigger; conjunct (ii), the guarded producer, remains
+// DCH-0r-c. Being named by that trigger is a destination and NOT a production consumer or coverage.
 fn spark_serving_running_definition_from_transaction(
   txn: SparkServingObservationTransaction,
 ) -> SparkServingRunningDefinition {
