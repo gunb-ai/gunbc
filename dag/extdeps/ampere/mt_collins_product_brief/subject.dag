@@ -26,8 +26,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // its single authority. The Mt. Collins getting started guide is NOT in it and is publicly
 // retrievable; see extdeps.ampere.mt_collins_getting_started_guide.subject. The route type and
 // field are DELETED rather than narrowed in place, because no module read either and re-exporting
-// a corrected value under the old broad name would preserve the false claim behind its interface. HOW THIS REPOSITORY READ THE LOCATOR IS RECORDED AS A GUNBC RECEIPT
-// WITH A DeclarationRef TO mt_collins_public_product_brief, NOT AS A FIELD ON THIS RECORD.
+// a corrected value under the old broad name would preserve the false claim behind its interface.
+//
+// HOW THIS REPOSITORY READ THE LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO
+// mt_collins_public_product_brief, NOT AS A FIELD ON THIS RECORD.
 
 type MtCollinsBrief2022V2 {}
 
