@@ -1,6 +1,19 @@
 module gunbc.fleet.fleet_site_locale
 
 import std.types { NonEmptyStr, Bool, List, Int }
+// HostIdentity is IMPORTED, not re-declared. The first revision minted a second
+// `type HostIdentity = NonEmptyStr where brand("HostIdentity")` here, which is the DESIGN §3
+// single-authority violation in its exact canonical form -- one concept, two declaring modules --
+// and §2's test that an edit must not grow net concepts by re-invention.
+//
+// IT DID NOT SURFACE AS A DUPLICATE-DECLARATION DIAGNOSTIC. The bare-name census went from
+// GlobalBareUniqueBinding to GlobalBareAmbiguousBinding, so the pull was dropped, and the error
+// landed on gunbc.host_standup -- an import-free module that resolves this name purely by bare
+// scan and that this change never touched. The fork is reported at the INNOCENT consumer, which
+// is why "the failing file is not in my diff" was the wrong thing to conclude from.
+import product.placement_supply { HostIdentity, SiteIdentity }
+import gunbc.fleet_physical_inventory { operator_site }
+import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import extdeps.posix.locale { PosixLocaleId, locale_en_us_utf8 }
 import extdeps.iana.time_zone_database {
   IanaTimeZoneId,
@@ -20,18 +33,27 @@ import extdeps.iana.time_zone_database {
 // every consumer follows; a literal in the onboarding workflow would have to be found and
 // edited per consumer, which is the parallel authority §3 forbids.
 
-type SiteIdentity = NonEmptyStr where brand("SiteIdentity")
-
-// A site's zone is the zone of its JURISDICTION, which is a fact about the world and not a
-// preference. This is the half that is genuinely "inherited from a physical location".
-type PhysicalSite {
-  identity: SiteIdentity
+// THE SITE IS NOT RE-DECLARED HERE, AND THE FIRST REVISION GOT THIS WRONG THREE TIMES OVER. It
+// minted its own SiteIdentity, its own PhysicalSite, and a row named
+// "us-east-operator-premises" for a site gunbc.fleet_physical_inventory already authors as
+// operator_site = "operator-lab". That is not one violation but two stacked: a second TYPE for a
+// modeled concept, and a second NAME for one physical place -- §3's nickname in its literal form.
+//
+// The civil-time facts are a JOIN keyed by the existing SiteIdentity rather than fields added to
+// PhysicalSite, because placement_supply owns physical containment (racks, rooms, assets) and a
+// jurisdiction's civil time is not a containment fact. Widening that type to carry a zone would
+// push a fleet-policy concern into the supply layer and make every placement consumer depend on
+// tzdata.
+type SiteCivilTimeFacts {
+  site: SiteIdentity
   civil_time_zone: IanaTimeZoneId
   civil_locale: PosixLocaleId
 }
 
-data site_us_east_operator_premises: PhysicalSite = PhysicalSite {
-  identity: "us-east-operator-premises" as SiteIdentity,
+// The site is REFERENCED, never re-spelled: operator_site is the identity authority, so this row
+// cannot drift from it and no second name for the place can appear.
+data operator_premises_civil_time: SiteCivilTimeFacts = SiteCivilTimeFacts {
+  site: operator_site,
   civil_time_zone: zone_america_new_york,
   civil_locale: locale_en_us_utf8,
 }
@@ -75,7 +97,7 @@ type ProvisionedTimeZone
 // unruled it REFUSES, which is what stops the DGX Spark onboarding wizard from being handed a
 // zone nobody chose. The refusal is the point -- the workflow stopping and naming the missing
 // ruling is cheaper than eight more units configured to a guess.
-fn provisioned_time_zone(site: PhysicalSite, policy: HostZonePolicy) -> ProvisionedTimeZone {
+fn provisioned_time_zone(site: SiteCivilTimeFacts, policy: HostZonePolicy) -> ProvisionedTimeZone {
   match policy {
     HostFollowsSiteCivilZone => ProvisionedZone { zone: site.civil_time_zone }
     HostRunsCoordinatedUniversalTime => ProvisionedZone { zone: zone_etc_utc }
@@ -86,7 +108,7 @@ fn provisioned_time_zone(site: PhysicalSite, policy: HostZonePolicy) -> Provisio
 // The LOCALE has no such ambiguity and is therefore derived without a policy axis: every host
 // observed at this site runs an en-US userland, and nothing in the measurement suggests a second
 // arm exists. Adding one when a site needs it is a row, not a redesign.
-fn provisioned_locale(site: PhysicalSite) -> PosixLocaleId {
+fn provisioned_locale(site: SiteCivilTimeFacts) -> PosixLocaleId {
   site.civil_locale
 }
 
@@ -101,25 +123,52 @@ data fleet_observed_tzdata_release: TzdataRelease = tzdata_2026c
 // The operator's requirement is explicit -- one row moves and the proper convergence changes
 // re-derive. So nothing below names a zone: each host carries only what was OBSERVED on it, and
 // whether that host is converged is computed against provisioned_time_zone(site, policy). Change
-// site_us_east_operator_premises.civil_time_zone and every verdict here moves with it, with no
+// operator_premises_civil_time.civil_time_zone and every verdict here moves with it, with no
 // second edit anywhere. That is the property that makes this a single authority rather than the
 // dual representation the operator identified.
 
-type HostIdentity = NonEmptyStr where brand("HostIdentity")
-
+// AN OBSERVATION IS KEYED ON THE SEMANTIC HOST, NOT ON THE LABEL IT WAS REACHED THROUGH, and the
+// first revision got this wrong in the same way an earlier revision got the account username
+// wrong. It wrote "spark-a3ee" and "spark-3bd5" as HostIdentity. Those are RESERVATION LABELS
+// (gunbc.spark.dgx_procurement reservation_label); the fleet identities are operator_host_srv5 and
+// operator_host_srv6, and the allocation binding them is already modeled. Minting an identity from
+// a presentation label is the same class as inferring a principal from a host-local username: the
+// label is one realization of the host, never the host.
+//
+// The reach path is RETAINED rather than discarded, because an observation nobody can re-take is
+// weaker evidence than one that names how it was obtained. It is a separate field precisely so it
+// can never be mistaken for identity again.
 type ObservedHostZone {
   host: HostIdentity
+  observed_through: NonEmptyStr
   observed_zone: IanaTimeZoneId
 }
 
-// Read 2026-09-02 over ssh from the four reachable hosts at this site. These are OBSERVATIONS,
-// so they record what each machine reports and never what it ought to report -- the ought is the
-// derivation's job, and fusing them would rebuild the fork.
+// Read 2026-09-02 over ssh. These are OBSERVATIONS, so they record what each machine reports and
+// never what it ought to report -- the ought is the derivation's job, and fusing them would
+// rebuild the fork.
 data observed_host_zones: List<ObservedHostZone> = [
-  ObservedHostZone { host: "srv4" as HostIdentity, observed_zone: zone_etc_utc },
-  ObservedHostZone { host: "spark-a3ee" as HostIdentity, observed_zone: zone_etc_utc },
-  ObservedHostZone { host: "spark-3bd5" as HostIdentity, observed_zone: zone_america_new_york },
-  ObservedHostZone { host: "pi1" as HostIdentity, observed_zone: zone_america_new_york },
+  ObservedHostZone { host: operator_host_srv4, observed_through: "srv4" as NonEmptyStr, observed_zone: zone_etc_utc },
+  ObservedHostZone { host: operator_host_srv5, observed_through: "spark-a3ee" as NonEmptyStr, observed_zone: zone_etc_utc },
+  ObservedHostZone { host: operator_host_srv6, observed_through: "spark-3bd5" as NonEmptyStr, observed_zone: zone_america_new_york },
+]
+
+// THE PI IS MEASURED AND DELIBERATELY NOT GIVEN AN IDENTITY HERE. A reading was taken over "pi1"
+// and it is real data, but no canonical HostIdentity for that machine exists anywhere in the tree.
+// The tempting move -- spell "pi1" as HostIdentity because this module is the first consumer that
+// needs it -- would make fleet_site_locale an incidental second authority for host naming, which
+// is exactly the fork this module was written to remove. Allocating that identity in
+// gunbc.fleet_intent_network is a PREDECESSOR, not this module's business.
+//
+// The observation is kept rather than dropped: discarding a measurement to make a list typecheck
+// would lose evidence, and an empty gap is indistinguishable from a gap nobody looked for.
+type UnallocatedZoneObservation {
+  observed_through: NonEmptyStr
+  observed_zone: IanaTimeZoneId
+}
+
+data zone_observations_pending_host_allocation: List<UnallocatedZoneObservation> = [
+  UnallocatedZoneObservation { observed_through: "pi1" as NonEmptyStr, observed_zone: zone_america_new_york },
 ]
 
 type HostZoneConvergence
@@ -129,7 +178,7 @@ type HostZoneConvergence
 
 fn host_zone_convergence(
   observed: ObservedHostZone,
-  site: PhysicalSite,
+  site: SiteCivilTimeFacts,
   policy: HostZonePolicy,
 ) -> HostZoneConvergence {
   match provisioned_time_zone(site: site, policy: policy) {
@@ -143,22 +192,50 @@ fn host_zone_convergence(
   }
 }
 
-// The count of hosts needing a change under the current site and ruling. It is a DERIVED
-// number: it is not a debt list anyone maintains, and it drops to zero by converging hosts or
-// changes wholesale when the site moves.
-// The fold matches the convergence coproduct directly rather than routing through an
-// is_converged Bool. Re-exposing a three-arm discriminant as two-valued loses the arm that
-// matters most here -- HostZoneUndecidable is not "not converged", it is "no ruling exists to
-// decide" -- and a caller handed a Bool cannot tell those apart. Counting them together is
-// deliberate and is stated at the arm, not hidden behind a predicate's name.
-fn divergent_host_count(site: PhysicalSite, policy: HostZonePolicy) -> Int {
+// THE THREE DISPOSITIONS ARE COUNTED APART, and the previous revision collapsed two of them.
+// It folded HostZoneUndecidable into a function called divergent_host_count and defended the
+// choice in a comment -- which is precisely the state-space conflation this design forbids, since
+// "this host runs the wrong zone" and "no ruling exists to decide what it should run" have
+// different remedies. A single number cannot carry that, and naming the number after one of the
+// two arms hides which one you are looking at.
+type HostZoneCensus {
+  converged: Int
+  divergent: Int
+  undecidable: Int
+}
+
+fn host_zone_census(site: SiteCivilTimeFacts, policy: HostZonePolicy) -> HostZoneCensus {
   fold(
     observed_host_zones,
-    init: 0,
-    f: (n, h) => match host_zone_convergence(observed: h, site: site, policy: policy) {
-      HostZoneConverged => n
-      HostZoneDivergent { observed: _, desired: _ } => n + 1
-      HostZoneUndecidable => n + 1
+    init: HostZoneCensus { converged: 0, divergent: 0, undecidable: 0 },
+    f: (acc, h) => match host_zone_convergence(observed: h, site: site, policy: policy) {
+      HostZoneConverged =>
+        HostZoneCensus { converged: acc.converged + 1, divergent: acc.divergent, undecidable: acc.undecidable }
+      HostZoneDivergent { observed: _, desired: _ } =>
+        HostZoneCensus { converged: acc.converged, divergent: acc.divergent + 1, undecidable: acc.undecidable }
+      HostZoneUndecidable =>
+        HostZoneCensus { converged: acc.converged, divergent: acc.divergent, undecidable: acc.undecidable + 1 }
     }
+  )
+}
+
+// The disposition of ONE named host, which is what a witness needs to assert that relocation
+// INVERTS a verdict rather than merely preserving a count. A cardinality-preserving swap is
+// invisible to a total, so the identity-grain reader is the load-bearing one and the census is
+// the population check beside it.
+fn host_zone_disposition_of(
+  host: HostIdentity,
+  site: SiteCivilTimeFacts,
+  policy: HostZonePolicy,
+) -> HostZoneConvergence {
+  fold(
+    observed_host_zones,
+    init: HostZoneUndecidable,
+    f: (acc, h) =>
+      if h.host == host {
+        host_zone_convergence(observed: h, site: site, policy: policy)
+      } else {
+        acc
+      }
   )
 }
