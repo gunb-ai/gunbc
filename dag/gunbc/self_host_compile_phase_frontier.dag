@@ -968,6 +968,10 @@ fn complete_open_unadmitted_series(open: List<OpenUnadmittedRegression>) -> Phas
   }
 }
 
+// The two flattened identity lists are bound once per transition rather than recomputed inside
+// the admission predicate, which the filter runs once per added identity: both boards are fixed
+// for the whole transition, so a per-element flatten would be authored duplication (DESIGN §2)
+// rather than an unavoidable recurrence a cache could discharge.
 fn apply_regression_transition(
   previous: CompilePhaseFrontierReceipt,
   current: CompilePhaseFrontierReceipt,
@@ -983,8 +987,6 @@ fn apply_regression_transition(
     RegressionComparisonAvailable { board: comparable_previous } => {
       let added = board_added_identities(previous: comparable_previous, current: current.board)
       let removed = board_removed_identities(previous: comparable_previous, current: current.board)
-      // Bound HERE rather than inside the filter below: both are constant across the whole
-      // transition, and the filter runs the predicate once per added identity.
       let previous_identities = board_all_identities(board: comparable_previous)
       let current_identities = board_all_identities(board: current.board)
       let admitted = added |> filter(identity => newly_exposed_identity_admitted(
