@@ -2,6 +2,7 @@ module gunbc.spark.serving_model_admission
 
 import std.types { String, Bool, List, Int, NonEmptyStr, Timestamp }
 import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
 import extdeps.ollama.binary_release { ollama_required_release }
 import gunbc.ollama_model_resolution {
@@ -63,7 +64,7 @@ data spark_serving_local_model_attestations: List<SparkServingLocalModelAttestat
       tag: "no-h3-stop" as NonEmptyStr,
     },
     runtime_version: "0.32.9" as NonEmptyStr,
-    hosts: ["srv5", "srv6"],
+    hosts: [operator_host_srv5, operator_host_srv6],
     observed_at: "2026-09-02T17:00Z",
     instrument: "gunbc.spark.serving_observe spark_serving_observe_ci_wet" as NonEmptyStr,
   },
