@@ -3,7 +3,16 @@ module test.claim.fleet.fleet_site_locale_witness
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york, locale_en_us }
+import gunbc.fleet.fleet_site_locale { PhysicalSite, SiteIdentity }
+import std.types { Int }
 import gunbc.fleet.fleet_site_locale {
+  HostZoneConverged,
+  HostZoneDivergent,
+  HostZoneUndecidable,
+  observed_host_zones,
+  host_zone_convergence,
+  host_is_converged,
+  divergent_host_count,
   HostFollowsSiteCivilZone,
   HostRunsCoordinatedUniversalTime,
   HostZonePolicyUnruled,
@@ -64,15 +73,64 @@ test fn w_the_two_settled_policies_disagree() -> Bool {
   }
 }
 
-// The fleet's CURRENT standing is unruled, and that is a fact about the world this repository
-// must not quietly change. If someone rules the policy, this witness goes red and forces them to
-// state it here rather than leaving the ruling implicit in a workflow.
-test fn w_fleet_policy_is_currently_unruled() -> Bool {
+// The standing ruling. This witness previously asserted UNRULED and went red the moment the
+// operator ruled -- which is exactly what it was built to do: force the ruling to be stated
+// here rather than left implicit in whichever workflow happened to need a zone first.
+test fn w_fleet_policy_follows_the_site_civil_zone() -> Bool {
   match fleet_host_zone_policy {
-    HostZonePolicyUnruled => true
-    HostFollowsSiteCivilZone => false
+    HostFollowsSiteCivilZone => true
     HostRunsCoordinatedUniversalTime => false
+    HostZonePolicyUnruled => false
   }
+}
+
+// ---- convergence, and the property the operator actually asked for -----------------------
+//
+// "one row to re-derive the proper convergence changes". These witnesses defend that: nothing
+// below names a zone for a host, so moving the site's civil zone moves every verdict.
+
+test fn w_utc_hosts_are_divergent_under_the_ruling() -> Bool {
+  fold(observed_host_zones, init: 0,
+    f: (n, h) => if host_is_converged(observed: h, site: site_us_east_operator_premises, policy: fleet_host_zone_policy) { n } else { n + 1 }
+  ) == 2
+    && divergent_host_count(site: site_us_east_operator_premises, policy: fleet_host_zone_policy) == 2
+}
+
+// THE RELOCATION PROPERTY, asserted rather than described. Under a site whose civil zone is UTC
+// the SAME observations invert: the two hosts that diverge today converge, and vice versa. This
+// is what "one row re-derives" means, and it fails if anyone pins a host's desired zone.
+test fn w_moving_the_site_inverts_every_verdict() -> Bool {
+  divergent_host_count(
+    site: PhysicalSite {
+      identity: "relocated-probe" as SiteIdentity,
+      civil_time_zone: zone_etc_utc,
+      civil_locale: locale_en_us,
+    },
+    policy: fleet_host_zone_policy,
+  ) == 2
+    && divergent_host_count(site: site_us_east_operator_premises, policy: fleet_host_zone_policy) == 2
+}
+
+// A divergent host must report BOTH sides, because "wrong" without the pair cannot drive a
+// convergence action -- an operator needs to know what it is and what it should be.
+test fn w_divergence_names_observed_and_desired() -> Bool {
+  fold(observed_host_zones, init: true,
+    f: (acc, h) => acc && match host_zone_convergence(observed: h, site: site_us_east_operator_premises, policy: fleet_host_zone_policy) {
+      HostZoneConverged => true
+      HostZoneDivergent { observed: o, desired: d } => o != d
+      HostZoneUndecidable => false
+    })
+}
+
+// An unruled policy must make convergence UNDECIDABLE rather than reporting everything converged
+// or everything divergent -- the absorbing arm this design forbids.
+test fn w_unruled_policy_makes_convergence_undecidable() -> Bool {
+  fold(observed_host_zones, init: true,
+    f: (acc, h) => acc && match host_zone_convergence(observed: h, site: site_us_east_operator_premises, policy: HostZonePolicyUnruled) {
+      HostZoneUndecidable => true
+      HostZoneConverged => false
+      HostZoneDivergent { observed: _, desired: _ } => false
+    })
 }
 
 // The locale has no policy axis because the measurement found no second arm; it derives directly.

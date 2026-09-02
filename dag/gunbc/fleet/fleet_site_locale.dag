@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_site_locale
 
-import std.types { NonEmptyStr, Bool }
+import std.types { NonEmptyStr, Bool, List, Int }
 import extdeps.iana.time_zone_database {
   IanaTimeZoneId,
   PosixLocaleId,
@@ -49,15 +49,24 @@ data site_us_east_operator_premises: PhysicalSite = PhysicalSite {
 // is a finding this repository has earned -- nobody has ruled which is intended.
 //
 // So the policy is its own axis with an explicit UNDECIDED arm. HostZonePolicyUnruled is
-// ⊥-as-ignorance and is kept distinct from both answers (DESIGN §5): it is what the fleet's
-// state actually supports today, and a consumer that needs a zone must refuse against it rather
-// than pick the arm that happens to be convenient.
+// ⊥-as-ignorance and is kept distinct from both answers (DESIGN §5): a consumer that needs a
+// zone must refuse against it rather than pick the arm that happens to be convenient.
 type HostZonePolicy
   = HostFollowsSiteCivilZone
   | HostRunsCoordinatedUniversalTime
   | HostZonePolicyUnruled
 
-data fleet_host_zone_policy: HostZonePolicy = HostZonePolicyUnruled
+// RULED 2026-09-02 by the operator, who is the authority on where the fleet physically sits:
+// the site drives every other decision, and the standing requirement is that when the site
+// moves, THAT ONE ROW re-derives the convergence changes rather than a human editing per-host
+// settings. HostFollowsSiteCivilZone is the arm that makes the site load-bearing; the UTC arm
+// would have pinned every host to a constant and made the site row decorative.
+//
+// The ruling is what turns the fleet's measured disagreement from an open question into a
+// CONVERGENCE OBLIGATION: hosts observed at Etc/UTC are now divergent from the derived zone,
+// and that divergence is computed below rather than listed, so relocating the site
+// re-derives it.
+data fleet_host_zone_policy: HostZonePolicy = HostFollowsSiteCivilZone
 
 type ProvisionedTimeZone
   = ProvisionedZone { zone: IanaTimeZoneId }
@@ -92,3 +101,75 @@ fn provisioned_locale(site: PhysicalSite) -> PosixLocaleId {
 // The release the zone identifiers were read against. A zone identifier without the database
 // release it came from is a name with no version behind it, and jurisdictions do rename zones.
 data fleet_observed_tzdata_release: TzdataRelease = tzdata_2026c
+
+
+// ------------------------------------------------------------------------------------------
+// CONVERGENCE: what the ruling obligates, derived rather than listed.
+//
+// The operator's requirement is explicit -- one row moves and the proper convergence changes
+// re-derive. So nothing below names a zone: each host carries only what was OBSERVED on it, and
+// whether that host is converged is computed against provisioned_time_zone(site, policy). Change
+// site_us_east_operator_premises.civil_time_zone and every verdict here moves with it, with no
+// second edit anywhere. That is the property that makes this a single authority rather than the
+// dual representation the operator identified.
+
+type HostIdentity = NonEmptyStr where brand("HostIdentity")
+
+type ObservedHostZone {
+  host: HostIdentity
+  observed_zone: IanaTimeZoneId
+}
+
+// Read 2026-09-02 over ssh from the four reachable hosts at this site. These are OBSERVATIONS,
+// so they record what each machine reports and never what it ought to report -- the ought is the
+// derivation's job, and fusing them would rebuild the fork.
+data observed_host_zones: List<ObservedHostZone> = [
+  ObservedHostZone { host: "srv4" as HostIdentity, observed_zone: zone_etc_utc },
+  ObservedHostZone { host: "spark-a3ee" as HostIdentity, observed_zone: zone_etc_utc },
+  ObservedHostZone { host: "spark-3bd5" as HostIdentity, observed_zone: zone_america_new_york },
+  ObservedHostZone { host: "pi1" as HostIdentity, observed_zone: zone_america_new_york },
+]
+
+type HostZoneConvergence
+  = HostZoneConverged
+  | HostZoneDivergent { observed: IanaTimeZoneId, desired: IanaTimeZoneId }
+  | HostZoneUndecidable
+
+fn host_zone_convergence(
+  observed: ObservedHostZone,
+  site: PhysicalSite,
+  policy: HostZonePolicy,
+) -> HostZoneConvergence {
+  match provisioned_time_zone(site: site, policy: policy) {
+    ZoneRefusedPolicyUnruled => HostZoneUndecidable
+    ProvisionedZone { zone: desired } =>
+      if observed.observed_zone == desired {
+        HostZoneConverged
+      } else {
+        HostZoneDivergent { observed: observed.observed_zone, desired: desired }
+      }
+  }
+}
+
+fn host_is_converged(
+  observed: ObservedHostZone,
+  site: PhysicalSite,
+  policy: HostZonePolicy,
+) -> Bool {
+  match host_zone_convergence(observed: observed, site: site, policy: policy) {
+    HostZoneConverged => true
+    HostZoneDivergent { observed: _, desired: _ } => false
+    HostZoneUndecidable => false
+  }
+}
+
+// The count of hosts needing a change under the current site and ruling. It is a DERIVED
+// number: it is not a debt list anyone maintains, and it drops to zero by converging hosts or
+// changes wholesale when the site moves.
+fn divergent_host_count(site: PhysicalSite, policy: HostZonePolicy) -> Int {
+  fold(
+    observed_host_zones,
+    init: 0,
+    f: (n, h) => if host_is_converged(observed: h, site: site, policy: policy) { n } else { n + 1 }
+  )
+}
