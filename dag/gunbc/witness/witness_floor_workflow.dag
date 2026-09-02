@@ -1954,6 +1954,15 @@ fn heal_author_commit_bundle_step() -> Step {
   }
 }
 
+// THE REGEN STEP IS capability_neutral, AND THE FLOOR'S RUN STEP IS NOT THE PRECEDENT IT LOOKS
+// LIKE. That step declares RustfmtCapability because `claim_executor --required-ci` carries a
+// REGEN PHASE that shells to rustfmt to normalize the emitted stage0 mirror. This job's regen step
+// runs a different producer: `main_wet` folds `committed_generated_artifacts()` through
+// `artifact_generate` and writes the bytes, and nothing on that path spawns a formatter -- the
+// emitters that could care author `#[rustfmt::skip]` into their own output instead. Declaring
+// rustfmt here by analogy would be the false declaration this file already caught once on the
+// floor's run step, in the opposite direction: claiming a consumer that does not exist rather than
+// omitting one that does. The toolchain provider is still consumed, by the build step above it.
 fn heal_generated_artifacts_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -1985,15 +1994,6 @@ fn heal_generated_artifacts_bound_steps() -> List<WitnessFloorBoundStep> {
     },
     WitnessFloorBoundStep {
       step: heal_regen_step(),
-      // NEUTRAL, AND THE FLOOR'S RUN STEP IS NOT THE PRECEDENT IT LOOKS LIKE. That step declares
-      // RustfmtCapability because `claim_executor --required-ci` carries a REGEN PHASE that shells
-      // to rustfmt to normalize the emitted stage0 mirror. This step runs a different producer:
-      // `main_wet` folds `committed_generated_artifacts()` through `artifact_generate` and writes
-      // the bytes, and nothing on that path spawns a formatter -- the emitters that could care
-      // author `#[rustfmt::skip]` into their output instead. Declaring rustfmt here by analogy
-      // would be the false declaration this file already caught once on the floor's run step, in
-      // the opposite direction: claiming a consumer that does not exist rather than omitting one
-      // that does. The toolchain provider is still consumed, by the build step above it.
       role: capability_neutral,
       step_name: "Regenerate every committed generated artifact",
     },
