@@ -31,10 +31,8 @@ import gunbc.discovery_census {
 // `DeclinedDiscoveryExcluded`: both are decided before a module reaches the prepared subject,
 // from facts a module NAME cannot carry. So their arms here are a claim about that
 // unreachability, not an omission padded out to satisfy exhaustiveness.
-// `PlannedAsChangedWitness` IS DIFFERENT: it remains a planned disposition and is reachable for
-// the witness changed by this patch. Assertions accepting `Planned` therefore accept it too;
-// assertions selecting a particular decline answer false. The required floor executed this
-// distinction: treating all ten added arms as false made the changed planned witness fail.
+// `PlannedAsChangedWitness` is also unreachable here: selection wraps the ordinary disposition
+// later, after this function has answered. Its arms therefore answer false at every direct call.
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
@@ -255,7 +253,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
-    PlannedAsChangedWitness => true
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -271,7 +269,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
-    PlannedAsChangedWitness => true
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -357,22 +355,23 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL BESIDE IT: the same module, an identity the roster does not hold, is
-// planned. Without this the row above would pass under a disposition that declined the whole
-// module, which is exactly the module-grain reading the fourth arm exists to refuse.
-test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
+// THE MODULE IS OUTSIDE THE REQUIRED GATE, independently of its one cost-rostered identity.
+// The rostered row above declines for cost because cost precedes the gate. An unrostered sibling
+// in the same module reaches the next decision and declines outside the gate; calling it planned
+// was a stale assertion that ordinary floor selection never executed, until this file changed.
+test fn w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline() -> Bool {
   match required_floor_site_disposition(
     module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
   ) {
-    Planned => true
-    DeclinedOutsideRequiredGate => false
+    Planned => false
+    DeclinedOutsideRequiredGate => true
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    PlannedAsChangedWitness => true
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -440,7 +439,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
-      PlannedAsChangedWitness => true
+      PlannedAsChangedWitness => false
     })
     && all(split.declined, r => match r.disposition {
       DeclinedOutsideRequiredGate => true
