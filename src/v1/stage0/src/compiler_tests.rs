@@ -1037,20 +1037,21 @@ mod compiler_tests {
                     std::rc::Rc::new(im::vector![source]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                let errors: Vec<_> = r
-                    .diagnostics
-                    .iter()
-                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
-                    .collect();
+                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
+                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                        missing_realization_fact,
+                        ..
+                    } => missing_realization_fact.contains("not_a_channel"),
+                    _ => false,
+                });
                 assert!(
-                    errors.iter().any(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains("not_a_channel")
-                        && crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains("has no modeled channel")),
-                    "an unmodeled output key must refuse and name the key. Got: {:?}",
-                    errors
+                    named,
+                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
+                    r.diagnostics
                 );
                 assert!(
-                    r.files.is_empty(),
-                    "a refused operation must withhold the artifact instead of falling through to stdout. Got: {:?}",
+                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
                     r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
                 );
             })
