@@ -37885,6 +37885,26 @@ pub enum RequiredFloorDisposition {
     /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
     /// this is the identity grain the population join is keyed on.
     DeclinedDiscoveryExcluded { matched_substring: String },
+    /// Selected by the changed-witness sublane and NOT PRESENT IN THE DECLARED POPULATION at all,
+    /// because the module that declares it is outside the run's discovery roots.
+    ///
+    /// TWO RANGES OVER ONE POPULATION, which is what this variant exists to make sayable.
+    /// `changed_witness_set` is derived from the run's git diff and is ROOT-AGNOSTIC; the declared
+    /// population is enumerated from the discovered index, which is scoped to the run's
+    /// `--source-root`s. The selector's range is therefore strictly wider than the enumerator's,
+    /// so a witness homed outside those roots is SELECTABLE AND UNDECLARABLE by construction, and
+    /// every PR touching one used to refuse with `ChangedWitnessSublaneJoinInexact` naming
+    /// identities no in-diff edit could ever satisfy.
+    ///
+    /// It is a DECLINE and not a filter, deliberately. Dropping the selection before the join
+    /// would have greened the floor by making the over-selection invisible — the absorbing arm,
+    /// where the selector keeps over-selecting and nobody ever learns. This row is counted,
+    /// named, and carries the module, so the mismatch is visible in the disposition receipt.
+    ///
+    /// THIS DOES NOT RETIRE THE MISMATCH. The repair is that selection and disposition consume
+    /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
+    /// denominators have been reconciled.
+    DeclinedChangedWitnessOutsideDiscovery { module_path: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -38626,6 +38646,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_outside_gate = 0usize;
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
+    let mut declined_changed_witness_outside_discovery = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -38638,13 +38659,17 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
                 declined_discovery_excluded += 1
             }
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                declined_changed_witness_outside_discovery += 1
+            }
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
-         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
+         \tdeclined_changed_witness_outside_discovery={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -38653,7 +38678,8 @@ fn write_required_floor_disposition_tsv(
         declined_outside_gate,
         declined_gate_closure,
         declined_discovery_excluded,
-        declined_cost_debt
+        declined_cost_debt,
+        declined_changed_witness_outside_discovery
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")

@@ -1110,14 +1110,16 @@ fn second_or_empty(items: List<String>) -> String {
 fn render_coercion_assertion_rust(a: CoercionAssertion) -> String {
   match a {
     CheckpointAssertion { target: t, dag_name: name, expected_type: expected } =>
-      concat("        assert_eq!(coerce_primitive_type(", render_target_rust_enum(target: t),
-        ", \"", name, "\".into(), \"\".into()), \"", expected, "\");\n")
+      concat("        assert_eq!(coerce_primitive_type(type_realization_decision(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into(), std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)), \"",
+        name, "\".into()), \"", expected, "\");\n")
     ContainerAssertion { target: t, container_name: name, expected_template: expected } =>
       concat("        assert_eq!(coerce_container_template(", render_target_rust_enum(target: t),
         ", \"", name, "\".into()), Some(\"", expected, "\".to_string()));\n")
     CopyAssertion { target: t, dag_name: name, expected_copy: expected } =>
-      concat("        assert_eq!(is_copy(", render_target_rust_enum(target: t),
-        ", \"", name, "\".into(), \"\".into()), Some(", if expected { "true" } else { "false" }, "));\n")
+      concat("        assert_eq!(is_copy(type_realization_decision(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into(), std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent))), Some(",
+        if expected { "true" } else { "false" }, "));\n")
     TemplateAssertion { template: tmpl, args: arg_list, expected: expected } =>
       if arg_list |> count == 1 {
         let arg0 = first_or_empty(items: arg_list)
