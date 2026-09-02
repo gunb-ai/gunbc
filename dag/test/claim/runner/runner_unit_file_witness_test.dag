@@ -3,7 +3,30 @@ module test.claim.runner_unit_file_witness_test
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
-import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess }
+import extdeps.systemd.unit_file {
+  ExitTypeMain,
+  KillModeProcess,
+  SystemdUnitFile,
+  ServiceUnitFile,
+  Description,
+  After,
+  Wants,
+  StartLimitIntervalSec,
+  ServiceType,
+  ServiceUser,
+  WorkingDirectory,
+  ExecStart,
+  Restart,
+  RestartSec,
+  ServiceExitType,
+  ServiceKillMode,
+  TimeoutStopSec,
+  Installable,
+  WantedBy,
+  serialize_systemd_unit_file,
+}
+import extdeps.languages.json.emit { json_string, json_array, serialize_json }
+import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -32,6 +55,10 @@ import gunbc.runner_unit_file {
   gunbc_runner_unit_file,
   runner_unit_text,
   runner_unit_system_path,
+  runner_unit_environment,
+  runner_unit_quoted_environment,
+  runner_unit_app_environment,
+  runner_slot_instance_directory,
 }
 
 // Every claim here is a function of declared substrate rows -- a render and its serialization -- so
@@ -235,38 +262,7 @@ fn invocation_local_text() -> String {
     RunnerUnitText { text: t } => t
     RunnerUnitTextRefused { reason: _ } => ""
   }
-}
-
-// EVERY FIELD OF THE ARM REACHES THE FOUR PLACES THAT NAME IT. Four separate assertions rather than
-// one, because a renderer that dropped the daemon service from the ordering while keeping it in the
-// environment would otherwise still pass.
-test fn w_the_realization_payload_reaches_every_directive_that_names_it() -> Bool {
-  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/fixture/other.fifo\n")
-    && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/fixture/other.fifo\n")
-    && string_contains(s: text, pattern: "\nAfter=fixture-other.service\n")
-    && string_contains(s: text, pattern: "\nWants=fixture-other.service\n")
-}
-
-// THE EXACT UNIT-SECTION SEQUENCE FOR BOTH ARMS, because the directive list was restructured to
-// interleave the optional pair and substring witnesses cannot see order, duplication, or a stray
-// blank line. This is the shape oracle the restructure owes.
-test fn w_the_live_arm_unit_section_is_exactly_ordered() -> Bool {
-  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(
-    s: text,
-    pattern: "\nAfter=network-online.target\nAfter=fixture-other.service\nWants=network-online.target\nWants=fixture-other.service\nStartLimitIntervalSec=0\n",
-  )
-}
-
-test fn w_the_cutover_arm_unit_section_is_exactly_ordered() -> Bool {
-  string_contains(
-    s: invocation_local_text(),
-    pattern: "\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n",
-  )
-}
-
-test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
+}test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
   match borrower_death_capacity_disposition(realization: live_realization()) {
     CapacityLostUntilPoolRestart => true
     CapacityPreservedByInvocationLifetime => false
@@ -301,17 +297,90 @@ test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool {
 }
 
 
-// ── The complete [Unit] section, pinned header to header ────────────────────────────────────────
+// ── Complete-file equality against an independently enumerated parent shape ────────────────────
 
-// A CONTIGUOUS FRAGMENT IS NOT A COMPLETE SECTION. The two witnesses above assert that an expected
-// run of directives occurs, which proves order WITHIN that run and nothing about what surrounds it:
-// a duplicated After=, an extra Wants=, or a stray blank line outside the fragment leaves them
-// green. Since sections are emitted header-first and separated by one empty line, pinning from
-// "[Unit]" through to "[Service]" is the whole section -- nothing can hide inside it.
+// THE TRANSITION ORACLE FOR THE RESTRUCTURE, anchored at parent d61f8c9bc4d341ce0576799e97aac1bbf055ce32.
 //
-// AND IT RENDERS THE PRODUCTION VALUES, beside the distinct-value fixture rather than instead of it.
-// They answer different questions: the fixture proves the renderer consumes its argument's payload,
-// this proves the live arm's serialization is exactly what the fleet's own realization produces.
+// Every earlier witness here was string_contains: contiguous fragments, then the whole [Unit]
+// section header-to-header. Each is stronger than the last and none of them is the byte claim the
+// restructure owes, because a substring says nothing about what surrounds it -- a duplicated
+// directive in [Service], an extra blank line, a dropped Install directive all leave them green.
+// The proposition this witness carries is narrower and harder: interleaving the optional After and
+// Wants pair changed NO byte of the live arm.
+//
+// The expected side enumerates the complete file itself. It does not call runner_unit_file,
+// runner_unit_jobserver_after, runner_unit_jobserver_wants or runner_unit_jobserver_environment --
+// the four places the restructure moved -- because an oracle built from the code under test agrees
+// with it by construction and would make the same mistake twice. It does reuse the untouched
+// runner_unit_app_environment and the shared serializer, which are not what changed.
+//
+// It is a TRANSITION oracle, not a claim that this unit may never intentionally change. When the
+// unit legitimately moves, this expected shape moves with it and the parent anchor above becomes the
+// previous transition rather than a permanent baseline.
+fn expected_live_unit_file(fifo_path: String, daemon_service: NonEmptyStr) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "Ephemeral GitHub Actions Runner (%i)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      After { target: daemon_service },
+      Wants { target: "network-online.target" as NonEmptyStr },
+      Wants { target: daemon_service },
+      StartLimitIntervalSec { duration: "0" as NonEmptyStr },
+    ],
+    service: concat(
+      [
+        ServiceType { mode: "simple" as NonEmptyStr },
+        ServiceUser { name: srv1_runner_host_deploy.runner_user },
+        WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
+      ],
+      concat(
+        runner_unit_app_environment(app: srv1_runner_host_deploy.app),
+        [
+          runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
+          runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
+          runner_unit_quoted_environment(name: "LABELS_JSON", value: expected_labels_json()),
+          runner_unit_environment(name: "CTRL_JOBSERVER_FIFO", value: fifo_path),
+          runner_unit_environment(
+            name: "MAKEFLAGS",
+            value: join(["--jobserver-auth=fifo:", fifo_path], ""),
+          ),
+          ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
+          Restart { policy: "always" as NonEmptyStr },
+          RestartSec { duration: "5" as NonEmptyStr },
+          ServiceExitType { exit_type: gunbc_runner_lifecycle_intent.exit_type },
+          ServiceKillMode { mode: gunbc_runner_lifecycle_intent.kill_mode },
+          TimeoutStopSec { duration: "5min" as NonEmptyStr },
+        ],
+      ),
+    ),
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+fn expected_labels_json() -> String {
+  serialize_json(value: json_array(items: [
+    json_string(value: "self-hosted"),
+    json_string(value: "linux"),
+    json_string(value: "arm64"),
+    json_string(value: "srv1"),
+  ]))
+}
+
+// REFUSAL MAKES THE WITNESS FALSE rather than comparing two empty strings. rendered_text collapses a
+// refusal to "", which is fine for a substring probe and fatal for an equality oracle: a renderer
+// that refused everything would satisfy "" == "" if the expected side collapsed the same way.
+fn rendered_or_refused(realization: CompileParallelismRealization) -> String {
+  match runner_unit_file(
+    deploy: srv1_runner_host_deploy,
+    spec: srv1_spec(),
+    permit_scope: realization,
+    intent: gunbc_runner_lifecycle_intent,
+  ) {
+    RunnerUnitFileRendered { file: f } => serialize_systemd_unit_file(file: f)
+    RunnerUnitFileRefused { reason: r } => join(["REFUSED: ", r as String], "")
+  }
+}
+
 fn production_realization() -> CompileParallelismRealization {
   BorrowerHeldCooperativeHostFifo {
     fifo_path: gunbc_runner_jobserver_default_fifo as NonEmptyStr,
@@ -319,30 +388,71 @@ fn production_realization() -> CompileParallelismRealization {
   }
 }
 
-fn production_unit_text() -> String {
-  match runner_unit_text(
-    rendering: runner_unit_file(
-      deploy: srv1_runner_host_deploy,
-      spec: srv1_spec(),
-      permit_scope: production_realization(),
-      intent: gunbc_runner_lifecycle_intent,
+test fn w_the_production_live_arm_is_byte_identical_to_the_parent_shape() -> Bool {
+  rendered_or_refused(realization: production_realization())
+    == serialize_systemd_unit_file(
+      file: expected_live_unit_file(
+        fifo_path: gunbc_runner_jobserver_default_fifo,
+        daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+      ),
+    )
+}
+
+// THE SAME EXPECTED SHAPE, EXECUTED ON DISTINCT VALUES. A renderer that ignored its argument and
+// hardcoded today's production FIFO and service would pass the witness above perfectly; the expected
+// object here places the fixture path twice and the fixture service twice, so a hardcoded or dropped
+// occurrence fails equality. One independently authored shape, two orthogonal propositions.
+test fn w_the_live_arm_renders_its_argument_rather_than_the_production_constants() -> Bool {
+  rendered_or_refused(realization: live_realization())
+    == serialize_systemd_unit_file(
+      file: expected_live_unit_file(
+        fifo_path: "/fixture/other.fifo",
+        daemon_service: "fixture-other.service" as NonEmptyStr,
+      ),
+    )
+}
+
+
+// AND THE CUTOVER ARM HAS EXACTLY ITS INTENDED COMPLETE SHAPE -- a separate expected constructor
+// rather than an expected-side match over the realization, so the oracle does not reproduce the
+// candidate's own arm dispatch. The daemon ordering is absent here because the service the cutover
+// deletes cannot be ordered against, and CARGO_BUILD_JOBS replaces the pool advertisement.
+fn expected_invocation_local_unit_file(jobs: String) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "Ephemeral GitHub Actions Runner (%i)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+      StartLimitIntervalSec { duration: "0" as NonEmptyStr },
+    ],
+    service: concat(
+      [
+        ServiceType { mode: "simple" as NonEmptyStr },
+        ServiceUser { name: srv1_runner_host_deploy.runner_user },
+        WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
+      ],
+      concat(
+        runner_unit_app_environment(app: srv1_runner_host_deploy.app),
+        [
+          runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
+          runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
+          runner_unit_quoted_environment(name: "LABELS_JSON", value: expected_labels_json()),
+          runner_unit_environment(name: "CARGO_BUILD_JOBS", value: jobs),
+          ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
+          Restart { policy: "always" as NonEmptyStr },
+          RestartSec { duration: "5" as NonEmptyStr },
+          ServiceExitType { exit_type: gunbc_runner_lifecycle_intent.exit_type },
+          ServiceKillMode { mode: gunbc_runner_lifecycle_intent.kill_mode },
+          TimeoutStopSec { duration: "5min" as NonEmptyStr },
+        ],
+      ),
     ),
-  ) {
-    RunnerUnitText { text: t } => t
-    RunnerUnitTextRefused { reason: _ } => ""
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
 
-test fn w_the_production_arm_unit_section_is_complete_and_exact() -> Bool {
-  string_contains(
-    s: production_unit_text(),
-    pattern: "[Unit]\nDescription=Ephemeral GitHub Actions Runner (%i)\nAfter=network-online.target\nAfter=ctrl-jobserver.service\nWants=network-online.target\nWants=ctrl-jobserver.service\nStartLimitIntervalSec=0\n\n[Service]",
-  )
-}
-
-test fn w_the_cutover_arm_unit_section_is_complete_and_exact() -> Bool {
-  string_contains(
-    s: invocation_local_text(),
-    pattern: "[Unit]\nDescription=Ephemeral GitHub Actions Runner (%i)\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n\n[Service]",
-  )
+test fn w_the_cutover_arm_has_exactly_its_intended_complete_shape() -> Bool {
+  rendered_or_refused(
+    realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
+  ) == serialize_systemd_unit_file(file: expected_invocation_local_unit_file(jobs: "8"))
 }
