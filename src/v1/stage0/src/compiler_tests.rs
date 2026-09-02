@@ -1037,23 +1037,21 @@ mod compiler_tests {
                     std::rc::Rc::new(im::vector![source]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                let emitted = r
-                    .files
+                let errors: Vec<_> = r
+                    .diagnostics
                     .iter()
-                    .find(|f| f.path == "src/probe.rs")
-                    .map(|f| f.content.clone())
-                    .expect("service module must emit src/probe.rs");
+                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
                 assert!(
-                    emitted.contains("not_a_channel")
-                        && emitted.contains("has no modeled channel"),
-                    "an unmodeled output key must refuse and name the key. Got:\n{}",
-                    emitted
+                    errors.iter().any(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains("not_a_channel")
+                        && crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains("has no modeled channel")),
+                    "an unmodeled output key must refuse and name the key. Got: {:?}",
+                    errors
                 );
                 assert!(
-                    !emitted.contains("stdout.clone()"),
-                    "a refused operation must not fall through to the stdout channel. \
-                     Got:\n{}",
-                    emitted
+                    r.files.is_empty(),
+                    "a refused operation must withhold the artifact instead of falling through to stdout. Got: {:?}",
+                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
                 );
             })
             .expect("failed to spawn thread")
