@@ -149,6 +149,23 @@ import v2.std.collection { List }
 //   corpus rows at or above 400ms                         18 -> 10
 //   the warm fill itself                                  disposition=Stored, 501ms, billed to preparation
 //
+// THE SHARING HALF IS MEASURED TOO, AND BY A SECOND INSTRUMENT ON A SECOND BRANCH. This roster
+// admits a row on measured recompute AND measured sharing -- a non-sharing producer is cache
+// population rather than a saving, which is the ground formal_production_for_lhs_exact was REMOVED
+// on above. The figures above are a cost DROP; the sharing itself is observed by the required
+// floor's own `[floor-shared-fill]` ledger on gunbc#10068's branch, green run 33649705841, where
+// this producer records `fill_ms=362 inclusive_ms=362 consumer_claims=22 consumer_modules=3
+// disposition=shared`, beside four `fill_ms=0 disposition=exclusive` fills for the perturbed-series
+// arguments that correctly populate nothing. ONE fill served 22 consumer claims across 3 modules.
+//
+// THAT OBSERVATION IS INDEPENDENT OF THE CENSUS ABOVE IN EVERY RESPECT THAT COULD HAVE MADE IT
+// CIRCULAR: different branch, different instrument, and a different KEY SHAPE -- that lane enrolled
+// the general declaration claim-forced on the reified receipt series, where this row is nullary. Two
+// instruments that share no accounting agreeing on 22 consumer claims across 3 modules is what rules
+// out the reading that the sharing is an artifact of one census's bookkeeping. Recorded with its
+// origin because a corroboration whose provenance is dropped becomes indistinguishable from a second
+// derivation by the same lane.
+//
 // THE CONTROL THAT MAKES THAT A SERVE MEASUREMENT AND NOT A PAIR OF HOT AND COLD RUNS, and it is
 // the reading this enrolment had to survive: 72 rows at or above 250ms OUTSIDE the three consuming
 // modules -- rows this row cannot serve -- moved present/absent by p50 1.04, p90 1.09, max 1.17.
