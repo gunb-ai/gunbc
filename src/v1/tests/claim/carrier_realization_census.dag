@@ -3,13 +3,29 @@ module v1.tests.claim.carrier_realization_census
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
 import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params }
 import v1.compiler.emit_core_support { is_type_def_item }
-import v1.compiler.infer_types { is_coproduct_type, child_type_node }
+import v1.compiler.infer_types { is_coproduct_type, child_type_node, resolved_type }
+import v1.compiler.infer {
+  InferScope,
+  CallFormalApplication,
+  build_call_application_plan,
+  module_skips_direct_call_arg_check,
+  direct_call_arg_type_mismatch,
+  DeclaredTypeObligation,
+  PositionDirectCallArgument,
+  declared_type_inhabitance,
+  InhabitanceVerdict,
+  Inhabits,
+  InhabitanceRefused,
+  InhabitanceUndecidable
+}
+import v1.compiler.infer_lookup { lookup_func_sig }
+import v1.compiler.infer_sigs { FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous }
 import v1.compiler.coercion { type_realization_decision }
 import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
-import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
-import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
+import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, ExprCall, expr_call_func_at, arg_value, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
+import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
 import std.types { List, String, Map, Bool }
 
 // THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
@@ -367,6 +383,152 @@ fn typed_census_tsv(rows: List<TypedCarrierRow>) -> String {
   rows |> fold(init: typed_census_header(), f: (acc, r) => concat(concat(acc, "\n"), typed_row_tsv(r: r)))
 }
 
+// CALLEE-FORMAL CONFORMANCE CAPABILITY PROBE. This table does not repair or reinterpret a call.
+// It reports the exact seam production already traverses. FuncSigResolved carries the callable
+// declaration identity, but ExprCall projects that away before build_call_application_plan; the
+// plan carries only formal_subst and formal Nodes. Therefore a type provenance recovered from
+// formal_subst is explicitly labelled RECOVERED_NOT_CARRIED even when it happens to be correct.
+// A correct recovered value is not upgraded to a carried authority by this instrument.
+type CalleeFormalRow {
+  caller_module: String
+  caller_decl: String
+  callee_decl: String
+  formal_decl_ref: TypeDeclarationProvenance
+  formal_as_consumed_ref: TypeDeclarationProvenance
+  actual_decl_ref: TypeDeclarationProvenance
+  arg_compat_verdict: String
+  inhabitance_verdict: String
+}
+
+fn inhabitance_label(v: InhabitanceVerdict) -> String {
+  match v {
+    Inhabits => "Inhabits"
+    InhabitanceRefused { reason: _ } => "Refused"
+    InhabitanceUndecidable { reason: _ } => "Undecidable"
+  }
+}
+
+fn callee_formal_row(app: CallFormalApplication, caller_module: String, caller_decl: String, callee_decl: String, scope: InferScope) -> CalleeFormalRow? {
+  match app.matched_arg {
+    Absent => none
+    Present { value: ta } =>
+      let actual = resolved_type(n: arg_value(n: ta))
+      let mismatch = direct_call_arg_type_mismatch(
+        formal: app.formal,
+        actual: actual,
+        type_env: scope.type_env,
+        module_name: scope.module_name,
+        source_indices: scope.type_env.source_indices
+      )
+      let compat = if module_skips_direct_call_arg_check(module_name: caller_module) {
+        "SkippedByV2Exemption"
+      } else if mismatch {
+        "Mismatch"
+      } else {
+        "Compatible"
+      }
+      Present { value: CalleeFormalRow {
+        caller_module: caller_module,
+        caller_decl: caller_decl,
+        callee_decl: callee_decl,
+        formal_decl_ref: type_reference_provenance(n: app.formal_subst),
+        formal_as_consumed_ref: type_reference_provenance(n: app.formal),
+        actual_decl_ref: type_reference_provenance(n: actual),
+        arg_compat_verdict: compat,
+        inhabitance_verdict: inhabitance_label(v: declared_type_inhabitance(
+          obligation: DeclaredTypeObligation {
+            position: PositionDirectCallArgument,
+            subject: app.param_name,
+            declared: app.formal_subst,
+            produced: actual,
+            span: arg_value(n: ta).span
+          },
+          scope: scope
+        ))
+      } }
+  }
+}
+
+fn callee_formal_rows_in_expr(expr: Node, caller_decl: String, m: TypedModule, si: Map<String, NewlineIndex>) -> List<CalleeFormalRow> {
+  let caller_module = authored_name_at(source_indices: si, node: m.module)
+  let scope = InferScope {
+    type_env: m.type_env,
+    func_env: m.func_env,
+    locals: empty_map(),
+    body_locals: empty_map(),
+    match_bound_names: empty_map(),
+    module_name: caller_module,
+    service_registry: empty_map(),
+    item_registry: m.item_registry,
+    lambda_param_provenance: empty_map(),
+    caller_decl_name: caller_decl
+  }
+  let here = match expr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let callee = expr_call_func_at(texpr: expr, source_indices: si)
+      match lookup_func_sig(func_env: m.func_env, type_env: m.type_env, name: callee) {
+        FuncSigResolved { sig: sig, declared: declared } =>
+          build_call_application_plan(
+            value_params: sig.params,
+            typed_args: expr.children,
+            call_subst: empty_map(),
+            type_env: m.type_env,
+            module_name: caller_module
+          ) |> flat_map(app => match callee_formal_row(
+            app: app,
+            caller_module: caller_module,
+            caller_decl: caller_decl,
+            callee_decl: concat(declared.owner_module_path, concat(".", declared.decl_name)),
+            scope: scope
+          ) {
+            Present { value: row } => [row]
+            Absent => []
+          })
+        FuncSigUnresolved => []
+        FuncSigAmbiguous { candidates: _ } => []
+      }
+    _ => []
+  }
+  concat(here, expr.children |> flat_map(child => callee_formal_rows_in_expr(expr: child, caller_decl: caller_decl, m: m, si: si)))
+}
+
+fn callee_formal_rows_in_module(m: TypedModule, si: Map<String, NewlineIndex>) -> List<CalleeFormalRow> {
+  m.items |> flat_map(item => match item.body {
+    Present { value: body } => callee_formal_rows_in_expr(expr: body, caller_decl: authored_name_at(source_indices: si, node: item), m: m, si: si)
+    Absent => []
+  })
+}
+
+fn provenance_label(p: TypeDeclarationProvenance) -> String {
+  match p {
+    CorpusDeclared { decl_file: f } => concat("CorpusDeclared:", f)
+    KernelMinted { minted_name: n } => concat("KernelMinted:", n)
+    DeclarationIdentityAbsent => "DeclarationIdentityAbsent"
+  }
+}
+
+fn callee_formal_header() -> String {
+  "caller_module\tcaller_decl\tcallee_decl\tformal_authority_state\tformal_decl_ref\tformal_as_consumed_ref\tactual_decl_ref\targ_compat_verdict\tinhabitance_verdict"
+}
+
+fn callee_formal_row_tsv(r: CalleeFormalRow) -> String {
+  [
+    r.caller_module,
+    r.caller_decl,
+    r.callee_decl,
+    "RecoveredNotCarried",
+    provenance_label(p: r.formal_decl_ref),
+    provenance_label(p: r.formal_as_consumed_ref),
+    provenance_label(p: r.actual_decl_ref),
+    r.arg_compat_verdict,
+    r.inhabitance_verdict
+  ] |> join(separator: "\t")
+}
+
+fn callee_formal_tsv(rows: List<CalleeFormalRow>) -> String {
+  rows |> fold(init: callee_formal_header(), f: (acc, r) => concat(concat(acc, "\n"), callee_formal_row_tsv(r: r)))
+}
+
 // THE ENTRY THE DRIVER CALLS. Sources in as data, receipt out as a String; no host effect, no
 // path, no process verdict. A compile that produces no graph REFUSES in the return value rather
 // than yielding an empty table, because an empty receipt and a receipt that could not be produced
@@ -376,7 +538,9 @@ fn typed_census_from_sources(sources: List<SourceFile>) -> String {
   match result.graph {
     Absent => "REFUSED\tcompile_to_resolved produced no graph"
     Present { value: g } =>
-      typed_census_tsv(rows: g.modules |> fold(init: no_typed_rows(), f: (acc, m) =>
-        concat(acc, typed_module_rows(m: m, si: result.source_indices))))
+      let typed_rows = g.modules |> fold(init: no_typed_rows(), f: (acc, m) =>
+        concat(acc, typed_module_rows(m: m, si: result.source_indices)))
+      let call_rows = g.modules |> flat_map(m => callee_formal_rows_in_module(m: m, si: result.source_indices))
+      concat(concat(typed_census_tsv(rows: typed_rows), "\n\n"), callee_formal_tsv(rows: call_rows))
   }
 }
