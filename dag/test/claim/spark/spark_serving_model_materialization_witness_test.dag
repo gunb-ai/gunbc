@@ -1,9 +1,12 @@
 module test.claim.spark_serving_model_materialization_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
+import extdeps.ollama.api { OllamaModelRef }
 import gunbc.spark.serving_terminal_health { spark_serving_health_request_body }
 import gunbc.spark.serving_converge_realize {
   spark_serving_materialize_model_artifact_steps,
+  spark_serving_materialize_model_artifact_steps_for,
+  SparkServingInstallRemoteCommandsVerdict,
   spark_serving_checksum_line,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
@@ -11,26 +14,54 @@ import gunbc.spark.serving_converge_realize {
 import gunbc.spark.serving_install_paths {
   spark_serving_registry_manifest_url,
   spark_serving_registry_blob_url,
+  spark_serving_registry_blob_url_for,
   spark_serving_staged_blob_path,
   spark_serving_published_blob_path,
 }
 import gunbc.ollama_model_resolution {
   OllamaBlobDigest,
   ollama_resolved_manifest_closure,
+  ollama_resolved_manifest_reference,
   gpt_oss_20b_manifest_digest_2026_08_19,
+  gpt_oss_120b_manifest,
+  UpstreamPublished,
+  LocallyMaterialized,
 }
 import gunbc.spark.serving_desired { spark_serving_desired_manifest }
 import gunbc.remote_operation { remote_operations_argv_only }
 
+// THE SUBJECT OF THIS FILE IS THE UPSTREAM FETCH SEQUENCE, AND IT IS NOW NAMED RATHER THAN INHERITED.
+//
+// Every claim below reads desired state until 2026-09-02, which was right while desired state was an
+// upstream library tag. Desired state now selects a LOCALLY MATERIALIZED artifact, for which this
+// sequence does not exist and must not: there is no registry to fetch from, so the plan refuses.
+//
+// Reading desired state here would therefore have turned this whole file green-by-vacuity -- every
+// claim ranging over an empty step list, several of them trivially satisfied by emptiness -- while
+// the fetch-and-verify sequence, which is the more dangerous half of the materializer, went entirely
+// unobserved. That is the decoration case: permanently green by construction and cited as coverage.
+//
+// So the manifest is a PARAMETER and this file names the upstream one. That is only honest because
+// the install paths now derive from the manifest's own reference rather than from the desired-state
+// global -- without that, these claims would be checking gpt-oss URLs against a plan built from
+// DeepSeek paths. The local arm gets its own claims at the end of this file.
+fn upstream_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_materialize_model_artifact_steps_for(manifest: gpt_oss_120b_manifest)
+}
+
+fn upstream_model() -> OllamaModelRef {
+  ollama_resolved_manifest_reference(m: gpt_oss_120b_manifest)
+}
+
 fn step_identities() -> List<String> {
-  match spark_serving_materialize_model_artifact_steps() {
+  match upstream_steps() {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity as String)
   }
 }
 
 fn step_argvs() -> List<List<String>> {
-  match spark_serving_materialize_model_artifact_steps() {
+  match upstream_steps() {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation))
@@ -85,7 +116,7 @@ test fn the_manifest_checksum_names_the_frozen_resolved_digest() -> Bool {
 // Reading the selection means a change of model moves the plan and its evidence together, and a
 // plan that installed the wrong closure would red here instead of being corroborated.
 fn desired_closure() -> List<OllamaBlobDigest> {
-  ollama_resolved_manifest_closure(m: spark_serving_desired_manifest)
+  ollama_resolved_manifest_closure(m: gpt_oss_120b_manifest)
 }
 
 // EVERY BLOB IS FETCHED BY DIGEST. The blob half of the store IS content-addressed upstream, so
@@ -93,7 +124,7 @@ fn desired_closure() -> List<OllamaBlobDigest> {
 // step fails.
 test fn every_blob_url_carries_its_own_digest() -> Bool {
   length(filter(desired_closure(), b =>
-    any(step_argvs(), a => any(a, w => w == spark_serving_registry_blob_url(hex: b.hex)))
+    any(step_argvs(), a => any(a, w => w == spark_serving_registry_blob_url_for(model: upstream_model(), hex: b.hex)))
   )) == length(desired_closure())
 }
 
@@ -159,7 +190,7 @@ test fn the_materializer_never_shells_out_to_ollama_pull() -> Bool {
 // unrelated write disappears exactly when everything else starts working. The probe places its own
 // body; this sequence must not, or there are two authorities for one file.
 test fn the_materialization_does_not_own_the_probes_request_body() -> Bool {
-  match spark_serving_materialize_model_artifact_steps() {
+  match upstream_steps() {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
     SparkServingInstallRemoteCommandsPresent { steps: steps } =>
       !any(steps, s => (s.identity as String) == "write-health-request-body")
@@ -170,6 +201,48 @@ test fn the_materialization_does_not_own_the_probes_request_body() -> Bool {
 // than a literal: a request body naming a different model than the one materialized would probe a
 // model that is not there and report the host sick.
 test fn the_written_body_names_the_desired_model() -> Bool {
-  string_contains(spark_serving_health_request_body(), "gpt-oss:120b")
+  string_contains(spark_serving_health_request_body(), "deepseek-v4-gguf:no-h3-stop")
     && string_contains(spark_serving_health_request_body(), "\"stream\":false")
+}
+
+
+// ================= THE LOCALLY MATERIALIZED ARM =================
+//
+// These are the claims that make the provenance split load-bearing rather than vocabulary. The one
+// above establishes that an upstream manifest still produces the full fetch-and-verify sequence;
+// these establish that a manifest with no upstream REFUSES to produce one, and that the refusal says
+// why rather than emitting a plan that would fail on a real host with a transport error.
+
+// THE SELECTED MANIFEST IS THE LOCALLY MATERIALIZED ONE, so the claim below is about production and
+// not about a fixture. If desired state ever moves back to an upstream tag this reds, which is
+// correct: the refusal claim would then be asserting something that is no longer true of the plan
+// the fleet actually runs.
+test fn the_selected_manifest_has_no_upstream_to_fetch_from() -> Bool {
+  match spark_serving_desired_manifest.provenance {
+    UpstreamPublished { registry_authority: _ } => false
+    LocallyMaterialized { producer: _, derived_from: _ } => true
+  }
+}
+
+// THE PLAN REFUSES RATHER THAN EMITTING A FETCH THAT CANNOT SUCCEED. Without this branch the
+// materializer would emit `curl https://registry.ollama.ai/v2/library/deepseek-v4-gguf/manifests/
+// no-h3-stop`, which 404s against a path that never existed -- an apply-time transport failure that
+// reads as a network fault rather than as the category error it is.
+test fn a_locally_materialized_manifest_refuses_to_be_materialized() -> Bool {
+  match spark_serving_materialize_model_artifact_steps() {
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
+    SparkServingInstallRemoteCommandsRefused { reason: r } =>
+      string_contains(r, "locally materialized")
+  }
+}
+
+// THE REFUSAL IS NOT AN EMPTY PLAN. An install verdict carrying zero steps would satisfy every
+// sequence claim in this file vacuously and would actuate as "nothing to do" -- the absorbing
+// fallback, silently converging a host that has nothing installed. The refusal arm is a different
+// constructor, and this is the claim that says so.
+test fn the_refusal_is_a_refusal_and_not_an_empty_step_list() -> Bool {
+  match spark_serving_materialize_model_artifact_steps() {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    SparkServingInstallRemoteCommandsPresent { steps: steps } => length(steps) < 0
+  }
 }

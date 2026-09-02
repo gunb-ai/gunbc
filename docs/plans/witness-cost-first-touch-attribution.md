@@ -678,14 +678,15 @@ rather than losing a measurement. Screen with the signature before spending a
 controlled pair, because a row that never stores cannot have its serve measured —
 the resulting pair is noise, not a negative result.
 
-**The rule is a ratio.** Serve cost scales with the size of the ARGUMENT plus the
-VALUE — hashing the argument row, verifying it structurally equal in portable
-form, and rebuilding the value's containers in the consuming frame. Recompute
-cost scales with the DERIVATION between them. A row admits when the derivation is
-large relative to what must be hashed, verified and rebuilt. Not when the
-argument is small: `phase_board_series_ratchet` carries a whole receipt series as
-its key and still admits, because the fold over it is 585,854 eval steps and
-amortises the verify. Size is not the test; the ratio is.
+**The rule is a ratio, and it screens OUT — it never admits.** Serve cost scales
+with the size of the ARGUMENT plus the VALUE; recompute cost scales with the
+DERIVATION between them, so a candidate is worth measuring only when the
+derivation is large relative to what must be hashed and verified. That is a
+necessary condition and emphatically not a sufficient one: gunbc#10094 enrolled
+three candidates on exactly such reasoning and withdrew all three on measurement,
+and gunbc#10108's note withdraws a fourth — `compile_phase_frontier_standing`
+claim-forced at its general declaration — on single-authority grounds despite a
+measured win. Nothing below replaces the roster's present-vs-absent receipt.
 
 Three classes are disqualified without a run:
 
@@ -714,22 +715,47 @@ small value with little work between, such as
 where hashing and verifying the node list per serve costs more than the fold it
 replaces. That one is the ratio rule applied, not a separate exclusion.
 
-Applied to the post-`phase_board_series_ratchet` census, these three classes
-account for every remaining producer above a second. The residue is the emit
-family, which the roster header records as measured serve-above-recompute with a
-re-enrol trigger naming a capability — a serve that does not rebuild containers
-and re-sort records per consuming frame. Whether that same capability would also
-lift the fn-in-key limitation is **open and should not be assumed either way**:
-one is about the cost of walking a portable value, the other about whether an
-origin-bound reference can be represented in one at all.
+Applied to the census, these three classes account for every remaining producer
+above a second outside the emit family. The emit family is **not** available, and
+the reason is stronger than it was: the roster's re-enrol trigger — a serve that
+does not walk the value per consuming frame — HAS FIRED (gunbc#10094 made a serve
+O(1) by handing over the reified value), the family was re-measured against that
+new serve, and it is still out. All three candidates regressed, showed no effect,
+or improved a family total while the rows nearest the ceiling got worse. The
+remaining cost is deliberately left unidentified there rather than given a
+plausible story.
+
+Two lessons from that run belong here because they bound this whole method.
+**The subject is the per-claim row, not a total** — the ceiling is per claim, so a
+family that improves on aggregate while its rows nearest the line get worse is a
+loss. And **a discharged capability makes re-enrolment testable, never decided**:
+inferring admission from "the serve is cheaper now" is the
+specification-without-execution DESIGN §5 names, and it was wrong three times.
+
+Whether that capability also lifts the fn-in-key limitation is **open and should
+not be assumed either way**: one is about the cost of moving a portable value,
+the other about whether an origin-bound reference can be represented in one at
+all.
 
 ### The rows nearest the deadline are the ones whose refusals are being silenced
 
 Recorded because it reorders the population by something other than milliseconds.
-The two rows the 500ms CPU deadline preempted on the absent arm of that pair were
-not incidental: they were `self_host_compile_phase_live_gate_witness`'s
+Observed on main run 33671815204 (head 20caf4eb): the two rows the 500ms CPU
+deadline preempted there were not incidental — they were
+`self_host_compile_phase_live_gate_witness`'s
 discriminating REDs — the planted-identity refusal and the equal-cardinality swap
 refusal. A preempted row is not a slow row that still answered; it is a refusal
 that did not execute, which is why the floor refuses to call the run green. So
-cost work on this population is not traded against safety — sharing that fold
-restored two controls that were not running.
+cost work on this population is not traded against safety. Measured: sharing the
+fold under those rows (a roster row later withdrawn on gunbc#10108's
+single-authority grounds, so the cost figures are not carried here) took the run
+to `cpu_deadline=0` and both refusals executed. Whoever makes that fold cheap by
+whatever route gets the same effect, because the mechanism is the row reaching a
+verdict rather than any particular repair.
+
+**So rank this population by which refusals are not executing, not by
+milliseconds.** A preempted row is the strongest candidate in the corpus
+regardless of where it sits in a cost ranking, and the floor's `cpu_deadline`
+counter names how many there are without naming which — the identities are in the
+interruption diagnostics, and only those say whether a discriminating RED is the
+one being cut off.
