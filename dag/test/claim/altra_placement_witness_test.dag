@@ -53,6 +53,7 @@ import product.altra_motherboard.placement {
   BoardPlanConstruction,
   BoardPlanReady,
   BoardPlanOutlineRefused,
+  BoardPlanUnavailableForDesign,
   BoardPlanDesignNotAdmitted,
   board_body_layout_standing,
   parts_not_geometrically_checked,
@@ -110,6 +111,7 @@ fn plan_or_empty() -> BoardPlacementPlan? {
     BoardPlanReady { value: p } => Present { value: p }
     BoardPlanOutlineRefused { cause: _ } => none
     BoardPlanDesignNotAdmitted { causes: _ } => none
+    BoardPlanUnavailableForDesign { only_available: _ } => none
   }
 }
 
@@ -912,8 +914,9 @@ fn a_board_the_judge_refuses() -> AltraMinimalMotherboard {
 }
 
 test fn w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects() -> Bool {
-  match altra_reference_plan_for(d: a_board_the_judge_refuses(), d_ref: altra_1p_minimum_ref()) {
+  match altra_reference_plan_for(d: a_board_the_judge_refuses()) {
     BoardPlanDesignNotAdmitted { causes: _ } => true
+    BoardPlanUnavailableForDesign { only_available: _ } => false
     BoardPlanOutlineRefused { cause: _ } => false
     BoardPlanReady { value: _ } => false
   }
@@ -922,8 +925,57 @@ test fn w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects() -> Bool {
 // THE PAIRED POSITIVE, so the control above is not merely a function that refuses everything.
 // The canonical board reaches the ready arm through the same parameterized constructor.
 test fn w_the_canonical_board_reaches_the_ready_arm() -> Bool {
-  match altra_reference_plan_for(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref()) {
+  match altra_reference_plan_for(d: altra_1p_minimum) {
     BoardPlanReady { value: _ } => true
+    BoardPlanDesignNotAdmitted { causes: _ } => false
+    BoardPlanUnavailableForDesign { only_available: _ } => false
+    BoardPlanOutlineRefused { cause: _ } => false
+  }
+}
+
+// AN ADMITTED BOARD THAT IS NOT THE CANONICAL ONE HAS NO PLAN HERE, AND SAYS SO IN ITS OWN ARM.
+// A six-channel board is a perfectly admissible design -- six is a production-qualified count --
+// and this repository simply has no placement for it on this increment. `altra_pcb_world_for` had
+// always said that; my first parameterized constructor would have BUILT one anyway, which is the
+// silent widening review 5095578768 caught. Admissible-but-unplanned is a third fact, distinct
+// from inadmissible and from ready, so the assertion is the exact BoardPlanUnavailableForDesign
+// arm rather than "not ready". Deleting the canonical-availability check returns ready and turns
+// this false.
+fn an_admitted_six_channel_board() -> AltraMinimalMotherboard {
+  let six = ActiveDdrTopology {
+    populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+    positions_per_channel: [FirstDimmOnChannel],
+  }
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation { production: six },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+test fn w_RED_an_admitted_noncanonical_board_has_no_plan() -> Bool {
+  match altra_reference_plan_for(d: an_admitted_six_channel_board()) {
+    BoardPlanUnavailableForDesign { only_available: r } =>
+      declaration_ref_eq(a: r, b: altra_1p_minimum_ref())
+    BoardPlanDesignNotAdmitted { causes: _ } => false
+    BoardPlanOutlineRefused { cause: _ } => false
+    BoardPlanReady { value: _ } => false
+  }
+}
+
+// THE READY PLAN MINTS ITS OWN IDENTITY. There is no identity parameter to pass, so this asserts
+// what the constructor wrote rather than what a caller handed it: an earlier revision took
+// (d, d_ref) as adjacent arguments with no join, which let a plan claim an identity its components
+// did not come from.
+test fn w_the_ready_plan_names_the_canonical_declaration_it_was_built_from() -> Bool {
+  match altra_reference_plan_for(d: altra_1p_minimum) {
+    BoardPlanReady { value: p } => declaration_ref_eq(a: p.design, b: altra_1p_minimum_ref())
+    BoardPlanUnavailableForDesign { only_available: _ } => false
     BoardPlanDesignNotAdmitted { causes: _ } => false
     BoardPlanOutlineRefused { cause: _ } => false
   }

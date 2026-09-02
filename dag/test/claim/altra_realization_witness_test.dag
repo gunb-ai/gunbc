@@ -46,6 +46,7 @@ import product.altra_motherboard.placement {
   BoardPlanConstruction,
   BoardPlanReady,
   BoardPlanOutlineRefused,
+  BoardPlanUnavailableForDesign,
   BoardPlanDesignNotAdmitted,
   altra_1p_minimum_ref,
   RequiredFunctionWithoutJustifiedPartOnBoard,
@@ -70,6 +71,7 @@ fn plan_identities_from_reference() -> List<NonEmptyStr> {
       fold(p.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
     BoardPlanOutlineRefused { cause: _ } => []
     BoardPlanDesignNotAdmitted { causes: _ } => []
+    BoardPlanUnavailableForDesign { only_available: _ } => []
   }
 }
 
@@ -279,6 +281,7 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
   match altra_reference_plan() {
     BoardPlanOutlineRefused { cause: _ } => false
     BoardPlanDesignNotAdmitted { causes: _ } => false
+    BoardPlanUnavailableForDesign { only_available: _ } => false
     BoardPlanReady { value: p } =>
       fold(
         placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p),

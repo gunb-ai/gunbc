@@ -44,7 +44,7 @@ import product.altra_motherboard.minimal_design {
   ddr_channel_ordinal,
   ddr_slot_identity_eq,
   dimm_slot_position_ordinal,
-  board_slot_identities, board_governing_intent, admit_board,
+  board_slot_identities, board_governing_intent, admit_board, complete_design_eq,
   RoutedDesignAdmitted, RoutedDesignRefused, DesignRefusalSet,
   altra_1p_minimum,
 }
@@ -796,16 +796,37 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
 // cannot be written is a decoration that will be cited as coverage. Taking the design lets a
 // witness hand it a board the judge rejects and require the exact BoardPlanDesignNotAdmitted arm.
 // `altra_reference_plan()` is that same function at the canonical declaration.
+//
+// THE IDENTITY IS MINTED HERE, NEVER SUPPLIED, and that is the correction to my own first attempt
+// at the parameter. It took `(d, d_ref)` as adjacent arguments with no join between them, so a
+// caller could pair one board's geometry with another board's declaration reference and the plan
+// would claim an identity its components did not come from. Review 5095578768 caught it. There is
+// now no identity parameter at all: the only reference this function can write is the canonical
+// one, and it can only reach that line for a design equal to the canonical board.
+//
+// AND PLAN AVAILABILITY IS A THIRD OUTCOME RATHER THAN A SILENT WIDENING. The same first attempt
+// let EVERY admitted design reach BoardPlanReady -- a six-channel board has no plan on this
+// increment, and `altra_pcb_world_for` had always said so, but the parameterized constructor would
+// have built it one anyway. Admissible-but-unplanned is a different fact from inadmissible and
+// from ready, so it gets its own arm. The equality it consults is `complete_design_eq` at the
+// design layer, the same one pcb_world consults, because two maintained answers to "is this the
+// canonical planned board" is the fork section 3 forbids.
+//
+// ON "BEFORE CONSTRUCTING ANYTHING": the `fixed` roster below is built before the match, and it is
+// the same roster for every board, so it is not design-specific geometry and nothing escapes when
+// admission refuses. The boundary this function actually holds is the accurate one to state -- the
+// judge runs before design-specific geometry is promoted to BoardPlanReady.
 type BoardPlanConstruction
   = BoardPlanDesignNotAdmitted { causes: DesignRefusalSet }
+  | BoardPlanUnavailableForDesign { only_available: DeclarationRef }
   | BoardPlanOutlineRefused { cause: OrthogonalRefusal }
   | BoardPlanReady { value: BoardPlacementPlan }
 
 fn altra_reference_plan() -> BoardPlanConstruction {
-  altra_reference_plan_for(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref())
+  altra_reference_plan_for(d: altra_1p_minimum)
 }
 
-fn altra_reference_plan_for(d: AltraMinimalMotherboard, d_ref: DeclarationRef) -> BoardPlanConstruction {
+fn altra_reference_plan_for(d: AltraMinimalMotherboard) -> BoardPlanConstruction {
   let fixed = [
     PlannedComponent {
       identity: "board_control_cpld",
@@ -852,6 +873,9 @@ fn altra_reference_plan_for(d: AltraMinimalMotherboard, d_ref: DeclarationRef) -
   match admit_board(b: d) {
     RoutedDesignRefused { causes: c } => BoardPlanDesignNotAdmitted { causes: c }
     RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } =>
+      if !complete_design_eq(a: d, b: altra_1p_minimum) {
+        BoardPlanUnavailableForDesign { only_available: altra_1p_minimum_ref() }
+      } else {
       match altra_board_outline() {
         OrthogonalRefused { cause: c } => BoardPlanOutlineRefused { cause: c }
         OrthogonalReady { value: o } =>
@@ -859,10 +883,11 @@ fn altra_reference_plan_for(d: AltraMinimalMotherboard, d_ref: DeclarationRef) -
             value: BoardPlacementPlan {
               frame: altra_board_frame(),
               outline: o,
-              design: d_ref,
+              design: altra_1p_minimum_ref(),
               components: concat(fixed, memory_slot_obligations(d: d)),
             }
           }
+      }
       }
   }
 }

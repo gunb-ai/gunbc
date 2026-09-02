@@ -559,3 +559,69 @@ data altra_1p_minimum: AltraMinimalMotherboard = AltraMinimalMotherboard {
   },
   pcie_lanes_broken_out: 4,
 }
+
+// COMPLETE-DESIGN EQUALITY IS ONE AUTHORITY, AND IT LIVES AT THE DESIGN LAYER. This block was
+// declared in pcb_world, which made the PCB world the place that decided whether two boards are
+// the same product. Review 5095578768 required the plan constructor to consume the same answer,
+// and two separately maintained equalities over one question is the fork section 3 forbids -- the
+// copy that stops seeing routed copper is the one nobody edits. It is here because the question is
+// about designs, not about worlds.
+
+fn slot_list_covers(xs: List<DdrSlotIdentity>, ys: List<DdrSlotIdentity>) -> Bool {
+  fold(ys, init: true, f: fn(acc, p) {
+    acc && fold(xs, init: false, f: fn(seen, q) { seen || ddr_slot_identity_eq(a: p, b: q) })
+  })
+}
+
+fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
+  let aslots = topology_slot_identities(t: a)
+  let bslots = topology_slot_identities(t: b)
+  list_length(items: aslots) == list_length(items: bslots)
+    && slot_list_covers(xs: aslots, ys: bslots)
+}
+
+// DESIGN EQUALITY MUST SEE THE COPPER. This compared intent, the POPULATED topology and the lane
+// count, and not the routed set -- so a board routing eight and populating four compared EQUAL to
+// a board that routed four and populated the same four. Those are different products with
+// different layer counts and different upgrade stories, and this is the boundary at which the
+// difference stops being recoverable, so the routed topology is part of the identity.
+//
+// Intent is no longer a board field: it lives in the lifecycle, and comparing the lifecycles
+// compares both populations under the intents that actually judged them.
+fn routed_topologies_eq(a: RoutedDdrTopology, b: RoutedDdrTopology) -> Bool {
+  let aslots = routed_slot_identities(r: a)
+  let bslots = routed_slot_identities(r: b)
+  list_length(items: aslots) == list_length(items: bslots)
+    && slot_list_covers(xs: aslots, ys: bslots)
+}
+
+fn lifecycles_eq(a: MemoryPopulationLifecycle, b: MemoryPopulationLifecycle) -> Bool {
+  match a {
+    EngineeringFixturePopulation { bringup: ba } =>
+      match b {
+        EngineeringFixturePopulation { bringup: bb } => topologies_eq(a: ba, b: bb)
+        ShipsWithProductionPopulation { production: _ } => false
+        BringUpThenFill { bringup: _, production: _ } => false
+      }
+    ShipsWithProductionPopulation { production: pa } =>
+      match b {
+        EngineeringFixturePopulation { bringup: _ } => false
+        ShipsWithProductionPopulation { production: pb } => topologies_eq(a: pa, b: pb)
+        BringUpThenFill { bringup: _, production: _ } => false
+      }
+    BringUpThenFill { bringup: ba, production: pa } =>
+      match b {
+        EngineeringFixturePopulation { bringup: _ } => false
+        ShipsWithProductionPopulation { production: _ } => false
+        BringUpThenFill { bringup: bb, production: pb } =>
+          topologies_eq(a: ba, b: bb) && topologies_eq(a: pa, b: pb)
+      }
+  }
+}
+
+fn complete_design_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
+  routed_topologies_eq(a: a.design.routed, b: b.design.routed)
+    && lifecycles_eq(a: a.design.lifecycle, b: b.design.lifecycle)
+    && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
+}
+

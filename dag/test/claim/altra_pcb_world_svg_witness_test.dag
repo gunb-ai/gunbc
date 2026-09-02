@@ -109,6 +109,7 @@ import product.altra_motherboard.placement {
   BoardPlanConstruction,
   BoardPlanReady,
   BoardPlanOutlineRefused,
+  BoardPlanUnavailableForDesign,
   BoardPlanDesignNotAdmitted,
   altra_1p_minimum_ref,
 }
@@ -402,6 +403,7 @@ test fn w_the_world_carries_the_plan_design_identity() -> Bool {
       match altra_reference_plan() {
         BoardPlanOutlineRefused { cause: _ } => false
         BoardPlanDesignNotAdmitted { causes: _ } => false
+    BoardPlanUnavailableForDesign { only_available: _ } => false
         BoardPlanReady { value: plan } =>
           declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design)
             && declaration_ref_eq(a: plan.design, b: altra_1p_minimum_ref())
