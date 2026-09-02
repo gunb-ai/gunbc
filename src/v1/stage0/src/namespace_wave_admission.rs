@@ -506,11 +506,51 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
 /// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
 /// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
-/// ELEVENTH DISSOLUTION (2026-09-02). #9907 merged, so base and head both carry the structural
-/// text qualification and the required run for gunbc#9985 reported all seventeen CONSUMED at the
-/// base -- "deletion is owed on the roster's next touch", and this change is that touch. The
-/// seventeen rows are removed by their own dissolve-on trigger, exactly as the ten shrinks above.
-/// TWELFTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
+/// TWELFTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
+/// gunbc#9832): ONE relocation, rostered by its author under the rule this ledger states -- a run
+/// carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row here.
+/// `fleet_converge_plan_spark_typed_actions_wire_path` is the on-disk path of one of the three
+/// members of the plan BUNDLE DIGEST, and the digest is computed in `gunbc.fleet_converge_plan`
+/// while the path constant was declared in `gunbc.fleet_converge_plan_cli`. That split is what the
+/// PR's persisted-member work made untenable: the manifest admission must name the path it is
+/// judging, and a transport module cannot be the authority for a member of an identity the plan
+/// module mints. The constant therefore moves to the module that owns the digest -- same spelling,
+/// same value, one declaring module, no second declaration left behind and no requalification. The
+/// two deltas below are the CLI's own call sites now resolving to the new declarer. This paragraph
+/// previously reported them as `closure blast radius: 0 module(s)`, which gunbc#9908 has since made
+/// a wrong sentence rather than a stale one: closure is a pure function of MEMBERSHIP, so a binding
+/// row is not asked the question and now carries `None` and renders no clause at all. Quoting a
+/// measured zero for it would be the exact conflation that change removed. They dissolve when this
+/// PR merges, by the same trigger as every shrink above.
+/// THIRTEENTH DISSOLUTION (2026-09-01). The seventeen XL-0T rows above were removed by THEIR OWN
+/// dissolve-on trigger, which the paragraph declaring them states as "#9907 merging". #9907 merged
+/// to main at 14:02:39; the first merge of main into this branch that carried them was made at
+/// 14:12:13, ten minutes AFTER their lifetime ended, and preserved them anyway. Base and head both
+/// carry the qualification now, so no run can produce those deltas and all seventeen report stale --
+/// and a stale row here refuses every unrelated PR in the repository, which is why the deletion is
+/// owed on the roster's next touch rather than at someone's convenience. This merge is that touch.
+///
+/// THE MISTAKE WAS ASKING THE QUESTION OF ONE SIDE ONLY, and it is recorded because the resolution
+/// recipe is what failed, not the arithmetic. The trigger check was run carefully against the rows
+/// being KEPT -- this PR's own two, whose trigger is this PR merging and has not fired -- and was
+/// never run against the cohort being IMPORTED. "Preserve both sides" is the wrong default for a
+/// ledger with dissolution rules: the resolved roster is the old cohort, UNION newly live main
+/// cohorts, MINUS every cohort whose trigger has fired as of the base being merged, asked of each
+/// side independently.
+/// FOURTEENTH DISSOLUTION (2026-09-02), AND IT IS THE THIRTEENTH'S OWN LESSON APPLIED TO THE ROWS
+/// THAT TAUGHT IT. RLM-2b's two rows above declare their trigger as "#9832 merging". #9832 IS the
+/// base this change merges -- main's head is that merge -- so their lifetime ended at the moment
+/// this merge began. Base and head both carry the constant's relocation, no run can produce those
+/// deltas, and both rows would report stale, refusing every unrelated PR exactly as the seventeen
+/// did. They are removed here.
+///
+/// THE THIRTEENTH ENTRY WARNED THAT "PRESERVE BOTH SIDES" IS THE WRONG DEFAULT FOR A LEDGER WITH
+/// DISSOLUTION RULES, and asking the trigger question of the kept rows only is how the previous
+/// cohort outlived itself by ten minutes. Keeping RLM-2b's rows through this merge because they
+/// arrived from main would be that identical mistake one iteration later, with the roles swapped.
+/// The recipe was run against BOTH sides: this change's own cohort has an unfired trigger and
+/// stays; the imported cohort's has fired and goes.
+/// FIFTEENTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
 /// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
 /// module more than one implementation cites. No declaration was renamed and no name was minted:
 /// every spelling below denotes the same declaration it denoted at the base, at a new home, so
