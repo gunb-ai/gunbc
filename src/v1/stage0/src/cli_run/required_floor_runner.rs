@@ -1,5 +1,51 @@
 // Split from cli_run.rs (pure code motion; no semantic change).
-#![allow(unused_imports)]
+// CLIPPY ROSTER -- 97 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::disallowed_macros,  // 75
+    clippy::needless_borrow,  // 7
+    clippy::needless_return,  // 1
+    clippy::nonminimal_bool,  // 1
+    clippy::type_complexity,  // 1
+    dead_code,  // 10
+    unused_imports,  // 0 -- pre-existing
+    unused_variables,  // 2
+)]
+// cli_run.rs is this module's PARENT, and an `#![allow]` there reaches every module
+// under it -- the same cascade this commit removed at the crate root, one level down.
+// These are the names its roster carries that this module does not trip, restored to
+// warn so `-D warnings` still judges them here. A name moves from this list to the
+// allow list above only with a counted site, never silently.
+#![warn(
+    clippy::assertions_on_constants,
+    clippy::clone_on_copy,
+    clippy::cloned_ref_to_slice_refs,
+    clippy::collapsible_str_replace,
+    clippy::doc_lazy_continuation,
+    clippy::empty_line_after_doc_comments,
+    clippy::enum_variant_names,
+    clippy::iter_kv_map,
+    clippy::manual_is_multiple_of,
+    clippy::manual_strip,
+    clippy::map_identity,
+    clippy::missing_const_for_thread_local,
+    clippy::needless_lifetimes,
+    clippy::only_used_in_recursion,
+    clippy::ptr_arg,
+    clippy::redundant_closure,
+    clippy::single_char_add_str,
+    clippy::too_many_arguments,
+    clippy::unnecessary_to_owned,
+    clippy::unneeded_struct_pattern,
+    clippy::useless_vec,
+    unused_mut
+)]
+
 use super::*;
 use im::HashMap;
 use std::cell::{Cell, RefCell};

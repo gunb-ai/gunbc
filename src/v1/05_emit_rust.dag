@@ -3423,6 +3423,44 @@ fn lib_rs_mod_name_from_path(path: String) -> String {
 
 data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
 
+// ONE AUTHORITY FOR THE LINT RELAXATION GENERATED RUST NEEDS, TWO RENDERINGS. Mechanically
+// derived Rust carries artifacts no lint can inform an authoring decision about: parentheses
+// the lowering adds to keep precedence safe, imports the emitter cannot know a body will not
+// use, clones it cannot know are Copy. Relaxing those is a fact about GENERATED CODE, so it
+// is spelled once here and rendered where it belongs, rather than copied per emitter -- it was
+// spelled twice, here and in v1.compiler.stage0_crates, which is one concept with two names.
+//
+// THE RENDERING IS NOT COSMETIC. An inner `#![allow(..)]` at a crate root outranks `-D warnings`
+// on the command line and reaches every module under that root, so a root that blankets on
+// behalf of its generated modules also silences every HAND-MAINTAINED module sharing it. The
+// v1-compiler root did exactly that: `cargo clippy --all-targets -- -D warnings`, one of the
+// three checks DESIGN names, decided nothing over the 40 top-level and 27 cli_run modules
+// written by hand. So the crate-root block is emitted only for a root whose modules are ALL
+// generated, and where hand-maintained siblings share the root each generated item carries the
+// relaxation as an outer attribute instead.
+data generated_rust_lint_relaxations: List<String> = [
+  "unused_imports",
+  "unused_variables",
+  "unused_mut",
+  "unused_parens",
+  "dead_code",
+  "non_shorthand_field_patterns",
+  "suspicious_double_ref_op",
+  "clippy::all"
+]
+
+fn generated_rust_lint_arguments() -> String {
+  generated_rust_lint_relaxations |> join(separator: ", ")
+}
+
+fn generated_rust_crate_allow_block() -> String {
+  concat("#![allow(", generated_rust_lint_arguments(), ")]")
+}
+
+fn generated_rust_item_allow_attr() -> String {
+  concat("#[allow(", generated_rust_lint_arguments(), ")]\n")
+}
+
 // ONE role, TWO projections. Being a macro provider decides both how the module is
 // RENDERED (`#[macro_use]`) and where it is ORDERED (ahead of its consumers), and the
 // two were independently written comparisons against the same literal until this
@@ -3507,9 +3545,9 @@ fn stage0_package_name_to_crate_ident(package_name: String) -> String {
 // shell's own definition leaves every `crate::NonEmptyVec` in the modules that stay bound to
 // exactly the type it was bound to before this cut. Deleting it would silently repoint them at
 // the foundation's, which is a carrier change wearing a re-export's clothes.
-fn stage0_host_shell_partition_reexport_block() -> String {
+fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
   generated_host_shell_partition_dependencies
-    |> map(pkg => concat("pub use ", stage0_package_name_to_crate_ident(package_name: pkg), "::*;"))
+    |> map(pkg => concat(item_attr, "pub use ", stage0_package_name_to_crate_ident(package_name: pkg), "::*;"))
     |> join(separator: "\n")
 }
 
@@ -3525,6 +3563,17 @@ fn stage0_host_shell_partition_reexport_block() -> String {
 // the module NAME; it reads no module content and no rendered file, so a scoped emission still
 // declares the whole population minus the partition-owned names. Ownership and scope are decided
 // by different inputs and neither can shadow the other.
+// A ROOT THAT MIXES AUTHORSHIP MAY NOT BLANKET ON ITS MODULES' BEHALF. `has_compiler_tests`
+// selects the one root that declares hand-maintained modules beside generated ones -- the
+// stage0 host shell -- and there the relaxation rides each generated item while the
+// hand-maintained block is left bare, so `cargo clippy --all-targets -- -D warnings` reaches it.
+// Every other root this function renders is wholly generated and keeps the crate-level block,
+// which is honest because there is nothing under it the relaxation does not describe.
+//
+// The `im` alias carries the attribute because it is generated and one of its two names is
+// unused; the NonEmpty* wrappers deliberately do NOT, because they are a fixed handful of items
+// that are clean under the gate today, and leaving judged what can be judged keeps the excused
+// set as small as the facts require rather than as large as the category.
 fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
   let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
   let shell_names = if has_compiler_tests {
@@ -3537,7 +3586,20 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
   } else {
     order_partial_lib_rs_mod_names(mod_names: shell_names)
   }
-  let mod_decls = mod_names |> map(emit_lib_rs_mod_decl)
+  let root_is_mixed_authorship = has_compiler_tests
+  let generated_item_attr = if root_is_mixed_authorship {
+    generated_rust_item_allow_attr()
+  } else {
+    ""
+  }
+  let root_allow_block = if root_is_mixed_authorship {
+    ""
+  } else {
+    concat(generated_rust_crate_allow_block(), "\n")
+  }
+
+  let mod_decls = mod_names
+    |> map(n => concat(generated_item_attr, emit_lib_rs_mod_decl(mod_name: n)))
 
   let hand_maintained_mods = if has_compiler_tests {
     generated_pub_mod_block
@@ -3545,20 +3607,22 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
     ""
   }
   let test_mod = if has_compiler_tests {
-    "\n\n#[cfg(test)]\nmod compiler_tests;"
+    concat("\n\n#[cfg(test)]\n", generated_item_attr, "mod compiler_tests;")
   } else {
     ""
   }
   let partition_reexports = if has_compiler_tests {
-    concat(stage0_host_shell_partition_reexport_block(), "\n\n")
+    concat(stage0_host_shell_partition_reexport_block(item_attr: generated_item_attr), "\n\n")
   } else {
     ""
   }
   let shared_types = emit_non_empty_wrappers()
   let content = concat("// Generated by v1 compiler -- do not edit.\n\n",
-    "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n#![deny(unreachable_patterns)]\n",
+    root_allow_block,
+    "#![deny(unreachable_patterns)]\n",
 
     "#![recursion_limit = \"256\"]\n\n",
+    generated_item_attr,
     "use im::\{OrdSet as BTreeSet, Vector as Vec\};\n\n",
     partition_reexports,
     mod_decls |> join(separator: "\n"),

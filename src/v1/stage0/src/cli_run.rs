@@ -1,3 +1,40 @@
+// CLIPPY ROSTER -- 256 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::assertions_on_constants,  // 1
+    clippy::clone_on_copy,  // 1
+    clippy::cloned_ref_to_slice_refs,  // 2
+    clippy::collapsible_str_replace,  // 1
+    clippy::disallowed_macros,  // 94
+    clippy::doc_lazy_continuation,  // 2
+    clippy::empty_line_after_doc_comments,  // 4
+    clippy::enum_variant_names,  // 1
+    clippy::iter_kv_map,  // 1
+    clippy::manual_is_multiple_of,  // 1
+    clippy::manual_strip,  // 3
+    clippy::map_identity,  // 2
+    clippy::missing_const_for_thread_local,  // 2
+    clippy::needless_borrow,  // 2
+    clippy::needless_lifetimes,  // 1
+    clippy::only_used_in_recursion,  // 1
+    clippy::ptr_arg,  // 4
+    clippy::redundant_closure,  // 3
+    clippy::single_char_add_str,  // 2
+    clippy::too_many_arguments,  // 2
+    clippy::type_complexity,  // 7
+    clippy::unnecessary_to_owned,  // 12
+    clippy::unneeded_struct_pattern,  // 1
+    clippy::useless_vec,  // 1
+    dead_code,  // 88
+    unused_imports,  // 14
+    unused_mut,  // 3
+)]
+
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
