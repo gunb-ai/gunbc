@@ -1170,7 +1170,20 @@ pub fn workspace_root() -> PathBuf {
 /// another tree and can pass or fail either way, with no typed refusal anywhere). For the gating
 /// population the state is now absent; this lens is what keeps it absent, so that population sits
 /// at 2, mechanically preventable, with ceiling 4 named above.
-/// Class: `gunbc.recurring_failure_mode` `ambient_process_state_read_by_a_concurrent_reader`.
+/// Class: `gunbc.recurring_failure_mode` `ambient_process_state_read_by_a_concurrent_reader`.///
+/// THIS MODULE IS MACHINERY THAT DISSOLVES, AND SAYS SO RATHER THAN WAITING TO BE ASKED. It is
+/// several hundred lines of hand-Rust that re-authors a slice of Rust name resolution in
+/// prose-scanning form — a parallel representation of something the substrate will own, and by
+/// DESIGN §6's test it does NOT survive the terminal architecture. It is admitted as rung-2
+/// machinery, which §4b(4) requires to be DELETED by the climb it enables rather than kept beside
+/// it: when the trigger above lands and every reader in the population resolves from an explicitly
+/// passed root, the ambient write has no consumer, the invalid state has no constructor, and there
+/// is nothing left for a scanner to scan. The whole module goes then — the wall, the closure, and
+/// the projection controls with it, since those exist only to make this scanner honest and have no
+/// subject once it is gone. What does NOT go is the fact it defends, which by then is carried by
+/// construction instead. Read as a permanent lens it would be exactly the parallel authority §3
+/// forbids; read as a countdown to its own deletion it is the cheapest thing that keeps the class
+/// absent until the capability exists.
 #[cfg(test)]
 mod process_cwd_mutation_reachability_gate {
     use std::collections::{BTreeMap, BTreeSet};
