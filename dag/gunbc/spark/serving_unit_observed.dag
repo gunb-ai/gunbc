@@ -3,10 +3,12 @@ module gunbc.spark.serving_unit_observed
 import std.types { String, Bool, List, Int, NonEmptyStr, Port }
 import std.measure {
   TokenCount, token_count, token_count_value,
-  PositiveSlotCount, positive_slot_count, positive_slot_count_value, positive_measure_count,
+  PositiveSlotCount, positive_slot_count, positive_slot_count_value,
+  PositiveMeasureCount, positive_measure_count, positive_measure_count_value,
 }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address_eq }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, ipv4_address_eq }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoint_on }
 
@@ -39,9 +41,21 @@ import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoi
 //
 // THE FRONT DOOR IS THE ONLY ADDRESSABLE END. It serves the OpenAI and Anthropic surfaces, owns the
 // KV cache and the slot scheduler, and drives the weights peer.
+//
+// THE FIELD IS THE CONNECT ADDRESS, NOT THE LISTEN ADDRESS, AND THE DISTINCTION IS A MEANING FORK
+// THIS MODULE ALREADY PAID FOR ONCE. The measured llama-server binds 0.0.0.0; 192.168.1.232 is the
+// address a client dials. This carrier first named the field `bind_address` while
+// serving_unit_client_endpoint handed that same value to clients -- operationally correct, and the
+// name asserted the wrong fact, which is exactly the listen-versus-connect fork the ollama path
+// learned earlier. A listen address is a fact about the process's socket and belongs with the
+// runtime realization if it is ever needed; what a serving unit owes a caller is where to dial.
+//
+// It is an Ipv4Address rather than a NonEmptyStr because the fourth constructor condition below has
+// to be able to ASK whether two endpoints are the same address, and a string cannot answer that
+// without a second parser.
 type ServingUnitFrontDoor sole_constructor {
   host: HostIdentity
-  bind_address: NonEmptyStr
+  client_address: Ipv4Address
   port: Port
 }
 
@@ -68,8 +82,8 @@ type ServingUnitWeightsPeer sole_constructor {
   port: Port
 }
 
-fn serving_unit_front_door(host: HostIdentity, bind_address: NonEmptyStr, port: Port) -> ServingUnitFrontDoor {
-  ServingUnitFrontDoor { host: host, bind_address: bind_address, port: port }
+fn serving_unit_front_door(host: HostIdentity, client_address: Ipv4Address, port: Port) -> ServingUnitFrontDoor {
+  ServingUnitFrontDoor { host: host, client_address: client_address, port: port }
 }
 
 fn serving_unit_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Port) -> ServingUnitWeightsPeer {
@@ -136,7 +150,10 @@ fn serving_unit_slot_plan_per_slot(plan: ServingUnitSlotPlan) -> TokenCount {
 //     path these two speak over, and naming it would make the check above pass against the wrong
 //     subject.
 //   - the front door and the peer must not be the same PORT ON THE SAME ADDRESS, which is the
-//     copy-paste of the endpoint block.
+//     copy-paste of the endpoint block. This condition was CLAIMED here before it was enforced --
+//     the annotation said four and the constructor implemented three -- which is the decoration
+//     case: a stated invariant nothing checks reads as coverage. It is now decidable because the
+//     front door carries an Ipv4Address rather than a string, and it has its own discriminating RED.
 //
 // A deployment that fails any of them has no constructor. It is not reported later.
 type ServingUnit sole_constructor {
@@ -155,6 +172,9 @@ fn serving_unit_construct(
   slot_plan: ServingUnitSlotPlan,
 ) -> ServingUnit? {
   if host_identity_eq(a: front_door.host, b: weights_peer.host) {
+    none
+  } else if ipv4_address_eq(a: front_door.client_address, b: weights_peer.fabric_address)
+    && front_door.port == weights_peer.port {
     none
   } else {
     match fabric_endpoint_on(link: fabric, host: weights_peer.host) {
@@ -182,7 +202,8 @@ fn serving_unit_construct(
 // THE ONE ADDRESS A CLIENT MAY HOLD. There is deliberately no sibling returning the weights peer as
 // an endpoint: C1 is enforced by there being nothing to call, rather than by a rule saying not to.
 fn serving_unit_client_endpoint(d: ServingUnit) -> String {
-  join(["http://", d.front_door.bind_address as String, ":", to_string(d.front_door.port)], "")
+  join(["http://", render_ipv4_address(addr: d.front_door.client_address), ":",
+    to_string(d.front_door.port)], "")
 }
 
 fn serving_unit_rpc_peer_wire(d: ServingUnit) -> String {
@@ -239,7 +260,7 @@ data serving_unit_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" a
 // link BY IDENTITY and derives the peer's address from it. No fabric field is restated here.
 data serving_unit_observed_front_door: ServingUnitFrontDoor = ServingUnitFrontDoor {
   host: operator_host_srv7,
-  bind_address: "192.168.1.232" as NonEmptyStr,
+  client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232),
   port: 30000,
 }
 
@@ -352,12 +373,18 @@ fn serving_unit_throughput_band(
 // only make the check stricter: it refuses where the true figure would have passed, never the
 // reverse. Rounding the low end up would have been the fail-open direction and is what this note
 // exists to prevent someone doing later for tidiness.
+//
+// THE PER-STREAM FIGURE ROUNDS DOWN FOR THE SAME REASON, 5.9 -> 5, AND IT FIRST SHIPPED AT 6. That
+// was the fail-open direction on an axis nothing currently admits against, which is precisely when
+// such a value is cheapest to fix and likeliest to be left: a later minimum-per-stream check would
+// have inherited an overstatement with no note saying it was one. Nothing here is a floor, and a
+// figure that could become one is rounded the direction a floor must be rounded.
 fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
   serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
     aggregate_low: tokens_per_second(count: 50),
     aggregate_high: tokens_per_second(count: 59),
-    per_stream: tokens_per_second(count: 6),
+    per_stream: tokens_per_second(count: 5),
   )
 }
 
@@ -398,8 +425,32 @@ fn serving_unit_throughput_meets(
 // DeepSeek-V4-Flash-0731-GGUF repository on huggingface. That is where they CAME FROM; this module
 // does not claim the upstream still serves these bytes, because that would be a fact about a remote
 // registry nobody re-read. What is established is what this host holds.
+// A DIGEST IS A TYPED CONTENT HASH AND ITS POSITION IN THE CHAIN IS PART OF IT.
+//
+// The bound arm first carried List<NonEmptyStr>, and at that width `["banana"]` bound a four-shard
+// artifact: one string, wrong cardinality, no hash family, and no association with any particular
+// shard -- while the predicate below is what a publication step consults. The name claimed exact
+// identity and the carrier could not deliver it.
+//
+// Both halves are closed here. The digest is std.content_hash's Sha256Digest, so a value that is not
+// 64 lower-hex characters has no constructor rather than being caught later; and the ordinal binds
+// each digest to the shard it was read from, because a GGUF shard set is an ordered chain the loader
+// follows from the index and the same four digests in a different order name a different artifact.
+type ServingUnitShardDigest sole_constructor {
+  ordinal: PositiveMeasureCount
+  digest: Sha256Digest
+}
+
+fn serving_unit_shard_digest(ordinal: PositiveMeasureCount, hex: String) -> ServingUnitShardDigest? {
+  match sha256_hex_digest(hex: hex) {
+    Absent => none
+    Present { value: d } =>
+      Present { value: ServingUnitShardDigest { ordinal: ordinal, digest: d } }
+  }
+}
+
 type ServingUnitArtifactIdentity
-  = ArtifactIdentityBound { shard_digests: List<NonEmptyStr> }
+  = ArtifactIdentityBound { shards: List<ServingUnitShardDigest> }
   | ArtifactIdentityUnobserved { cause: NonEmptyStr }
 
 type ServingUnitArtifact sole_constructor {
@@ -423,17 +474,32 @@ fn serving_unit_artifact(
   }
 }
 
-data serving_unit_observed_shard_digests: List<NonEmptyStr> = [
-  "2baab0767d2630cb1633495ff6ccf10bdc5b83de7d66a0d3728a1a0f38e96220" as NonEmptyStr,
-  "3495d0e8218c5a526d66a4901114a7ee4c5e25f84fe1f4bc632b5cbfdac57ac7" as NonEmptyStr,
-  "57ad22e505204245020644de9143accfe3be91951efaa809bf59fa640ec278ea" as NonEmptyStr,
-  "87b2e7956b08954dd0d9ba71801f623fdcd1762f252ea3d18018798a1718bfc9" as NonEmptyStr,
-]
+// Shards 00001 through 00004, hashed in place on the front-door host. A hex string that does not
+// parse yields no ShardDigest, so the identity below refuses rather than binding a short chain.
+fn serving_unit_observed_shard_digests() -> List<ServingUnitShardDigest> {
+  flat_map(
+    [ serving_unit_shard_digest(
+        ordinal: positive_measure_count(predecessor: 0),
+        hex: "2baab0767d2630cb1633495ff6ccf10bdc5b83de7d66a0d3728a1a0f38e96220"),
+      serving_unit_shard_digest(
+        ordinal: positive_measure_count(predecessor: 1),
+        hex: "3495d0e8218c5a526d66a4901114a7ee4c5e25f84fe1f4bc632b5cbfdac57ac7"),
+      serving_unit_shard_digest(
+        ordinal: positive_measure_count(predecessor: 2),
+        hex: "57ad22e505204245020644de9143accfe3be91951efaa809bf59fa640ec278ea"),
+      serving_unit_shard_digest(
+        ordinal: positive_measure_count(predecessor: 3),
+        hex: "87b2e7956b08954dd0d9ba71801f623fdcd1762f252ea3d18018798a1718bfc9") ],
+    o => match o {
+      Present { value: v } => [v]
+      Absent => []
+    })
+}
 
 data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
   primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
   shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
-  identity: ArtifactIdentityBound { shard_digests: serving_unit_observed_shard_digests },
+  identity: ArtifactIdentityBound { shards: serving_unit_observed_shard_digests() },
 }
 
 // A UNIT WHOSE ARTIFACT IDENTITY IS UNBOUND MAY BE OBSERVED AND MAY NOT BE CONVERGED, and that is
@@ -442,10 +508,26 @@ data serving_unit_observed_artifact: ServingUnitArtifact = ServingUnitArtifact {
 // step must consult, and it answers false today.
 fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
   match a.identity {
-    ArtifactIdentityBound { shard_digests: ds } =>
-      length(ds) == positive_shard_count_value(shards: a.shard_count)
+    ArtifactIdentityBound { shards: ds } =>
+      serving_unit_shards_are_the_whole_chain(
+        shards: ds, expected: positive_shard_count_value(shards: a.shard_count))
     ArtifactIdentityUnobserved { cause: _ } => false
   }
+}
+
+// THE CHAIN IS 1..N IN ORDER, WHICH IS STRICTLY MORE THAN A COUNT. Four digests whose ordinals are
+// 1,1,2,3 have the right cardinality and name a shard set that does not exist, so the fold below
+// walks the expected ordinal forward and sinks to 0 on the first disagreement -- 0 matches no
+// ordinal, since an ordinal is a PositiveMeasureCount and cannot be zero, so the sink is absorbing
+// and a later coincidence cannot restore it.
+fn serving_unit_shards_are_the_whole_chain(
+  shards: List<ServingUnitShardDigest>,
+  expected: Int,
+) -> Bool {
+  length(shards) == expected &&
+    fold(shards, init: 1, f: fn(next, s) {
+      if positive_measure_count_value(count: s.ordinal) == next { next + 1 } else { 0 }
+    }) == expected + 1
 }
 
 // ================= WHAT THE FRONT DOOR ACTUALLY ANSWERS =================
@@ -477,5 +559,72 @@ fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyS
   match surface {
     OpenAiCompatibleSurface => "/v1/models" as NonEmptyStr
     OllamaSurface => "/api/tags" as NonEmptyStr
+  }
+}
+
+// ================= ONE CONSTRUCTOR FOR ONE OBSERVED REALIZATION =================
+//
+// UNTIL THIS TYPE EXISTED, THE OBSERVATIONS WERE ADJACENCY RATHER THAN A JOINED FACT. The unit, its
+// artifact, its API surface and its throughput band sat as four separate module-scope values, and
+// with exactly one of each nothing went wrong -- which is the whole problem, because nothing
+// structural said they described the same executed realization either. The moment a second unit or
+// a re-measured realization appears, `unit A + artifact B + surface D + throughput C` is writable
+// and reads as one observation. That is the evidence-transport failure this lane has been removing
+// everywhere else, and the cheapest place to close it is before there is a second row.
+//
+// THE JOIN CARRIES A CONDITION, WHICH IS WHAT MAKES IT MORE THAN A RECORD. A throughput band was
+// measured AT a slot count; if that count disagrees with the unit's slot plan, the band describes a
+// different configuration of the same deployment and attaching it here would report a measurement
+// of something that was not run. So the mismatch has no constructor.
+//
+// THE UNIT STAYS IMPLEMENTATION-NEUTRAL AND THIS TYPE IS WHERE THAT IS PAID FOR. No llama.cpp, no
+// IQ3_S, no engine anywhere in ServingUnit: it is the stable structural subject -- a front door, a
+// weights peer, a fabric and a slot plan -- while ServingUnitObservation is ONE MEASURED
+// REALIZATION of that subject. The engine can be replaced without changing what a serving unit is,
+// and a later desired-state selector is a third thing again, selecting a realization rather than
+// re-describing the subject.
+type ServingUnitObservation sole_constructor {
+  unit: ServingUnit
+  artifact: ServingUnitArtifact
+  api_surface: ServingUnitApiSurface
+  throughput: ServingUnitThroughputBand
+}
+
+fn serving_unit_observation(
+  unit: ServingUnit,
+  artifact: ServingUnitArtifact,
+  api_surface: ServingUnitApiSurface,
+  throughput: ServingUnitThroughputBand,
+) -> ServingUnitObservation? {
+  if positive_slot_count_value(slots: throughput.slots)
+    != positive_slot_count_value(slots: unit.slot_plan.slots) {
+    none
+  } else {
+    Present { value: ServingUnitObservation {
+      unit: unit,
+      artifact: artifact,
+      api_surface: api_surface,
+      throughput: throughput,
+    } }
+  }
+}
+
+// The observation of 2026-09-02, or Absent when any part of it failed to construct. There is no arm
+// that reports a partial observation: a join missing one of its arms is not a weaker observation of
+// the same realization, it is a claim about a realization nobody fully measured.
+fn serving_unit_observed_observation() -> ServingUnitObservation? {
+  match serving_unit_observed() {
+    Absent => none
+    Present { value: u } =>
+      match serving_unit_observed_throughput() {
+        Absent => none
+        Present { value: band } =>
+          serving_unit_observation(
+            unit: u,
+            artifact: serving_unit_observed_artifact,
+            api_surface: serving_unit_observed_api_surface,
+            throughput: band,
+          )
+      }
   }
 }

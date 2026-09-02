@@ -5,6 +5,7 @@ import std.measure {
   token_count, token_count_value, tokens_per_second,
   positive_shard_count,
   PositiveSlotCount, positive_slot_count, positive_measure_count,
+  positive_measure_count_value,
 }
 import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
@@ -27,6 +28,12 @@ import gunbc.spark.serving_unit_observed {
   ArtifactIdentityUnobserved,
   serving_unit_observed_artifact,
   serving_unit_observed_shard_digests,
+  ServingUnitShardDigest,
+  serving_unit_shard_digest,
+  serving_unit_shards_are_the_whole_chain,
+  serving_unit_observation,
+  serving_unit_observed_observation,
+  serving_unit_observed_api_surface,
   serving_unit_artifact_is_bound,
   serving_unit_artifact,
   serving_unit_throughput_band,
@@ -102,7 +109,9 @@ test fn a_deployment_whose_two_ends_are_one_host_refuses() -> Bool {
           match serving_unit_construct(
             alias: "x" as NonEmptyStr,
             front_door: serving_unit_front_door(
-              host: operator_host_srv8, bind_address: "192.168.1.233" as NonEmptyStr, port: 30000),
+              host: operator_host_srv8,
+              client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 233),
+              port: 30000),
             weights_peer: serving_unit_weights_peer(
               host: operator_host_srv8, fabric_address: e.address, port: 50052),
             fabric: link,
@@ -124,7 +133,9 @@ test fn a_peer_addressed_off_the_fabric_refuses() -> Bool {
       match serving_unit_construct(
         alias: "x" as NonEmptyStr,
         front_door: serving_unit_front_door(
-          host: operator_host_srv7, bind_address: "192.168.1.232" as NonEmptyStr, port: 30000),
+          host: operator_host_srv7,
+          client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232),
+          port: 30000),
         weights_peer: serving_unit_weights_peer(
           host: operator_host_srv8,
           fabric_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 233),
@@ -214,7 +225,7 @@ test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
 // digests the registration payload recorded independently. Both sources agree on all four.
 test fn the_observed_artifact_identity_is_bound() -> Bool {
   serving_unit_artifact_is_bound(a: serving_unit_observed_artifact)
-    && length(serving_unit_observed_shard_digests) == 4
+    && length(serving_unit_observed_shard_digests()) == 4
 }
 
 // A DISCRIMINATING RED, AND IT IS THE COUNT-VERSUS-COVERAGE CLASS. "Bound" previously meant the
@@ -225,11 +236,122 @@ test fn an_artifact_whose_closure_misses_a_shard_is_not_bound() -> Bool {
   !serving_unit_artifact_is_bound(a: serving_unit_artifact(
     primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3)),
-    identity: ArtifactIdentityBound { shard_digests: [fx_only_digest] },
+    identity: ArtifactIdentityBound { shards: fx_shard_chain(n: 1) },
   ))
 }
 
-data fx_only_digest: NonEmptyStr = "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr
+// One well-formed shard digest per ordinal 1..n, so a fixture can vary the CHAIN without varying
+// digest validity -- the two conditions the bound arm now carries are then independently testable.
+fn fx_shard_chain(n: Int) -> List<ServingUnitShardDigest> {
+  flat_map([1, 2, 3, 4], i =>
+    if i <= n {
+      match serving_unit_shard_digest(
+        ordinal: positive_measure_count(predecessor: i - 1), hex: fx_digest_hex) {
+        Present { value: v } => [v]
+        Absent => []
+      }
+    } else {
+      []
+    })
+}
+
+data fx_digest_hex: String = "1111111111111111111111111111111111111111111111111111111111111111"
+
+// A DISCRIMINATING RED ON THE OTHER HALF OF EXACTNESS: right cardinality, wrong chain. Four digests
+// whose ordinals are 1,1,2,3 name a shard set that does not exist, and a length check alone reports
+// them as a fully bound artifact. This is the claim that would go green if the ordinal walk were
+// removed and the count check left standing.
+test fn an_artifact_whose_shard_ordinals_repeat_is_not_bound() -> Bool {
+  !serving_unit_shards_are_the_whole_chain(shards: fx_repeated_chain(), expected: 4)
+}
+
+fn fx_repeated_chain() -> List<ServingUnitShardDigest> {
+  flat_map([0, 0, 1, 2], pred =>
+    match serving_unit_shard_digest(
+      ordinal: positive_measure_count(predecessor: pred), hex: fx_digest_hex) {
+      Present { value: v } => [v]
+      Absent => []
+    })
+}
+
+// A DIGEST IS A TYPED CONTENT HASH, SO A NON-HASH HAS NO CONSTRUCTOR. "banana" is what the previous
+// NonEmptyStr carrier accepted as a shard identity; it now yields no ShardDigest at all, which is
+// why the chain above cannot be assembled from it in the first place.
+test fn a_shard_digest_refuses_a_value_that_is_not_a_sha256_hex() -> Bool {
+  match serving_unit_shard_digest(
+    ordinal: positive_measure_count(predecessor: 0), hex: "banana") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// POSITIVE CONTROL FOR THE TWO REDS ABOVE: the well-formed four-shard chain IS bound, so the refusals
+// are discriminating rather than a predicate that answers false for everything.
+test fn a_well_formed_four_shard_chain_is_the_whole_chain() -> Bool {
+  serving_unit_shards_are_the_whole_chain(shards: fx_shard_chain(n: 4), expected: 4)
+}
+
+// THE FRONT DOOR AND THE PEER MAY NOT BE THE SAME PORT ON THE SAME ADDRESS -- the fourth constructor
+// condition, which was CLAIMED in the module annotation before it was enforced. This claim is the
+// executed evidence that it is now real; it went green vacuously before the guard landed only
+// because the string carrier could not compare addresses at all.
+test fn a_unit_whose_ends_share_an_address_and_port_has_no_constructor() -> Bool {
+  match fabric_rail0 {
+    Absent => false
+    Present { value: link } =>
+      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+        Absent => false
+        Present { value: e } =>
+          match serving_unit_construct(
+            alias: "fixture" as NonEmptyStr,
+            front_door: serving_unit_front_door(
+              host: operator_host_srv7, client_address: e.address, port: 50052),
+            weights_peer: serving_unit_weights_peer(
+              host: operator_host_srv8, fabric_address: e.address, port: 50052),
+            fabric: link,
+            slot_plan: serving_unit_observed_slot_plan,
+          ) {
+            Present { value: _ } => false
+            Absent => true
+          }
+      }
+  }
+}
+
+// THE JOIN REFUSES A BAND MEASURED AT A DIFFERENT SLOT COUNT, which is the condition that makes
+// ServingUnitObservation more than a record. A twelve-slot band attached to the ten-slot unit would
+// report a measurement of a configuration that was not the one observed.
+test fn an_observation_refuses_a_band_from_a_different_slot_count() -> Bool {
+  match serving_unit_observed() {
+    Absent => false
+    Present { value: u } =>
+      match serving_unit_throughput_band(
+        slots: positive_slot_count(count: positive_measure_count(predecessor: 11)),
+        aggregate_low: tokens_per_second(count: 50),
+        aggregate_high: tokens_per_second(count: 59),
+        per_stream: tokens_per_second(count: 5)) {
+        Absent => false
+        Present { value: band } =>
+          match serving_unit_observation(
+            unit: u,
+            artifact: serving_unit_observed_artifact,
+            api_surface: serving_unit_observed_api_surface,
+            throughput: band) {
+            Present { value: _ } => false
+            Absent => true
+          }
+      }
+  }
+}
+
+// POSITIVE CONTROL FOR THE JOIN: the observation of 2026-09-02 constructs, so the refusal above is
+// discriminating and every claim reading the join is non-vacuous.
+test fn the_observed_realization_joins_into_one_observation() -> Bool {
+  match serving_unit_observed_observation() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
 
 // An unobserved identity is never bound, whatever else the record carries.
 test fn an_unobserved_artifact_identity_is_not_bound() -> Bool {
