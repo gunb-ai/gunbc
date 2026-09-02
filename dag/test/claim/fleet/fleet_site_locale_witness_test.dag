@@ -3,7 +3,7 @@ module test.claim.fleet.fleet_site_locale_witness
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york }
-import extdeps.posix.locale { locale_en_us }
+import extdeps.posix.locale { locale_en_us_utf8 }
 import gunbc.fleet.fleet_site_locale { PhysicalSite, SiteIdentity }
 import std.types { Int }
 import gunbc.fleet.fleet_site_locale {
@@ -98,7 +98,7 @@ test fn w_moving_the_site_inverts_every_verdict() -> Bool {
     site: PhysicalSite {
       identity: "relocated-probe" as SiteIdentity,
       civil_time_zone: zone_etc_utc,
-      civil_locale: locale_en_us,
+      civil_locale: locale_en_us_utf8,
     },
     policy: fleet_host_zone_policy,
   ) == 2
@@ -129,5 +129,5 @@ test fn w_unruled_policy_makes_convergence_undecidable() -> Bool {
 
 // The locale has no policy axis because the measurement found no second arm; it derives directly.
 test fn w_locale_derives_from_the_site_without_a_policy() -> Bool {
-  provisioned_locale(site: site_us_east_operator_premises) == locale_en_us
+  provisioned_locale(site: site_us_east_operator_premises) == locale_en_us_utf8
 }

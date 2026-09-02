@@ -23,6 +23,11 @@ import gunbc.spark.oobe_screen_observation {
   EulaAcceptAction,
   ComboBoxOverHiddenField,
   HiddenBackingField,
+  TestId,
+  ControlLabel,
+  SubmittedValueRepresentation,
+  VendorOpaqueOrdinal,
+  Bcp47LanguageTagValue,
   ForwardControlEnabledOnArrival,
   ForwardControlEnabledAfterScrollToEnd,
   PresentsNoConfigurableField,
@@ -224,20 +229,36 @@ test fn w_run_records_the_relay_and_rendering_hosts_separately() -> Bool {
 // These fold over the modeled controls rather than minting a Boolean per leaf, so adding a
 // screen extends the defended population instead of requiring a new hand-written witness.
 
-fn control_identity_matches(c: OobeControl, address: TestId, label: ControlLabel) -> Bool {
+// The identity is COMPARED, not wildcarded. The previous revision matched
+// `AdvanceButton { identity: _, ... }` and asserted only address and label -- so swapping
+// WelcomeGetStartedAction, SettingsContinueAction and EulaAcceptAction between screens left the
+// witness that advertised itself as defending identities completely green. Since all three
+// controls share the address "nv-button" and differ only by identity and label, that wildcard
+// removed the entire discriminating content of the check.
+fn control_matches(
+  c: OobeControl,
+  identity: OobeControlIdentity,
+  address: TestId,
+  label: ControlLabel,
+) -> Bool {
   match c {
-    AdvanceButton { identity: _, address: a, label: l } => a == address && l == label
-    SubmitButton { identity: _, address: a, label: l } => a == address && l == label
-    ComboBoxOverHiddenField { placeholder: _, backing_field: _ } => false
-    HiddenBackingField { field: _ } => false
+    AdvanceButton { identity: i, address: a, label: l } => i == identity && a == address && l == label
+    SubmitButton { identity: i, address: a, label: l } => i == identity && a == address && l == label
+    ComboBoxOverHiddenField { placeholder: _, backing_field: _, submitted_representation: _ } => false
+    HiddenBackingField { field: _, submitted_representation: _ } => false
   }
 }
 
-fn screen_has_control(screen: ObservedOobeScreen, address: TestId, label: ControlLabel) -> Bool {
+fn screen_has_control(
+  screen: ObservedOobeScreen,
+  identity: OobeControlIdentity,
+  address: TestId,
+  label: ControlLabel,
+) -> Bool {
   fold(
     screen.controls,
     init: false,
-    f: (acc, c) => acc || control_identity_matches(c: c, address: address, label: label)
+    f: (acc, c) => acc || control_matches(c: c, identity: identity, address: address, label: label)
   )
 }
 
@@ -248,9 +269,17 @@ test fn w_screen_headings_are_the_observed_text() -> Bool {
 }
 
 test fn w_each_screen_carries_its_observed_forward_control() -> Bool {
-  screen_has_control(screen: oobe_screen_welcome, address: "nv-button", label: "Get Started")
-    && screen_has_control(screen: oobe_screen_settings, address: "nv-button", label: "Continue")
-    && screen_has_control(screen: oobe_screen_eula, address: "nv-button", label: "Accept")
+  screen_has_control(screen: oobe_screen_welcome, identity: WelcomeGetStartedAction, address: "nv-button", label: "Get Started")
+    && screen_has_control(screen: oobe_screen_settings, identity: SettingsContinueAction, address: "nv-button", label: "Continue")
+    && screen_has_control(screen: oobe_screen_eula, identity: EulaAcceptAction, address: "nv-button", label: "Accept")
+}
+
+// THE MUTATION THE WILDCARD ADMITTED. Each screen must carry ITS OWN identity and no other, so
+// swapping any two identities turns this red even though every address and label is unchanged.
+test fn w_screens_do_not_share_control_identities() -> Bool {
+  !screen_has_control(screen: oobe_screen_welcome, identity: EulaAcceptAction, address: "nv-button", label: "Get Started")
+    && !screen_has_control(screen: oobe_screen_eula, identity: WelcomeGetStartedAction, address: "nv-button", label: "Accept")
+    && !screen_has_control(screen: oobe_screen_settings, identity: EulaAcceptAction, address: "nv-button", label: "Continue")
 }
 
 // THE ADDRESS IS SHARED AND THE IDENTITY IS NOT. All three forward controls answer to the same
@@ -260,8 +289,8 @@ fn forward_control_address(c: OobeControl) -> Bool {
   match c {
     AdvanceButton { identity: _, address: a, label: _ } => a == "nv-button"
     SubmitButton { identity: _, address: a, label: _ } => a == "nv-button"
-    ComboBoxOverHiddenField { placeholder: _, backing_field: _ } => true
-    HiddenBackingField { field: _ } => true
+    ComboBoxOverHiddenField { placeholder: _, backing_field: _, submitted_representation: _ } => true
+    HiddenBackingField { field: _, submitted_representation: _ } => true
   }
 }
 
@@ -275,12 +304,31 @@ test fn w_settings_screen_carries_all_three_backing_fields() -> Bool {
     oobe_screen_settings.controls,
     init: 0,
     f: (n, c) => match c {
-      ComboBoxOverHiddenField { placeholder: _, backing_field: _ } => n + 1
-      HiddenBackingField { field: _ } => n + 1
+      ComboBoxOverHiddenField { placeholder: _, backing_field: _, submitted_representation: _ } => n + 1
+      HiddenBackingField { field: _, submitted_representation: _ } => n + 1
       AdvanceButton { identity: _, address: _, label: _ } => n
       SubmitButton { identity: _, address: _, label: _ } => n
     }
   ) == 3
+}
+
+// THE OPAQUE-ORDINAL FINDING, defended. language and timezone submit vendor ordinals ("25",
+// "593"); locale submits a BCP 47 tag. A model that let a zone identifier be written into the
+// timezone field would have to change one of these arms, and this goes red when it does.
+fn control_submits_opaque_ordinal(c: OobeControl) -> Bool {
+  match c {
+    ComboBoxOverHiddenField { placeholder: _, backing_field: _, submitted_representation: r } =>
+      match r { VendorOpaqueOrdinal => true, Bcp47LanguageTagValue => false }
+    HiddenBackingField { field: _, submitted_representation: r } =>
+      match r { VendorOpaqueOrdinal => true, Bcp47LanguageTagValue => false }
+    AdvanceButton { identity: _, address: _, label: _ } => false
+    SubmitButton { identity: _, address: _, label: _ } => false
+  }
+}
+
+test fn w_language_and_timezone_submit_vendor_ordinals_not_identifiers() -> Bool {
+  fold(oobe_screen_settings.controls, init: 0,
+    f: (n, c) => if control_submits_opaque_ordinal(c: c) { n + 1 } else { n }) == 2
 }
 
 test fn w_receipt_names_the_observed_browser_and_origin() -> Bool {

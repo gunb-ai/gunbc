@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_site_locale
 
 import std.types { NonEmptyStr, Bool, List, Int }
-import extdeps.posix.locale { PosixLocaleId, locale_en_us }
+import extdeps.posix.locale { PosixLocaleId, locale_en_us_utf8 }
 import extdeps.iana.time_zone_database {
   IanaTimeZoneId,
   TzdataRelease,
@@ -33,7 +33,7 @@ type PhysicalSite {
 data site_us_east_operator_premises: PhysicalSite = PhysicalSite {
   identity: "us-east-operator-premises" as SiteIdentity,
   civil_time_zone: zone_america_new_york,
-  civil_locale: locale_en_us,
+  civil_locale: locale_en_us_utf8,
 }
 
 // THE SECOND HALF, AND THE REASON THIS IS TWO FACTS RATHER THAN ONE. A site's civil zone is

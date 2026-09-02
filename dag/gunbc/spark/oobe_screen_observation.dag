@@ -88,6 +88,26 @@ type ControlLabel = NonEmptyStr where brand("ControlLabel")
 // NOTHING HERE CLAIMS NVIDIA PUBLISHES A SELECTOR CONTRACT. These are addresses this repository
 // OBSERVED on one image. If a later image renames them the model goes red at the address, which
 // is the loud failure wanted, rather than a silent mis-click on whatever else answers.
+// WHAT THE FORM ACTUALLY SUBMITS, and the finding that most changes what an actuator may do.
+//
+// The hidden fields were read directly on the live portal: language carries "25", timezone
+// carries "593", and locale carries "en-US". The first two are OPAQUE VENDOR INDICES -- ordinal
+// positions in NVIDIA's own list -- not identifiers. The wizard does not accept
+// "America/New_York"; there is no field in which that string could be written.
+//
+// The consequence is structural and an earlier revision of this module implied the opposite. An
+// actuator CANNOT set a zone by writing its identifier: it must drive the visible combobox by
+// its displayed label and let the application compute the index. And because the index is an
+// ordinal into a vendor-controlled list, it is not stable across images the way an IANA
+// identifier is -- recording 593 as though it meant a zone would be recording a position as a
+// name, which is the positional-citation failure §3 names, in data rather than in a comment.
+//
+// VendorOpaqueOrdinal therefore deliberately carries NO value. Nothing downstream should be
+// able to read one and believe it has learned a zone.
+type SubmittedValueRepresentation
+  = VendorOpaqueOrdinal
+  | Bcp47LanguageTagValue
+
 type OobeControlIdentity
   = WelcomeGetStartedAction
   | SettingsContinueAction
@@ -107,9 +127,11 @@ type OobeControl
   | ComboBoxOverHiddenField {
       placeholder: PlaceholderText,
       backing_field: FormFieldName,
+      submitted_representation: SubmittedValueRepresentation,
     }
   | HiddenBackingField {
       field: FormFieldName,
+      submitted_representation: SubmittedValueRepresentation,
     }
 
 // ------------------------------------------------------------------------------------------
@@ -222,11 +244,16 @@ data oobe_screen_welcome: ObservedOobeScreen = ObservedOobeScreen {
 // in prose, so a consumer asks the model rather than trusting a comment.
 //
 // THE THIRD HIDDEN FIELD IS NOT A THIRD PROMPT. The screen carries hidden inputs named
-// language, timezone AND locale, but only two comboboxes. locale is evidently derived from
-// the language choice rather than independently prompted. It is carried as a bare
-// HiddenBackingField -- present, committed, not operator-chosen -- because a driver that
-// tries to find a control for it will not find one, and a model that omitted it would leave
-// an unexplained field in the submitted form.
+// language, timezone AND locale, but only two comboboxes, so locale is not operator-chosen. It
+// is carried because a driver that hunts for a control will not find one and a model that
+// omitted it would leave an unexplained field in the submitted form.
+//
+// AN EARLIER REVISION SAID locale WAS "evidently derived" FROM THE LANGUAGE CHOICE. That was an
+// inference, and it is withdrawn: what is observed is that the field carries "en-US" while
+// nothing was selected. Establishing derivation needs one language changed and the locale
+// watched to move, which has not been done. The representation IS now established, which is the
+// part that matters -- it is a BCP 47 language tag, not a POSIX locale, and the two are not
+// interchangeable.
 // ------------------------------------------------------------------------------------------
 data oobe_screen_settings: ObservedOobeScreen = ObservedOobeScreen {
   route: "/welcome/settings" as OobeScreenRoute,
@@ -235,12 +262,17 @@ data oobe_screen_settings: ObservedOobeScreen = ObservedOobeScreen {
     ComboBoxOverHiddenField {
       placeholder: "US - English" as PlaceholderText,
       backing_field: "language" as FormFieldName,
+      submitted_representation: VendorOpaqueOrdinal,
     },
     ComboBoxOverHiddenField {
       placeholder: "UTC" as PlaceholderText,
       backing_field: "timezone" as FormFieldName,
+      submitted_representation: VendorOpaqueOrdinal,
     },
-    HiddenBackingField { field: "locale" as FormFieldName },
+    HiddenBackingField {
+      field: "locale" as FormFieldName,
+      submitted_representation: Bcp47LanguageTagValue,
+    },
     SubmitButton {
       identity: SettingsContinueAction,
       address: "nv-button" as TestId,

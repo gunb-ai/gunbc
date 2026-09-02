@@ -36,9 +36,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// A locale names language and territory, and decides collation, formatting and translation.
-// It is branded rather than left a bare String because "English", "US" and "en_US.UTF-8" are
-// all things a human writes and only one family of spellings is an identifier POSIX defines.
+// A locale names language, territory and codeset, and decides collation, formatting and
+// translation. It is branded rather than left a bare String because "English", "US", "en-US"
+// and "en_US.UTF-8" are all things a human writes and only ONE of them is what POSIX defines.
+//
+// THE SPELLING IS language[_TERRITORY][.codeset], AND THE SEPARATOR IS AN UNDERSCORE. This row
+// first carried "en-US", which is a BCP 47 LANGUAGE TAG and not a POSIX locale at all -- the
+// module cited POSIX while declaring IETF's spelling, so the authority named one upstream and
+// the value came from another. The repository already had the correct form in hand: the
+// os-install rows emit en_US.UTF-8, so the wrong spelling here was also a second answer to a
+// question this repository had already answered (DESIGN §3).
+//
+// The two concepts are NOT interchangeable and the distinction is load-bearing downstream: a
+// POSIX locale selects a codeset, a language tag does not, and setting LANG to a language tag
+// yields a system with no working locale rather than an error anyone notices.
 type PosixLocaleId = NonEmptyStr where brand("PosixLocaleId")
 
-data locale_en_us: PosixLocaleId = "en-US" as PosixLocaleId
+data locale_en_us_utf8: PosixLocaleId = "en_US.UTF-8" as PosixLocaleId

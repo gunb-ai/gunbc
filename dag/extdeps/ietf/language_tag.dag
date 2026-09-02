@@ -1,0 +1,39 @@
+module extdeps.ietf.language_tag
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// BCP 47 LANGUAGE TAGS, modeled because a consumer needed one and the only carrier available
+// was a POSIX locale -- a different upstream, a different spelling, a different meaning.
+//
+// The distinction is not pedantry and this repository has a measured instance of it: the DGX
+// Spark setup portal submits a hidden field named "locale" whose OBSERVED value is "en-US".
+// That is a language tag -- hyphen-separated, no codeset. A POSIX locale carrying the same
+// human intent is "en_US.UTF-8". Modeling the portal's value as a PosixLocaleId would record
+// the wrong representation for what the device actually receives; modeling a system locale as
+// a language tag produces a host with no working locale rather than an error anyone notices.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc5646"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ietf.language_tag",
+      decl_name: "LanguageTag",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.ietf.language_tag.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// language[-Script][-REGION], hyphen-separated, no codeset (RFC 5646 section 2.1).
+type LanguageTag = NonEmptyStr where brand("LanguageTag")
+
+data language_tag_en_us: LanguageTag = "en-US" as LanguageTag
