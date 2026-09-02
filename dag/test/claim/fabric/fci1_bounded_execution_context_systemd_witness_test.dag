@@ -24,7 +24,7 @@ fn property_is_memory_high(property: SystemdRunProperty) -> Bool {
   match property.property { MemoryHigh => true _ => false }
 }
 
-fn fci1_systemd_projection_is_the_exact_closed_population() -> Bool {
+test fn fci1_systemd_projection_is_the_exact_closed_population() -> Bool {
   match fci1_bounded_execution_context(checkout_root: "/tmp/fci1 checkout") {
     Fci1BoundedExecutionContextBuilt { context: context } =>
       let properties = fci1_bounded_context_systemd_properties(context: context)

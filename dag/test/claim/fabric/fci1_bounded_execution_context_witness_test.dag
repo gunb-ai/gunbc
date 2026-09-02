@@ -11,14 +11,14 @@ import gunbc.fci1_bounded_execution_context {
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import v2.std.optional { Present, Absent }
 
-fn finite_byte_size_refuses_zero() -> Bool {
+test fn finite_byte_size_refuses_zero() -> Bool {
   match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {
     FiniteByteSizeNonPositive { observed: zero } => zero == 0
     FiniteByteSizeBuilt { size: _ } => false
   }
 }
 
-fn fci1_context_derives_the_runner_workload_envelope() -> Bool {
+test fn fci1_context_derives_the_runner_workload_envelope() -> Bool {
   match fci1_bounded_execution_context(checkout_root: "/tmp/fci1 checkout") {
     Fci1BoundedExecutionContextBuilt { context: context } =>
       finite_byte_size_count(size: context.memory_max)

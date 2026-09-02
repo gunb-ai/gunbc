@@ -16,7 +16,7 @@ data wait_properties: List<SystemdRunProperty> = [
   SystemdRunProperty { property: MemoryMax, value: "17179869184" },
 ]
 
-fn systemd_wait_route_owns_wait_quiet_collect_and_preserves_tokens() -> Bool {
+test fn systemd_wait_route_owns_wait_quiet_collect_and_preserves_tokens() -> Bool {
   let argv = systemd_run_transient_wait_unit_argv(
     unit: "fci1-bounded-driver.service",
     properties: wait_properties,
@@ -37,14 +37,14 @@ fn systemd_wait_route_owns_wait_quiet_collect_and_preserves_tokens() -> Bool {
     )
 }
 
-fn systemd_wait_route_rejects_split_working_directory_token() -> Bool {
+test fn systemd_wait_route_rejects_split_working_directory_token() -> Bool {
   !argv_exact_token_equal(
     left: ["--property=WorkingDirectory=/tmp/path with space"],
     right: ["--property=WorkingDirectory=/tmp/path", "with", "space"],
   )
 }
 
-fn systemd_wait_normal_exit_86_remains_86() -> Bool {
+test fn systemd_wait_normal_exit_86_remains_86() -> Bool {
   match systemd_run_transient_wait_outcome_from_result(
     exit_code: 86,
     stdout: "",
