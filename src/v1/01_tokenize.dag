@@ -719,11 +719,11 @@ fn is_digit(ch: Int) -> Bool {
 }
 
 fn is_ident_start(ch: Int) -> Bool {
-  ch == 95 || is_xid_start(ch: ch) || is_emoji_ident(ch: ch)
+  ch == 95 || is_xid_start(cp: ch) || is_emoji_ident(cp: ch)
 }
 
 fn is_ident_char(ch: Int) -> Bool {
-  is_xid_continue(ch: ch) || is_emoji_ident(ch: ch)
+  is_xid_continue(cp: ch) || is_emoji_ident(cp: ch)
 }
 
 fn is_hex_upper_digit(ch: Int) -> Bool {
