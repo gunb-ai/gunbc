@@ -861,6 +861,10 @@ fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
 // have cited bodies on the plan — those parts were checked geometrically, so they do not belong
 // in this count. The other placement refusals describe parts that ARE present and are defects in
 // what was checked rather than gaps in what was not.
+// A DESIGN REFUSAL IS NOT AN UNCHECKED PART, so it contributes nothing to this count: the question
+// is how many PARTS the geometry pass could not examine, and an unadmitted design is a fact about
+// the board. It is not silence either -- the same cause list carries DesignIsNotAdmitted for any
+// consumer asking the design question.
 fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> Int {
   fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
@@ -871,6 +875,7 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
       RoleFilledMoreThanOnce { role: _, fills: _ } => acc
       PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
       RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => acc
+      DesignIsNotAdmitted { causes: _ } => acc
     }
   })
 }

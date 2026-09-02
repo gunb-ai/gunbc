@@ -379,6 +379,13 @@ fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
   altra_pcb_world_for(d: altra_1p_minimum)
 }
 
+// AN UNADMITTED DESIGN IS NOT A PLAN-VERSUS-DESIGN MISMATCH, so it returns none here and the
+// caller renders PcbPlacementNotAdmitted -- a refused design still cannot produce a PCB world.
+//
+// A dedicated PcbDesignNotAdmitted arm was the obvious move and would have been a LAYER INVERSION:
+// PcbWorldRefusal is declared in product.pcb.world, a generic hub that may not carry rows about
+// Altra memory admission. The specific cause is not lost; it is DesignIsNotAdmitted in the
+// placement causes, at the layer that owns it.
 fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
   fold(cs, init: none, f: fn(acc, c) {
     match acc {
@@ -393,6 +400,7 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
           PlannedIdentityRepeated { component: _ } => none
           RoleFilledMoreThanOnce { role: _, fills: _ } => none
           RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => none
+          DesignIsNotAdmitted { causes: _ } => none
         }
     }
   })

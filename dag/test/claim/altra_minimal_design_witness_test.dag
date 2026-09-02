@@ -6,8 +6,6 @@ import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
   ChannelCountExceedsControllerPopulation,
   DebugOnlyChannelCountUnderProductionIntent,
-  DesignAdmitted,
-  DesignRefused,
   DesignRefusal,
   ActiveDdrTopology,
   ChannelHasNoDimmPositions,
@@ -23,14 +21,18 @@ import product.altra_motherboard.minimal_design {
   FirstDimmOnChannel,
   SecondDimmOnChannel,
   EngineeringBringUp,
-  MemoryConfiguration,
   PcieLanesExceedPackage,
   Production,
-  admit_design,
+  RevARoutedMemoryDesign, RoutedDdrTopology,
+  ShipsWithProductionPopulation, EngineeringFixturePopulation, BringUpThenFill,
+  RoutedDesignAdmitted, RoutedDesignRefused,
+  PopulatedChannelIsNotRouted, PopulatedPositionIsNotRouted,
+  NoProductionQualifiedPopulationIsReachable, NoProductionQualifiedChannelCountExists,
+  admit_board,
   altra_1p_minimum,
+  board_total_dimm_positions,
   design_refusal_count,
-  topology_channel_count,
-  total_dimms,
+  topology_channel_count, routed_channel_count,
 }
 import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count, altra_pcie_gen4_lane_count }
 import extdeps.cpu.ampere_altra_memory_controller {
@@ -50,11 +52,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE FIXTURE NAMES ITS CHANNELS, which is the point of the change under test. An earlier version
 // of this helper took a channel COUNT, and could therefore only ever build populations that were
 // contiguous from zero -- so the defect it was meant to exercise was unreachable from the test.
+// ROUTED EQUALS POPULATED IN THIS HELPER, DELIBERATELY. Every claim below was authored against a
+// carrier with one topology, and routing exactly what is populated is the reading under which each
+// of them still means what it meant. Where the two axes must DIFFER, the controls say so
+// explicitly rather than inheriting it from a helper.
+//
+// The intent flag now selects a LIFECYCLE ARM rather than setting a board field: a production
+// board ships its population, and a bring-up board is an engineering fixture that never ships one.
+// That is the same distinction the old boolean drew, at the place that now owns it.
 fn design(intent_is_production: Bool, chans: List<DdrChannelIdentity>, positions: List<DimmSlotPosition>, lanes: Int) -> AltraMinimalMotherboard {
+  let pop = ActiveDdrTopology { populated_channels: chans, positions_per_channel: positions }
   AltraMinimalMotherboard {
-    intent: if intent_is_production { Production } else { EngineeringBringUp },
-    memory: MemoryConfiguration {
-      topology: ActiveDdrTopology { populated_channels: chans, positions_per_channel: positions },
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology { routed_channels: chans, routed_positions_per_channel: positions },
+      lifecycle: if intent_is_production {
+        ShipsWithProductionPopulation { production: pop }
+      } else {
+        EngineeringFixturePopulation { bringup: pop }
+      },
     },
     pcie_lanes_broken_out: lanes,
   }
@@ -63,9 +78,9 @@ fn design(intent_is_production: Bool, chans: List<DdrChannelIdentity>, positions
 fn one_dimm() -> List<DimmSlotPosition> { [FirstDimmOnChannel] }
 
 fn admits(d: AltraMinimalMotherboard) -> Bool {
-  match admit_design(d: d) {
-    DesignAdmitted { design: _ } => true
-    DesignRefused { causes: _ } => false
+  match admit_board(b: d) {
+    RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => true
+    RoutedDesignRefused { causes: _ } => false
   }
 }
 
@@ -78,13 +93,17 @@ fn refusal_is(r: DesignRefusal, wanted: String) -> Bool {
     ChannelPopulationIsNotAnAdmittedCount { populated: _ } => wanted == "NotAdmittedCount"
     ChannelPopulatedMoreThanOnce { channel: _ } => wanted == "DuplicateChannel"
     PcieLanesExceedPackage { requested: _, available: _ } => wanted == "PcieLanes"
+    PopulatedChannelIsNotRouted { channel: _ } => wanted == "ChannelNotRouted"
+    PopulatedPositionIsNotRouted { position: _ } => wanted == "PositionNotRouted"
+    NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => wanted == "NoReachableProduction"
+    NoProductionQualifiedChannelCountExists => wanted == "NoProductionCountExists"
   }
 }
 
 fn refuses_naming(d: AltraMinimalMotherboard, wanted: String) -> Bool {
-  match admit_design(d: d) {
-    DesignAdmitted { design: _ } => false
-    DesignRefused { causes: cs } =>
+  match admit_board(b: d) {
+    RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => false
+    RoutedDesignRefused { causes: cs } =>
       fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
   }
 }
@@ -92,7 +111,7 @@ fn refuses_naming(d: AltraMinimalMotherboard, wanted: String) -> Bool {
 // THE POSITIVE CONTROL. The selected 1P minimum admits: four channels is the smallest
 // production-qualified population, one DIMM per channel, four lanes of a hundred and twenty-eight.
 test fn w_the_selected_minimum_is_admitted() -> Bool {
-  admits(d: altra_1p_minimum) && total_dimms(m: altra_1p_minimum.memory) == 4
+  admits(d: altra_1p_minimum) && board_total_dimm_positions(d: altra_1p_minimum) == 4
 }
 
 // THE WALL. Two channels is a configuration the vendor documents as engineering debug and
@@ -158,9 +177,9 @@ test fn w_a_repeated_dimm_position_refuses() -> Bool {
     lanes: 4
   )
   refuses_naming(d: d, wanted: "DuplicatePosition")
-    && match admit_design(d: d) {
-         DesignAdmitted { design: _ } => false
-         DesignRefused { causes: cs } => design_refusal_count(s: cs) == 1
+    && match admit_board(b: d) {
+         RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => false
+         RoutedDesignRefused { causes: cs } => design_refusal_count(s: cs) == 2
        }
 }
 
@@ -195,18 +214,19 @@ test fn w_a_controller_populated_twice_refuses() -> Bool {
     lanes: 4
   )
   refuses_naming(d: d, wanted: "DuplicateChannel")
-    && topology_channel_count(t: d.memory.topology) == 4
-    && match admit_design(d: d) {
-         DesignAdmitted { design: _ } => false
-         DesignRefused { causes: cs } => design_refusal_count(s: cs) == 1
+    && routed_channel_count(r: d.design.routed) == 4
+    && match admit_board(b: d) {
+         RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => false
+         RoutedDesignRefused { causes: cs } => design_refusal_count(s: cs) == 2
        }
 }
 
 // Causes accumulate rather than stopping at the first, so a design with two independent problems
 // reports two. Counting is what makes that visible.
 test fn w_independent_defects_are_all_reported() -> Bool {
-  match admit_design(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: [], lanes: 129)) {
-    DesignAdmitted { design: _ } => false
-    DesignRefused { causes: cs } => design_refusal_count(s: cs) == 3
-  }
+  let d = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: [], lanes: 129)
+  refuses_naming(d: d, wanted: "DimmPopulation")
+    && refuses_naming(d: d, wanted: "PcieLanes")
+    && refuses_naming(d: d, wanted: "NoReachableProduction")
+    && refuses_naming(d: d, wanted: "DebugOnly")
 }
