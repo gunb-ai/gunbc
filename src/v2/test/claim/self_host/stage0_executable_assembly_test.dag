@@ -1,5 +1,6 @@
 module v2.test.claim.self_host.stage0_executable_assembly_test
 
+import extdeps.filesystem.filesystem_io
 import v2.compiler.self_host.stage0_executable_assembly {
   BinaryEntrypointOwner,
   EmittedPartitionOwner,
@@ -313,6 +314,7 @@ test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool {
 // before the partition row landed.
 test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -> Bool {
   let module_basename = "v1_compiler_compiler_tests_rust"
+  let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
   let census = stage0_live_assembly_ownership_census(
     declared_modules: [module_basename],
     emitted_module_basenames: [module_basename]
@@ -333,6 +335,14 @@ test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -
       declared_modules: [module_basename],
       partition_rows: stage0_module_bearing_crate_rows()
     )) == 0)
+    // The model above derives the intended subtraction from the partition row. This checkout
+    // read binds that answer to the committed generated surface, so a stale first-generation
+    // lib.rs that still declares the moved module makes the witness RED rather than letting the
+    // model agree with itself while Rust compiles the path through two separate crates.
+    && !string_contains(
+      s: host_shell_lib,
+      pattern: "pub mod v1_compiler_compiler_tests_rust;"
+    )
 }
 
 // The host shell links the partition through one declared edge, and it is the top module-bearing
