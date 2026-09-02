@@ -47,8 +47,8 @@ use std::time::{Duration, Instant};
 pub(crate) enum CommandObservation {
     Completed {
         exit_code: i32,
-        stdout: String,
-        stderr: String,
+        stdout: StreamOutcome,
+        stderr: StreamOutcome,
     },
     /// Overran its budget AND its process group is gone. The teardown verdict travels WITH the
     /// timeout because "the command overran" and "the instrument left it running" are different
@@ -56,8 +56,8 @@ pub(crate) enum CommandObservation {
     TimedOut {
         after: Duration,
         termination: ProcessGroupTermination,
-        stdout: String,
-        stderr: String,
+        stdout: StreamOutcome,
+        stderr: StreamOutcome,
     },
     /// Overran its budget and something SURVIVED teardown. Separate from `TimedOut` because this
     /// arm may never be treated as a mere non-zero result: a surviving group holds resources the
@@ -65,23 +65,27 @@ pub(crate) enum CommandObservation {
     TimedOutWithTerminationFailure {
         after: Duration,
         termination: ProcessGroupTermination,
-        stdout: String,
-        stderr: String,
+        stdout: StreamOutcome,
+        stderr: StreamOutcome,
     },
     Signaled {
         signal: i32,
-        stdout: String,
-        stderr: String,
+        stdout: StreamOutcome,
+        stderr: StreamOutcome,
     },
     /// The command never started. Reserved for spawn itself failing.
     SpawnRefused { detail: String },
     /// The command started and the WAIT failed. Previously folded into `SpawnRefused`, which said
     /// the opposite of what happened -- a process that ran and could not be observed was reported
     /// as one that never ran, and its remedy is the reverse.
-    WaitFailed {
+    WaitFailedAfterSpawn {
         detail: String,
-        stdout: String,
-        stderr: String,
+        /// The teardown VERDICT, not a formatted rendering of it. The timeout arms preserve this
+        /// algebra and this arm was throwing it away into a debug string, so a caller could not
+        /// ask whether the group was actually gone without parsing prose.
+        termination: ProcessGroupTermination,
+        stdout: StreamOutcome,
+        stderr: StreamOutcome,
     },
 }
 
@@ -273,59 +277,36 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
             }
         }
     };
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-    let out_handle = std::thread::spawn(move || {
-        let mut buf: String = String::new();
-        if let Some(pipe) = stdout.as_mut() {
-            let _ = pipe.read_to_string(&mut buf);
-        }
-        buf
-    });
-    let err_handle = std::thread::spawn(move || {
-        let mut buf: String = String::new();
-        if let Some(pipe) = stderr.as_mut() {
-            let _ = pipe.read_to_string(&mut buf);
-        }
-        buf
-    });
     let pid = child.id();
+    let mut out_drain = PipeDrain::spawn(child.stdout.take());
+    let mut err_drain = PipeDrain::spawn(child.stderr.take());
     let wait = crate::process_group::wait_for_exit(&mut child, budget);
 
-    // THE PIPE THREADS ARE JOINED ON EVERY ARM, not only the happy one. They were previously
-    // dropped on three of four arms, which detached them and threw away the child's own account of
-    // why it failed -- exactly the output an operator needs when the failure is the interesting
-    // case. Joining is safe here because the writer has either exited or been torn down below.
-    let drain = |out: std::thread::JoinHandle<String>, err: std::thread::JoinHandle<String>| {
-        (
-            out.join().unwrap_or_default(),
-            err.join().unwrap_or_default(),
-        )
-    };
+    // THE DRAIN IS BOUNDED ON EVERY ARM. It is read on all of them, because the child's own account
+    // of a failure is exactly what an operator needs on the arms that are not the happy one -- and
+    // it is bounded because on the arms where teardown FAILED, a surviving descendant still holds
+    // the write end and EOF never comes. An unbounded join there would hang the instrument at
+    // precisely the moment it had something to report.
+    let drain_budget = Duration::from_secs(10);
 
     match wait {
-        ProcessGroupWait::Exited { code } => {
-            let (stdout, stderr) = drain(out_handle, err_handle);
-            CommandObservation::Completed {
-                exit_code: code,
-                stdout,
-                stderr,
-            }
-        }
-        ProcessGroupWait::Signaled { signal } => {
-            let (stdout, stderr) = drain(out_handle, err_handle);
-            CommandObservation::Signaled {
-                signal,
-                stdout,
-                stderr,
-            }
-        }
+        ProcessGroupWait::Exited { code } => CommandObservation::Completed {
+            exit_code: code,
+            stdout: out_drain.finish_within(drain_budget),
+            stderr: err_drain.finish_within(drain_budget),
+        },
+        ProcessGroupWait::Signaled { signal } => CommandObservation::Signaled {
+            signal,
+            stdout: out_drain.finish_within(drain_budget),
+            stderr: err_drain.finish_within(drain_budget),
+        },
         ProcessGroupWait::TimedOut => {
             // A command that overran its budget is terminated here rather than left running, so a
             // timeout cannot leak a process into the next step's environment -- and whether that
             // termination actually SUCCEEDED is carried in the observation rather than discarded.
             let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
-            let (stdout, stderr) = drain(out_handle, err_handle);
+            let stdout = out_drain.finish_within(drain_budget);
+            let stderr = err_drain.finish_within(drain_budget);
             if termination.group_is_gone() {
                 CommandObservation::TimedOut {
                     after: budget,
@@ -345,11 +326,11 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
         ProcessGroupWait::WaitFailed { detail } => {
             // The child may still be running: a wait that failed established nothing about it.
             let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
-            let (stdout, stderr) = drain(out_handle, err_handle);
-            CommandObservation::WaitFailed {
-                detail: format!("{detail}; teardown: {termination:?}"),
-                stdout,
-                stderr,
+            CommandObservation::WaitFailedAfterSpawn {
+                detail,
+                termination,
+                stdout: out_drain.finish_within(drain_budget),
+                stderr: err_drain.finish_within(drain_budget),
             }
         }
     }
@@ -370,7 +351,7 @@ fn git(workdir: &Path, args: &[&str], budget: Duration) -> CommandObservation {
 
 fn stdout_of(observation: &CommandObservation) -> String {
     match observation {
-        CommandObservation::Completed { stdout, .. } => stdout.clone(),
+        CommandObservation::Completed { stdout, .. } => stdout.text().to_string(),
         _ => String::new(),
     }
 }
@@ -428,6 +409,41 @@ impl PipeDrain {
         }
     }
 
+    /// Wait for the reader to reach EOF, but only up to a budget, and report WHICH happened.
+    ///
+    /// An unbounded join is not safe here and that is not hypothetical: a descendant of a child
+    /// that survived teardown still holds the write end of the pipe, so EOF never arrives and the
+    /// join blocks forever -- the instrument hangs on exactly the arm where teardown already
+    /// failed. The thread is left detached on the unfinished arm rather than killed, because a
+    /// reader blocked on a pipe cannot be interrupted; what matters is that this function returns.
+    fn finish_within(&mut self, budget: Duration) -> StreamOutcome {
+        let deadline = Instant::now() + budget;
+        loop {
+            match &self.handle {
+                None => {
+                    return StreamOutcome::Closed {
+                        text: self.snapshot(),
+                    }
+                }
+                Some(handle) => {
+                    if handle.is_finished() {
+                        self.handle = None;
+                        return StreamOutcome::Closed {
+                            text: self.snapshot(),
+                        };
+                    }
+                }
+            }
+            if Instant::now() >= deadline {
+                return StreamOutcome::Unfinished {
+                    partial: self.snapshot(),
+                    after: budget,
+                };
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     fn snapshot(&self) -> String {
         self.text.lock().map(|t| t.clone()).unwrap_or_default()
     }
@@ -439,6 +455,24 @@ impl PipeDrain {
             let _ = handle.join();
         }
         self.snapshot()
+    }
+}
+
+/// WHETHER A STREAM ACTUALLY ENDED. `Closed` means EOF was reached and the text is the child's
+/// complete output; `Unfinished` means something still holds the write end, so the text is a
+/// PREFIX. Collapsing the two would let a truncated read be judged as a complete one.
+#[derive(Debug, Clone)]
+pub(crate) enum StreamOutcome {
+    Closed { text: String },
+    Unfinished { partial: String, after: Duration },
+}
+
+impl StreamOutcome {
+    pub(crate) fn text(&self) -> &str {
+        match self {
+            StreamOutcome::Closed { text } => text,
+            StreamOutcome::Unfinished { partial, .. } => partial,
+        }
     }
 }
 
@@ -628,6 +662,12 @@ fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
         match chars.peek() {
             Some('"') => {
                 let value = read_json_string(&mut chars)?;
+                // A DUPLICATE MEMBER IS REFUSED, not last-one-wins. A response carrying two `code`
+                // members has two answers to a question this instrument treats as having one, and
+                // silently taking either is the instrument choosing which claim to believe.
+                if object.strings.contains_key(&key) || object.numbers.contains_key(&key) {
+                    return Err(format!("member {key} appears more than once"));
+                }
                 object.strings.insert(key, value);
             }
             Some(c) if c.is_ascii_digit() => {
@@ -638,6 +678,9 @@ fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
                 let value = digits
                     .parse::<u128>()
                     .map_err(|e| format!("member {key} is not an unsigned integer: {e}"))?;
+                if object.strings.contains_key(&key) || object.numbers.contains_key(&key) {
+                    return Err(format!("member {key} appears more than once"));
+                }
                 object.numbers.insert(key, value);
             }
             other => {
@@ -646,6 +689,16 @@ fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
                 ))
             }
         }
+    }
+    // THE WHOLE DOCUMENT, not a prefix of it. Bytes after the closing brace mean the response is
+    // not the object it appeared to be, and accepting a valid-looking prefix would let a body carry
+    // anything at all after the fields this instrument checks.
+    let trailing: String = chars.collect();
+    if !trailing.trim().is_empty() {
+        return Err(format!(
+            "trailing bytes after the closing brace: {}",
+            &trailing[..trailing.len().min(120)]
+        ));
     }
     Ok(object)
 }
@@ -835,11 +888,15 @@ fn finalize(
         return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
             observation: CommandObservation::Completed {
                 exit_code: 0,
-                stdout: format!(
-                    "{} still present after remove and prune",
-                    worktree.display()
-                ),
-                stderr: String::new(),
+                stdout: StreamOutcome::Closed {
+                    text: format!(
+                        "{} still present after remove and prune",
+                        worktree.display()
+                    ),
+                },
+                stderr: StreamOutcome::Closed {
+                    text: String::new(),
+                },
             },
         });
     }
@@ -867,8 +924,12 @@ fn finalize(
         return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
             observation: CommandObservation::Completed {
                 exit_code: 0,
-                stdout: format!("{worktree_str} still registered after remove and prune"),
-                stderr: String::new(),
+                stdout: StreamOutcome::Closed {
+                    text: format!("{worktree_str} still registered after remove and prune"),
+                },
+                stderr: StreamOutcome::Closed {
+                    text: String::new(),
+                },
             },
         });
     }
@@ -1016,7 +1077,7 @@ fn run_bound_transaction(
         } => (*exit_code, stdout.clone(), stderr.clone()),
         _ => return Outcome::Refused(Refusal::DryGateDidNotComplete { observation: dry }),
     };
-    let dry_text = format!("{dry_stdout}{dry_stderr}");
+    let dry_text = format!("{}{}", dry_stdout.text(), dry_stderr.text());
     if dry_code == 0 {
         return Outcome::Refused(Refusal::DryGateDriftPopulationWrong {
             detail: "the gate accepted a perturbed authority with no regeneration".to_string(),
@@ -1433,5 +1494,76 @@ fn serve_and_judge(
     match judged {
         Ok(receipt) => Outcome::Passed(receipt),
         Err(refusal) => Outcome::Refused(refusal),
+    }
+}
+
+/// THE DECODER'S WALLS, EXECUTED. These are ordinary `--lib` tests rather than part of the
+/// `#[ignore]` transaction, deliberately: the transaction costs tens of minutes and cannot be the
+/// only thing that establishes a refusal, and a wall whose RED is never authored anywhere is a
+/// decoration that will later be cited as coverage. Every case below is a document a real HTTP
+/// response could carry.
+#[cfg(test)]
+mod json_decoder_walls {
+    use super::parse_flat_json_object;
+
+    /// The positive control. Without it, every refusal below would also pass on a decoder that
+    /// rejected everything.
+    #[test]
+    fn a_flat_object_of_strings_and_numbers_decodes() {
+        let object = parse_flat_json_object(r#"{"code":"x","limit_ms":50}"#)
+            .expect("a flat object must decode");
+        assert_eq!(object.string("code"), Some("x"));
+        assert_eq!(object.number("limit_ms"), Some(50));
+    }
+
+    /// THE DISCRIMINATING RED for duplicate members. Last-one-wins would silently answer "b" here,
+    /// and this instrument treats `code` as having exactly one answer.
+    #[test]
+    fn a_duplicated_member_refuses_rather_than_letting_the_later_one_win() {
+        let refusal = parse_flat_json_object(r#"{"code":"a","code":"b"}"#)
+            .expect_err("a duplicated member must refuse");
+        assert!(
+            refusal.contains("code") && refusal.contains("more than once"),
+            "the refusal must name the duplicated member: {refusal}"
+        );
+    }
+
+    /// A duplicate that changes TYPE must refuse too, or the two maps would each hold one copy and
+    /// neither would see a collision.
+    #[test]
+    fn a_member_duplicated_across_string_and_number_refuses() {
+        let refusal = parse_flat_json_object(r#"{"limit_ms":50,"limit_ms":"50"}"#)
+            .expect_err("a member duplicated across types must refuse");
+        assert!(
+            refusal.contains("limit_ms"),
+            "the refusal must name the duplicated member: {refusal}"
+        );
+    }
+
+    /// THE DISCRIMINATING RED for whole-document parsing. The prefix is a perfectly good object,
+    /// so a decoder that stopped at the closing brace would accept this and never see the rest.
+    #[test]
+    fn trailing_bytes_after_the_closing_brace_refuse() {
+        let refusal = parse_flat_json_object(r#"{"code":"x"} and then some"#)
+            .expect_err("trailing bytes must refuse");
+        assert!(
+            refusal.contains("trailing"),
+            "the refusal must say what it found: {refusal}"
+        );
+    }
+
+    /// Whitespace after the object is not trailing CONTENT, and refusing it would make the wall
+    /// fire on ordinary well-formed responses.
+    #[test]
+    fn trailing_whitespace_is_not_trailing_content() {
+        assert!(parse_flat_json_object("{\"code\":\"x\"}\n").is_ok());
+    }
+
+    /// A shape this decoder does not model is refused rather than skipped, so a body that nests
+    /// the fields under another object cannot read as one that carries them at the top level.
+    #[test]
+    fn an_unmodelled_member_shape_refuses_rather_than_being_skipped() {
+        assert!(parse_flat_json_object(r#"{"nested":{"code":"x"}}"#).is_err());
+        assert!(parse_flat_json_object(r#"{"list":[1,2]}"#).is_err());
     }
 }

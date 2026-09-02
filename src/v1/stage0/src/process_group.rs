@@ -93,19 +93,71 @@ pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroup
     }
 }
 
-/// WHAT REMAINED OF THE GROUP once teardown finished. This exists because the leader's exit status
-/// answers a DIFFERENT question than the one teardown is asked: a server spawns helpers, and a
-/// reaped leader beside a surviving child is exactly the state that holds the port and makes the
-/// NEXT run of this instrument fail to bind for a reason unrelated to its subject. Absence is
-/// observed with a null signal to the GROUP, never inferred from the leader.
+/// ONE PROCESS AS /proc REPORTS IT. The pid and its process-group id are read from
+/// `/proc/<pid>/stat`, which is what makes group membership decidable at all: a signal cannot ask
+/// "who is in this group", it can only act on everyone who is.
+struct ProcEntry {
+    pid: i32,
+    state: char,
+}
+
+/// Every process whose process-group id equals `pgid`, read from /proc.
+///
+/// The `comm` field may itself contain spaces and parentheses, so the fields after it are located
+/// from the LAST ')' rather than by splitting the whole line -- splitting naively misreads any
+/// process whose name contains a space, which is precisely the kind of quiet misparse that would
+/// make this instrument report an empty group.
+fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
+    let mut found = Vec::new();
+    let entries = std::fs::read_dir("/proc").map_err(|e| format!("reading /proc: {e}"))?;
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let name = entry.file_name();
+        let pid: i32 = match name.to_string_lossy().parse() {
+            Ok(pid) => pid,
+            Err(_) => continue,
+        };
+        // A process that exits between the readdir and the read is not an error: it is simply not
+        // a member any more.
+        let stat = match std::fs::read_to_string(entry.path().join("stat")) {
+            Ok(stat) => stat,
+            Err(_) => continue,
+        };
+        let tail = match stat.rfind(')') {
+            Some(at) => &stat[at + 1..],
+            None => continue,
+        };
+        let fields: Vec<&str> = tail.split_whitespace().collect();
+        // After the ')' the fields are: state, ppid, pgrp, ...
+        let (state, pgrp) = match (fields.first(), fields.get(2)) {
+            (Some(state), Some(pgrp)) => (*state, *pgrp),
+            _ => continue,
+        };
+        if pgrp.parse::<u32>().ok() == Some(pgid) {
+            found.push(ProcEntry {
+                pid,
+                state: state.chars().next().unwrap_or('?'),
+            });
+        }
+    }
+    Ok(found)
+}
+
+/// WHAT REMAINED OF THE GROUP besides its leader. The leader is excluded because it is adjudicated
+/// separately, by its exit status; this answers the different question of whether the server's
+/// HELPERS outlived it -- the ones that would otherwise still hold the port when the next run of
+/// this instrument tries to bind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessGroupResidue {
-    /// `kill(-pgid, 0)` reported ESRCH: no process remains in the group.
+    /// No process other than the leader remains in the group.
     GroupAbsent,
     /// Members were still present when the observation budget ran out.
-    GroupPresent { after: Duration },
-    /// The observation itself could not be made -- EPERM, or any errno that is not ESRCH. This is
-    /// NOT absence: an instrument that cannot see the group has not established that it is gone.
+    GroupPresent { after: Duration, pids: Vec<i32> },
+    /// The observation itself could not be made. This is NOT absence: an instrument that cannot
+    /// see the group has not established that it is gone.
     ResidueObservationFailed { detail: String },
 }
 
@@ -120,74 +172,88 @@ pub(crate) struct ProcessGroupTermination {
 }
 
 impl ProcessGroupTermination {
-    /// Teardown succeeded only when nothing remains. A leader that exited cleanly while a child
-    /// still holds the port is a FAILED teardown, and this is the single place that says so.
+    /// Teardown succeeded only when nothing but the leader remained. A leader that exited cleanly
+    /// while a child still holds the port is a FAILED teardown, and this is the single place that
+    /// says so.
     pub(crate) fn group_is_gone(&self) -> bool {
         matches!(self.residue, ProcessGroupResidue::GroupAbsent)
     }
 }
 
-/// Observe whether ANY process remains in the group, by sending signal 0 to the negated pgid.
-/// ESRCH is the only answer that establishes absence; every other errno is reported as an
-/// observation failure rather than folded into presence, so "cannot tell" never reads as "gone".
-fn observe_group_residue(pid: u32, budget: Duration) -> ProcessGroupResidue {
-    let deadline = Instant::now() + budget;
-    loop {
-        let rc = unsafe { libc::kill(-(pid as i32), 0) };
-        if rc == 0 {
-            if Instant::now() >= deadline {
-                return ProcessGroupResidue::GroupPresent { after: budget };
-            }
-            std::thread::sleep(Duration::from_millis(50));
-            continue;
-        }
-        let err = std::io::Error::last_os_error();
-        return match err.raw_os_error() {
-            Some(libc::ESRCH) => ProcessGroupResidue::GroupAbsent,
-            _ => ProcessGroupResidue::ResidueObservationFailed {
-                detail: format!("kill(-{pid}, 0) failed: {err}"),
-            },
-        };
-    }
-}
-
-/// TERM the group, reap the leader, then look for SURVIVORS -- and escalate to KILL on the group
-/// whenever any remain, INCLUDING when the leader itself exited cleanly. The leader is waited for
-/// first because an unreaped zombie is still a group member, so polling before the reap would
-/// report presence for a process that is already dead.
+/// TERM the group, escalate to KILL WHILE THE IDENTITY IS STILL PINNED, observe what survived, and
+/// only then reap the leader.
 ///
-/// PID REUSE IS A KNOWN, SAFE-DIRECTION RACE. Once the leader is reaped its pid may be recycled,
-/// and a recycled pgid would be observed as presence. That mislabels a torn-down group as
-/// surviving, which REFUSES; it can never report a surviving group as absent.
+/// THE ORDER IS THE WHOLE SAFETY ARGUMENT, and an earlier version of this function got it wrong in
+/// a way worth recording. It reaped the leader first and then signalled the numerically matching
+/// group if anything appeared present. Once the leader is reaped its pid is free for reuse, so that
+/// signal could land on an unrelated group that merely inherited the number -- wrong-subject
+/// actuation, not a safe over-approximation. The annotation beside it claimed reuse "fails in the
+/// safe direction", which was true of REFUSING on presence and false of the signalling the code
+/// actually did.
 ///
-/// A group still standing after SIGKILL is returned as such. It is not retried and not assumed
-/// away: the caller adjudicates it, because the only honest thing an instrument can say about a
-/// process that survived SIGKILL is that it did.
+/// An unreaped leader -- running or zombie -- keeps its pid allocated, and therefore keeps the
+/// group identity pinned. So every signal this function sends happens before the reap, and after
+/// the reap it neither signals nor observes: a surviving group is REFUSED to the caller instead.
 pub(crate) fn terminate_process_group(
     child: &mut Child,
     pid: u32,
     grace: Duration,
 ) -> ProcessGroupTermination {
     signal_process_group(pid, libc::SIGTERM);
-    let mut leader = wait_for_exit(child, grace);
-    let mut residue = observe_group_residue(pid, grace);
 
-    if matches!(residue, ProcessGroupResidue::GroupAbsent) {
-        return ProcessGroupTermination {
-            leader,
-            residue,
-            escalated_to_kill: false,
-        };
-    }
+    // Membership is polled rather than waited on, because the question is about DESCENDANTS, and
+    // there is no wait primitive for "the processes my child spawned".
+    let survivors = |budget: Duration| -> Result<(Vec<i32>, bool), String> {
+        let deadline = Instant::now() + budget;
+        loop {
+            let members = process_group_members(pid)?;
+            let others: Vec<i32> = members
+                .iter()
+                .filter(|entry| entry.pid != pid as i32)
+                .map(|entry| entry.pid)
+                .collect();
+            let leader_running = members
+                .iter()
+                .any(|entry| entry.pid == pid as i32 && entry.state != 'Z');
+            if (others.is_empty() && !leader_running) || Instant::now() >= deadline {
+                return Ok((others, leader_running));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
 
-    signal_process_group(pid, libc::SIGKILL);
-    if matches!(leader, ProcessGroupWait::TimedOut) {
-        leader = wait_for_exit(child, grace);
-    }
-    residue = observe_group_residue(pid, grace);
+    let mut escalated_to_kill = false;
+    let residue = match survivors(grace) {
+        Err(detail) => ProcessGroupResidue::ResidueObservationFailed { detail },
+        Ok((others, leader_running)) => {
+            if others.is_empty() && !leader_running {
+                ProcessGroupResidue::GroupAbsent
+            } else {
+                // Still pinned: the leader has not been reaped, so this number is still ours.
+                signal_process_group(pid, libc::SIGKILL);
+                escalated_to_kill = true;
+                match survivors(grace) {
+                    Err(detail) => ProcessGroupResidue::ResidueObservationFailed { detail },
+                    Ok((others, _)) => {
+                        if others.is_empty() {
+                            ProcessGroupResidue::GroupAbsent
+                        } else {
+                            ProcessGroupResidue::GroupPresent {
+                                after: grace,
+                                pids: others,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // The reap is LAST. Nothing below it may signal or observe the group by number.
+    let leader = wait_for_exit(child, grace);
     ProcessGroupTermination {
         leader,
         residue,
-        escalated_to_kill: true,
+        escalated_to_kill,
     }
 }
