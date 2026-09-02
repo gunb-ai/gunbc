@@ -592,7 +592,74 @@ pub struct TransitionAdmission {
 ///
 /// EMPTY IS THE RESTING STATE and empty is not permissive: with no rows, a run with no delta
 /// passes and a run with a real delta refuses it as UNADJUDICATED.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    // gunbc#10011 re-homes `HeldSpecificationSupersessionStanding` and its arms from the
+    // platform-specific subject module into `extdeps.publication`. The type names no product, so
+    // the platform subject module was the wrong layer for it (DESIGN §3: a fact's home is its
+    // LAYER, not its file); nothing about the declarations themselves changed, only which module
+    // authors them. Every row below is therefore one spelling whose resolution moved from
+    // `extdeps.cpu.ampere_altra_platform_hw_design.subject` to `extdeps.publication`, and the
+    // `target` field names where it went.
+    //
+    // DISSOLVE-ON: gunbc#10011 merging. After that commit the base itself binds all five
+    // spellings to `extdeps.publication`, so `admission_consumed_at_base` proves the relocation
+    // and every row becomes CONSUMED. A consumed row left standing is the `stale_admissions`
+    // finding this roster's own rule predicts, and because a pull_request build adjudicates the
+    // MERGE commit, leaving them would make every open PR in the repository inherit five stale
+    // rows -- exactly the 53-row incident documented above. THEY MUST BE DELETED IN THE FIRST
+    // COMMIT AFTER #10011 LANDS; this is not optional tidying, it is the second half of the
+    // change.
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: platform matcher, current arm",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.platform",
+            in_declaration: "platform_facts_are_from_the_latest_revision",
+            spelling: "HeldRevisionIsCurrentPublicCopy",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: platform matcher, unretrieved arm",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.platform",
+            in_declaration: "platform_facts_are_from_the_latest_revision",
+            spelling: "NewerRevisionExistsUnretrieved",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: specification record field type",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+            in_declaration: "AltraPlatformHwDesignSpecification",
+            spelling: "HeldSpecificationSupersessionStanding",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+            in_declaration: "altra_platform_hw_design_supersession_standing",
+            spelling: "HeldSpecificationSupersessionStanding",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+            in_declaration: "altra_platform_hw_design_supersession_standing",
+            spelling: "NewerRevisionExistsUnretrieved",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
