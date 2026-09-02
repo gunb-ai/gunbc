@@ -8,7 +8,6 @@ import std.scoped_authorization {
   AuthorizationRequest,
   ScopedAuthorization,
   authorize,
-  authorization_is_permitted,
 }
 import std.measure { Millisecond, measure_le, millisecond_count }
 import std.upsert_decision {
@@ -127,14 +126,14 @@ type PriorStepReceipt
 fn authorization_request_for_attempt<Subject>(
   intent: EffectAttemptIntent,
   escalation_id: NonEmptyStr,
-  scope: AuthorizationScope,
+  scopes: List<AuthorizationScope>,
   subject: Subject,
   purpose: NonEmptyStr,
   destructive: Bool,
 ) -> AuthorizationRequest<Subject> {
   AuthorizationRequest {
     escalation_id: escalation_id,
-    scope: scope,
+    scopes: scopes,
     subject: subject,
     purpose: purpose,
     attempt: intent.attempt_id as AttemptIdentity,
@@ -216,13 +215,14 @@ fn plan_next_step_from_prior_receipt_and_lease<Subject>(
   observed_at: Timestamp,
 ) -> NextStepPlan {
   if requires_destructive_approval
-    && !authorization_is_permitted(
-      decision: authorize(
-        authorization: authorization,
-        request: request,
-        observed_at: observed_at,
-      ),
+    && match authorize(
+      authorization: authorization,
+      request: request,
+      observed_at: observed_at,
     ) {
+      AuthorizationPermitted { grant: _ } => false
+      AuthorizationRefused { cause: _ } => true
+    } {
     PlanAwaitApproval { escalation_id: request.escalation_id }
   } else {
     match prior {

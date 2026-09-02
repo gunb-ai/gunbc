@@ -9,6 +9,7 @@ import std.content_hash {
   ContentHashCrossFamilyIncomparable,
   compare_content_hash,
   serialize_content_hash,
+  content_hash_of_value,
 }
 import std.effect_grant {
   Verb,
@@ -95,7 +96,7 @@ type AuthorizationScope {
 // for is not a request for consent.
 type AuthorizationRequest<Subject> {
   escalation_id: NonEmptyStr
-  scope: AuthorizationScope
+  scopes: List<AuthorizationScope>
   subject: Subject
   purpose: NonEmptyStr
   attempt: AttemptIdentity
@@ -110,7 +111,7 @@ type AuthorizationRequest<Subject> {
 // ends it without anyone having to remember to revoke it.
 type OperatorGrant<Subject> {
   escalation_id: NonEmptyStr
-  scope: AuthorizationScope
+  scopes: List<AuthorizationScope>
   subject: Subject
   purpose: NonEmptyStr
   attempt: AttemptIdentity
@@ -163,7 +164,8 @@ type AuthorizationRefusalCause
   | AuthorizationClaimedByOtherAttempt { requested: AttemptIdentity, holder: AttemptIdentity }
   | AuthorizationAborted { aborted_by: AttemptIdentity, cause: NonEmptyStr }
   | AuthorizationEscalationMismatch { requested: NonEmptyStr, granted: NonEmptyStr }
-  | AuthorizationScopeMismatch { requested: AuthorizationScope, granted: AuthorizationScope }
+  | AuthorizationScopeNotGranted { required: AuthorizationScope, granted: List<AuthorizationScope> }
+  | AuthorizationScopesUnstated { escalation_id: NonEmptyStr }
   | AuthorizationAttemptMismatch { requested: AttemptIdentity, granted: AttemptIdentity }
   | AuthorizationIntentMismatch { requested: ContentHash, granted: ContentHash }
   | AuthorizationIntentIncomparable { requested: ContentHash, granted: ContentHash }
@@ -180,6 +182,38 @@ fn scope_covers(granted: AuthorizationScope, requested: AuthorizationScope) -> B
   verb_eq(a: granted.verb, b: requested.verb)
     && position_under(target: requested.resource, root: granted.resource)
     && granted.action == requested.action
+}
+
+// ONE OPERATION NEEDS EVERY CAPABILITY IT EXERCISES, so the enforcing fact is a SET and coverage
+// is universal over the required side, existential over the granted side: every required scope must
+// be covered by SOME granted scope. A single-scope grant was a fail-open by shape rather than by
+// logic -- an operation that patches a boot override and then posts a system reset exercises two
+// capabilities, and a grant naming only the first authorized the second by saying nothing about it.
+//
+// AN EMPTY REQUIRED SET REFUSES rather than passing vacuously. "Every member of the empty set is
+// covered" is true, which would make an operation that stated no scopes the most-authorized one in
+// the corpus -- the degenerate-input trap, and the one shape a universal quantifier always has.
+fn scope_covered_by_any(granted: List<AuthorizationScope>, required: AuthorizationScope) -> Bool {
+  fold(
+    granted,
+    init: false,
+    f: (acc, g) => acc || scope_covers(granted: g, requested: required),
+  )
+}
+
+fn first_uncovered_scope(
+  granted: List<AuthorizationScope>,
+  required: List<AuthorizationScope>,
+) -> AuthorizationScope? {
+  fold(
+    required,
+    init: none,
+    f: (acc, r) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => if scope_covered_by_any(granted: granted, required: r) { none } else { Present { value: r } }
+      },
+  )
 }
 
 fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
@@ -243,14 +277,28 @@ fn authorize_reached_scope<Subject>(
   request: AuthorizationRequest<Subject>,
   observed_at: Timestamp,
 ) -> AuthorizationDecision<Subject> {
-  if !scope_covers(granted: grant.scope, requested: request.scope) {
+  if is_empty(request.scopes) {
     AuthorizationRefused {
-      cause: AuthorizationScopeMismatch {
-        requested: request.scope,
-        granted: grant.scope,
-      },
+      cause: AuthorizationScopesUnstated { escalation_id: request.escalation_id },
     }
-  } else if !grant_not_expired_at(observed_at: observed_at, expires_at: grant.expires_at) {
+  } else {
+    match first_uncovered_scope(granted: grant.scopes, required: request.scopes) {
+      Present { value: missing } =>
+        AuthorizationRefused {
+          cause: AuthorizationScopeNotGranted { required: missing, granted: grant.scopes },
+        }
+      Absent => authorize_reached_time(grant: grant, observed_at: observed_at)
+    }
+  }
+}
+
+// Time, decided only once identity and reach have already agreed.
+fn authorize_reached_time<Subject>(
+  grant: OperatorGrant<Subject>,
+  observed_at: Timestamp,
+) -> AuthorizationDecision<Subject> {
+  if !grant_not_expired_at(observed_at: observed_at, expires_at: grant.expires_at) {
+
     AuthorizationRefused {
       cause: AuthorizationExpired {
         expires_at: grant.expires_at,
@@ -303,13 +351,6 @@ fn authorize<Subject>(
   }
 }
 
-fn authorization_is_permitted<Subject>(decision: AuthorizationDecision<Subject>) -> Bool {
-  match decision {
-    AuthorizationPermitted { grant: _ } => true
-    AuthorizationRefused { cause: _ } => false
-  }
-}
-
 // THE CLAIM TRANSITION, and the reason it is a std.durable_compare_and_set attempt rather than a
 // function that returns a new state.
 //
@@ -327,17 +368,37 @@ fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
   concat("scoped-authorization/", escalation_id as String) as NonEmptyStr
 }
 
+// THE SLOT HOLDS WHAT THE STORE HOLDS. std.durable_compare_and_set's realization
+// (gunbc.durable_cas_file_store) reads and writes NonEmptyStr, so a claim typed over
+// AuthorizationClaimState could never be handed to it -- the earlier shape typechecked and had no
+// reachable production consumer for exactly that reason. The state is serialized on the way in and
+// the attempt's digest is derived from the same bytes rather than supplied beside them.
+fn serialize_authorization_claim_state(state: AuthorizationClaimState) -> NonEmptyStr {
+  match state {
+    Unclaimed => "unclaimed" as NonEmptyStr
+    ClaimedBy { attempt: who, claimed_at: when } =>
+      concat("claimed-by\t", concat(who as String, concat("\t", when))) as NonEmptyStr
+    CompletedBy { attempt: who, completed_at: when } =>
+      concat("completed-by\t", concat(who as String, concat("\t", when))) as NonEmptyStr
+    AbortedBy { attempt: who, aborted_at: when, cause: why } =>
+      concat(
+        "aborted-by\t",
+        concat(who as String, concat("\t", concat(when, concat("\t", why as String)))),
+      ) as NonEmptyStr
+  }
+}
+
 fn claim_authorization(
   escalation_id: NonEmptyStr,
   expected: CasExpectation,
   proposed: AuthorizationClaimState,
-  proposed_content: ContentHash,
-) -> CasAttempt<AuthorizationClaimState> {
+) -> CasAttempt<NonEmptyStr> {
+  let payload = serialize_authorization_claim_state(state: proposed)
   cas_attempt(
     key: authorization_claim_key(escalation_id: escalation_id),
     expected: expected,
-    proposed: proposed,
-    proposed_content: proposed_content,
+    proposed: payload,
+    proposed_content: content_hash_of_value(value: payload),
   )
 }
 
@@ -366,17 +427,26 @@ fn claim_transition_aborted(
 // exclusion.
 type AuthorizationClaimOutcome
   = ClaimHeld { state: AuthorizationClaimState, generation: CasGeneration }
-  | ClaimLost { holder: AuthorizationClaimState }
+  | ClaimLost { holder: NonEmptyStr }
   | ClaimUndecided { reason: NonEmptyStr }
 
+// THE HELD STATE IS THE ONE WE PROPOSED, not one decoded back out of the slot. A committed write
+// is proof the store took our bytes, so re-deriving the state from them would be a round trip
+// proving the serializer agrees with itself. The LOST arm carries the winner's raw payload rather
+// than a decoded state: nothing here can parse another writer's bytes without minting a parser
+// whose failure arm would have to guess, and "some other attempt holds it, here is what it wrote"
+// is the honest report. An absent slot on the losing side is reported as such rather than as
+// Unclaimed, because "nobody holds it" and "we lost to a writer whose slot then vanished" are not
+// the same fact.
 fn authorization_claim_outcome(
-  outcome: CasOutcome<AuthorizationClaimState>,
+  proposed: AuthorizationClaimState,
+  outcome: CasOutcome<NonEmptyStr>,
 ) -> AuthorizationClaimOutcome {
   match outcome {
     CasCommitted { committed: v } =>
-      ClaimHeld { state: v.value, generation: v.generation }
+      ClaimHeld { state: proposed, generation: v.generation }
     CasPreconditionFailed { expected: _, observed: observed } =>
-      ClaimLost { holder: claim_state_of_readable(readable: observed) }
+      ClaimLost { holder: claim_holder_payload(readable: observed) }
     CasStoreRefused { cause: _ } =>
       ClaimUndecided {
         reason: "authorization claim slot unreadable; cannot establish exclusive claim" as NonEmptyStr,
@@ -384,9 +454,9 @@ fn authorization_claim_outcome(
   }
 }
 
-fn claim_state_of_readable(readable: CasReadableSlot<AuthorizationClaimState>) -> AuthorizationClaimState {
+fn claim_holder_payload(readable: CasReadableSlot<NonEmptyStr>) -> NonEmptyStr {
   match readable {
-    CasReadableAbsent => Unclaimed
+    CasReadableAbsent => "claim slot absent at the losing read" as NonEmptyStr
     CasReadablePresent { version: v } => v.value
   }
 }
@@ -397,6 +467,20 @@ fn claim_state_of_readable(readable: CasReadableSlot<AuthorizationClaimState>) -
 // its own refusal. The tree comes from the position rather than the path alone for the same reason:
 // `std.effect_grant` namespace_tree_label owns that spelling, and effect_target_label owns the path
 // one, so neither is re-coined here.
+fn authorization_scopes_render(scopes: List<AuthorizationScope>) -> String {
+  if is_empty(scopes) {
+    "no scopes"
+  } else {
+    fold(
+      scopes,
+      init: "",
+      f: (acc, s) =>
+        if acc == "" { authorization_scope_render(scope: s) }
+        else { concat(acc, concat(" + ", authorization_scope_render(scope: s))) },
+    )
+  }
+}
+
 fn authorization_scope_render(scope: AuthorizationScope) -> String {
   concat(
     effect_verb_label(verb: scope.verb),
@@ -427,8 +511,16 @@ fn authorization_refusal_reason(cause: AuthorizationRefusalCause) -> String {
       concat("operator authorization aborted by attempt ", concat(who as String, concat(": ", why as String)))
     AuthorizationEscalationMismatch { requested: req, granted: got } =>
       concat("operator authorization escalation mismatch: requested ", concat(req as String, concat(", granted ", got as String)))
-    AuthorizationScopeMismatch { requested: req, granted: got } =>
-      concat("operator authorization scope mismatch: requested ", concat(authorization_scope_render(scope: req), concat(", granted ", authorization_scope_render(scope: got))))
+    AuthorizationScopeNotGranted { required: missing, granted: got } =>
+      concat(
+        "operator authorization does not cover a required capability: ",
+        concat(
+          authorization_scope_render(scope: missing),
+          concat("; granted ", authorization_scopes_render(scopes: got)),
+        ),
+      )
+    AuthorizationScopesUnstated { escalation_id: id } =>
+      concat("operator authorization request states no scopes for escalation ", id as String)
     AuthorizationAttemptMismatch { requested: req, granted: got } =>
       concat("operator authorization issued for a different attempt: requested ", concat(req as String, concat(", granted ", got as String)))
     AuthorizationIntentMismatch { requested: req, granted: got } =>

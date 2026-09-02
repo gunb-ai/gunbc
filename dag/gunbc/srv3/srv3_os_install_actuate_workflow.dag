@@ -89,6 +89,34 @@ data srv3_boot_override_scope: AuthorizationScope = AuthorizationScope {
   action: "redfish.boot-source-override.set" as AuthorizedAction,
 }
 
+// THE RESET IS A SECOND CAPABILITY AND IT NEEDS ITS OWN ROW. srv3_boot_once_cd_resolved performs
+// two Redfish writes: PATCH the boot source override, then POST ComputerSystem.Reset. A grant
+// naming only the first said nothing about the second and therefore authorized it by omission --
+// power-cycling a machine is the destructive half of this operation, and the half the operator is
+// actually being asked to consent to. The reset sits under Actions rather than Boot, so the
+// prefix relation cannot reach it from the boot-override root no matter how the verbs line up:
+// the two capabilities are genuinely disjoint positions and the required set has two members.
+data srv3_system_reset_resource: NamespacePosition = NamespacePosition {
+  tree: ServiceOpTree { service: "redfish" },
+  path: ["redfish", "v1", "Systems", "system", "Actions", "ComputerSystem.Reset"],
+}
+
+data srv3_system_reset_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: srv3_system_reset_resource,
+  action: "redfish.computer-system.reset" as AuthorizedAction,
+}
+
+data srv3_boot_once_cd_required_scopes: List<AuthorizationScope> = [
+  srv3_boot_override_scope,
+  srv3_system_reset_scope,
+]
+
+// Where the exclusive claim for this escalation lives. One root, one slot per escalation id, on
+// the machine that runs the step -- the claim has to outlive the process for a restart to be
+// refused rather than admitted, which is what durable means here.
+data srv3_authorization_claim_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
+
 // The attempt this workflow's grant is bound to. A grant issued for this attempt refuses any
 // other, which is the difference between approving THIS run and issuing a standing approval for
 // every future run of the same step.
@@ -138,7 +166,7 @@ data srv3_boot_once_cd_intent_hash: ContentHash = srv3_boot_override_intent_hash
 // an approval prompt that cannot state what the access is for is not a request for consent.
 data srv3_boot_once_cd_authorization_request: AuthorizationRequest<Srv3BootOverrideSubject> = AuthorizationRequest {
   escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
-  scope: srv3_boot_override_scope,
+  scopes: srv3_boot_once_cd_required_scopes,
   subject: srv3_boot_once_cd_subject,
   purpose: "Set srv3's BMC boot source override to CD (Once, UEFI) and force a restart, to boot the seeded install media. This interrupts anything srv3 is currently running." as NonEmptyStr,
   attempt: srv3_boot_once_cd_attempt,
@@ -159,7 +187,7 @@ data srv3_boot_once_cd_default_approval: ScopedAuthorization<Srv3BootOverrideSub
 data srv3_boot_once_cd_operator_granted_approval: ScopedAuthorization<Srv3BootOverrideSubject> = AuthorizationGranted {
   grant: OperatorGrant {
     escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
-    scope: srv3_boot_override_scope,
+    scopes: srv3_boot_once_cd_required_scopes,
     subject: srv3_boot_once_cd_subject,
     purpose: srv3_boot_once_cd_authorization_request.purpose,
     attempt: srv3_boot_once_cd_attempt,

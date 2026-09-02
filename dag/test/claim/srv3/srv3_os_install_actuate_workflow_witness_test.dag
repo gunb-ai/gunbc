@@ -30,11 +30,13 @@ fn witness_unreachable_grant() -> OperatorGrant<Srv3BootOverrideSubject> {
       mode: BootOverrideModeLegacy,
       reset: ResetForceRestart,
     },
-    scope: AuthorizationScope {
-      verb: Read,
-      resource: NamespacePosition { tree: CodeNameTree, path: ["nowhere"] },
-      action: "none" as AuthorizedAction,
-    },
+    scopes: [
+      AuthorizationScope {
+        verb: Read,
+        resource: NamespacePosition { tree: CodeNameTree, path: ["nowhere"] },
+        action: "none" as AuthorizedAction,
+      },
+    ],
     purpose: "unreachable" as NonEmptyStr,
     attempt: "no-attempt" as AttemptIdentity,
     intent_hash: content_hash_of_value(value: "no-intent" as NonEmptyStr),
@@ -79,10 +81,86 @@ test fn srv3_boot_once_cd_operator_granted_approval_is_runnable() -> Bool {
 // with the boot-source-override action, and nothing wider.
 test fn srv3_grant_scope_names_the_boot_override_resource() -> Bool {
   let g = witness_srv3_grant()
-  g.scope.action == "redfish.boot-source-override.set" as AuthorizedAction
-    && namespace_tree_eq(a: g.scope.resource.tree, b: ServiceOpTree { service: "redfish" })
-    && position_under(target: g.scope.resource, root: srv3_boot_override_resource)
-    && position_under(target: srv3_boot_override_resource, root: g.scope.resource)
+  let boot = AuthorizationScope {
+    verb: Write,
+    resource: srv3_boot_override_resource,
+    action: "redfish.boot-source-override.set" as AuthorizedAction,
+  }
+  let reset = AuthorizationScope {
+    verb: Write,
+    resource: srv3_system_reset_resource,
+    action: "redfish.computer-system.reset" as AuthorizedAction,
+  }
+  scope_covered_by_any(granted: g.scopes, required: boot)
+    && scope_covered_by_any(granted: g.scopes, required: reset)
+    && namespace_tree_eq(a: srv3_system_reset_resource.tree, b: ServiceOpTree { service: "redfish" })
+    && !position_under(target: srv3_system_reset_resource, root: srv3_boot_override_resource)
+}
+
+// A GRANT COVERING ONLY THE BOOT OVERRIDE REFUSES THE STEP, because the step also resets the
+// machine. This is the discriminating RED for the required-set shape: under the single-scope
+// grant this replaces, the identical authorization was PERMITTED and the reset rode along
+// unnamed. The refusal must name the missing capability, not merely fail.
+test fn srv3_grant_missing_the_reset_scope_refuses() -> Bool {
+  let boot_only = AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+      scopes: [srv3_boot_override_scope],
+      subject: srv3_boot_once_cd_subject,
+      purpose: srv3_boot_once_cd_authorization_request.purpose,
+      attempt: srv3_boot_once_cd_attempt,
+      intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
+      granted_by: "witness-operator" as NonEmptyStr,
+      granted_at: "2026-09-02T00:00:00Z",
+      expires_at: "2026-10-02T00:00:00Z",
+    },
+    claim: Unclaimed,
+  }
+  match authorize(
+    authorization: boot_only,
+    request: srv3_boot_once_cd_authorization_request,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationScopeNotGranted { required: missing, granted: _ } } =>
+      missing.action == "redfish.computer-system.reset" as AuthorizedAction
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ABOVE: the same authorization with BOTH scopes is permitted, so the
+// refusal is about the missing capability rather than about the required-set check refusing
+// everything.
+test fn srv3_grant_covering_both_capabilities_is_permitted() -> Bool {
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: srv3_boot_once_cd_authorization_request,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationPermitted { grant: _ } => true
+    AuthorizationRefused { cause: _ } => false
+  }
+}
+
+// A REQUEST STATING NO SCOPES REFUSES rather than passing vacuously. "Every member of the empty
+// set is covered" is true, which would make the least specific request the most authorized one.
+test fn srv3_request_with_no_scopes_refuses() -> Bool {
+  let unstated = AuthorizationRequest {
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    scopes: [],
+    subject: srv3_boot_once_cd_subject,
+    purpose: srv3_boot_once_cd_authorization_request.purpose,
+    attempt: srv3_boot_once_cd_attempt,
+    intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
+    destructive: true,
+  }
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: unstated,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationScopesUnstated { escalation_id: _ } } => true
+    _ => false
+  }
 }
 
 // EXPIRY IS REAL. The identical grant that runs before expires_at refuses after it, and the
@@ -108,7 +186,7 @@ test fn srv3_grant_expires() -> Bool {
 test fn srv3_grant_refuses_a_different_attempt() -> Bool {
   let second_run = AuthorizationRequest {
     escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
-    scope: srv3_boot_once_cd_authorization_request.scope,
+    scopes: srv3_boot_once_cd_authorization_request.scopes,
     subject: srv3_boot_once_cd_subject,
     purpose: srv3_boot_once_cd_authorization_request.purpose,
     attempt: "srv3-os-install-actuate-2" as AttemptIdentity,
@@ -132,14 +210,16 @@ test fn srv3_grant_refuses_a_wider_resource() -> Bool {
   let elsewhere = AuthorizationRequest {
     escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
     subject: srv3_boot_once_cd_subject,
-    scope: AuthorizationScope {
-      verb: Write,
-      resource: NamespacePosition {
-        tree: ServiceOpTree { service: "redfish" },
-        path: ["redfish", "v1", "Managers", "bmc", "Actions", "Manager.Reset"],
+    scopes: [
+      AuthorizationScope {
+        verb: Write,
+        resource: NamespacePosition {
+          tree: ServiceOpTree { service: "redfish" },
+          path: ["redfish", "v1", "Managers", "bmc", "Actions", "Manager.Reset"],
+        },
+        action: "redfish.boot-source-override.set" as AuthorizedAction,
       },
-      action: "redfish.boot-source-override.set" as AuthorizedAction,
-    },
+    ],
     purpose: srv3_boot_once_cd_authorization_request.purpose,
     attempt: srv3_boot_once_cd_attempt,
     intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
@@ -150,7 +230,7 @@ test fn srv3_grant_refuses_a_wider_resource() -> Bool {
     request: elsewhere,
     observed_at: witness_before_expiry,
   ) {
-    AuthorizationRefused { cause: AuthorizationScopeMismatch { requested: _, granted: _ } } => true
+    AuthorizationRefused { cause: AuthorizationScopeNotGranted { required: _, granted: _ } } => true
     _ => false
   }
 }
@@ -159,7 +239,7 @@ test fn srv3_grant_refuses_a_wider_resource() -> Bool {
 test fn srv3_grant_refuses_a_changed_planned_action() -> Bool {
   let changed = AuthorizationRequest {
     escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
-    scope: srv3_boot_once_cd_authorization_request.scope,
+    scopes: srv3_boot_once_cd_authorization_request.scopes,
     subject: srv3_boot_once_cd_subject,
     purpose: srv3_boot_once_cd_authorization_request.purpose,
     attempt: srv3_boot_once_cd_attempt,
@@ -245,9 +325,9 @@ test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
     escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
     expected: ExpectSlotAbsent,
     proposed: proposed,
-    proposed_content: content_hash_of_value(value: "claim-proposed" as NonEmptyStr),
   )
   let lost = authorization_claim_outcome(
+    proposed: proposed,
     outcome: cas_decide(
       attempt: attempt,
       observed: CasObservedReadable {
@@ -255,13 +335,14 @@ test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
           version: CasSlotVersion {
             generation: 1,
             content: content_hash_of_value(value: "claim-winner" as NonEmptyStr),
-            value: winner,
+            value: serialize_authorization_claim_state(state: winner),
           },
         },
       },
     ),
   )
   let won = authorization_claim_outcome(
+    proposed: proposed,
     outcome: cas_decide(
       attempt: attempt,
       observed: CasObservedReadable { readable: CasReadableAbsent },
@@ -269,11 +350,7 @@ test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
   )
   match lost {
     ClaimLost { holder: h } =>
-      match h {
-        ClaimedBy { attempt: a, claimed_at: _ } =>
-          a == "srv3-os-install-actuate-99" as AttemptIdentity
-        _ => false
-      }
+      h == serialize_authorization_claim_state(state: winner)
     _ => false
   }
     && match won {
@@ -287,6 +364,7 @@ test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
 // exclusion.
 test fn srv3_unreadable_claim_store_refuses() -> Bool {
   match authorization_claim_outcome(
+    proposed: claim_transition_claimed(attempt: srv3_boot_once_cd_attempt, at: witness_before_expiry),
     outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "witness: claim slot read refused" as NonEmptyStr } },
   ) {
     ClaimUndecided { reason: _ } => true

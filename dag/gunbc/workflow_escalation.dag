@@ -14,7 +14,8 @@ import std.scoped_authorization {
   AuthorizationClaimedByOtherAttempt,
   AuthorizationAborted,
   AuthorizationEscalationMismatch,
-  AuthorizationScopeMismatch,
+  AuthorizationScopeNotGranted,
+  AuthorizationScopesUnstated,
   AuthorizationAttemptMismatch,
   AuthorizationIntentMismatch,
   AuthorizationIntentIncomparable,
@@ -87,7 +88,9 @@ fn workflow_step_disposition_for_decision<Subject>(
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationEscalationMismatch { requested: _, granted: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
-        AuthorizationScopeMismatch { requested: _, granted: _ } =>
+        AuthorizationScopeNotGranted { required: _, granted: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationScopesUnstated { escalation_id: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationAttemptMismatch { requested: _, granted: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }

@@ -29,7 +29,7 @@ data witness_subject: WitnessSubject = WitnessSubject { label: "srv3-boot" as No
 data witness_request: AuthorizationRequest<WitnessSubject> = authorization_request_for_attempt(
   intent: witness_intent,
   escalation_id: witness_escalation_id,
-  scope: witness_scope,
+  scopes: [witness_scope],
   subject: witness_subject,
   purpose: "witness: boot srv3 from CD once" as NonEmptyStr,
   destructive: true,
@@ -39,7 +39,7 @@ fn witness_grant(granted_at: Timestamp, expires_at: Timestamp) -> ScopedAuthoriz
   AuthorizationGranted {
     grant: OperatorGrant {
       escalation_id: witness_escalation_id,
-      scope: witness_scope,
+      scopes: [witness_scope],
       subject: witness_subject,
       purpose: witness_request.purpose,
       attempt: witness_request.attempt,
@@ -218,16 +218,17 @@ test fn converged_receipt_expected_lease_yields_noop() -> Bool {
 }
 
 test fn active_grant_covers_matching_intent() -> Bool {
-  authorization_is_permitted(
-    decision: authorize(
-      authorization: witness_grant(
-        granted_at: "2026-07-02T23:00:00Z",
-        expires_at: "2026-07-03T23:00:00Z",
-      ),
-      request: witness_request,
-      observed_at: witness_observed_at,
+  match authorize(
+    authorization: witness_grant(
+      granted_at: "2026-07-02T23:00:00Z",
+      expires_at: "2026-07-03T23:00:00Z",
     ),
-  )
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationPermitted { grant: _ } => true
+    AuthorizationRefused { cause: _ } => false
+  }
 }
 
 test fn expired_grant_does_not_authorize_destructive() -> Bool {
