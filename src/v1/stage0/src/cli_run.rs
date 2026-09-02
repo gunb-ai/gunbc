@@ -1135,32 +1135,6 @@ pub fn workspace_root() -> PathBuf {
 /// The process working directory is one mutable cell shared by every test thread in this binary,
 /// and `cargo test` runs those threads concurrently. A test that chdirs therefore does not perturb
 /// only itself: for the width of the call it redirects every RELATIVE path any concurrent test
-/// resolves, and its restore (`prior = current_dir(); chdir(ws); …; chdir(prior)`) can hand the
-/// cwd back while a sibling is still mid-read. That is the nondeterminism `entry_admission_tests`
-/// already measured on this file — a DIFFERENT pair of tests failing on each run of identical code
-/// — and the victim population is not the mutators, it is every non-ignored test in the binary.
-///
-/// So the gate is REACHABILITY, not a grep for the literal in a test body. All seven mutators this
-/// module was written to remove reached `set_current_dir` through a helper (`with_workspace_cwd`,
-/// `enter_workspace`, and three roster helpers), so a body-local check would have been green over
-/// every one of them and would go green again the first time someone reintroduces the chdir one
-/// call deep. This computes the same transitive closure the census did.
-///
-/// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
-/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
-/// `repo_self_test_command`). The `#[ignore]`d live-corpus tests still reach mutators and are the
-/// named residue — they are excluded here because the gating lane does not run them, not because
-/// they are safe. Their next-rung trigger is the capability "every live-tree test resolves paths
-/// from an explicitly passed root", after which `set_current_dir` has no consumer in the test tree
-/// and the call becomes unwritable rather than merely absent.
-///
-/// Rung: the class was found BELOW the ladder (a silently wrong answer — a test resolves against
-/// another tree and can pass or fail either way, with no typed refusal anywhere). For the gating
-/// population the state is now absent; this lens is what keeps it absent, so that population sits
-/// at 2, mechanically preventable, with ceiling 4 named above.
-/// The process working directory is one mutable cell shared by every test thread in this binary,
-/// and `cargo test` runs those threads concurrently. A test that chdirs therefore does not perturb
-/// only itself: for the width of the call it redirects every RELATIVE path any concurrent test
 /// resolves, and the restore idiom (`prior = current_dir(); chdir(ws); …; chdir(prior)`) can hand
 /// the cwd back while a sibling is still mid-read. That is the nondeterminism `entry_admission_tests`
 /// already measured on this file — a DIFFERENT pair of tests failing on each run of identical code
@@ -1198,10 +1172,20 @@ pub fn workspace_root() -> PathBuf {
 mod process_cwd_mutation_reachability_gate {
     use std::collections::{BTreeMap, BTreeSet};
 
+    /// THE BARE CALLEE NAME, NOT THE QUALIFIED PATH. Seeding on `std::env::set_current_dir` would
+    /// match only the spelling the corpus happens to use today: a future author who writes
+    /// `use std::env;` and calls `env::set_current_dir(…)`, or imports the function directly and
+    /// calls it unqualified, would leave the gate green while reintroducing the exact defect. The
+    /// call is matched as an identifier-bounded callee below, so every path spelling of the same
+    /// function seeds the closure. Residue, stated rather than implied: a rename-import
+    /// (`use std::env::set_current_dir as chdir`) still escapes, because the callee is then a
+    /// different identifier — that is the same residue the module ceiling already names, and it is
+    /// narrower than the qualified-path-only form it replaces.
+    ///
     /// SPELLED IN PIECES ON PURPOSE. This module scans its own file, so a verbatim occurrence of
-    /// the call it hunts for would make the gate an offender against itself, and that false RED
+    /// the name it hunts for would make the gate an offender against itself, and that false RED
     /// would be indistinguishable from a real one.
-    const MUTATOR_CALL: &str = concat!("std::env::", "set_", "current_dir");
+    const MUTATOR_CALL: &str = concat!("set_", "current_dir");
     const SELF_REL: &str = "src/v1/stage0/src/cli_run.rs";
 
     #[derive(Debug, Clone)]
@@ -1412,7 +1396,7 @@ mod process_cwd_mutation_reachability_gate {
         let owner = owner_per_line(code.len(), decls);
         let mut reaching: BTreeSet<String> = BTreeSet::new();
         for (i, line) in code.iter().enumerate() {
-            if line.contains(MUTATOR_CALL) {
+            if call_mention(line, MUTATOR_CALL) {
                 if let Some(d) = owner[i] {
                     reaching.insert(decls[d].name.clone());
                 }
