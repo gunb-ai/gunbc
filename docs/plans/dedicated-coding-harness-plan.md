@@ -28,7 +28,8 @@ Success is the RLM terminal procedure, unchanged, executed with our harness sele
 provider realization:
 
 > From a clean revision R on main, clicking Launch on the roadmap canary creates exactly one
-> attempt, one worktree, **one harness process of ours**, and one durable attempt record; the
+> attempt, one worktree, **one harness process of ours — the default and only harness**, and one
+> durable attempt record; the
 > worker performs only the canary's exact change; verification evaluates the pinned oracle against
 > the exact attempt head; publication records a receipt; the child unblocks on acceptance.
 
@@ -407,9 +408,30 @@ a positive control and a discriminating refused case:
   per-operation budget rather than one universal kill; termination of the **owned process
   population** rather than one PID; and compaction or an explicit typed context-exhaustion refusal.
 
-### DCH-3 — Bind it at the seam and run RLM's terminal
+### DCH-3 — Bind it at the seam, make it the default, and run RLM's terminal
 
-- A second `ProviderControlInterface` variant, its receipt types, and the belt binding.
+**Operator direction, 2026-09-02: the harness is to be the only and default harness; Claude and
+Codex are to be ignored.** That is adopted, and it changes this gate's shape in a way worth stating
+rather than absorbing.
+
+**Default is a selection; retirement is a deletion. They are separated deliberately.** "Ignore the
+other providers" is discharged by making ours the default selection at the seam and stopping
+investment in the others — it does **not** require deleting them, and DCH-4's deletion still waits
+on this gate's receipt. Deleting them to satisfy "only" before that receipt would leave the
+repository with zero working harnesses, which is the failure mode the replacement-migration doctrine
+calls erasing a correctness distinction rather than completing the replacement. The other variants
+stay **frozen** in the doctrine's sense — no new investment, no new rows on their growth surfaces —
+until DCH-4.
+
+**"Only" raises this gate's bar; it does not lower it.** With three providers, a weak DCH-3 is
+tolerable because a fallback exists. With one, there is none — every DCH-2 qualification class
+becomes load-bearing on the day it becomes default, and the relayed transcript in §5 is precisely a
+record of what a sole harness with no fallback feels like when it breaks: three sessions dead, an
+exit status of zero, and an operator who cannot tell working from dead. So the combined admission
+below is not ceremony to be traded away for focus — it is the thing that makes "only" survivable.
+
+- The `ProviderControlInterface` variant, its receipt types, and the belt binding.
+- Make it the **default selection** at that seam.
 - Re-run the RLM terminal with the variant selected.
 - **Admission requires BOTH**, and neither substitutes for the other: every DCH-2 qualification
   receipt accepted, **and** the unchanged RLM 14-step terminal with the DCH variant selected. The
@@ -434,6 +456,9 @@ surface goes with them — it exists to solve a problem that a self-hosted endpo
 - Bump `fleet_intent_network_witness_test`'s endpoint-count literal to absorb enrolment. Repair the
   oracle or leave it red; a count copied from the tree it measures is not one.
 - Treat "it completed one turn" as evidence for anything but that.
+- Delete or break the existing provider runtimes to satisfy "ours is the only harness" before
+  DCH-3's receipt. Default first, retire after — otherwise the count of working harnesses passes
+  through zero.
 
 ## 5. Adversarial review — the failure classes this lane must answer in advance
 
