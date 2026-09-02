@@ -69,11 +69,20 @@ data current_api_version: AnthropicApiVersion = {
   header: "anthropic-version"
 }
 
-// HOW AN IMPLEMENTATION TREATS THE VERSION HEADER IS PART OF ITS CONTRACT, not a detail. The
-// publisher selects a spec revision with it; a second implementation may accept it and ignore it,
-// which means a caller cannot conclude from an accepted request that the revision it asked for is
-// the revision it got. Modeling the two as one Bool would erase that, so the axis is a coproduct
-// and every conformance row must state its arm.
+// AN ACCEPTED-AND-IGNORED PARAMETER IS WORSE THAN A REFUSED ONE, BECAUSE IT LOOKS LIKE A CONTROL
+// AND IS NOT. That is why this axis exists and why it is here rather than in a plan document. The
+// publisher selects a spec revision with the version header; an implementation may instead accept
+// the header and disregard it, and upstream says so in its own words. A request that is accepted
+// is then NOT evidence that the revision asked for is the revision served -- the caller believes it
+// has pinned something, the send succeeds, and nothing anywhere refuses. Silent success against an
+// inert control is the fail-open shape DESIGN section 5 forbids, arriving through a parameter
+// rather than through a failure arm.
+//
+// SO THE AXIS IS A COPRODUCT AND EVERY CONFORMANCE ROW MUST STATE ITS ARM. Modeling it as one Bool,
+// or leaving it off the carrier and writing it in prose somewhere, would put the caller back where
+// it started: believing the header did something. The same class has been observed independently on
+// this fleet for other accepted-but-inert request fields, so it is a pattern to model rather than a
+// quirk of one product.
 //
 // It carries NO Bool accessor, deliberately. A predicate answering "is the header honored?" would
 // re-collapse the arm a caller has to branch on to the same one bit this coproduct exists to
