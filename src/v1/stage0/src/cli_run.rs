@@ -40169,6 +40169,60 @@ fn write_required_floor_claim_cost_tsv(
     Ok(())
 }
 
+/// The cross-claim demand receipt: one row per RETAINED producer identity, whether or not more
+/// than one claim demanded it. The single-claim rows are kept deliberately — they are the
+/// control population that makes `claims > 1` mean something, and dropping them would leave an
+/// artifact in which every row looks shared.
+///
+/// The header line carries the census's own disclosure: how many claims were folded in, and what
+/// the retention floor and the key cap did NOT retain. An artifact that truncates without saying
+/// so is read as a population, which is the failure this instrument exists to stop making.
+fn write_required_floor_cross_claim_demand_tsv(
+    path: &str,
+    rows: &[v1_interpreter::CrossClaimDemandRow],
+    disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
+    claim_cpu_total_ms: u128,
+) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
+    writeln!(
+        file,
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
+        disclosure.claims_absorbed,
+        rows.len(),
+        disclosure.omitted_keys,
+        disclosure.omitted_ns / 1_000_000,
+        disclosure.overflow_keys,
+        disclosure.absorb_ns_total / 1_000_000,
+        disclosure.absorb_ns_max / 1_000_000,
+        claim_cpu_total_ms
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    writeln!(
+        file,
+        "producer\targ_shape\tclaims\tevals\ttotal_ms\tcross_claim_ms\tmodules\tmodule_sample\tdecl_site"
+    )
+    .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    for row in rows {
+        writeln!(
+            file,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            row.producer.replace(['\t', '\n'], " "),
+            row.arg_shape,
+            row.claims,
+            row.evals,
+            row.total_ns / 1_000_000,
+            row.cross_claim_wasted_ns() / 1_000_000,
+            row.modules,
+            row.module_sample.join(",").replace(['\t', '\n'], " "),
+            row.decl_site.replace(['\t', '\n'], " ")
+        )
+        .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
+    }
+    Ok(())
+}
+
 fn write_required_floor_disposition_tsv(
     path: &str,
     rows: &[RequiredFloorDispositionRow],
