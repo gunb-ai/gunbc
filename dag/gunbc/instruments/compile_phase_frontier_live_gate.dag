@@ -46,6 +46,15 @@ import tools.emission_entry_instrument {
 // that invocation is `cargo.Build.CheckManifestMessages` — a default-profile `cargo check` with no
 // feature selection. Spelling them here as the receipts spell them is what lets the comparability
 // check refuse when a future instrument change silently moves either.
+//
+// THE TARGET IS THE SAME KIND OF FACT, AND USED NOT TO BE TREATED AS ONE. It was read from rustc's
+// host triple while the measured `cargo check` passed no `--target`, so the environment could select
+// another target through `CARGO_BUILD_TARGET` or cargo configuration and the receipt would still
+// record the host. Two censuses taken under different effective targets then compare as equal epochs
+// and this gate could report Held across them. `tools.emission_entry_instrument measure_cargo_half`
+// now PINS the triple on the invocation and refuses when it cannot read one, so the host reading
+// below names the target that was actually compiled rather than assuming the two agree. Found by
+// review on gunbc#9857.
 data live_gate_invocation_profile: String = "check/dev"
 
 data live_gate_entry: String = "src/v2/compiler/00_compile.dag"
