@@ -92,4 +92,3 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
 }
-
