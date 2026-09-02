@@ -225,6 +225,27 @@ fn effect_target_label(target: NamespacePosition) -> String {
   join(target.path, "/")
 }
 
+// THE TREE IS PART OF THE ADDRESS, NOT DECORATION. Two positions with identical path segments in
+// different trees are different resources, so a diagnostic that renders only the path cannot tell
+// an operator which resource was refused -- the located-diagnostic requirement of DESIGN section 5
+// read at the grain the position type actually carries.
+fn namespace_tree_label(tree: NamespaceTree) -> String {
+  match tree {
+    FilesystemPathTree => "filesystem"
+    UriTree => "uri"
+    ProcTree => "proc"
+    ServiceOpTree { service: svc } => concat("service:", svc)
+    CodeNameTree => "code-name"
+  }
+}
+
+fn namespace_position_label(position: NamespacePosition) -> String {
+  concat(
+    namespace_tree_label(tree: position.tree),
+    concat(":", effect_target_label(target: position)),
+  )
+}
+
 fn effect_grant_decide(
   request: AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
 ) -> AccessDecision {

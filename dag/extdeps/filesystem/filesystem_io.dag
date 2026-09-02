@@ -57,6 +57,94 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
   )
 }
 
+// A NAME IS NOT A PATH COMPONENT UNTIL SOMETHING SAYS SO. `filesystem_listing_names_entry` above
+// answers a membership question over a NEWLINE-DELIMITED wire format, and every consumer that has an
+// entry name also builds a path from it by joining a directory to it. Those are two uses of one
+// value, and an ordinary `String` guarantees neither: `""`, `.`, `..`, `subdir/repo.json` and
+// `../victim` do not denote one direct child of the listed directory, so the listing is asked about
+// one subject while the path names another. The newline case is the sharpest and belongs to THIS
+// module rather than to any caller, because the delimiter is `List`'s own encoding: a name
+// containing a newline can make the membership test answer yes for an entry that is not there.
+//
+// So the component is admitted once and carried. `FilesystemEntryName` is `sole_constructor`, which
+// is what makes the admission unavoidable rather than advisory -- a caller cannot mint one by
+// writing a literal, and the refusal arm names which rule rejected the spelling instead of returning
+// a bare false.
+//
+// SCOPE, STATED RATHER THAN IMPLIED. This carrier is ADOPTED AT ITS FIRST CONSUMER and is not yet
+// the type of `filesystem_entry_presence`'s `name` parameter, which is still `String` and still
+// reachable by every existing caller. Widening it is a replacement migration over that whole
+// population and belongs with `filesystem_absence_establishment_adoption_standing` above, not
+// smuggled into the change that introduces the carrier. What is true today: a consumer that admits
+// the name and then uses the SAME admitted value for both the membership test and the path
+// construction cannot put those two out of step. A consumer that does not adopt it is exactly as
+// exposed as before. RUNG: mitigatable, and structurally guaranteed only for adopting consumers.
+// NEXT-RUNG TRIGGER: `filesystem_entry_presence` and the path-joining sites take
+// `FilesystemEntryName` rather than `String`, at which point a raw name cannot reach either.
+type FilesystemEntryName sole_constructor {
+  name: String
+}
+
+type FilesystemEntryNameAdmission
+  = FilesystemEntryNameAdmitted(FilesystemEntryName)
+  | FilesystemEntryNameRefused { name: String, cause: String }
+
+fn filesystem_entry_name_text(component: FilesystemEntryName) -> String {
+  component.name
+}
+
+// THE RULES ARE SEPARATE ARMS BECAUSE THE REMEDIES DIFFER. An empty name is a caller that forgot to
+// supply one; `.` and `..` are directory references that resolve somewhere other than a child;
+// a separator means the caller passed a PATH where a component was asked for, which is the case that
+// escapes the listed directory entirely; and a newline or carriage return is the one that corrupts
+// the membership test itself.
+fn admit_filesystem_entry_name(name: String) -> FilesystemEntryNameAdmission {
+  if name == "" {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: "an entry name is empty, so it names no child of any directory",
+    }
+  } else if name == "." {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: "`.` is the directory itself rather than an entry within it",
+    }
+  } else if name == ".." {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: "`..` is the parent directory rather than an entry within it",
+    }
+  } else if string_contains(s: name, pattern: "/") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a path separator, so it is a PATH and not one direct ",
+        "child of the listed directory -- the listing would be asked about a different subject ",
+        "than the one the joined path names",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\n") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a newline, which is the delimiter Filesystem.List uses ",
+        "between entries, so a membership test over the listing could answer yes for an entry that ",
+        "is not present",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\r") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a carriage return, which can terminate a line in the ",
+        "listing wire format and make the membership test answer about a different spelling",
+      ], ""),
+    }
+  } else {
+    FilesystemEntryNameAdmitted(FilesystemEntryName { name: name })
+  }
+}
+
 // THE RULE ABOVE WAS PROSE FOR AS LONG AS IT EXISTED, AND PROSE REPRODUCED THE DEFECT IT FORBIDS.
 // It was ruled on review 46148, written into `gunbc.roadmap_belt_actuate` as a `data ... : String`
 // note, and then violated in `gunbc.deploy_transition` -- authored by the same hand, in the same
@@ -242,6 +330,33 @@ fn filesystem_established_absence_detail(absence: FilesystemEstablishedAbsence) 
 
 data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false. THIS ROW IS CLASSIFIED FROM THE PRODUCER RATHER THAN FROM THE CALL SITE, on a caution from the lane that shipped this defect today: a predicate whose job is to answer the presence question would not belong here. extdeps.shell Test.IsFile is `test -f` with its own declared exit table reading `1 => Path is missing or not a regular file`, so ONE exit code carries missing, wrong-kind, and -- since `test -f` is false when the parent directory cannot be searched -- could-not-look. It answers false on an unreadable-but-present path, so it is the same defect with a different producer, and it is the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
 
+// WriteCreateNew: CREATE-ONLY IS A DIFFERENT FACT FROM OWNER-ONLY, and this annotation sits here
+// rather than above the operation because only module-item grain is modeled (DESIGN section 4c) --
+// an operation lives inside this service's body, so the rationale for one attaches to the
+// declaration that contains it.
+//
+// WriteOwnerOnly's realization happens to use create_new(true), because a mode set at creation is
+// meaningless on a path that already exists. That is a property of ITS realization, not a contract
+// anyone may depend on: owner-only MODE and create-only EXISTENCE are independent facts, and reusing
+// one to obtain the other is a realization detail standing where a modeled fact belongs (section 3).
+// A caller that wanted create-only and took it from WriteOwnerOnly would also silently get 0600, and
+// would break the day owner-only stopped needing O_EXCL.
+//
+// WHAT IT CLOSES, AND WHY A CHECK COULD NOT. Observing that a path is absent and then writing to it
+// is two operations with a gap: an actor creating the file in the gap makes the write truncate
+// exactly the bytes the observation was taken to protect. No amount of re-observing removes the gap,
+// because the check and the write are still not one act. O_CREAT|O_EXCL makes the EXISTENCE TEST AND
+// THE CREATION the same syscall, so the race has no window rather than a narrow one. Construction
+// over validation (section 5) at a boundary where validation cannot win.
+//
+// THE REFUSAL DOES NOT CLASSIFY ITSELF, ON PURPOSE. `error` carries the host's message verbatim and
+// the operation does NOT report whether the refusal was "already existed" or "permission denied":
+// the channels available here cannot separate them, and deciding it by matching on the error TEXT
+// would be a heuristic standing in for an observation -- the smuggled-confidence shape section 5
+// names. A caller learns that the create did not happen and why the host said so, which is what it
+// needs in order to refuse; it does not learn a classification nothing measured.
+// NEXT-RUNG TRIGGER: a modeled already-exists channel on the file transport, at which point the race
+// and the permission failure become separate arms and this paragraph is deleted.
 service Filesystem {
 
   operation Write {
@@ -264,6 +379,17 @@ service Filesystem {
       error: String from "error"
     }
     transport file { path: "{path}", verb: "write_owner_only" }
+  }
+
+  operation WriteCreateNew {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_create_new" }
   }
 
   operation Read {

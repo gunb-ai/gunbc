@@ -1,0 +1,108 @@
+module extdeps.virtualization.firecracker
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.disposition { Disposition, Terminal }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// FIRECRACKER IS AN INDEPENDENTLY VERSIONED UPSTREAM, so it owns its own extdeps module and its
+// real names are kept (DESIGN section 3). The configuration surface below is Firecracker's OWN
+// vocabulary -- boot-source, drives, network-interfaces, machine-config -- not a nickname for it,
+// and the field names are the ones its API accepts. A generic "vm config" hub that enumerated
+// Firecracker beside another VMM would be the external-decomposition violation: two independently
+// governed products under one authority.
+data firecracker_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for the Firecracker VMM's configuration surface and its host requirements. It models what the upstream API accepts; it does NOT decide what a runner VM should contain, which is a product fact owned downstream."
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md",
+  }
+}
+
+// THE VERSION IS DECLARED RATHER THAN FLOATING, and the architecture is part of the identity: the
+// release artifact is per-arch, so a row that named only the version would not identify a binary.
+type FirecrackerRelease {
+  version: NonEmptyStr
+  arch: NonEmptyStr
+}
+
+data firecracker_release_aarch64: FirecrackerRelease = FirecrackerRelease {
+  version: "v1.16.1",
+  arch: "aarch64",
+}
+
+// THE HOST REQUIREMENT IS ONE FACT AND IT IS NOT NEGOTIABLE. Upstream states it as read/write
+// access to /dev/kvm exposed by the KVM module. Modeled as a datum rather than prose because a
+// consumer must be able to refuse on it, and prose cannot be read by an Accepted program.
+data firecracker_requires_kvm_device: FilePath = "/dev/kvm"
+
+// SUPPORTED GUEST ARCHITECTURES, AS A CLOSED SET. Upstream supports exactly x86_64 and aarch64;
+// an open string here would admit a target Firecracker cannot boot and defer the refusal to
+// runtime, which is the state-space conflation DESIGN section 4b asks construction to close.
+type FirecrackerArch
+  = FirecrackerX86_64
+  | FirecrackerAarch64
+
+fn firecracker_arch_label(a: FirecrackerArch) -> String {
+  match a {
+    FirecrackerX86_64 => "x86_64"
+    FirecrackerAarch64 => "aarch64"
+  }
+}
+
+// --- the configuration surface, in upstream's own shape ---
+
+// The kernel is an UNCOMPRESSED image and the boot args are the guest kernel's, not Firecracker's.
+type FirecrackerBootSource {
+  kernel_image_path: FilePath
+  boot_args: NonEmptyStr
+}
+
+// A drive is identified by a caller-chosen id and is EITHER the root device or not. Upstream lets
+// both flags be set independently; modelling is_root_device as a Bool beside is_read_only keeps
+// the upstream shape rather than inventing a coproduct the API does not have.
+type FirecrackerDrive {
+  drive_id: NonEmptyStr
+  path_on_host: FilePath
+  is_root_device: Bool
+  is_read_only: Bool
+}
+
+// host_dev_name is the HOST's tap device. The guest MAC is caller-assigned; upstream generates one
+// when it is absent, but an unassigned MAC is not a fact a consumer can plan against, so this
+// model requires it and leaves absence to a caller that has no interface at all.
+type FirecrackerNetworkInterface {
+  iface_id: NonEmptyStr
+  host_dev_name: NonEmptyStr
+  guest_mac: NonEmptyStr
+}
+
+// vcpu_count and mem_size_mib are CARDINALITIES, not unit-bearing magnitudes in the std.measure
+// sense -- mem_size_mib carries its unit in the upstream field name, which this module preserves
+// rather than converting, because converting would make the row disagree with what the API accepts.
+type FirecrackerMachineConfig {
+  vcpu_count: Int
+  mem_size_mib: Int
+}
+
+type FirecrackerVmConfig {
+  boot_source: FirecrackerBootSource
+  drives: List<FirecrackerDrive>
+  network_interfaces: List<FirecrackerNetworkInterface>
+  machine_config: FirecrackerMachineConfig
+}
+
+// EXACTLY ONE ROOT DEVICE IS AN UPSTREAM RULE, and it is checkable from the config alone. A config
+// with none does not boot and a config with two is ambiguous; both are refusals a consumer can
+// make before a VM is ever started, so this is the decidable fragment that belongs here rather
+// than a runtime discovery.
+fn firecracker_root_drive_count(config: FirecrackerVmConfig) -> Int {
+  count(filter(config.drives, d => d.is_root_device))
+}
+
+fn firecracker_config_has_single_root(config: FirecrackerVmConfig) -> Bool {
+  firecracker_root_drive_count(config: config) == 1
+}

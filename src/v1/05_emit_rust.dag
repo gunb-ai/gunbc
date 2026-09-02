@@ -210,7 +210,7 @@ import v1.compiler.emit {
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanContent
 }
@@ -14365,6 +14365,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
     FileRead           => file_read_match_expr
     FileWrite          => file_write_expr
     FileWriteOwnerOnly => file_write_owner_only_expr
+    FileWriteCreateNew => file_write_create_new_expr
     FileDelete         => file_delete_match_expr
     FileList           => file_list_match_expr
   }
@@ -14423,6 +14424,8 @@ data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\
 data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
 
 data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};"
+
+data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let mut create_new_file = std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path)?;\n        create_new_file.write_all(content.as_bytes())?;\n        Ok(())\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};"
 

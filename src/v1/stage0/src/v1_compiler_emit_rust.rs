@@ -114,7 +114,7 @@ use crate::v1_compiler_emit::FileResultChannel::{
     FileChanByteCount, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
-    FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly,
+    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
 };
 use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
 use crate::v1_compiler_emit::ShellResultChannel::{
@@ -34975,6 +34975,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
         FileVerb::FileRead => file_read_match_expr(),
         FileVerb::FileWrite => file_write_expr(),
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
+        FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
         FileVerb::FileDelete => file_delete_match_expr(),
         FileVerb::FileList => file_list_match_expr(),
     }
@@ -35153,6 +35154,15 @@ pub fn file_write_expr() -> String {
     thread_local! {
         static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_create_new_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let mut create_new_file = std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path)?;\n        create_new_file.write_all(content.as_bytes())?;\n        Ok(())\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
