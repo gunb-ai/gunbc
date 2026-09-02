@@ -9640,6 +9640,13 @@ type BodyTerminal {
 // too. Deleting the incumbent re-points its call site at this declaration -- a deliberate narrowing
 // of two spellings to one, not an incidental merge artifact.
 //
+// THE BLAST RADIUS OF THAT DELETION IS EMPTY, CHECKED RATHER THAN ASSUMED (tidy-lynx-804,
+// independently, 2026-09-02): on origin/main the deleted declaration had exactly ONE declaration
+// site, ONE recursive self-call, and ONE caller, plus its generated Rust mirror. No third caller
+// depended on the ExprBlock-only answer, so re-pointing that one call site orphans nothing. The
+// section 3 argument says the deletion is defensible; this census is what makes it landable, and
+// the two are not the same claim.
+//
 // THE MERGE WAS TEXTUALLY CLEAN. The two declarations landed in different regions of one file, so
 // no conflict was raised and no diff review of either side could see it; only compiling the merged
 // authority reported it, as a call-shape mismatch against the surviving parameter name.
