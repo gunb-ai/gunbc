@@ -2195,24 +2195,6 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, sc
   }
 }
 
-// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
-// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
-// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
-// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
-// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
-// ones, and the check refused that correct module before this predicate existed.
-fn arm_body_diverges(n: Node) -> Bool {
-  match n.expr_data {
-    ExprReturn => true
-    ExprBlock =>
-      match n.children |> last {
-        Present { value: tail } => arm_body_diverges(n: tail)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
 // THE JOIN ANSWERS WITH ONE TYPE, so an arm whose body type is not that type is never judged
 // anywhere downstream: the match's inferred type is the join's, and a consumer's declared-type check
 // sees only that. The join tie-breaks to the FIRST arm, so before this predicate a later arm
@@ -2300,7 +2282,7 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
 }
 
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
-  if arm_body_diverges(n: arm_body(n: arm.typed_arm)) {
+  if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
   } else if match_arm_types_are_disjoint_coproducts(
     unified_arm_type: unified_arm_type,
@@ -9642,6 +9624,19 @@ type BodyTerminal {
   let_prov: Map<String, Map<String, SubValueRelation>>
 }
 
+// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
+// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
+// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
+// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
+// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
+// ones, and the check refused that correct module before this predicate existed.
+//
+// TWO DECLARATIONS OF THIS PREDICATE MET IN A MERGE (2026-09-02, #9964 into main after #10045) and
+// this one survived, because it is not merely the incumbent: it delegates the walk to
+// ownership.fold_terminal_expr, which folds through ExprLet AS WELL AS ExprBlock. The deleted one
+// hand-rolled the block-tail recursion and handled no ExprLet, so a `let x = ...; return y` arm
+// diverges and it answered false. Re-inventing a walk the codebase already owned is the DESIGN
+// section 2 failure, and here it also cost correctness.
 fn arm_body_diverges(body: Node) -> Bool {
   match fold_terminal_expr(body: body).expr_data {
     ExprReturn => true

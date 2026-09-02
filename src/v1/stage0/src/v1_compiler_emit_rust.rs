@@ -4553,6 +4553,7 @@ continue;
     std::option::Option::None => { match init.inferred.clone() {
     std::option::Option::None => { break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string()); },
     Some(inf) => { match (*inf.clone()).clone() {
+    InferredNode::Divergent => { break rust_serde_error_policy("wire_contract: initializer diverges, so it names no VariantEncoding alias".to_string()); },
     InferredNode::Resolved { node: node, .. } => { if crate::v1_compiler_emit_core_support::is_data_def_item(node.clone()) {
                         {
                             let __tco_0 = Some(node.clone());
@@ -4575,6 +4576,7 @@ continue;
     _ => { match init.inferred.clone() {
     std::option::Option::None => { break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string()); },
     Some(inf) => { match (*inf.clone()).clone() {
+    InferredNode::Divergent => { break rust_serde_error_policy("wire_contract: initializer diverges, so it names no VariantEncoding alias".to_string()); },
     InferredNode::Resolved { node: node, .. } => { if crate::v1_compiler_emit_core_support::is_data_def_item(node.clone()) {
                     {
                         let __tco_0 = Some(node.clone());
