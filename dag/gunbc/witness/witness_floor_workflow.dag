@@ -30,6 +30,12 @@ import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
+import gunbc.compile_permit_scope {
+  FleetCompileCancellationStanding,
+  FleetCancellationSafe,
+  FleetCancellationNotSafe,
+  fleet_compile_cancellation_standing
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -273,9 +279,34 @@ type WitnessFloorConcurrencyPolicy {
   running: RunningSupersessionPolicy
 }
 
+// THE RUNNING AXIS IS DERIVED FROM THE OBSERVED FLEET STANDING, not authored beside it and not read
+// off a desired-state row.
+//
+// gunbc#9789 declared NeverSupersedeRunning and a DESIGN 4b(3) drop whose dissolve-on is a
+// capability: no client of the required floor holds a permit whose abandonment costs future compile
+// capacity. Written as a literal, that row survives its own reason -- the fleet stops leaking and CI
+// goes on refusing to supersede, the drop stays standing, and nothing refuses because nothing joins
+// the two facts. Section 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the
+// trigger is the whole check, and a check nothing evaluates is diligence rather than a check.
+//
+// IT READS THE STANDING AND NOT THE REALIZATION, for a reason that is a safety property rather than
+// a taste: a desired realization row and the live hosts are two independently actuated systems, and
+// a generated artifact cannot make them transition together. Deriving from the row would restore
+// cancellation the moment this workflow reached main, while hosts that had not yet restarted onto
+// the new unit went on losing a permit per kill. The unobserved fleet is on the refusing side, so
+// that interval is unwritable rather than merely unlikely.
+fn running_supersession_for_fleet_standing(
+  standing: FleetCompileCancellationStanding,
+) -> RunningSupersessionPolicy {
+  match standing {
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
+    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
 data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
   pending: ReplaceExistingPending,
-  running: NeverSupersedeRunning
+  running: running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing)
 }
 
 data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running
@@ -927,6 +958,73 @@ data required_floor_claim_cost_path: String = "required_floor_claim_cost.tsv"
 
 data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cost"
 
+// THE FIFTH FILE: THE CROSS-CLAIM DEMAND CENSUS, and it answers a question the four above
+// structurally cannot.
+//
+// The per-claim cost receipt says WHAT each claim was charged. It cannot say what the charge was
+// FOR, and on this corpus most of a tail row's charge is not its own work: measured on main run
+// 33615659836, a witness and its discriminating RED -- which do materially different work -- cost
+// within 2ms of each other while both sit near the ceiling, and one 34-row module spans 0ms to the
+// ceiling in three bands that track WHICH SHARED PRODUCER a row forces rather than what it
+// asserts. That is the floor's fresh-frame-per-claim boundary re-deriving each closure's pure
+// substrate once per claim, and DESIGN section 2 prices it as authored duplication whose least
+// common ancestor is the RUN.
+//
+// THE REPAIR ALREADY EXISTS AND ITS DISCOVERY MECHANISM DID NOT. `v2.workflow.floor_pure_producer_share`
+// serves one evaluation of a declared pure producer across claim frames -- and its roster is
+// hand-authored, because the interpreter's recompute ledger is scoped to ONE evaluation frame and
+// reports only keys re-hit inside it. A producer evaluated exactly once per claim, in thousands of
+// claims, has count=1 in every frame's ledger and appears in none of them. So the instrument that
+// ranks redundant recompute was blind to the entire population the roster is enrolled from, and
+// candidates were discovered when a budget refusal landed on an unrelated lane's pull request.
+// `absorb_claim_recompute_demand` folds each claim's ledger into a run-scoped census before the
+// frame is dropped, and this artifact is that census.
+//
+// WHAT IT DOES NOT ANSWER, said here because an artifact is read for more than it measures. It
+// explains the LEVEL -- why a family sits pinned near the ceiling -- and not the VARIANCE: a
+// per-closure constant is the same on two runs of one tree, while 32 rows have been measured with
+// byte-identical eval_steps and cpu up 1.31-1.80x across runs over a byte-identical payload. The
+// two compose (the constant puts the family AT the line, something run-to-run decides which rows
+// cross). Two receipts, neither a cross-run comparison: two rows of one module measured 502ms and
+// EXACTLY 500ms against the 500ms budget, and one row was observed crossing the two populations on
+// ONE tree -- run 33620893203 attempt 1 records it INTERRUPTED-BEFORE-VERDICT with cost=UNMEASURED
+// while attempt 2 of the same run records it COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500. Which
+// population a row lands in at that margin is decided by whether the poll fired before or after
+// the work finished. The pair is a BOUND beside a VALUE rather than two measurements of one
+// quantity, so no cost is written for attempt 1: an interrupted row's reported figure names where
+// the poll observed the ceiling, which is a property of the budget. Both citations pin the ATTEMPT, because a bare run id and a bare job id
+// resolve to the latest one and a rerun silently changes what they serve. The tipping
+// variable is separately open. And a cost inside a native builtin called directly from a claim
+// body is not a row here at all, because the ledger keys pure named fn evaluations -- the same
+// boundary std.evaluation_budget's opaque-host-call note draws for the deadline.
+//
+// THE COST COLUMN IS NOT ADDITIVE AND THE ARTIFACT SAYS SO IN ITS OWN SUMMARY LINE. Durations are
+// inclusive of callees, so a producer and everything it calls both appear and their figures
+// overlap; summing the column counts the same nanoseconds once per level of nesting. On the first
+// run that produced this artifact the naive sum over shared rows was ~1850s against a run whose
+// entire claim-side CPU was 130s. So the summary carries claim_cpu_total_ms as the ceiling any
+// true total must sit under, and a displaceable-cost figure needs self-time, which the ledger does
+// not carry yet.
+//
+// THE NEGATIVE CONTROL IS EXECUTED RATHER THAN PROMISED, and it is the strongest thing that can
+// be said about this artifact's separation of discovery from policy. The two rust target models
+// were enrolled in the share roster and REMOVED, because a measured present-versus-absent
+// experiment priced their serve above their recompute. They are exactly the kind of row this
+// census ranks highly -- and on the first run that produced the artifact, the rust target-model
+// chain does rank in the top ten by cross-claim recomputation while remaining unenrolled and
+// unenrollable by any path from here. Demand is observed; enrolment stays a separate decision
+// with its own measurement, in this order: demand observed, candidate selected, present/absent
+// serve experiment on ONE exact tree, portability and argument-reuse evidence, serve cheaper than
+// recompute, and only then a roster edit in floor_pure_producer_share.
+//
+// IT GATES NOTHING AND ENROLS NOTHING. A row is a CANDIDATE whose SERVE cost is unmeasured, and
+// `floor_pure_producer_share` records the case where the serve lost to the recompute and the row
+// was removed. Arming this variable changes no threshold and no verdict: the writer is a pure
+// write of rows the fold already produced, on the same completion path as the four above.
+data required_floor_cross_claim_demand_path: String = "required_floor_cross_claim_demand.tsv"
+
+data required_floor_cross_claim_demand_artifact_name: String = "required-floor-cross-claim-demand"
+
 // THE FLOOR HAS BEEN WRITING THREE FILES ON EVERY RUN AND THROWING ALL THREE AWAY.
 //
 // cli_run.rs reads GUNBC_REQUIRED_FLOOR_DISPOSITION, GUNBC_EXPECTED_RED_ROSTER_JOIN and
@@ -1128,6 +1226,15 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         ),
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the floor's cross-claim demand census",
+          artifact_name: required_floor_cross_claim_demand_artifact_name,
+          path: required_floor_cross_claim_demand_path
+        ),
+        role: capability_neutral,
+        step_name: "Upload the floor's cross-claim demand census",
       },
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
@@ -1367,29 +1474,41 @@ fn witness_floor_job() -> Job {
 // -- regen's receipt is consumed by nothing outside its own process, and the floor's three TSVs
 // are written and uploaded inside the witnesses job -- so there is nothing an ordering edge could
 // protect.
-// THE RUST UNIT TESTS, IN THEIR OWN JOB AND NOT IN EITHER REQUIRED LANE (operator ruling
-// 2026-08-29: "add the rust unit tests but keep them in a separate job for now"). The 774
-// `#[test]`s under src/v1/stage0 ran on no CI path before this job existed. It is not a `needs` of
-// the aggregate, so it does not gate a merge yet; it is a third context beside the two lanes.
+// THE RUST UNIT TESTS, NOW A REQUIRED LANE. The 774 `#[test]`s under src/v1/stage0 ran on no CI
+// path at all before this job existed, then ran on every push and pull request while GATING
+// NOTHING -- and that gap produced exactly the harm it predicts: #9886 landed two failing tests on
+// main with every required check green. This job is a member of `required_lanes_roster`, so its
+// result is read by the aggregate's verdict and a failure here blocks.
 //
-// PROMOTING IT IS NOW ACTUALLY ONE ROW, WHICH IT WAS NOT WHEN THIS SENTENCE WAS FIRST WRITTEN.
-// The claim was true of the aggregate's shape then and had gone stale: the lane axis was a
-// hardcoded pair spelled 28 times across four functions in `gunbc.required_lanes_gate`, so
-// promotion was a signature change in four places, and -- worse -- a `needs`-only edit would have
-// added the wait while granting no authority to block, because the gate reads named variables and
-// a lane whose result it does not read cannot fail it. The axis is now one `RequiredLane` roster
-// from which the gate's verdict, the receipt, both refusal messages, the step's `env` block and
-// the job's `needs` edge are all derived, so adding this job is one row in
-// `required_lanes_roster` and nothing else.
+// PROMOTED UNDER THE 2026-08-29 OPERATOR RULING'S OWN TERMS -- "add the rust unit tests but keep
+// them in a separate job FOR NOW", conditioned on its wall clock being measured on the fleet
+// runner. It is still a separate JOB; what changed is that the aggregate now reads it.
 //
-// WHAT STILL GATES THE PROMOTION IS NOT THE EDIT SIZE. Two conditions, and neither is discharged
-// by this file: main must be green, and the fleet's toolchain-install fault must be fixed. The
-// second is the load-bearing one -- measured over 120 witnesses runs on 2026-09-02, this job's
-// wall clock is BELOW `required-witnesses-floor` at every quantile (p50 21.9 vs 25.9 minutes, p90
-// 32.1 vs 36.2, max 41.5 vs 47.0), so promotion costs nothing on the critical path, but a host
-// fault that evicts the toolchain would become a merge block on every pull request in the
-// repository the moment this lane gates. Re-derive that measurement from
-// `actions/runs/<id>/jobs` rather than trusting these numbers.
+// THE COST IS ZERO ON THE CRITICAL PATH, and the reason is a comparison rather than a bound. The
+// lanes run in PARALLEL with the aggregate only waiting, so promotion adds nothing unless this
+// becomes the SLOWEST lane -- and measured across 120 witnesses runs it sits BELOW
+// `required-witnesses-floor` at every quantile. Re-derive with
+// `gh api repos/OWNER/REPO/actions/runs/<id>/jobs` over a stated window rather than trusting a
+// remembered figure: the numbers move, the comparison is the claim, and a timeout-headroom
+// argument would have been the wrong one -- headroom says nothing about what the aggregate waits
+// for.
+//
+// WHAT THE PROMOTION WAITED ON WAS NEVER THE EDIT SIZE, and all three conditions were discharged
+// before this landed rather than argued away. Main had to be GREEN, because a promotion whose
+// first act blocks every open pull request on a defect already fixed elsewhere is a self-inflicted
+// outage -- and that was not hypothetical: while this was held, #10036 was blocked by
+// `shell_service_unmodeled_output_key_refuses`, main's own defect, whose fix its author had
+// already landed under another number. The FLEET had to be healthy, because a lane that cannot be
+// delivered its admitted memory or toolchain produces reds carrying no information about the diff,
+// and gating on it converts an uninformative signal into repository-wide blocking authority. And
+// the required floor's per-claim COST ACCOUNTING had to be understood, for the same reason one
+// layer down -- `gunbc.recurring_failure_mode` `recurrence_ledger_scoped_below_the_recurrence`.
+//
+// THAT LAST CONDITION IS THE ONE A LATER READER WILL BE TEMPTED TO DROP, so it is stated as the
+// rule and not as history: A LANE MAY BE PROMOTED ONLY WHEN A RED IN IT DISCRIMINATES. Wall clock
+// is the cheap question; whether the lane's failures are ABOUT THE DIFF is the load-bearing one,
+// and a lane that reds for shared or host reasons is worse promoted than unpromoted, because it
+// converts a known-uninformative signal into a merge block nobody can act on.
 data rust_unit_tests_job_id: String = "rust-unit-tests"
 
 fn rust_unit_tests_step() -> Step {
@@ -1883,6 +2002,7 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_unit_var: String = "UNIT"
 
 // THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
 //
@@ -1907,6 +2027,11 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
         job_id: floor_lane_job_id,
         label: "floor",
         var_name: required_lanes_gate_floor_var
+      },
+      RequiredLane {
+        job_id: rust_unit_tests_job_id,
+        label: "unit",
+        var_name: required_lanes_gate_unit_var
       }
     ]
   }
@@ -1993,7 +2118,7 @@ fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
 
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
-    name: Present { value: "Both required lanes must have succeeded" },
+    name: Present { value: "Every required lane must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
@@ -2058,6 +2183,7 @@ data witness_floor_workflow: Workflow = {
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path)),
       kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
     ]
   },
@@ -2173,7 +2299,9 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
       if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && emit_copy_qualification_capability_closure_holds() && required_lanes_gate_is_renderable() {
-        WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
+        WitnessFloorGenerated {
+          content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+        }
       } else {
         WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
       }
