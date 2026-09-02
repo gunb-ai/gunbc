@@ -2,81 +2,134 @@ module gunbc.namespace_step0_subject_collector
 
 import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
+import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import tools.multi_module_compile_fixture { FixtureSource }
 import gunbc.namespace_step0_canary {
   namespace_step0_canary_contract,
   namespace_step0_manifest_identity
 }
-import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live }
-import v2.std.algebra { length, list_map }
 
-// THE STEP 0 SUBJECT VECTOR AND THE TREE IT WAS TAKEN FROM HAVE ONE PRODUCER, WHICH IS THE WHOLE
-// POINT OF THIS MODULE. The Step 0 receipt zero bound its baseline to a commit, a tree and a
-// compiler digest transcribed from a shell run, and the strip subject those literals are supposed
-// to describe -- the import statements the cut deletes -- was measured separately, by hand, by an
-// unowned procedure (docs/plans/namespace-cut-replacement-plan.md, Step 0). Two producers for one
-// observation is the shape that lets a vector be quoted beside a tree it was never read from:
-// nothing joins them, so nothing can refuse the mismatch.
+// THE SUBJECT VECTOR AND THE TREE IT WAS READ FROM GET ONE PRODUCER, WHICH IS THIS MODULE'S WHOLE
+// CONTENT. gunbc.namespace_step0_strip_producer strips and compiles the (path, content) vector it
+// is HANDED, and says so: "that the handed vector is the whole of the tree the receipt names is the
+// caller's obligation ... nothing here can check it." Its next-rung trigger is exactly this
+// capability. Until it exists, a receipt naming the frozen manifest over a hand-supplied vector is
+// a lie admit_namespace_step0_canary_receipt cannot catch, because the classifier checks the tree
+// PIN and never that the vector IS that tree.
 //
-// collect_current_step0_subject_vector is the join. It observes the revision, the tree of that
-// revision, and the working-tree standing in one pass, and only then reads the import population;
-// the vector it returns cannot name a tree other than the one the same call observed, because the
-// constructor is reachable only through this fold. A caller cannot supply either half.
+// SO THE DISAGREEMENT IS MADE UNREPRESENTABLE RATHER THAN CHECKED, and the mechanism is that every
+// byte of the vector comes out of the git object store at the same revision whose ids the vector
+// carries. The path list is `git ls-tree` at that revision and each content is `git show <rev>:<path>`
+// at that same revision -- so the vector is not "a reading of the working copy that we believe
+// matches the tree", it is the tree, and the working copy's state cannot make it disagree. There is
+// deliberately NO working-tree read here and therefore no cleanliness caveat to state: a collector
+// that read the checkout would have to CHECK a property this one cannot violate.
 //
-// WHY THE WORKING TREE MUST BE CLEAN, AND WHY THAT IS A REFUSAL RATHER THAN A NOTE. The import
-// population is produced by the compiler's own parse of the source roots ON DISK, while the tree
-// id names what git has. Those two agree exactly when the checkout is clean. A dirty checkout does
-// not make the reading approximately right; it makes the vector a reading of a tree that has no
-// id, presented under the id of a different one -- which is the defect this module exists to close,
-// re-entering through the back door. So a dirty checkout is a typed, located refusal that names
-// the entries that made it dirty, never a vector carrying a caveat.
+// WHAT REMAINS CHECKED RATHER THAN CONSTRUCTED, said plainly because the distinction is the point.
+// The vector is the tree BY CONSTRUCTION. That the SUBJECT FILTER selects the manifest's population
+// -- .dag sources under the contract's declared roots -- is a fold over the tree's own path list,
+// so it is complete with respect to the tree by construction too, but the manifest sentence it
+// implements is prose the substrate cannot read (DESIGN 4c); a filter that drifted from that
+// sentence would be a silent narrowing. Its next rung is the manifest becoming a typed selector
+// this fold consumes rather than restates.
 //
-// GRAIN, STATED SO IT IS NOT READ FOR MORE THAN IT SAYS. An occurrence here is one
-// (importer path, imported module) fact from v2.lens.module_graph's import producer -- the
-// compiler's parse, not a text scan. That is statement grain for every import form the corpus
-// actually carries, single-line, braced and bare alike, because one statement names one module.
-// It is NOT the brace-balanced textual extent of the statement: this vector locates and identifies
-// the subject, it does not carry the bytes a rewrite would delete. The remaining span is exactly
-// the capability Step 0's retirement trigger names -- a typed source-rewrite op -- and that
-// producer, when it exists, extends this vector rather than replacing it: it is the thing that
-// turns an identified occurrence into a removed one.
+// A FAILED READ HALTS THE FOLD. A vector missing one file is not a smaller subject: it is a
+// different one, presented under the whole tree's id -- the empty-observation narrow DESIGN 5
+// forbids. So the first unreadable path refuses the collection, named and located.
 type Step0SubjectPinRefusal
   = Step0HeadCommitUnreadable { detail: String }
   | Step0HeadTreeUnreadable { detail: String }
-  | Step0WorkingTreeStandingUnreadable { detail: String }
-  | Step0WorkingTreeNotPinned { entries_nul: String }
+  | Step0TreePathsUnreadable { detail: String }
+  | Step0SourceUnreadableAtTree { path: String, detail: String }
   | Step0CommitIdentityUnreadable { hex: String }
   | Step0TreeIdentityUnreadable { hex: String }
   | Step0SubjectVectorEmpty { tree_hex: String }
 
-// sole_constructor: every field is observed in one fold, so there is no second way to mint a
-// vector whose tree and occurrences came from different reads.
+// sole_constructor, and every field of one instance comes from one revision: the ids and the
+// sources are produced by the same fold, so no caller can pair a vector with a tree it did not
+// come from.
 type Step0SubjectVector sole_constructor {
   contract_identity: NonEmptyStr
   source_commit: GitObjectId
   source_tree: GitObjectId
   input_subject_manifest: NonEmptyStr
-  occurrences: List<ImportResolutionFact>
+  sources: List<FixtureSource>
 }
 
 type Step0SubjectCollection
   = Step0SubjectCollected { vector: Step0SubjectVector }
   | Step0SubjectCollectionRefused { cause: Step0SubjectPinRefusal }
 
+// THE ROOTS ARE THE FROZEN CONTRACT'S OWN, PROJECTED RATHER THAN RESTATED. Re-authoring the three
+// root literals would give the scan's scope a second authority, and a scan whose scope disagrees
+// with the contract it reports under describes a subject nobody declared.
 fn step0_subject_source_roots() -> List<String> {
-  list_map(xs: namespace_step0_canary_contract.source_roots, f: fn(root) { root as String })
+  fold(namespace_step0_canary_contract.source_roots, init: [], f: fn(acc, root) { concat(acc, [root as String]) })
 }
 
-// THE PURE HALF, SEPARATED SO ITS REFUSALS ARE AUTHORABLE WITHOUT A HOST. It takes raw
-// observations -- two hex strings, the porcelain entry blob, the import facts -- and never a
-// pre-built vector, so the ordering of the four refusals is executable evidence rather than a
-// claim about what the live call does.
+fn step0_path_has_root(path: String) -> Bool {
+  fold(step0_subject_source_roots(), init: false, f: fn(acc, root) {
+    let prefix = concat(root, "/")
+    let n = string_length(s: prefix)
+    acc || (string_length(s: path) > n && substring(s: path, start: 0, end: n) == prefix)
+  })
+}
+
+fn step0_path_is_dag_source(path: String) -> Bool {
+  let n = string_length(s: path)
+  n > 4 && substring(s: path, start: n - 4, end: n) == ".dag"
+}
+
+fn step0_path_in_subject(path: String) -> Bool {
+  step0_path_is_dag_source(path: path) && step0_path_has_root(path: path)
+}
+
+fn step0_subject_paths_at(paths_nul: String) -> List<String> {
+  fold(split(s: paths_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, path) {
+    if step0_path_in_subject(path: path) { concat(acc, [path]) } else { acc }
+  })
+}
+
+// The read fold. Halted is absorbing and carries the first cause, so a later file cannot repair an
+// earlier one and no partial vector reaches the constructor.
+type Step0SourceRead
+  = Step0SourcesRead { sources: List<FixtureSource> }
+  | Step0SourceReadHalted { cause: Step0SubjectPinRefusal }
+
+fn step0_read_source_at(revision: String, path: String, read: Step0SourceRead) -> Step0SourceRead {
+  match read {
+    Step0SourceReadHalted { cause: cause } => Step0SourceReadHalted { cause: cause }
+    Step0SourcesRead { sources: sources } => {
+      let shown = git.Core.Show(ref: revision as GitRef, path: path)
+      if !shown.success {
+        Step0SourceReadHalted {
+          cause: Step0SourceUnreadableAtTree { path: path, detail: trim(s: shown.stderr) }
+        }
+      } else {
+        Step0SourcesRead {
+          sources: concat(sources, [FixtureSource { path: path as NonEmptyStr, content: shown.content }])
+        }
+      }
+    }
+  }
+}
+
+fn step0_read_sources_at(revision: String, paths: List<String>) -> Step0SourceRead {
+  fold(paths, init: Step0SourcesRead { sources: [] }, f: fn(acc, path) {
+    step0_read_source_at(revision: revision, path: path, read: acc)
+  })
+}
+
+// THE PURE HALF, separated so its refusals are authorable without a host. It takes raw observations
+// -- two hex strings, the tree's own path blob, and the sources read back at that revision -- and
+// never a pre-built vector, so the refusal ordering is executable evidence rather than a claim
+// about what the live call does.
 fn assemble_step0_subject_vector(
   head_commit_hex: String,
   head_tree_hex: String,
-  working_tree_entries_nul: String,
-  occurrences: List<ImportResolutionFact>
+  sources: List<FixtureSource>
 ) -> Step0SubjectCollection {
   match git_sha1_object_id(hex: trim(s: head_commit_hex)) {
     Absent => Step0SubjectCollectionRefused {
@@ -87,11 +140,7 @@ fn assemble_step0_subject_vector(
         cause: Step0TreeIdentityUnreadable { hex: head_tree_hex }
       }
       Present { value: tree } =>
-        if trim(s: working_tree_entries_nul) != "" {
-          Step0SubjectCollectionRefused {
-            cause: Step0WorkingTreeNotPinned { entries_nul: working_tree_entries_nul }
-          }
-        } else if length(xs: occurrences) == 0 {
+        if count(sources) == 0 {
           Step0SubjectCollectionRefused {
             cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) }
           }
@@ -102,7 +151,7 @@ fn assemble_step0_subject_vector(
               source_commit: commit,
               source_tree: tree,
               input_subject_manifest: namespace_step0_manifest_identity(),
-              occurrences: occurrences
+              sources: sources
             }
           }
         }
@@ -110,56 +159,47 @@ fn assemble_step0_subject_vector(
   }
 }
 
-// THE LIVE HALF. Three host observations and one corpus read, in that order, every failure a typed
-// refusal naming what could not be observed. The import read happens LAST, after the tree is
-// established and the checkout proved clean, so a vector never exists without the pin it belongs to.
-fn collect_current_step0_subject_vector() -> Step0SubjectCollection {
-  let head = git.Inspect.HeadCommit()
-  if !head.success {
+// THE LIVE HALF: resolve the revision, take its tree id, enumerate that revision's paths, read each
+// selected one back out of the object store at that same revision. Four observations, one revision,
+// every failure a typed refusal naming what could not be read.
+fn collect_step0_subject_vector_at(ref: String) -> Step0SubjectCollection {
+  let commit = git.Inspect.ResolveRefCommit(ref: ref as GitRef)
+  if !commit.success {
     Step0SubjectCollectionRefused {
-      cause: Step0HeadCommitUnreadable { detail: "git.Inspect.HeadCommit refused (git rev-parse HEAD)" }
+      cause: Step0HeadCommitUnreadable { detail: trim(s: commit.stderr) }
     }
   } else {
-    let revision = trim(s: head.sha as String)
+    let revision = trim(s: commit.sha as String)
     let tree = git.Inspect.ShowTree(ref: revision as GitRef)
     if !tree.success {
-      Step0SubjectCollectionRefused {
-        cause: Step0HeadTreeUnreadable { detail: trim(s: tree.stderr) }
-      }
+      Step0SubjectCollectionRefused { cause: Step0HeadTreeUnreadable { detail: trim(s: tree.stderr) } }
     } else {
-      let status = git.Inspect.WorkingTreeStatus()
-      if !status.success {
-        Step0SubjectCollectionRefused {
-          cause: Step0WorkingTreeStandingUnreadable { detail: trim(s: status.stderr) }
-        }
+      let listed = git.Inspect.ListTreePathsAtRevision(ref: revision as GitRef)
+      if !listed.success {
+        Step0SubjectCollectionRefused { cause: Step0TreePathsUnreadable { detail: trim(s: listed.stderr) } }
       } else {
-        let roots = step0_subject_source_roots()
-        assemble_step0_subject_vector(
-          head_commit_hex: revision,
-          head_tree_hex: trim(s: tree.tree),
-          working_tree_entries_nul: status.entries_nul,
-          occurrences: import_resolution_facts_live(
-            pool_roots: roots,
-            importer_roots: roots,
-            exclude_substrings: []
-          )
-        )
+        match step0_read_sources_at(revision: revision, paths: step0_subject_paths_at(paths_nul: listed.paths_nul)) {
+          Step0SourceReadHalted { cause: cause } => Step0SubjectCollectionRefused { cause: cause }
+          Step0SourcesRead { sources: sources } =>
+            assemble_step0_subject_vector(
+              head_commit_hex: revision,
+              head_tree_hex: trim(s: tree.tree),
+              sources: sources
+            )
+        }
       }
     }
   }
 }
 
-// THE RENDERING THE CANARY'S OBSERVATION FIELD TAKES, derived from the vector rather than authored
-// beside it. It is deliberately an OCCURRENCE IDENTITY and not statement text: this producer read
-// a parse, so rendering "the statement" would fabricate bytes it never observed.
-fn step0_subject_occurrence_identity(occurrence: ImportResolutionFact) -> NonEmptyStr {
-  concat(occurrence.path, concat(" imports ", occurrence.import_module)) as NonEmptyStr
-}
-
-fn step0_subject_vector_occurrence_identities(vector: Step0SubjectVector) -> List<NonEmptyStr> {
-  list_map(xs: vector.occurrences, f: fn(occurrence) { step0_subject_occurrence_identity(occurrence: occurrence) })
+fn collect_current_step0_subject_vector() -> Step0SubjectCollection {
+  collect_step0_subject_vector_at(ref: "HEAD")
 }
 
 fn step0_subject_vector_size(vector: Step0SubjectVector) -> Int {
-  length(xs: vector.occurrences)
+  count(vector.sources)
+}
+
+fn step0_subject_vector_paths(vector: Step0SubjectVector) -> List<String> {
+  vector.sources |> map(source => source.path as String)
 }
