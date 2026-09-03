@@ -2561,11 +2561,7 @@ fn required_lanes_aggregate_job() -> Job {
 // REASON IS COST, NOT TASTE. A record is materialized whole, so a reader that wants one field pays
 // for every other -- and one of the other fields is `required_lanes_aggregate_job`, whose `run` is
 // the serialized `gunbc.required_lanes_gate` program, the largest bash AST this workflow carries.
-// Measured with `claim_batch --functions`, one witness per subject. THE ORDERING IS THE FINDING AND
-// THE ABSOLUTE FIGURES ARE NOT PORTABLE: the session container this was measured in priced the
-// aggregate's fill at three times what the runner priced the same fill at on check 100530537497, so
-// a millisecond figure taken here would read as a safety margin to anyone who did not know which
-// machine produced it. What transfers is the shape. The assembled workflow is dominated by one job:
+// Measured with `claim_batch --functions`, one witness per subject. What transfers is the shape. The assembled workflow is dominated by one job:
 // `required_lanes_aggregate_job` is about seven eighths of its cost and the six lane jobs together
 // are the remaining eighth. So a witness asking "is the dispatch input declared" was serializing a
 // gate script it says nothing about, and three such rows exceeded `v2.workflow.required_floor`
@@ -2581,6 +2577,37 @@ fn required_lanes_aggregate_job() -> Job {
 // nothing else, and costs two orders of magnitude less than the band on the same instrument. A
 // future author pricing a witness against this carrier needs that row and not the phantom, because
 // the phantom says a cheap reader is impossible and the row is one.
+//
+// THIS PARAGRAPH ALSO CARRIED A "THE CONTAINER RUNS ABOUT THREE TIMES THE RUNNER" CALIBRATION, AND
+// IT WAS FALSE. It was derived by dividing a local figure by the CI number
+// `marginal_cpu_ns=496786520` from check 100530537497 -- a fill that was INTERRUPTED AT THE BUDGET.
+// AN INTERRUPTED MEASUREMENT IS NOT A SLOW MEASUREMENT; IT IS A NON-MEASUREMENT WEARING A NUMBER,
+// and the number it wears is approximately the ceiling that stopped it. So the ratio described the
+// ceiling, not the machine. It reads as data because it has units, which is the same shape as
+// budget-refused being UNDECIDED rather than a weak green.
+//
+// THE METHOD THAT REFUTED IT IS THE SAME-ROW COMPARISON, and only that method could have: on
+// `test.claim.heal_revalidation_binding_witness`
+// `every_ordinary_checkout_lane_preflights_before_its_first_witness`, local 409ms against 392ms on
+// runner srv4-04 at check 100560747021 -- a ratio of about one -- while a sibling row measured
+// cheaper locally than on the runner, so the runner is not uniformly faster in either direction. A
+// cross-row ratio cannot see that. Cite `eval_steps` for anything that must survive a runner
+// change: that row is 148297 steps, and steps are host-independent where milliseconds are not.
+//
+// THAT ROW SITS AT 392ms UNDER A 500ms CEILING AND THE COST IS NOT REDUCIBLE WITHOUT LOSING THE
+// CLAIM. Its subject IS the six lanes -- "every witness-bearing lane" quantifies over them, and a
+// roster-backed version would be a worse artifact at any price, since a roster stops being a
+// denominator the moment someone adds a lane. THE MODELLED ALTERNATIVE IS NOT AVAILABLE, checked
+// rather than assumed: `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` is a
+// single constant and is not keyed by identity, so no row can be given its own ceiling; the
+// interpreter's own remedy sentence asks for a lane that declares a dated ceiling AND names the row
+// as an executing consumer; and `gunbc.fleet.fleet_converge_plan` records that no such lane exists
+// that executes anything, with relocation into a non-executing home being the bare de-enrollment
+// the admission ruling forbids. That work is filed at node://adhoc-cfdf3366-bc3 and is this margin's
+// TRIGGER: when a lane with a dated ceiling executes enrolled identities and returns a
+// candidate-bound terminal verdict, this row belongs in it. Until then the margin is 108ms on the
+// runner named above, and it is recorded here so the next author meets a known bound rather than
+// discovering a red.
 //
 // SPLITTING THE ROWS WOULD NOT HAVE FIXED THAT AND WAS TRIED FIRST. Two rows became four, each half
 // landing nearer the ceiling, and the fold they both paid was untouched -- an improvement in the
