@@ -21782,6 +21782,37 @@ fn explicit_witness_admission_keys() -> &'static [String] {
     })
 }
 
+/// The `(entry, function)` pairs admitted with cadence `QuarantineProbeExpectRed` -- the rows whose
+/// admission says DO NOT SCHEDULE THIS PER-PR.
+///
+/// Keyed on the CADENCE, not on "carries a row in the admission authority": a witness admitted
+/// under `bin_wet`, `SubstrateLongLaneRow` or any other head is a different obligation and must
+/// still be planned, and still red the floor, when a diff touches it.
+pub(crate) fn quarantine_probe_admission_pairs() -> Vec<(String, String)> {
+    static PAIRS: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    PAIRS
+        .get_or_init(|| {
+            let content = std::fs::read_to_string(
+                workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "quarantine probe admission: failed to read {}: {e}",
+                    EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
+                )
+            });
+            crate::cli_run::witness_gates::quarantine_probe_admission_keys_from_source(
+                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
+                &content,
+            )
+            .iter()
+            .filter_map(|key| key.split_once("::"))
+            .map(|(entry, function)| (entry.to_string(), function.to_string()))
+            .collect()
+        })
+        .clone()
+}
+
 /// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
 /// at. An empty function is the declared file-grain form and is expanded upstream, so it never
 /// reaches here as a pair.
