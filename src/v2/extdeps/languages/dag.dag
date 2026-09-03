@@ -3,8 +3,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.extdeps.languages.dag_add_fixture {
   dag_add_arrow_signature_fixture,
   dag_add_arrow_with_body_fixture,
-  dag_add_binary_body_fixture,
-  dag_add_fixture_domain
+  dag_add_binary_body_fixture
 }
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
@@ -4107,6 +4106,10 @@ fn dag_binding_spellings() -> Map<Symbol, String> {
   map_insert(m15, ^dag_binding_field_variant_value, "value")
 }
 
+fn dag_add_param_binding_ids() -> List<Symbol> {
+  [^dag_binding_param_x, ^dag_binding_param_y]
+}
+
 fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
 }
@@ -4400,7 +4403,24 @@ fn dag_arrow_with_body_node(
 }
 
 fn dag_arrow_domain_conj_node() -> Node {
-  dag_add_fixture_domain()
+  let children = fold_list(
+    xs: dag_add_param_binding_ids(),
+    empty: Empty,
+    cons: fn(acc, binding_id) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge {
+          label: Named { name: binding_id },
+          target: dag_type_atom_node(identity: dag_int_type_binding())
+        }
+      )
+    }
+  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: OccurrenceSynthetic
+  }
 }
 
 fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
