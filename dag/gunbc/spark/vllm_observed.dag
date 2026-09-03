@@ -11,6 +11,9 @@ import extdeps.vllm.server {
   RegisteredOnlyUnderDevelopmentMode,
   VllmBuildIdentity,
   vllm_parallel_evidence_routes,
+  VllmEvidenceKind,
+  VllmEvidenceRoute,
+  vllm_evidence_kind_establishes_configuration,
   VllmCapacityEvidenceProposal,
   CacheConfigBlockFields,
   GroupAwareStartupLogCapture,
@@ -103,7 +106,7 @@ type VllmTpRealizationRefusal sole_constructor {
 // What the 404 DOES establish is the only thing this module needs: the evidence was unreachable.
 // The refusal rests on that and not on the inferred cause, so it survives the inference being wrong.
 type VllmEvidenceRouteOutcome sole_constructor {
-  route: VllmRoute
+  route: VllmEvidenceRoute
   answered: Bool
 }
 
@@ -182,7 +185,7 @@ fn vllm_cache_config_gauge_readback(
   }
 }
 
-fn vllm_evidence_route_outcome(route: VllmRoute, answered: Bool) -> VllmEvidenceRouteOutcome {
+fn vllm_evidence_route_outcome(route: VllmEvidenceRoute, answered: Bool) -> VllmEvidenceRouteOutcome {
   VllmEvidenceRouteOutcome { route: route, answered: answered }
 }
 
@@ -190,10 +193,22 @@ fn vllm_evidence_route_outcome(route: VllmRoute, answered: Bool) -> VllmEvidence
 // consequence instead of a claim: if no evidence route answered, the configuration stage was never
 // reached, so the refusal is the earlier one. If some answered, the configuration may be in hand and
 // the open question becomes the population.
+// THE STAGE FOLLOWS THE CONFIGURATION-BEARING ROUTE, NOT ANY ANSWER AT ALL.
+//
+// An earlier version advanced to the population question whenever ANY evidence route answered. That
+// is wrong, and wrong in the direction that overstates what is known: /get_world_size returns a
+// product consistent with TP=2, PP=2 and DP=2 alike, and /collective_rpc reports population without
+// saying how the parallelism decomposes. Either could answer while the resolved configuration stayed
+// entirely unobserved, and the refusal would then claim the configuration was in hand.
+//
+// Only the configuration-bearing kind moves the stage, which is why the kind lives with the route in
+// extdeps rather than being decided here by path matching.
 fn vllm_missing_evidence_for(
   outcomes: List<VllmEvidenceRouteOutcome>,
 ) -> VllmTpRealizationMissingEvidence {
-  if any(outcomes, o => o.answered) {
+  if any(outcomes, o =>
+       o.answered
+         && vllm_evidence_kind_establishes_configuration(kind: o.route.kind)) {
     JoinedRankPopulationNotObserved
   } else {
     ResolvedParallelConfigurationNotObserved

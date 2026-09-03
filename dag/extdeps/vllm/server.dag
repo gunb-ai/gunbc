@@ -81,13 +81,57 @@ data vllm_route_server_info: VllmRoute = vllm_route(path: "/server_info" as NonE
 data vllm_route_get_world_size: VllmRoute = vllm_route(path: "/get_world_size" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
 data vllm_route_collective_rpc: VllmRoute = vllm_route(path: "/collective_rpc" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
 
+// WHAT EACH EVIDENCE ROUTE ACTUALLY ESTABLISHES, WHICH IS NOT THE SAME THING FOR ALL THREE.
+//
+// Treating them as one interchangeable population is a real defect and this repository committed it:
+// a consumer concluded that resolved parallel configuration was in hand because SOME evidence route
+// answered. Only one of them returns it.
+//
+// /get_world_size returns a PRODUCT. A world size of 2 is consistent with TP=2, with PP=2, and with
+// DP=2, so on its own it cannot establish a tensor-parallel topology -- it narrows the space without
+// deciding it. /collective_rpc fans a named method out across workers, which is evidence about
+// POPULATION and says nothing about how the parallelism is decomposed. Only /server_info returns the
+// resolved configuration itself.
+//
+// So the kind travels with the route, and a consumer asking "is the configuration known" must look
+// for the configuration-bearing kind rather than for any answer at all.
+type VllmEvidenceKind
+  = ResolvedParallelConfiguration
+  | DerivedWorldSizeProduct
+  | PerWorkerFanOut
+
+// THE KIND IS CARRIED ON THE ROUTE, NOT DERIVED BY MATCHING ITS PATH. A first attempt dispatched on
+// the path literal, which makes a semantic fact depend on a spelling: rename the route upstream and
+// the kind silently becomes the fallback arm, with nothing red. Pairing them at construction means a
+// route cannot exist in the evidence population without its kind being stated.
+type VllmEvidenceRoute sole_constructor {
+  route: VllmRoute
+  kind: VllmEvidenceKind
+}
+
+fn vllm_evidence_route(route: VllmRoute, kind: VllmEvidenceKind) -> VllmEvidenceRoute {
+  VllmEvidenceRoute { route: route, kind: kind }
+}
+
+fn vllm_evidence_kind_establishes_configuration(kind: VllmEvidenceKind) -> Bool {
+  match kind {
+    ResolvedParallelConfiguration => true
+    DerivedWorldSizeProduct => false
+    PerWorkerFanOut => false
+  }
+}
+
 // The routes capable of answering a distributed-topology question. Named as a set because that is
 // the fact consumers need: not "these three paths exist" but "the parallel question is answerable
 // ONLY from this population", which is what makes its unavailability a vantage limit.
-data vllm_parallel_evidence_routes: List<VllmRoute> = [
-  vllm_route_server_info,
-  vllm_route_get_world_size,
-  vllm_route_collective_rpc,
+data vllm_evidence_route_server_info: VllmEvidenceRoute = vllm_evidence_route(route: vllm_route_server_info, kind: ResolvedParallelConfiguration)
+data vllm_evidence_route_get_world_size: VllmEvidenceRoute = vllm_evidence_route(route: vllm_route_get_world_size, kind: DerivedWorldSizeProduct)
+data vllm_evidence_route_collective_rpc: VllmEvidenceRoute = vllm_evidence_route(route: vllm_route_collective_rpc, kind: PerWorkerFanOut)
+
+data vllm_parallel_evidence_routes: List<VllmEvidenceRoute> = [
+  vllm_evidence_route_server_info,
+  vllm_evidence_route_get_world_size,
+  vllm_evidence_route_collective_rpc,
 ]
 
 data vllm_routes: List<VllmRoute> = [

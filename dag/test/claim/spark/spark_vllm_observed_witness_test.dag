@@ -34,6 +34,15 @@ import extdeps.vllm.server {
   VllmBuildIdentity,
   vllm_build_identity,
   vllm_parallel_evidence_routes,
+  vllm_evidence_route_server_info,
+  vllm_evidence_route_get_world_size,
+  vllm_evidence_route_collective_rpc,
+  VllmEvidenceRoute,
+  VllmEvidenceKind,
+  ResolvedParallelConfiguration,
+  DerivedWorldSizeProduct,
+  PerWorkerFanOut,
+  vllm_evidence_kind_establishes_configuration,
   vllm_route_health,
   vllm_ray_health_coverage,
   VllmHealthWorkerCoverage,
@@ -185,7 +194,7 @@ test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bo
     OrdinarilyRegistered => true
     RegisteredOnlyUnderDevelopmentMode => false
   }
-  && all(vllm_parallel_evidence_routes, r => match r.population {
+  && all(vllm_parallel_evidence_routes, r => match r.route.population {
        RegisteredOnlyUnderDevelopmentMode => true
        OrdinarilyRegistered => false
      })
@@ -204,4 +213,42 @@ test fn w_the_served_id_advertises_a_quantisation_the_configured_path_contradict
          ResolvedParallelConfigurationNotObserved => true
          JoinedRankPopulationNotObserved => false
        }
+}
+
+// ── THE DISCRIMINATING CASE THE PREVIOUS DERIVATION GOT WRONG ───────────────────────────────────
+//
+// A world-size answer with no configuration answer must NOT advance the stage. The earlier version
+// advanced on any answer, so this exact input made it claim resolved parallel configuration was in
+// hand when nothing had reported it -- an overstatement of knowledge, which is the direction that
+// matters. A world size of 2 is consistent with TP=2, PP=2 and DP=2 alike.
+test fn w_a_world_size_answer_alone_does_not_advance_the_refusal_stage() -> Bool {
+  match vllm_missing_evidence_for(outcomes: [
+    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, answered: false),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, answered: true),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, answered: true),
+  ]) {
+    ResolvedParallelConfigurationNotObserved => true
+    JoinedRankPopulationNotObserved => false
+  }
+}
+
+// AND THE CONFIGURATION-BEARING ROUTE ALONE DOES ADVANCE IT, so the rule is not simply "never
+// advance", which would pass the claim above while making the later arm unreachable.
+test fn w_the_configuration_bearing_answer_alone_advances_the_stage() -> Bool {
+  match vllm_missing_evidence_for(outcomes: [
+    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, answered: true),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, answered: false),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, answered: false),
+  ]) {
+    JoinedRankPopulationNotObserved => true
+    ResolvedParallelConfigurationNotObserved => false
+  }
+}
+
+// AND THE KINDS ARE DISTINGUISHED AT ALL. Without this, both claims above would still pass if every
+// route reported the same kind and that kind happened to be the configuration-bearing one.
+test fn w_only_the_server_info_route_bears_resolved_parallel_configuration() -> Bool {
+  vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_server_info.kind)
+    && !vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_get_world_size.kind)
+    && !vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_collective_rpc.kind)
 }
