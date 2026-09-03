@@ -1685,6 +1685,53 @@ type ParsedModuleItemKind
   | ModuleItemResource
   | ModuleItemUnrecognized
 
+// PROPERTIES ALONE DO NOT MEAN RESOURCE, and reading them that way is the second fail-open this
+// classifier produced -- caught by the same join, in the opposite direction from the first.
+// `type X sole_constructor { .. }` carries a property too: v1.compiler.parse
+// parsed_sole_constructor_properties is the single authority that mints it, and it mints exactly
+// one field-init named "sole_constructor" as a TYPE MODIFIER. Resource entries are the kind, mode,
+// acquire and release rows the resource grammar attaches. So the test names the modifier the
+// modifier authority owns and asks whether anything ELSE is present, rather than counting
+// properties -- which swallowed 202 sole-constructor types across 100 modules into the resource
+// bucket and hid them from the declaration population entirely.
+//
+// THE EXCLUSION IS COMPLETE AGAINST THE PARSER'S MINTING VOCABULARY AS OF THIS COMMIT, and that
+// claim is an enumeration rather than a hope, because excluding by name is only as good as the set
+// of names. Module-item properties have exactly TWO minting sites in this file:
+// parsed_sole_constructor_properties, which mints one field-init named "sole_constructor" and is
+// the only source every type-item constructor passes along; and parse_resource_entries, whose kind
+// / mode / acquire / release rows reach resource items. `nominal_opaque` is the other authored type
+// modifier and it is DROPPED LEXICALLY by drop_leading_type_modifier, minting no property at all.
+// mint_parsed_optional_int_property mints "min" and "max" inside WHERE-PREDICATE nodes, which are
+// nested and never a module item's own properties. So the modifier set mintable as a property on a
+// type declaration is a CLOSED SET OF ONE.
+//
+// WHAT MAKES THIS INCOMPLETE LATER, stated because the failure would be silent and in the same
+// direction as the bug it fixes: a second modifier that MINTS a property on a type item -- a new
+// caller of the sole-constructor minting path, or nominal_opaque gaining a minted property --
+// reintroduces exactly this defect with nothing watching. That is a property of exclusion-by-name
+// and cannot be fixed by a longer list; it is the third receipt for carrying a positive item kind.
+//
+// WHAT REMAINS AFTER THIS REPAIR IS NOT THIS CLASSIFIER'S DEFECT, and the join says which side owns
+// it. Corpus-wide the divergence falls from 202 items across 100 modules to TWO in one:
+// `resource Network` and `resource AuthContext` in std.resources, the two resources declaring NO
+// capabilities. With no children, no body, no params and no connective they satisfy
+// v1.compiler.emit_core_support is_bare_leaf_item, so the INDEPENDENT reader calls them type
+// declarations while this classifier correctly calls them resources. Both readers previously
+// AGREED they were types, which is why the population looked clean before the resource arm
+// existed -- the agreed-wrong pair is invisible to a disagreement census by construction
+// (gunbc.recurring_failure_mode disagreement_census_blind_to_agreed_wrong), and it took the two
+// readers being separated for either to be checkable at all. Repairing the emit-side shape
+// predicates is a change to a different authority and is deliberately not smuggled in here.
+fn parsed_item_carries_resource_entries(node: Node) -> Bool {
+  fold(
+    node.properties,
+    init: false,
+    f: (found, property) =>
+      if found { true } else { property.name != "sole_constructor" }
+  )
+}
+
 fn parsed_module_item_kind(node: Node) -> ParsedModuleItemKind {
   if node.transport != none {
     ModuleItemService
@@ -1692,7 +1739,7 @@ fn parsed_module_item_kind(node: Node) -> ParsedModuleItemKind {
     ModuleItemDataValue
   } else if node.body != none {
     ModuleItemFunction
-  } else if node.properties |> count > 0 {
+  } else if parsed_item_carries_resource_entries(node: node) {
     ModuleItemResource
   } else if node.type_annotation == none {
     ModuleItemTypeDeclaration

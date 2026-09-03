@@ -3129,6 +3129,20 @@ pub enum ParsedModuleItemKind {
     ModuleItemUnrecognized,
 }
 
+pub fn parsed_item_carries_resource_entries(node: Rc<Node>) -> bool {
+    node.properties
+        .clone()
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, property: Rc<Node>| {
+            if found {
+                true
+            } else {
+                (property.name.clone() != "sole_constructor".to_string())
+            }
+        })
+}
+
 pub fn parsed_module_item_kind(node: Rc<Node>) -> ParsedModuleItemKind {
     if (node.transport.clone() != std::option::Option::None) {
         ParsedModuleItemKind::ModuleItemService
@@ -3141,7 +3155,7 @@ pub fn parsed_module_item_kind(node: Rc<Node>) -> ParsedModuleItemKind {
             if (node.body.clone() != std::option::Option::None) {
                 ParsedModuleItemKind::ModuleItemFunction
             } else {
-                if ((node.properties.clone().len() as i64) > 0) {
+                if parsed_item_carries_resource_entries(node.clone()) {
                     ParsedModuleItemKind::ModuleItemResource
                 } else {
                     if (node.type_annotation.clone() == std::option::Option::None) {
