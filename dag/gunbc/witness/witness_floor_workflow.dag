@@ -413,10 +413,40 @@ fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -
 data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 // THE HEAL REVALIDATION INPUT. A heal that repairs a branch pushes a new head H1 with the Actions
-// job credential, and GitHub starts no run for that push -- so H1 arrives carrying H0's receipts,
-// which are receipts about a tree that no longer exists. tools.ci_heal_dispatch closes that by
-// dispatching this workflow, and a dispatch that cannot say WHICH head it got would report a
-// verdict about a head it cannot name: a fabricated revalidation, worse than the honest gap.
+// job credential, and H1 must be judged on its own tree rather than inherit H0's receipts, which
+// describe a tree that no longer exists. tools.ci_heal_dispatch closes that by dispatching this
+// workflow, and a dispatch that cannot say WHICH head it got would report a verdict about a head
+// it cannot name: a fabricated revalidation, worse than the honest gap.
+//
+// THE JUSTIFICATION IS UNRELIABILITY, NOT IMPOSSIBILITY, AND THE STRONGER SENTENCE WAS REFUTED
+// BEFORE IT LANDED. The first draft of this paragraph said GitHub starts NO run for that push, so
+// the ordinary route was closed and the dispatch rescued a guaranteed block. MEASURED ON THIS
+// REPOSITORY, that is false: bot-authored `pull_request` runs exist on heal-pushed heads and most
+// of them execute. Runs 33686753487 (head bc704687540, gunbc#10118's OWN healed head,
+// created_at == run_started_at, so it ran with zero approval delay), 33705120607 and 33703032560
+// all started; run 33711005806 (head 958f743f9e) came back `action_required` and did not. Three of
+// four. So the ordinary route is UNRELIABLE on a heal-pushed head, not closed -- and a remediator
+// whose revalidation depends on a gate nobody can attribute should not depend on it. That is why
+// the dispatch is the DECLARED path. The weaker claim is the one that survives observation; the
+// stronger one already died to it.
+//
+// THE ONE CONTROL THAT DISCRIMINATES, kept next to the bound so it cannot be lifted without it. On
+// the single sha 958f743f9e, identity and token are held CONSTANT -- actor and triggering_actor
+// are github-actions[bot] on both -- and only the EVENT varies: run 33711005806 (pull_request) was
+// `action_required` while run 33711101968 (workflow_dispatch) started normally and bound that head
+// in this very preflight. Check runs from either event attach to the sha, so the dispatch route
+// supplies the required contexts. What the pair shows is that the dispatch route was NOT blocked on
+// a head where the ordinary route happened to be. It does not generalize past that one sha, which
+// is exactly what the four-run count above bounds.
+//
+// BOUNDARY OBLIGATION, UNDETERMINED BECAUSE UNREADABLE FROM HERE RATHER THAN UNEXAMINED. Whether
+// `action_required` on that one head follows from a repository setting, from the token, or from a
+// per-run condition is NOT decided here: repos/<owner>/<repo>/actions/permissions and
+// .../permissions/workflow both answer 403 `Resource not accessible by integration` to the
+// credential this repository's sessions carry, so the setting cannot be read. Naming the 403 is the
+// point -- undetermined-because-unreadable names its own remedy (a credential that can read the
+// Actions permissions surface), and undetermined-because-unexamined names nothing. Until then this
+// is an observation about the actuation boundary, not a modeled property of it.
 //
 // So the input is the binding, not a label. The dispatch ref is necessarily a moving branch
 // pointer (GitHub's endpoint accepts nothing else); this input carries the immutable subject

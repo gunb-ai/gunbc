@@ -1769,9 +1769,14 @@ fn ci_heal_shell_lines() -> List<String> {
 }
 
 // THE PUSHED HEAD IS NOW REVALIDATED, AND THE JOB STILL EXITS NONZERO. READ THE PARAGRAPH BELOW
-// IN THE PAST TENSE FOR THE GAP, AND THIS ONE FOR WHAT CLOSES IT. A push made with the Actions job
-// credential starts no workflow run -- GitHub suppresses that edge so a job cannot trigger itself
-// -- so a healed head H1 used to arrive carrying only H0's receipts. The dispatch invocation below
+// IN THE PAST TENSE FOR THE GAP, AND THIS ONE FOR WHAT CLOSES IT. A healed head H1 must be judged
+// on its own tree, and used to arrive carrying only H0's receipts. THE STRONGER PREMISE THIS
+// PARAGRAPH ONCE CARRIED IS WITHDRAWN RATHER THAN REPEATED: that an Actions-credential push starts
+// no workflow run at all. Measured, bot-authored `pull_request` runs DO appear on heal-pushed
+// heads and most of them execute; the ordinary route is unreliable, not closed. The four-run count,
+// the same-sha event control, and the boundary obligation that attribution is unreadable from here
+// live once, on gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input, and are not
+// restated here. The dispatch invocation below
 // runs INSIDE the produced-a-heal arm, immediately after the push and before the nonzero exit,
 // because $HEALED_HEAD is a variable of this script and the immutable subject is the whole point:
 // tools.ci_heal_dispatch sends the branch ref (the only thing GitHub's endpoint accepts) and that
