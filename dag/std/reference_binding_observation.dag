@@ -22,7 +22,7 @@ import std.occurrence_binding_candidates {
 }
 import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingOutcome,
-  resolve_reference_occurrence_binding,
+  resolve_reference_occurrence_binding_validated,
 }
 import std.types { Bool, FilePath, Int, List, String }
 
@@ -118,6 +118,12 @@ type ReferenceBindingObservation
       projected_dependencies: List<FilePath>,
     }
 
+// THE SECOND SITE OF THE VALIDATED-TRANSPORT REPAIR, carried here rather than left for later
+// because one fact with two homes is exactly what lets a repaired path sit beside an unrepaired
+// one answering the same question -- and the next author picks whichever they read first.
+// occurrence_candidate_index_build has ALREADY validated this transport, so calling the
+// unvalidated std.occurrence_binding_resolve entry point would re-fold the whole population for
+// THIS ONE reference: the O(references x population) shape measured on the resolve path.
 fn structural_binding_resolution_from_candidates(
   transport: OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
@@ -126,8 +132,8 @@ fn structural_binding_resolution_from_candidates(
   match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
     OccurrenceCandidateIndexReady { index: index } =>
       StructuralBindingResolved {
-        binding_outcome: resolve_reference_occurrence_binding(
-          transport: transport,
+        binding_outcome: resolve_reference_occurrence_binding_validated(
+          validated: index.validated,
           occurrence: reference.occurrence,
           supplied_candidates: candidate_occurrence_ids_for_reference(
             index: index,

@@ -1,6 +1,6 @@
 module gunbc.spark.serving_install_paths
 
-import extdeps.ollama.api { OllamaModelRef }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
 import std.types { String, FilePath, NonEmptyStr }
 import std.measure { TokenCount, PositiveSlotCount }
 import std.content_hash { Fnv1a64Structural }
@@ -347,13 +347,39 @@ fn spark_serving_user_unit_path() -> FilePath {
 // (gunbc.spark.serving_desired spark_serving_desired_default_context). Spelling a number here
 // would make this module a second authority for the window and would put the declared profile back
 // out of the unit's reach -- exactly the defect this change closes.
+// THE UNIT'S Description= NAMES THE SELECTED MODEL, AND IT USED TO NAME A LITERAL.
+//
+// THE IRONY IS WORTH KEEPING BECAUSE IT IS THE WHOLE LESSON. The note directly above argues that
+// spelling the context window as a number here would make this module A SECOND AUTHORITY for a fact
+// desired state owns -- and the row it introduced then hardcoded "Ollama gpt-oss:20b" one line
+// later. The argument was right and was applied to one field of the same record.
+//
+// WHAT THAT COST, MEASURED RATHER THAN IMAGINED. The literal was already stale when written: the
+// operator had selected gpt-oss:120b, so the rendered unit described a 20b service. It survived the
+// 120b selection, and then survived gunbc#10104 retiring gpt-oss entirely, so on main it described a
+// model of the wrong SIZE from the wrong FAMILY by the time this was found -- wrong twice, on a
+// string an operator reads first when asking what a systemd unit is for.
+//
+// A DESCRIPTION IS NOT COSMETIC WHEN IT NAMES AN ARTIFACT. `systemctl status` is where a human
+// checks what a host is running, so a stale one actively misinforms exactly the person diagnosing a
+// live incident -- and it does so with the authority of generated output. Deriving it from
+// spark_serving_desired_model_ref means the sentence cannot disagree with the model the same plan
+// installs, which is what the rest of this module was already careful about.
+fn spark_serving_user_unit_description() -> NonEmptyStr {
+  join([
+    "gunbc Spark serving (Ollama ",
+    ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
+    ")",
+  ], "") as NonEmptyStr
+}
+
 fn spark_serving_user_unit_spec(
   bind_host_port: NonEmptyStr,
   default_context: TokenCount,
   serving_slots: PositiveSlotCount,
 ) -> SparkServingUserUnitSpec {
   SparkServingUserUnitSpec {
-    description: "gunbc Spark serving (Ollama gpt-oss:20b)" as NonEmptyStr,
+    description: spark_serving_user_unit_description(),
     after: "network-online.target" as NonEmptyStr,
     service_type: "simple" as NonEmptyStr,
     bind_host_port: bind_host_port,
