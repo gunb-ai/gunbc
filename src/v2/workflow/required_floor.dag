@@ -891,6 +891,25 @@ fn required_floor_claim_cost_line_ms() -> Int {
 //
 // This is the TIGHTER of the two limits. It protects a pure in-process claim against runaway
 // evaluation on the CPU clock; the wall limit below is independently derived and looser.
+//
+// WHAT THE FIGURE COSTS, MEASURED, AND THE PRODUCER THAT RE-DERIVES IT. This number is unchanged by
+// the measurement below and is not proposed to move -- raising it is refused by the two repudiated
+// raises above -- but what a 500ms line actually adjudicates is now measured rather than assumed.
+// `gunbc.floor_cost_distribution` `worst_envelope_permille`, driven by
+// `tools.floor_cost_distribution_instrument` `floor_cost_envelope_report` over twelve green `main`
+// runs on twelve distinct runner registrations across three hosts, reports a per-identity
+// max-over-min CPU envelope of 1.367x median, 1.653x at p90 and 2.280x worst, over rows whose
+// `eval_steps` were IDENTICAL in every run -- so the movement is the machine, not the tree. Composed
+// with `implied_clean_run_budget`, a row must sit under 302ms on its cheapest run to be safe at p90
+// and under 219ms to be safe at the worst observed.
+//
+// AND THE EXTREMES ARE CONCENTRATED ON PARTICULAR MACHINES, which is the fact a median run factor
+// cannot see: `run_extreme_census` reports one run holding the minimum for 367 of 398 rows, and one
+// host holding the maximum for 279 of 398 from three of twelve runs. A row near this line is
+// therefore adjudicated by which runner dequeued the job, which is `gunbc.rung_drop`
+// `floor_cost_claim_qualification_unavailable` restated in this file's own units: the stop remains
+// REQUIRED as an attempt-safety and verdict-availability criterion and is disqualified as an
+// intrinsic claim-cost verdict. That row's attention constant is derived from this envelope.
 fn required_floor_claim_cpu_safety_limit_ms() -> Int {
   500
 }
