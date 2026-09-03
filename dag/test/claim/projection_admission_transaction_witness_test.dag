@@ -1,0 +1,460 @@
+module test.claim.projection_admission_transaction_witness
+
+import gunbc.projection_admission_transaction {
+  ProjectionId,
+  trunk_tip_is_coherent,
+  GeneratorId, ProjectionMember,
+  DerivableFromComposedAuthority, RequiresBootstrapFixedPointArm,
+  projection_member_eligibility,
+  first_implementation_members, deferred_bootstrap_members,
+  ProjectionResource, ShardedByDerivedClosure,
+  initial_shard_policy,
+  ShardAdmitted, ShardRefusedGloballySerialized,
+  ShardRefusedSharedGenerator, ShardRefusedSharedAuthorityClosure,
+  classify_shard_admission, shard_admits_concurrency, outputs_are_disjoint,
+  HumanMergeAnnouncement, DashboardFreezeRoster, AdvisoryLease,
+  EnforcedMergeQueue, AdmissionCoordinator,
+  slot_excludes_concurrent_advance, all_slot_mechanisms,
+  LaneId, Lane,
+  DeriveInsideAdmission, DeriveAfterMerge,
+  AdmissionEvent,
+  OpenTransaction, ComposeCandidate, DeriveProjections, SealCandidate,
+  VerifyCandidate, AdvanceTrunk, PeerAdvanceTrunk, BumpRoster,
+  simulate_transaction, transaction_discarded_count,
+  transaction_script, interference_sequences, peer_interference_sequences,
+  roster_interference_sequences,
+  count_incoherent_admitting_sequences, count_discarding_sequences,
+}
+import std.types { List, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+// Two real generators, named as the modules that own them rather than as the paths they write.
+data design_ledgers_generator: GeneratorId = GeneratorId { name: "gunbc.design_ledgers" }
+data merge_rows_generator: GeneratorId = GeneratorId { name: "gunbc.generated_projection_paths" }
+data stage0_generator: GeneratorId = GeneratorId { name: "gunbc.stage0_rust_source_lifecycle_scaffold" }
+
+// The whole-document ledgers the FIRST implementation covers: their generator runs from the
+// composed authority and never reads its own previous output.
+data failure_modes_member: ProjectionMember = ProjectionMember {
+  path: "docs/design-failure-modes.md",
+  generator: design_ledgers_generator,
+  generator_built_from_own_output: false,
+}
+
+data rung_drops_member: ProjectionMember = ProjectionMember {
+  path: "docs/design-rung-drops.md",
+  generator: design_ledgers_generator,
+  generator_built_from_own_output: false,
+}
+
+// The bootstrap source mirror. `gunbc` is compiled FROM these bytes, so deriving them inside the
+// transaction requires consuming the stale projection first -- its own staged or fixed-point arm.
+data stage0_mirror_member: ProjectionMember = ProjectionMember {
+  path: "src/v1/stage0/src/v1_rt.rs",
+  generator: stage0_generator,
+  generator_built_from_own_output: true,
+}
+
+fn every_member() -> List<ProjectionMember> {
+  [failure_modes_member, rung_drops_member, stage0_mirror_member]
+}
+
+fn clean_lane() -> Lane {
+  Lane {
+    id: LaneId { name: "lane-a" },
+    authority_delta: "laneA",
+    inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
+    composes_cleanly: true,
+    foreign_machine_authored_path: "",
+    members: [failure_modes_member, rung_drops_member],
+  }
+}
+
+fn conflicting_lane() -> Lane {
+  Lane {
+    id: LaneId { name: "lane-conflict" },
+    authority_delta: "laneConflict",
+    inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
+    composes_cleanly: false,
+    foreign_machine_authored_path: "",
+    members: [failure_modes_member],
+  }
+}
+
+fn foreign_change_lane() -> Lane {
+  Lane {
+    id: LaneId { name: "lane-foreign" },
+    authority_delta: "laneForeign",
+    inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
+    composes_cleanly: true,
+    foreign_machine_authored_path: "src/v2/lens/module_graph.dag",
+    members: [failure_modes_member],
+  }
+}
+
+fn bootstrap_lane() -> Lane {
+  Lane {
+    id: LaneId { name: "lane-bootstrap" },
+    authority_delta: "laneBootstrap",
+    inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
+    composes_cleanly: true,
+    foreign_machine_authored_path: "",
+    members: [failure_modes_member, stage0_mirror_member],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The central claim: derivation order decides whether main ever holds
+// authority and projection from different states
+// ---------------------------------------------------------------------------
+
+fn happy_path() -> List<AdmissionEvent> {
+  transaction_script(lane: clean_lane(), order: DeriveInsideAdmission)
+}
+
+test fn derive_inside_admission_lands_a_coherent_tip() -> Bool {
+  let end_state = simulate_transaction(
+    slot: AdmissionCoordinator,
+    order: DeriveInsideAdmission,
+    events: happy_path()
+  )
+  !end_state.incoherent_tip_seen
+    && !end_state.unverified_advance_seen
+    && end_state.discarded_candidate_count == 0
+    && trunk_tip_is_coherent(tip: end_state.tip)
+    && end_state.tip.authority.tag == "main-0+laneA"
+}
+
+// THE DISCRIMINATING RED. Same lane, same slot, same events up to the advance -- only the
+// derivation order differs. Post-merge regeneration lands the lane's inherited bytes on the
+// composed authority, and the tip is incoherent for the whole interval before the regeneration
+// runs. If the two orders were interchangeable this witness could not distinguish them.
+test fn derive_after_merge_opens_an_incoherent_interval() -> Bool {
+  let post_merge = transaction_script(lane: clean_lane(), order: DeriveAfterMerge)
+  let end_state = simulate_transaction(
+    slot: AdmissionCoordinator,
+    order: DeriveAfterMerge,
+    events: post_merge
+  )
+  end_state.incoherent_tip_seen
+    && end_state.unverified_advance_seen
+    && trunk_tip_is_coherent(tip: end_state.tip)
+}
+
+// The pair above differs only in ORDER, and the latch is what carries the finding: the post-merge
+// trace ENDS coherent, because the regeneration repairs it. Asserting the end state would have
+// found nothing. The interval having existed is the defect.
+
+// ---------------------------------------------------------------------------
+// The slot: what an advisory mechanism cannot do
+// ---------------------------------------------------------------------------
+
+fn peer_lands_mid_transaction() -> List<AdmissionEvent> {
+  [
+    OpenTransaction { lane: clean_lane() },
+    ComposeCandidate,
+    DeriveProjections,
+    PeerAdvanceTrunk { peer: "peerB" },
+    SealCandidate,
+    VerifyCandidate,
+    AdvanceTrunk,
+  ]
+}
+
+test fn advisory_lease_loses_the_transaction_to_a_peer_advance() -> Bool {
+  let end_state = simulate_transaction(
+    slot: AdvisoryLease,
+    order: DeriveInsideAdmission,
+    events: peer_lands_mid_transaction()
+  )
+  end_state.discarded_candidate_count == 1
+    && !end_state.incoherent_tip_seen
+    && end_state.tip.authority.tag == "main-0+peerB"
+}
+
+test fn enforced_slot_excludes_the_peer_and_lands_the_candidate() -> Bool {
+  let end_state = simulate_transaction(
+    slot: EnforcedMergeQueue,
+    order: DeriveInsideAdmission,
+    events: peer_lands_mid_transaction()
+  )
+  end_state.discarded_candidate_count == 0
+    && !end_state.incoherent_tip_seen
+    && end_state.tip.authority.tag == "main-0+laneA"
+}
+
+// The three rejected mechanisms are rejected together and by the SAME trace, so no arm is asserted
+// only by its table entry: a human announce, a dashboard-derived freeze roster and an advisory
+// lease all discard the candidate on the trace the two enforced mechanisms land.
+test fn every_advisory_mechanism_discards_on_the_trace_the_enforced_ones_land() -> Bool {
+  let advisory_losses = fold(
+    [HumanMergeAnnouncement, DashboardFreezeRoster, AdvisoryLease],
+    init: 0,
+    f: fn(acc, mechanism) {
+      acc + transaction_discarded_count(
+        slot: mechanism,
+        order: DeriveInsideAdmission,
+        events: peer_lands_mid_transaction()
+      )
+    }
+  )
+  let enforced_losses = fold(
+    [EnforcedMergeQueue, AdmissionCoordinator],
+    init: 0,
+    f: fn(acc, mechanism) {
+      acc + transaction_discarded_count(
+        slot: mechanism,
+        order: DeriveInsideAdmission,
+        events: peer_lands_mid_transaction()
+      )
+    }
+  )
+  advisory_losses == 3 && enforced_losses == 0
+}
+
+test fn slot_exclusion_partitions_the_five_mechanisms_two_and_three() -> Bool {
+  let excluding = all_slot_mechanisms() |> filter(m => slot_excludes_concurrent_advance(mechanism: m))
+  length(all_slot_mechanisms()) == 5 && length(excluding) == 2
+}
+
+// ---------------------------------------------------------------------------
+// Bounded-exhaustive window: one transaction, one peer advance, one roster bump
+// ---------------------------------------------------------------------------
+
+fn window() -> List<List<AdmissionEvent>> {
+  interference_sequences(lane: clean_lane(), order: DeriveInsideAdmission, peer: "peerB")
+}
+
+fn rejected_order_window() -> List<List<AdmissionEvent>> {
+  interference_sequences(lane: clean_lane(), order: DeriveAfterMerge, peer: "peerB")
+}
+
+// The slot window is PEER-ADVANCE ONLY, and the separation is the finding rather than a
+// convenience: a roster bump under an open candidate is a correct refusal in both slot kinds, so
+// including it would have charged an enforced slot for losses the slot never causes. The roster
+// axis gets its own witness below.
+fn peer_window() -> List<List<AdmissionEvent>> {
+  peer_interference_sequences(lane: clean_lane(), order: DeriveInsideAdmission, peer: "peerB")
+}
+
+fn roster_only_window() -> List<List<AdmissionEvent>> {
+  roster_interference_sequences(lane: clean_lane(), order: DeriveInsideAdmission)
+}
+
+test fn window_enumerates_all_70_interference_placements() -> Bool {
+  length(window()) == 70 && length(rejected_order_window()) == 40 && length(peer_window()) == 7
+}
+
+test fn derive_inside_admission_admits_no_incoherent_tip_across_the_window() -> Bool {
+  count_incoherent_admitting_sequences(
+    slot: AdmissionCoordinator,
+    order: DeriveInsideAdmission,
+    seqs: window()
+  ) == 0
+}
+
+// The positive control for the enumerator: the rejected order's own window DOES find incoherent
+// tips, so the zero above is a property of the order and not of an enumerator that cannot see
+// violations. Each order is run over the script it actually prescribes -- running the ruled script
+// under the rejected order would only produce StageOutOfOrder refusals and measure nothing.
+test fn the_same_window_finds_incoherent_tips_under_the_rejected_order() -> Bool {
+  count_incoherent_admitting_sequences(
+    slot: AdmissionCoordinator,
+    order: DeriveAfterMerge,
+    seqs: rejected_order_window()
+  ) == length(rejected_order_window())
+}
+
+test fn enforced_slot_discards_nothing_across_the_peer_window() -> Bool {
+  count_discarding_sequences(
+    slot: EnforcedMergeQueue,
+    order: DeriveInsideAdmission,
+    seqs: peer_window()
+  ) == 0
+}
+
+test fn advisory_slot_discards_candidates_across_the_peer_window() -> Bool {
+  count_discarding_sequences(
+    slot: AdvisoryLease,
+    order: DeriveInsideAdmission,
+    seqs: peer_window()
+  ) > 0
+}
+
+// THE ROSTER AXIS IS NOT A SLOT FAILURE. A criteria change under an open candidate invalidates the
+// receipt whatever the slot does, so both slot kinds discard identically here -- and an enforced
+// slot claiming otherwise would be the inflated reading this pair exists to refuse.
+test fn a_roster_bump_discards_under_both_slot_kinds() -> Bool {
+  let seqs = roster_only_window()
+  count_discarding_sequences(slot: EnforcedMergeQueue, order: DeriveInsideAdmission, seqs: seqs)
+    == count_discarding_sequences(slot: AdvisoryLease, order: DeriveInsideAdmission, seqs: seqs)
+    && count_discarding_sequences(slot: EnforcedMergeQueue, order: DeriveInsideAdmission, seqs: seqs) > 0
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 is not total, and step 5 refuses machine-authored changes outside P
+// ---------------------------------------------------------------------------
+
+test fn authority_composition_conflict_refuses_and_leaves_the_trunk_alone() -> Bool {
+  let end_state = simulate_transaction(
+    slot: AdmissionCoordinator,
+    order: DeriveInsideAdmission,
+    events: transaction_script(lane: conflicting_lane(), order: DeriveInsideAdmission)
+  )
+  end_state.discarded_candidate_count == 1
+    && end_state.tip.authority.tag == "main-0"
+    && trunk_tip_is_coherent(tip: end_state.tip)
+    && length(end_state.open) == 0
+}
+
+test fn machine_authored_change_outside_the_derived_set_refuses() -> Bool {
+  let end_state = simulate_transaction(
+    slot: AdmissionCoordinator,
+    order: DeriveInsideAdmission,
+    events: transaction_script(lane: foreign_change_lane(), order: DeriveInsideAdmission)
+  )
+  end_state.discarded_candidate_count == 1 && end_state.tip.authority.tag == "main-0"
+}
+
+// The second lane never becomes the subject: the first lane's authority lands, and the
+// foreign-change lane's refusal is never reached because it never held the slot.
+test fn a_second_transaction_cannot_open_while_one_is_held() -> Bool {
+  let events = [
+    OpenTransaction { lane: clean_lane() },
+    OpenTransaction { lane: foreign_change_lane() },
+    ComposeCandidate,
+    DeriveProjections,
+    SealCandidate,
+    VerifyCandidate,
+    AdvanceTrunk,
+  ]
+  let end_state = simulate_transaction(
+    slot: AdmissionCoordinator,
+    order: DeriveInsideAdmission,
+    events: events
+  )
+  end_state.tip.authority.tag == "main-0+laneA" && end_state.discarded_candidate_count == 0
+}
+
+// ---------------------------------------------------------------------------
+// First-implementation scope: the bootstrap mirror is refused, not generalized over
+// ---------------------------------------------------------------------------
+
+test fn eligibility_splits_the_ledgers_from_the_bootstrap_mirror() -> Bool {
+  length(first_implementation_members(members: every_member())) == 2
+    && length(deferred_bootstrap_members(members: every_member())) == 1
+    && match projection_member_eligibility(member: stage0_mirror_member) {
+      RequiresBootstrapFixedPointArm => true
+      DerivableFromComposedAuthority => false
+    }
+}
+
+test fn a_lane_carrying_the_bootstrap_mirror_refuses_at_derive() -> Bool {
+  let end_state = simulate_transaction(
+    slot: AdmissionCoordinator,
+    order: DeriveInsideAdmission,
+    events: transaction_script(lane: bootstrap_lane(), order: DeriveInsideAdmission)
+  )
+  end_state.discarded_candidate_count == 1
+    && end_state.tip.authority.tag == "main-0"
+    && !end_state.incoherent_tip_seen
+}
+
+// ---------------------------------------------------------------------------
+// Sharding: output-path disjointness is not a closure proof, in either direction
+// ---------------------------------------------------------------------------
+
+data failure_modes_resource: ProjectionResource = ProjectionResource {
+  outputs: ["docs/design-failure-modes.md"],
+  generator: design_ledgers_generator,
+  authority_closure: ["gunbc.design_ledgers", "gunbc.recurring_failure_mode"],
+}
+
+data rung_drops_resource: ProjectionResource = ProjectionResource {
+  outputs: ["docs/design-rung-drops.md"],
+  generator: design_ledgers_generator,
+  authority_closure: ["gunbc.design_ledgers", "gunbc.rung_drop"],
+}
+
+data merge_rows_resource: ProjectionResource = ProjectionResource {
+  outputs: [".gitattributes"],
+  generator: merge_rows_generator,
+  authority_closure: ["gunbc.generated_projection_paths", "gunbc.generated_artifact"],
+}
+
+// THE UNSOUND PRESUMPTION, EXECUTED. The two ledgers write different files and share one
+// generator, so a shard rule keyed on output paths would run them concurrently and let each
+// candidate invalidate the other's projection.
+test fn disjoint_outputs_do_not_imply_independent_resources() -> Bool {
+  outputs_are_disjoint(left: failure_modes_resource, right: rung_drops_resource)
+    && !shard_admits_concurrency(
+      policy: ShardedByDerivedClosure,
+      left: failure_modes_resource,
+      right: rung_drops_resource
+    )
+    && match classify_shard_admission(
+      policy: ShardedByDerivedClosure,
+      left: failure_modes_resource,
+      right: rung_drops_resource
+    ) {
+      ShardRefusedSharedGenerator { generator } => generator == "gunbc.design_ledgers"
+      ShardAdmitted => false
+      ShardRefusedGloballySerialized => false
+      ShardRefusedSharedAuthorityClosure { module_path: _ } => false
+    }
+}
+
+// The other direction, and the one that cost a lane an hour: two resources whose closures do not
+// intersect are independent, so a freeze declared over an observed file list spanning both was
+// over-broad by construction rather than by bad luck.
+test fn disjoint_closures_admit_concurrency_under_the_derived_policy() -> Bool {
+  shard_admits_concurrency(
+    policy: ShardedByDerivedClosure,
+    left: failure_modes_resource,
+    right: merge_rows_resource
+  )
+}
+
+// And the starting policy admits neither pair: sharding is unlocked by a closure proof, not by
+// this model existing.
+test fn the_starting_policy_serializes_globally() -> Bool {
+  !shard_admits_concurrency(
+    policy: initial_shard_policy,
+    left: failure_modes_resource,
+    right: merge_rows_resource
+  )
+    && match classify_shard_admission(
+      policy: initial_shard_policy,
+      left: failure_modes_resource,
+      right: merge_rows_resource
+    ) {
+      ShardRefusedGloballySerialized => true
+      ShardAdmitted => false
+      ShardRefusedSharedGenerator { generator: _ } => false
+      ShardRefusedSharedAuthorityClosure { module_path: _ } => false
+    }
+}
+
+test fn a_shared_closure_member_refuses_even_with_distinct_generators() -> Bool {
+  let overlapping = ProjectionResource {
+    outputs: ["docs/design-rung-drops.md"],
+    generator: merge_rows_generator,
+    authority_closure: ["gunbc.recurring_failure_mode", "gunbc.generated_artifact"],
+  }
+  match classify_shard_admission(
+    policy: ShardedByDerivedClosure,
+    left: failure_modes_resource,
+    right: overlapping
+  ) {
+    ShardRefusedSharedAuthorityClosure { module_path } => module_path == "gunbc.recurring_failure_mode"
+    ShardAdmitted => false
+    ShardRefusedGloballySerialized => false
+    ShardRefusedSharedGenerator { generator: _ } => false
+  }
+}

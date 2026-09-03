@@ -1,0 +1,761 @@
+module gunbc.projection_admission_transaction
+
+import std.types { String, Bool, Int, List }
+
+// WHAT THIS MODULE OWNS: the ORDER in which a serialized generated projection is derived relative
+// to the advance of main, and what a slot must exclude for that order to be establishable at all.
+// gunbc.merge_admission owns the static question (is THIS receipt admissible against THIS target
+// and roster) and gunbc.merge_lifecycle owns the temporal one for AUTHORITY (does a merge process
+// ever advance main to a tree it never verified). Neither answers the projection question, because
+// a projection is not an independent authority that could carry its own receipt: it is a FUNCTION
+// of the composed authority, so the only well-formed subject is a candidate that already holds
+// both. This module is that subject, and it derives its verdicts from the same lifecycle idiom
+// rather than restating either authority's predicate (DESIGN section 2).
+//
+// THE RULING THIS MODEL CONSTRUCTS (operator, 2026-09-03): a serialized generated projection must
+// be derived from the composed authority INSIDE the admission transaction, and no lane may be
+// responsible for holding final projection bytes while it waits for admission. Post-merge
+// regeneration is rejected -- not as a style preference but because it creates an interval in
+// which main holds authority and projection from DIFFERENT STATES, which is exactly the state
+// `trunk_tip_is_coherent` denies. `DeriveAfterMerge` is modeled here so that interval is
+// EXECUTABLE and countable, not so it is available.
+//
+// WHY THE heal-generated-artifacts JOB IS NOT THIS AND MUST NOT BE EXTENDED INTO IT. That job
+// checks out the MUTABLE pull-request branch and pushes repairs back to it; its own authority
+// (gunbc.witness.witness_floor_workflow, the note above heal_generated_artifacts_timeout_minutes)
+// classifies it as a REMEDIATOR, excludes it from the required aggregate, and records that its
+// pushed head requires revalidation. A remediator can reduce author effort. It cannot establish
+// admission ORDER, for three reasons this model makes separately visible: its subject is mutable
+// (`PeerAdvanceTrunk` may move main under it), it is not the exact final integration candidate
+// (its base is the branch's, not the tip's), and a peer landing the same projection invalidates it
+// with no event it can observe. So the transaction is a MERGE-CONTRACT change; making heal smarter
+// cannot reach it.
+//
+// RUNG (DESIGN section 4b): the class sits at MITIGATABLE today. Stale projections are writable
+// and cycles are wasted, but the generated-artifact merge driver refuses a diverged projection and
+// the read-only `generated-artifact` required phase refuses drift, so the harm is contained rather
+// than silent. Ceiling is MECHANICALLY PREVENTABLE, not higher: an admission slot is a fact about
+// a coordinator's behaviour over time, which no constructor in this repository can make
+// unwritable. THE READ-ONLY DRIVER AND GATE ARE RETAINED, and deliberately so -- moving generation
+// inside admission does not weaken them, it changes what they are evidence about: from a late
+// detector of predictable invalidation into the VERIFIER of admission-produced bytes (step 6).
+// Next-rung trigger is the CAPABILITY, not an artifact: an enforced admission slot that excludes
+// another main advance for the transaction's critical window, plus a production producer that
+// mints the candidate. Until that lands, the explicit hand queue is the honest interim mitigation
+// and is what this model prices.
+
+// ---------------------------------------------------------------------------
+// Authority and its projection
+// ---------------------------------------------------------------------------
+
+// A projection identity is a FUNCTION of the authority it was derived from, and carrying it as
+// its own opaque tag is what would make the two independently settable -- the very state this
+// model exists to deny. So `derived_from` is the whole content: two projections are equal exactly
+// when they were derived from the same authority, and coherence is decidable by construction.
+type AuthorityId {
+  tag: String
+}
+
+type ProjectionId {
+  derived_from: String
+}
+
+fn derive_projection(authority: AuthorityId) -> ProjectionId {
+  ProjectionId { derived_from: authority.tag }
+}
+
+type TrunkTip {
+  authority: AuthorityId
+  projection: ProjectionId
+}
+
+fn trunk_tip_is_coherent(tip: TrunkTip) -> Bool {
+  tip.projection.derived_from == tip.authority.tag
+}
+
+fn coherent_tip(authority: AuthorityId) -> TrunkTip {
+  TrunkTip { authority: authority, projection: derive_projection(authority: authority) }
+}
+
+type RosterId {
+  tag: String
+}
+
+// ---------------------------------------------------------------------------
+// Projection membership: which members the FIRST implementation may cover
+// ---------------------------------------------------------------------------
+
+type GeneratorId {
+  name: String
+}
+
+// `generator_built_from_own_output` is the ONLY discriminant, and it is a fact about the
+// generator, never about the path. A bootstrap source mirror -- the stage0 Rust the compiler is
+// itself built from -- cannot be regenerated from the composed authority without first consuming
+// its own stale projection to build the generator, so it needs a staged or fixed-point admission
+// arm of its own. A whole-document ledger (docs/design-failure-modes.md) has no such loop. The
+// distinction is the thing most likely to sink this lane, so it is a modeled field with a refusal
+// arm rather than a paragraph.
+type ProjectionMember {
+  path: String
+  generator: GeneratorId
+  generator_built_from_own_output: Bool
+}
+
+type ProjectionMemberEligibility
+  = DerivableFromComposedAuthority
+  | RequiresBootstrapFixedPointArm
+
+fn projection_member_eligibility(member: ProjectionMember) -> ProjectionMemberEligibility {
+  if member.generator_built_from_own_output {
+    RequiresBootstrapFixedPointArm
+  } else {
+    DerivableFromComposedAuthority
+  }
+}
+
+fn member_eligibility_is_derivable(member: ProjectionMember) -> Bool {
+  match projection_member_eligibility(member: member) {
+    DerivableFromComposedAuthority => true
+    RequiresBootstrapFixedPointArm => false
+  }
+}
+
+fn first_implementation_members(members: List<ProjectionMember>) -> List<ProjectionMember> {
+  members |> filter(member => member_eligibility_is_derivable(member: member))
+}
+
+fn deferred_bootstrap_members(members: List<ProjectionMember>) -> List<ProjectionMember> {
+  members |> filter(member => !member_eligibility_is_derivable(member: member))
+}
+
+// ---------------------------------------------------------------------------
+// Sharding: the rule is written over the RESOURCE, never over an observed file list
+// ---------------------------------------------------------------------------
+
+// A projection resource is (generator, derived authority closure) with its outputs carried only so
+// the presumption this model REFUSES can be stated over the same value. Two candidates may run
+// concurrently only when a DERIVED closure proves neither can affect the other's projection or
+// generator. Output-path disjointness is not that proof, in either direction: two ledgers with
+// disjoint filenames share one generator, and a freeze declared over an observed four-path file
+// list has blocked lanes whose closures did not intersect at all (operator receipt, 2026-09-03).
+type ProjectionResource {
+  outputs: List<String>
+  generator: GeneratorId
+  authority_closure: List<String>
+}
+
+type ShardPolicy
+  = GloballySerialized
+  | ShardedByDerivedClosure
+
+// START HERE AND CHANGE IT ONLY AGAINST A CLOSURE PROOF (ruling, 2026-09-03).
+data initial_shard_policy: ShardPolicy = GloballySerialized
+
+type ShardAdmission
+  = ShardAdmitted
+  | ShardRefusedGloballySerialized
+  | ShardRefusedSharedGenerator { generator: String }
+  | ShardRefusedSharedAuthorityClosure { module_path: String }
+
+fn shared_authority_closure_member(left: ProjectionResource, right: ProjectionResource) -> List<String> {
+  left.authority_closure |> filter(module_path => right.authority_closure |> any(other => other == module_path))
+}
+
+fn classify_shard_admission(
+  policy: ShardPolicy,
+  left: ProjectionResource,
+  right: ProjectionResource,
+) -> ShardAdmission {
+  match policy {
+    GloballySerialized => ShardRefusedGloballySerialized
+    ShardedByDerivedClosure => {
+      if left.generator.name == right.generator.name {
+        ShardRefusedSharedGenerator { generator: left.generator.name }
+      } else {
+        let shared = shared_authority_closure_member(left: left, right: right)
+        match (shared |> first) {
+          Present { value: module_path } => ShardRefusedSharedAuthorityClosure { module_path: module_path }
+          Absent => ShardAdmitted
+        }
+      }
+    }
+  }
+}
+
+fn shard_admits_concurrency(
+  policy: ShardPolicy,
+  left: ProjectionResource,
+  right: ProjectionResource,
+) -> Bool {
+  match classify_shard_admission(policy: policy, left: left, right: right) {
+    ShardAdmitted => true
+    ShardRefusedGloballySerialized => false
+    ShardRefusedSharedGenerator { generator: _ } => false
+    ShardRefusedSharedAuthorityClosure { module_path: _ } => false
+  }
+}
+
+// The presumption this model refuses, written so a witness can compare the two answers on one pair
+// rather than asserting the rule in prose.
+fn outputs_are_disjoint(left: ProjectionResource, right: ProjectionResource) -> Bool {
+  !(left.outputs |> any(output => right.outputs |> any(other => other == output)))
+}
+
+// ---------------------------------------------------------------------------
+// The admission slot
+// ---------------------------------------------------------------------------
+
+// EXCLUSION IS THE WHOLE PROPERTY. Each arm below states what the mechanism can do to a CONCURRENT
+// MAIN ADVANCE during the transaction's critical window -- a capability of the mechanism, not a
+// verdict of this module. The consequence of the capability is derived by the transition system
+// below, so no arm here is load-bearing on its own.
+type AdmissionSlotMechanism
+  = HumanMergeAnnouncement
+  | DashboardFreezeRoster
+  | AdvisoryLease
+  | EnforcedMergeQueue
+  | AdmissionCoordinator
+
+fn slot_excludes_concurrent_advance(mechanism: AdmissionSlotMechanism) -> Bool {
+  match mechanism {
+    HumanMergeAnnouncement => false
+    DashboardFreezeRoster => false
+    AdvisoryLease => false
+    EnforcedMergeQueue => true
+    AdmissionCoordinator => true
+  }
+}
+
+fn all_slot_mechanisms() -> List<AdmissionSlotMechanism> {
+  [HumanMergeAnnouncement, DashboardFreezeRoster, AdvisoryLease, EnforcedMergeQueue, AdmissionCoordinator]
+}
+
+// ---------------------------------------------------------------------------
+// The transaction
+// ---------------------------------------------------------------------------
+
+type LaneId {
+  name: String
+}
+
+// A lane is the reviewed pull-request authority head H, plus the two things about it that decide
+// whether the transaction can be completed at all. `composes_cleanly` is false for the whole-row
+// .dag conflict measured on 2026-09-03: step 3 is NOT total, so a refusal arm there is required
+// rather than optional. `foreign_machine_authored_path` carries the step-5 violation -- a
+// machine-authored change outside the derived projection set.
+//
+// `inherited_projection` is H's COMMITTED projection bytes. Under the ruling they are never
+// inherited into the candidate; the field exists so that the rejected order can be executed and
+// its interval observed, which is the only way this module's central claim can go red.
+type Lane {
+  id: LaneId
+  authority_delta: String
+  inherited_projection: ProjectionId
+  composes_cleanly: Bool
+  foreign_machine_authored_path: String
+  members: List<ProjectionMember>
+}
+
+type ProjectionDerivationOrder
+  = DeriveInsideAdmission
+  | DeriveAfterMerge
+
+type CandidateStage
+  = CandidateOpened
+  | CandidateComposed
+  | CandidateDerived
+  | CandidateSealed
+  | CandidateVerified
+
+type OpenCandidate {
+  lane: Lane
+  stage: CandidateStage
+  base_authority: AuthorityId
+  base_roster: RosterId
+  composed_authority: AuthorityId
+  candidate_projection: ProjectionId
+}
+
+type AdmissionRefusal
+  = SlotUnavailable { lane: String }
+  | StageOutOfOrder { lane: String }
+  | AuthorityCompositionConflict { lane: String }
+  | MemberNotDerivableFromComposedAuthority { lane: String, path: String }
+  | ForeignMachineAuthoredChange { lane: String, path: String }
+  | CandidateProjectionMismatch { lane: String }
+  | BaseMovedUnderCandidate { lane: String }
+  | RosterChangedUnderCandidate { lane: String }
+  | ConcurrentAdvanceExcluded { peer: String }
+
+type TransactionState {
+  tip: TrunkTip
+  roster: RosterId
+  slot: AdmissionSlotMechanism
+  order: ProjectionDerivationOrder
+  open: List<OpenCandidate>
+  refusals: List<AdmissionRefusal>
+  incoherent_tip_seen: Bool
+  unverified_advance_seen: Bool
+  discarded_candidate_count: Int
+}
+
+type AdmissionEvent
+  = OpenTransaction { lane: Lane }
+  | ComposeCandidate
+  | DeriveProjections
+  | SealCandidate
+  | VerifyCandidate
+  | AdvanceTrunk
+  | PeerAdvanceTrunk { peer: String }
+  | BumpRoster
+
+fn compose_authority(base: AuthorityId, lane: Lane) -> AuthorityId {
+  AuthorityId { tag: concat(concat(base.tag, "+"), lane.authority_delta) }
+}
+
+fn placeholder_authority() -> AuthorityId {
+  AuthorityId { tag: "unconstructed-candidate-authority" }
+}
+
+fn placeholder_projection() -> ProjectionId {
+  ProjectionId { derived_from: "unconstructed-candidate-projection" }
+}
+
+fn initial_transaction_state(
+  slot: AdmissionSlotMechanism,
+  order: ProjectionDerivationOrder,
+) -> TransactionState {
+  TransactionState {
+    tip: coherent_tip(authority: AuthorityId { tag: "main-0" }),
+    roster: RosterId { tag: "roster-0" },
+    slot: slot,
+    order: order,
+    open: [],
+    refusals: [],
+    incoherent_tip_seen: false,
+    unverified_advance_seen: false,
+    discarded_candidate_count: 0,
+  }
+}
+
+fn refuse(state: TransactionState, cause: AdmissionRefusal) -> TransactionState {
+  TransactionState {
+    tip: state.tip,
+    roster: state.roster,
+    slot: state.slot,
+    order: state.order,
+    open: state.open,
+    refusals: concat(state.refusals, [cause]),
+    incoherent_tip_seen: state.incoherent_tip_seen,
+    unverified_advance_seen: state.unverified_advance_seen,
+    discarded_candidate_count: state.discarded_candidate_count,
+  }
+}
+
+// A refused candidate RELEASES the slot and is counted. The count is the cost the hand queue pays
+// today: work composed, regenerated and verified against a base that moved before it could land.
+fn discard_candidate(state: TransactionState, cause: AdmissionRefusal) -> TransactionState {
+  TransactionState {
+    tip: state.tip,
+    roster: state.roster,
+    slot: state.slot,
+    order: state.order,
+    open: [],
+    refusals: concat(state.refusals, [cause]),
+    incoherent_tip_seen: state.incoherent_tip_seen,
+    unverified_advance_seen: state.unverified_advance_seen,
+    discarded_candidate_count: state.discarded_candidate_count + 1,
+  }
+}
+
+fn with_candidate(state: TransactionState, candidate: OpenCandidate) -> TransactionState {
+  TransactionState {
+    tip: state.tip,
+    roster: state.roster,
+    slot: state.slot,
+    order: state.order,
+    open: [candidate],
+    refusals: state.refusals,
+    incoherent_tip_seen: state.incoherent_tip_seen,
+    unverified_advance_seen: state.unverified_advance_seen,
+    discarded_candidate_count: state.discarded_candidate_count,
+  }
+}
+
+// The one place the trunk moves. Coherence is CHECKED here rather than asserted by the caller, so
+// every route that advances main -- admission, a peer, or the rejected post-merge order -- is
+// measured by the same predicate and the latch cannot be bypassed by adding a route.
+fn advance_trunk(state: TransactionState, tip: TrunkTip, verified: Bool, close_slot: Bool) -> TransactionState {
+  TransactionState {
+    tip: tip,
+    roster: state.roster,
+    slot: state.slot,
+    order: state.order,
+    open: if close_slot { [] } else { state.open },
+    refusals: state.refusals,
+    incoherent_tip_seen: state.incoherent_tip_seen || !trunk_tip_is_coherent(tip: tip),
+    unverified_advance_seen: state.unverified_advance_seen || !verified,
+    discarded_candidate_count: state.discarded_candidate_count,
+  }
+}
+
+fn stage_is(candidate: OpenCandidate, stage: CandidateStage) -> Bool {
+  match candidate.stage {
+    CandidateOpened => match stage { CandidateOpened => true  CandidateComposed => false  CandidateDerived => false  CandidateSealed => false  CandidateVerified => false }
+    CandidateComposed => match stage { CandidateOpened => false  CandidateComposed => true  CandidateDerived => false  CandidateSealed => false  CandidateVerified => false }
+    CandidateDerived => match stage { CandidateOpened => false  CandidateComposed => false  CandidateDerived => true  CandidateSealed => false  CandidateVerified => false }
+    CandidateSealed => match stage { CandidateOpened => false  CandidateComposed => false  CandidateDerived => false  CandidateSealed => true  CandidateVerified => false }
+    CandidateVerified => match stage { CandidateOpened => false  CandidateComposed => false  CandidateDerived => false  CandidateSealed => false  CandidateVerified => true }
+  }
+}
+
+fn restage(candidate: OpenCandidate, stage: CandidateStage, authority: AuthorityId, projection: ProjectionId) -> OpenCandidate {
+  OpenCandidate {
+    lane: candidate.lane,
+    stage: stage,
+    base_authority: candidate.base_authority,
+    base_roster: candidate.base_roster,
+    composed_authority: authority,
+    candidate_projection: projection,
+  }
+}
+
+// GLOBAL SERIALIZATION IS THE STARTING POLICY: a second open transaction is refused, not queued
+// beside the first. Sharding relaxes this only through classify_shard_admission.
+fn apply_open_transaction(state: TransactionState, lane: Lane) -> TransactionState {
+  match (state.open |> first) {
+    Present { value: _ } => refuse(state: state, cause: SlotUnavailable { lane: lane.id.name })
+    Absent =>
+      with_candidate(
+        state: state,
+        candidate: OpenCandidate {
+          lane: lane,
+          stage: CandidateOpened,
+          base_authority: state.tip.authority,
+          base_roster: state.roster,
+          composed_authority: placeholder_authority(),
+          candidate_projection: placeholder_projection(),
+        }
+      )
+  }
+}
+
+// STEP 3 IS NOT TOTAL. A whole-row .dag conflict has been measured (2026-09-03), so the composition
+// arm refuses and releases the slot rather than resolving the conflict on the lane's behalf.
+fn apply_compose(state: TransactionState, candidate: OpenCandidate) -> TransactionState {
+  if !stage_is(candidate: candidate, stage: CandidateOpened) {
+    refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
+  } else if !candidate.lane.composes_cleanly {
+    discard_candidate(state: state, cause: AuthorityCompositionConflict { lane: candidate.lane.id.name })
+  } else {
+    with_candidate(
+      state: state,
+      candidate: restage(
+        candidate: candidate,
+        stage: CandidateComposed,
+        authority: compose_authority(base: candidate.base_authority, lane: candidate.lane),
+        projection: placeholder_projection()
+      )
+    )
+  }
+}
+
+// P IS DERIVED FROM I'S MERGED AUTHORITY, and the ruling is the OMISSION: the lane's inherited
+// projection bytes are not read anywhere in this function. A lane carrying a member whose generator
+// is built from its own output refuses here instead, rather than being silently generalized over.
+fn apply_derive(state: TransactionState, candidate: OpenCandidate) -> TransactionState {
+  if !stage_is(candidate: candidate, stage: CandidateComposed) {
+    refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
+  } else {
+    match (deferred_bootstrap_members(members: candidate.lane.members) |> first) {
+      Present { value: member } =>
+        discard_candidate(
+          state: state,
+          cause: MemberNotDerivableFromComposedAuthority { lane: candidate.lane.id.name, path: member.path }
+        )
+      Absent =>
+        with_candidate(
+          state: state,
+          candidate: restage(
+            candidate: candidate,
+            stage: CandidateDerived,
+            authority: candidate.composed_authority,
+            projection: derive_projection(authority: candidate.composed_authority)
+          )
+        )
+    }
+  }
+}
+
+fn apply_seal(state: TransactionState, candidate: OpenCandidate) -> TransactionState {
+  if !stage_is(candidate: candidate, stage: CandidateDerived) {
+    refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
+  } else if !(candidate.lane.foreign_machine_authored_path == "") {
+    discard_candidate(
+      state: state,
+      cause: ForeignMachineAuthoredChange {
+        lane: candidate.lane.id.name,
+        path: candidate.lane.foreign_machine_authored_path
+      }
+    )
+  } else {
+    with_candidate(state: state, candidate: restage(candidate: candidate, stage: CandidateSealed, authority: candidate.composed_authority, projection: candidate.candidate_projection))
+  }
+}
+
+// STEP 6 IS THE RETAINED READ-ONLY CHECK, RELOCATED RATHER THAN DELETED. This is the same equality
+// the generated-artifact drift gate and the merge driver answer; here it answers about
+// admission-produced bytes instead of about bytes a lane was holding.
+fn apply_verify(state: TransactionState, candidate: OpenCandidate) -> TransactionState {
+  if !stage_is(candidate: candidate, stage: CandidateSealed) {
+    refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
+  } else if !(candidate.candidate_projection.derived_from == candidate.composed_authority.tag) {
+    discard_candidate(state: state, cause: CandidateProjectionMismatch { lane: candidate.lane.id.name })
+  } else {
+    with_candidate(state: state, candidate: restage(candidate: candidate, stage: CandidateVerified, authority: candidate.composed_authority, projection: candidate.candidate_projection))
+  }
+}
+
+// THE REJECTED ORDER IS EXECUTED HERE SO ITS INTERVAL IS COUNTABLE, not so it is available.
+// DeriveAfterMerge advances the trunk with the lane's INHERITED projection bytes and regenerates
+// afterwards; between the two, main holds authority and projection from different states, and every
+// reader in that window -- including another lane's compose step -- reads an incoherent tip.
+fn apply_advance(state: TransactionState, candidate: OpenCandidate) -> TransactionState {
+  match state.order {
+    DeriveInsideAdmission => {
+      if !stage_is(candidate: candidate, stage: CandidateVerified) {
+        refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
+      } else if !(candidate.base_authority.tag == state.tip.authority.tag) {
+        discard_candidate(state: state, cause: BaseMovedUnderCandidate { lane: candidate.lane.id.name })
+      } else if !(candidate.base_roster.tag == state.roster.tag) {
+        discard_candidate(state: state, cause: RosterChangedUnderCandidate { lane: candidate.lane.id.name })
+      } else {
+        advance_trunk(
+          state: state,
+          tip: TrunkTip { authority: candidate.composed_authority, projection: candidate.candidate_projection },
+          verified: true,
+          close_slot: true
+        )
+      }
+    }
+    DeriveAfterMerge => {
+      if !stage_is(candidate: candidate, stage: CandidateComposed) {
+        refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
+      } else {
+        advance_trunk(
+          state: state,
+          tip: TrunkTip { authority: candidate.composed_authority, projection: candidate.lane.inherited_projection },
+          verified: false,
+          close_slot: true
+        )
+      }
+    }
+  }
+}
+
+fn apply_peer_advance(state: TransactionState, peer: String) -> TransactionState {
+  match (state.open |> first) {
+    Present { value: _ } => {
+      if slot_excludes_concurrent_advance(mechanism: state.slot) {
+        refuse(state: state, cause: ConcurrentAdvanceExcluded { peer: peer })
+      } else {
+        advance_trunk(
+          state: state,
+          tip: coherent_tip(authority: AuthorityId { tag: concat(concat(state.tip.authority.tag, "+"), peer) }),
+          verified: true,
+          close_slot: false
+        )
+      }
+    }
+    Absent =>
+      advance_trunk(
+        state: state,
+        tip: coherent_tip(authority: AuthorityId { tag: concat(concat(state.tip.authority.tag, "+"), peer) }),
+        verified: true,
+        close_slot: false
+      )
+  }
+}
+
+fn apply_bump_roster(state: TransactionState) -> TransactionState {
+  TransactionState {
+    tip: state.tip,
+    roster: RosterId { tag: concat(state.roster.tag, "'") },
+    slot: state.slot,
+    order: state.order,
+    open: state.open,
+    refusals: state.refusals,
+    incoherent_tip_seen: state.incoherent_tip_seen,
+    unverified_advance_seen: state.unverified_advance_seen,
+    discarded_candidate_count: state.discarded_candidate_count,
+  }
+}
+
+// A derive with NO open transaction is post-merge regeneration in the rejected order, and it
+// repairs the tip. That repair is exactly why the LATCH and not the end state is the evidence: the
+// interval closes, and having existed is the defect.
+fn apply_to_open_candidate(state: TransactionState, ev: AdmissionEvent) -> TransactionState {
+  match (state.open |> first) {
+    Absent =>
+      match ev {
+        DeriveProjections =>
+          advance_trunk(state: state, tip: coherent_tip(authority: state.tip.authority), verified: true, close_slot: false)
+        OpenTransaction { lane: _ } => state
+        ComposeCandidate => state
+        SealCandidate => state
+        VerifyCandidate => state
+        AdvanceTrunk => state
+        PeerAdvanceTrunk { peer: _ } => state
+        BumpRoster => state
+      }
+    Present { value: candidate } =>
+      match ev {
+        ComposeCandidate => apply_compose(state: state, candidate: candidate)
+        DeriveProjections => apply_derive(state: state, candidate: candidate)
+        SealCandidate => apply_seal(state: state, candidate: candidate)
+        VerifyCandidate => apply_verify(state: state, candidate: candidate)
+        AdvanceTrunk => apply_advance(state: state, candidate: candidate)
+        OpenTransaction { lane: _ } => state
+        PeerAdvanceTrunk { peer: _ } => state
+        BumpRoster => state
+      }
+  }
+}
+
+fn apply_admission_event(state: TransactionState, ev: AdmissionEvent) -> TransactionState {
+  match ev {
+    OpenTransaction { lane } => apply_open_transaction(state: state, lane: lane)
+    PeerAdvanceTrunk { peer } => apply_peer_advance(state: state, peer: peer)
+    BumpRoster => apply_bump_roster(state: state)
+    ComposeCandidate => apply_to_open_candidate(state: state, ev: ev)
+    DeriveProjections => apply_to_open_candidate(state: state, ev: ev)
+    SealCandidate => apply_to_open_candidate(state: state, ev: ev)
+    VerifyCandidate => apply_to_open_candidate(state: state, ev: ev)
+    AdvanceTrunk => apply_to_open_candidate(state: state, ev: ev)
+  }
+}
+
+fn simulate_transaction(
+  slot: AdmissionSlotMechanism,
+  order: ProjectionDerivationOrder,
+  events: List<AdmissionEvent>,
+) -> TransactionState {
+  fold(events, init: initial_transaction_state(slot: slot, order: order), f: fn(state, ev) {
+    apply_admission_event(state: state, ev: ev)
+  })
+}
+
+fn transaction_admits_incoherent_tip(
+  slot: AdmissionSlotMechanism,
+  order: ProjectionDerivationOrder,
+  events: List<AdmissionEvent>,
+) -> Bool {
+  simulate_transaction(slot: slot, order: order, events: events).incoherent_tip_seen
+}
+
+fn transaction_discarded_count(
+  slot: AdmissionSlotMechanism,
+  order: ProjectionDerivationOrder,
+  events: List<AdmissionEvent>,
+) -> Int {
+  simulate_transaction(slot: slot, order: order, events: events).discarded_candidate_count
+}
+
+// ---------------------------------------------------------------------------
+// Bounded-exhaustive enumeration over the transaction script
+// ---------------------------------------------------------------------------
+
+// THE WINDOW IS THE SCRIPT WITH INTERFERENCE INSERTED, NOT THE FREE MONOID OVER THE ALPHABET.
+// The six steps are a staged protocol, so enumerating arbitrary orderings would spend the whole
+// window on StageOutOfOrder noise and would answer a question nobody asks (does the protocol
+// refuse a derive before a compose -- it does, and one witness states it). The interesting axis is
+// WHERE ANOTHER PRINCIPAL ACTS while a transaction is open, so the enumeration inserts the
+// interference events at EVERY position of the script, singly and in every ordered pair. That is
+// exhaustive over the declared window "one transaction, at most one concurrent main advance and at
+// most one roster bump", and every count below is asserted rather than sampled.
+
+// THE SCRIPT IS THE ORDER'S OWN, and taking that from the order rather than from the caller is
+// what makes the two windows comparable at all. Under DeriveInsideAdmission the six steps are the
+// ruled transaction. Under DeriveAfterMerge the script IS the rejected shape -- compose, advance,
+// then regenerate -- because running the ruled script under that order would only produce
+// StageOutOfOrder refusals and would measure nothing about the order.
+fn transaction_script(lane: Lane, order: ProjectionDerivationOrder) -> List<AdmissionEvent> {
+  match order {
+    DeriveInsideAdmission =>
+      [
+        OpenTransaction { lane: lane },
+        ComposeCandidate,
+        DeriveProjections,
+        SealCandidate,
+        VerifyCandidate,
+        AdvanceTrunk,
+      ]
+    DeriveAfterMerge =>
+      [
+        OpenTransaction { lane: lane },
+        ComposeCandidate,
+        AdvanceTrunk,
+        DeriveProjections,
+      ]
+  }
+}
+
+// The insertion point is recognised by the accumulator's OWN length, which passes through `index`
+// exactly once: after the insertion the accumulator is index+2 long and can never match again, so
+// a single event is inserted with no second-hit guard. Index == length(seq) appends.
+fn insert_at(seq: List<AdmissionEvent>, index: Int, ev: AdmissionEvent) -> List<AdmissionEvent> {
+  let placed = fold(seq, init: [], f: fn(acc, item) {
+    if length(acc) == index { concat(acc, [ev, item]) } else { concat(acc, [item]) }
+  })
+  if index >= length(seq) { concat(seq, [ev]) } else { placed }
+}
+
+fn insertion_positions(seq: List<AdmissionEvent>) -> List<Int> {
+  fold(seq, init: [0], f: fn(acc, item) { concat(acc, [length(acc)]) })
+}
+
+fn single_insertions(seq: List<AdmissionEvent>, ev: AdmissionEvent) -> List<List<AdmissionEvent>> {
+  insertion_positions(seq: seq) |> map(index => insert_at(seq: seq, index: index, ev: ev))
+}
+
+// PEER ADVANCE AND ROSTER BUMP ARE SEPARATED, because only the first is what a slot can exclude.
+// A roster bump under an open candidate is a CORRECT refusal in both slot kinds -- the criteria
+// moved, so the receipt is stale -- and folding it into the slot window would have made an
+// enforced slot look like it loses candidates it does not lose.
+fn peer_interference_sequences(lane: Lane, order: ProjectionDerivationOrder, peer: String) -> List<List<AdmissionEvent>> {
+  single_insertions(seq: transaction_script(lane: lane, order: order), ev: PeerAdvanceTrunk { peer: peer })
+}
+
+fn roster_interference_sequences(lane: Lane, order: ProjectionDerivationOrder) -> List<List<AdmissionEvent>> {
+  single_insertions(seq: transaction_script(lane: lane, order: order), ev: BumpRoster)
+}
+
+fn interference_sequences(lane: Lane, order: ProjectionDerivationOrder, peer: String) -> List<List<AdmissionEvent>> {
+  let with_peer = peer_interference_sequences(lane: lane, order: order, peer: peer)
+  let with_bump = roster_interference_sequences(lane: lane, order: order)
+  let with_both = fold(with_peer, init: [], f: fn(acc, seq) {
+    concat(acc, single_insertions(seq: seq, ev: BumpRoster))
+  })
+  concat(concat(with_peer, with_bump), with_both)
+}
+
+fn count_incoherent_admitting_sequences(
+  slot: AdmissionSlotMechanism,
+  order: ProjectionDerivationOrder,
+  seqs: List<List<AdmissionEvent>>,
+) -> Int {
+  fold(seqs, init: 0, f: fn(acc, seq) {
+    if transaction_admits_incoherent_tip(slot: slot, order: order, events: seq) { acc + 1 } else { acc }
+  })
+}
+
+fn count_discarding_sequences(
+  slot: AdmissionSlotMechanism,
+  order: ProjectionDerivationOrder,
+  seqs: List<List<AdmissionEvent>>,
+) -> Int {
+  fold(seqs, init: 0, f: fn(acc, seq) {
+    if transaction_discarded_count(slot: slot, order: order, events: seq) > 0 { acc + 1 } else { acc }
+  })
+}
