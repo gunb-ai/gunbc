@@ -12,6 +12,7 @@ import extdeps.ssh.password_session {
 }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.languages.json.emit {
+  JsonValue,
   json_array,
   json_int,
   json_kv,
@@ -40,16 +41,24 @@ import extdeps.tools.jq {
   jq_admitted_plan_surface,
   jq_classify_observation,
   jq_execute_admitted_plan,
-  jq_invocation_process_plan
+  jq_invocation_process_plan,
+  jq_executable,
 }
 import gunbc.remote_shell_command {
+  RemoteExecCommand,
   RemoteExecCommandInterpretation,
   RemoteExecCommandBuilt,
   RemoteExecCommandRefused,
   RemoteExecCommandRefusalCause,
   RemoteExecInterpretationUnknown,
+  RemoteExecCommandLiveConfirmation,
+  RemoteExecCommandLiveConfirmationUnexecuted,
+  RemoteExecCommandLiveConfirmationObserved,
+  remote_exec_command_live_confirmation,
   SimpleCommandArgvRefused,
   Unknown,
+  openbmc_dropbear_interpretation,
+  remote_exec_command_rendered,
   remote_exec_command_string,
 }
 import v2.std.compilers.cli_surface {
@@ -951,7 +960,7 @@ fn openbmc_object_mapper_service_at(content: String, index: Int) -> OpenBmcServi
     bindings: [
       JqJsonBinding {
         name: JqBindingName { name: "index" },
-        value: serialize_json(json_int(index)) as NonEmptyStr,
+        value: json_int(n: index),
       }
     ],
     input: JqInputStdin { content: content },
@@ -1390,15 +1399,15 @@ type OpenBmcRemoteJqRefusal
   | OpenBmcRemoteJqCommandStringRefused { cause: RemoteExecCommandRefusalCause }
 
 type OpenBmcRemoteJqCommandOutcome
-  = OpenBmcRemoteJqCommandBuilt { command: NonEmptyStr }
+  = OpenBmcRemoteJqCommandBuilt { command: RemoteExecCommand }
   | OpenBmcRemoteJqCommandRefused { cause: OpenBmcRemoteJqRefusal }
 
 // The remote words are the jq executable plus the already-emitted surface words -- the semantic
-// layer chose every flag, and this function adds only the executable identity, exactly as the
-// local realization's handler does.
+// layer chose every flag, and this function adds only the executable identity (from jq's own
+// `jq_executable` row, never a literal), exactly as the local realization's handler does.
 fn openbmc_remote_jq_words(surface: CliSurface) -> List<NonEmptyStr> {
   append(
-    ["jq"],
+    [jq_executable],
     items: cli_surface_arguments(surface: surface) |> map(arg => cli_argument_text(argument: arg) as NonEmptyStr),
   )
 }
@@ -1427,16 +1436,37 @@ type OpenBmcRemoteJqOutcome
   = OpenBmcRemoteJqExecuted { observation: ProcessObservation }
   | OpenBmcRemoteJqRefused { cause: OpenBmcRemoteJqRefusal }
 
+// The production remote-jq execution is DRIVEN by the live confirmation receipt.
+// remote_exec_command_live_confirmation is a module-scope data row whose variant determines
+// the interpretation:
+//
+//   - RemoteExecCommandLiveConfirmationObserved: the live check WAS RUN and confirmed a
+//     POSIX-shell interpretation. The path uses openbmc_dropbear_interpretation (the repo's
+//     documented best understanding, now corroborated by observation).
+//
+//   - RemoteExecCommandLiveConfirmationUnexecuted: the live check has NOT been run. The path
+//     passes Unknown and REFUSES with RemoteExecInterpretationUnknown (DESIGN 4b: external
+//     reality is observed, refused, or mitigated at a declared boundary, never fabricated).
+//
+// The receipt is LOAD-BEARING: observing and recording it genuinely unlocks execution, so the
+// design 4b(2) trigger is genuine (not a permanent stall wearing a trigger's clothes). When an
+// operator runs remote_exec_command_live_confirmation against a live target and records the
+// observation, this match resolves to the Observed arm and the path opens.
 fn openbmc_remote_jq_execute(
   session: PasswordSshSession,
   plan: JqAdmittedProcessPlan,
 ) -> OpenBmcRemoteJqOutcome {
-  // Unknown until a live target confirms a POSIX shell interpretation
-  // (remote_exec_command_live_confirmation); the path REFUSES rather than fabricating one.
-  match openbmc_remote_jq_command(plan: plan, interpretation: Unknown) {
+  let interpretation = match remote_exec_command_live_confirmation {
+    RemoteExecCommandLiveConfirmationObserved { target: _, result: _ } =>
+      openbmc_dropbear_interpretation
+    RemoteExecCommandLiveConfirmationUnexecuted { trigger: _ } =>
+      Unknown
+  }
+  match openbmc_remote_jq_command(plan: plan, interpretation: interpretation) {
     OpenBmcRemoteJqCommandRefused { cause: cause } =>
       OpenBmcRemoteJqRefused { cause: cause }
-    OpenBmcRemoteJqCommandBuilt { command: command } => {
+    OpenBmcRemoteJqCommandBuilt { command: sealed } => {
+      let command = remote_exec_command_rendered(command: sealed)
       let ran = openbmc.PasswordSshTransport.RunCommand(
         host: session.host,
         username: session.username,
