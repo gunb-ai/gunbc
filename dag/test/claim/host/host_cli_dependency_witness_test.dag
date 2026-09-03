@@ -8,6 +8,7 @@ import gunbc.host_cli_dependency {
   host_cli_dependency_failure_receipt,
   HostCliDependencyPresent,
   HostCliDependencyAbsent,
+  HostCliDependencyAbsence,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -39,8 +40,10 @@ test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool {
   )
   match host_cli_dependency_failure_receipt(
     observation: HostCliDependencyAbsent {
-      tool: "npm" as NonEmptyStr,
-      hint: "apt install npm",
+      absence: HostCliDependencyAbsence {
+        tool: "npm" as NonEmptyStr,
+        hint: "apt install npm",
+      },
     },
   ) {
     Present { value: got } => got == wire

@@ -674,6 +674,11 @@ fn missing_generic_args_diagnostics(n: Node, env: TypeEnv, module_name: String) 
   }
 }
 
+// The Divergent arm: an expression that produces no value has nothing to resolve to.
+// Returning unit_type would fabricate a type for unreachable code, and emitting a
+// diagnostic would refuse a program that is not wrong -- so resolution carries the
+// divergence forward unchanged and lets the consumer that cares decide. review
+// 5085499375 (D1).
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
   if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
@@ -684,6 +689,7 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
           resolved: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
         }
+      Divergent => NodeResolveResult { resolved: divergent_type(), diagnostics: [] }
       TypeVariable { id: tv } =>
         NodeResolveResult { resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tv, span: kernel_span(name: tv), ident_span: Present { value: kernel_span(name: tv) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tv } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, diagnostics: [] }
     }
