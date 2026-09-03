@@ -144,6 +144,7 @@ type VllmRankPopulationFinding
   | ParticipantCountDoesNotMatchWorldSize
   | RankObservedMoreThanOnce { rank: Nat }
   | RankOutsideExpectedSet { rank: Nat }
+  | TensorParallelRankDoesNotMatchGlobalRank { global_rank: Nat, tensor_parallel_rank: Nat }
   | ParticipantOnUnselectedHost { host: HostIdentity }
   | SelectedHostCarriedNoRank { host: HostIdentity }
   | WorkerBirthIdentityShared { worker_birth_identity: NonEmptyStr }
@@ -211,11 +212,38 @@ fn vllm_rank_findings(
     flat_map(participants, p =>
       if p.global_rank < resolved.world_size { [] }
       else { [RankOutsideExpectedSet { rank: p.global_rank }] }),
-    flat_map(participants, p =>
-      if length(filter(participants, q => q.global_rank == p.global_rank)) > 1 {
-        [RankObservedMoreThanOnce { rank: p.global_rank }]
-      } else { [] }))
+    concat(
+      flat_map(participants, p =>
+        if length(filter(participants, q => q.global_rank == p.global_rank)) > 1 {
+          [RankObservedMoreThanOnce { rank: p.global_rank }]
+        } else { [] }),
+      flat_map(participants, p =>
+        if p.tensor_parallel_rank == p.global_rank { [] }
+        else {
+          [TensorParallelRankDoesNotMatchGlobalRank {
+            global_rank: p.global_rank,
+            tensor_parallel_rank: p.tensor_parallel_rank,
+          }]
+        })))
 }
+
+// WHY CORRESPONDENCE IS THE WHOLE TENSOR-PARALLEL RANK LAW, AND RANGE AND UNIQUENESS ARE NOT SEPARATE
+// ARMS.
+//
+// The field was previously carried and never examined, so a population with valid global ranks and
+// nonsense tensor-parallel ranks read as coherent -- an inert field in a law named after it, which is
+// the decoration this module refuses everywhere else.
+//
+// The check is correspondence rather than three checks, because inside this module's accepted domain
+// the other two follow from it. `NotATensorParallelDecomposition` already refuses anything with
+// pipeline or data parallelism, so every population that reaches here has PP=1 and DP=1 -- and under
+// that decomposition vLLM assigns global rank and tensor-parallel rank identically, which is what the
+// live pair showed: "rank 0 ... TP rank 0" and "rank 1 ... TP rank 1". Given that, a tensor-parallel
+// rank equal to an already-range-checked, already-unique global rank is itself in range and unique.
+//
+// Adding separate range and uniqueness arms would be adding two findings that cannot fire while the
+// third holds -- permanently-green checks that would be cited as coverage, which is the failure this
+// repository names rather than a thoroughness win.
 
 // THE HOST JOIN RUNS IN BOTH DIRECTIONS, which is what makes it a join rather than a filter. A
 // population sitting entirely on one selected host satisfies "no participant is on an unselected
@@ -260,9 +288,3 @@ fn vllm_identity_findings(
       } else { [] }))
 }
 
-fn vllm_rank_population_is_coherent(decision: VllmRankPopulationDecision) -> Bool {
-  match decision {
-    RankPopulationCoherent { provenance: _ } => true
-    RankPopulationRefused { findings: _ } => false
-  }
-}

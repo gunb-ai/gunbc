@@ -14,10 +14,10 @@ import gunbc.spark.vllm_rank_population {
   VllmRankPopulationFinding,
   ObservationDidNotReturnCompletely, DecompositionDoesNotAccountForWorldSize,
   NotATensorParallelDecomposition, ParticipantCountDoesNotMatchWorldSize,
-  RankObservedMoreThanOnce, RankOutsideExpectedSet,
+  RankObservedMoreThanOnce, RankOutsideExpectedSet, TensorParallelRankDoesNotMatchGlobalRank,
   ParticipantOnUnselectedHost, SelectedHostCarriedNoRank,
   WorkerBirthIdentityShared, ParticipantFromAnotherIncarnation,
-  decide_vllm_rank_population, vllm_rank_population_is_coherent,
+  decide_vllm_rank_population,
 }
 
 // ── HERMETIC FIXTURES ───────────────────────────────────────────────────────────────────────────
@@ -75,6 +75,7 @@ fn finding_tag(f: VllmRankPopulationFinding) -> String {
     ParticipantCountDoesNotMatchWorldSize => "count"
     RankObservedMoreThanOnce { rank: _ } => "duplicate"
     RankOutsideExpectedSet { rank: _ } => "extra"
+    TensorParallelRankDoesNotMatchGlobalRank { global_rank: _, tensor_parallel_rank: _ } => "tp-mismatch"
     ParticipantOnUnselectedHost { host: _ } => "unselected-host"
     SelectedHostCarriedNoRank { host: _ } => "host-no-rank"
     WorkerBirthIdentityShared { worker_birth_identity: _ } => "shared-birth"
@@ -86,7 +87,10 @@ fn finding_tag(f: VllmRankPopulationFinding) -> String {
 //
 // Without this every refusal below is satisfiable by a law that refuses everything.
 test fn w_the_observed_shape_is_coherent() -> Bool {
-  vllm_rank_population_is_coherent(decision: w_decide(participants: w_good_participants()))
+  match w_decide(participants: w_good_participants()) {
+    RankPopulationCoherent { provenance: _ } => true
+    RankPopulationRefused { findings: _ } => false
+  }
 }
 
 // AND ITS PROVENANCE SURVIVES THE DECISION, so a consumer requiring acquired evidence can tell that
@@ -210,4 +214,38 @@ test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool {
     RankPopulationRefused { findings: fs } => length(fs) > 4
     RankPopulationCoherent { provenance: _ } => false
   }
+}
+
+// ── THE TENSOR-PARALLEL RANK IS EXAMINED, NOT MERELY CARRIED ────────────────────────────────────
+//
+// The field was recorded and never read, so this population -- global ranks 0 and 1, exactly the
+// right count, one per selected host, distinct births, one incarnation -- read as COHERENT while
+// claiming both workers were tensor-parallel rank 0. A law named after tensor parallelism accepting
+// that is the inert-field failure, and this is its discriminating RED.
+test fn w_a_tensor_parallel_rank_that_contradicts_its_global_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [
+      vllm_rank_participant(
+        global_rank: 0, tensor_parallel_rank: 0, host: w_host_a,
+        worker_birth_identity: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
+      vllm_rank_participant(
+        global_rank: 1, tensor_parallel_rank: 0, host: w_host_b,
+        worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
+    ],
+    f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 1, tensor_parallel_rank: 0 })
+}
+
+// AND AN OUT-OF-RANGE TENSOR-PARALLEL RANK REFUSES THROUGH THE SAME ARM, which is the point of
+// checking correspondence rather than adding a separate range check that could never fire beside it.
+test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() -> Bool {
+  w_refused_with(
+    participants: [
+      vllm_rank_participant(
+        global_rank: 0, tensor_parallel_rank: 7, host: w_host_a,
+        worker_birth_identity: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
+      vllm_rank_participant(
+        global_rank: 1, tensor_parallel_rank: 1, host: w_host_b,
+        worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
+    ],
+    f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 0, tensor_parallel_rank: 7 })
 }
