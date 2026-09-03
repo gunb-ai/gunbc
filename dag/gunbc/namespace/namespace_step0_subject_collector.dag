@@ -5,6 +5,7 @@ import std.algebra { trim }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import std.decl_ref { decl_ref }
 import tools.multi_module_compile_fixture { FixtureSource }
 import gunbc.namespace_step0_canary {
   namespace_step0_canary_contract,
@@ -112,6 +113,80 @@ type Step0SubjectCollection
   = Step0SubjectCollected { vector: Step0SubjectVector }
   | Step0SubjectCollectionRefused { cause: Step0SubjectPinRefusal }
 
+// THE OBSERVATION CLASSIFIER RETURNS A CLASSIFICATION, NEVER A VECTOR, and that distinction is the
+// repair for a defect this module previously carried while its own prose denied it. The pure half
+// used to MINT the vector from three independently authored arguments -- a commit hex, a tree hex,
+// and a member list -- so any caller could pair a real tree identity with fabricated members and
+// receive a Step0SubjectCollected. sole_constructor closed direct construction and casts; it did
+// not close a public function that seals arbitrary caller-supplied contents, and the annotation
+// defended a different threat than the one that landed (it said the pure half never takes a
+// PRE-BUILT vector, which is true and irrelevant).
+//
+// So the classification carrier below is deliberately EMPTY of the population. It answers only
+// whether an observation is admissible and, when it is not, which field refused -- which is the
+// evidence the refusal ordering is worth executing -- and it cannot be turned into a vector by
+// anyone.
+type Step0SubjectObservation
+  = Step0SubjectObservationAdmissible
+  | Step0SubjectObservationRefused { cause: Step0SubjectPinRefusal }
+
+fn classify_step0_subject_observation(
+  head_commit_hex: String,
+  head_tree_hex: String,
+  members: List<Step0SubjectMember>
+) -> Step0SubjectObservation {
+  let absent_roots = step0_absent_declared_roots(paths: members |> map(m => m.path as String))
+  match git_sha1_object_id(hex: trim(s: head_commit_hex)) {
+    Absent => Step0SubjectObservationRefused {
+      cause: Step0CommitIdentityUnreadable { hex: head_commit_hex }
+    }
+    Present { value: _ } => match git_sha1_object_id(hex: trim(s: head_tree_hex)) {
+      Absent => Step0SubjectObservationRefused {
+        cause: Step0TreeIdentityUnreadable { hex: head_tree_hex }
+      }
+      Present { value: _ } =>
+        if count(members) == 0 {
+          Step0SubjectObservationRefused {
+            cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) }
+          }
+        } else if count(absent_roots) > 0 {
+          match first(absent_roots) {
+            Absent => Step0SubjectObservationRefused {
+              cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) }
+            }
+            Present { value: root } => Step0SubjectObservationRefused {
+              cause: Step0DeclaredRootAbsent { root: root }
+            }
+          }
+        } else {
+          Step0SubjectObservationAdmissible
+        }
+    }
+  }
+}
+
+// THE ONLY MINT, AND IT IS SEALED TO THE LIVE FOLD. Its arguments are values the fold is holding
+// from its own reads -- the object ids it resolved and the members it read back at that revision --
+// so "the vector came from the tree it names" is a property of WHO MAY CALL THIS rather than of a
+// check inside it. The seal is the wall: no module outside this one has an admitted call path to a
+// Step0SubjectVector at all, so pairing a valid tree identity with fabricated members is not a
+// comparison that fails, it is a program that does not compile.
+fn step0_mint_subject_vector(
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  members: List<Step0SubjectMember>
+) -> Step0SubjectVector
+  admit_callers: [
+    decl_ref(module_path: "gunbc.namespace_step0_subject_collector", decl_name: "collect_step0_subject_vector_at")
+  ]
+  = Step0SubjectVector {
+    contract_identity: namespace_step0_canary_contract.identity,
+    source_commit: source_commit,
+    source_tree: source_tree,
+    input_subject_manifest: namespace_step0_manifest_identity(),
+    members: members
+  }
+
 // THE ROOTS ARE THE FROZEN CONTRACT'S OWN, PROJECTED RATHER THAN RESTATED. Re-authoring the three
 // root literals would give the scan's scope a second authority, and a scan whose scope disagrees
 // with the contract it reports under describes a subject nobody declared.
@@ -144,26 +219,53 @@ type Step0TreeEntryDecode
   = Step0TreeEntryDecoded { entry: Step0TreeEntry }
   | Step0TreeEntryUndecodable { record: String }
 
+// THE PATH IS EVERYTHING AFTER THE FIRST TAB, and this is a correctness rule rather than a parsing
+// nicety. `git ls-tree -z` leaves pathnames UNQUOTED, so a file named `dag/a<TAB>b.dag` produces a
+// record with THREE tab-separated fields, and a decoder that reads field 1 as the path yields
+// `dag/a` -- which does not end in `.dag`, so the subject selector drops it and the entry vanishes
+// with no refusal. That is precisely the state the refusal coproduct above claims to make
+// impossible: a whole tree's identity paired with a smaller SUCCESSFUL vector. The NUL record
+// separator is what makes the first-tab split unambiguous, so this decodes such a path rather than
+// refusing it.
+type Step0RecordFields {
+  seen: Int
+  meta: String
+  path_parts: List<String>
+}
+
+fn step0_record_field_step(acc: Step0RecordFields, part: String) -> Step0RecordFields {
+  if acc.seen == 0 {
+    Step0RecordFields { seen: 1, meta: part, path_parts: [] }
+  } else {
+    Step0RecordFields { seen: acc.seen + 1, meta: acc.meta, path_parts: acc.path_parts |> list_push(part) }
+  }
+}
+
 fn step0_decode_tree_entry(record: String) -> Step0TreeEntryDecode {
-  let halves = split(s: record, delimiter: from_code_point(9))
-  match get(xs: halves, index: 0) {
-    Absent => Step0TreeEntryUndecodable { record: record }
-    Present { value: meta } => match get(xs: halves, index: 1) {
+  let fields = fold(
+    split(s: record, delimiter: from_code_point(9)),
+    init: Step0RecordFields { seen: 0, meta: "", path_parts: [] },
+    f: fn(acc, part) { step0_record_field_step(acc: acc, part: part) }
+  )
+  if fields.seen < 2 {
+    Step0TreeEntryUndecodable { record: record }
+  } else {
+    let path = join(fields.path_parts, from_code_point(9))
+    let meta_fields = split(s: fields.meta, delimiter: " ")
+    match get(xs: meta_fields, index: 0) {
       Absent => Step0TreeEntryUndecodable { record: record }
-      Present { value: path } => {
-        let fields = split(s: meta, delimiter: " ")
-        match get(xs: fields, index: 0) {
+      Present { value: mode } => match get(xs: meta_fields, index: 1) {
+        Absent => Step0TreeEntryUndecodable { record: record }
+        Present { value: kind } => match get(xs: meta_fields, index: 2) {
           Absent => Step0TreeEntryUndecodable { record: record }
-          Present { value: mode } => match get(xs: fields, index: 1) {
-            Absent => Step0TreeEntryUndecodable { record: record }
-            Present { value: kind } => match get(xs: fields, index: 2) {
-              Absent => Step0TreeEntryUndecodable { record: record }
-              Present { value: object_hex } =>
-                Step0TreeEntryDecoded {
-                  entry: Step0TreeEntry { mode: mode, kind: kind, object_hex: object_hex, path: path }
-                }
+          Present { value: object_hex } =>
+            if path == "" {
+              Step0TreeEntryUndecodable { record: record }
+            } else {
+              Step0TreeEntryDecoded {
+                entry: Step0TreeEntry { mode: mode, kind: kind, object_hex: object_hex, path: path }
+              }
             }
-          }
         }
       }
     }
@@ -283,49 +385,6 @@ fn step0_read_sources_at(revision: String, records: List<String>) -> Step0Source
   })
 }
 
-// THE PURE HALF, separated so its refusals are authorable without a host. It takes raw observations
-// -- two hex strings, the tree's own path blob, and the sources read back at that revision -- and
-// never a pre-built vector, so the refusal ordering is executable evidence rather than a claim
-// about what the live call does.
-fn assemble_step0_subject_vector(
-  head_commit_hex: String,
-  head_tree_hex: String,
-  members: List<Step0SubjectMember>
-) -> Step0SubjectCollection {
-  let absent_roots = step0_absent_declared_roots(paths: members |> map(m => m.path as String))
-  match git_sha1_object_id(hex: trim(s: head_commit_hex)) {
-    Absent => Step0SubjectCollectionRefused {
-      cause: Step0CommitIdentityUnreadable { hex: head_commit_hex }
-    }
-    Present { value: commit } => match git_sha1_object_id(hex: trim(s: head_tree_hex)) {
-      Absent => Step0SubjectCollectionRefused {
-        cause: Step0TreeIdentityUnreadable { hex: head_tree_hex }
-      }
-      Present { value: tree } =>
-        if count(members) == 0 {
-          Step0SubjectCollectionRefused {
-            cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) }
-          }
-        } else if count(absent_roots) > 0 {
-          match first(absent_roots) {
-            Absent => Step0SubjectCollectionRefused { cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) } }
-            Present { value: root } => Step0SubjectCollectionRefused { cause: Step0DeclaredRootAbsent { root: root } }
-          }
-        } else {
-          Step0SubjectCollected {
-            vector: Step0SubjectVector {
-              contract_identity: namespace_step0_canary_contract.identity,
-              source_commit: commit,
-              source_tree: tree,
-              input_subject_manifest: namespace_step0_manifest_identity(),
-              members: members
-            }
-          }
-        }
-    }
-  }
-}
-
 // THE LIVE HALF: resolve the revision, take its tree id, enumerate that revision's paths, read each
 // selected one back out of the object store at that same revision. Four observations, one revision,
 // every failure a typed refusal naming what could not be read.
@@ -347,12 +406,29 @@ fn collect_step0_subject_vector_at(ref: String) -> Step0SubjectCollection {
       } else {
         match step0_read_sources_at(revision: revision, records: step0_subject_entries_at(entries_nul: listed.entries_nul)) {
           Step0SourceReadHalted { cause: cause } => Step0SubjectCollectionRefused { cause: cause }
-          Step0SourcesRead { members: members } =>
-            assemble_step0_subject_vector(
+          Step0SourcesRead { members: members } => {
+            let tree_hex = trim(s: tree.tree)
+            match classify_step0_subject_observation(
               head_commit_hex: revision,
-              head_tree_hex: trim(s: tree.tree),
+              head_tree_hex: tree_hex,
               members: members
-            )
+            ) {
+              Step0SubjectObservationRefused { cause: cause } => Step0SubjectCollectionRefused { cause: cause }
+              Step0SubjectObservationAdmissible => match git_sha1_object_id(hex: revision) {
+                Absent => Step0SubjectCollectionRefused { cause: Step0CommitIdentityUnreadable { hex: revision } }
+                Present { value: commit } => match git_sha1_object_id(hex: tree_hex) {
+                  Absent => Step0SubjectCollectionRefused { cause: Step0TreeIdentityUnreadable { hex: tree_hex } }
+                  Present { value: tree_id } => Step0SubjectCollected {
+                    vector: step0_mint_subject_vector(
+                      source_commit: commit,
+                      source_tree: tree_id,
+                      members: members
+                    )
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

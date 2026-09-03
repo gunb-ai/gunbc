@@ -1,8 +1,15 @@
 module test.claim.namespace_step0_subject_collector_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import tools.multi_module_compile_fixture {
   FixtureSource,
   MultiModuleCompileFixture,
@@ -30,26 +37,28 @@ import gunbc.namespace_step0_subject_collector {
   Step0TreeEntry,
   step0_decode_tree_entry,
   step0_entry_is_regular_blob,
-  Step0SubjectCollection,
-  Step0SubjectCollected,
-  Step0SubjectCollectionRefused,
-  Step0SubjectPinRefusal,
+    Step0SubjectPinRefusal,
   Step0SubjectVectorEmpty,
   Step0CommitIdentityUnreadable,
   Step0TreeIdentityUnreadable,
   Step0HeadCommitUnreadable,
   Step0HeadTreeUnreadable,
   Step0TreePathsUnreadable,
-  assemble_step0_subject_vector,
+  Step0SubjectObservation,
+  Step0SubjectObservationAdmissible,
+  Step0SubjectObservationRefused,
+  classify_step0_subject_observation,
   step0_subject_paths_at,
   step0_subject_vector_paths,
   step0_subject_vector_size
 }
 
-// EVERY WITNESS IN THIS ENTRY IS PURE. The collector's live half reads the git object store, and a
-// probe of it belongs where a route that can reach that effect runs it; it lives in
-// test.claim.long.namespace_step0_subject_collector_live, beside the measurement that admitted it.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// NO WITNESS HERE CALLS THE COLLECTOR'S LIVE FOLD. The disposition is ReadsLiveTree because two
+// probes below compile a virtual module through the diagnostic census, which resolves imports
+// against the real corpus on disk -- a live read, declared rather than hidden behind the fact that
+// nothing here reads git. The live fold itself has no witness at all, and the collector module says
+// so in its own words, with the capability that would close it.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn well_formed_commit_hex() -> String {
   "20caf4eb0477c5a46d5b0d1302e337db14fcbd59"
@@ -81,10 +90,10 @@ fn one_member_per_root() -> List<Step0SubjectMember> {
   )
 }
 
-fn refusal_is_empty_subject(c: Step0SubjectCollection) -> Bool {
+fn refusal_is_empty_subject(c: Step0SubjectObservation) -> Bool {
   match c {
-    Step0SubjectCollected { vector: _ } => false
-    Step0SubjectCollectionRefused { cause: cause } => match cause {
+    Step0SubjectObservationAdmissible => false
+    Step0SubjectObservationRefused { cause: cause } => match cause {
       Step0SubjectVectorEmpty { tree_hex: _ } => true
       Step0CommitIdentityUnreadable { hex: _ } => false
       Step0TreeIdentityUnreadable { hex: _ } => false
@@ -101,10 +110,10 @@ fn refusal_is_empty_subject(c: Step0SubjectCollection) -> Bool {
   }
 }
 
-fn refusal_is_unreadable_commit(c: Step0SubjectCollection) -> Bool {
+fn refusal_is_unreadable_commit(c: Step0SubjectObservation) -> Bool {
   match c {
-    Step0SubjectCollected { vector: _ } => false
-    Step0SubjectCollectionRefused { cause: cause } => match cause {
+    Step0SubjectObservationAdmissible => false
+    Step0SubjectObservationRefused { cause: cause } => match cause {
       Step0CommitIdentityUnreadable { hex: _ } => true
       Step0SubjectVectorEmpty { tree_hex: _ } => false
       Step0TreeIdentityUnreadable { hex: _ } => false
@@ -121,10 +130,10 @@ fn refusal_is_unreadable_commit(c: Step0SubjectCollection) -> Bool {
   }
 }
 
-fn refusal_is_unreadable_tree(c: Step0SubjectCollection) -> Bool {
+fn refusal_is_unreadable_tree(c: Step0SubjectObservation) -> Bool {
   match c {
-    Step0SubjectCollected { vector: _ } => false
-    Step0SubjectCollectionRefused { cause: cause } => match cause {
+    Step0SubjectObservationAdmissible => false
+    Step0SubjectObservationRefused { cause: cause } => match cause {
       Step0TreeIdentityUnreadable { hex: _ } => true
       Step0CommitIdentityUnreadable { hex: _ } => false
       Step0SubjectVectorEmpty { tree_hex: _ } => false
@@ -176,7 +185,7 @@ test fn the_subject_filter_takes_dag_sources_under_the_contract_roots_only() -> 
 // AN EMPTY POPULATION IS AN UNOBSERVED SUBJECT, NOT A SUBJECT OF SIZE ZERO -- the same rule the
 // frozen canary applies to a planted empty observation.
 test fn an_empty_read_refuses_instead_of_reporting_an_empty_subject() -> Bool {
-  refusal_is_empty_subject(c: assemble_step0_subject_vector(
+  refusal_is_empty_subject(c: classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
     members: []
@@ -184,7 +193,7 @@ test fn an_empty_read_refuses_instead_of_reporting_an_empty_subject() -> Bool {
 }
 
 test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool {
-  refusal_is_unreadable_commit(c: assemble_step0_subject_vector(
+  refusal_is_unreadable_commit(c: classify_step0_subject_observation(
     head_commit_hex: "not-a-sha",
     head_tree_hex: well_formed_tree_hex(),
     members: one_member_per_root()
@@ -192,30 +201,24 @@ test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool {
 }
 
 test fn an_unreadable_tree_refuses_before_any_vector_is_built() -> Bool {
-  refusal_is_unreadable_tree(c: assemble_step0_subject_vector(
+  refusal_is_unreadable_tree(c: classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: "",
     members: one_member_per_root()
   ))
 }
 
-// THE POSITIVE CONTROL FOR THE PURE HALF: well-formed observations produce a vector carrying
-// exactly the tree that was observed, so the refusals above discriminate rather than being the
-// function's only behaviour.
-test fn a_well_formed_observation_produces_a_vector_bound_to_the_observed_tree() -> Bool {
-  match assemble_step0_subject_vector(
+// THE POSITIVE CONTROL FOR THE PURE HALF: a well-formed observation is ADMISSIBLE, so the refusals
+// above discriminate rather than being the classifier's only behaviour. It deliberately cannot
+// assert anything about a vector: this function does not produce one, which is the point.
+test fn a_well_formed_observation_is_admissible() -> Bool {
+  match classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
     members: one_member_per_root()
   ) {
-    Step0SubjectCollectionRefused { cause: _ } => false
-    Step0SubjectCollected { vector: vector } => match git_sha1_object_id(hex: well_formed_tree_hex()) {
-      Absent => false
-      Present { value: expected_tree } =>
-        git_object_id_eq(left: vector.source_tree, right: expected_tree)
-          && step0_subject_vector_size(vector: vector) == 3
-          && paths_contain(xs: step0_subject_vector_paths(vector: vector), want: "dag/std/types.dag")
-    }
+    Step0SubjectObservationRefused { cause: _ } => false
+    Step0SubjectObservationAdmissible => true
   }
 }
 
@@ -223,13 +226,13 @@ test fn a_well_formed_observation_produces_a_vector_bound_to_the_observed_tree()
 // the arm that stops a moved or deleted root from shrinking the population while every other field
 // still agrees with the contract.
 test fn a_declared_root_with_no_members_refuses_rather_than_narrowing_the_subject() -> Bool {
-  match assemble_step0_subject_vector(
+  match classify_step0_subject_observation(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
     members: member_at(path: "dag/std/types.dag", hex: blob_hex())
   ) {
-    Step0SubjectCollected { vector: _ } => false
-    Step0SubjectCollectionRefused { cause: cause } => match cause {
+    Step0SubjectObservationAdmissible => false
+    Step0SubjectObservationRefused { cause: cause } => match cause {
       Step0DeclaredRootAbsent { root: root } => root == "src/v2" || root == "src/v1"
       Step0SubjectVectorEmpty { tree_hex: _ } => false
       Step0CommitIdentityUnreadable { hex: _ } => false
@@ -335,4 +338,69 @@ test fn dc_probe_omitting_one_whole_module_refuses() -> Bool {
   dc_outcome_is_refused(outcome: dc_compile(sources: [
     FixtureSource { path: dc_entry_path(), content: dc_entry_source() },
   ]))
+}
+
+// THE MINT IS UNREACHABLE FROM OUTSIDE THE LIVE FOLD, AND THIS ASKS CALL REACHABILITY RATHER THAN
+// EQUALITY. The defect this replaces was not a missing check: the pure half USED to mint a
+// tree-bound vector from three independently authored arguments, so a caller could pair a real
+// tree identity with fabricated members and be handed a vector. No comparison could have caught
+// that -- every field agreed with itself. What closes it is that no module outside the collector
+// has an admitted call path to a Step0SubjectVector at all, so the attempt is a program that does
+// not compile.
+//
+// The probe is a virtual module compiled by the real compiler against the real corpus (the census
+// builtin assembles its source set by following imports), so it imports the collector and calls
+// the sealed mint the way an outside author would. Its expected result is the admission refusal,
+// not a false Bool.
+fn seal_violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data outside_caller_of_the_mint_source: String = "module probe_step0_mint_outside_caller\nimport gunbc.namespace_step0_subject_collector { Step0SubjectVector, Step0SubjectMember, step0_mint_subject_vector }\nimport extdeps.git.object_store { GitObjectId }\nfn probe_forge(commit: GitObjectId, tree: GitObjectId, members: List<Step0SubjectMember>) -> Step0SubjectVector {\n  step0_mint_subject_vector(source_commit: commit, source_tree: tree, members: members)\n}\n"
+
+// THE GREEN CONTROL FOR THE SAME PROBE SHAPE, and it is what makes the red above attributable. An
+// outside module that imports this collector and calls a PUBLIC function of it compiles with no
+// admission refusal -- so the red arm is the SEAL firing, not the import failing, the module being
+// unreachable, or the census refusing to run.
+data outside_caller_of_a_public_fn_source: String = "module probe_step0_public_outside_caller\nimport gunbc.namespace_step0_subject_collector { step0_subject_paths_at }\nimport std.types { List, String }\nfn probe_paths(blob: String) -> List<String> {\n  step0_subject_paths_at(paths_nul: blob)\n}\n"
+
+test fn an_outside_module_has_no_admitted_call_path_to_the_vector_mint() -> Bool {
+  seal_violation_count(source: outside_caller_of_the_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn an_outside_module_calling_a_public_collector_fn_is_not_refused() -> Bool {
+  seal_violation_count(source: outside_caller_of_a_public_fn_source, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// A PATHNAME CONTAINING A TAB SURVIVES DECODING AND STAYS IN THE SUBJECT. `git ls-tree -z` leaves
+// pathnames unquoted, so such a record carries three tab-separated fields; a decoder that reads
+// field 1 as the path yields a truncated name that does not end in `.dag`, the selector drops it,
+// and the entry disappears with NO refusal -- the whole tree's identity paired with a smaller
+// SUCCESSFUL vector, which is the one state the refusal coproduct exists to make impossible. The
+// corpus has no such file today and that is not the boundary that decides: the RED is authorable
+// as a fixture, so the wall is owed.
+fn tabbed_path() -> String {
+  concat("dag/a", concat(from_code_point(9), "b.dag"))
+}
+
+fn tabbed_record() -> String {
+  concat("100644 blob 1111111111111111111111111111111111111111", concat(from_code_point(9), tabbed_path()))
+}
+
+test fn a_pathname_containing_a_tab_decodes_whole_rather_than_truncating() -> Bool {
+  match step0_decode_tree_entry(record: tabbed_record()) {
+    Step0TreeEntryUndecodable { record: _ } => false
+    Step0TreeEntryDecoded { entry: entry } =>
+      entry.path == tabbed_path() && entry.mode == "100644" && entry.kind == "blob"
+  }
+}
+
+test fn a_pathname_containing_a_tab_stays_in_the_subject() -> Bool {
+  paths_contain(
+    xs: step0_subject_paths_at(paths_nul: concat(tabbed_path(), from_code_point(0))),
+    want: tabbed_path()
+  )
 }
