@@ -94,6 +94,18 @@
 //! main with four hard errors because NO CLOSURE REACHES IT. An orphan module's import claims
 //! are checked here and nowhere else.
 
+// CLIPPY ROSTER -- 2 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::empty_line_after_doc_comments,  // 1
+    clippy::items_after_test_module,  // 1
+)]
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
@@ -1729,20 +1741,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "gunbc_ci_managed_host_fixed_overhead_disposition",
         "gunbc.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
-        "",
-    ),
-    (
-        "gunbc.ci_heal_credential",
-        "ci_heal_job_ref",
-        "gunbc.ci_workflow",
-        "ci_heal_generated_artifacts_job",
-        "",
-    ),
-    (
-        "gunbc.ci_heal_credential",
-        "ci_heal_workflow_ref",
-        "gunbc.ci_workflow",
-        "ci_workflow",
         "",
     ),
     (
