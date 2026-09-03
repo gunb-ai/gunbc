@@ -9,9 +9,7 @@ import gunbc.harness.harness_turn {
   TurnResponseUnreadable, TurnRequestUnwritable,
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
-import gunbc.harness.harness_wire { harness_srv5_backend_url }
-import gunbc.spark.serving_desired { spark_serving_desired_model_ref }
-import extdeps.ollama.api { ollama_model_ref_wire }
+import gunbc.harness.harness_wire { harness_router_backend_url, harness_router_model }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -29,7 +27,7 @@ import extdeps.ollama.api { ollama_model_ref_wire }
 // spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
 // backend carried a structured cause; that is the argument for keeping the body on a failed post.
 fn harness_default_model() -> String {
-  ollama_model_ref_wire(ref: spark_serving_desired_model_ref)
+  harness_router_model
 }
 
 // THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
@@ -59,15 +57,7 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 
 fn harness_macbook_config() -> HarnessTurnConfig {
   HarnessTurnConfig {
-    // WHICH SPARK IS A DEFAULT HERE AND THAT IS A KNOWN GAP, recorded because the run that
-    // exposed it is the reason this line changed. The first wet probe went to srv6 and the
-    // transport failed: that host was answering /api/version earlier the same session and had
-    // since stopped. Nothing in the harness observes which backend is serving before choosing
-    // one, so the failure arrived as a transport refusal naming a URL rather than as "the host
-    // you selected is not up". Selecting a backend from observed serving standing is DCH-0's
-    // subject, not this module's, and until it lands the choice is a declared literal that says
-    // so rather than a silent preference.
-    backend_url: harness_srv5_backend_url(),
+    backend_url: harness_router_backend_url(),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     system_prompt: harness_default_system_prompt,

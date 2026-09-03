@@ -315,8 +315,12 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
 // when both units moved to the wireless SSID.
 data harness_messages_path: String = "/v1/messages"
 
+fn harness_backend_url_on_port(address: String, port: Int) -> String {
+  join(["http://", address, ":", to_string(value: port), harness_messages_path], "")
+}
+
 fn harness_backend_url(address: String) -> String {
-  join(["http://", address, ":", to_string(value: ollama_default_port), harness_messages_path], "")
+  harness_backend_url_on_port(address: address, port: ollama_default_port)
 }
 
 fn harness_srv6_backend_url() -> String {
@@ -325,4 +329,96 @@ fn harness_srv6_backend_url() -> String {
 
 fn harness_srv5_backend_url() -> String {
   harness_backend_url(address: srv5_host_lan_endpoint.address)
+}
+
+// THE SECOND PAIR, AS ADDRESSES RATHER THAN HOST IDENTITIES, and the distinction is the whole
+// reason these rows are here instead of in fleet_intent_network.
+//
+// FOUR HOSTS WERE SURVEYED ON 2026-09-02 AND NO TWO ARE ALIKE. Recorded as a measurement because
+// the differences are what select the row below, and every one of them is invisible to the corpus:
+//
+//   .232  reachable, ZERO models -- /api/tags returns an empty list, /v1/models a null data member
+//   .233  held the desired model, then went unreachable within the same minute
+//   .225  unreachable (operator: out of memory, expected to return)
+//   .226  reachable, eight models including the desired one, stable across the whole session
+//
+// TWO INDEPENDENT GAPS PRODUCE THAT TABLE, and neither is this module's to close.
+//
+// Residency (DCH-0b): spark_serving_desired_manifest governs exactly one member, so "which models
+// this host holds" is representable nowhere. A harness choosing a backend from one authority and a
+// model from another produces a pairing only the wire can refuse -- which is exactly what happened,
+// as a not_found_error naming the model, on the first request to .232.
+//
+// Liveness: nothing observes whether a chosen backend is serving before it is chosen. The hosts
+// that HOLD models are the ones dropping out, which is consistent with memory pressure under load
+// rather than with configuration alone, so the failure is expected to recur rather than to have
+// been a one-off.
+//
+// The row below therefore names the host measured to be both reachable and holding the model, and
+// says outright that this is an observation with a shelf life. Selecting a backend from observed
+// serving standing is DCH-0's subject and dissolves all of these functions when it lands.
+//
+// WHY NOT AN ENDPOINT ROW BESIDE srv5/srv6. In gunbc.fleet_intent_network, membership in
+// `endpoints` IS enrollment -- that module says so about itself -- and enrolling srv7/srv8 needs a
+// fact that does not exist in data: WHICH unit takes which slot. The second pair is described in
+// prose there as spark-c2b1 at .232 and spark-ac79 at .233, but unlike srv5/srv6 -- whose
+// assignment was decided under an explicit operator delegation on a recorded ascending-address
+// basis, precisely so the tie-break would be attributable -- no such decision exists for this pair.
+// Authoring `srv7_host_lan_endpoint` would therefore invent the mapping, which is the exact failure
+// that module's own note records a lane committing once already.
+//
+// So these rows name ADDRESSES and assert nothing about identity. That is also the more honest
+// layer: which backend the harness sends inference to is sense TWO of "provider" in
+// gunbc.provider_interface_binding's homonym note -- a backend selection, not a fact about fleet
+// membership -- and the earlier srv5/srv6 helpers above borrow a fleet row for it only because one
+// happened to exist. Selecting a backend from OBSERVED serving standing is DCH-0's subject and
+// dissolves all four of these functions when it lands.
+data harness_operator_directed_backend_primary: String = "192.168.1.226"
+
+data harness_operator_directed_backend_secondary: String = "192.168.1.233"
+
+fn harness_primary_backend_url() -> String {
+  harness_backend_url(address: harness_operator_directed_backend_primary)
+}
+
+fn harness_secondary_backend_url() -> String {
+  harness_backend_url(address: harness_operator_directed_backend_secondary)
+}
+
+// THE SERVING STACK THE OPERATOR ACTUALLY RUNS FOR THIS WORK, which is not the one every row above
+// assumes, and the difference is worth stating because it invalidated four probes before it was
+// found.
+//
+// Everything above reaches an OLLAMA daemon on its default port and asks Ollama-shaped questions.
+// .232 and .233 answer there too -- same version string, same 200s -- with an EMPTY store, because
+// on those two hosts Ollama is not what serves: a llama-server pair sits behind a router on
+// .188:3738, holding deepseek-v4-flash split across both machines. So the Ollama surface on those
+// hosts is live, truthful and completely beside the point, which is the worst shape a wrong probe
+// can have -- it answers, so nothing refuses, and the emptiness reads as "no models" rather than as
+// "you are asking the wrong daemon".
+//
+// TWO CONSEQUENCES FOR THE MODEL. The router's model identity is deepseek-v4-flash:iq3s-split and
+// it is NOT gunbc.spark.serving_desired's desired model: that authority governs the Ollama serving
+// unit's single converged member, and this is a different serving realization with its own
+// identity, its own residency and its own lifecycle. Citing the spark desired row here would be a
+// meaning fork -- one name over two serving stacks -- so the router's model is declared beside the
+// router, and the earlier ollama_model_ref_wire citation stays correct for the surface it names.
+//
+// The port is a parameter now for the same reason the address was: 11434 is Ollama's, 3738 is this
+// router's, and a helper that could only spell one of them made the second stack unreachable
+// without an edit rather than a row.
+//
+// Measured 2026-09-03: /v1/models advertises exactly this id, /props answers 200, and a
+// /v1/messages request returns Anthropic-shaped content blocks -- a thinking block, a stop_reason
+// and a usage object -- so this codec speaks to it unchanged. That last fact is what DCH-1's
+// shared-standard modelling bought: a second implementation of the same wire reused the decoder
+// with no second decoder written.
+data harness_router_address: String = "192.168.1.188"
+
+data harness_router_port: Int = 3738
+
+data harness_router_model: String = "deepseek-v4-flash:iq3s-split"
+
+fn harness_router_backend_url() -> String {
+  harness_backend_url_on_port(address: harness_router_address, port: harness_router_port)
 }
