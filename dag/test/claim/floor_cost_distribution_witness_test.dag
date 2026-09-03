@@ -139,9 +139,14 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
 // header is one field shorter and index 6 holds `cost_line_ms`, the constant 100. A positional
 // parser reads that as a step count and produces microseconds-per-step near 2500 instead of near
 // 2: not an error, a PLAUSIBLE NUMBER, which is why this is a refusal and not a warning.
+//
+// THE NAME OF THIS ARM SAID `yields_no_rows` UNTIL THE ARTIFACT PARSE BECAME TOTAL, and by then it
+// described the opposite of what the arm asserts: an old-vintage header now REFUSES with a located
+// `HeaderNotReadable` rather than producing an empty list. A stale name on a repaired assertion is
+// how the next reader is told the vanish was intended.
 data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
 
-test fn an_artifact_without_the_steps_column_yields_no_rows_rather_than_reading_the_next_one() -> Bool {
+test fn an_artifact_without_the_steps_column_refuses_rather_than_reading_the_next_one() -> Bool {
   match parse_claim_cost_tsv(text: old_vintage_tsv) {
          ArtifactRows { rows: _ } => false
          ArtifactRefused { cause: c } => match c {
@@ -201,7 +206,7 @@ test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
 // A ROW WHOSE DECLARED KIND DOES NOT MATCH THE COLUMNS IT FILLED IS REFUSED, never repaired from
 // the other arm. Recovering a figure from the opposite column is exactly the promotion this file
 // exists to prevent, and it would be invisible because the recovered number is well-formed.
-test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row() -> Bool {
+test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row_so_the_artifact_refuses() -> Bool {
   match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\tobserved\t402\t\t513\t509\t8000\t500\tcpu_deadline\t900\t100", columns: sample_columns) {
     Present { value: _ } => false
     Absent => match parse_claim_cost_line(line: "m.x\tm\tbudget_interrupted\tfalse\tright_censored\t402\t400\t\t\t\t\t\t900\t100", columns: sample_columns) {
@@ -248,10 +253,24 @@ test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool
   }
 }
 
-// THE DISCRIMINATING RED FOR THE PARSER, and it is the one that matters: a short or unparseable
-// line must produce NO row rather than a zero-cost one. A fabricated zero would sit silently in
-// the bottom band and make the population look safer than it is.
-test fn an_unparseable_line_yields_no_row_rather_than_a_zero_cost_row() -> Bool {
+// THE LINE-LEVEL HALF: `Absent` HERE IS AN INTERNAL SIGNAL, NOT A DISPOSITION. A short or
+// unparseable line must not yield a fabricated zero, which would sit silently in the bottom band
+// and make the population look safer than it is. What it yields instead is `Absent` -- and that is
+// consumed by `parse_claim_cost_tsv`, which turns it into `MalformedDataRow` and REFUSES the whole
+// artifact. The row does not vanish; this function simply is not where its fate is decided.
+//
+// THE NAME AND COMMENT THIS ARM USED TO CARRY WERE THE SAME TWO-OPTION REASONING THAT PRODUCED
+// THIS PR'S SECOND BLOCKER, and it sat in this file directly beneath the witness that carried the
+// first. It read "THE DISCRIMINATING RED FOR THE PARSER, and it is the one that matters: a short
+// or unparseable line must produce NO row rather than a zero-cost one" -- fabricate versus vanish,
+// with refuse absent from the enumeration, and it asserted itself as the disposition that decides.
+// Left standing beside the repair it would have been a witness contradicting its own module: a
+// reader would have taken it as licensing the vanish, which is exactly how a defect acquires a
+// passing test that defends it.
+//
+// The ASSERTION is unchanged and still earns its place -- the line parser must never fabricate.
+// Only the claim about what that `Absent` MEANS is corrected.
+test fn an_unparseable_line_yields_no_row_so_the_artifact_can_refuse_it() -> Bool {
   match parse_claim_cost_line(line: "m.broken\tm\tpass", columns: sample_columns) {
     Present { value: _ } => false
     Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\tobserved\t10\tNOT-A-NUMBER\t\t\t\t\t\t1\t100", columns: sample_columns) {
