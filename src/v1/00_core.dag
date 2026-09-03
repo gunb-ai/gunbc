@@ -2435,6 +2435,49 @@ fn module_path_segments(path: String) -> List<String> {
   if path == "" { [] } else { path |> split(delimiter: ".") }
 }
 
+// ONE SEMANTIC FACT, TWO AUTHORED CARRIERS. "This position is optional" is spelled two ways that
+// both survive normalization: `T?` carries it in return_cardinality, and an explicitly written
+// `Optional<T>` carries it in the type NAME at cardinality Required. A predicate testing ONE carrier
+// reads the other as its NEGATION, and is not detectably incomplete by reading it -- it is clean,
+// total, and silently half-scoped.
+//
+// THIS IS NOT THE FIX FOR THAT CLASS AND MUST NOT BE CITED AS ONE. The construction move is
+// canonicalization at normalization, which would make every cardinality-only test correct without
+// being touched; a shared predicate that callers must REMEMBER is validation standing where
+// construction was available, and it leaves the eighteenth half-scoped test as writable as the
+// first. It exists to collapse three divergent expressions of one concept into one authority
+// (DESIGN section 2), not to close the class.
+//
+// The name comparison goes through qualified_last_segment: a bare `name == "Optional"` misses the
+// qualified authoring, which is its own separately filed defect.
+// DECLARED SUBJECT OF THE optional-into-required CHECK, written down because it twice existed only
+// in its author's head and both times the predicate asked a question nobody had stated it was
+// asking -- which is exactly the thing review cannot catch.
+//
+//   SUBJECT: a COMPUTED optional -- a first()/last() result, an optional field read, any expression
+//   whose type carries optionality -- reaching a position DECLARED required.
+//
+// Everything else is an EXPLICIT EXCLUSION with a reason, and a future red outside this sentence is
+// a scope violation to be read rather than output to be explained:
+//
+//   EXCLUDED -- a bare `none` literal. Its type is decided BY the position it lands in, so it is not
+//   a value flowing into one. Whether a position admits a bare none is a different question with a
+//   different owner (field_type_admits_bare_none); this check routes to it rather than re-deciding.
+//   Measured: `takes_opt(x: none)` against `fn takes_opt(x: Thing?)` was refused, and 146 corpus
+//   sites reached through one helper's `else_stmt: TsStmt?` calls were the same false positive.
+//
+//   EXCLUDED -- required-into-optional. Widening loses nothing.
+//
+//   NOT COVERED -- an explicitly-spelled Optional<T> VALUE reaching a required position. The
+//   DECLARED side recognizes both spellings (below); the PRODUCED side tests cardinality only, which
+//   is a stated gap rather than a decision, because widening it enlarges an unmeasured population.
+fn node_carries_optional(n: Node) -> Bool {
+  match n.return_cardinality {
+    CardOptional => true
+    Required => qualified_last_segment(name: n.name) == "Optional" && (n.children |> count) == 1
+  }
+}
+
 fn qualified_last_segment(name: String) -> String {
   match module_path_segments(path: name) |> last {
     Present { value: s } => s

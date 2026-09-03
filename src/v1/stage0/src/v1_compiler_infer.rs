@@ -280,6 +280,7 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
+    node_carries_optional,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -1502,6 +1503,21 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
         ))
 }
 
+pub fn expr_is_bare_none_at(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            (crate::v1_std_core::expr_var_name_at(texpr.clone(), source_indices.clone())
+                == "None".to_string())
+        }
+        _ => false,
+    }
+}
+
 pub fn optional_into_required_error(
     declared: Rc<Node>,
     span: Rc<SourceSpan>,
@@ -1520,8 +1536,10 @@ pub fn optional_into_required_error(
 }
 
 pub fn optional_into_required_mismatch(declared: Rc<Node>, produced: Rc<Node>) -> bool {
-    ((produced.return_cardinality.clone() == Cardinality::CardOptional)
-        && (declared.return_cardinality.clone() != Cardinality::CardOptional))
+    match produced.return_cardinality.clone() {
+        Cardinality::CardOptional => (node_carries_optional(declared.clone()) == false),
+        Cardinality::Required => false,
+    }
 }
 
 pub fn declared_type_conformance_diags(
@@ -3500,10 +3518,7 @@ pub fn equality_operand_admission(
         } else {
             {
                 let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-                if ((peeled.return_cardinality.clone() == Cardinality::CardOptional)
-                    || ((peeled.name.clone() == "Optional".to_string())
-                        && ((peeled.children.clone().len() as i64) == 1)))
-                {
+                if node_carries_optional(peeled.clone()) {
                     equality_operand_admission(
                         crate::v1_compiler_infer_types::extract_optional_inner_node(peeled.clone()),
                         scope.clone(),
@@ -6524,7 +6539,7 @@ if match (*actual_expr.expr_data.clone()).clone() {
                     {
                         let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-if optional_into_required_mismatch(formal.clone(), actual_raw.clone()) {
+if ((expr_is_bare_none_at(actual_expr.clone(), source_indices.clone()) == false) && optional_into_required_mismatch(formal.clone(), actual_raw.clone())) {
                             Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::OptionalValueInRequiredPosition {
     declared: crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()),
     span: actual_expr.span.clone(),
@@ -12867,7 +12882,7 @@ Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape
 };
 let formal_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
 let actual_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
-if optional_into_required_mismatch(expected_node.clone(), got_node.clone()) {
+if ((expr_is_bare_none_at(ar_typed.clone(), scope.type_env.clone().source_indices.clone()) == false) && optional_into_required_mismatch(expected_node.clone(), got_node.clone())) {
                             Rc::new(vec![optional_into_required_error(expected_node.clone(), ar_typed.span.clone(), scope.clone())])
                         } else {
                             if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clone(), scope.type_env.clone(), scope.type_env.clone().source_indices.clone()) {

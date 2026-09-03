@@ -1164,8 +1164,17 @@ fn optional_into_required_error(declared: Node, span: SourceSpan, scope: InferSc
   )
 }
 
+// The two sides are judged ASYMMETRICALLY and that is deliberate. The DECLARED side recognizes both
+// spellings, because failing to recognize one refuses a correct program -- the expensive direction.
+// The PRODUCED side tests cardinality only, which is the narrow case this repair is scoped to; an
+// explicitly-spelled Optional<T> VALUE flowing into a required position is a real defect too, and
+// widening to catch it would enlarge a population that has not been measured. Stated rather than
+// implied so the gap is inspectable.
 fn optional_into_required_mismatch(declared: Node, produced: Node) -> Bool {
-  produced.return_cardinality == CardOptional && declared.return_cardinality != CardOptional
+  match produced.return_cardinality {
+    CardOptional => node_carries_optional(n: declared) == false
+    Required => false
+  }
 }
 
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
@@ -1243,10 +1252,13 @@ fn field_type_admits_bare_none(ft: Node, scope: InferScope) -> Bool {
   ft.return_cardinality == CardOptional || declares_none_variant
 }
 
-fn expr_is_bare_none_reference(texpr: Node, scope: InferScope) -> Bool {
+// Takes source_indices rather than an InferScope because that is all it reads, and narrowing it is
+// what lets the direct-call argument seam -- which has no InferScope -- call THIS function instead
+// of keeping a second copy that must be hand-kept in agreement with it (DESIGN section 3).
+fn expr_is_bare_none_reference(texpr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
     ExprVar { binding_kind: _ } =>
-      expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices) == "None"
+      expr_var_name_at(texpr: texpr, source_indices: source_indices) == "None"
     _ => false
   }
 }
@@ -1262,7 +1274,7 @@ fn bare_none_field_construction_diags(
     Absent => []
     Present { value: ft } =>
       let value_expr = field_init_node_value(n: fi)
-      if expr_is_bare_none_reference(texpr: value_expr, scope: scope)
+      if expr_is_bare_none_reference(texpr: value_expr, source_indices: scope.type_env.source_indices)
         && field_declared_type_is_identified(ft: ft, scope: scope)
         && field_type_admits_bare_none(ft: ft, scope: scope) == false {
         [make_error_node(
@@ -2525,7 +2537,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
     equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false)
   } else {
     let peeled = normalize_access_type_node(n: n)
-    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
+    if node_carries_optional(n: peeled) {
       equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth)
     } else {
       let name = authored_name_at(source_indices: source_indices, node: peeled)
@@ -4394,7 +4406,8 @@ fn direct_call_arg_mismatch_diags(
           } else {
           let actual_raw = resolved_type(n: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if optional_into_required_mismatch(declared: formal, produced: actual_raw) {
+          if expr_is_bare_none_reference(texpr: actual_expr, source_indices: source_indices) == false
+            && optional_into_required_mismatch(declared: formal, produced: actual_raw) {
             [make_error_node(
               diagnostic: OptionalValueInRequiredPosition {
                 declared: node_type_shape(n: formal, source_indices: source_indices),
@@ -7715,7 +7728,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
           let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
           let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
-          if optional_into_required_mismatch(declared: expected_node, produced: got_node) {
+          if expr_is_bare_none_reference(texpr: ar_typed, source_indices: scope.type_env.source_indices) == false
+            && optional_into_required_mismatch(declared: expected_node, produced: got_node) {
             [optional_into_required_error(declared: expected_node, span: ar_typed.span, scope: scope)]
           } else if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(

@@ -4646,6 +4646,16 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
     }
 }
 
+pub fn node_carries_optional(n: Rc<Node>) -> bool {
+    match n.return_cardinality.clone() {
+        Cardinality::CardOptional => true,
+        Cardinality::Required => {
+            ((qualified_last_segment(n.name.clone()) == "Optional".to_string())
+                && ((n.children.clone().len() as i64) == 1))
+        }
+    }
+}
+
 pub fn qualified_last_segment(name: String) -> String {
     match module_path_segments(name.clone()).last().cloned() {
         Some(s) => s.clone(),
