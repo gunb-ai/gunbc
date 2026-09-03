@@ -76,14 +76,7 @@ and no error — because `substituted` did not exist before the repair, the RED 
 that a function which refuses, refuses, and not that the mechanism it replaced failed open. All three
 in `substituted_refuses_on_absent_pattern`. Honest placement: these execute under
 `cargo test --workspace`, not under the required lane, which runs `--lib` only and merely compiles bin
-targets.
-
-*The primitive is not specific to this repository.* While adding that counterfactual, the editing
-script used a Python `str.replace()` whose pattern did not match; it returned the file unchanged, the
-formatter reported an unrelated modification, the command exited 0, and the remote run came back green
-— because it ran the two tests that were already there. The count (`2 passed`, not 3) was the only
-tell; the colour was not. A silent no-op on a missed pattern is the same fail-open arm in a different
-language, and reading a run's test NAMES rather than its exit code is what surfaced it.
+targets. The incident that produced the counterfactual is recorded in its own section below.
 
 **Mint side** — the same coupling in the opposite direction, where the seed CONSTRUCTS a value the
 `.dag` side then destructures: 262 `type_name:`/`variant_name: ctx.sym("Lit")` sites and 198
@@ -105,6 +98,44 @@ substring-matched). I looked for all three:
 
 So the name-keyed primitives are the whole live population, and P3/P5 are exactly what a grep written
 from the #9975 specimen (`sym_eq`) would have missed: 97 further sites in 9 files.
+
+## The class reproduced on the author, inside the repair, within the hour
+
+This is recorded as evidence rather than as an anecdote: it is the only observation in this document
+that shows the class arising rather than being inventoried, and it happened to the person writing the
+inventory.
+
+While adding the counterfactual test to the P6 repair — the repair whose entire subject is
+`str::replace` failing open on a missed pattern — the editing script used a Python `str.replace()`
+whose pattern did not match, because the escaping of `\n` and `\"` differed between the script and the
+file. Every signal available agreed with success:
+
+| signal | said | actual |
+|---|---|---|
+| `str.replace()` return | a string | the file, unchanged |
+| `cargo fmt` | "modified 1 file" | an unrelated reformat |
+| command exit code | `0` | the edit never applied |
+| remote `cargo test` | **green** | ran the two tests that already existed |
+| `test result: ok. 2 passed` | ok | the third test was never written |
+
+**The count was the only tell, and the colour was not.** `2 passed` where `3` was expected is the
+entire discriminating signal; it was caught by reading the run's test NAMES out of the log rather than
+its exit code, which was luck of habit and not of design.
+
+Three things follow, and none of them are about Python.
+
+1. **The primitive is not `.dag`- or seed-specific.** A silent no-op on a missed pattern reproduced in
+   a different language, against a different file, one hour after the paragraph explaining why it is
+   dangerous was written. That is the strongest available evidence that the population estimated above
+   is a floor rather than a ceiling: the class does not require the seed/authority seam to occur, only
+   a substitution whose failure arm widens.
+2. **Assert the pattern is PRESENT before replacing.** The edits in this PR that worked did exactly
+   that; the one that vanished did not. That is the whole difference between them.
+3. **A green run is not evidence that a test EXISTS.** A test run reports the tests that are there,
+   never the ones you meant to add — so a vanished edit and a passing suite are indistinguishable by
+   colour, exit code, or any single-number summary. Read names and counts. The same shape appears as a
+   vacuous `0 passed; 0 failed; N filtered out`, and both are caught by ARITHMETIC rather than by
+   suspicion.
 
 ## Which authorities the seed decodes
 
