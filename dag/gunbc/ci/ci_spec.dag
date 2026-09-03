@@ -1768,29 +1768,12 @@ fn ci_heal_shell_lines() -> List<String> {
 }
 
 // THE PUSHED HEAD IS NOT REVALIDATED BY THIS JOB, AND THE JOB SAYS SO RATHER THAN IMPLYING IT.
-// CORRECTED 2026-09-03: THE ARM BELOW IS RIGHT AND THE MECHANISM THIS ANNOTATION GAVE FOR IT WAS
-// NOT. It said a push made with the Actions job credential does not start a workflow run, because
-// GitHub suppresses that edge to stop a job from triggering itself. A pull_request run IS created
-// for the healed head. What GitHub withholds is EXECUTION: the created run is held, concluding
-// without starting a single job. The population, the per-run receipts and the re-derivation recipe
-// are carried once, in gunbc.rung_drop floor_cut_heal, and are deliberately not restated here --
-// two homes for one count is the fork this repository keeps paying for.
-//
-// SO AFTER A SUCCESSFUL HEAL the pull request's EXECUTED checks still describe PRIOR_HEAD and no
-// longer describe the branch. That is a real gap and the arm below is the fail-closed answer to
-// it: the job prints SupersededByHealedHead naming both revisions and EXITS NONZERO, so the healed
-// head arrives with a red job whose text says why. It does not exit zero on a head nothing has
-// judged.
-//
-// TWO CONSEQUENCES THE OLD MECHANISM CONCEALED, because a HELD judge is not an ABSENT one. The
-// human action that releases the healed head is an approve on THAT SPECIFIC HELD RUN, not a re-run
-// of some other run -- re-running a run that was never the held one leaves the gate where it was.
-// And a dispatched revalidation is a SECOND run on that head rather than the only one, so it costs
-// a whole additional run and its check runs land beside the held run's on one commit, where a
-// reader keyed by check NAME cannot separate them. That cost buys something measured rather than
-// duplicating what would have happened anyway: the hold discriminates on the EVENT and not on the
-// identity or the token, so a dispatched run is the only route to the healed head that executes
-// without a human -- again, receipts in gunbc.rung_drop floor_cut_heal.
+// A push made with the Actions job credential does not start a new workflow run -- GitHub
+// suppresses that edge to stop a job from triggering itself -- so after a successful heal the
+// pull request's checks describe PRIOR_HEAD and no longer describe the branch. That is a real
+// gap and the arm below is the fail-closed answer to it: the job prints SupersededByHealedHead
+// naming both revisions and EXITS NONZERO, so the healed head arrives with a red job whose text
+// says why, and a human or a re-run decides. It does not exit zero on a head nothing has judged.
 //
 // WHAT WOULD CLOSE IT, named as a capability rather than as an artifact: a workflow_dispatch
 // entry point on this same workflow carrying the healed sha as a declared input, which every
