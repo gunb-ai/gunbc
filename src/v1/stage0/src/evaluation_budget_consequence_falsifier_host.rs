@@ -917,9 +917,32 @@ fn finalize(
             long,
         );
         if !completed_zero(&removed) {
-            return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
-                observation: removed,
-            });
+            // GIT DECLINING TO REMOVE IT IS NOT THE SAME FACT AS THE DIRECTORY SURVIVING, and this
+            // repository is a SHARED checkout: a `git worktree prune` run by any other session
+            // deregisters this instrument's worktree mid-transaction, after which `worktree remove`
+            // answers "is not a working tree" for a directory that is still very much there. That is
+            // an environmental event about the registry, not a fact about the subject -- the same
+            // distinction `ExperimentWorktreeUnregistered` already draws on the build path, drawn
+            // here on the teardown path rather than duplicated as a second notion of the same thing.
+            //
+            // The obligation this function actually owes is that OUR directory is gone and no
+            // registration of ours survives. When git has already forgotten the path, discharging
+            // that obligation is ours to finish, so we remove the tree directly. This does NOT widen
+            // the refusal: every post-condition below still runs unchanged, and a directory or a
+            // registration that survives this still refuses. The path is our own scratch directory
+            // under a name this run generated, so nothing else can be addressed by it.
+            let deregistered = matches!(
+                &removed,
+                CommandObservation::Completed { exit_code, stderr, .. }
+                    if *exit_code != 0 && stderr.text().contains("is not a working tree")
+            );
+            if deregistered {
+                let _ = std::fs::remove_dir_all(worktree);
+            } else {
+                return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
+                    observation: removed,
+                });
+            }
         }
     }
     let _ = git(repo_root, &["worktree", "prune"], short);
