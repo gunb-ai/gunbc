@@ -23,16 +23,22 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 // single engine incarnation. Every refusal arm below is a way that observation could have come back
 // wrong.
 
-// PROVENANCE IS STRUCTURAL SO A FIXTURE CANNOT BECOME PRODUCTION EVIDENCE.
+// THIS MODULE MAKES NO ACQUISITION CLAIM, AND THAT IS WHY IT CARRIES NO PROVENANCE.
 //
-// A hermetic fixture and an acquired observation are both "a list of participants", and the whole
-// value of this law is that its accepted arm means something. If a test-built population could be
-// relabelled as acquired, the first consumer to accept a coherent decision would be accepting a
-// fixture. The provenance travels with the observation and the decision carries it forward, so a
-// consumer that requires acquired evidence can demand it rather than trust it.
-type VllmObservationProvenance
-  = HermeticFixture
-  | AcquiredFromHostVantage
+// An earlier version had the observation carry `HermeticFixture | AcquiredFromHostVantage` and the
+// decision carry it forward, so a consumer needing acquired evidence could demand it. The acquired
+// arm was minted by wrapping each host in a `VllmHostVantage` -- a constructor that took a host name
+// and nothing else. That did not cost a connection, an executed host effect, or a capture: it changed
+// the free relabel from one keyword into one wrapper call per host. Naming the wrapper after the
+// vantage did not make it one.
+//
+// The honest shape is that the DECLARING side owns the claim. This kernel decides whether a declared
+// population is coherent, which is a pure question about ranks, hosts and identities; the future host
+// adapter owns `VllmAcquiredJoinedObservation`, mints acquisition from a real executed observation,
+// projects its semantic fields into this law, and joins its own acquired record to the coherent
+// decision to make a production receipt. The adapter earns provenance. The kernel cannot, so it does
+// not claim it -- an acquisition vocabulary in a module whose stated scope is "nothing here acquires
+// anything" is the decoration this module refuses everywhere else.
 
 // AN ENGINE INCARNATION, WHICH IS NOT A VERSION STRING.
 //
@@ -109,79 +115,23 @@ fn vllm_rank_participant(
 // downstream can tell them apart from the list, so the collector must say which it was, and a
 // partial return refuses rather than being read as a population with a gap.
 //
-// THE PARTICIPANTS LIVE INSIDE THE OBSERVATION, WHICH IS WHAT MAKES THE PROVENANCE MEAN ANYTHING.
-// They were previously a separate argument beside it, so a caller could hand fixture-built
-// participants to an observation stamped `AcquiredFromHostVantage` and read acquired coherence back
-// out -- provenance as a label a caller applies to someone else's data rather than a fact about
-// where that data came from. A list and its provenance are one act of collection; splitting them let
-// the accepted arm be laundered, so they are one value.
+// THE PARTICIPANTS LIVE INSIDE THE OBSERVATION, so what is decided is one declared collection rather
+// than a list and a completeness flag that were assembled separately and happen to be passed together.
 type VllmJoinedObservation sole_constructor {
-  provenance: VllmObservationProvenance
   incarnation: VllmEngineIncarnation
   returned_completely: Bool
   participants: List<VllmRankParticipant>
 }
 
-// A FIXTURE OBSERVATION IS STAMPED, NOT ARGUED. There is no constructor that takes a provenance, so
-// the hermetic path cannot name itself acquired however it is called.
-fn vllm_fixture_observation(
+fn vllm_declared_joined_observation(
   incarnation: VllmEngineIncarnation,
   returned_completely: Bool,
   participants: List<VllmRankParticipant>,
 ) -> VllmJoinedObservation {
   VllmJoinedObservation {
-    provenance: HermeticFixture,
     incarnation: incarnation,
     returned_completely: returned_completely,
     participants: participants,
-  }
-}
-
-// A VANTAGE IS THE PLACE A PARTICIPANT WAS READ FROM, and it is the price of the acquired stamp.
-type VllmHostVantage sole_constructor {
-  host: HostIdentity
-}
-
-fn vllm_host_vantage(host: HostIdentity) -> VllmHostVantage {
-  VllmHostVantage { host: host }
-}
-
-type VllmAcquiredObservationAdmission
-  = AcquiredObservationAdmitted { observation: VllmJoinedObservation }
-  | AcquiredObservationRefused { unvantaged_hosts: List<HostIdentity> }
-
-// AND THE ACQUIRED STAMP IS EARNED PER PARTICIPANT.
-//
-// The vantages are the acquisition act: each one says a host was actually read. A participant whose
-// host carries no vantage was not acquired from anywhere, so the whole observation refuses rather
-// than being admitted with one fabricated member -- the arm that would otherwise let a single
-// invented rank ride into production evidence beside real ones. Refusal names every uncovered host,
-// because an operator fixing one at a time pays a collection cycle per finding against a service
-// whose incarnation changes between attempts.
-//
-// This does NOT reach structural impossibility: nothing yet mints a vantage from a real connection,
-// so the ceiling here is the missing host adapter, which is this class's next-rung trigger. What it
-// removes today is the FREE relabel -- acquired provenance now costs a vantage per host rather than
-// a keyword.
-fn vllm_acquired_observation(
-  vantages: List<VllmHostVantage>,
-  incarnation: VllmEngineIncarnation,
-  returned_completely: Bool,
-  participants: List<VllmRankParticipant>,
-) -> VllmAcquiredObservationAdmission {
-  let uncovered = flat_map(participants, p =>
-    if any(vantages, v => host_identity_eq(a: v.host, b: p.host)) { [] } else { [p.host] })
-  if length(uncovered) > 0 {
-    AcquiredObservationRefused { unvantaged_hosts: uncovered }
-  } else {
-    AcquiredObservationAdmitted {
-      observation: VllmJoinedObservation {
-        provenance: AcquiredFromHostVantage,
-        incarnation: incarnation,
-        returned_completely: returned_completely,
-        participants: participants,
-      },
-    }
   }
 }
 
@@ -210,7 +160,7 @@ type VllmRankPopulationFinding
   | ParticipantFromAnotherIncarnation { engine_core_identity: NonEmptyStr }
 
 type VllmRankPopulationDecision
-  = RankPopulationCoherent { provenance: VllmObservationProvenance }
+  = RankPopulationCoherent
   | RankPopulationRefused { findings: List<VllmRankPopulationFinding> }
 
 // EVERY FINDING IS COLLECTED, NOT THE FIRST ONE.
@@ -248,7 +198,7 @@ fn decide_vllm_rank_population(
   if length(findings) > 0 {
     RankPopulationRefused { findings: findings }
   } else {
-    RankPopulationCoherent { provenance: observation.provenance }
+    RankPopulationCoherent
   }
 }
 
