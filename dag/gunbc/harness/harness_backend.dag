@@ -1,0 +1,121 @@
+module gunbc.harness.harness_backend
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import extdeps.http.client
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
+import extdeps.languages.json.parse {
+  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
+}
+import gunbc.harness.harness_wire {
+  harness_router_address, harness_router_port, harness_router_model,
+}
+
+// THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
+//
+// Every vendor provider in this repository is assessed from OUTSIDE: a login-status probe, a
+// transcript scraped for state, an entitlement axis nobody can read. That observation layer is what
+// dominates the vendor modules, and it is why Codex selection cannot resolve today -- the offer is
+// constructed with an unobserved standing and eligibility requires an observed one, so the honest
+// answer is permanently "unknown" and unknown refuses.
+//
+// The harness has no such gap because the question is different. It has no account, so there is no
+// entitlement to read; no quota, so there is no limit bucket to model. The only thing that decides
+// whether it can work is whether the backend it posts to is serving the model it will name, and
+// that is one GET away and answerable by us.
+
+data harness_models_path: String = "/v1/models"
+
+fn harness_models_url() -> String {
+  join([
+    "http://", harness_router_address, ":", to_string(value: harness_router_port),
+    harness_models_path,
+  ], "")
+}
+
+type HarnessBackendStanding
+  = HarnessBackendServing { model: String }
+  | HarnessBackendModelAbsent { model: String, advertised: String }
+  | HarnessBackendUnreachable { url: String }
+  | HarnessBackendUnreadable { cause: String }
+
+fn harness_standing_label(standing: HarnessBackendStanding) -> String {
+  match standing {
+    HarnessBackendServing { model: _ } => "serving"
+    HarnessBackendModelAbsent { model: _, advertised: _ } => "model-absent"
+    HarnessBackendUnreachable { url: _ } => "unreachable"
+    HarnessBackendUnreadable { cause: _ } => "unreadable"
+  }
+}
+
+fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
+  match standing {
+    HarnessBackendServing { model: m } =>
+      join(["backend advertises ", m], "")
+    HarnessBackendModelAbsent { model: m, advertised: a } =>
+      join([
+        "backend is reachable but does not advertise ", m,
+        "; it advertises: ", a,
+      ], "")
+    HarnessBackendUnreachable { url: u } =>
+      join(["backend did not answer ", u], "")
+    HarnessBackendUnreadable { cause: c } =>
+      join(["backend answered but the model list was unreadable: ", c], "")
+  }
+}
+
+// THE MODEL LIST IS PARSED, NOT SUBSTRING-MATCHED. A `contains` over the raw body would pass on a
+// model whose id merely shares a prefix with ours, and would pass on an error document that happens
+// to quote the name back -- which is exactly the shape of the not_found_error this backend returns.
+// Four states, and the middle two are the ones a weaker check would fuse: reachable-but-wrong-model
+// is a different remedy from unreachable, and both are different from a malformed answer.
+fn harness_model_ids(doc: JsonValue) -> List<String> {
+  match json_object_unique_member(v: doc, key: "data") {
+    JsonMemberFound { value: d } =>
+      match d {
+        JsonArray { elements: els } =>
+          els |> flat_map(e => match json_object_unique_member(v: e, key: "id") {
+            JsonMemberFound { value: idv } =>
+              match idv {
+                JsonString { value: s } => [s]
+                _ => []
+              }
+            _ => []
+          })
+        _ => []
+      }
+    _ => []
+  }
+}
+
+fn harness_observe_backend() -> HarnessBackendStanding {
+  let url = harness_models_url()
+  let read = http.Client.Get(url: url as NonEmptyStr)
+  if !read.success {
+    HarnessBackendUnreachable { url: url }
+  } else {
+    match parse_json_document(s: read.body) {
+      JsonDocumentUnreadable { gap: g } =>
+        HarnessBackendUnreadable { cause: json_document_gap_text(gap: g) }
+      JsonDocumentParsed { value: doc } => {
+        let ids = harness_model_ids(doc: doc)
+        if any(ids, id => id == harness_router_model) {
+          HarnessBackendServing { model: harness_router_model }
+        } else {
+          HarnessBackendModelAbsent {
+            model: harness_router_model,
+            advertised: join(ids, ", "),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn harness_backend_report() -> String {
+  let standing = harness_observe_backend()
+  join([
+    "harness backend: ", harness_standing_label(standing: standing), " -- ",
+    harness_standing_detail(standing: standing), "\n",
+  ], "")
+}

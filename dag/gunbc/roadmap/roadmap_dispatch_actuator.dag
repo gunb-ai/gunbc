@@ -88,6 +88,10 @@ import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   CursorCliProvider,
 }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent,
+  HarnessBackendUnreachable, HarnessBackendUnreadable, harness_observe_backend,
+}
 import gunbc.dispatch_selection {
   ExecutionProfile,
   ProfileAutomatic,
@@ -190,10 +194,29 @@ data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 // it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a
 // data edit, never a code change.
 
+// THE EXECUTOR AXIS, AND WHY THE HARNESS ARM BELONGS HERE AND NOT IN ProviderKind.
+//
+// ProviderKind lives in extdeps.llm.cli_lifecycle and enumerates three EXTERNAL vendor CLIs. The
+// gunbc harness is not one, and DESIGN's external-upstream decomposition is explicit that a generic
+// hub may not enumerate concrete products -- adding a fourth arm there would widen a vendor
+// enumeration with a thing that has no vendor, no account, no entitlement and no rate limit.
+//
+// It would also multiply. "Which vendor" is currently forked across SIX parallel coproducts --
+// ProviderOffer, ResolvedProviderSelection, DispatchCredentialBindingIdentity,
+// DispatchModelIdentity, DispatchProviderControl and this one -- so a fourth vendor is not one arm
+// but six, plus every match site. The arity is the tell that those axes are realization facts
+// fused into a selection interface.
+//
+// This type is already the right layer: it is gunbc's own "who executes this attempt", and each of
+// its variants owns argv, preflight and pane fingerprint together at the spawn call site. So the
+// harness is one arm HERE, the vendor machinery below is untouched and keeps serving the three
+// vendor arms, and DCH-4's deletion collapses this type toward a single arm rather than unpicking a
+// fourth copy of a fork.
 type DispatchCliProvider
   = ClaudeCodeProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
+  | GunbcHarnessProvider
 
 // Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a
 // host-wide constant. dispatch_actuator_selection projects the srv1-live Automatic selection for
@@ -211,11 +234,26 @@ fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   }
 }
 
-fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind {
+// THE HARNESS HAS NO ProviderKind, AND THAT IS THE ANSWER RATHER THAN A GAP TO FILL.
+//
+// This map used to be a total bijection because every executor was a vendor. It no longer is, and
+// the honest return is a coproduct: asking "which external vendor kind is the gunbc harness" has no
+// answer, and inventing one -- reusing CodexCliProvider, minting a fourth kind in extdeps -- would
+// put the harness into the credential, entitlement and rate-limit machinery it has none of, where
+// every one of those facts would have to be fabricated to get a verdict.
+type DispatchProviderKindForCli
+  = DispatchProviderKindIs { kind: ProviderKind }
+  | DispatchExecutorHasNoVendorKind { executor: String }
+
+fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProviderKindForCli {
   match provider {
-    ClaudeCodeProvider => ClaudeCliProvider
-    CodexDispatchProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
-    CursorDispatchProvider => extdeps.llm.cli_lifecycle.CursorCliProvider
+    ClaudeCodeProvider => DispatchProviderKindIs { kind: ClaudeCliProvider }
+    CodexDispatchProvider => DispatchProviderKindIs { kind: extdeps.llm.cli_lifecycle.CodexCliProvider }
+    CursorDispatchProvider => DispatchProviderKindIs { kind: extdeps.llm.cli_lifecycle.CursorCliProvider }
+    GunbcHarnessProvider =>
+      DispatchExecutorHasNoVendorKind {
+        executor: "gunbc-harness: a local harness process against a local inference backend, with no vendor account, entitlement or rate limit for a ProviderKind to name",
+      }
   }
 }
 
@@ -232,7 +270,53 @@ type DispatchActuatorSelection
 // fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection
 // kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3).
 
+// THE HARNESS IS THE DEFAULT SELECTION (DCH-3, operator direction 2026-09-02: the dedicated harness
+// is to be the only and default harness). Two things about the shape of this are deliberate.
+//
+// IT REFUSES RATHER THAN FALLING BACK. When the backend is not serving, this returns the harness's
+// own typed cause and stops. Reaching for a vendor would be the absorbing fallback DESIGN section 5
+// names -- a degradation wearing the fail-closed label -- and it would also be a fiction today,
+// because vendor selection cannot resolve at all: every declared offer is built with an unobserved
+// standing and eligibility requires an observed one. There is no fallback to lose.
+//
+// THE EFFORT AXIS IS NOT THE HARNESS'S. ReasoningEffort is a vendor CLI's knob and the harness has
+// no equivalent; a value is supplied here only because DispatchActuatorSelection carries the field
+// for the three vendor arms. It is stated as the neutral middle rather than derived, and the honest
+// reading is that this field does not apply to this executor. Removing it from the tuple is DCH-4's
+// work, when the vendor arms that need it are deleted -- doing it now would be a wide refactor of a
+// type whose other consumers still require the field.
+data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
+
+fn dispatch_harness_selection() -> DispatchActuatorSelection {
+  match harness_observe_backend() {
+    HarnessBackendServing { model: _ } =>
+      DispatchActuatorSelectionOk {
+        provider: GunbcHarnessProvider,
+        effort: ReasoningMedium,
+        process_fingerprint: harness_selection_process_fingerprint,
+      }
+    HarnessBackendModelAbsent { model: m, advertised: a } =>
+      DispatchActuatorSelectionRefused {
+        reason: join([
+          "harness backend is reachable but does not advertise ", m, "; it advertises: ", a,
+        ], "") as NonEmptyStr,
+      }
+    HarnessBackendUnreachable { url: u } =>
+      DispatchActuatorSelectionRefused {
+        reason: join(["harness backend did not answer ", u], "") as NonEmptyStr,
+      }
+    HarnessBackendUnreadable { cause: c } =>
+      DispatchActuatorSelectionRefused {
+        reason: join(["harness backend answered unreadably: ", c], "") as NonEmptyStr,
+      }
+  }
+}
+
 fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+  dispatch_harness_selection()
+}
+
+fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: default_provider_selection_request(),
@@ -249,14 +333,28 @@ fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelec
   }
 }
 
+// ASKING THE VENDOR SELECTOR FOR A NON-VENDOR EXECUTOR REFUSES. This function's entire body is the
+// vendor machinery -- inventory, entitlement, limit buckets -- and the harness has none of the
+// facts it reads. Routing the harness through it would require inventing an account and a quota to
+// get a verdict, so the executor without a vendor kind refuses here and is selected by its own
+// path instead.
 fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
   node_sizing: NodeSizing,
 ) -> DispatchActuatorSelection {
+  match dispatch_cli_to_provider_kind(provider: provider) {
+    DispatchExecutorHasNoVendorKind { executor: e } =>
+      DispatchActuatorSelectionRefused {
+        reason: join([
+          "vendor provider selection was asked for a non-vendor executor (", e,
+          "); it has no inventory row, entitlement or limit bucket to select over",
+        ], "") as NonEmptyStr,
+      }
+    DispatchProviderKindIs { kind: vendor_kind } =>
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: provider_selection_request_for_kind(
-      kind: dispatch_cli_to_provider_kind(provider: provider),
+      kind: vendor_kind,
     ),
     node_sizing: node_sizing,
   ) {
@@ -268,6 +366,7 @@ fn dispatch_actuator_selection_for_provider(
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
+  }
   }
 }
 
@@ -295,6 +394,7 @@ fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
     ClaudeCodeProvider => "claude"
     CodexDispatchProvider => "codex"
     CursorDispatchProvider => "cursor"
+    GunbcHarnessProvider => "gunbc-harness"
   }
 }
 
@@ -410,23 +510,39 @@ type DispatchLiveSession {
 // any from deployment prose would fabricate live evidence. A later provider-instance probe replaces
 // those arms independently.
 
+// THE HARNESS'S EXECUTABLE IS OUR OWN BINARY, which is the one fact that makes the whole executor
+// arm cheap: the worker is `gunbc run` against a .dag entry in the attempt's own checkout, so there
+// is no runtime to install, no bundle to place and no version to reconcile. The three vendor arms
+// name programs that must already exist on the host; this one names the binary that is already
+// executing the dispatch.
 fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
   match provider {
     ClaudeCodeProvider => claude_cli_program as NonEmptyStr
     CodexDispatchProvider => codex_cli_program as NonEmptyStr
     CursorDispatchProvider => cursor_cli_program as NonEmptyStr
+    GunbcHarnessProvider => gunbc_harness_program as NonEmptyStr
   }
 }
 
-fn dispatch_provider_instance_for(
-  provider: DispatchCliProvider,
+data gunbc_harness_program: String = "gunbc"
+
+// THE DOMAIN IS NARROWED RATHER THAN THE ANSWER FABRICATED. This projects a VENDOR session's
+// provider instance, and every field it fills is a vendor fact -- kind, executable, credential
+// storage. The gunbc harness has no vendor kind, so rather than handing this function an executor
+// it cannot answer for and inventing a placeholder kind to get past the type, the parameter becomes
+// the vendor kind itself: asking it about the harness is now unwritable instead of wrong.
+//
+// Nothing lost a caller. Every call site in the tree passes a literal vendor provider, so the
+// narrowing is a rename at those sites and a wall at the one that does not exist yet.
+fn dispatch_provider_instance_for_kind(
+  kind: ProviderKind,
 ) -> ProviderInstance {
   ProviderInstance {
-    kind: dispatch_cli_to_provider_kind(provider: provider),
+    kind: kind,
     host: ProviderInstanceFieldUnobserved {
       reason: "session observation does not read host identity" as NonEmptyStr,
     },
-    executable: dispatch_provider_executable(provider: provider),
+    executable: dispatch_provider_executable(provider: provider_kind_to_dispatch_cli(kind: kind)),
     observed_version: ProviderInstanceFieldUnobserved {
       reason: "session observation does not execute the provider version probe" as NonEmptyStr,
     },
@@ -442,10 +558,19 @@ fn dispatch_provider_instance_for(
   }
 }
 
+// AN EXECUTOR WITH NO VENDOR INSTANCE ANSWERS ABSENT, which this Optional already meant and now
+// has a second way to be reached. The gunbc harness has no vendor ProviderInstance to observe -- no
+// account, no credential storage, no separately versioned runtime -- and Absent says exactly that.
+// The alternative was to invent one so the shape stayed populated, which would put a fabricated
+// vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
-      Present { value: dispatch_provider_instance_for(provider: provider) }
+      match dispatch_cli_to_provider_kind(provider: provider) {
+        DispatchProviderKindIs { kind: k } =>
+          Present { value: dispatch_provider_instance_for_kind(kind: k) }
+        DispatchExecutorHasNoVendorKind { executor: _ } => none
+      }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -1298,6 +1423,43 @@ type DispatchProviderInnerArgv
 
 data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
 
+// THE HARNESS SPAWN, AND WHY IT NEEDS NO RUNTIME PLACEMENT. The worker is this repository's own
+// binary running a .dag entry out of the attempt's checkout, so the argv carries the two facts an
+// attempt actually has -- which worktree, which brief -- and nothing else. No bundle to install, no
+// provider home to seed, no version to reconcile against a committed lock, which is most of what
+// the three vendor arms above exist to arrange.
+//
+// Both facts are passed with --arg rather than through the environment. gunbc run has had --arg
+// since the scm read landed; the belt's own annotation still asserts it "cannot pass an argument
+// (no --arg flag)", which is why belt_dispatch_node_cli smuggles its node id through
+// GUNBC_BELT_NODE_ID. That note is stale as of `gunbc run --help` on 2026-09-03, and repeating the
+// workaround here would carry a dead constraint into new code, so this argv uses the flag and the
+// stale note is left for its own repair rather than propagated.
+//
+// The source roots are RELATIVE because the process runs with the worktree as its working
+// directory: an attempt compiles the tree it is editing rather than the tree the belt was launched
+// from, which is what lets the harness observe its own changes when it verifies them.
+fn gunbc_harness_spawn_argv(
+  gunbc_program: String,
+  worktree_path: String,
+  brief: String,
+) -> List<String> {
+  [
+    gunbc_program,
+    "run",
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--entry", gunbc_harness_worker_entry,
+    "--function", gunbc_harness_worker_function,
+    "--arg", join(["worktree=", worktree_path], ""),
+    "--arg", join(["brief=", brief], ""),
+  ]
+}
+
+data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
+
+data gunbc_harness_worker_function: String = "harness_worker_cli"
+
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
@@ -1329,6 +1491,14 @@ fn dispatch_provider_inner_argv(
       }
     CursorDispatchProvider =>
       CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+    GunbcHarnessProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: gunbc_harness_spawn_argv(
+          gunbc_program: gunbc_harness_program,
+          worktree_path: worktree_path,
+          brief: brief,
+        ),
+      }
   }
 }
 
@@ -1384,6 +1554,14 @@ fn dispatch_provider_inner_argv_for_instance(
       }
     CursorDispatchProvider =>
       CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+    GunbcHarnessProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: gunbc_harness_spawn_argv(
+          gunbc_program: instance.serve_binary as String,
+          worktree_path: worktree_path,
+          brief: brief,
+        ),
+      }
   }
 }
 
@@ -1682,15 +1860,24 @@ fn dispatch_spawn_commands_for_provider(
   attempt_key: String,
   provider: DispatchCliProvider,
 ) -> DispatchSpawnPlan {
-  dispatch_spawn_commands_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    node: node,
-    session_uuid: session_uuid,
-    attempt_key: attempt_key,
-    request: provider_selection_request_for_kind(
-      kind: dispatch_cli_to_provider_kind(provider: provider),
-    ),
-  )
+  match dispatch_cli_to_provider_kind(provider: provider) {
+    DispatchExecutorHasNoVendorKind { executor: e } =>
+      DispatchSpawnRefused {
+        step: "vendor-selection-request" as NonEmptyStr,
+        detail: join([
+          "a vendor selection request cannot be built for ", e,
+          "; the harness executor is spawned through its own plan",
+        ], ""),
+      }
+    DispatchProviderKindIs { kind: vendor_kind } =>
+      dispatch_spawn_commands_for_instance(
+        instance: srv1_live_dashboard_instance(),
+        node: node,
+        session_uuid: session_uuid,
+        attempt_key: attempt_key,
+        request: provider_selection_request_for_kind(kind: vendor_kind),
+      )
+  }
 }
 
 fn dispatch_spawn_commands_for_inventory(

@@ -67,6 +67,10 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent,
+  HarnessBackendUnreachable, HarnessBackendUnreadable, harness_observe_backend,
+}
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
@@ -1296,6 +1300,28 @@ fn belt_provider_preflight_for_instance(
       ProviderPreflightRefused {
         step: "cursor-provider-preflight",
         detail: "cursor dispatch is not yet wired on this actuator path",
+      }
+    GunbcHarnessProvider =>
+      match harness_observe_backend() {
+        HarnessBackendServing { model: _ } => ProviderPreflightOk
+        HarnessBackendModelAbsent { model: m, advertised: a } =>
+          ProviderPreflightRefused {
+            step: "harness-backend-model",
+            detail: join([
+              "the harness backend is reachable but does not advertise ", m,
+              "; it advertises: ", a,
+            ], ""),
+          }
+        HarnessBackendUnreachable { url: u } =>
+          ProviderPreflightRefused {
+            step: "harness-backend-reachability",
+            detail: join(["the harness backend did not answer ", u], ""),
+          }
+        HarnessBackendUnreadable { cause: c } =>
+          ProviderPreflightRefused {
+            step: "harness-backend-model-list",
+            detail: join(["the harness backend answered unreadably: ", c], ""),
+          }
       }
   }
 }
