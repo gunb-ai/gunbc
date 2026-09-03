@@ -15,7 +15,7 @@ import gunbc.spark.vllm_rank_population {
   NotATensorParallelDecomposition, ParticipantCountDoesNotMatchWorldSize,
   RankObservedMoreThanOnce, RankOutsideExpectedSet, TensorParallelRankDoesNotMatchGlobalRank,
   ParticipantOnUnselectedHost, SelectedHostCarriedNoRank,
-  WorkerBirthIdentityShared, ParticipantFromAnotherIncarnation,
+  SelectedHostNamedMoreThanOnce, RanksShareHostLocalWorkerProcessKey, ParticipantFromAnotherIncarnation,
   decide_vllm_rank_population,
 }
 
@@ -46,7 +46,7 @@ fn w_obs(complete: Bool, participants: List<VllmRankParticipant>) -> VllmJoinedO
 fn w_p(rank: Nat, host: HostIdentity, birth: NonEmptyStr) -> VllmRankParticipant {
   vllm_rank_participant(
     global_rank: rank, tensor_parallel_rank: rank, host: host,
-    worker_birth_identity: birth, incarnation: w_inc())
+    host_local_worker_process_key: birth, incarnation: w_inc())
 }
 
 fn w_good_participants() -> List<VllmRankParticipant> {
@@ -78,7 +78,8 @@ fn finding_tag(f: VllmRankPopulationFinding) -> String {
     TensorParallelRankDoesNotMatchGlobalRank { global_rank: _, tensor_parallel_rank: _ } => "tp-mismatch"
     ParticipantOnUnselectedHost { host: _ } => "unselected-host"
     SelectedHostCarriedNoRank { host: _ } => "host-no-rank"
-    WorkerBirthIdentityShared { host: _, worker_birth_identity: _ } => "shared-birth"
+    SelectedHostNamedMoreThanOnce { host: _ } => "selected-host-twice"
+    RanksShareHostLocalWorkerProcessKey { host: _, process_key: _ } => "shared-process-key"
     ParticipantFromAnotherIncarnation { engine_core_identity: _ } => "other-incarnation"
   }
 }
@@ -132,13 +133,13 @@ test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool {
     f: SelectedHostCarriedNoRank { host: w_host_b })
 }
 
-// TWO RANKS CLAIMING ONE PROCESS ON ONE HOST is the duplicate that matters -- a single-host
+// TWO RANKS CLAIMING ONE PROCESS SLOT ON ONE HOST is the duplicate that matters -- a single-host
 // deployment presenting as a pair.
-test fn w_two_ranks_sharing_one_worker_birth_on_one_host_refuses() -> Bool {
+test fn w_two_ranks_sharing_one_process_key_on_one_host_refuses() -> Bool {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-same-pid" as NonEmptyStr),
                    w_p(rank: 1, host: w_host_a, birth: "w-same-pid" as NonEmptyStr)],
-    f: WorkerBirthIdentityShared { host: w_host_a, worker_birth_identity: "w-same-pid" as NonEmptyStr })
+    f: RanksShareHostLocalWorkerProcessKey { host: w_host_a, process_key: "w-same-pid" as NonEmptyStr })
 }
 
 // AND THE SAME PID ON TWO DIFFERENT HOSTS IS A LEGITIMATE PAIR, not a duplicate. A pid is host-local,
@@ -146,7 +147,7 @@ test fn w_two_ranks_sharing_one_worker_birth_on_one_host_refuses() -> Bool {
 // whenever both machines happened to birth their worker at the same number -- something this exact
 // two-host launch can produce any time. This is the discriminating RED for that scoping: it was
 // refused before the host was part of the comparison.
-test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_birth() -> Bool {
+test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_process_key() -> Bool {
   match w_decide(participants: [
       w_p(rank: 0, host: w_host_a, birth: "w-pid-4126" as NonEmptyStr),
       w_p(rank: 1, host: w_host_b, birth: "w-pid-4126" as NonEmptyStr)]) {
@@ -160,7 +161,7 @@ test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    vllm_rank_participant(
                      global_rank: 1, tensor_parallel_rank: 1, host: w_host_b,
-                     worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_other_inc())],
+                     host_local_worker_process_key: "w-pid-2" as NonEmptyStr, incarnation: w_other_inc())],
     f: ParticipantFromAnotherIncarnation { engine_core_identity: "w-engine-2" as NonEmptyStr })
 }
 
@@ -231,10 +232,10 @@ test fn w_a_tensor_parallel_rank_that_contradicts_its_global_rank_refuses() -> B
     participants: [
       vllm_rank_participant(
         global_rank: 0, tensor_parallel_rank: 0, host: w_host_a,
-        worker_birth_identity: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
+        host_local_worker_process_key: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
       vllm_rank_participant(
         global_rank: 1, tensor_parallel_rank: 0, host: w_host_b,
-        worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
+        host_local_worker_process_key: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
     ],
     f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 1, tensor_parallel_rank: 0 })
 }
@@ -246,11 +247,45 @@ test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() 
     participants: [
       vllm_rank_participant(
         global_rank: 0, tensor_parallel_rank: 7, host: w_host_a,
-        worker_birth_identity: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
+        host_local_worker_process_key: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
       vllm_rank_participant(
         global_rank: 1, tensor_parallel_rank: 1, host: w_host_b,
-        worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
+        host_local_worker_process_key: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
     ],
     f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 0, tensor_parallel_rank: 7 })
 }
 
+
+// ── A TWO-ENTRY LIST IS NOT A TWO-HOST UNIT ─────────────────────────────────────────────────────
+//
+// Both directions of the host join are existence checks, so this population satisfied every one of
+// them while sitting entirely on one machine: right count, ranks 0 and 1, corresponding TP ranks,
+// every participant on a selected host, every selected entry naming a host that carries a rank,
+// distinct process keys. It decided COHERENT, and the two-host claim rested entirely on the selected
+// list having two entries that name the same host. This is the discriminating RED for distinctness.
+test fn w_a_selected_unit_naming_one_host_twice_refuses() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: w_tp2(),
+    selected_unit: vllm_selected_serving_unit(participant_hosts: [w_host_a, w_host_a]),
+    observation: w_obs(complete: true, participants: [
+      w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+      w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)])) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "selected-host-twice")
+    RankPopulationCoherent => false
+  }
+}
+
+// AND DISTINCTNESS IS NOT ONE-RANK-PER-HOST. A legitimate tensor-parallel deployment may place both
+// ranks on one selected machine; what that population fails is the OTHER selected host carrying no
+// rank, never the distinctness rule. Without this, the fix above would have quietly become a law
+// forbidding co-located ranks.
+test fn w_two_ranks_on_one_host_of_a_distinct_pair_refuses_only_for_the_idle_host() -> Bool {
+  match w_decide(participants: [
+      w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+      w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)]) {
+    RankPopulationRefused { findings: fs } =>
+      any(fs, x => finding_tag(f: x) == "host-no-rank")
+        && !any(fs, x => finding_tag(f: x) == "selected-host-twice")
+    RankPopulationCoherent => false
+  }
+}

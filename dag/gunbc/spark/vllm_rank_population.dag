@@ -88,7 +88,7 @@ type VllmRankParticipant sole_constructor {
   global_rank: Nat
   tensor_parallel_rank: Nat
   host: HostIdentity
-  worker_birth_identity: NonEmptyStr
+  host_local_worker_process_key: NonEmptyStr
   incarnation: VllmEngineIncarnation
 }
 
@@ -96,14 +96,14 @@ fn vllm_rank_participant(
   global_rank: Nat,
   tensor_parallel_rank: Nat,
   host: HostIdentity,
-  worker_birth_identity: NonEmptyStr,
+  host_local_worker_process_key: NonEmptyStr,
   incarnation: VllmEngineIncarnation,
 ) -> VllmRankParticipant {
   VllmRankParticipant {
     global_rank: global_rank,
     tensor_parallel_rank: tensor_parallel_rank,
     host: host,
-    worker_birth_identity: worker_birth_identity,
+    host_local_worker_process_key: host_local_worker_process_key,
     incarnation: incarnation,
   }
 }
@@ -156,7 +156,8 @@ type VllmRankPopulationFinding
   | TensorParallelRankDoesNotMatchGlobalRank { global_rank: Nat, tensor_parallel_rank: Nat }
   | ParticipantOnUnselectedHost { host: HostIdentity }
   | SelectedHostCarriedNoRank { host: HostIdentity }
-  | WorkerBirthIdentityShared { host: HostIdentity, worker_birth_identity: NonEmptyStr }
+  | SelectedHostNamedMoreThanOnce { host: HostIdentity }
+  | RanksShareHostLocalWorkerProcessKey { host: HostIdentity, process_key: NonEmptyStr }
   | ParticipantFromAnotherIncarnation { engine_core_identity: NonEmptyStr }
 
 type VllmRankPopulationDecision
@@ -254,6 +255,18 @@ fn vllm_rank_findings(
 // third holds -- permanently-green checks that would be cited as coverage, which is the failure this
 // repository names rather than a thoroughness win.
 
+// THE SELECTED HOSTS MUST BE DISTINCT IDENTITIES, because a two-entry LIST is not a two-host UNIT.
+//
+// Both directions of the join are existence checks, so `[A, A]` with both ranks on A satisfied every
+// one of them: the count matched, the ranks were 0 and 1 and corresponded, both participants sat on a
+// selected host, both selected entries named a host carrying a rank, the process keys differed. A
+// single machine presented as a pair, and the whole two-host claim rested on list multiplicity
+// standing in for host identity.
+//
+// The invariant is distinctness of the selected population, NOT one rank per host: a legitimate
+// tensor-parallel deployment may place several ranks on one selected machine. With distinct hosts and
+// a world size of two, one-per-host follows for this pair rather than being asserted.
+
 // THE HOST JOIN RUNS IN BOTH DIRECTIONS, which is what makes it a join rather than a filter. A
 // population sitting entirely on one selected host satisfies "no participant is on an unselected
 // host" while leaving the other half of the unit carrying nothing -- exactly the state that would let
@@ -263,27 +276,39 @@ fn vllm_host_findings(
   participants: List<VllmRankParticipant>,
 ) -> List<VllmRankPopulationFinding> {
   concat(
+    flat_map(selected_unit.participant_hosts, h =>
+      if length(filter(selected_unit.participant_hosts, g => host_identity_eq(a: g, b: h))) > 1 {
+        [SelectedHostNamedMoreThanOnce { host: h }]
+      } else { [] }),
+  concat(
     flat_map(participants, p =>
       if any(selected_unit.participant_hosts, h => host_identity_eq(a: h, b: p.host)) { [] }
       else { [ParticipantOnUnselectedHost { host: p.host }] }),
     flat_map(selected_unit.participant_hosts, h =>
       if any(participants, p => host_identity_eq(a: h, b: p.host)) { [] }
-      else { [SelectedHostCarriedNoRank { host: h }] }))
+      else { [SelectedHostCarriedNoRank { host: h }] })))
 }
 
-// ONE INCARNATION, AND DISTINCT WORKER BIRTHS WITHIN IT.
+// ONE INCARNATION, AND DISTINCT WORKER PROCESS KEYS WITHIN ONE HOST.
 //
 // Both halves were read off the live pair: every worker line carried the same EngineCore identity,
 // and the two workers had different pids. A participant from another incarnation is evidence spliced
-// across launches -- the failure this whole line exists to prevent -- and two ranks sharing one birth
-// identity is one process being counted twice, which is how a single-host deployment can present as
-// a pair.
+// across launches -- the failure this whole line exists to prevent -- and two ranks sharing one
+// process key on one host is one process counted twice, which is how a single-host deployment can
+// present as a pair.
 //
-// THE BIRTH IDENTITY IS SCOPED TO ITS HOST, because it is a pid and a pid is host-local. Compared as
-// a bare string across the population it refused a legitimate cross-host pair whenever two machines
-// happened to birth their worker at the same pid -- a collision this exact two-host unit can produce
-// on any launch, and one that would have read as "one process counted twice" about two real
-// processes. The duplicate that matters is two ranks claiming one process, which requires one host.
+// THE KEY IS SCOPED TO ITS HOST, because a pid is host-local. Compared as a bare string across the
+// population it refused a legitimate cross-host pair whenever two machines happened to birth their
+// worker at the same number -- a collision this exact two-host unit can produce on any launch, about
+// two real processes.
+//
+// AND IT IS CALLED A PROCESS KEY RATHER THAN A BIRTH IDENTITY, because that is all this law consumes.
+// A pid is a host-local process slot at one observation instant; the number is reused, and under Ray
+// an actor can restart while the logical actor persists. Nothing here can tell a restart from
+// continuity, so naming the field after an identity it has not earned would be the same inflation
+// this module removed from its provenance. The wet adapter, which can retain a Ray session, actor id,
+// restart ordinal, node id and process-start evidence, projects a real identity into this equality
+// key; the kernel only ever asks whether two declared ranks claim one process slot.
 fn vllm_identity_findings(
   observation: VllmJoinedObservation,
   participants: List<VllmRankParticipant>,
@@ -298,9 +323,9 @@ fn vllm_identity_findings(
       }),
     flat_map(participants, p =>
       if length(filter(participants, q =>
-           q.worker_birth_identity as String == p.worker_birth_identity as String
+           q.host_local_worker_process_key as String == p.host_local_worker_process_key as String
              && host_identity_eq(a: q.host, b: p.host))) > 1 {
-        [WorkerBirthIdentityShared { host: p.host, worker_birth_identity: p.worker_birth_identity }]
+        [RanksShareHostLocalWorkerProcessKey { host: p.host, process_key: p.host_local_worker_process_key }]
       } else { [] }))
 }
 
