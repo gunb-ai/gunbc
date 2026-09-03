@@ -23,6 +23,26 @@ data executed_conjunct_discriminates_nothing: RecurringFailureMode = RecurringFa
 
     "Second: the subject that isolates the conjunct must be chosen with care, because a red for the wrong reason is how this class survives its own test. ",
 
+    "**A THIRD HALF, AND IT IS THE MIRROR OF THE SECOND (amended 2026-09-03, tidy-koi-619 on gunbc#10257, found by warm-seal-35): CONFIRM THE DELETE ARM ACTUALLY DELETED.** The second half guards a RED for the wrong reason; this guards a GREEN for the wrong reason, and the remedy as written above is satisfiable by a no-op. ",
+
+    "A probe that FAILED TO MUTATE and a probe whose mutation the check TOLERATED print the identical passing value, so 'run the delete arm and read the verdict' cannot distinguish a wall that holds from a wall that was never tested. ",
+
+    "THE PROBE MUST ASSERT THAT IT MUTATED -- count the substitutions, or diff the tree -- as a claim SEPARATE from what the check then says, and then restore and re-run to confirm the green returns, because a one-sided probe does not establish that the verdict tracks the mutation at all. ",
+
+    "SPECIMEN, and it is worth recording because both failure paths are real rather than imagined: proving the discriminating red for every_restored_stall_is_still_rostered took THREE attempts and the first two mutated nothing. ",
+
+    "Attempt one ran the edit through `python3 -c` under DOUBLE QUOTES, so the shell consumed the escape sequences and the replacement matched no text. ",
+
+    "Attempt two chose an anchor that matched TWICE -- the check's own pin list had just been added to the same module as the roster and repeated the same member spellings, which is a general hazard: ANY CHECK THAT ENUMERATES ROSTER MEMBERS CREATES A SECOND POPULATION WITH THE SAME SPELLINGS, so every later sweep over that module must distinguish them. ",
+
+    "Both attempts printed the passing value and would have been read as the wall holding. ",
+
+    "Only the third, anchored on roster-only context, dropped the row and produced the red, with the green returning after restore. ",
+
+    "THE CATCH WAS INCIDENTAL, WHICH IS THE ARGUMENT FOR WRITING IT DOWN: the no-ops were noticed only because the edit script happened to carry an occurrence-count assertion written for an unrelated reason. ",
+
+    "Nothing in the remedy required it. ",
+
     "**SPECIMEN, with both halves executed** (gunbc#9838, `gunbc.self_host_compile_phase_frontier`): `census_population_is_duplicate_free` was added as a conjunct of `receipt_population_coherent`, evaluated on every coherence check and reachable from the live path; deleting it left the whole witness module green. ",
 
     "The fixture that isolates it is a receipt whose `refused_files` REPEATS A PATH -- enrolled as `a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence` in `test.claim.self_host_compile_phase_frontier_witness`, with `the_same_receipt_without_the_repeat_is_coherent` as its positive control. ",
