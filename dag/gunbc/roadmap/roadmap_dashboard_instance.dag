@@ -202,7 +202,26 @@ type HostDashboardInstance {
   provision_transport: DashboardProvisionTransport
   source_seed: DashboardSourceSeed
   admitted_revision: DashboardAdmittedRevisionSource
+  toolchain: DashboardToolchain
 }
+
+// THE TOOLCHAIN IS CARRIED, NOT ONLY CONSUMED, because provisioning needs it too and provisioning
+// does not go through the capability set.
+//
+// execution_environment answers "which programs may a DISPATCH run", and its members are checked by
+// preflight before an attempt starts. Creating the instance's own roots happens BEFORE any of that
+// -- it is what makes the transition gate answerable at all -- so the directory program cannot come
+// from a capability the dispatch preflight owns without putting a provisioning tool in a dispatch
+// contract. It comes from the toolchain instead, which is the machine-level fact both consume.
+//
+// KNOWN RESIDUE, stated rather than hidden: execution_environment is DERIVED from this same
+// toolchain at each constructor, so the two fields can be made to disagree by passing one
+// toolchain and an environment built from another. No constructor does, and each names one
+// toolchain value twice in adjacent lines. The structural fix is for execution_environment to stop
+// being a field and become a function of this one, which is a 37-site repoint of `.execution_
+// environment` reads and does not belong in a change about serving a workspace locally.
+// Dissolution trigger: that repoint. Until then this is one authority with a derived copy beside
+// it, which is a weaker guarantee than one authority alone and is recorded as such.
 
 // WHICH AUTHORITY ADMITS A REVISION FOR THIS INSTANCE -- a required field, so that no instance can
 // exist without answering it.
@@ -417,6 +436,7 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
 // one DashboardToolchain value; adding a CAPABILITY is one row here that every platform must then
 // answer for, which is the direction the failure should point.
 type DashboardToolchain {
+  directory_create: FilePath
   git: FilePath
   tmux: FilePath
   pipe_shell: FilePath
@@ -439,6 +459,7 @@ type DashboardToolchain {
 // difference between a typed preflight refusal naming the capability and a dispatch that dies
 // mid-attempt on an illegal option.
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
+  directory_create: "/usr/bin/mkdir" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/usr/bin/tmux" as FilePath,
   pipe_shell: "/usr/bin/sh" as FilePath,
@@ -460,6 +481,7 @@ data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
 // macOS has no /usr/bin/sh at all; and tee, install, ln and env are the g-prefixed GNU builds,
 // because the system BSD ones answer no --version and, for ln, implement no -T.
 data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
+  directory_create: "/bin/mkdir" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/opt/homebrew/bin/tmux" as FilePath,
   pipe_shell: "/bin/sh" as FilePath,
@@ -695,6 +717,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     provision_transport: DashboardLocalProvision,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: macbook_local_admitted_revision_source,
+    toolchain: macbook_local_toolchain,
   }
 }
 
@@ -752,6 +775,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
   }
 }
 
@@ -843,6 +867,7 @@ fn isolated_dashboard_instance(
       history_remote: "origin" as NonEmptyStr,
     },
     admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
   }
 }
 
