@@ -1,0 +1,230 @@
+module v2.test.claim.enforcement.determinism_transitive_witness
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.lens.determinism {
+  determinism_transitive_findings,
+  determinism_transitive_holds
+}
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import std.algebra { Cons }
+import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.collection { List }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.text { String }
+
+// THE CORPUS-CADENCE HALF OF TRANSITIVE DETERMINISM, AND THE REASON IT IS HERE RATHER THAN IN THE
+// COMPILE DOOR. The producer in v2.lens.determinism is pure and parameterized precisely so that
+// v2.compiler.compile, which imports that module, reaches no live-read carrier. This module is the
+// consumer that actually reads the tree, and it declares that honestly below. Putting this read
+// behind validate_then_compile instead would re-open the census class the lens_module_gate
+// de-enrolment closed — the annotation on always_required_root_lenses is the standing ruling, and
+// naming a live corpus read "determinism" would not have made it tree-grain.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The determinism gate's own subject. If anything the compile door can REACH leaks host traversal
+// order, every compile is deciding against a nondeterministic closure, which is the strongest
+// standing form of the question this corpus is entitled to ask.
+//
+// THE SCOPE IS THE WHOLE CORPUS, AND THE NARROWER ONE WAS BUILT, MEASURED AND REFUSED. Passing
+// every module name is a STRUCTURAL OVER-APPROXIMATION COMPUTED AS THE ANSWER, which DESIGN
+// section 5 names explicitly as NOT the absorbing fallback: it is chosen up front rather than
+// substituted after a mechanism failed to compute something precise, and it errs toward MORE
+// findings. Its residue is therefore a false positive naming a declaration the door cannot really
+// reach -- loud, and dismissible by reading the diagnostic. It cannot produce a false negative.
+//
+// The precise alternative -- scoping to the door's own dependency_closure over
+// dependency_resolution_facts_live -- was measured rather than argued about:
+//
+//   whole-corpus scope           358ms
+//   dependency-closure scope  193,269ms
+//
+// against a 500ms required_floor_claim_cpu_safety_limit_ms. Precision costs 540x here and would
+// leave the witness permanently budget-refused, which enforces NOTHING while redding the floor
+// every run -- strictly worse than an over-approximation that returns a verdict. The cost is in
+// the two extra live producers and in modules_of_closure_paths, which accumulates with
+// list_snoc_item and so carries the same quadratic removed from module_names_live below. If that
+// helper is fixed, this choice is worth re-measuring.
+data determinism_transitive_live_entry: String = "v2.compiler.compile"
+
+data empty_module_names: List<String> = []
+
+// PREPEND-THEN-REVERSE, NOT APPEND-IN-STEP, and the difference is 33 seconds rather than a style
+// preference. list_snoc_item is list_append(xs, Cons { head: item, tail: Empty }), so it walks the
+// whole accumulator on every element -- building this ~4500-name list by snoc is the
+// copied-accumulator quadratic DESIGN section 6 says is ALWAYS fixed. Isolated by its own probe:
+//
+//   module_names_live, snoc                33,443ms
+//   module_names_live, prepend-then-reverse    32ms
+//
+// against 203ms to acquire the entire declaration population. The whole witness was 34,467ms and
+// this one helper was 97% of it -- the reachability walk it feeds is roughly 120ms. The same
+// prepend-then-reverse rule is already recorded on run_required_lens_gates_on_subtree in
+// v2.compiler.compile.
+fn module_names_live() -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: module_declaration_facts_live(pool_roots: witness_layer_roots),
+    empty: empty_module_names,
+    cons: fn(acc, node) { Cons { head: node.module, tail: acc } }
+  ))
+}
+
+// ── the live judgment ─────────────────────────────────────────────────────────────────────────
+//
+// ReadsLiveTree, corpus cadence, executes per PR, reds the required floor, never predict-skips.
+
+test fn determinism_transitive_live_closure_holds() -> Bool {
+  determinism_transitive_holds(
+    entry_module: determinism_transitive_live_entry,
+    closure_modules: module_names_live(),
+    decls: fn_arrow_decl_facts_live()
+  )
+}
+
+// ── fixtures ──────────────────────────────────────────────────────────────────────────────────
+
+data fixture_modules: List<String> = ["fix.det.entry", "fix.det.reached", "fix.det.unreached"]
+
+fn atom_node(lexeme: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// A call node as node_is_call recognises one: a Transform whose first positional child is a
+// callee reference.
+fn call_node(callee: String) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO. call_reachable_decls reads callees
+// from `decl.output` at DEPTH ONE — atom_identities_in_node returns the node's own identity and
+// those of its IMMEDIATE children — because the skeleton the Rust marshal produces hoists callee
+// atoms onto the body root. A first version of this fixture wrapped the callee atom inside the call
+// node, one level deeper. Nothing was reachable, and BOTH discrimination rows below agreed for that
+// reason rather than for the reason they claim: the leak-is-found row went red, and the
+// leak-outside-the-graph row went green while proving nothing at all. That is the empty-fixture
+// failure in miniature — two rows in apparent agreement, one shared wrong cause — so the shape is
+// recorded here rather than silently corrected.
+//
+// A CALL EDGE is therefore a bare atom child of the body root; a LEAKING CALL is a call node child,
+// which determinism_findings reaches because it folds the whole subtree.
+
+fn body_referencing(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn body_invoking_primitive(primitive: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: call_node(callee: primitive) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn calling_decl(qualified_name: String, name: String, callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: body_referencing(callee: callee),
+    params: []
+  }
+}
+
+fn primitive_decl(qualified_name: String, name: String, primitive: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: body_invoking_primitive(primitive: primitive),
+    params: []
+  }
+}
+
+// `map_keys` carries HostUnspecifiedOrder in std.primitive_identity — the per-process hash seed
+// makes its returned order not a function of its input. `sorted_map_keys` is the CanonicalOrder
+// twin, so the pair discriminates the classification rather than merely the presence of a call.
+data leaking_callee: String = "map_keys"
+data deterministic_callee: String = "sorted_map_keys"
+
+// entry -> reached -> (leak). The leak is TWO HOPS from the entry and in a DIFFERENT module, which
+// is exactly the shape the per-tree door cannot see.
+fn decls_with_leak_reached() -> List<FnArrowDecl> {
+  [
+    calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+    primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: leaking_callee),
+    primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: deterministic_callee)
+  ]
+}
+
+// The SAME leak, moved to a declaration nothing calls. Reachability is the only thing that can
+// tell these two populations apart.
+fn decls_with_leak_unreached() -> List<FnArrowDecl> {
+  [
+    calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+    primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee),
+    primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+  ]
+}
+
+fn findings_over(decls: List<FnArrowDecl>) -> List<Diagnostic> {
+  determinism_transitive_findings(
+    entry_module: "fix.det.entry",
+    closure_modules: fixture_modules,
+    decls: decls
+  )
+}
+
+// ── discriminating controls ───────────────────────────────────────────────────────────────────
+
+// RED CONTROL. A leak two hops out, in another module, is FOUND. This is the state the per-tree
+// door accepts today, so this row is the whole point of the transitive judgment.
+test fn transitive_leak_in_reached_declaration_is_found() -> Bool {
+  length(xs: findings_over(decls: decls_with_leak_reached())) > 0
+}
+
+// THE CONTROL THAT PROVES REACHABILITY IS LOAD-BEARING RATHER THAN DECORATIVE, and the one that
+// would still be green if this consumer folded every declaration in the corpus instead of the
+// reachable ones. Same leak, same fixture, same primitive — moved out of the call graph. A judgment
+// that flagged it would be answering "does a leak exist anywhere" rather than "can this entry reach
+// one", and the reachability authority would be doing no work.
+test fn identical_leak_outside_the_call_graph_is_not_found() -> Bool {
+  length(xs: findings_over(decls: decls_with_leak_unreached())) == 0
+}
+
+// POSITIVE CONTROL ON THE PLANT: the fixture shape itself is clean when the reached body calls the
+// canonically-ordered twin, so the red above is caused by the CLASSIFICATION of the callee and not
+// by the fixture merely containing a call node.
+test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
+  determinism_transitive_holds(
+    entry_module: "fix.det.entry",
+    closure_modules: fixture_modules,
+    decls: [
+      calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+      primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee)
+    ]
+  )
+}
