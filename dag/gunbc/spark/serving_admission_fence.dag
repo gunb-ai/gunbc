@@ -3,6 +3,8 @@ module gunbc.spark.serving_admission_fence
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.remote_operation { PlannedRemoteStep, RemoteArgv }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
+import extdeps.systemd.systemctl { systemctl_user_restart_argv }
 import gunbc.spark.serving_realization {
   ServingReactivationEffect,
   RestartSystemUnitForChangedDefinition,
@@ -255,6 +257,20 @@ fn spark_serving_admit_against_pair(
 // must REFUSE, or the guarantee must be stated narrowly as DCH-managed-turn continuity. It may not
 // be stated broadly and held narrowly, so the broad claim has no constructor here that does not name
 // its ground.
+// THREE OF THESE FOUR ARMS HAVE NO PRODUCER, AND THE ONLY PRODUCTION CALLER MINTS THE FOURTH.
+//
+// AllClientsRouteThroughLeaseAuthority, ExclusiveAccessHeldForWindow and CompleteActiveRequestObservation
+// are constructible -- the witness fixtures construct them, which is what makes the drained arm
+// reachable at all -- and NOTHING in this repository mints one, because no authority observes a lease
+// population at a serving locus. The production caller,
+// gunbc.spark.serving_converge_slice_wet spark_serving_reactivation_standing_for, reaches this type
+// only through spark_serving_unfenced_production_drain, which mints the fourth arm.
+//
+// This is written at the arms rather than in a summary because their EXISTENCE is what a reader would
+// otherwise spend as coverage: a grain vocabulary that names three ways to establish service
+// quiescence reads as three established ways, when what is established is that none of them has a
+// producer and the destructive restart therefore refuses every time. An arm with no producer refuses
+// nothing.
 type ServingOccupancyGrain
   = AllClientsRouteThroughLeaseAuthority
   | ExclusiveAccessHeldForWindow
@@ -403,6 +419,13 @@ fn spark_serving_settle_leases_against_invocation(
     })
 }
 
+// ITS CONTENT IS UNWITNESSED, AND THAT IS A DIFFERENT STATEMENT FROM ITS ARM BEING UNTESTED. The
+// unit-stopped arm of the drain IS exercised in
+// test.claim.spark_serving_admission_fence_witness_test, but only with an EMPTY lease population, so
+// what execution has established is that a stopped unit invalidates the drain -- not that the
+// settlements this function produces are the right ones. The claim that would establish the latter
+// needs a stopped unit and a non-empty population in one fixture, and no such claim is authored yet.
+//
 // A UNIT THAT STOPPED UNDER THE FENCE INTERRUPTS EVERY TURN AT THE LOCUS, and the comparison that
 // settles the replacement case is deliberately absent here: there is no successor invocation to
 // compare against, so every admitted turn lost its backend and saying otherwise would need an
@@ -572,15 +595,41 @@ fn spark_serving_reactivation_steps_for_effect(
 ) -> List<PlannedRemoteStep> {
   match effect {
     RestartUserUnitForChangedDefinition =>
+      spark_serving_admitted_restart_step(
+        identity: "restart-user-unit-for-changed-definition" as NonEmptyStr,
+        raws: systemctl_user_restart_argv(unit: spark_serving_unit_name as NonEmptyStr),
+      )
+    RestartSystemUnitForChangedDefinition => []
+  }
+}
+
+// THE WORDS COME FROM THE SYSTEMCTL AUTHORITY AND THE STEP COMES FROM THE SAME PORTABILITY ADMISSION
+// EVERY OTHER SPARK ARGV GOES THROUGH.
+//
+// Both halves of that were authored by hand in the first cut of this module, and both were forks.
+// The words duplicated extdeps.systemd.systemctl -- which owns every other user-scope argv this slice
+// emits -- so a change to how a unit is addressed would have moved five call sites and missed this
+// one. And minting the PlannedRemoteStep directly bypassed portable_remote_words, the admission that
+// gunbc.spark.serving_converge_realize puts every install and retirement argv through, so a restart
+// would have been the ONE remote command in the slice free to carry a word no remote invocation can
+// safely transport.
+//
+// A word that does not admit yields NO STEP, and the guarded producer turns an empty step list into a
+// refusal rather than an execution that runs nothing -- so the refusal arm is the same one the
+// unrealizable system-unit effect reaches, and it is exercised by the same claim.
+fn spark_serving_admitted_restart_step(
+  identity: NonEmptyStr,
+  raws: List<String>,
+) -> List<PlannedRemoteStep> {
+  match portable_remote_words(raws: raws) {
+    Absent => []
+    Present { value: words } =>
       [
         PlannedRemoteStep {
-          identity: "restart-user-unit-for-changed-definition" as NonEmptyStr,
-          operation: RemoteArgv {
-            argv: ["systemctl", "--user", "restart", spark_serving_unit_name as String],
-          },
+          identity: identity,
+          operation: RemoteArgv { argv: portable_remote_words_strings(words: words) },
         },
       ]
-    RestartSystemUnitForChangedDefinition => []
   }
 }
 
@@ -717,6 +766,11 @@ type ServingReplanStanding
   | ReplanNonEmpty { rows: Int }
   | ReplanUnobserved { cause: NonEmptyStr }
 
+// ReactivationConfirmed HAS NEVER BEEN REACHED FROM AN OBSERVATION. Every green it has is a fixture
+// readback in test.claim.spark_serving_admission_fence_witness_test, whose post-restart invocation,
+// definition, registration, health and replan are all authored. No restart has been executed, so no
+// value of this type has ever described a real process; the arm is the shape a confirmation must
+// have, and it is not evidence that one has occurred.
 type ServingReactivationReadback
   = ReactivationConfirmed { reopened: ServingAdmissionState }
   | ReactivationReadbackRefused { cause: NonEmptyStr }

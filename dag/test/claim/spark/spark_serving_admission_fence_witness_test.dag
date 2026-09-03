@@ -24,6 +24,9 @@ import gunbc.spark.serving_observe {
   InvocationIdentityNotRunning,
   InvocationIdentityUnobserved,
 }
+import gunbc.remote_operation { PlannedRemoteStep, remote_operations_argv_only }
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+import extdeps.systemd.systemctl { systemctl_user_restart_argv }
 import gunbc.spark.serving_admission_fence {
   ServingServiceLocus,
   spark_serving_locus,
@@ -59,6 +62,7 @@ import gunbc.spark.serving_admission_fence {
   BoundReactivationRefused,
   spark_serving_guarded_bound_reactivation,
   spark_serving_bound_reactivation_steps,
+  PlannedBoundReactivationExecution,
   ServingPostRestartHealth,
   PostRestartHealthy,
   PostRestartUnhealthy,
@@ -671,4 +675,29 @@ test fn w_a_fence_at_one_locus_does_not_answer_for_another() -> Bool {
       observed_definition: RunningDefinitionObserved { definition_identity: d0 },
     ),
   )
+}
+
+// THE RESTART'S WORDS ARE THE SYSTEMCTL AUTHORITY'S WORDS, ASSERTED AGAINST IT RATHER THAN AGAINST A
+// LITERAL REPEATED HERE. A literal would pass while the unit this restarts and the unit every other
+// effect addresses drifted apart, which is the exact failure the shared authority exists to prevent --
+// and it would keep passing after a scope parameter replaced the hand-encoded `--user`.
+//
+// The sudo half is asserted rather than assumed for the reason the install siblings assert it: this
+// acts on the invoking account's own manager, so a sudo word here would be a privilege escalation the
+// effect does not call for.
+test fn w_the_restart_step_carries_the_systemctl_authoritys_words_and_no_sudo() -> Bool {
+  match planned_restart(drain: clean_drain()) {
+    BoundReactivationNotRequired => false
+    BoundReactivationRefused { cause: _ } => false
+    BoundReactivationPlanned { execution: x } =>
+      match remote_operations_argv_only(
+        operations: map(spark_serving_bound_reactivation_steps(execution: x), st => st.operation),
+      ).first() {
+        Absent => false
+        Present { value: argv } =>
+          join(argv, "\0")
+            == join(systemctl_user_restart_argv(unit: spark_serving_unit_name as NonEmptyStr), "\0")
+            && !any(argv, w => w == "sudo")
+      }
+  }
 }
