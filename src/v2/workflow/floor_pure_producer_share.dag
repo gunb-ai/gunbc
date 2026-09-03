@@ -248,9 +248,27 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 //
 // AGAINST THAT CONTROL THE SERVE BEATS THE RECOMPUTE IN BOTH PAIRS, by roughly a tenth on the
 // rows it reaches, with about an eighth of their eval_steps avoided; the two pairs' bootstrap
-// intervals overlap and neither admits 1. Re-derive with the instrument named rather than
-// trusting this sentence. The estimate is biased TOWARD the null, not toward this result: a row
-// the serve reached whose step count happened not to move lands in the control group.
+// intervals overlap and neither admits 1. The estimate is biased TOWARD the null, not toward this
+// result: a row the serve reached whose step count happened not to move lands in the control group.
+//
+// WHAT IS RE-DERIVABLE FROM WHAT IS NAMED HERE, AND WHAT IS NOT. An earlier revision of this note
+// said `re-derive with the instrument named`, and no instrument was named: the run ids are the
+// measurement's STORAGE and `eval_steps` is its OUTPUT column, neither of which performs the
+// control split or the interval. That sentence promised a producer that does not exist, which is
+// worse than transcribing a number, because a reader who tries to act on it finds nothing to run.
+// Corrected rather than softened (raised as REQUEST_CHANGES by codex, review 59321):
+//   RE-DERIVABLE from the four run ids plus `required_floor_claim_cost.tsv` alone, by a reader
+//   with no instrument: join the subject's rows across a pair at identity grain; take the
+//   consumer set from the present arm's own `[floor-shared-fill] modules=` field; split those
+//   rows into steps-FELL and steps-BYTE-IDENTICAL; the ratio is the aggregate of the first group
+//   over the aggregate of the second. That is the decisive comparison and it needs arithmetic,
+//   not tooling.
+//   NOT RE-DERIVABLE that way: the bootstrap intervals. Resampling needs an RNG the report path
+//   does not have, so the intervals are recorded as observed and CANNOT be reproduced from what
+//   this note names. The claim they support -- that neither interval admits 1 -- therefore rests
+//   on the original measurement and not on anything a later reader can re-run.
+// The row's admission stands on the ratio, which is re-derivable. The intervals corroborate it
+// and are not load-bearing for it.
 //
 // SO THE ROW STAYS, on all three conjuncts rather than two. The refusal that opened this question
 // is already gone, and by the same reasoning rather than by exemption: gunbc#10141's overlap join
