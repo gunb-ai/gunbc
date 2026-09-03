@@ -1,66 +1,84 @@
 module std.methods
 
+// WHAT A METHOD'S RESULT DENOTES, carried here because the corpus already depends on the answer and
+// no authority owned it. The finding that forced this row (2026-09-03): first() is realized four ways
+// -- the v1 interpreter, and the rust/python/typescript emission templates -- and on a NON-EMPTY list
+// whose element type is itself optional the four do not agree. Three collapse "the collection had no
+// first element" and "the first element is itself absent" into one sentinel; the rust realization
+// keeps them apart. Nothing declared which was correct, so each realization improvised.
+//
+// It is not an open question, and that is why this is a codification rather than a design decision:
+// accepted source on main already fixes the denotation by RELYING on it. std.target_representation
+// representation_spelling_for is declared `-> RepresentationSpelling<R>?` and returns `|> first`
+// directly as that optional; resolve_exact_binding matches `hits |> first` against Present/Absent;
+// checkpoint_row_migration_for does the same. The fact was load-bearing and UNHOMED -- DESIGN section
+// 3's missing-home case -- not undecided.
+type MethodResultDenotation
+  = ElementAccessOptional
+  | MethodResultDenotationUndeclared
+
 type MethodDeclaration {
   name: String
+  result_denotation: MethodResultDenotation
 }
 
-data add_method: MethodDeclaration = { name: "add" }
-data all_method: MethodDeclaration = { name: "all" }
-data any_method: MethodDeclaration = { name: "any" }
-data append_method: MethodDeclaration = { name: "append" }
-data bottom_method: MethodDeclaration = { name: "bottom" }
-data chars_method: MethodDeclaration = { name: "chars" }
-data clamp_method: MethodDeclaration = { name: "clamp" }
-data compare_method: MethodDeclaration = { name: "compare" }
-data complement_method: MethodDeclaration = { name: "complement" }
-data concat_method: MethodDeclaration = { name: "concat" }
-data contains_method: MethodDeclaration = { name: "contains" }
-data count_method: MethodDeclaration = { name: "count" }
-data diff_method: MethodDeclaration = { name: "diff" }
-data empty_method: MethodDeclaration = { name: "empty" }
-data ends_with_method: MethodDeclaration = { name: "ends_with" }
-data enumerate_method: MethodDeclaration = { name: "enumerate" }
-data filter_method: MethodDeclaration = { name: "filter" }
-data first_method: MethodDeclaration = { name: "first" }
-data flat_map_method: MethodDeclaration = { name: "flat_map" }
-data fold_method: MethodDeclaration = { name: "fold" }
-data get_method: MethodDeclaration = { name: "get" }
-data intersect_method: MethodDeclaration = { name: "intersect" }
-data is_empty_method: MethodDeclaration = { name: "is_empty" }
-data join_method: MethodDeclaration = { name: "join" }
-data last_method: MethodDeclaration = { name: "last" }
-data length_method: MethodDeclaration = { name: "length" }
-data list_push_method: MethodDeclaration = { name: "list_push" }
-data lookup_method: MethodDeclaration = { name: "lookup" }
-data map_method: MethodDeclaration = { name: "map" }
-data map_contains_key_method: MethodDeclaration = { name: "map_contains_key" }
-data map_get_method: MethodDeclaration = { name: "map_get" }
-data map_has_method: MethodDeclaration = { name: "map_has" }
-data map_insert_method: MethodDeclaration = { name: "map_insert" }
-data map_keys_method: MethodDeclaration = { name: "map_keys" }
-data map_merge_method: MethodDeclaration = { name: "map_merge" }
-data map_values_method: MethodDeclaration = { name: "map_values" }
-data meet_method: MethodDeclaration = { name: "meet" }
-data member_method: MethodDeclaration = { name: "member" }
-data mul_method: MethodDeclaration = { name: "mul" }
-data negate_method: MethodDeclaration = { name: "negate" }
-data one_method: MethodDeclaration = { name: "one" }
-data reciprocal_method: MethodDeclaration = { name: "reciprocal" }
-data replace_method: MethodDeclaration = { name: "replace" }
-data reverse_method: MethodDeclaration = { name: "reverse" }
-data skip_method: MethodDeclaration = { name: "skip" }
-data sort_by_method: MethodDeclaration = { name: "sort_by" }
-data split_method: MethodDeclaration = { name: "split" }
-data starts_with_method: MethodDeclaration = { name: "starts_with" }
-data string_contains_method: MethodDeclaration = { name: "string_contains" }
-data substring_method: MethodDeclaration = { name: "substring" }
-data take_method: MethodDeclaration = { name: "take" }
-data to_int_method: MethodDeclaration = { name: "to_int" }
-data to_lower_method: MethodDeclaration = { name: "to_lower" }
-data to_string_method: MethodDeclaration = { name: "to_string" }
-data to_upper_method: MethodDeclaration = { name: "to_upper" }
-data top_method: MethodDeclaration = { name: "top" }
-data trim_method: MethodDeclaration = { name: "trim" }
-data union_method: MethodDeclaration = { name: "union" }
-data with_method: MethodDeclaration = { name: "with" }
-data zero_method: MethodDeclaration = { name: "zero" }
+data add_method: MethodDeclaration = { name: "add", result_denotation: MethodResultDenotationUndeclared }
+data all_method: MethodDeclaration = { name: "all", result_denotation: MethodResultDenotationUndeclared }
+data any_method: MethodDeclaration = { name: "any", result_denotation: MethodResultDenotationUndeclared }
+data append_method: MethodDeclaration = { name: "append", result_denotation: MethodResultDenotationUndeclared }
+data bottom_method: MethodDeclaration = { name: "bottom", result_denotation: MethodResultDenotationUndeclared }
+data chars_method: MethodDeclaration = { name: "chars", result_denotation: MethodResultDenotationUndeclared }
+data clamp_method: MethodDeclaration = { name: "clamp", result_denotation: MethodResultDenotationUndeclared }
+data compare_method: MethodDeclaration = { name: "compare", result_denotation: MethodResultDenotationUndeclared }
+data complement_method: MethodDeclaration = { name: "complement", result_denotation: MethodResultDenotationUndeclared }
+data concat_method: MethodDeclaration = { name: "concat", result_denotation: MethodResultDenotationUndeclared }
+data contains_method: MethodDeclaration = { name: "contains", result_denotation: MethodResultDenotationUndeclared }
+data count_method: MethodDeclaration = { name: "count", result_denotation: MethodResultDenotationUndeclared }
+data diff_method: MethodDeclaration = { name: "diff", result_denotation: MethodResultDenotationUndeclared }
+data empty_method: MethodDeclaration = { name: "empty", result_denotation: MethodResultDenotationUndeclared }
+data ends_with_method: MethodDeclaration = { name: "ends_with", result_denotation: MethodResultDenotationUndeclared }
+data enumerate_method: MethodDeclaration = { name: "enumerate", result_denotation: MethodResultDenotationUndeclared }
+data filter_method: MethodDeclaration = { name: "filter", result_denotation: MethodResultDenotationUndeclared }
+data first_method: MethodDeclaration = { name: "first", result_denotation: ElementAccessOptional }
+data flat_map_method: MethodDeclaration = { name: "flat_map", result_denotation: MethodResultDenotationUndeclared }
+data fold_method: MethodDeclaration = { name: "fold", result_denotation: MethodResultDenotationUndeclared }
+data get_method: MethodDeclaration = { name: "get", result_denotation: MethodResultDenotationUndeclared }
+data intersect_method: MethodDeclaration = { name: "intersect", result_denotation: MethodResultDenotationUndeclared }
+data is_empty_method: MethodDeclaration = { name: "is_empty", result_denotation: MethodResultDenotationUndeclared }
+data join_method: MethodDeclaration = { name: "join", result_denotation: MethodResultDenotationUndeclared }
+data last_method: MethodDeclaration = { name: "last", result_denotation: ElementAccessOptional }
+data length_method: MethodDeclaration = { name: "length", result_denotation: MethodResultDenotationUndeclared }
+data list_push_method: MethodDeclaration = { name: "list_push", result_denotation: MethodResultDenotationUndeclared }
+data lookup_method: MethodDeclaration = { name: "lookup", result_denotation: MethodResultDenotationUndeclared }
+data map_method: MethodDeclaration = { name: "map", result_denotation: MethodResultDenotationUndeclared }
+data map_contains_key_method: MethodDeclaration = { name: "map_contains_key", result_denotation: MethodResultDenotationUndeclared }
+data map_get_method: MethodDeclaration = { name: "map_get", result_denotation: MethodResultDenotationUndeclared }
+data map_has_method: MethodDeclaration = { name: "map_has", result_denotation: MethodResultDenotationUndeclared }
+data map_insert_method: MethodDeclaration = { name: "map_insert", result_denotation: MethodResultDenotationUndeclared }
+data map_keys_method: MethodDeclaration = { name: "map_keys", result_denotation: MethodResultDenotationUndeclared }
+data map_merge_method: MethodDeclaration = { name: "map_merge", result_denotation: MethodResultDenotationUndeclared }
+data map_values_method: MethodDeclaration = { name: "map_values", result_denotation: MethodResultDenotationUndeclared }
+data meet_method: MethodDeclaration = { name: "meet", result_denotation: MethodResultDenotationUndeclared }
+data member_method: MethodDeclaration = { name: "member", result_denotation: MethodResultDenotationUndeclared }
+data mul_method: MethodDeclaration = { name: "mul", result_denotation: MethodResultDenotationUndeclared }
+data negate_method: MethodDeclaration = { name: "negate", result_denotation: MethodResultDenotationUndeclared }
+data one_method: MethodDeclaration = { name: "one", result_denotation: MethodResultDenotationUndeclared }
+data reciprocal_method: MethodDeclaration = { name: "reciprocal", result_denotation: MethodResultDenotationUndeclared }
+data replace_method: MethodDeclaration = { name: "replace", result_denotation: MethodResultDenotationUndeclared }
+data reverse_method: MethodDeclaration = { name: "reverse", result_denotation: MethodResultDenotationUndeclared }
+data skip_method: MethodDeclaration = { name: "skip", result_denotation: MethodResultDenotationUndeclared }
+data sort_by_method: MethodDeclaration = { name: "sort_by", result_denotation: MethodResultDenotationUndeclared }
+data split_method: MethodDeclaration = { name: "split", result_denotation: MethodResultDenotationUndeclared }
+data starts_with_method: MethodDeclaration = { name: "starts_with", result_denotation: MethodResultDenotationUndeclared }
+data string_contains_method: MethodDeclaration = { name: "string_contains", result_denotation: MethodResultDenotationUndeclared }
+data substring_method: MethodDeclaration = { name: "substring", result_denotation: MethodResultDenotationUndeclared }
+data take_method: MethodDeclaration = { name: "take", result_denotation: MethodResultDenotationUndeclared }
+data to_int_method: MethodDeclaration = { name: "to_int", result_denotation: MethodResultDenotationUndeclared }
+data to_lower_method: MethodDeclaration = { name: "to_lower", result_denotation: MethodResultDenotationUndeclared }
+data to_string_method: MethodDeclaration = { name: "to_string", result_denotation: MethodResultDenotationUndeclared }
+data to_upper_method: MethodDeclaration = { name: "to_upper", result_denotation: MethodResultDenotationUndeclared }
+data top_method: MethodDeclaration = { name: "top", result_denotation: MethodResultDenotationUndeclared }
+data trim_method: MethodDeclaration = { name: "trim", result_denotation: MethodResultDenotationUndeclared }
+data union_method: MethodDeclaration = { name: "union", result_denotation: MethodResultDenotationUndeclared }
+data with_method: MethodDeclaration = { name: "with", result_denotation: MethodResultDenotationUndeclared }
+data zero_method: MethodDeclaration = { name: "zero", result_denotation: MethodResultDenotationUndeclared }
