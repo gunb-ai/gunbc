@@ -1,0 +1,174 @@
+module gunbc.self_compile_blocking_disposition
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha, List }
+
+// A self-compile refusal is not automatically a defect.  The subject is the diagnostic identity,
+// not the total printed beside the run: two diagnostics with the same spelling in one declaration
+// remain distinct through occurrence.  Occurrence is local to (module, site, diagnostic), so adding
+// an unrelated diagnostic cannot rename the enrolled member.
+type SelfCompileDiagnosticIdentity {
+  module_path: NonEmptyStr
+  site: NonEmptyStr
+  diagnostic: NonEmptyStr
+  occurrence: Int
+}
+
+type ExpectedSelfCompileDisposition
+  = Accepts
+  | RefusesWithThisDiagnostic
+
+type DeclaredSelfCompileDisposition {
+  identity: SelfCompileDiagnosticIdentity
+  expected: ExpectedSelfCompileDisposition
+}
+
+type ObservedSelfCompileDisposition
+  = ObservedAcceptance { identity: SelfCompileDiagnosticIdentity }
+  | ObservedRefusal { identity: SelfCompileDiagnosticIdentity }
+
+type SelfCompileDispositionJoin {
+  source_revision: CommitSha
+  primary_root: NonEmptyStr
+  dependency_pool_root: NonEmptyStr
+  render_target: NonEmptyStr
+  declared: List<DeclaredSelfCompileDisposition>
+  observed: List<ObservedSelfCompileDisposition>
+}
+
+fn diagnostic_identity(module_path: String, site: String, diagnostic: String, occurrence: Int) -> SelfCompileDiagnosticIdentity {
+  SelfCompileDiagnosticIdentity {
+    module_path: module_path as NonEmptyStr,
+    site: site as NonEmptyStr,
+    diagnostic: diagnostic as NonEmptyStr,
+    occurrence: occurrence,
+  }
+}
+
+fn diagnostic_identity_eq(a: SelfCompileDiagnosticIdentity, b: SelfCompileDiagnosticIdentity) -> Bool {
+  a.module_path == b.module_path
+    && a.site == b.site
+    && a.diagnostic == b.diagnostic
+    && a.occurrence == b.occurrence
+}
+
+fn observed_identity(o: ObservedSelfCompileDisposition) -> SelfCompileDiagnosticIdentity {
+  match o {
+    ObservedAcceptance { identity: i } => i
+    ObservedRefusal { identity: i } => i
+  }
+}
+
+fn observed_matches_declared(o: ObservedSelfCompileDisposition, d: DeclaredSelfCompileDisposition) -> Bool {
+  diagnostic_identity_eq(a: observed_identity(o: o), b: d.identity)
+    && match d.expected {
+      Accepts => match o { ObservedAcceptance { identity: _ } => true  ObservedRefusal { identity: _ } => false }
+      RefusesWithThisDiagnostic => match o { ObservedAcceptance { identity: _ } => false  ObservedRefusal { identity: _ } => true }
+    }
+}
+
+fn declared_match_count(d: DeclaredSelfCompileDisposition, observed: List<ObservedSelfCompileDisposition>) -> Int {
+  observed |> filter(o => observed_matches_declared(o: o, d: d)) |> count
+}
+
+fn observed_match_count(o: ObservedSelfCompileDisposition, declared: List<DeclaredSelfCompileDisposition>) -> Int {
+  declared |> filter(d => observed_matches_declared(o: o, d: d)) |> count
+}
+
+// Both directions and exact multiplicity are load-bearing.  The first half catches loss and a
+// changed disposition; the second catches additions.  Requiring one match makes duplicate rows
+// loud instead of silently treating these lists as sets.
+fn self_compile_disposition_join_holds(j: SelfCompileDispositionJoin) -> Bool {
+  count(j.declared) > 0
+    && count(j.observed) > 0
+    && count(j.declared) == count(j.observed)
+    && j.declared |> all(d => declared_match_count(d: d, observed: j.observed) == 1)
+    && j.observed |> all(o => observed_match_count(o: o, declared: j.declared) == 1)
+}
+
+fn ownership(site: String, diagnostic: String, occurrence: Int) -> SelfCompileDiagnosticIdentity {
+  diagnostic_identity(
+    module_path: "v2.test.manual.ownership_movable",
+    site: site,
+    diagnostic: diagnostic,
+    occurrence: occurrence,
+  )
+}
+
+fn confinement_plant() -> SelfCompileDiagnosticIdentity {
+  diagnostic_identity(
+    module_path: "v2.test.fixture.meta_exec_confinement_scan.leak_plant",
+    site: "planted_meta_exec_import_leak",
+    diagnostic: "sole_constructor type 'TransportScript' cannot be constructed outside its defining module",
+    occurrence: 1,
+  )
+}
+
+fn current_self_compile_identities() -> List<SelfCompileDiagnosticIdentity> {
+  [
+    ownership(site: "<module-import>", diagnostic: "unresolved import: module 'v1.compiler.ownership' not found", occurrence: 1),
+    ownership(site: "proof_one", diagnostic: "unresolved type 'EdgeClassification'", occurrence: 1),
+    ownership(site: "proof_one", diagnostic: "unresolved type 'OwnershipProof'", occurrence: 1),
+    ownership(site: "proof_one", diagnostic: "unresolved type 'BindingUsage'", occurrence: 1),
+    ownership(site: "proof_one", diagnostic: "unresolved type 'OwnershipProof'", occurrence: 2),
+    ownership(site: "edge", diagnostic: "unresolved type 'EdgeKind'", occurrence: 1),
+    ownership(site: "edge", diagnostic: "unresolved type 'EdgeClassification'", occurrence: 1),
+    ownership(site: "edge", diagnostic: "unresolved type 'EdgeClassification'", occurrence: 2),
+    ownership(site: "movable_of", diagnostic: "unresolved type 'OwnershipProof'", occurrence: 1),
+    ownership(site: "movable_of", diagnostic: "set_contains receiver must be a Set", occurrence: 1),
+    ownership(site: "movable_of", diagnostic: "function 'build_movable_set' not found in scope", occurrence: 1),
+    ownership(site: "witness_read_then_consume_param_is_movable", diagnostic: "undefined variable 'Projected'", occurrence: 1),
+    ownership(site: "witness_read_then_consume_param_is_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1),
+    ownership(site: "witness_double_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1),
+    ownership(site: "witness_double_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 2),
+    ownership(site: "witness_zero_consume_is_not_movable", diagnostic: "undefined variable 'Projected'", occurrence: 1),
+    ownership(site: "witness_whole_read_then_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1),
+    ownership(site: "witness_threaded_then_consume_is_not_movable", diagnostic: "undefined variable 'Threaded'", occurrence: 1),
+    ownership(site: "witness_threaded_then_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1),
+    confinement_plant(),
+  ]
+}
+
+fn declared_current_self_compile_dispositions() -> List<DeclaredSelfCompileDisposition> {
+  current_self_compile_identities()
+    |> map(i => DeclaredSelfCompileDisposition { identity: i, expected: RefusesWithThisDiagnostic })
+}
+
+// Written independently of the declared roster: deriving both sides from one list would let a
+// deletion or substitution change the alleged expectation and observation in lockstep.
+fn observed_current_self_compile_dispositions() -> List<ObservedSelfCompileDisposition> {
+  [
+    ObservedRefusal { identity: ownership(site: "<module-import>", diagnostic: "unresolved import: module 'v1.compiler.ownership' not found", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "proof_one", diagnostic: "unresolved type 'EdgeClassification'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "proof_one", diagnostic: "unresolved type 'OwnershipProof'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "proof_one", diagnostic: "unresolved type 'BindingUsage'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "proof_one", diagnostic: "unresolved type 'OwnershipProof'", occurrence: 2) },
+    ObservedRefusal { identity: ownership(site: "edge", diagnostic: "unresolved type 'EdgeKind'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "edge", diagnostic: "unresolved type 'EdgeClassification'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "edge", diagnostic: "unresolved type 'EdgeClassification'", occurrence: 2) },
+    ObservedRefusal { identity: ownership(site: "movable_of", diagnostic: "unresolved type 'OwnershipProof'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "movable_of", diagnostic: "set_contains receiver must be a Set", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "movable_of", diagnostic: "function 'build_movable_set' not found in scope", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_read_then_consume_param_is_movable", diagnostic: "undefined variable 'Projected'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_read_then_consume_param_is_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_double_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_double_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 2) },
+    ObservedRefusal { identity: ownership(site: "witness_zero_consume_is_not_movable", diagnostic: "undefined variable 'Projected'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_whole_read_then_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_threaded_then_consume_is_not_movable", diagnostic: "undefined variable 'Threaded'", occurrence: 1) },
+    ObservedRefusal { identity: ownership(site: "witness_threaded_then_consume_is_not_movable", diagnostic: "undefined variable 'Consumed'", occurrence: 1) },
+    ObservedRefusal { identity: confinement_plant() },
+  ]
+}
+
+// Receipt of the local, bound-cgroup run.  This is deliberately a receipt rather than an
+// executing compiler gate: no .dag consumer currently launches a whole-root compile, and calling
+// a copied observation live would be the specification-without-execution error.  The join still
+// makes the corrected terminal explicit and executable over its two populations.
+data current_self_compile_disposition_join: SelfCompileDispositionJoin = SelfCompileDispositionJoin {
+  source_revision: "8bfae78d7819eb895a0fa260073f852132a82f5f",
+  primary_root: "src/v2" as NonEmptyStr,
+  dependency_pool_root: "dag" as NonEmptyStr,
+  render_target: "rust+dag" as NonEmptyStr,
+  declared: declared_current_self_compile_dispositions(),
+  observed: observed_current_self_compile_dispositions(),
+}

@@ -1,0 +1,108 @@
+module test.claim.self_compile_blocking_disposition_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.self_compile_blocking_disposition {
+  SelfCompileDispositionJoin,
+  SelfCompileDiagnosticIdentity,
+  DeclaredSelfCompileDisposition,
+  ObservedAcceptance,
+  ObservedRefusal,
+  Accepts,
+  RefusesWithThisDiagnostic,
+  diagnostic_identity,
+  current_self_compile_identities,
+  declared_current_self_compile_dispositions,
+  observed_current_self_compile_dispositions,
+  current_self_compile_disposition_join,
+  self_compile_disposition_join_holds,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn current_identity_and_disposition_join_holds() -> Bool {
+  count(current_self_compile_identities()) == 20
+    && count(declared_current_self_compile_dispositions()) == 20
+    && count(observed_current_self_compile_dispositions()) == 20
+    && self_compile_disposition_join_holds(j: current_self_compile_disposition_join)
+}
+
+fn first_identity() -> SelfCompileDiagnosticIdentity {
+  diagnostic_identity(
+    module_path: "v2.test.manual.ownership_movable",
+    site: "<module-import>",
+    diagnostic: "unresolved import: module 'v1.compiler.ownership' not found",
+    occurrence: 1,
+  )
+}
+
+test fn a_lost_subject_is_refused_RED() -> Bool {
+  let observed = observed_current_self_compile_dispositions() |> skip(1)
+  !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
+    source_revision: current_self_compile_disposition_join.source_revision,
+    primary_root: current_self_compile_disposition_join.primary_root,
+    dependency_pool_root: current_self_compile_disposition_join.dependency_pool_root,
+    render_target: current_self_compile_disposition_join.render_target,
+    declared: declared_current_self_compile_dispositions(),
+    observed: observed,
+  })
+}
+
+test fn a_new_subject_is_refused_RED() -> Bool {
+  let observed = concat(observed_current_self_compile_dispositions(), [ObservedRefusal { identity: first_identity() }])
+  !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
+    source_revision: current_self_compile_disposition_join.source_revision,
+    primary_root: current_self_compile_disposition_join.primary_root,
+    dependency_pool_root: current_self_compile_disposition_join.dependency_pool_root,
+    render_target: current_self_compile_disposition_join.render_target,
+    declared: declared_current_self_compile_dispositions(),
+    observed: observed,
+  })
+}
+
+test fn an_equal_count_identity_substitution_is_refused_RED() -> Bool {
+  let replacement = diagnostic_identity(
+    module_path: "v2.test.manual.ownership_movable",
+    site: "invented_site",
+    diagnostic: "invented diagnostic",
+    occurrence: 1,
+  )
+  let observed = concat(observed_current_self_compile_dispositions() |> skip(1), [ObservedRefusal { identity: replacement }])
+  count(observed) == count(declared_current_self_compile_dispositions())
+    && !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
+      source_revision: current_self_compile_disposition_join.source_revision,
+      primary_root: current_self_compile_disposition_join.primary_root,
+      dependency_pool_root: current_self_compile_disposition_join.dependency_pool_root,
+      render_target: current_self_compile_disposition_join.render_target,
+      declared: declared_current_self_compile_dispositions(),
+      observed: observed,
+    })
+}
+
+test fn a_changed_disposition_is_refused_RED() -> Bool {
+  let first = first_identity()
+  let declared = [DeclaredSelfCompileDisposition { identity: first, expected: Accepts }]
+  let observed = [ObservedRefusal { identity: first }]
+  !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
+    source_revision: current_self_compile_disposition_join.source_revision,
+    primary_root: current_self_compile_disposition_join.primary_root,
+    dependency_pool_root: current_self_compile_disposition_join.dependency_pool_root,
+    render_target: current_self_compile_disposition_join.render_target,
+    declared: declared,
+    observed: observed,
+  })
+}
+
+test fn declared_refusal_regresses_when_it_starts_accepting_RED() -> Bool {
+  let first = first_identity()
+  let declared = [DeclaredSelfCompileDisposition { identity: first, expected: RefusesWithThisDiagnostic }]
+  let observed = [ObservedAcceptance { identity: first }]
+  !self_compile_disposition_join_holds(j: SelfCompileDispositionJoin {
+    source_revision: current_self_compile_disposition_join.source_revision,
+    primary_root: current_self_compile_disposition_join.primary_root,
+    dependency_pool_root: current_self_compile_disposition_join.dependency_pool_root,
+    render_target: current_self_compile_disposition_join.render_target,
+    declared: declared,
+    observed: observed,
+  })
+}
