@@ -44,25 +44,6 @@ data operator_host_srv4: HostIdentity = "srv4"
 data operator_host_srv7: HostIdentity = "srv7"
 data operator_host_srv8: HostIdentity = "srv8"
 
-// PI-RELAY-0 (2026-09-03). pi1 is the operator's Raspberry Pi, and it is named here because it is
-// the ONLY machine in reach of the fleet that carries a radio -- which makes it the sole path to a
-// DGX Spark's first-boot access point, and therefore load-bearing for onboarding every unit that
-// has never touched the LAN.
-//
-// NAMING IS NOT ENROLLMENT, exactly as the srv5/srv6 note above sets out, and the distinction is
-// doing real work here rather than being recited: pi1 appears in neither `endpoints` nor
-// gunbc.fleet_intent's ComputeHost list, so nothing converges it, no sudoers artifact is minted for
-// it, and `admit_runner_host` still refuses it. This row lets a model say WHICH machine relayed,
-// and grants nothing.
-//
-// IT IS NAMED RATHER THAN LEFT UNALLOCATED BECAUSE THE ALTERNATIVE WAS WORSE. The OOBE placement
-// model needed an identity for the relay and, lacking one here, an earlier revision wrote
-// `"pi1" as HostIdentity` inside itself -- performing the allocation in the first consumer that
-// found it convenient, which is the §3 fork this module exists to prevent. The allocation receipt
-// carrying the delegation, the date and the basis is
-// gunbc.spark.oobe_execution_placement.pi1_relay_identity_allocation.
-data operator_host_pi1: HostIdentity = "pi1"
-
 data operator_host_srv5: HostIdentity = "srv5"
 data operator_host_srv6: HostIdentity = "srv6"
 

@@ -7,17 +7,13 @@ import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualif
 import extdeps.access.posix { PosixLoginName }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.fleet_intent_network {
-  operator_host_pi1,
   operator_host_srv1,
   operator_host_srv2,
   operator_host_srv3,
   operator_host_srv4,
-  operator_host_srv7,
 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
-import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
 import gunbc.spark.oobe_screen_observation { ObservedUnitAccessPointSsid }
 import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdmission,
@@ -376,28 +372,26 @@ data machine_srv2: ObservedMachineIdentity = FleetAllocatedMachine { host: opera
 data machine_srv3: ObservedMachineIdentity = FleetAllocatedMachine { host: operator_host_srv3 }
 data machine_srv4: ObservedMachineIdentity = FleetAllocatedMachine { host: operator_host_srv4 }
 
-// pi1 IS NOW ALLOCATED, AND NOT HERE. An earlier revision of this module wrote "pi1" as
-// HostIdentity inline, performing the allocation in the first consumer that found it convenient.
-// The identity is now named by gunbc.fleet_intent_network, which is the single authority for a
-// host's fleet identity, and this row imports it. The receipt below records who decided and why,
-// because an allocation with no attributable decider is indistinguishable from a measurement
-// somebody fabricated.
-data pi1_relay_identity_allocation: OperatorAllocation = OperatorAllocation {
-  decided_by: "sleek-bear-442, canonicalizing an operator-authored label. NOT taken under the DGX slot delegation -- see basis.",
-  decided_on: "2026-09-03",
-  basis: "pi1 KEEPS THE LABEL THE OPERATOR ALREADY GAVE IT. The name is not minted here: it is what the machine answers to on the operator's LAN and in their ssh_config, so this row canonicalizes an existing operator-authored name into the single authority for host identity rather than making a fresh choice. That is the provenance, and it is deliberately NOT the DGX slot delegation ('regarding the allocation, i don't care so much - youc an just choose arbitrarily'): that delegation was given for a tie-break among interchangeable Spark slots, and a support host is a different decision population. Citing it here would widen a narrow grant by describing two unlike decisions as the same kind of arbitrary choice -- the objection review raised, correctly. IT IS ALSO NOT AN srvN SLOT, for the same reason: srvN denotes the operator's server fleet and srv5..srv8 are DGX Spark units, so filing a Raspberry Pi radio relay into that sequence would make the sequence stop meaning anything. WHAT IS STILL OUTSTANDING: explicit operator ratification of adopting a support host into the identity authority at all. It is recorded as outstanding rather than assumed because the alternative -- leaving the relay unallocated -- blocks onboarding every Spark that has never touched the LAN, and a blocker resolved by an unratified assumption is worse than one stated plainly. NAMING ONLY: pi1 is in neither `endpoints` nor the ComputeHost list, so nothing converges it, no sudoers artifact is minted, and admit_runner_host still refuses it."
-}
-
-// pi1 STAYS UNALLOCATED UNTIL THE OPERATOR RATIFIES, and the previous head got this exactly
-// backwards: it wrote FleetAllocatedMachine while its own receipt one row above said ratification
-// was STILL OUTSTANDING. Prose recording a gap does not close it -- the code had already converted
-// undeclared intent into an allocated identity, which §4b puts outside the ladder ("observed,
-// refused, or mitigated at a declared boundary, never fabricated") and §5 forbids as fabricated
-// output. The tell was that the refusal frontier advanced while nothing in the world had changed.
+// pi1 IS DELIBERATELY NOT ALLOCATED, AND THE HALF-BUILT ALLOCATION THAT WAS HERE IS GONE.
 //
-// SO THE REFUSAL COMES BACK, deliberately. Onboarding stays blocked at the relay identity, which is
-// the truth, and it is ONE OPERATOR SENTENCE from moving -- at which point this row becomes
-// FleetAllocatedMachine { host: operator_host_pi1 } and nothing else needs editing.
+// An earlier head carried an OperatorAllocation receipt plus an operator_host_pi1 row in the fleet
+// identity authority, while this row still refused. Review flagged the receipt for attributing an
+// operator's identity decision to an agent session; checking it turned up something worse, and the
+// same defect that review found in this file's unused chromium import: the receipt and the identity
+// row were referenced ONLY FROM COMMENTS. Nothing executed reached either. They were prose wearing
+// the shape of declarations -- §4c's quarantine boundary breached at the value level, and §6's
+// artifact-with-no-final-consumer besides.
+//
+// Half of an allocation is not a smaller allocation, it is a claim with no consumer. So the whole
+// apparatus is withdrawn and ratification becomes ONE coherent act rather than a row that already
+// exists waiting to be believed: on the operator's word, `operator_host_pi1` lands in
+// gunbc.fleet_intent_network, an allocation receipt lands with an operator decider, and this row
+// becomes FleetAllocatedMachine. Until then the honest state is an observed label and a refusal.
+//
+// WHAT THE REFUSAL COSTS, stated so nobody has to rediscover it: pi1 owns the only radio in reach
+// of the fleet, so every DGX Spark that has never joined the LAN is unreachable while this stands.
+// That cost is the argument for asking, not for assuming -- an earlier head assumed it, and the
+// tell was that the refusal frontier advanced while nothing in the world had changed.
 data machine_pi1: ObservedMachineIdentity = UnallocatedMachineObservation {
   observed_label: "pi1" as NonEmptyStr,
 }

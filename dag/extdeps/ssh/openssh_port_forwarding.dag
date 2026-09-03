@@ -1,7 +1,7 @@
 module extdeps.ssh.openssh_port_forwarding
 
-import std.types { String, NonEmptyStr, Bool, List }
-import extdeps.ssh.client_options { SshClientOption, BatchMode, ExitOnForwardFailure, serialize_ssh_client_options }
+import std.types { String, NonEmptyStr, Bool }
+import extdeps.ssh.client_options { SshClientOption, BatchMode, ExitOnForwardFailure }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -137,11 +137,6 @@ data exit_on_forward_failure_option: SshClientOption = ExitOnForwardFailure { en
 
 data batch_mode_option: SshClientOption = BatchMode { enabled: true }
 
-// The forwarding client always sets both, so the pair is bound once rather than at each call site.
-data openssh_forwarding_client_options: List<SshClientOption> = [
-  extdeps.ssh.openssh_port_forwarding.exit_on_forward_failure_option,
-  extdeps.ssh.openssh_port_forwarding.batch_mode_option,
-]
 
 fn forward_flag(direction: ForwardDirection) -> NonEmptyStr {
   match direction {
