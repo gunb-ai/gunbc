@@ -23,12 +23,19 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // THE INPUT IS THE `required-floor-claim-cost` ARTIFACT that every required-floor run uploads --
 // the COMPLETE executed population, not the 25-row `[over-cost]` preview the job log prints.
 
-// `eval_steps` IS THE THIRD COLUMN THIS ANALYSIS NEEDS, and the only one of the three that is not
-// a clock. Evaluator steps are counted by the interpreter and netted by the same shared-fill rule
-// the CPU figure is, so a row's step count is a property of what it evaluated and carries no term
-// for the machine it evaluated on. It is what lets `identity_inflation_permille_at_equal_work`
-// below separate "this row got more expensive" from "this row got inflated" without choosing a
-// control population at all.
+// `eval_steps` IS THE ONE COLUMN THIS ANALYSIS NEEDS THAT IS NOT A CLOCK. Evaluator steps are
+// counted by the interpreter and netted by the same shared-fill rule the CPU figure is, so a row's
+// step count is a property of what it evaluated and carries no term for the machine it evaluated
+// on. It is what lets `identity_inflation_permille_at_equal_work` below separate "this row got
+// more expensive" from "this row got inflated" without choosing a control population at all.
+//
+// IT IS NOT A WAY AROUND THE CENSORING, and reaching for it as one is the tempting move once the
+// clocks below become a coproduct. An interrupted row's step count is QUANTISED BY THE DEADLINE
+// POLL -- the poll fires every 1024 steps, so the recorded figure is itself a lower bound rounded
+// to a poll boundary, while a completed row's is a true count. So steps are censored on exactly
+// the same rows the clocks are, by the same mechanism, and a step-denominated statistic over a
+// mixed population has the same defect in a less visible field.
+
 // THE COST IS A COPRODUCT, NOT A NUMBER, AND THIS MODULE IS WHY THE CLASS WAS FILED.
 //
 // This row used to carry `cpu_ms: Millisecond` for every artifact row. The artifact's population
@@ -328,16 +335,89 @@ fn row_is_excluded(row: FloorCostRow, excluded_modules: List<String>) -> Bool {
   any(excluded_modules, m => m == row.module)
 }
 
-// A CROSSING IS A LOWER-BOUND QUESTION, so both arms answer it and a censored row is admitted.
-// "Did this row reach the ceiling" is precisely what a row stopped AT a ceiling establishes -- it
-// is the one inference the bound supports, and excluding censored rows here would under-count
-// crossings and make the floor look healthier than it is. That direction of error is the one this
-// figure must not make, since it feeds `runs_refused`.
+// A CROSSING IS A LOWER-BOUND QUESTION, so a censored row CAN answer it -- but only when its own
+// bound clears the line being asked about, and that is a per-row fact rather than a standing one.
+//
+// "Did this row reach the line" is the one inference a bound supports, and excluding censored rows
+// outright would under-count crossings and make the floor read healthier than it is -- the single
+// direction this figure must never err in, since `runs_refused` is built on it. So they are
+// admitted. What is NOT admitted is the assumption that admitting them is always sound.
+//
+// THE SOUNDNESS RESTS ON AN ORDERING BETWEEN TWO INDEPENDENTLY OWNED CONSTANTS, AND NOTHING
+// ASSERTS IT. A censored row is known only to have cost at least its own bound. Whether that
+// settles the question depends on how the bound compares to the line, and today it always does --
+// the CPU safety ceiling (`v2.workflow.required_floor`
+// `required_floor_claim_cpu_safety_limit_ms`) sits well above the cost line the artifact records,
+// so every censored row genuinely did cross. That is a COINCIDENCE OF TWO CONSTANTS IN DIFFERENT
+// MODULES, not a property of the question: raise the cost line above the safety ceiling, or lower
+// the ceiling, and every censored row would be silently counted as a crossing it never made, with
+// `runs_refused` moving and nothing saying why.
+//
+// SO THERE ARE THREE ARMS AND THE THIRD IS COUNTED, NOT DEFAULTED. A censored row whose bound does
+// NOT clear the line is UNDECIDABLE for this question, and it is refused and reported rather than
+// resolved either way. Defaulting it to "crossed" is the tempting arm because it errs
+// pessimistically -- and it is still the absorbing fallback DESIGN section 5 forbids: it conflates
+// "the safe answer" with "no answer", destroys the signal that the ordering has broken, and
+// fabricates a fact about a row. That is the same argument this module already makes for refusing
+// an inflation pair rather than dropping its censored member, applied to its own admission.
+//
+// TODAY THE THIRD ARM IS PROVABLY EMPTY, WHICH IS EXACTLY WHY IT IS WORTH HAVING: it is a
+// discriminating red that cannot currently fire, costs nothing while the ordering holds, and fires
+// the moment it stops.
+type RowCrossing
+  = RowCrossed
+  | RowBelowLine
+  | RowCrossingUndecidable
+
+fn row_crossing(row: FloorCostRow, ceiling_ms: Millisecond) -> RowCrossing {
+  match row.cost {
+    ObservedCost { cpu_ms: c } =>
+      if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) { RowCrossed } else { RowBelowLine }
+    RightCensoredCost { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } =>
+      // The bound clears the line, so the row is known to be above it whatever its true cost was.
+      if millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
+        RowCrossed
+      } else {
+        // Known to be above `b`, and `b` is below the line. The true cost may be on either side and
+        // this module cannot tell. It refuses rather than guessing in either direction.
+        RowCrossingUndecidable
+      }
+  }
+}
+
+// The crossing verdict over one run, with the undecidable population carried BESIDE the crossers
+// rather than folded into or out of them. Both lists are identities, so a caller can name the rows
+// it could not decide instead of reporting a count it cannot act on.
+type RunCrossingCensus {
+  crossed: List<String>
+  undecidable: List<String>
+}
+
+fn run_crossing_census(run: RunCost, ceiling_ms: Millisecond, excluded_modules: List<String>) -> RunCrossingCensus {
+  let kept = run.rows |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+  RunCrossingCensus {
+    crossed: kept |> flat_map(r => match row_crossing(row: r, ceiling_ms: ceiling_ms) {
+      RowCrossed => [r.identity]
+      RowBelowLine => []
+      RowCrossingUndecidable => []
+    }),
+    undecidable: kept |> flat_map(r => match row_crossing(row: r, ceiling_ms: ceiling_ms) {
+      RowCrossed => []
+      RowBelowLine => []
+      RowCrossingUndecidable => [r.identity]
+    })
+  }
+}
+
 fn run_crossings(run: RunCost, ceiling_ms: Millisecond, excluded_modules: List<String>) -> List<String> {
-  run.rows
-    |> filter(r => millisecond_count(m: cpu_at_least_ms(reading: r.cost)) >= millisecond_count(m: ceiling_ms)
-         && !row_is_excluded(row: r, excluded_modules: excluded_modules))
-    |> map(r => r.identity)
+  run_crossing_census(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules).crossed
+}
+
+// THE UNDECIDABLE POPULATION ACROSS A SAMPLE, so a caller reporting `runs_refused` can state what
+// that verdict could not see. A refusal that is counted but never surfaced is the same silence as
+// no refusal at all.
+fn runs_crossing_undecidable(runs: List<RunCost>, ceiling_ms: Millisecond, excluded_modules: List<String>) -> List<String> {
+  runs |> flat_map(run => run_crossing_census(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules).undecidable)
 }
 
 // THE WORST COST IS A POINT QUESTION AND CANNOT ADMIT A BOUND, which is the opposite ruling from

@@ -22,7 +22,8 @@ import gunbc.floor_cost_distribution {
   WorstCost,
   WorstObserved,
   WorstIsLowerBound,
-  censored_rows
+  censored_rows,
+  runs_crossing_undecidable
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -182,6 +183,12 @@ fn floor_cost_distribution_lines(
     concat(
       [
         concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: []))),
+        // WHAT THE REFUSAL VERDICT COULD NOT DECIDE. A censored row whose bound does not clear the
+        // ceiling is neither a crosser nor a non-crosser, and it is reported rather than resolved
+        // in either direction. Empty is the expected reading while the CPU safety ceiling sits
+        // above the cost line; a non-empty list means that ordering has broken and every crossing
+        // figure on this report is now qualified by it.
+        concat("rows undecidable for crossing\t", to_string(count(runs_crossing_undecidable(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: [])))),
         concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: repaired))),
         concat("worst row over all runs, repaired excluded\t", to_string(millisecond_count(m: worst_over_runs(runs: runs, excluded_modules: repaired))))
       ],

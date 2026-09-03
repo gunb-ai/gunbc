@@ -48,7 +48,14 @@ import gunbc.floor_cost_distribution {
   worst_cost_at_least_ms,
   observed_cpu_ms,
   cpu_at_least_ms,
-  censored_rows
+  censored_rows,
+  RowCrossing,
+  RowCrossed,
+  RowBelowLine,
+  RowCrossingUndecidable,
+  row_crossing,
+  run_crossing_census,
+  runs_crossing_undecidable
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -470,4 +477,54 @@ test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Boo
          InflationObservations { permille: p, paired: pd, censored_pairs: cp } =>
            count(p) == 2 && pd == 3 && cp == 1
        }
+}
+
+// THE THIRD CROSSING ARM, AND IT IS A RED THAT CANNOT FIRE ON TODAY'S CONSTANTS -- which is
+// precisely why it is here rather than omitted as dead.
+//
+// A censored row is known only to have cost at least its own bound. Whether that settles "did it
+// cross the line" depends on how the bound compares to the line, and today it always does: the CPU
+// safety ceiling sits well above the cost line, so every censored row genuinely crossed. That is a
+// coincidence between two constants in different modules with nothing asserting the ordering, not
+// a property of the question -- so the case where it breaks is exercised HERE, on a fixture, where
+// the line can be moved without moving either constant.
+//
+// THE FIXTURE MOVES THE LINE ABOVE THE BOUND rather than editing any live constant: asked about a
+// 600ms line, the row censored at >=502ms is genuinely undecidable -- its true cost may be on
+// either side of 600 and nothing in the artifact can say which.
+test fn a_censored_row_below_the_line_is_undecidable_rather_than_assumed_to_have_crossed() -> Bool {
+  match row_crossing(row: row_c_censored, ceiling_ms: millisecond(count: 600)) {
+    RowCrossed => false
+    RowBelowLine => false
+    RowCrossingUndecidable =>
+      // IT IS NOT SILENTLY DROPPED EITHER: it leaves the crossed list and appears in the
+      // undecidable one, so the count a caller reports is a refusal rather than an absence.
+      count(run_crossing_census(run: run_c, ceiling_ms: millisecond(count: 600), excluded_modules: []).crossed) == 0
+        && count(runs_crossing_undecidable(runs: [run_c], ceiling_ms: millisecond(count: 600), excluded_modules: [])) == 1
+        // AND THE CONTROL, WHICH IS THE ARM THAT ACTUALLY HOLDS TODAY: at the real 500ms line the
+        // same row's bound clears it, so it is a sound crossing and the undecidable list is EMPTY.
+        // Without this half, a function that answered Undecidable for every censored row would
+        // pass the first half and have destroyed the admission rather than guarded it.
+        && match row_crossing(row: row_c_censored, ceiling_ms: millisecond(count: 500)) {
+             RowCrossed =>
+               count(runs_crossing_undecidable(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 0
+             RowBelowLine => false
+             RowCrossingUndecidable => false
+           }
+  }
+}
+
+// AN OBSERVED ROW IS NEVER UNDECIDABLE, on either side of the line. The third arm belongs to
+// censoring alone, so a defect that widened it to observed rows -- making the whole analysis
+// refuse -- would be caught here rather than read as caution.
+test fn an_observed_row_is_decided_in_both_directions_and_never_undecidable() -> Bool {
+  match row_crossing(row: row_b1, ceiling_ms: millisecond(count: 500)) {
+    RowCrossed => match row_crossing(row: row_b3, ceiling_ms: millisecond(count: 500)) {
+      RowBelowLine => true
+      RowCrossed => false
+      RowCrossingUndecidable => false
+    }
+    RowBelowLine => false
+    RowCrossingUndecidable => false
+  }
 }
