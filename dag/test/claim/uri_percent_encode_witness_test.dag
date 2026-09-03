@@ -29,6 +29,10 @@ test fn uri_percent_encode_refuses_surrogate_scalar_holds() -> Bool {
   match uri_percent_encode_code_point(cp: 55296) {
     UriPercentComponentRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: 55296 } } => true
     UriPercentComponentEncoded(_) => false
+    UriPercentComponentRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => false
   }
 }
 
@@ -36,6 +40,10 @@ test fn uri_percent_encode_refuses_code_point_beyond_unicode_max_holds() -> Bool
   match uri_percent_encode_code_point(cp: 1114112) {
     UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
     UriPercentComponentEncoded(_) => false
+    UriPercentComponentRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => false
   }
 }
 
@@ -46,6 +54,10 @@ test fn uri_percent_encode_refuses_negative_scalar_at_construction_holds() -> Bo
     } =>
       c == witness_negative_scalar
     UriPercentComponentEncoded(_) => false
+    UriPercentComponentRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => false
   }
 }
 
@@ -53,6 +65,10 @@ test fn uri_percent_encode_refuses_directly_constructed_surrogate_scalar_holds()
   match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 55296 }) {
     UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: 55296 } } => true
     UriPercentEncodeBuilding { wire: _ } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: _ } } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: _ } } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: _ } } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeEmptyInputRefused } => false
   }
 }
 
@@ -62,6 +78,10 @@ test fn uri_percent_encode_refuses_directly_constructed_above_max_scalar_holds()
       cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
     } => true
     UriPercentEncodeBuilding { wire: _ } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: _ } } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: _ } } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: _ } } => false
+    UriPercentEncodeRefused { cause: UriPercentEncodeEmptyInputRefused } => false
   }
 }
 
@@ -76,6 +96,10 @@ test fn uri_percent_encode_refuses_empty_code_point_list_holds() -> Bool {
   match uri_percent_encode_code_points(code_points: []) {
     UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => true
     UriPercentComponentEncoded(_) => false
+    UriPercentComponentRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: _ } } => false
+    UriPercentComponentRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: _ } } => false
   }
 }
 

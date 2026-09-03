@@ -39,7 +39,6 @@ import gunbc.devboot.build {
   produced_ref_of,
   exchange_materialization_coordinate,
 }
-import gunbc.devboot.produce { SnapshotRefused, ToolchainObservationRefused }
 import gunbc.devboot.subject { FeatureNameEmpty, BuildSubjectRefusalCause }
 import gunbc.devboot.lease { request_ref_namespace, produced_ref_namespace }
 import extdeps.gnu.libc {

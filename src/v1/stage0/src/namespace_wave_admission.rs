@@ -663,38 +663,51 @@ pub struct TransitionAdmission {
 ///
 /// THE RESTING STATE IS RESTORED: empty, and empty is not permissive -- a run with a real delta
 /// still refuses it as UNADJUDICATED.
-/// EIGHTEENTH DISSOLUTION (2026-09-03). The 57 `ledger safety vocabulary relocation gunbc#10077
-/// 2026-09-02` rows are DELETED here, by the roster-toucher the previous entry named rather than by
-/// their author. Their own entry called this out in advance -- "the deletion is owed and it should
-/// not wait for me ... by whoever next touches this roster, which is the convention the sweep above
-/// establishes rather than a favour asked of them" -- and the mechanism enforced it: this change
-/// authors admissions, therefore touches this file, therefore hit
-/// `consumed_due = roster_touched && !consumed_admissions.is_empty()` and could not land while they
-/// stood. Receipt: required run 33700978133 on cdd31b664a reported them as `57 consumed
-/// admission(s)`, which is the positive proof their relocation already holds at the base.
+/// FOURTH TRANSITION, SAME RULE (2026-09-02). The `ClaimSafetyOutcome` /
+/// `ClaimPreemptionReachability` relocation of gunbc#10077: both types move from
+/// `v2.workflow.required_floor` to `v2.workflow.floor_terminal_ledger`, beside the
+/// `ClaimAttemptTerminal` arm that carries them, so the ledger stops importing the floor and the
+/// cycle that blocked the wet-route migration opens. Every one of the 57 rows below is a
+/// `TargetChanged` binding whose base is `v2.workflow.required_floor` and whose head is
+/// `v2.workflow.floor_terminal_ledger` — verified as the ONLY shape in the report, so no row here
+/// adjudicates a delta this transition did not cause.
 ///
-/// THE PREDICTION IN THAT ENTRY WAS CORRECT AND IS WORTH RECORDING AS SUCH, because the entry
-/// before it was wrong in the same place. It predicted CONSUMED rather than stale, on the reasoning
-/// that rows authored in the PR that performs their own move are satisfied at the base of every
-/// later run. The run reported exactly that. Two entries ago the same prediction was made as
-/// "stale" and left standing when it proved wrong; this one is left standing because it proved
-/// right, and the pair is the evidence that the consumed/stale distinction is real rather than
-/// bookkeeping.
+/// THEY ARE ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Fifty-seven deltas, fifty-seven rows,
+/// each naming its module, its declaration and the exact spelling whose target moved. A wildcard
+/// covering this relocation would also admit the next one nobody reviewed.
 ///
-/// FIFTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
-/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers that were
-/// duplicated beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification`
-/// into the one authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged`
-/// binding whose head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the
-/// report, so no row here adjudicates a delta this transition did not cause.
+/// EIGHTEENTH DISSOLUTION (2026-09-03). The 57 `ledger safety vocabulary relocation gunbc#10077`
+/// rows are removed by their own trigger, which fired: #10077 merged 2026-09-02T18:55:08Z as
+/// a4a6db175d2, so main carries the relocation and no run after it can produce those deltas.
 ///
-/// THE BASES ARE NOT ALL THE SAME MODULE, and that is the transition's own shape rather than an
-/// error: the concept had FOUR authorities, so the spellings move from four different bases --
-/// the two lenses that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
+/// THE RECEIPT IS THE RUN THAT NAMED THEM. On the merge of main into gunbc#9975 (2b3b841263e,
+/// run 33694346070) the wave phase reported all 57 as CONSUMED while still ADMITTING the change,
+/// because that commit does not touch this roster. The refusal wording from the SJT-1 cohort states
+/// the rule exactly: consumed rows are "due for deletion on this roster-touching change". So they
+/// are charged to a change that touches the file, and this one does.
+///
+/// I AM THE TOUCHER MY OWN TRIGGER NAMED. The rows' trigger said the deletion is owed by whoever
+/// next touches this roster; re-tensing that very trigger touched it, so the obligation landed on
+/// the change that went looking for it. Removing them here is the trigger being honoured rather
+/// than a sweep of convenience, and it is why no separate follow-up PR is owed.
+///
+/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
+/// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
+/// SIXTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
+/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
+/// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
+/// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
+/// head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the report, so no row
+/// here adjudicates a delta this transition did not cause. Measured from required run 33700978133
+/// on cdd31b664a, which reported exactly `17 unadjudicated delta(s)`.
+///
+/// THE BASES ARE NOT ALL ONE MODULE, and that is the transition's shape rather than an error: the
+/// concept had FOUR authorities, so the spellings move from four different bases -- the two lenses
+/// that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
 /// `v2.lens.affected_set.entry_selection`, which each held a copy of one helper. One row names a
 /// consumer outside `src/v2` entirely: `test.claim.bmc_onboarding_quarantine_witness_test` bound
-/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but the wall is
-/// correct that a cross-root binding whose target moved is exactly the delta a reader must see.
+/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but a cross-root
+/// binding whose target moved is exactly the delta a reader must be shown.
 ///
 /// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Seventeen deltas, seventeen rows, each naming
 /// its module, its declaration and the exact spelling whose target moved. A wildcard over
@@ -703,10 +716,17 @@ pub struct TransitionAdmission {
 /// TRIGGER: #10156 MERGING. After that, main carries the grounding, so a later run's base and head
 /// both have it and no run can produce these deltas.
 ///
-/// THEY WILL REPORT CONSUMED, NOT STALE, for the reason the entry above established: they are
-/// authored in the same PR that performs the move, so from the next run onward they are satisfied
-/// at the base. Born consumed, like the SJT-1, DCH-1 and #10077 cohorts. The deletion is therefore
-/// owed by whoever next touches this roster, on the same convention, and should not wait for me.
+/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established and the
+/// eighteenth dissolution then confirmed: rows authored in the same PR that performs their own move
+/// are satisfied at the BASE of every later run, never merely unmatched. Born consumed, like the
+/// SJT-1, DCH-1 and #10077 cohorts. Their deletion is therefore owed by whoever next touches this
+/// roster, on the convention the entry above honoured rather than delegated.
+///
+/// THE ORDINAL IS THE NEXT UNUSED ONE, NOT THE NEXT IN SEQUENCE, because this ledger's transition
+/// ordinals already collide: FOURTH and FIFTH each name two different transitions (gunbc#9665 and
+/// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
+/// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
+/// have made the entry uncitable by its own name -- which is what an ordinal is for.
 const CALL_REACHABILITY_GROUNDING_LABEL: &str =
     "call-reachability grounding gunbc#10156 2026-09-03";
 
