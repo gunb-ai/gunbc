@@ -54,15 +54,34 @@ fn spark_serving_convergence_withholding(
 
 // THE TWO HOSTS RUNNING THE UNMODELLED REALIZATION, 2026-09-03.
 //
-// The pair serves vLLM at tensor-parallel degree 2, and this corpus has no vLLM realization, no
-// tensor-parallel carrier, and no KV-dtype or context-length vocabulary to describe it with. The
-// desired state they would be converged to names an Ollama runtime, so the mismatch is total rather
-// than partial.
+// WHAT WAS ACTUALLY OBSERVED, by HTTP readback of the front door rather than by report: it answers
+// /v1/models with owned_by "vllm" and /version with a vLLM build string, serving the official
+// DeepSeek-V4-Flash checkpoint, and its /metrics carries a vLLM cache-config gauge naming an
+// fp8_ds_mla KV dtype and a prefix-caching flag. This corpus has no vLLM realization and no KV-dtype
+// or context-length vocabulary to describe any of that with, and the desired state these hosts would
+// be converged to names an Ollama runtime -- so the mismatch is total rather than partial.
+//
+// WHAT WAS NOT OBSERVED, AND IS THEREFORE NOT ASSERTED HERE. An earlier draft of this note said the
+// pair "serves vLLM at tensor-parallel degree 2". That was a report repeated as an observation: no
+// HTTP surface on the front door exposes a parallel-config gauge, so parallel degree, worker
+// population and image identity are not readable from the vantage that established everything else
+// above. The withholding does not need them -- one unmodelled engine is enough to refuse -- and
+// asserting them to make the row look complete is the fabricated-plausible-output this repository
+// refuses everywhere else. The second host does not answer on the front-door port at all, which is
+// consistent with a single front door and establishes nothing further on its own.
 //
 // THE DISCHARGE IS A MODELLING ACT WITH AN OBSERVABLE COMPLETION, which is what keeps this from being
-// an indefinite freeze: read the running deployment back into a vLLM realization -- parallel degree,
-// KV cache dtype, maximum model length, maximum sequence count, worker population, image identity --
-// and have desired state select it. These rows come out when that lands, and not before.
+// an indefinite freeze: read the running deployment back into a vLLM realization and have desired
+// state select it.
+//
+// BUT THE REMOVAL IS ATOMIC WITH THE PLANNER CONSUMING AN ADMITTED TARGET, AND THAT IS THE WHOLE
+// SAFETY OF THE DISCHARGE. Deleting these rows the moment a vLLM realization merely EXISTS would
+// reopen the exact hazard this module was built for: the wall would be gone and the planner would
+// still construct desired members from whatever the manifest happens to name, which is how converge
+// came to be pointed at an Ollama runtime over a working deployment in the first place. So the rows
+// come out in the SAME motion that makes the serving axis consume an admitted target before it
+// constructs any member -- never in a separate, earlier, smaller change. A window in which neither
+// gate stands is worse than the state this module was written to fix, because it looks resolved.
 data spark_serving_withheld_hosts: List<SparkServingConvergenceWithholding> = [
   spark_serving_convergence_withholding(
     host: operator_host_srv5, reason: RunsARealizationNoDesiredStateModels),
