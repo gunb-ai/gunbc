@@ -85,30 +85,53 @@ from the #9975 specimen (`sym_eq`) would have missed: 97 further sites in 9 file
 `pre_push.rs` is the local hook. I did NOT measure per-site execution coverage; reachability of the
 FILE is not execution of the SITE, and that gap is the census's main residue.
 
-## Two already-fired instances
+## Instances: one confirmed, one retracted
 
-**1 — #9975 (`v2.workflow.wet_evidence`), known.** Four spellings, all refused on the required path,
-no Rust compile failure.
+**1 — #9975 (`v2.workflow.wet_evidence`), known and standing.** Four spellings, all refused on the
+required path, no Rust compile failure. This remains the only confirmed instance.
 
-**2 — `roadmap_acceptance_event_history`, found by this census and not previously reported.**
-`cli_run.rs` calls `run_in_context(&ctx, "roadmap_acceptance_event_history", true)` and then matches
-`Ok(Value::List(events))`. **No declaration of that name exists in the corpus today.**
-`gunbc.roadmap_authority` declares `roadmap_acceptance_event_history_load`, returning
-`RoadmapAcceptanceEventHistoryLoad` — so the rename broke BOTH the name and the result shape. The
-pre-rename declaration is still visible at `git show 9ce6526c528:dag/gunbc/roadmap_authority.dag`
-(`fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent>`). The prose in
-`roadmap_authority.dag` still calls the old spelling "the single authority for acceptance facts", so
-the citation rotted with it.
+**2 — `roadmap_acceptance_event_history`: RETRACTED. Not a defect, and the retraction is the more
+useful finding.** `cli_run.rs` calls `run_in_context(&ctx, "roadmap_acceptance_event_history", true)`
+and no declaration of that name exists **at HEAD** — `gunbc.roadmap_authority` carries
+`roadmap_acceptance_event_history_load` instead. I reported that as a live break. It is not, and the
+reason is a defect in my own census METHOD rather than in the seed.
 
-Why nothing caught it: the only test over this route,
-`cli_run::roadmap_acceptance_history_projection_tests::merge_base_authority_projection_matches_jsonl_carrier`,
-is `#[ignore]`d AND feeds the decoder the authority text from that same pinned historical SHA — in
-which the old name still exists. The test can therefore never observe the break. This is
-"documented red is not observed red" in its purest form: a probe pinned to the input that predates
-the defect.
+That decoder's subject is **revision-addressed**, not HEAD. It is the one-time carrier-introduction
+bootstrap in `gunbc.roadmap_acceptance_history_observation`: it fires only when
+`git_show_path_absent_at_ref` reports the JSONL carrier ABSENT at the merge-base, and the text it
+decodes is `git.Core.Show(ref: baseline_sha, path: dag/gunbc/roadmap/roadmap_authority.dag)` — the
+merge-base revision's authority, not the worktree's.
 
-Verified by declaration scan plus reading the overlay construction and the pinned `git show`; NOT
-verified by executing the route, because the brief scopes this pass to census.
+The two facts are complementary, and they were bound in a single commit. At `bfaaf3e4ee7^` (#7791)
+`fn roadmap_acceptance_event_history()` exists and the carrier is absent; at `bfaaf3e4ee7` the
+carrier exists and the function is gone. That commit both introduced
+`dag/gunbc/roadmap_acceptance_event_history.jsonl` and removed the function. So the arm's own guard —
+carrier absent at merge-base — implies the old spelling is present in the text it is about to read.
+The seed's spelling is correct for exactly the revision set in which the decoder can fire, and
+unreachable everywhere else.
+
+**The probe question, answered.** The `#[ignore]`d test pins
+`git show 9ce6526c528:dag/gunbc/roadmap_authority.dag`. `9ce6526c528` is an ancestor of
+`bfaaf3e4ee7^`, carries the function, and has no carrier — it is a faithful representative of the
+revision class this decoder serves. **The pin is legitimate and must stay.** A "live probe that goes
+red on a rename", which is the reflex repair, would be WRONG here: live resolution is not this
+decoder's subject, so such a probe would assert a property the code never claimed and would have to
+be deleted or exempted the moment it went red. The `#[ignore]` is separately declared (live-corpus,
+minutes per test) and is not what hid anything.
+
+**The class this actually names, and it is a census-method class:**
+*a spelling-keyed decode whose subject is a REVISION-ADDRESSED text must be joined against the
+revision it reads, not against HEAD.* Joining against HEAD reports every historically-correct
+spelling as a break. My scanner had no notion of the decoder's subject revision, so it could not
+distinguish "the seed lags the authority" from "the seed reads an older authority on purpose". Any
+future instrument over this class inherits that requirement: the join key is (name, subject
+revision), not name.
+
+**Consequence for the population above.** P4 is the only primitive whose sites can be
+revision-addressed in this way, and 17 of its 30 literal entries are synthetic fixture names. The
+P1/P2/P3/P5 sites all decode values produced by the CURRENT resolved graph, so the HEAD join is the
+right join for them. The retraction therefore narrows to P4 and does not disturb the rest — but the
+census reports it because a reader who copies the method would repeat the error.
 
 **Mint-side residue:** 6 of 170 host-minted type/variant names have no `.dag` declaration at all —
 `EmitHostTransportResult`, `FilesystemReadResult`, `TargetModelish`, `PortLocus`, `OtherDiagnostics`,
@@ -122,8 +145,17 @@ authority, which is the §3 half of the same coupling: nothing on either side ca
 site I read fails CLOSED — the catch-all arm is a typed `Err` naming the expected type, not a
 default (`require_permitted_transport`, `discover_floor_corpus_rows_from_host_facts`,
 `expand_explicit_pairs_or_refuse`, the `live_read_decode` chain). So the class is NOT
-silent-wrong-answer. It is **silent at compile time and loud only where executed** — which is why
-instance 2 stood undetected behind an `#[ignore]`d, input-pinned test.
+silent-wrong-answer. It is **silent at compile time and loud only where executed**, and #9975 is the
+evidence: four spellings refused on the required path with nothing failing to compile.
+
+That refinement changes what the class COSTS and therefore how it ranks. A silent-wrong-answer class
+is priced by the harm a fabricated output causes downstream; this one is priced by the delay between
+a rename landing and the first execution of the affected path — the cost is deferred detection, not
+corrupted output. It ranks above a merely cosmetic class and below a fail-open one.
+
+A caution that falls out of the retraction above: because the class is loud-when-executed, the
+temptation is to hunt it by static join, and a static join over the WRONG subject manufactures
+findings. That happened once in this census, to me, in the space of one pass.
 
 **Attainable ceiling: 3, structurally guaranteed, and possibly 4.** The class is decidable and the
 authority already exists: the seed EMITS Rust mirrors from `.dag` today. If the decode consumed a
@@ -147,7 +179,11 @@ deferred, and then as a declared §4b(3) row, not as the climb.
 ## Residue this census did not close
 
 - Per-site execution coverage. File reachability is not site execution; the P4 entry names refuse
-  loudly *when run*, and I did not establish which run.
+  loudly *when run*, and I did not establish which run. This is the residue that matters most: it is
+  what separates a spelling that is stale from a spelling that is merely unexercised.
+- Subject-revision attribution for the remaining P4 sites. The retraction above shows the join key is
+  (name, subject revision); I established the subject revision for one site by reading its caller,
+  and did not do so for the rest.
 - The `.dag` FILE-PATH axis: 420 distinct `"*.dag"` string literals in hand `.rs`, most synthetic
   fixture paths. A path rename is the same spelling-keyed coupling in a different alphabet; I did not
   separate the live paths from the synthetic ones.
