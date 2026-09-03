@@ -78,6 +78,14 @@ type ProjectedDocument {
 // escapes. Widening this to meaning rather than spelling is not a bigger list -- it is the
 // annotation-and-meaning capability named above, and a longer list of phrases here would look like
 // coverage while buying almost none.
+// A CONSEQUENCE THE FIRST RUN SURFACED AND THAT IS KEPT RATHER THAN EXEMPTED: this makes the stock
+// sentence UNWRITABLE IN A PROJECTED LEDGER, quotation included. The repair that filed this class
+// wanted to record, in `gunbc.recurring_failure_mode`, that an earlier revision HAD made the claim
+// -- and spelling it in the past tense reddened this wall, correctly. A tense-sensing exemption was
+// rejected: tense is unbounded in prose and any such arm is the smuggled heuristic DESIGN section 5
+// names, and it would reopen the wall to exactly the sentence it closes. The ledger says instead
+// that the job stood OUTSIDE the required aggregate, which records the same history and spells no
+// claim. Describing a retired claim is always available; spelling it is not.
 fn required_lane_negation_phrases() -> List<String> {
   [
     "is not a `needs` of the required aggregate",

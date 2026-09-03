@@ -35,6 +35,11 @@ import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_
 // carrying the sentence. It was not authored green and then argued to be discriminating; it was
 // authored red by the corpus and greened by fixing the corpus. Re-derive with the recipe above.
 //
+// AND IT GREENED WHEN THE LEDGER REPAIR LANDED, IN THE SAME LANE: with `gunbc.rung_drop` and
+// `gunbc.recurring_failure_mode` repaired and the projections regenerated, all five rows pass. The
+// FAIL-then-PASS pair over one subject is the discriminating evidence, and neither half was
+// authored to produce the other.
+//
 // AND THE COST IS THE OTHER HALF OF WHY THIS SHAPE WAS CHOSEN. Measured on the same run: five
 // witness rows, 174ms of evaluation TOTAL, against a 109-second entry resolve that every witness in
 // this directory pays and that this file does not add to. A `decl_facts` corpus walk would have put
