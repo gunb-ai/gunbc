@@ -758,6 +758,8 @@ fn pareto_witness_main() -> ProcessExit {
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
+    && a_gap_on_one_axis_does_not_excuse_a_hole_on_another()
+    && a_gap_must_name_an_axis_this_selection_funds()
   if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
 }
 
