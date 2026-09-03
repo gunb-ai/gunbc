@@ -884,177 +884,45 @@ pub struct TransitionAdmission {
 /// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
-const CALL_REACHABILITY_GROUNDING_LABEL: &str =
-    "call-reachability grounding gunbc#10156 2026-09-03";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.bmc_onboarding_quarantine_witness_test",
-            in_declaration: "onboarding_quarantine_lexemes",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "collect_pattern_rc_variant_guards",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "edit_locus_nodes_for_module",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_typed_match_arm_strs",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "module_path_for_decl",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_arm_has_refutable_plain_field",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "effect_reach_classification_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "bind_g2_root",
-            spelling: "tail_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_home_decls_present",
-            spelling: "decls_in_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "literal_path_carriers_from_atoms",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_edges",
-            spelling: "call_reachable_decls_from_root",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "callees_from_atom_scan",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_pattern_preludes",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

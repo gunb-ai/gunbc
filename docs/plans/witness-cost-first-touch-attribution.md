@@ -621,3 +621,272 @@ One discrepancy recorded, not resolved: each run's terminal counters report
 the eight-plus-one this audit was scoped to. The remaining identities are not in
 these runs' counters; their provenance needs naming before they can be audited
 or cleared.
+
+## The ownership instrument now exists, and this document's whole method is superseded
+
+Everything above infers ownership from timings — variance screens, cluster
+tightness, isolation runs, order reversals — and concludes, correctly, that a
+census built from timings alone cannot see whose work a cost is. That limit is
+now lifted, and by an instrument the floor already emits on every required run.
+
+`claim_executor` turns `GUNBC_RECOMPUTE_TRACE` on unconditionally, and the
+required floor writes **`required_floor_cross_claim_demand.tsv`** beside
+`required_floor_claim_cost.tsv`. Its row is a producer identity with the count of
+claims that demanded it, the count of times it was actually evaluated, the
+modules it spans, and its declaration site. A producer with claims equal to evals
+was re-derived once per claim and shared with nobody — the question every screen
+in this document was a proxy for, answered directly and at identity grain rather
+than inferred from a distribution's shape.
+
+So the standing procedure for this class is: read the two artifacts, not the log
+and not a sandbox. Both are named in the log's own announcements, with their
+caveats in band — `[cross-claim-demand]` states that its cost column is
+inclusive of callees and must not be summed, and that its printed head is a
+preview ordered by recomputation rather than a candidate roster.
+
+**Both log renderings are capped at 25 rows and both say so in a trailer.** That
+trailer is load-bearing: on run 33668368846 the `[over-cost]` head carries 25
+rows while `required_floor_claim_cost.tsv` carries 295 over the 100ms line. A
+census taken from the log is the log's ranking read as the population —
+`instrument_output_read_as_subject_content`, observed twice on this lane.
+
+**And a third truncation lives in the ARTIFACT, not the log, which is why it is
+the dangerous one.** `required_floor_cross_claim_demand.tsv`'s `module_sample`
+column caps at **8 modules**; on run 33668368846, **1044 of 26317 rows** carry a
+`modules` count above that cap, so their consumer list is cut. Unlike the two
+print caps this one has no trailer — the row simply lists eight modules beside a
+`modules=71`, and a reader joining producers to consumer modules gets a silently
+partial answer.
+
+It bites exactly where the join matters: the producers whose sample is truncated
+are the WIDELY SHARED ones, which are precisely the producers most likely to
+explain why a whole module's rows cluster. So **a corpus-scale join from module
+to shared producer is not performable from this artifact today** — the per-module
+reading below is sound only where the join was performed by hand, one producer at
+a time, and a 73%-of-over-line-CPU classification reported off the step ratio
+alone is a step-cluster inference at that strength rather than an ownership
+result. Widening or inverting that column is named here as an obligation and
+deliberately not undertaken in this lane.
+
+Three truncated renderings on one lane is a pattern rather than three accidents,
+and the shape they share is the reusable part: **an instrument that caps a
+collection reports the cap honestly at the top level (`modules=71`) while the
+column a consumer actually reads silently answers for eight.** Check the cap
+against the count before joining on any list-valued column.
+
+### Eval steps, not milliseconds, is the within-module discriminator
+
+`required_floor_claim_cost.tsv` carries `eval_steps` beside the two clocks. Steps
+are deterministic where a millisecond is not, so a step figure cannot be explained
+by a quiet runner — which is exactly the confound that demoted the variance screen
+and the cluster-tightness prior above.
+
+**What `eval_steps` measures is WORK, and work is not OWNERSHIP.** Rows landing at
+near-identical step counts are not thereby shown to share a producer; that is a
+step-cluster inference, and the same total can arise from unrelated derivations of
+similar size. Ownership is established by the cross-claim demand artifact, which is
+keyed by PRODUCER IDENTITY and says which claims actually reach the same producer.
+The shared-derivation conclusion is a JOIN of the two instruments: demand identifies
+the shared producer, and `eval_steps` then characterises how much evaluation work
+the claims reaching it perform.
+
+Read that way on run 33668368846's over-line population, the majority of the CPU
+sits in modules where the demand artifact names a common producer AND the rows
+agree on steps to within a few percent: shared derivation, where
+splitting re-attributes the fold and changes no real cost
+(`witness_row_cost` `witness_decomposition_does_not_reduce_entry_cost_note`).
+
+The remedy for that bucket is enrolment on
+`v2.workflow.floor_pure_producer_share`, whose admission criterion is measured
+serve cost below measured recompute cost — the demand census answers only the
+recompute half, and a present-versus-absent join of `required_floor_claim_cost.tsv`
+across two runs answers the other. A row that fails the serve half comes back out;
+the roster's header already records one such exclusion with the capability that
+would retire it.
+
+### What this screening is worth, measured elsewhere and not by this document
+
+gunbc#10143 landed on `main` after this document's tested base and measures the population this
+screening ranks. Two of its results bound what any screening here can buy, so they belong beside
+the method rather than discovered after acting on it.
+
+**The band is dense and the tail is a plateau — there is no gap below the ceiling.** On its
+post-repair run, 5 rows sit at or above 500ms, 27 in 400–500, 55 in 300–400, against 3,174 below
+100ms. Repairing modules top-down, the first three buy 43ms and the next seven buy 61ms — roughly
+**10ms per module**, about one fiftieth of the ceiling. That is the treadmill, quantified. So a
+screening that surfaces the next-most-expensive producer is answering a question whose payoff is
+small by construction, and the document's own ordering — safety-relevant rows ahead of
+milliseconds — is the more defensible one for reasons that are now measured rather than argued.
+
+**And the crossers do not generally share a root.** gunbc#10143 records that the modules newly near
+the ceiling do NOT share a root the way gunbc#10133's three did. The shared-derivation bucket this
+document describes is therefore the exception rather than the common case, which sharpens the
+warning already stated above: splitting re-attributes a shared fold and changes no real cost, and
+the shared fold is not what most near-ceiling rows have.
+
+**A worked counterexample was claimed here and then REFUTED by this document's own discriminator,
+which is worth more than the example would have been.** The claim was that gunbc#10170 relocated
+five canonical fixtures out of a ~5k-line module and took four `rust_body_add_emit` rows from
+506/425/416/362ms to 180/174/172/168ms, with the spread collapsing 144ms → 12ms.
+
+Two floor artifacts refute it. Pre-relocation (run `33707763185`) and post-relocation (run
+`33711894017`), same four identities:
+
+| | cpu_ms | eval_steps |
+| --- | --- | --- |
+| pre | 314 · 305 · 290 · 318 | 171091 · 166669 · 162507 · 171124 |
+| post | 339 · 327 · 317 · 344 | 171052 · 166630 · 162468 · 171085 |
+
+**`eval_steps` moved 0.02%** — 39 steps out of 171091. The work did not change, so the relocation
+removed no evaluation work from these claims. CPU is *higher* after, which is within noise and makes
+the honest reading "no measured effect in either direction". The 506 baseline was a contended-run
+outlier: those rows were already at 314/305/290/318 with a spread of 28 before anything was touched,
+so both the "drop" and the "spread collapse" were artifacts of the baseline. And 180/174/172/168
+came from a targeted `claim_batch` — a fraction of the corpus, a different execution envelope, and
+not a floor result.
+
+**The mechanism that caught it is the one this section argues for.** Steps are deterministic where
+milliseconds are not; a cost story that milliseconds support and steps refute is the clock talking.
+The same discriminator that says work is not ownership says here that a millisecond drop is not a
+work reduction.
+
+The census does name where the family's cost sits, and it is worth recording which instrument found
+it: the cross-claim demand artifact keyed by PRODUCER IDENTITY reports
+`target_project_arrow_body_to_value_expression` at 95 claims / 117 evals, 4396ms total with
+**4350ms cross-claim** across the emit family including all four rows. That is a producer named by
+identity, not a cluster inferred from step totals.
+
+**It is NOT a candidate, and this document disqualifies it below.** That function carries
+`handle_transform: fn(Node, Node, TargetModel) -> …`, so it meets the fn-typed-parameter exclusion:
+reification refuses the argument, the key cannot be formed, and the store refuses AT PUBLICATION.
+A controlled present-versus-absent pair would measure noise against nothing, because the absent arm
+is the only arm — the row never stores. **The demand it names is real; the route to serving it is
+closed until the key can be formed.**
+
+Recorded rather than dropped because the reading is the useful part: the largest cross-claim
+producer in this family is unreachable by the serve mechanism, which is a fact about the mechanism's
+coverage and not a gap in the census.
+
+### Screening candidates from the census, by reading a declaration
+
+The demand census ranks by cost, and cost is the wrong sort key: three large
+classes on it cannot be shared at all, and one of them refuses at publication
+rather than losing a measurement. Screen with the signature before spending a
+controlled pair, because a row that never stores cannot have its serve measured —
+the resulting pair is noise, not a negative result.
+
+**The rule is a ratio, and it screens OUT — it never admits.** Serve cost scales
+with the size of the ARGUMENT plus the VALUE; recompute cost scales with the
+DERIVATION between them, so a candidate is worth measuring only when the
+derivation is large relative to what must be hashed and verified. That is a
+necessary condition and emphatically not a sufficient one: gunbc#10094 enrolled
+three candidates on exactly such reasoning and withdrew all three on measurement,
+and gunbc#10108's note withdraws a fourth — `compile_phase_frontier_standing`
+claim-forced at its general declaration — on single-authority grounds despite a
+measured win. Nothing below replaces the roster's present-vs-absent receipt.
+
+Three classes are disqualified without a run:
+
+- **A fn-typed parameter anywhere in the signature.** Reification refuses a
+  `Value::Fn` as `OriginBoundNode` and a `Value::Closure` as `Closure`, and
+  arguments are reified on the same path as values
+  (`v1_interpreter::portable_args_from_ctx` → `CrossClaimStoreOutcome::RefusedArgsNotPortable`),
+  so the key cannot be formed and the store refuses at publication. This is the
+  class that excluded the two rust target models, met on the argument side rather
+  than the value side. *e.g.* `target_project_arrow_body_to_value_expression` and
+  `target_project_match`, both carrying
+  `handle_transform: fn(Node, Node, TargetModel) -> …`.
+- **A hot utility — evals far exceeding claims.** A function called many times
+  per claim is not one derivation shared across claims; per-argument keys with
+  little reuse are cache population, which is why `formal_production_for_lhs_exact`
+  was removed from the roster after a run measured 1,635 fills against 113
+  consumer claims. *e.g.* `bind_outcome`, `zip_eq`, `fold_grammar_expr`,
+  `emit_host_list_map`. **claims ≈ evals is the shape that SURVIVES this
+  exclusion screen** — it is worth measuring, which is not the same as admitted.
+- **A constructor.** Its census cost is call volume plus inclusive callees, not a
+  derivation, so there is nothing to serve. *e.g.* `decl_ref`,
+  `effect_demand_key`, `formal_productions_catalog_to_node`.
+
+A fourth shape survives the screen but is usually a loss: a large argument reduced to a
+small value with little work between, such as
+`target_catalog_contains_node_shape(slot: Node, catalog_targets: List<Node>) -> Bool`,
+where hashing and verifying the node list per serve costs more than the fold it
+replaces. That one is the ratio rule applied, not a separate exclusion.
+
+Applied to the census, these three classes account for every remaining producer
+above a second outside the emit family. The emit family is **not** available, and
+the reason is stronger than it was: the roster's re-enrol trigger — a serve that
+does not walk the value per consuming frame — HAS FIRED (gunbc#10094 made a serve
+O(1) by handing over the reified value), the family was re-measured against that
+new serve, and it is still out. All three candidates regressed, showed no effect,
+or improved a family total while the rows nearest the ceiling got worse. The
+remaining cost is deliberately left unidentified there rather than given a
+plausible story.
+
+Two lessons from that run belong here because they bound this whole method.
+**The subject is the per-claim row, not a total** — the ceiling is per claim, so a
+family that improves on aggregate while its rows nearest the line get worse is a
+loss. And **a discharged capability makes re-enrolment testable, never decided**:
+inferring admission from "the serve is cheaper now" is the
+specification-without-execution DESIGN §5 names, and it was wrong three times.
+
+Whether that capability also lifts the fn-in-key limitation is **open and should
+not be assumed either way**: one is about the cost of moving a portable value,
+the other about whether an origin-bound reference can be represented in one at
+all.
+
+### The rows nearest the deadline are the ones whose refusals are being silenced
+
+Recorded because it reorders the population by something other than milliseconds.
+Observed on main run 33671815204 (head 20caf4eb): the two rows the 500ms CPU
+deadline preempted there were not incidental — they were
+`self_host_compile_phase_live_gate_witness`'s
+discriminating REDs — the planted-identity refusal and the equal-cardinality swap
+refusal. A preempted row is not a slow row that still answered; it is a refusal
+that did not execute, which is why the floor refuses to call the run green. So
+cost work on this population is not traded against safety. Measured: sharing the
+fold under those rows (a roster row later withdrawn on gunbc#10108's
+single-authority grounds, so the cost figures are not carried here) took the run
+to `cpu_deadline=0` and both refusals executed. Whoever makes that fold cheap by
+whatever route gets the same effect, because the mechanism is the row reaching a
+verdict rather than any particular repair.
+
+**Prioritise this population ahead of milliseconds — but the safety RANKING it
+would need does not exist yet, and this document does not supply one.** A
+preempted row is a strong candidate regardless of where it sits in a cost
+ranking. What is observable is only the VICTIM IDENTITY: `cpu_deadline` counts
+how many rows were cut off, `required_floor_claim_cost.tsv` carries each of them
+with `verdict_reached=false`, and both name WHICH claim was preempted.
+
+Neither names what that claim exists to PROVE. The two rows above are refusal
+probes because their source was read and verified one at a time, not because any
+instrument said so — and reading names off a diagnostic does not generalise to a
+corpus-wide procedure. `std.witness_purpose` is explicit that purpose is
+AUTHORED, NOT INFERRED FROM IMPLEMENTATION, and it presently carries no per-row
+declarations at all: zero declarers, zero consumers.
+
+So the honest statement of the method is three separate claims, and only the
+first two are discharged here: victim identity is observable; these two victims
+were independently verified as refusal probes; ranking the population by safety
+relevance REMAINS BLOCKED until an authored purpose can be joined against
+`verdict_reached`. Treating the second as if it were the third is how a class
+acquires a rung it did not earn.
+
+**The repair for this class has to travel through the gate the class refuses.**
+Recorded because it is a structural property and not a queue accident, and
+because it decides what "prioritise the fix" can and cannot buy. A preemption is
+runner-dependent — the same rows measure anywhere from ~100ms to over 500ms on
+one tree — so any PR can draw a refusal from two rows that are not broken, and
+that includes the PR carrying the repair. Observed in situ: a 138-line
+documentation-only change with no `.dag`, no Rust and no workflow was refused by
+`a_live_tree_that_gained_an_identity_refuses_and_names_it` at
+`cpu_at_least=501ms/500ms`, while the consolidation that would make that fold
+cheap sat open with its own required floor lane running.
+
+The tempting exit is a re-run, and it is the one move this document's evidence
+forbids most specifically. A re-run does not make the row cheaper; it redraws the
+runner. What it buys is a green **over refusals that did not execute** — the
+`interrupted_before_verdict` rows are the discriminating REDs themselves, so the
+mark asserts a verdict for exactly the claims that were preempted. That is worse
+than a slow build, and it is why `cpu_deadline` must be read as a safety counter
+rather than a performance one.
