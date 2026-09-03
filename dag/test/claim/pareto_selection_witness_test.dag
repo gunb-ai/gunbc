@@ -188,6 +188,13 @@ data entry_gap_declared_and_complete: ParetoEntry = ParetoEntry {
 data id_gap_names_an_unfunded_axis: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_names_an_unfunded_axis", field: WholeDeclaration }
 data axis_bandwidth_id: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "axis_bandwidth", field: WholeDeclaration }
 
+// A REAL AXIS THIS SELECTION DOES NOT FUND. Declared, well-formed, and deliberately absent from
+// both_axes -- because UNFUNDED means "not among the axes this selection weighs", never "names
+// nothing". Pointing the gap at a decl_name no module declares would have tested the citation
+// checker rather than the fold, and CI refused exactly that: `CITED-DECLARATION-ABSENT ... cites
+// axis_bandwidth, which that module does not declare` (DESIGN section 3, cite the symbol).
+data axis_bandwidth: SelectionAxis = SelectionAxis { identity: axis_bandwidth_id, goal: HigherIsBetter }
+
 // COMPLETE on every axis this selection funds, and carrying a gap that names an axis it does not.
 // Nothing here is incomplete: both folds over both_axes find their reading. The only defect is the
 // gap itself, which is why this fixture isolates the unfunded-axis clause from the other two.
