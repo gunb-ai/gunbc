@@ -11591,9 +11591,30 @@ fn parsed_import_statements_value(
             variant_name: ctx.sym("ImportStatementParseRefused"),
             fields: Rc::new(sorted_fields(vec![(
                 ctx.sym("cause"),
-                str_value(cause.clone()),
+                import_statement_parse_cause_value(cause.clone(), ctx),
             )])),
         },
+    }
+}
+
+fn import_statement_parse_cause_value(
+    cause: Rc<crate::std_import::ImportStatementParseCause>,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ImportStatementParseCause as C;
+    let (variant, fields) = match &*cause {
+        C::SourceHasNoModuleDeclaration => ("SourceHasNoModuleDeclaration", vec![]),
+        C::ModuleDeclarationPathMalformed => ("ModuleDeclarationPathMalformed", vec![]),
+        C::ImportStatementMalformed => ("ImportStatementMalformed", vec![]),
+        C::ImportParseInstrumentAnomaly { detail } => (
+            "ImportParseInstrumentAnomaly",
+            vec![(ctx.sym("detail"), str_value(detail.clone()))],
+        ),
+    };
+    Value::Variant {
+        type_name: ctx.sym("ImportStatementParseCause"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(fields)),
     }
 }
 
