@@ -21,7 +21,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.dependency { DependencyView }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, decl_belongs_to_module, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String, string_is_empty }
@@ -69,14 +69,9 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
-  starts_with(s: decl.qualified_name, prefix: concat(module, "."))
-    || (decl.qualified_name == module)
-}
-
 fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
   let best_module = fold(modules, init: "", f: fn(best, fact) {
-    if decl_belongs_to_module(decl: decl, module: fact.module) {
+    if decl_belongs_to_module(decl: decl, mod_path: fact.module) {
       if best == "" {
         fact.module
       } else if string_length(s: fact.module) > string_length(s: best) {
@@ -131,7 +126,7 @@ fn edit_locus_nodes_for_module(
   decls: List<FnArrowDecl>
 ) -> List<Node> {
   fold(decls, init: [], f: fn(acc, decl) {
-    if decl_belongs_to_module(decl: decl, module: module) {
+    if decl_belongs_to_module(decl: decl, mod_path: module) {
       list_snoc_item(xs: acc, item: decl.output)
     } else {
       acc

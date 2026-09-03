@@ -47,7 +47,7 @@ data fixture_path_data_inits: List<DataInitDecl> = [
 data fixture_empty_data_inits: List<DataInitDecl> = []
 
 // Explicit fixture standing in for `decls` on every synthetic "fix.*" specimen below.
-// call_reachable_decls filters decls by qualified-name membership in the fixture's own
+// v2.std.fn_index call_reachable_decls filters decls by qualified-name membership in the fixture's own
 // closure_modules ("fix.*"), and no real corpus decl is ever named "fix.*" — so the
 // live-scan result is filtered to nothing for these specimens regardless, and substituting
 // it costs a whole-tree scan for zero signal (DESIGN §5 witness-cost-derives-from-purpose:

@@ -484,7 +484,7 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   length(xs: scans)
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
+fn decl_belongs_to_dual_rep_module_ref(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
   path_is_test_dag(path: fact.path)
     && qualified_name_in_module(qname: decl.qualified_name, module: fact.module)
 }
@@ -502,7 +502,7 @@ fn module_fns_for_fact(
   decls: List<FnArrowDecl>
 ) -> List<DualRepFnFact> {
   fold(decls, init: empty_dual_rep_fns, f: fn(acc, decl) {
-    if decl_belongs_to_module(decl: decl, fact: fact) {
+    if decl_belongs_to_dual_rep_module_ref(decl: decl, fact: fact) {
       list_snoc_item(xs: acc, item: fn_fact_from_decl(decl: decl))
     } else {
       acc
