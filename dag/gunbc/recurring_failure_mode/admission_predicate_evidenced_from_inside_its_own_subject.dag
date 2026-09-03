@@ -1,0 +1,110 @@
+module gunbc.recurring_failure_mode.admission_predicate_evidenced_from_inside_its_own_subject
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data admission_predicate_evidenced_from_inside_its_own_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "admission_predicate_evidenced_from_inside_its_own_subject" as NonEmptyStr,
+
+  receipts: [
+    "**an admission predicate evidenced from inside its own subject** (a rule admits an action only when some condition holds -- `the refusal is carried entirely by this class`, `nothing else is failing`, `this is the only cause` -- and the evidence for that condition is read off a surface THAT ONLY REPORTS THE CLASS THE PREDICATE IS ABOUT. ",
+
+    "The surface answers faithfully and narrowly; it has no vocabulary for the thing that would falsify the rule, so IT CANNOT REPRESENT THE PREDICATE BEING FALSE. ",
+
+    "The test then confirms itself on every evaluation, and its greens carry no information. ",
+
+    "This is `executed_conjunct_discriminates_nothing` wearing an admission rule's clothes: the conjunct executes, it is honestly computed, and its outcome was decided by its own scoping rather than by the world. ",
+
+    "**RECOGNITION RULE, USABLE WITHOUT SUSPECTING ANYTHING: ask what SURFACE the predicate's evidence was read off, and whether that surface can represent the predicate being FALSE. ",
+
+    "If it cannot, the test is decorative.** SPECIMEN, AND IT IS THIS AUTHOR'S OWN RULE. ",
+
+    "A declared drop admitted a bounded mitigation -- one reroll per head -- on the condition that the run reported `failed=0` with the refusal carried entirely by that row's two cost arms. ",
+
+    "The evidence was read off the floor's own disposition counters, which enumerate COST dispositions. ",
+
+    "Those counters do not range over other phases at all, so they were incapable of reporting that anything else had failed. ",
+
+    "On the run that spent a reroll under this rule, the required job was `phases_run=3 failed=2` the whole time -- refusing on the floor AND on `namespace-wave-admission` with 57 unadjudicated deltas -- and the predicate had been FALSE at every moment it was evaluated as true. ",
+
+    "REPAIR: evidence the predicate from OUTSIDE its own subject -- here, the RUN'S PHASE VERDICT (`phases_run`, `failed`, the `FAILED PHASE` lines) rather than the class's own counters. ",
+
+    "A predicate scoped to one class must be adjudicated at a grain that can see the other classes. ",
+
+    "**A SECOND SPECIMEN IN A DIFFERENT DOMAIN, WHICH IS WHAT ESTABLISHES THIS AS A SHAPE RATHER THAN A QUIRK OF COUNTERS.** A reviewer cited a declaration by FILE AND LINE. ",
+
+    "Asked to check it, they verified the citation AGAINST THEIR OWN CHECKOUT and IT VERIFIED GREEN -- printing that line returned exactly the text they had claimed -- while the declaration sits 1633 lines away on `origin/main`. ",
+
+    "THE GREEN IS THE POINT AND IT IS WORSE THAN A FAILURE WOULD HAVE BEEN: a check that returns green from inside its subject returns green every time it is run, and nothing about it prompts a second look, whereas a check that returned nothing would have sent the citer looking. ",
+
+    "**AND THE SURFACE WAS NOT A STALE TREE, WHICH IS WHAT MAKES THIS SPECIMEN LOAD-BEARING RATHER THAN A HYGIENE NOTE.** The citer was on their own FEATURE BRANCH -- clean, current, seven commits of their own ahead, 41 behind main because that is what a feature branch IS -- and cited a line read off it as main's. ",
+
+    "Read as staleness the finding has an obvious remedy, fetch more often, which lets a reader file it and move on. ",
+
+    "It has no such remedy. ",
+
+    "EVERY AUTHOR CITES FROM THE TREE THEY ARE WORKING IN, THAT TREE IS DIVERGENT FROM MAIN BY CONSTRUCTION, AND THE CITATION VERIFIES GREEN THERE EVERY TIME PRECISELY BECAUSE IT IS THE TREE THAT PRODUCED IT. ",
+
+    "No discipline of fetching closes it; only citing by symbol does. ",
+
+    "(The citer supplied this correction themselves, having first described their own position as staleness and then checked which branch they were on -- one more instrument that should have been run before describing the surface.) No counter and no admission rule is involved; the structure is identical -- evidence for a claim drawn from inside the claim's own source. ",
+
+    "It is also why DESIGN section 3 requires citing the SYMBOL: a symbol is checkable against a tree the citer does not control, and a line number is only ever checkable against a tree, so the positional form has no outside-the-subject verification available to it at all. ",
+
+    "The correction here came from a third party who resolved the same declaration BY SYMBOL. ",
+
+    "**A FOURTH SPECIMEN, AND IT IS THE ONE THAT CANNOT BE READ AS INATTENTION.** A reviewer asked a merge queue whether a pull request's required checks were passing, by querying for its NON-SUCCESS checks. ",
+
+    "The query returned an EMPTY LIST and they reported the context green. ",
+
+    "An empty list is returned by `everything passed` AND by `nothing ran`, and they had not asked for the denominator that separates the two. ",
+
+    "The truth was the second: the branch was dirty, so no merge ref could be computed, so NO WORKFLOW HAD EVER STARTED -- `check-runs total_count 0`, combined status `pending`, statuses array empty. ",
+
+    "The surface they read could not represent the state they were trying to rule out, which is this row's recognition rule exactly; `empty_observation_narrow` is the same failure of taking a numerator without its denominator. ",
+
+    "WHAT MAKES IT THE STRONGEST SPECIMEN IS ITS TIMING: it was committed ROUGHLY FORTY MINUTES AFTER the same author corrected another session's instance of this class, in the same thread, while explicitly writing about how easily a found-set is read as a population. ",
+
+    "A FIFTH INSTANCE FOLLOWED, INSIDE AN INSTRUCTION TO BE MORE RIGOROUS ABOUT CITATION: a reviewer relayed a peer's measurement as an established, present-tense fact about a tree they had not themselves examined, while directing another author to cite only what is checkable against that tree. ",
+
+    "Both parties then ran the check independently and it was FALSE. ",
+
+    "The discipline was in hand and was applied to someone else's sentence rather than to the sentence carrying it. ",
+
+    "THE SAME AUTHOR THEN DID IT AGAIN THREE HOURS LATER, in a message whose express purpose was to instruct another lane NOT to inherit anyone's numbers: they quoted their own working branch's roster count as main's, having already had that exact substitution filed as a specimen in this row. ",
+
+    "Both instances were caught only because the instruction they were wrapped in demanded a CHECKABLE form, so the recipient ran the check the instruction asked for and it disagreed with the instruction. ",
+
+    "**AWARENESS OF THIS CLASS DOES NOT CONFER IMMUNITY TO IT, AND THE EVIDENCE IS THIS ROW'S OWN AUTHORSHIP.** Three sessions committed this shape inside the single thread that produced this row, WHILE ACTIVELY DISCUSSING IT: one reported the return of a grep written from the specimen it was searching for as the census; the second passed that found-set onward as the population without asking what it was a view of; the third corrected the second while reporting their own grep's return as the extent, one level up. ",
+
+    "Each caught the person below them and none caught themselves. ",
+
+    "That is not three mistakes but ONE MECHANISM OBSERVED THREE TIMES under conditions as controlled as this repository will ever supply -- the participants informed, attentive, and looking directly at the class. ",
+
+    "It is stronger evidence than any single specimen, and it is the reason the detection sentence below is stated as a structural fact about WHO can find the defect rather than as an exhortation to be careful. ",
+
+    "**DETECTION IS THE HALF NOBODY WRITES DOWN, AND IT IS NOT MORE CARE: THE ONLY RELIABLE DETECTOR FOR A SELF-RATIFYING TEST IS AN AUDIT PERFORMED BY SOMEONE WHO ALREADY BELIEVES THE TEST PASSED.** The predicate confirms itself for everyone who relies on it, so no amount of diligence by the relier finds it; it was found here because a lane acted on the rule and then audited its own action, and reported the result against its own interest (neat-swift-219, 2026-09-02, who supplied both the specimen and this detection sentence). ",
+
+    "AN AGGRAVATING NEIGHBOUR THE SPECIMEN ALSO CARRIES, recorded because it is what made the narrow surface believable: `failed` is FORKED ACROSS THE OUTPUT VOCABULARY of one binary. ",
+
+    "FOUR EMITTERS AND FOUR SUBJECTS, from a sweep run to closure rather than from the two sites that prompted it, and the count matters because an earlier statement of this paragraph said two: `claim_executor` prints a required-ci line where `failed` counts PHASES and a disposition line where `failed` counts CLAIMS; `cli_run` prints a third with `deferred=` beside it; and `partition_crate_boundary_host` prints `failed=[..]` as a LIST rather than a count, beside a package count. ",
+
+    "THE THIRD SUBJECT IS THE DANGEROUS ONE AND WAS FOUND LAST: a DISCOVERY-ROW counter that is not a narrower or wider spelling of the claim population but a DIFFERENT one, absorbing NotBool, RuntimeError, HostToolUnresolved, timeout, panic and NotAttempted -- failure classes the claim counter excludes. ",
+
+    "Two counters that disagree about their subject are a fork; one that silently UNIONS classes another excludes will read as agreement whenever those classes happen to be empty. ",
+
+    "One word, one naming surface, no declared version transition -- a `meaning_fork` in the OUTPUT vocabulary, which is the worst place for one, because a reader hits the LINE and never reaches the ledger that would disambiguate it. ",
+
+    "THE LIST FORM IS THE PROOF RATHER THAN A CURIOSITY: a site printing a list where three others print a count establishes that these were never read as one vocabulary, which is what distinguishes a meaning fork from a rename that was merely never finished. ",
+
+    "**AND THE STRONGEST EVIDENCE IS NOT THAT THE FORK WENT UNNOTICED -- IT IS THAT IT HAS BEEN HIT AND LOCALLY REPAIRED AT LEAST TWICE, CORRECTLY, BY INDEPENDENT AUTHORS.** One declaration in `cli_run` lifts six fields onto the headline ledger line on the stated reasoning that a fix shipped as yet another separate line would reproduce what it repairs; one in `claim_executor` documents `failed=0` being finishable wrongly, names a session dispatched against a regression that did not exist because of it, and separates the concepts into `unexpected_failures` for answered-wrong and `verdict_incomplete` for never-answered. ",
+
+    "Each repair was sound at its own surface and each left the WORD forked at every other emitter, because neither author had any reason to look sideways. ",
+
+    "THAT is the argument for a vocabulary-level fix rather than a third local repair, and it is stronger than the absence of repairs would have been. ",
+
+    "AN EARLIER DRAFT OF THIS ROW SAID THE OPPOSITE -- that the arithmetic gap was 'already observed and carried only as prose' -- which understated shipped work and was corrected before landing by reading the surrounding declarations rather than the comment alone The fork's REPAIR is owned elsewhere and is deliberately not scoped here; it is entered as this class's evidence, since a forked counter name is precisely what makes an inside-the-subject reading look like an outside-the-subject one.)",
+  ],
+
+  evidence: [],
+}
