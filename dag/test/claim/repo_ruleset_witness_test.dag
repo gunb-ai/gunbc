@@ -1,6 +1,6 @@
 module test.claim.repo_ruleset_witness_test
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
@@ -23,10 +23,15 @@ import gunbc.repo_ruleset {
   MergeQueueSignedOff,
   merge_queue_projection_refusal,
   signed_desire_projection_refusal_for,
+  bypass_roster_projection_refusal,
   merge_queue_check_response_timeout,
 }
 import v2.std.collection { Absent, Present }
 import extdeps.github.rulesets {
+  BypassActorRosterObservation,
+  BypassRosterObserved,
+  RulesetBypassActor,
+  bypass_roster_unavailable_from_get,
   RulesetRuleWire,
   RulesetRuleParametersWire,
   MergeQueueRule,
@@ -572,3 +577,42 @@ test fn w_RED_two_merge_queue_rules_refuse_rather_than_merging() -> Bool {
 }
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A LIVE BYPASS ACTOR THE PROJECTION DOES NOT CARRY REFUSES RATHER THAN BEING DELETED. The
+// projection declares no bypass_actors and converge sends the whole ruleset, so an apply would
+// remove this grant with no divergence reporting it. The refusal names the actor so the operator
+// can see what would have been destroyed.
+test fn w_RED_an_observed_bypass_actor_refuses_rather_than_being_deleted() -> Bool {
+  match bypass_roster_projection_refusal(roster: BypassRosterObserved {
+    actors: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 2, bypass_mode: "always" }],
+  }) {
+    Present { value: cause } =>
+      string_contains(s: cause, pattern: "would DELETE them")
+        && string_contains(s: cause, pattern: "RepositoryRole/2")
+        && string_contains(s: cause, pattern: "mode=always")
+    Absent => false
+  }
+}
+
+// AN UNREADABLE ROSTER REFUSES TOO, and this is the arm that separates this check from a count.
+// GitHub omits bypass_actors both when the roster is empty and when the reader may not see it, so
+// an apply would delete either nothing or an unknown number of grants and the observation cannot
+// say which. Treating unavailable as empty would let the empty-observation narrow decide a
+// destructive write.
+test fn w_RED_an_unreadable_bypass_roster_refuses_rather_than_writing_blind() -> Bool {
+  match bypass_roster_projection_refusal(
+    roster: bypass_roster_unavailable_from_get(reader: "some-reader" as NonEmptyStr)
+  ) {
+    Present { value: cause } => string_contains(s: cause, pattern: "writing blind")
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL: an OBSERVED and genuinely empty roster admits. Without this arm the check
+// could be "always refuse" and both REDs above would still pass.
+test fn w_an_observed_empty_bypass_roster_does_not_refuse() -> Bool {
+  match bypass_roster_projection_refusal(roster: BypassRosterObserved { actors: [] }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

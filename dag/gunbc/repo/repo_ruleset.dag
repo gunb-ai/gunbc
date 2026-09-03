@@ -703,6 +703,43 @@ fn signed_desire_projection_refusal() -> NonEmptyStr? {
   signed_desire_projection_refusal_for(policy: desired_merge_queue_policy(), rules: desired_ruleset_rules())
 }
 
+// A BYPASS ACTOR THE PROJECTION DOES NOT CARRY IS THE SAME DESTRUCTIVE WRITE AS AN UNEXPECTED RULE,
+// AND IT WAS OPEN WHILE THE RULE HALF WAS CLOSED.
+//
+// `desired_ruleset_rules` projects no bypass_actors at all, and converge sends the WHOLE ruleset.
+// So an apply against a live ruleset carrying an actor grant DELETES that grant, and nothing in the
+// divergence fold reports it -- the fold compares rules and required contexts, and a bypass actor
+// is neither. That is a silent destructive write on a live repository setting, which is precisely
+// the class `rule_unexpected_divergences` closes one field over. The two halves were written days
+// apart and only one of them was closed; the asymmetry is the defect, not the actor.
+//
+// IT REFUSES RATHER THAN REPAIRING, for the reason the rule half does: "the world is not what we
+// declared, apply desired" is exactly backwards when applying desired is what destroys the thing.
+//
+// AND AN UNREADABLE ROSTER REFUSES TOO, which is the arm that matters most. `BypassRosterUnavailable`
+// means GitHub omitted the key -- indistinguishably because the roster is EMPTY or because this
+// credential may not see it -- so an apply would either delete nothing or delete an unknown number
+// of grants, and the observation cannot say which. Treating unavailable as empty here would be the
+// empty-observation narrow deciding a destructive write, so it is refused instead.
+fn bypass_roster_projection_refusal(roster: BypassActorRosterObservation) -> NonEmptyStr? {
+  match roster {
+    BypassRosterUnavailable { reader: r, cause: _ } =>
+      Present { value: concat(concat(
+        "the bypass-actor roster could not be observed by this reader (",
+        r as String),
+        "), and converge sends the WHOLE ruleset: applying desired would delete every bypass actor the ruleset carries, and this observation cannot say whether that is none or several. Refusing rather than writing blind.") as NonEmptyStr }
+    BypassRosterObserved { actors: as_ } =>
+      if length(as_) == 0 {
+        none
+      } else {
+        Present { value: concat(
+          "the live ruleset carries bypass actors this repository's desired projection does not declare, and converge sends the WHOLE ruleset: applying desired would DELETE them with no divergence reporting it. Refusing rather than repairing. ",
+          join(map(as_, a => concat(concat(concat(a.actor_type, "/"), to_string(a.actor_id)), concat(" mode=", a.bypass_mode))), "; "),
+        ) as NonEmptyStr }
+      }
+  }
+}
+
 fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {
   let unexpected = rule_unexpected_divergences(observed: rule_types)
   if length(unexpected) == 0 {
@@ -1071,10 +1108,13 @@ fn repo_ruleset_converge_actuate_at(
       rule_types: rt,
       standing: st,
       merge_queue: _,
-      bypass_roster: _,
+      bypass_roster: br,
     } => {
       let plan = required_context_reconcile(observed: observed_required_checks(standing: st))
       let refusals = membership_refusal_count(plan: plan)
+      match bypass_roster_projection_refusal(roster: br) {
+        Present { value: cause } => NotConverged { reason: cause, applied: before }
+        Absent =>
       match merge_queue_projection_refusal(rule_types: rt) {
         Present { value: cause } => NotConverged { reason: cause, applied: before }
         Absent =>
@@ -1132,6 +1172,7 @@ fn repo_ruleset_converge_actuate_at(
             }
           }
         }
+      }
       }
       }
     }
