@@ -1,0 +1,202 @@
+module extdeps.standards.micro_atx
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Micrometer, micrometer, Millimeter, millimeter }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.climbing_holds.types { DimensionEvidence, OperatorRelayedDocument }
+
+// MICROATX IS ITS OWN SPECIFICATION, NOT A SECTION OF ATX 2.2, and an earlier revision of this
+// corpus got that wrong by putting the microATX envelope, location population and coordinates inside
+// extdeps.standards.atx_2_2 because the two standards share some mounting locations.
+//
+// Sharing a few coordinates is not shared governance. The microATX Motherboard Interface
+// Specification independently defines its own motherboard/chassis interface, its own maximum
+// envelope, its own B/C/F/H/J/L/M/R/S population, the R and S requirements, and the rule that
+// extraneous chassis standoffs be removable or absent. A change to microATX must not require editing
+// the ATX module, which is precisely the external-decomposition test DESIGN section 3 states.
+//
+// NO NEUTRAL SHARED MODULE IS EXTRACTED YET, deliberately. MountingLocationId and MountingLocation
+// are shapes a second standard could eventually share, but there is no multi-standard consumer today
+// -- the ATX 2.2 spec carries no location population in this corpus -- and extracting a hub for one consumer
+// would be inventing an authority to hold a symbol rather than to answer a question. They live here,
+// with the standard that actually enumerates. The extraction becomes correct when a second standard
+// enumerates, and not before.
+//
+// THE CITED DOCUMENT IS NOW THE RIGHT ONE, AND AN EARLIER REVISION CITED A DIFFERENT DOCUMENT THAN
+// THE ONE ITS OWN PROVENANCE ROW NAMED.
+//
+// This scope's first_citation was the archived ATX 2.2 PDF while the provenance row below said the
+// coordinates came by relay from the microATX Motherboard Interface Specification -- two different
+// documents, one of them asserted STRUCTURALLY. An earlier revision recorded that contradiction in an
+// annotation and left it standing, on the reasoning that no microATX document was in hand and the
+// three available repairs were all worse than confessing. Recording it was not a repair: a prose
+// confession does not subtract a typed claim, and first_citation is read by lenses that cannot see
+// the paragraph denying it (routed review, 2026-09-02). The fourth option was to go and get the
+// document, which is what happened.
+//
+// WHAT WAS ACTUALLY VERIFIED, stated at this grain because the provenance grade turns on it:
+//   - a document whose title page reads verbatim "microATX Motherboard Interface Specification
+//     Version 1.2" was retrieved and its title page text layer read first-party this session, from
+//     the xdevs mirror carried in further_citations;
+//   - its BODY is the same font-subset artwork the ATX 2.2 PDF turned out to be -- Table 4 and the
+//     mounting-hole figure do not survive text extraction -- so the COORDINATES were still not read
+//     first-party, and the provenance row below is unchanged at OperatorRelayedDocument;
+//   - the publisher's own copy at formfactors.org is present in the Wayback CDX index with status
+//     200 at the snapshot spelled below. Its BYTES were not retrieved this session (rate limited),
+//     which is why the mirror that WAS opened is carried beside it rather than silently dropped.
+//
+// So the defect that closes here is the WRONG-DOCUMENT one. The remaining gap is narrower and is
+// exactly what OperatorRelayedDocument exists to say: the right document is cited, the coordinates
+// within it were relayed rather than read. TRIGGER for the last step is unchanged in kind but no
+// longer blocked on finding a document -- it needs the figure extracted from THIS PDF, by OCR or by
+// an operator reading Table 4, at which point the provenance row upgrades and the module may be
+// renamed to spell the revision.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20061010062718/http://www.formfactors.org/developer/specs/matxspe1.2.pdf"
+  }
+}
+
+// The mirror that was actually opened and read this session. It is a further_citation and not the
+// first: a mirror is not the publisher, and the citation that leads should be the document's own
+// home even when the copy in hand came from elsewhere.
+data extdeps_external_authority_mirror: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "xdevs.com/doc/_PC_HW/Form_factors/matxspe1.2.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.micro_atx",
+      decl_name: "micro_atx_mounting_locations",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_external_authority_mirror]
+}
+
+// PROVENANCE OF THE COORDINATES: CITED-VIA-RELAY, the grade extdeps.climbing_holds.atomik defines
+// for a document read by someone other than the authoring session. This session's own extraction of
+// the archived ATX PDF recovered Figure 7's text layer and not the mounting-location artwork, so the
+// values below are NOT this session's reading. They were supplied by a routed review and are
+// corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on them exactly, which
+// is not a coincidence available to invented numbers. Corroboration of a board correspondence is not
+// a provenance upgrade for the standard reading, and this row does not claim otherwise.
+// THIS WAS A STRING AND THAT WAS A SECOND NAME FOR AN EXISTING CONCEPT. It read
+// "cited-via-relay: ..." as an ordinary NonEmptyStr, which is §4c misplaced data -- a CITATION
+// STATUS is exactly the kind of fact that belongs in a typed carrier -- and §3 nicknaming, because
+// `DimensionEvidence` already closes this vocabulary and `OperatorRelayedDocument` is already the
+// arm for a document read by someone other than the authoring session. Nothing could consume the
+// string; the grade was invisible to every lens that reads the tree.
+//
+// ON THE CARRIER'S HOME: it lives in `extdeps.climbing_holds.types`, which is a misleading address
+// for a general concept, and the type's OWN annotation says so without meaning to -- it records that
+// the arm exists because "a board's power-header inventory was asserted from memory", a failure with
+// no climbing hold anywhere in it. Provenance grade is domain-agnostic and §3 says a fact's home is
+// its LAYER rather than its file, so importing across is correct and re-minting a parallel grade
+// here would be the nicknaming this row just stopped doing. RELOCATION TRIGGER: a third consumer
+// outside climbing_holds, at which point the carrier moves to a neutral extdeps home and both
+// consumers follow it.
+data micro_atx_coordinate_provenance: DimensionEvidence = OperatorRelayedDocument {
+  authority: extdeps_external_authority_anchor,
+  relay_note: "Routed review reporting the microATX Motherboard Interface Specification location population and coordinates. The cited document is Version 1.2 and its title page was read first-party this session; its Table 4 and mounting-hole figure are font-subset artwork that does not survive text extraction, so the COORDINATES below are still the relay reading and not this session's. Which revision the RELAY read is not established, so the module is not renamed to spell one -- holding a 1.2 copy does not establish that the relayed numbers came from 1.2. Corroborated -- not established -- by seven ASRock ALTRAD8UD holes landing on these values exactly.",
+}
+
+// THE STRUCTURAL OVER-CLAIM IS CLOSED. first_citation now names the microATX Motherboard Interface
+// Specification, which is the document the provenance row names, so the typed citation and the typed
+// provenance agree on WHICH DOCUMENT. What remains is a grade, not a contradiction: the coordinates
+// came by relay from that document rather than from this session reading its Table 4, and
+// OperatorRelayedDocument says exactly that. The earlier framing of this gap -- that an
+// ExternalAuthority arm carrying a relayed-with-no-document chain might be needed -- is retired: the
+// document exists and is cited, so there is no document-less chain left to model.
+
+// THE MICRO-ATX AND DEEP-MICRO-ATX RELATION, stated because it is the fact a chassis actually needs
+// and because this session got it BACKWARDS once and shipped the error.
+//
+// micro-ATX is 9.6 x 9.6 in: it reduces full-size ATX along the DEPTH axis and leaves the rear-I/O
+// width alone. "Deep micro-ATX" restores some of that depth while keeping the same 9.6 in width. So
+// a deep-micro-ATX board is NOT a wider micro-ATX board — it is exactly as wide, and deeper.
+//
+// The error worth recording: an earlier revision of extdeps.boards.asrock_rack read the ALTRAD8UD's
+// 9.6 x 10.5 in as 267 mm WIDE against micro-ATX's 244 mm, and concluded that a micro-ATX hole
+// pattern would be laid out at the wrong width. The axes were transposed. The board is 244 mm wide,
+// which is the micro-ATX width exactly, and 267 mm deep.
+//
+// RETRACTED, and it was written in this file: the sentence that followed said "it is the FRONT row
+// that moves outward by the extra depth". That is false, for the datum reason recorded in
+// extdeps.standards.micro_atx, which now owns that grid. The front row does not move; a deep board
+// extends PAST it.
+// THE LETTERED MOUNTING-LOCATION GRID. The specifications name their location populations by letter,
+// and the letters — not coordinates — are the identity: a location is the same location across
+// revisions and across boards, which is what makes "this board populates C" a checkable claim rather
+// than a coincidence of numbers.
+//
+// Coordinates are in the board frame used throughout this corpus: x ALONG THE REAR I/O EDGE, y DEPTH
+// FROM THAT EDGE, micrometres. They are exact standard values, not readings.
+//
+// THE DATUM CORRECTION THAT MAKES THE FRONT ROW MAKE SENSE, and it killed a wrong claim of ours.
+// The specification's figure gives the front row as 8.950 in — measured FROM DATUM B, which itself
+// sits 0.400 in from the rear board edge. So the front row is 0.400 + 8.950 = 9.350 in from the
+// edge. An earlier revision of extdeps.boards.asrock_rack asserted that a deep board's extra depth
+// PUSHED this row outward from a nominal 8.95; it does not. L and M sit at the ordinary micro-ATX
+// location on a deep board and on a standard-depth board alike. What the extra depth does is extend
+// the board PAST them.
+type MountingLocationId
+  = LocB | LocC | LocF | LocH | LocJ | LocL | LocM | LocR | LocS
+
+type MountingLocation sole_constructor {
+  id: MountingLocationId
+  along_rear_edge: Micrometer
+  depth_from_rear_edge: Micrometer
+}
+
+fn mounting_location(id: MountingLocationId, along_rear_edge: Micrometer, depth_from_rear_edge: Micrometer) -> MountingLocation {
+  MountingLocation { id: id, along_rear_edge: along_rear_edge, depth_from_rear_edge: depth_from_rear_edge }
+}
+
+// The micro-ATX population the specification names: B, C, F, H, J, L, M, R, S.
+data micro_atx_mounting_locations: List<MountingLocation> = [
+  mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 33020)),
+  mounting_location(id: LocJ, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocM, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocC, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocH, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocL, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocB, along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocS, along_rear_edge: micrometer(count: 209550), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocR, along_rear_edge: micrometer(count: 229870), depth_from_rear_edge: micrometer(count: 165100)),
+]
+
+// The STANDARD's nominal mounting-hole diameter. It is a property of the location definition and
+// NOT of any product: a board populating location C is not thereby asserted to have a 3.96 mm hole.
+// A product's actual hole diameter is a product fact and stays unknown until measured or cited.
+// 0.156 in nominal. This belongs to the STANDARD LOCATION definition and to nothing else; no
+// consumer may read a product's physical hole diameter from it.
+data micro_atx_standard_hole_diameter: Micrometer = micrometer(count: 3962)
+
+// The maximum envelope, and the reason reusing the grid is not conformance. A design exceeding this
+// envelope requires a dedicated chassis by the specification's own statement, so a 9.6 x 10.5 in
+// board cannot be called mechanically conforming micro-ATX merely because it populates the grid.
+// GRID REUSE AND ENVELOPE CONFORMANCE ARE SEPARATE CLAIMS, and a board can make the first while
+// failing the second. The two rows below ARE the maximum envelope: a design exceeding it requires a
+// dedicated chassis by the specification's own statement. So populating the lettered grid does not
+// make a 9.6 x 10.5 in board mechanically conforming micro-ATX.
+//
+// AND THE VENDOR PHRASE IS NOT A FORM FACTOR. An earlier revision of this module generalised "deep
+// micro-ATX" to mean 9.6 in wide plus extra depth. That is refuted by the vendor's own catalogue:
+// ASRock applies the same phrase to a 9.6 x 10.5 in board AND to a 10.4 x 10.5 in board. The label
+// determines neither the outline nor a mounting-hole population, which is why this corpus carries a
+// standard with a lettered location catalog, a separately cited vendor label claim carrying no
+// dimensions, and a per-product mechanical profile — rather than a FormFactor coproduct with a
+// DeepMicroAtx arm. A name that silently implies an envelope is the category error that produced the
+// axis transposition recorded above.
+data micro_atx_width_along_rear_io: Millimeter = millimeter(count: 244)
+data micro_atx_depth: Millimeter = millimeter(count: 244)

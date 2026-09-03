@@ -1,3 +1,39 @@
+// CLIPPY ROSTER -- 121 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::clone_on_copy,  // 1
+    clippy::cloned_ref_to_slice_refs,  // 8
+    clippy::collapsible_if,  // 1
+    clippy::collapsible_match,  // 1
+    clippy::disallowed_macros,  // 15
+    clippy::doc_lazy_continuation,  // 2
+    clippy::double_parens,  // 21
+    clippy::explicit_auto_deref,  // 2
+    clippy::manual_clamp,  // 1
+    clippy::manual_div_ceil,  // 1
+    clippy::manual_is_multiple_of,  // 1
+    clippy::manual_repeat_n,  // 1
+    clippy::missing_const_for_thread_local,  // 1
+    clippy::needless_borrow,  // 9
+    clippy::needless_borrows_for_generic_args,  // 2
+    clippy::only_used_in_recursion,  // 1
+    clippy::single_match,  // 1
+    clippy::too_many_arguments,  // 1
+    clippy::type_complexity,  // 10
+    clippy::unnecessary_lazy_evaluations,  // 1
+    clippy::unnecessary_to_owned,  // 20
+    clippy::useless_format,  // 6
+    dead_code,  // 4
+    unused_imports,  // 2
+    unused_mut,  // 2
+    unused_parens,  // 6
+)]
+
 use crate::v1_rt::VecCompat;
 use im::HashMap;
 use std::cell::{Cell, RefCell};
@@ -543,7 +579,7 @@ pub struct CanonKey {
 
 impl CanonKey {
     fn new(key: Value) -> Option<CanonKey> {
-        if key == key {
+        if key.is_reflexive() {
             Some(CanonKey { key })
         } else {
             None
@@ -915,6 +951,24 @@ impl fmt::Display for Value {
             Value::Fn { node } => write!(f, "<fn {}>", node.name),
             Value::Unit => write!(f, "()"),
         }
+    }
+}
+
+impl Value {
+    /// A value may key a map only if it equals ITSELF, and `Value` has inhabitants that do not:
+    /// `Float(f64::NAN)` compares false to itself under IEEE semantics, and the variants this
+    /// `PartialEq` does not match (a `Closure`, say) fall to its `false` arm. Admitting either
+    /// would make `impl Eq for CanonKey` a lie and its `Hash` unreachable for its own key.
+    ///
+    /// The test is `self == self`, spelled ONCE and named, because that is the only expression
+    /// that stays correct as `PartialEq` above grows arms: a hand-written structural check would
+    /// be a second authority for reflexivity and would silently disagree the day a variant is
+    /// added. `clippy::eq_op` is deny-by-default and cannot see that a non-reflexive inhabitant
+    /// exists, so the lint is refused here, at the one site whose whole content is that test --
+    /// not at a crate root on behalf of everything under it.
+    #[allow(clippy::eq_op)]
+    fn is_reflexive(&self) -> bool {
+        self == self
     }
 }
 
@@ -1671,15 +1725,27 @@ struct CrossClaimPureMemo {
     /// recompute, never a wrong value. Served-on-hash-alone, main's floor produced six emit
     /// failures whose values belonged to OTHER calls of the same producer (no field
     /// 'produced_decl_support' on type 'TargetModel', run 33269961629).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
+    /// THE RETAINED VALUE IS THE REIFIED `Value`, NOT THE PORTABLE FORM, AND THAT IS WHAT
+    /// MAKES A SERVE ZERO-WALK. Publication still reifies to `PortableValue` first — that walk
+    /// is the TOTAL portability check and the byte-budget measurement — but the portable form
+    /// is then converted ONCE, here, and every later claim is handed an `Rc` clone. `Value`'s
+    /// containers are all `Rc`-backed and `Symbol` is a process-canonical `&'static str`, so a
+    /// value reconstructed from a portable form carries nothing frame-bound: field order sorts
+    /// on process-global pointer identity, and equality no longer depends on which frame
+    /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
+    /// used to rebuild per consuming frame, at O(1) instead of O(size).
+    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
     /// from missing hits.
     overflow: u64,
     /// Estimated retained bytes over every stored entry (argument rows AND values, collision
-    /// buckets included), computed from the reified `PortableValue` at publication — reification
-    /// is total, so the size is known before the store lands. The ACTUAL byte bound review
+    /// buckets included), measured on the `PortableValue` at publication — reification is
+    /// total, so the size is known before the store lands. It is measured on the portable form
+    /// and CHARGED for the `Value` retained in its place: the two carry the same reachable
+    /// content (the same `Rc<str>` spellings, the same numbers, the same field count), so the
+    /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
@@ -2026,16 +2092,11 @@ fn try_cross_claim_pure_memo(
     // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
     // the full portable argument row, so an intra-frame hash collision cannot alias either.
     let portable_args = portable_args_from_ctx(ctx, args)?;
-    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key).and_then(
-        |entries: &Vec<(Vec<(Option<String>, PortableValue)>, Value)>| {
-            entries.iter().find_map(|(stored_args, v)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| v.clone())
-            })
-        },
-    ) {
-        return Some(v);
-    }
-    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| {
+    // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
+    // per-context hit cache this path used to maintain is gone with the walk it existed to
+    // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
+    // machinery it obsoletes.
+    let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
         m.borrow().map.get(&memo_key).and_then(|bucket| {
             bucket.iter().find_map(|(stored_args, stored)| {
                 cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
@@ -2043,12 +2104,6 @@ fn try_cross_claim_pure_memo(
         })
     })?;
     cross_claim_observe_hit(func_name);
-    let value = value_from_portable_ctx(ctx, &portable);
-    ctx.cross_claim_hit_cache
-        .borrow_mut()
-        .entry(memo_key)
-        .or_default()
-        .push((portable_args, value.clone()));
     Some(value)
 }
 
@@ -2179,10 +2234,14 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedByteBudget;
         }
         m.bytes += entry_bytes;
+        // Reify ONCE, at publication, and retain the value every later claim will be handed.
+        // The portable form has done its two jobs by here — it proved total portability and it
+        // measured the entry — and nothing downstream needs it again.
+        let served = value_from_portable_ctx(ctx, &portable);
         m.map
             .entry(memo_key)
             .or_default()
-            .push((portable_args, portable));
+            .push((portable_args, served));
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -2757,6 +2816,60 @@ mod cross_claim_memo_tests {
             try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
             "control: the resolved roster identity stores and serves"
         );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED FOR THE ZERO-WALK SERVE. The re-enrol trigger `v2.workflow.floor_pure_producer_share`
+    // carries is "a serve that does not re-intern and re-sort per consuming frame — an
+    // interner-stable representation the tier can hand over without walking the whole value".
+    // This is the executed evidence that it holds, and it discriminates: under the previous
+    // serve every consuming frame ran `value_from_portable_ctx` over the whole value, so two
+    // frames received two DISTINCT allocations of an equal value and `Rc::ptr_eq` was false.
+    // Structural equality cannot see the difference — it was equal before and is equal now —
+    // so the assertion is on ALLOCATION IDENTITY, which is what "did not walk it" means.
+    #[test]
+    fn two_frames_are_served_the_same_allocation_rather_than_two_reconstructions() {
+        use super::{
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let filling = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args: [(Option<String>, Value); 0] = [];
+        // A nested value, so a walk would have to rebuild an inner container too.
+        let value = list_value(vec![
+            Value::Str(RcStr::from("alpha")),
+            list_value(vec![Value::Int(1), Value::Int(2)]),
+        ]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&filling, &fn_node, "prepare_grammar", &args, &value, None),
+            CrossClaimStoreOutcome::Stored
+        );
+
+        let consumer_a = fresh_ctx();
+        let consumer_b = fresh_ctx();
+        let served_a = try_cross_claim_pure_memo(&consumer_a, &fn_node, "prepare_grammar", &args)
+            .expect("frame A is served");
+        let served_b = try_cross_claim_pure_memo(&consumer_b, &fn_node, "prepare_grammar", &args)
+            .expect("frame B is served");
+
+        let (Value::List(a), Value::List(b)) = (&served_a, &served_b) else {
+            panic!("expected two served lists, got {served_a:?} and {served_b:?}");
+        };
+        assert!(
+            Rc::ptr_eq(a, b),
+            "two consuming frames must share one allocation: a serve that reconstructs the \
+             value per frame is the cost this tier's re-enrol trigger names"
+        );
+        // And the served value is still the value that was stored, in both frames.
+        assert_eq!(served_a, value);
+        assert_eq!(served_b, value);
         super::clear_cross_claim_pure_memos();
     }
 
@@ -4120,13 +4233,6 @@ pub struct InterpContext {
     // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values already served from the cross-claim tier: reconstruction
-    /// still rebuilds the value containers (but carries canonical symbols without re-interning),
-    /// so a hot producer served on every call would pay that per CALL; this bounds it to once
-    /// per frame. Keyed identically to the global tier; lives and dies with the frame.
-    cross_claim_hit_cache: std::cell::RefCell<
-        HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
-    >,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -4433,7 +4539,6 @@ impl InterpContext {
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
-            cross_claim_hit_cache: std::cell::RefCell::new(HashMap::new()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new({
                 let mut interner = SymbolInterner::default();
@@ -11436,6 +11541,62 @@ fn subject_module_value(
     }
 }
 
+/// Encode one source's parsed import statements: the parser's delimited spans, or the typed
+/// refusal. A source that did not parse and a source with no imports are different values here
+/// because they are different facts, and a caller that stripped nothing from the first would
+/// report a clean rewrite of a file it never read.
+fn parsed_import_statements_value(
+    outcome: &crate::std_import::ParsedImportStatements,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ParsedImportStatements as P;
+    match outcome {
+        P::ImportStatementsParsed { statements } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementsParsed"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("statements"),
+                list_value(
+                    statements
+                        .iter()
+                        .map(|statement| Value::Record {
+                            type_name: ctx.sym("ParsedImportStatement"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (
+                                    ctx.sym("span"),
+                                    Value::Record {
+                                        type_name: ctx.sym("SourceSpan"),
+                                        fields: Rc::new(sorted_fields(vec![
+                                            (
+                                                ctx.sym("file"),
+                                                str_value(statement.span.file.clone()),
+                                            ),
+                                            (ctx.sym("start"), Value::Int(statement.span.start)),
+                                            (ctx.sym("end"), Value::Int(statement.span.end)),
+                                        ])),
+                                    },
+                                ),
+                                (
+                                    ctx.sym("imported_module"),
+                                    str_value(statement.imported_module.clone()),
+                                ),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+        P::ImportStatementParseRefused { cause } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementParseRefused"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("cause"),
+                str_value(cause.clone()),
+            )])),
+        },
+    }
+}
+
 fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
@@ -12808,12 +12969,57 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 /// EXISTENCE are independent facts; a caller that obtained create-only from it would silently also
 /// get 0600, and would break if owner-only ever stopped needing O_EXCL. This is portable and sets no
 /// mode, because setting one would be the same conflation in reverse.
+/// THE TARGET IS PUBLISHED ONLY WHEN ITS CONTENT IS COMPLETE.
+///
+/// The first cut of this was `create_new(true).open(path)` followed by `write_all`, and review on
+/// gunbc#10026 found the state that construction cannot describe: if the open SUCCEEDS and the
+/// write then fails, the target has already been created and holds zero or partial bytes. The
+/// helper returned an ordinary error, the transport reported `success=false, bytes_written=0`, and
+/// the caller classified it as merely unwritable -- so the model said the create did not happen
+/// while a new, incomplete artifact sat at the path. That collapses "nothing was created" into "a
+/// truncated repository now exists", which is a worse lie than the overwrite race this operation
+/// was added to close: the original race could destroy someone else's bytes, and this one
+/// FABRICATES a repository nobody wrote.
+///
+/// Two dispositions are not modeled here, because a construction that cannot reach the bad state
+/// is available (DESIGN section 4b: construction over proof, proof over validation). Content is
+/// written to a sibling temporary that is itself created with O_EXCL, and the target name is
+/// claimed by `hard_link`, which FAILS IF THE TARGET EXISTS -- so exclusivity is preserved by the
+/// publish step rather than by the open. Every failure before the link leaves the target absent,
+/// which is exactly what the operation reports.
+///
+/// The temporary is removed on every path. Its removal failure is deliberately NOT propagated: it
+/// leaves a stray sibling and does not affect what the target is, and reporting it as a write
+/// failure would say the repository was not created when it was.
 fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
     use std::fs::OpenOptions;
     use std::io::Write;
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-    file.write_all(content)?;
-    Ok(())
+
+    let temp = format!("{path}.gunbc-create-{}", std::process::id());
+
+    // The temporary is exclusive too, so two concurrent creators cannot share one staging file.
+    // `?` rather than a match: this arm creates nothing, so there is no staging file to clean up --
+    // which is exactly why it is the one failure below that does NOT remove_file. The emitted
+    // realization already spells it `?`, so this also stops the two spellings differing over a
+    // difference that was never semantic.
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
+    if let Err(e) = file.write_all(content) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    if let Err(e) = file.sync_all() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    drop(file);
+
+    // hard_link refuses an existing target, which is where this operation's exclusivity now lives.
+    let published = std::fs::hard_link(&temp, path);
+    let _ = std::fs::remove_file(&temp);
+    published
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -12841,6 +13047,70 @@ mod write_file_create_new_tests {
         assert_eq!(
             after, b"SOMEONE ELSE'S BYTES",
             "the existing bytes must be untouched by a refused create"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE POST-OPEN FAILURE CONTROL, and it took two attempts to make it real.
+    //
+    // Review on gunbc#10026 found that neither existing cell observes a failure AFTER the target
+    // name would have been claimed -- exactly where the old open-then-write construction left a
+    // created-but-incomplete file while reporting that nothing was created.
+    //
+    // THE FIRST ATTEMPT WAS A DECORATION AND IS RECORDED HERE SO IT IS NOT REBUILT. It put a
+    // DIRECTORY at the target and asserted the target was untouched. Measured against the old
+    // construction, it PASSED: `create_new` fails at the OPEN when the name exists, so nothing was
+    // ever created and the assertion was satisfied by the defect. A check that cannot go red on the
+    // fault it names is worse than absent (DESIGN section 4b) because it gets cited as coverage.
+    //
+    // THIS ONE REACHES THE FAULT. RLIMIT_FSIZE makes `write_all` fail with EFBIG on a path that is
+    // ABSENT, so the create genuinely succeeds and the write genuinely fails -- the one ordering
+    // that distinguishes the two constructions. It runs in a forked child because the limit and the
+    // SIGXFSZ disposition are process-wide and this binary runs tests concurrently; the parent only
+    // reads the filesystem afterwards.
+    #[test]
+    fn a_write_failure_after_creation_leaves_no_target_behind() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-create-new-efbig-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("repo.json");
+        let target_s = target.to_str().unwrap().to_string();
+
+        // 64 bytes allowed, 4 KiB written: the create succeeds, the write cannot.
+        let content = vec![b'x'; 4096];
+
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe {
+                libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+                let lim = libc::rlimit {
+                    rlim_cur: 64,
+                    rlim_max: 64,
+                };
+                libc::setrlimit(libc::RLIMIT_FSIZE, &lim);
+            }
+            let _ = super::write_file_create_new(&target_s, &content);
+            unsafe { libc::_exit(0) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        // THE LOAD-BEARING ASSERTION. Under the old construction the target was created by the open
+        // and survived the failed write as a zero-or-partial file -- a repository nobody wrote.
+        // Publishing only when the content is complete means there is nothing at the target at all.
+        assert!(
+            !target.exists(),
+            "a write that failed after creation must leave NO target behind"
+        );
+        let strays: Vec<String> = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            strays.is_empty(),
+            "no staging temporary may survive either: {strays:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -16992,6 +17262,16 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::doc_graph_dangling_link_count(),
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+
+            arm "free_call.parsed_import_statements" { "parsed_import_statements" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let observed =
+                    crate::v1_gunbc_parsed_import_statements::parsed_import_statements(
+                        file, source,
+                    );
+                Ok(Some(parsed_import_statements_value(&observed, $ctx)))
+            },
 
             arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
                 let file = expect_str($positional.first().copied(), $name)?;

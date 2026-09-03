@@ -25,7 +25,8 @@ import extdeps.standards.rfc_8118 {
   NavigableUriProjected,
   NavigableUriRefused,
   BaseLocatorAlreadyCarriesFragment,
-  PdfOpenParameterPercentEncodeRefused,
+  NavigableUriPercentEncodeRefused,
+  PdfOpenParameterPercentEncodeRefusal,
   project_navigable_uri,
 }
 
@@ -177,7 +178,11 @@ fn project_navigable_uri_safe(base: Uri, construction: PdfSafeParameterSequenceC
           NavigableUriSafeRefused {
             cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
           }
-        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
+        NavigableUriRefused {
+          cause: NavigableUriPercentEncodeRefused {
+            refusal: PdfOpenParameterPercentEncodeRefusal { parameter: p, cause: c },
+          },
+        } =>
           NavigableUriSafeRefused {
             cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
           }

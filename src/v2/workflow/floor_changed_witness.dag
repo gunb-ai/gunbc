@@ -13,8 +13,8 @@ import v2.workflow.floor_terminal_ledger {
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
   NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
 }
-import v2.workflow.local_repo_wet_terminal {
-  LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused,
+import v2.workflow.wet_evidence {
+  WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -69,7 +69,7 @@ type WetTerminalAdmitted {
 
 type HermeticRouteGapWetEvidence
   = HermeticRouteGapWetUnavailable
-  | HermeticRouteGapWetAdmitted { admitted: WetTerminalAdmitted, lane: LocalRepoWetJoin }
+  | HermeticRouteGapWetAdmitted { admitted: WetTerminalAdmitted, lane: WetEvidenceValidation }
 
 fn hermetic_route_gap_wet_join_complete(
   evidence: HermeticRouteGapWetEvidence,
@@ -82,8 +82,8 @@ fn hermetic_route_gap_wet_join_complete(
       (a.identity == identity)
         && (a.candidate == candidate)
         && match l {
-          LocalRepoWetJoinHolds => true
-          LocalRepoWetJoinRefused { causes: _ } => false
+          WetEvidenceAdmitted { binding: _, terminals: _ } => true
+          WetEvidenceRefused { causes: _ } => false
         }
   }
 }

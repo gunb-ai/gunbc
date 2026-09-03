@@ -143,7 +143,7 @@ is what separates deleting a dead model from silencing a quiet guard.
 **Status, verified on main rather than relayed.** #9858 is merged (`main@83fe4399d0`), and the
 durable home is confirmed present at `origin/main`: a receipt inside the
 `reachability_read_as_occupancy` row of `gunbc.recurring_failure_mode`, carrying the
-unreachable-versus-unoccupied discriminator, and projected into `docs/design-ledgers.md`. That home
+unreachable-versus-unoccupied discriminator, and projected into `docs/design-failure-modes.md`. That home
 survives this plan's dissolution. This file records the finding; it does not own it.
 
 **The sequencing rule stands regardless**, because it is what keeps the program from destroying its

@@ -1,5 +1,51 @@
 // Split from cli_run.rs (pure code motion; no semantic change).
-#![allow(unused_imports)]
+// CLIPPY ROSTER -- 97 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::disallowed_macros,  // 75
+    clippy::needless_borrow,  // 7
+    clippy::needless_return,  // 1
+    clippy::nonminimal_bool,  // 1
+    clippy::type_complexity,  // 1
+    dead_code,  // 10
+    unused_imports,  // 0 -- pre-existing
+    unused_variables,  // 2
+)]
+// cli_run.rs is this module's PARENT, and an `#![allow]` there reaches every module
+// under it -- the same cascade this commit removed at the crate root, one level down.
+// These are the names its roster carries that this module does not trip, restored to
+// warn so `-D warnings` still judges them here. A name moves from this list to the
+// allow list above only with a counted site, never silently.
+#![warn(
+    clippy::assertions_on_constants,
+    clippy::clone_on_copy,
+    clippy::cloned_ref_to_slice_refs,
+    clippy::collapsible_str_replace,
+    clippy::doc_lazy_continuation,
+    clippy::empty_line_after_doc_comments,
+    clippy::enum_variant_names,
+    clippy::iter_kv_map,
+    clippy::manual_is_multiple_of,
+    clippy::manual_strip,
+    clippy::map_identity,
+    clippy::missing_const_for_thread_local,
+    clippy::needless_lifetimes,
+    clippy::only_used_in_recursion,
+    clippy::ptr_arg,
+    clippy::redundant_closure,
+    clippy::single_char_add_str,
+    clippy::too_many_arguments,
+    clippy::unnecessary_to_owned,
+    clippy::unneeded_struct_pattern,
+    clippy::useless_vec,
+    unused_mut
+)]
+
 use super::*;
 use im::HashMap;
 use std::cell::{Cell, RefCell};
@@ -1176,8 +1222,8 @@ impl LocalRepoWetObserved {
         }
     }
 
-    /// The host realization of `local_repo_wet_expectation_met` for the one expectation arm
-    /// `LocalRepoWetExpectation` carries. Exhaustive on the observed side by construction.
+    /// The host realization of `wet_disposition_is_agreement` for the one arm of
+    /// `ClaimExpectation` this lane realizes. Exhaustive on the observed side by construction.
     fn meets_pass_expectation(&self) -> bool {
         matches!(self, LocalRepoWetObserved::Passed)
     }
@@ -1289,7 +1335,7 @@ pub(crate) enum LocalRepoWetExecution {
 
 /// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once and unconditionally, with execution as an
 /// argument. Host realization of `v2.workflow.local_repo_wet_terminal.local_repo_wet_finalize` and
-/// of the `local_repo_wet_join` it defers to: the same three finalization causes and the same
+/// of the `wet_evidence_validate` it defers to: the same three finalization causes and the same
 /// bidirectional join, separated by remedy rather than collapsed into "the receipt is bad".
 ///
 /// An empty schedule with no invocation HOLDS: a lane that scheduled nobody claims nobody. It is
@@ -1342,7 +1388,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
             .collect();
         match hits.len() {
             0 => refusals.push(format!(
-                "{}: LocalRepoWetTerminalMissing — scheduled, and the executor produced no terminal \
+                "{}: WetTerminalMissing — scheduled, and the executor produced no terminal \
                  for it",
                 row.identity
             )),
@@ -1350,19 +1396,19 @@ pub(crate) fn finalize_local_repo_wet_lane(
                 let t = hits[0];
                 if t.candidate != candidate {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignCandidate — terminal names {}, this floor \
+                        "{}: WetBindingPreparedSubjectDiffers — terminal names {}, this floor \
                          is evaluating {candidate}",
                         row.identity, t.candidate
                     ));
                 } else if t.entry != row.entry {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignEntry — the roster's entry {:?} is not the \
+                        "{}: WetTerminalForeignEntry — the roster's entry {:?} is not the \
                          source the prepared subject resolved ({})",
                         row.identity, row.entry, t.entry
                     ));
                 } else if t.function != row.function {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignFunction — terminal names {}, the roster \
+                        "{}: WetTerminalForeignFunction — terminal names {}, the roster \
                          scheduled {}",
                         row.identity, t.function, row.function
                     ));
@@ -1374,7 +1420,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
                         format!(" — {detail}")
                     };
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalVerdictNotExpected — expected passed, observed \
+                        "{}: WetTerminalVerdictNotExpected — expected passed, observed \
                          {}{suffix}",
                         row.identity,
                         t.observed.name()
@@ -1384,7 +1430,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
                 }
             }
             n => refusals.push(format!(
-                "{}: LocalRepoWetTerminalDuplicated — {n} terminals claim this identity and neither \
+                "{}: WetTerminalDuplicated — {n} terminals claim this identity and neither \
                  can be trusted over the other",
                 row.identity
             )),
@@ -1395,7 +1441,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
     for t in &terminals {
         if !schedule.iter().any(|row| row.identity == t.identity) {
             refusals.push(format!(
-                "{}: LocalRepoWetTerminalUnscheduled — a terminal for an identity this lane never \
+                "{}: WetTerminalUnscheduled — a terminal for an identity this lane never \
                  scheduled",
                 t.identity
             ));
@@ -1444,13 +1490,13 @@ fn local_repo_wet_schedule(
     for item in items {
         let v1_interpreter::Value::Record { type_name, fields } = item else {
             return Err(format!(
-                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got {}",
+                "local_repo_wet_schedule: expected WetScheduledClaim, got {}",
                 floor_value_shape(Some(&item))
             ));
         };
-        if !hermetic.sym_eq(*type_name, "LocalRepoWetScheduled") {
+        if !hermetic.sym_eq(*type_name, "WetScheduledClaim") {
             return Err(format!(
-                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got record {}",
+                "local_repo_wet_schedule: expected WetScheduledClaim, got record {}",
                 hermetic.resolve(*type_name)
             ));
         }
@@ -1463,41 +1509,87 @@ fn local_repo_wet_schedule(
                 )),
             }
         };
-        let identity = str_field("identity")?;
         let function = str_field("function")?;
         let entry = str_field("entry")?;
-        // THE ENTRY MODULE IS DERIVED FROM THE IDENTITY, NOT FROM THE PATH. The identity is
-        // `<module>.<function>` and the module is what the prepared subject is keyed by; the
-        // roster's `entry` field is the file the local recipe names, which is a different
-        // question (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
-        let entry_module = match identity.strip_suffix(&format!(".{function}")) {
-            Some(m) if !m.is_empty() => m.to_string(),
-            _ => {
+        // THE IDENTITY IS A STRUCTURED `WitnessIdentity`, NOT A SPELLED NAME. It carries
+        // `module_path` and `function` as separate fields, so the qualified name is DERIVED here
+        // rather than parsed back out of a string — which is what the authority does in
+        // `witness_identity_qualified_name`, and deriving it twice the same way is the point.
+        let (module_path, identity_function) = match hermetic.field(&fields, "identity") {
+            Some(v1_interpreter::Value::Record {
+                type_name: id_type,
+                fields: id_fields,
+            }) => {
+                if !hermetic.sym_eq(*id_type, "WitnessIdentity") {
+                    return Err(format!(
+                        "local_repo_wet_schedule: identity must be a WitnessIdentity, got record {}",
+                        hermetic.resolve(*id_type)
+                    ));
+                }
+                let id_str = |name: &str| -> Result<String, String> {
+                    match hermetic.field(id_fields, name) {
+                        Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                        other => Err(format!(
+                            "local_repo_wet_schedule: identity.{name} must be String, got {}",
+                            floor_value_shape(other)
+                        )),
+                    }
+                };
+                (id_str("module_path")?, id_str("function")?)
+            }
+            other => {
                 return Err(format!(
-                    "local_repo_wet_schedule: identity {identity:?} does not end in .{function} \
-                     — the roster's identity and function disagree"
+                    "local_repo_wet_schedule: identity must be a WitnessIdentity record, got {}",
+                    floor_value_shape(other)
                 ));
             }
         };
-        // `LocalRepoWetExpectation` HAS ONE ARM, so there is nothing to collapse. A second arm
-        // reaching here refuses rather than defaulting: the widening that admits an expected-red
-        // member must arrive with the executor arm that realizes it, and this refusal is what
-        // stops the authority from claiming a behaviour production cannot perform.
-        match hermetic.field(&fields, "expected") {
+        let identity = format!("{module_path}.{identity_function}");
+        // THE ENTRY MODULE IS READ FROM THE IDENTITY, NOT PARSED OUT OF IT. `WitnessIdentity`
+        // carries `module_path` as its own field, so what used to be a suffix-strip is now a
+        // projection (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
+        //
+        // THE AGREEMENT WALL SURVIVES AND GOT STRONGER RATHER THAN WEAKER. The old check inferred
+        // disagreement from a failed suffix-strip, which could only notice it when the spelled
+        // identity did not END in the function. The row carries the function name TWICE — once in
+        // `identity.function`, once as its own `function` field — so the two are compared directly
+        // and any disagreement refuses, not only the ones a suffix happens to expose. An empty
+        // module_path is refused for the same reason the strip refused an empty prefix: a member
+        // whose module is unnamed cannot key a prepared subject.
+        if identity_function != function {
+            return Err(format!(
+                "local_repo_wet_schedule: identity.function {identity_function:?} and the row's \
+                 function {function:?} disagree — one member, two names"
+            ));
+        }
+        if module_path.is_empty() {
+            return Err(format!(
+                "local_repo_wet_schedule: identity {identity:?} carries an empty module_path"
+            ));
+        }
+        let entry_module = module_path;
+        // `ClaimExpectation` HAS TWO ARMS WHERE ITS PREDECESSOR HAD ONE, AND THIS LANE STILL
+        // REALIZES EXACTLY ONE. That is the whole reason this refusal is kept rather than widened
+        // with the type: the shared expectation vocabulary can now SAY `ExpectedRed`, and nothing
+        // in this executor RUNS an expected-red member. A wider type is not a wider capability, and
+        // defaulting here would let the authority claim a behaviour production cannot perform.
+        // The widening that admits an expected-red member must arrive with the executor arm that
+        // realizes it, and this line is what forces those two to land together.
+        match hermetic.field(&fields, "expectation") {
             Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
                 match hermetic.resolve(*variant_name).as_str() {
-                    "LocalRepoWetExpectPassed" => {}
+                    "ExpectedToHold" => {}
                     other => {
                         return Err(format!(
                             "local_repo_wet_schedule: expectation {other} has no executor arm in this \
-                             lane; only LocalRepoWetExpectPassed is realizable today"
+                             lane; only ExpectedToHold is realizable today"
                         ));
                     }
                 }
             }
             other => {
                 return Err(format!(
-                    "local_repo_wet_schedule: expected must be a typed variant, got {}",
+                    "local_repo_wet_schedule: expectation must be a typed variant, got {}",
                     floor_value_shape(other)
                 ));
             }
@@ -1529,7 +1621,7 @@ fn local_repo_wet_schedule(
 /// IT PRODUCES TERMINALS AND ADJUDICATES NOTHING. Every disagreement between the roster and what
 /// ran — a member with no receipt, a receipt naming another entry, a verdict that was not the
 /// expected one — is decided by `finalize_local_repo_wet_lane` against the SAME schedule, which is
-/// the host realization of `local_repo_wet_join`. An executor that judged its own completeness
+/// the host realization of `wet_evidence_validate`. An executor that judged its own completeness
 /// would be a second authority for the join, and the one whose payload the finalizer then trusted.
 pub(crate) fn run_local_repo_wet_lane(
     prepared: &PreparedRepository,
@@ -3046,7 +3138,17 @@ pub(crate) fn floor_authority_frame(
 /// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
 /// skip at any of these arms would leave admission empty while CI reads green, memoizing
 /// nothing (a green over a flag that never ran).
-pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Result<(), String> {
+// RETURNS ITS OBSERVATIONS RATHER THAN JUST ITS ERRORS, because the warm fills are a shared
+// preparation build and the preparation refusal is denominated over the observations its caller
+// collects. Before this, the warm ran, printed a wall figure and produced nothing the adjudicator
+// could see: it sits OUTSIDE the per-claim ceiling by construction (the deadlines are armed inside
+// `run_claim_measured`), and it was outside the preparation limits too, because those iterate a
+// vector this function never contributed to. Bounded by neither is not the same as billed to
+// preparation. One observation per warm row, measured on the same clock and RSS reads as every
+// other shared build, so all five phases go through ONE refusal.
+pub(crate) fn install_pure_producer_share(
+    prepared: &PreparedRepository,
+) -> Result<Vec<(String, SharedBuildObservation)>, String> {
     const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
     const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
     let roster_frame =
@@ -3120,6 +3222,7 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             }),
         },
     ));
+    let mut warm_observations: Vec<(String, SharedBuildObservation)> = Vec::new();
     for qualified in &warm_rows {
         let module = match qualified.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
@@ -3128,8 +3231,42 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
         // Resolution above already refused any row whose module the subject no longer
         // carries, so the frame is present; reuse it rather than re-preparing the module.
         let producer_frame = &resolution_frames[&module];
-        let warm_started = std::time::Instant::now();
-        match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
+        // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
+        // first revision of this line got that wrong in the direction DESIGN section 4b names.
+        // It passed `already_built: false` unconditionally, on the reasoning that the outcome
+        // below is the authority for whether the value was already retained. THAT REASONING
+        // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
+        // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
+        // Two representations of one fact with one of them lying is worse than either alone, and
+        // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
+        // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
+        //
+        // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
+        // does not exist until the call returns. So the observation is corrected AFTER the fact,
+        // from the outcome that owns it.
+        //
+        // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
+        // and not who caused it, so the label names the boundary that is knowable rather than
+        // fabricating a call site -- inside this loop the only writer that can already have
+        // stored a rostered producer's value is an earlier rostered producer whose traversal
+        // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
+        // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
+        // deliberately weaker than a call-site name because a call site is not recorded.
+        let (warm_result, mut warm_observation) =
+            observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
+            });
+        if let Ok(outcome) = &warm_result {
+            if matches!(
+                outcome,
+                v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
+            ) {
+                warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
+                    triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
+                };
+            }
+        }
+        match warm_result {
             Ok(outcome) => {
                 // A NON-SERVABLE outcome means nothing is retained for later claims, so a
                 // silent decline would relocate the fill onto the first toucher: stop the
@@ -3163,10 +3300,18 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 }
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} disposition={} wall_ms={}",
+                     producer={qualified} disposition={} cpu_ms={} wall_ms={} \
+                     rss_growth_bytes={} provenance={}",
                     outcome.cause(),
-                    warm_started.elapsed().as_millis()
+                    warm_observation.cpu_ms,
+                    warm_observation.wall_ms,
+                    warm_observation.rss_growth_bytes,
+                    warm_observation.provenance.render(),
                 );
+                warm_observations.push((
+                    format!("CrossClaimPureProducerWarm/{qualified}"),
+                    warm_observation,
+                ));
             }
             Err(why) => {
                 return Err(format!(
@@ -3176,7 +3321,7 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             }
         }
     }
-    Ok(())
+    Ok(warm_observations)
 }
 
 pub(crate) fn floor_decode_module_prefix_roster(
@@ -3685,25 +3830,31 @@ pub fn run_required_floor(
     // prepared subject is drift, and the install REFUSES rather than skipping — a silent
     // skip would relocate every warm fill onto the first toucher, the exact
     // nondeterministic charge this mechanism deletes.
-    install_pure_producer_share(&prepared)?;
-    let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
-        ("ModulePathIndexBuild", module_path_index_warm),
-        ("SharedModuleIndexBuild", shared_index_warm),
+    // THE WARM OBSERVATIONS JOIN THE SAME VECTOR THE PREPARATION REFUSAL ITERATES, which is the
+    // whole of this change: the fills were already outside the per-claim ceiling and were until
+    // now outside the preparation bound as well, so a rostered producer could warm for any cost at
+    // all and stop nothing. The label carries the producer because the refusal names a phase and
+    // "which shared build" must resolve to one roster row, not to the roster.
+    let pure_producer_warms = install_pure_producer_share(&prepared)?;
+    let mut shared_build_warms: Vec<(String, SharedBuildObservation)> = vec![
+        ("ModulePathIndexBuild".to_string(), module_path_index_warm),
+        ("SharedModuleIndexBuild".to_string(), shared_index_warm),
     ];
     if let Some(warm) = lens_pool_root_warm {
-        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots", warm));
+        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots".to_string(), warm));
     }
     if let Some(warm) = languages_census_warm {
-        shared_build_warms.push(("LanguagesConsumerCensusBuild", warm));
+        shared_build_warms.push(("LanguagesConsumerCensusBuild".to_string(), warm));
     }
     shared_build_warms.push((
-        "BareReferenceEdgeIndexBuild/source-roots",
+        "BareReferenceEdgeIndexBuild/source-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
     ));
     shared_build_warms.push((
-        "BareReferenceEdgeIndexBuild/witness-layer-roots",
+        "BareReferenceEdgeIndexBuild/witness-layer-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
+    shared_build_warms.extend(pure_producer_warms);
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
@@ -7095,10 +7246,80 @@ mod pure_producer_share_tests {
              data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
              data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n",
         )]);
-        install_pure_producer_share(&prepared).expect("carried roster installs and warms");
+        let observations =
+            install_pure_producer_share(&prepared).expect("carried roster installs and warms");
         let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
         assert_eq!(overflow, 0);
         assert!(stores >= 1, "the warm must land in the store, got {stores}");
+        // THE DISCRIMINATING ASSERTION, and it is why this control is no longer only positive:
+        // the warm is a shared preparation build, and a shared build that produces no
+        // observation is bounded by nothing -- the preparation refusal is denominated over the
+        // observations collected here. Before the observation existed this function returned
+        // `()`, so this assertion could not be written at all, which is precisely the shape of
+        // the gap: the cost was real, printed, and invisible to the only wall that could stop it.
+        assert_eq!(
+            observations.len(),
+            1,
+            "one observation per warm row, got {observations:?}"
+        );
+        let (label, observed) = &observations[0];
+        assert_eq!(
+            label, "CrossClaimPureProducerWarm/v2.workflow.floor_pure_producer_share.tm_local",
+            "the label must name the ROW, since the refusal names one phase and a reader must \
+             reach one roster row from it"
+        );
+        // The three axes the preparation refusal reads. Asserting they are PRESENT rather than
+        // asserting a magnitude: a fixture's absolute cost is a property of the fixture and the
+        // runner it ran on, and a threshold copied from this tree would be the measurement-as-
+        // oracle DESIGN section 5 refuses.
+        let _: u64 = observed.cpu_ms;
+        let _: u64 = observed.wall_ms;
+        let _: u64 = observed.rss_growth_bytes;
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
+    /// The discriminating red for review 59035: before the fix this asserted
+    /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
+    /// produced an artifact it merely found. Running the install TWICE without clearing the
+    /// memos in between is what puts the second warm on that path, and nothing else in this
+    /// module reaches it — which is why the defect survived the first round of tests.
+    #[test]
+    fn a_second_warm_of_the_same_producer_reports_that_it_was_found_not_built() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             fn tm_local() -> Bool { true }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n",
+        )]);
+
+        let first = install_pure_producer_share(&prepared).expect("first install warms");
+        assert!(
+            matches!(
+                first[0].1.provenance,
+                SharedBuildProvenance::BuiltByPreparation
+            ),
+            "the first warm BUILDS it: {:?}",
+            first[0].1.provenance
+        );
+
+        // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
+        // whole subject of this test.
+        let second = install_pure_producer_share(&prepared).expect("second install re-warms");
+        match &second[0].1.provenance {
+            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
+                // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
+                // establishes presence and not cause. Asserting the exact string keeps a
+                // future edit from quietly upgrading it into a fabricated attribution.
+                assert_eq!(
+                    *triggered_by,
+                    "an-earlier-rostered-producer-in-this-warm-loop"
+                );
+            }
+            other => panic!("a warm that found the value must not claim it built it: {other:?}"),
+        }
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
@@ -7423,7 +7644,7 @@ mod changed_witness_projection_tests {
         .expect_err("a scheduled member with no terminal must refuse");
         assert!(
             refused.contains("1 refusal(s)")
-                && refused.contains("LocalRepoWetTerminalMissing")
+                && refused.contains("WetTerminalMissing")
                 && refused.contains("w_other"),
             "exactly the skipped member refuses, by name, got: {refused}"
         );
@@ -7445,7 +7666,7 @@ mod changed_witness_projection_tests {
         .expect_err("an unscheduled terminal must refuse");
         assert!(
             refused.contains("1 refusal(s)")
-                && refused.contains("LocalRepoWetTerminalUnscheduled")
+                && refused.contains("WetTerminalUnscheduled")
                 && refused.contains("w_nobody_scheduled"),
             "got: {refused}"
         );
@@ -7461,7 +7682,7 @@ mod changed_witness_projection_tests {
         let refused =
             finalize(&schedule, vec![terminal]).expect_err("a failed member must not be admitted");
         assert!(
-            refused.contains("LocalRepoWetTerminalVerdictNotExpected")
+            refused.contains("WetTerminalVerdictNotExpected")
                 && refused.contains("observed failed"),
             "got: {refused}"
         );
@@ -7478,7 +7699,7 @@ mod changed_witness_projection_tests {
         let refused = finalize(&schedule, vec![terminal])
             .expect_err("a roster entry that is not the resolved source must refuse");
         assert!(
-            refused.contains("LocalRepoWetTerminalForeignEntry")
+            refused.contains("WetTerminalForeignEntry")
                 && refused.contains("somewhere_else_test.dag"),
             "got: {refused}"
         );
