@@ -252,9 +252,14 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // trusting this sentence. The estimate is biased TOWARD the null, not toward this result: a row
 // the serve reached whose step count happened not to move lands in the control group.
 //
-// SO THE ROW STAYS, on all three conjuncts rather than two, and gunbc#10141's wall should stop
-// refusing it on rust_target_model_core_edges' carrier overlap -- an overlap with a producer
-// whose own measurement found NO effect is not evidence about this one.
+// SO THE ROW STAYS, on all three conjuncts rather than two. The refusal that opened this question
+// is already gone, and by the same reasoning rather than by exemption: gunbc#10141's overlap join
+// is narrowed to refused rows whose verdict records a MEASURED cost, so
+// `refused_row_carriers_transfer` answers false for NoMeasuredEffectOverItsConsumers and the wall
+// never reaches core_edges' carriers. THAT IS OBSERVED AND NOT ONLY DESIGNED: floor run
+// 33703215821 is FloorClean with this key enrolled and core_edges in the refused roster -- same
+// roster, same carriers, no refusal. An overlap with a producer whose own measurement found no
+// effect either way was never evidence about this one.
 //
 // ONE OBSERVATION LEFT UNEXPLAINED ON PURPOSE, because an unsupported cause in a carrier is read
 // as a lead and spends the next reader's time before it spends their doubt: 12 claims carry
