@@ -650,7 +650,24 @@ data authority_target_same_expression_equivalence_stall: GuaranteeStall = Guaran
   next_rung_trigger: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row"
 }
 
+// THE DELIBERATELY DROPPED HALF OF gunbc#10258'S DISPLAY CONTRACT. That lane printed module
+// identity beside source path from ResolvedGraph, but only after typed resolution. The
+// loader-boundary preflight that replaced it answers the actual landing decision at its native
+// grain -- repository-path intersection -- and cannot project resolved module identity because
+// SourceFile carries only path and content. Reparsing the content or reconstructing a plausible
+// path-to-name mapping would mint a second identity authority, so the replacement refuses that
+// tempting widening and records the absent capability here instead.
+data pre_resolve_entry_closure_module_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a routed entry's exact loader-boundary closure can be enumerated by repository path before typed resolution, but cannot be enumerated by resolved module identity at that same pre-resolution boundary",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["claim_batch --print-entry-closure"] },
+  next_rung_trigger: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  pre_resolve_entry_closure_module_identity_stall,
   authority_target_same_expression_equivalence_stall,
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
