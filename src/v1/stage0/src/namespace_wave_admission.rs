@@ -746,28 +746,32 @@ pub struct TransitionAdmission {
 ///
 /// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
 /// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
-/// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
-/// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
-/// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
-/// re-opens it with the five gunbc#10011 rows below, whose transition has NOT merged -- verified
-/// rather than assumed, because assuming is what I got wrong the last two times: main still
-/// declares HeldSpecificationSupersessionStanding in
-/// extdeps.cpu.ampere_altra_platform_hw_design.subject and extdeps.publication does not carry it,
-/// so the deltas these three adjudicate are still producible and none of them is consumed.
+/// NINETEENTH DISSOLUTION (2026-09-03, gunbc#10156). The three gunbc#10011 rows this merge
+/// brought in are DELETED, and the deletion is owed here rather than by a follow-up: the roster
+/// rule is that a change TOUCHING the roster with consumed admissions on it owes their removal,
+/// and this change touches the roster to add the transition below.
 ///
-/// TWO OF THE FIVE ARE GONE AND THAT IS THE SAME TRIGGER FIRING, NOT A SEPARATE DECISION. They
-/// adjudicated bindings inside `platform_facts_are_from_the_latest_revision`, and review 59072
-/// established that predicate as the dissolved variant-test shape, so this change DELETES the
-/// declaration rather than widening its match. A row naming a declaration that no longer exists
-/// matches no producible delta -- it is STALE, and a stale row refuses every unrelated PR in the
-/// repository, which is the failure mode this whole roster exists to avoid. Deleting the
-/// declaration and keeping its admission rows would have been the fabricated-debt shape: a
-/// permission over nothing that reads as coverage.
+/// THE TRIGGER FIRED BETWEEN THE MERGE AND THE RUN, WHICH IS WHY THE PROSE ABOVE READS AS STALE
+/// RATHER THAN WRONG. When main authored those rows their transition had not merged, and the block
+/// said so explicitly and verified it. gunbc#10011 has since merged, so all three now report
+/// CONSUMED ADMISSION on the required run and the resting state is restored to empty. This is the
+/// dissolve-on condition that block declared, honoured by the first roster-touching change to
+/// observe it -- not a sweep of convenience and not a judgement about another lane's work.
 ///
-/// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
-/// deletion -- the specification record's field type, and the standing row's declared type and
-/// constructor. Their transition is still open for the reason stated above.
-/// SIXTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
+/// MEASURED, NOT ASSUMED: required run 33744702651 on 6df76f5172b reported
+/// `FAILED PHASE namespace-wave-admission (0 unadjudicated delta(s), 0 stale admission(s),
+/// 3 consumed admission(s) due for deletion on this roster-touching change)`, naming all three by
+/// label. The floor in that same run was FloorClean, so the phase failure was this and nothing
+/// else.
+///
+/// THE "FIVE" IN THE DELETED BLOCK WAS NEVER A MISCOUNT, and the record should say so because it
+/// was read as one. Five rows were authored; two adjudicated bindings inside a predicate that
+/// review 59072 established as the dissolved variant-test shape, so they were deleted as STALE in
+/// the same change that removed the declaration. The block explained that in its own middle
+/// paragraph. A reader comparing only its first sentence to the roster count sees a three-versus-
+/// five mismatch that the paragraph between them already resolves.
+///
+/// SEVENTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
 /// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
 /// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
 /// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
@@ -805,36 +809,6 @@ const CALL_REACHABILITY_GROUNDING_LABEL: &str =
     "call-reachability grounding gunbc#10156 2026-09-03";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: specification record field type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "AltraPlatformHwDesignSpecification",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "NewerRevisionExistsUnretrieved",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: CALL_REACHABILITY_GROUNDING_LABEL,
         subject: AdmissionSubject::Binding {
