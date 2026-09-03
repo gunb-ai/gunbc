@@ -1615,6 +1615,7 @@ data transport_verb_key: String = "verb"
 data transport_response_format_key: String = "response_format"
 data transport_headers_key: String = "headers"
 data transport_auth_basic_key: String = "auth_basic"
+data transport_auth_netrc_key: String = "auth_netrc"
 data transport_tls_key: String = "tls"
 
 fn make_transport_node(occurrence_identity: NodeOccurrenceIdentity, properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
@@ -1920,11 +1921,16 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
     || name == transport_response_format_key || name == transport_headers_key
-    || name == transport_auth_basic_key || name == transport_tls_key
+    || name == transport_auth_basic_key || name == transport_auth_netrc_key
+    || name == transport_tls_key
 }
 
 fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
+}
+
+fn transport_auth_netrc(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_netrc_key, source_indices: source_indices)
 }
 
 fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {

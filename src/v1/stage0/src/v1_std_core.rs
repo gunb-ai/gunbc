@@ -2635,6 +2635,15 @@ pub fn transport_auth_basic_key() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn transport_auth_netrc_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "auth_netrc".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn transport_tls_key() -> String {
     thread_local! {
         static CACHED: String = {
@@ -3255,7 +3264,7 @@ pub fn transport_response_format(
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((((((name.clone() == transport_url_key())
+    (((((((((((((((name.clone() == transport_url_key())
         || (name.clone() == transport_path_key()))
         || (name.clone() == transport_auth_scheme_key()))
         || (name.clone() == transport_auth_header_key()))
@@ -3268,6 +3277,7 @@ pub fn is_config_reserved_key(name: String) -> bool {
         || (name.clone() == transport_response_format_key()))
         || (name.clone() == transport_headers_key()))
         || (name.clone() == transport_auth_basic_key()))
+        || (name.clone() == transport_auth_netrc_key()))
         || (name.clone() == transport_tls_key()))
 }
 
@@ -3278,6 +3288,17 @@ pub fn transport_auth_basic(
     find_property(
         t.properties.clone(),
         transport_auth_basic_key(),
+        source_indices.clone(),
+    )
+}
+
+pub fn transport_auth_netrc(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    find_property(
+        t.properties.clone(),
+        transport_auth_netrc_key(),
         source_indices.clone(),
     )
 }

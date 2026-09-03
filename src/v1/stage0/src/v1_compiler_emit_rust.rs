@@ -295,11 +295,11 @@ pub use crate::v1_std_core::{
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, service_config_auth, service_config_auth_input,
     service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
-    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
-    transport_path_template, transport_query, transport_request_body, transport_response_format,
-    transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
-    with_required_cardinality,
+    transport_auth_basic, transport_auth_header_name, transport_auth_netrc, transport_auth_token,
+    transport_base_path, transport_base_url, transport_env, transport_has_auth, transport_headers,
+    transport_method, transport_path_template, transport_query, transport_request_body,
+    transport_response_format, transport_stdin, transport_tls_posture, tuple_type_name,
+    type_reference_provenance, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
@@ -33184,8 +33184,17 @@ pub fn emit_rest_call(
             Some(_) => true,
             std::option::Option::None => false,
         };
-        if (has_config_auth.clone() && has_basic_auth.clone()) {
-            "compile_error!(\"rest transport declares both config-level auth and auth_basic - one auth authority per operation (§3)\");".to_string()
+        let has_netrc_auth = match crate::v1_std_core::transport_auth_netrc(
+            transport.clone(),
+            source_indices.clone(),
+        ) {
+            Some(_) => true,
+            std::option::Option::None => false,
+        };
+        if ((has_config_auth.clone() && (has_basic_auth.clone() || has_netrc_auth.clone()))
+            || (has_basic_auth.clone() && has_netrc_auth.clone()))
+        {
+            "compile_error!(\"rest transport declares more than one auth authority per operation (§3): config-level auth, auth_basic and auth_netrc are mutually exclusive\");".to_string()
         } else {
             {
                 let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
@@ -33200,6 +33209,8 @@ pub fn emit_rest_call(
                 );
                 let basic_auth_line =
                     emit_rest_basic_auth_line(transport.clone(), source_indices.clone());
+                let netrc_auth_line =
+                    emit_rest_netrc_auth_line(transport.clone(), source_indices.clone());
                 let query_line = emit_rest_query_line(transport.clone(), source_indices.clone());
                 let body_line = emit_rest_body_line(transport.clone(), source_indices.clone());
                 let headers = crate::v1_std_core::transport_headers(
@@ -33253,6 +33264,7 @@ pub fn emit_rest_call(
                                 url_line.clone(),
                                 auth_line.clone(),
                                 basic_auth_line.clone(),
+                                netrc_auth_line.clone(),
                             ]),
                             header_lines.clone(),
                         ),
@@ -33380,6 +33392,45 @@ pub fn emit_rest_basic_auth_line(
                 std::option::Option::None => {
                     "compile_error!(\"auth_basic requires both username and password fields\");"
                         .to_string()
+                }
+            }
+        }
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn emit_rest_netrc_auth_line(
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match crate::v1_std_core::transport_auth_netrc(transport.clone(), source_indices.clone()) {
+        Some(b) => {
+            let file_field = Rc::new({
+                let mut __result = Vec::new();
+                for fi in b.children.clone().iter().cloned() {
+                    if (crate::v1_std_core::field_init_node_name_at(
+                        fi.clone(),
+                        source_indices.clone(),
+                    ) == "file".to_string())
+                    {
+                        __result.push(fi);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            match file_field.clone() {
+                Some(ff) => {
+                    let path_expr = crate::v1_compiler_emit::emit_simple_expr(
+                        crate::v1_std_core::field_init_node_value(ff.clone()),
+                        RenderTarget::Rust,
+                        source_indices.clone(),
+                    );
+                    Rc::new(vec![v1_rt::concat(v1_rt::concat("let __netrc = std::fs::read_to_string(".to_string(), path_expr.clone()), ").map_err(|e| format!(\"netrc file read failed: {}\", e))?;".to_string()), "let __netrc_host = url.split(\"://\").nth(1).unwrap_or_default().split(['/', '?']).next().unwrap_or_default().to_string();".to_string(), "let mut __netrc_login: Option<String> = None;".to_string(), "let mut __netrc_password: Option<String> = None;".to_string(), "let mut __netrc_default_login: Option<String> = None;".to_string(), "let mut __netrc_default_password: Option<String> = None;".to_string(), "for __line in __netrc.lines() {".to_string(), "    let __w: Vec<&str> = __line.split_whitespace().collect();".to_string(), "    if __w.len() >= 6 && __w[0] == \"machine\" && __w[1] == __netrc_host && __w[2] == \"login\" && __w[4] == \"password\" {".to_string(), "        __netrc_login = Some(__w[3].to_string());".to_string(), "        __netrc_password = Some(__w[5].to_string());".to_string(), "    } else if __w.len() >= 5 && __w[0] == \"default\" && __w[1] == \"login\" && __w[3] == \"password\" {".to_string(), "        __netrc_default_login = Some(__w[2].to_string());".to_string(), "        __netrc_default_password = Some(__w[4].to_string());".to_string(), "    }".to_string(), "}".to_string(), "let request = match (__netrc_login, __netrc_password) {".to_string(), "    (Some(__l), Some(__p)) => request.basic_auth(__l, Some(__p)),".to_string(), "    _ => match (__netrc_default_login, __netrc_default_password) {".to_string(), "        (Some(__l), Some(__p)) => request.basic_auth(__l, Some(__p)),".to_string(), "        _ => return Err(format!(\"netrc: no machine entry matching host {} and no default entry\", __netrc_host).into()),".to_string(), "    }".to_string(), "};".to_string()]).join(&"\n".to_string())
+                }
+                std::option::Option::None => {
+                    "compile_error!(\"auth_netrc requires a file field\");".to_string()
                 }
             }
         }
