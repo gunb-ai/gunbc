@@ -8441,7 +8441,8 @@ pub fn infer_call_arguments_generic_pass(
                 scope.type_env.clone().source_indices.clone(),
             );
             let expected = if (has_formal.clone()
-                && !direct_call_formal_has_unbound_type_variable(formal_param_type.clone()))
+                && (type_node_is_callable(formal_param_type.clone())
+                    || !direct_call_formal_has_unbound_type_variable(formal_param_type.clone())))
             {
                 Some(formal_param_type.clone())
             } else {

@@ -5290,7 +5290,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     }
     let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
     let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
-    let expected = if has_formal && !direct_call_formal_has_unbound_type_variable(n: formal_param_type) {
+    let expected = if has_formal && (type_node_is_callable(n: formal_param_type)
+      || !direct_call_formal_has_unbound_type_variable(n: formal_param_type)) {
       Present { value: formal_param_type }
     } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)

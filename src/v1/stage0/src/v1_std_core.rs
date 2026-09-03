@@ -957,6 +957,15 @@ pub fn compiler_diagnostic_seed_projection_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn compiler_diagnostic_partition_totality_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "CORRECTION (2026-09-03, direct-call formal-authority carrier): the historical clause in compiler_diagnostic_seed_projection_note saying compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST no longer describes the current classifier. That allowlist admitted a third Boolean state: a rendered diagnostic could be neither hard nor advisory, so both aggregates stayed healthy-looking while their sum was smaller than the complete diagnostic population. The classifier now takes ONE complete population -- the diagnostics vector consumed by compile-clean -- and projects it into an exhaustive binary partition: hard is compile_clean_diagnostic_is_hard and advisory is its exact complement. No diagnostic can enter neither bucket, and no separately classified population can drift. This is a climb that deletes the invisible state, not a lowered rung: blocking classification is unchanged, every non-hard diagnostic becomes counted and observable, and the remaining accepting direct-call boundary is declared independently by gunbc.rung_drop direct_call_unbound_carried_generic_compat with its histogram-derived population and restoration trigger. The hand-Rust predicate still dissolves with the seed at ROADMAP v1-zero-hand-maintained-rust; what changed is that adding a diagnostic no longer requires an allowlist edit that can be forgotten silently.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontierOccurrenceKey {
     pub method: String,
