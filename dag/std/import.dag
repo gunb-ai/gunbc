@@ -28,12 +28,40 @@ type ParsedImportStatement {
 // because a source whose parse refused and a source with no imports are different facts with
 // opposite repairs, and a producer that stripped nothing from the first would report a clean rewrite
 // of a file it never read.
+// THE REFUSAL'S CAUSE IS A COPRODUCT BECAUSE ITS CONSUMERS PARTITION ON IT. A consumer deciding
+// whether a source belongs to a subject at all must distinguish "this file is not a module" from
+// "this module is broken" from "the parser misbehaved", and those three answers have opposite
+// dispositions: the first excludes the file, the second refuses the file, and the third refuses the
+// RUN -- a subject assembled while the instrument was malfunctioning is not a smaller subject, it is
+// an unknown one. A prose cause forces every such consumer to re-derive the distinction by matching
+// this module's sentences, which names the parser's own categories a second time and breaks silently
+// the day a diagnostic is reworded. The two module-declaration arms stay apart from the import arm
+// for the same reason they are not one repair: a malformed module path is a defect in the
+// declaration the subject is DEFINED by, while a malformed import statement is a defect in the thing
+// being STRIPPED.
+type ImportStatementParseCause
+  = SourceHasNoModuleDeclaration
+  | ModuleDeclarationPathMalformed
+  | ImportStatementMalformed
+  | ImportParseInstrumentAnomaly {
+      detail: NonEmptyStr
+    }
+
+fn import_statement_parse_cause_label(cause: ImportStatementParseCause) -> NonEmptyStr {
+  match cause {
+    SourceHasNoModuleDeclaration => "source does not open with a module declaration" as NonEmptyStr
+    ModuleDeclarationPathMalformed => "module declaration does not name a dotted module path" as NonEmptyStr
+    ImportStatementMalformed => "an import statement did not parse" as NonEmptyStr
+    ImportParseInstrumentAnomaly { detail: detail } => detail
+  }
+}
+
 type ParsedImportStatements
   = ImportStatementsParsed {
       statements: List<ParsedImportStatement>
     }
   | ImportStatementParseRefused {
-      cause: NonEmptyStr
+      cause: ImportStatementParseCause
     }
 
 type ImportStripRefusal
