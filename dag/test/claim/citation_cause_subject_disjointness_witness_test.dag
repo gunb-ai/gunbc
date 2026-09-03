@@ -1,0 +1,73 @@
+module test.claim.citation_cause_subject_disjointness_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, Int, List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED EVIDENCE FOR A RUNG-4 WALL, WHICH IS THE RUNG MOST LIKELY TO GO UNWATCHED.
+// extdeps.standards.rfc_8118 splits its refusal causes by subject, so a selector-construction
+// cause cannot be written into a URI-projection refusal. That wall is invisible while everything
+// is green: if the two cause types were merged back into one, no witness would notice. These two
+// fixtures are that witness. Both IMPORT the real module rather than restating its shape, so
+// re-merging the authority makes the negative go quiet and this file fail.
+//
+// The pair is what discriminates. The negative and the positive carry the SAME cause with the
+// SAME field; they differ only in which subject's refusal they are written into. A probe that
+// only showed the refusal would be satisfied by a cause that is unusable everywhere.
+
+data forbidden_cause_on_projection_source: String = "module citation_cause_disjoint_negative\nimport extdeps.standards.rfc_8118 { NavigableUriProjection, NavigableUriRefused, CitationSelectorConstructionRefused }\nimport std.citation { SelectorRefusalCause }\nfn f(c: SelectorRefusalCause) -> NavigableUriProjection {\n  NavigableUriRefused { cause: CitationSelectorConstructionRefused { cause: c } }\n}\n"
+
+data admitted_cause_on_selector_source: String = "module citation_cause_disjoint_positive\nimport extdeps.standards.rfc_8118 { PdfOpenFragmentSelectorConstruction, PdfOpenFragmentSelectorRefused, CitationSelectorConstructionRefused }\nimport std.citation { SelectorRefusalCause }\nfn f(c: SelectorRefusalCause) -> PdfOpenFragmentSelectorConstruction {\n  PdfOpenFragmentSelectorRefused { cause: CitationSelectorConstructionRefused { cause: c } }\n}\n"
+
+// THE COUNT IS SCOPED TO A CLASS AND A SUBJECT, WHICH IS WHAT THIS INSTRUMENT CAN SAY.
+// compile_dag_diagnostic_census reports the rows of the WHOLE compilation the fixture is handed
+// to, its imported closure included -- the module's own carrier note says so -- so a class-wide
+// or total count is a claim about the corpus, not about the fixture. Measured here: the two
+// sources carry 56 and 55 rows, 55 of them shared. Scoping to the target key is what makes the
+// remaining one attributable to the construction these two fixtures differ by.
+data target_class: String = "TypeMismatch"
+
+data target_subject: String = "Coproduct(PdfOpenFragmentSelectorRefusalCause)"
+
+// Absent, not zero, on the NotRunnable arm: a census that could not run is not a census that
+// saw nothing, and collapsing them here would be the fail-open the census module removed from
+// its own API.
+fn census_rows(source: String) -> List<CompileDiagnosticCensusRow>? {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => Present { value: rows }
+    CensusNotRunnable { cause: _ } => Absent
+  }
+}
+
+fn target_key_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
+  census_total_count(
+    rows: rows
+      |> filter(r =>
+        (r.diagnostic_class as String) == target_class
+          && r.subject_name == target_subject
+          && r.blocking
+      )
+  )
+}
+
+fn target_key_count_of(source: String) -> Int {
+  match census_rows(source: source) {
+    Present { value: rows } => target_key_count(rows: rows)
+    Absent => -1
+  }
+}
+
+test fn w_selector_cause_on_a_uri_projection_refusal_is_refused() -> Bool {
+  target_key_count_of(source: forbidden_cause_on_projection_source) == 1
+}
+
+test fn w_the_same_cause_on_its_own_subject_is_admitted() -> Bool {
+  target_key_count_of(source: admitted_cause_on_selector_source) == 0
+}
