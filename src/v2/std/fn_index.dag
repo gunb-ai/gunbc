@@ -20,7 +20,7 @@ import v2.std.collection { Absent, List, Present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v2.std.text { String }
 
 type FnArrowParam {
@@ -152,7 +152,14 @@ fn is_path_like_lexeme(text: String) -> Bool {
 // children — the fold_node it once ran recursed the whole subtree while its step discarded
 // every child's collected atoms, so the descent computed results nothing consumed
 // (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
-// below is extensionally the same function at the cost of one probe per child.
+// below is extensionally the same function at the cost of one probe per child; that
+// equivalence was DECIDED BY EXECUTION over the live corpus and holds on every declaration
+// (v2.lens.fn_index_depth_agreement `fn_index_depth_agreement`).
+//
+// Depth one is the right grain for a caller that is ALREADY descending — the two lens folds
+// apply this per node of their own fold_node — and the wrong grain for a caller reading a
+// declaration ROOT, because the marshal nests a block body's callee atoms below the root.
+// callees_from_node is that second caller and reads atom_identities_in_subtree instead.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
   let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
     match node_atom_identity_optional(node: e.target) {
@@ -176,9 +183,58 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
   }
 }
 
+type AtomScanState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn atom_scan_init(n: Node) -> AtomScanState {
+  AtomScanState { node: n, atoms: empty_fn_arrow_symbol_list }
+}
+
+fn atom_scan_snoc(xs: List<Symbol>, sym: Symbol) -> List<Symbol> {
+  if contains(xs: xs, item: sym, eq: fn_index_symbol_eq) {
+    xs
+  } else {
+    list_snoc_item(xs: xs, item: sym)
+  }
+}
+
+fn atom_scan_step(acc: AtomScanState, _edge: Edge, child: AtomScanState) -> AtomScanState {
+  let merged = fold_list(
+    xs: child.atoms,
+    empty: acc.atoms,
+    cons: fn(a, sym) { atom_scan_snoc(xs: a, sym: sym) }
+  )
+  let with_child = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } => atom_scan_snoc(xs: merged, sym: sym)
+    Absent => merged
+  }
+  AtomScanState { node: acc.node, atoms: with_child }
+}
+
+// Every atom identity in the WHOLE subtree, the node's own included. This is the reader a
+// caller needs at a declaration root: a fn-arrow body marshals each node as a Conj record
+// whose callee atom is a positional child, so a callee is one level under the root only when
+// the body IS that one call, while a `let`-block body carries its callees two or more levels
+// down. The population the depth-one reader could not see — declarations whose callees exist
+// only below the root, so the cross-declaration walk below could never leave them — is
+// counted by v2.lens.fn_index_depth_agreement `root_callees_lost_to_depth_one`; it was the
+// majority of the live corpus when this reader landed.
+fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(
+    n: node,
+    algebra: NodeFold { init: atom_scan_init, step: atom_scan_step }
+  ).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => atom_scan_snoc(xs: from_descendants, sym: sym)
+    Absent => from_descendants
+  }
+}
+
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
   fold_list(
-    xs: atom_identities_in_node(node: node),
+    xs: atom_identities_in_subtree(node: node),
     empty: empty_fn_arrow_string_list,
     cons: fn(acc, sym) {
       let text = symbol_lexeme(sym: sym)
