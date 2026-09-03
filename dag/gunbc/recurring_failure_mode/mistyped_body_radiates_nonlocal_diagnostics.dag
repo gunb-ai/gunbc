@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.mistyped_body_radiates_nonlocal_diagnostics
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data mistyped_body_radiates_nonlocal_diagnostics: RecurringFailureMode = RecurringFailureMode {
+  identity: "mistyped_body_radiates_nonlocal_diagnostics" as NonEmptyStr,
+
+  receipts: [
+    "mistyped body radiates nonlocal phantom diagnostics (LAYER, stated first because carrying this finding across it inverts its meaning: the producer is the .dag COMPILER diagnosing .dag SOURCE -- the interpreter/type-check path behind gunbc compile and the --required-regen self-compile -- NOT rustc diagnosing emitted Rust; nothing here supports discounting any rustc-diagnostic census. ",
+
+    "THE FAILURE: a type error confined to ONE module-scope fn body does not refuse at that body with a located diagnostic; it radiates as a fabricated population of field-access diagnostics at UNRELATED modules, so the line stops pointing at the wrong factories. ",
+
+    "SPECIMEN (XL-0T, PR #9720): one fn added to v1.compiler.infer_env whose body held NonEmptyStr-as-String casts in comparison/argument position plus a FilePath-vs-String if-arm mismatch produced ~700 advisory `no field 'source_indices' on type 'TypeEnv'` rows across compile.dag, 05_emit_rust.dag and 04_resolve.dag -- modules that were fine -- and blocked required-regen, which printed 12 of them and never named the defective body. ",
+
+    "A reader begins repairing the wrong files; that misdirection, not the volume, is the harm (section 5: every refusal typed AND located). ",
+
+    "FOUR-POINT DISCRIMINATOR, one instrument (entry-scoped compile of src/v1/compile.dag, counting the diagnostic): full mistyped body 774; same signature with trivial body 0; casts hoisted into let bindings with structure kept 0 phantoms plus ONE real correctly-located error at the fn's own line; that real error fixed rc=0. ",
+
+    "The series also refuted the name-capture hypothesis for this specimen, since the fn name was held constant across all four points. ",
+
+    "RUNG: outside the ladder at the diagnosed-population grain -- the fabricated rows ARE silent wrongness about the modules they name -- while the run-level verdict stayed mitigatable (the compile did refuse; it refused about the wrong subject). ",
+
+    "CEILING: structurally guaranteed -- an expression-position type failure inside a body refuses AT that body before any cross-module field-access checking consumes the poisoned inference state. ",
+
+    "NEXT-RUNG TRIGGER, naming the capability: body-local type-error containment, sufficient that no diagnostic about module B can be produced by a type defect whose every construction site is inside module A. ",
+
+    "RECOGNITION RULE: when N same-shaped field/type diagnostics appear at unrelated sites immediately after adding or editing ONE declaration, suspect that declaration's body typing before believing any named site; trivial-body the new declaration as the two-minute discriminator, and hoist casts out of comparison/argument position into let bindings to recover the located refusal.)",
+  ],
+
+  evidence: [],
+}

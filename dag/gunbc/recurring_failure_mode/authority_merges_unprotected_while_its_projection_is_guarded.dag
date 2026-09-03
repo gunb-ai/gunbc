@@ -1,0 +1,124 @@
+module gunbc.recurring_failure_mode.authority_merges_unprotected_while_its_projection_is_guarded
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data authority_merges_unprotected_while_its_projection_is_guarded: RecurringFailureMode = RecurringFailureMode {
+  identity: "authority_merges_unprotected_while_its_projection_is_guarded" as NonEmptyStr,
+
+  receipts: [
+    "**the GENERATED PROJECTION is merge-protected and the HAND-AUTHORED AUTHORITY it is derived from is not, so the file where losing a fact is unrecoverable is exactly the file git resolves silently** (INVALID STATE: a repository binds a refusing merge driver to a path because that path is machine-derived and a wrong merge there is undetectable by reading, while the declaration file the projection is derived FROM matches no merge attribute at all and falls through to vanilla three-way text merge. ",
+
+    "The protection is attached to the CHEAP side. ",
+
+    "A bad merge in the projection is repaired by regenerating it; a bad merge in the authority destroys a fact that exists nowhere else, and the projection then faithfully renders the loss. ",
+
+    "HARM: DESIGN section 5's fail-closed arm holds on the derived artifact and fails open on the source of truth, in the same repository, for the same class of content, by omission rather than by decision. ",
+
+    "THREE MEASUREMENTS, all against origin/main on 2026-09-03 and each re-derivable by the command named beside it. ",
+
+    "(1) GRAIN. ",
+
+    "`git show origin/main:dag/gunbc/recurring_failure_mode.dag | awk '\{print NR\": \"length($0)}' | sort -t: -k2 -rn | head -3` reports line 144 at 16,792 characters, next 14,309, next 10,080. ",
+
+    "One row is one line by this carrier's own deliberate design -- see the WHY EVERY ROW IS ONE LINE block above -- so git's merge grain, the line, is coarser than the unit of authorship, the receipt. ",
+
+    "Several lanes appending several receipts to one class produce one both-sides-changed line, and the only resolutions the tool offers are ours, theirs, or hand composition. ",
+
+    "(2) POLARITY. ",
+
+    "`git check-attr merge -- <path>` over the pairs: `docs/design-failure-modes.md` and `docs/design-rung-drops.md` resolve to `merge: generated-artifact`; `dag/gunbc/recurring_failure_mode.dag` and `dag/gunbc/rung_drop.dag` resolve to `merge: unspecified`. ",
+
+    "Grepping `.gitattributes` for either authority module name returns zero matches. ",
+
+    "The driver is bound to three `dag/gunbc/stage0/*_generated.dag` files, DESIGN.md, and the stage0 Rust mirrors -- every one of them machine-derived. ",
+
+    "That is the polarity, and it is not an oversight in the attribute file so much as a consequence of deriving the rule from GENERATEDNESS rather than from IRRECOVERABILITY. ",
+
+    "(3) PRESSURE. ",
+
+    "`git log --since='6 hours ago' origin/main -- dag/gunbc/recurring_failure_mode.dag` reports seven commits in six hours from distinct lanes. ",
+
+    "This is not a rare collision; it is the busiest hand-authored file in the tree during a fan-out. ",
+
+    "WHY THIS OUTRANKS THE PROJECTION-DRIFT CLASS AND MUST NOT BE FOLDED INTO IT. ",
+
+    "Different mechanism: there, a driver runs and refuses, and the repair is to regenerate. ",
+
+    "Here NO driver runs, git answers with a plain textual merge, and there is nothing to regenerate from. ",
+
+    "Different failure signature: the projection class announces itself as an unmerged path with a printed recipe; this class announces nothing at all -- it produces a clean merge, a green build, and a passing gate, because a roster that lost one receipt is still well-formed .dag and still projects. ",
+
+    "Different repair: the projection class is already at its rung; this one has no mechanism yet. ",
+
+    "THE SILENT LOSS IS THE WHOLE POINT, stated concretely because the abstract version reads as tolerable: with seven lanes on one file and one class-row spanning 16,792 characters, a fifth lane taking `--ours` or `--theirs` on that line deletes another lane's receipt with no conflict marker surviving, no test red, and no reviewer signal, since the diff it presents is a plausible edit to a paragraph nobody reads end to end. ",
+
+    "The receipt is gone and the row still says what it said. ",
+
+    "CORRECT HANDLING, and it is verified by CONTENT rather than by the merge succeeding -- that distinction is this row's practical advice. ",
+
+    "On 2026-09-02 this exact collision occurred on line 144 between this lane and calm-boar-314. ",
+
+    "The resolution was COMPOSITION: neither side taken, both receipts re-read and merged into one sentence sequence by hand. ",
+
+    "It was then checked by asserting properties OF THE RESULTING TEXT -- all four expected receipt markers present, zero conflict markers anywhere in the file, and every double-quote in the composed line either a field delimiter or escaped, counted against the pre-merge blob -- not by observing that `git merge` exited zero. ",
+
+    "A successful merge is evidence about the TOOL, not about the CONTENT, and on an unprotected path with a coarse grain it is specifically the evidence that is available when the content is wrong. ",
+
+    "THE QUOTE CHECK EARNS ITS PLACE SEPARATELY, AND ITS FIRST FORMULATION WAS WRONG IN A WAY WORTH CARRYING: counting quotes and requiring an EVEN total is not an invariant of this carrier at all, because an escaped quote inside a row's prose is a single legal character and rows freely carry odd numbers of them -- this row itself does. ",
+
+    "A parity oracle therefore reds on correct compositions and, worse, greens on a composition that dropped one escaped quote and gained another. ",
+
+    "The discriminating form is POSITIONAL: enumerate every double-quote in the line and require each to be either one of the four field delimiters or immediately preceded by a backslash, which is `grep -oP '(?<!\\)\"'` returning exactly four. ",
+
+    "The reason to record the wrong version beside the right one is that the wrong one was chosen because it was cheap to compute and it passed on the specimen. ",
+
+    "THE DEFECT IT GUARDS: composition inside a 16,792-character line splits an escaped `\\\"` pair if the insertion point is chosen by searching for a substring that also occurs inside some other row's prose, which happened once in this lane and was caught only because the check was run against the PRISTINE file first to establish what a clean reading looks like. ",
+
+    "TWO FURTHER OCCURRENCES ON 2026-09-03, WHICH IS WHAT MOVES THIS FROM ONE SPECIMEN TO A RECURRENCE, and both are LOUD -- recorded because a row about silent loss must not imply every reach is silent. ",
+
+    "(a) `dag/gunbc/guarantee_rung_drop.dag`: gunbc#10021 and this lane each appended one row to `all_guarantee_stalls`, git reported CONFLICT with markers, and the resolution was additive because the two subjects are disjoint. ",
+
+    "(b) `dag/gunbc/recurring_failure_mode.dag` itself, appending this very row: a marker conflict on the roster line against another lane's new class. ",
+
+    "**OCCURRENCE (b) EXHIBITED BOTH ARMS OF THE POLARITY IN ONE MERGE, which is the cleanest evidence this row will get.** The same `git merge` left the unprotected `.dag` authority conflicted WITH markers and left the driver-bound `docs/design-failure-modes.md` marked unmerged with ZERO markers -- one command, two paths, two different failure surfaces, exactly as the attribute file predicts. ",
+
+    "WHAT THE LOUD CASES ESTABLISH AND WHAT THEY DO NOT: they show that a roster-line collision between two APPENDING lanes is visible, because two additions at one insertion point differ textually. ",
+
+    "They say nothing about the silent case this row is filed for, which is two lanes editing ONE 16,792-character row, where the conflict is over a line neither lane authored in full and a side can be taken without any marker surviving to say what was dropped. ",
+
+    "The frequency is the finding: three reaches in about twenty-four hours on two carriers, so the busy path is real and the coarse-grain case is a matter of when, not whether. ",
+
+    "PROJECTIONS ARE REGENERATED AND NEVER MERGED, which occurrence (b) also demonstrates: the correct handling of the driver's markerless refusal is to resolve the AUTHORITY and re-derive the document from it, and any attempt to hand-compose the `.md` would be authoring a projection by hand. ",
+
+    "RECOGNITION RULE, stated to generalise past this repository: for every path a merge policy protects, name the file that path is DERIVED FROM and check whether it is protected too. ",
+
+    "If the derived side is guarded and the source side is bare, the policy is protecting the recoverable half. ",
+
+    "The tell is a `.gitattributes` whose predicate is `generated` -- generatedness is a proxy for the real predicate, which is whether a wrong merge is DETECTABLE BY READING THE RESULT. ",
+
+    "A generated file fails that test because nobody reads it; a 16,792-character hand-authored roster line fails it for the identical reason, and the attribute file cannot see the resemblance. ",
+
+    "RUNG FOUND AT: 1, mitigatable, and only by author diligence -- the mitigation is that a human composed instead of choosing a side, which is not a mechanism and does not survive the next tired lane. ",
+
+    "CEILING: 3, structurally guaranteed. ",
+
+    "Membership is decidable: whether a path's merge result preserves both sides' semantic additions is decidable for a ROSTER, because a roster is a set of identified rows and a merge that drops one is a merge whose output set is not the union of the two input sets. ",
+
+    "That is an identity join, not a count comparison -- DESIGN section 5 -- and it is exactly the shape a refusing merge driver over the .dag parse tree could compute. ",
+
+    "Rung 4 is not attainable while the carrier is a text file, since the invalid state remains spellable by hand. ",
+
+    "NEXT TRIGGER, named as the CAPABILITY and not as an artifact: A SEMANTIC MERGE DRIVER OVER .dag DECLARATION IDENTITY -- sufficient to take two versions of a roster carrier, resolve them at DECLARATION grain rather than line grain, admit a merge only when every identity present in either side is present in the output, and REFUSE with a located diagnostic naming the dropped identity otherwise. ",
+
+    "WHAT DOES NOT DISCHARGE THIS: binding the existing `generated-artifact` driver to these two authority paths. ",
+
+    "That driver refuses on every both-sides-changed reach, which on the busiest hand-authored file in the tree converts a nightly composition task into a nightly line-stop, and it still resolves at line grain, so it would neither detect the loss nor permit the correct composition -- it would only make the loss loud by making all merging impossible. ",
+
+    "Nor does splitting the row further discharge it: finer rows reduce the collision RATE, which is worth doing on its own merits, and leave the silent-loss MECHANISM untouched for any row two lanes do share. ",
+
+    "NOT REPAIRED HERE, and the reason is this row's own subject: writing a merge driver is a carrier-level capability with its own population and review, and filing it against the missing capability is the point of the row.",
+  ],
+
+  evidence: [],
+}

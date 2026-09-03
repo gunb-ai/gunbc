@@ -889,6 +889,26 @@ const CALL_REACHABILITY_GROUNDING_LABEL: &str =
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_preamble_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
         label: CALL_REACHABILITY_GROUNDING_LABEL,
         subject: AdmissionSubject::Binding {
             module: "test.claim.bmc_onboarding_quarantine_witness_test",
