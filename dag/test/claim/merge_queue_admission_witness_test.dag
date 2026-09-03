@@ -1,0 +1,297 @@
+module test.claim.merge_queue_admission_witness_test
+
+import std.types { Bool, CommitSha, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.checks { CheckConclusion, Success, Failure }
+import extdeps.github.rulesets {
+  MergeQueueStanding,
+  NoMergeQueueRule,
+  MergeQueueConfigured,
+  MultipleMergeQueueRules,
+  AllGreenGrouping,
+  HeadGreenGrouping,
+  UnrecognizedGroupingStrategy,
+  QueueSquash,
+  BypassNever,
+  BypassAlways,
+  BypassPullRequestsOnly,
+}
+import gunbc.merge_queue_admission {
+  MergeQueueEntry,
+  ExactSubject,
+  SubjectSubstituted,
+  QueueHeadNotOnTarget,
+  QueueEntryNotChained,
+  QueuePositionsNotConsecutive,
+  GroupAdmits,
+  GroupDeniedPredecessorNotSuccess,
+  GroupDeniedEntrySelfNotSuccess,
+  GroupDeniedStrategyUnrecognized,
+  QueueDeniedSubjectSubstituted,
+  MergeQueueUnconfigured,
+  MergeQueueOperational,
+  MergeQueueExclusive,
+  merge_group_exact_subject_verdict,
+  queue_ordering_break,
+  grouping_admission,
+  classify_queue_admission,
+  queue_admission_admits,
+  merge_queue_terminal,
+  floor_workflow_admits_merge_group,
+}
+import v2.std.collection { Absent, Present }
+
+// WHAT THESE WITNESSES ESTABLISH AND WHAT THEY DO NOT.
+//
+// The subject is the admission ALGEBRA of gunbc.merge_queue_admission: the exact-subject identity,
+// the ordering chain, the grouping strategy, and the two terminals. Every input is authored here,
+// so these are SubstrateInputsOnly and run in the hermetic floor.
+//
+// They say NOTHING about whether gunb-ai/gunbc has a merge queue. That is a fact about the world,
+// answerable only by the live read gunbc.repo_ruleset `verify` performs -- and as of 2026-09-03
+// that read returns no merge_queue rule, which is why merge_queue_terminal over the LIVE standing
+// is Unconfigured and why nothing here asserts otherwise. A witness claiming the queue works would
+// be asserting a value it never observed.
+//
+// ONE EXCEPTION, AND IT IS DELIBERATE: w_the_required_workflow_can_schedule_for_a_composition reads
+// the workflow authority in this tree, which IS a tree fact and is exactly the half of the queue
+// this repository owns.
+
+data tip: CommitSha = "0000000000000000000000000000000000000000"
+data c0: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data c1: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data c2: CommitSha = "cccccccccccccccccccccccccccccccccccccccc"
+data other: CommitSha = "dddddddddddddddddddddddddddddddddddddddd"
+data moved_tip: CommitSha = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+fn entry(position: Int, composed: CommitSha, parent: CommitSha, conclusion: CheckConclusion) -> MergeQueueEntry {
+  MergeQueueEntry {
+    position: position,
+    pr_number: 1000 + position,
+    branch_head_sha: concat("head", to_string(position)),
+    composed_commit_sha: composed,
+    composed_parent_sha: parent,
+    conclusion: conclusion,
+  }
+}
+
+// A THREE-ENTRY QUEUE CHAINED CORRECTLY ONTO THE TIP, ALL GREEN. Every red below perturbs exactly
+// one thing about this, so a green there is a claim about that thing rather than about the fold
+// refusing everything.
+fn head_entry() -> MergeQueueEntry { entry(position: 0, composed: c0, parent: tip, conclusion: Success) }
+fn mid_entry() -> MergeQueueEntry { entry(position: 1, composed: c1, parent: c0, conclusion: Success) }
+fn last_entry() -> MergeQueueEntry { entry(position: 2, composed: c2, parent: c1, conclusion: Success) }
+
+fn healthy_queue() -> List<MergeQueueEntry> {
+  [head_entry(), mid_entry(), last_entry()]
+}
+
+// THE POSITIVE CONTROL.
+test fn w_a_chained_all_green_queue_admits_its_last_entry() -> Bool {
+  queue_admission_admits(v: classify_queue_admission(
+    strategy: AllGreenGrouping,
+    target_tip_sha: tip,
+    entries: healthy_queue(),
+    entry: last_entry(),
+    admitted_commit_sha: c2,
+  ))
+}
+
+test fn w_a_chained_queue_reports_no_ordering_break() -> Bool {
+  match queue_ordering_break(target_tip_sha: tip, entries: healthy_queue()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// EXACT SUBJECT. The queue's whole guarantee is that the checked commit IS the published one, so
+// the discriminating case is a green entry whose composition is not what fast-forwards.
+test fn w_the_checked_composition_is_the_admitted_commit() -> Bool {
+  match merge_group_exact_subject_verdict(entry: last_entry(), admitted_commit_sha: c2) {
+    ExactSubject => true
+    SubjectSubstituted { tested: _, admitted: _ } => false
+  }
+}
+
+test fn w_RED_a_green_entry_whose_composition_is_not_what_lands_is_refused() -> Bool {
+  let verdict = classify_queue_admission(
+    strategy: AllGreenGrouping,
+    target_tip_sha: tip,
+    entries: healthy_queue(),
+    entry: last_entry(),
+    admitted_commit_sha: other,
+  )
+  match verdict {
+    QueueDeniedSubjectSubstituted { tested: t, admitted: a } => t == c2 && a == other
+    _ => false
+  }
+}
+
+// ORDERING AFTER MAIN MOVES. This is the case the lane exists for: the queue's compositions were
+// built onto a tip that is no longer the tip, so every green in it is about a tree that will never
+// exist. The entries are UNCHANGED and all still green -- only the observed tip differs -- so a
+// green here cannot be produced by anything except the tip comparison.
+test fn w_RED_main_moving_under_the_queue_breaks_the_head_of_the_chain() -> Bool {
+  match queue_ordering_break(target_tip_sha: moved_tip, entries: healthy_queue()) {
+    Present { value: QueueHeadNotOnTarget { position: p, expected_parent: e, observed_parent: o } } =>
+      p == 0 && e == moved_tip && o == tip
+    _ => false
+  }
+}
+
+test fn w_RED_an_all_green_queue_off_the_tip_admits_nothing() -> Bool {
+  !queue_admission_admits(v: classify_queue_admission(
+    strategy: AllGreenGrouping,
+    target_tip_sha: moved_tip,
+    entries: healthy_queue(),
+    entry: last_entry(),
+    admitted_commit_sha: c2,
+  ))
+}
+
+// A BREAK IN THE MIDDLE OF THE CHAIN IS ITS OWN ARM, because the remedy differs: a head break means
+// the target moved, an interior break means the queue's own composition is not what it claims.
+fn unchained_queue() -> List<MergeQueueEntry> {
+  [
+    head_entry(),
+    entry(position: 1, composed: c1, parent: other, conclusion: Success),
+    last_entry(),
+  ]
+}
+
+test fn w_RED_an_entry_composed_off_its_predecessor_is_a_different_break() -> Bool {
+  match queue_ordering_break(target_tip_sha: tip, entries: unchained_queue()) {
+    Present { value: QueueEntryNotChained { position: p, expected_parent: e, observed_parent: o } } =>
+      p == 1 && e == c0 && o == other
+    _ => false
+  }
+}
+
+fn misordered_queue() -> List<MergeQueueEntry> {
+  [head_entry(), entry(position: 2, composed: c1, parent: c0, conclusion: Success)]
+}
+
+test fn w_RED_a_gap_in_queue_positions_refuses_rather_than_renumbering() -> Bool {
+  match queue_ordering_break(target_tip_sha: tip, entries: misordered_queue()) {
+    Present { value: QueuePositionsNotConsecutive { position: p, expected: e } } => p == 2 && e == 1
+    _ => false
+  }
+}
+
+// GROUPING. The joint-failure class a queue is adopted to close is exactly "an entry ahead of me
+// is red", so ALLGREEN and HEADGREEN must answer this case DIFFERENTLY or the strategy field is
+// decoration.
+fn red_head_entry() -> MergeQueueEntry {
+  entry(position: 0, composed: c0, parent: tip, conclusion: Failure)
+}
+
+fn queue_with_red_predecessor() -> List<MergeQueueEntry> {
+  [red_head_entry(), mid_entry()]
+}
+
+test fn w_RED_allgreen_refuses_an_entry_behind_a_red_one() -> Bool {
+  match grouping_admission(
+    strategy: AllGreenGrouping,
+    entries: queue_with_red_predecessor(),
+    entry: mid_entry(),
+  ) {
+    GroupDeniedPredecessorNotSuccess { position: p } => p == 0
+    _ => false
+  }
+}
+
+// THE DISCRIMINATOR BETWEEN THE TWO STRATEGIES, on the SAME queue. Without this, both arms could be
+// one function and the ALLGREEN row in gunbc.repo_ruleset's proposal would be carrying no meaning.
+test fn w_headgreen_admits_exactly_where_allgreen_refuses() -> Bool {
+  match grouping_admission(
+    strategy: HeadGreenGrouping,
+    entries: queue_with_red_predecessor(),
+    entry: mid_entry(),
+  ) {
+    GroupAdmits => true
+    _ => false
+  }
+}
+
+test fn w_RED_an_entry_that_is_itself_red_is_not_reported_as_a_predecessor_failure() -> Bool {
+  match grouping_admission(
+    strategy: AllGreenGrouping,
+    entries: queue_with_red_predecessor(),
+    entry: red_head_entry(),
+  ) {
+    GroupDeniedEntrySelfNotSuccess { position: p } => p == 0
+    _ => false
+  }
+}
+
+test fn w_RED_an_unrecognized_grouping_strategy_refuses_rather_than_defaulting() -> Bool {
+  match grouping_admission(
+    strategy: UnrecognizedGroupingStrategy { raw: "SOMEDAYSTRATEGY" },
+    entries: healthy_queue(),
+    entry: last_entry(),
+  ) {
+    GroupDeniedStrategyUnrecognized { raw: r } => r == "SOMEDAYSTRATEGY"
+    _ => false
+  }
+}
+
+// THE HALF OF THE QUEUE THIS REPOSITORY OWNS, read off the workflow authority rather than restated.
+// If this goes red the required aggregate can never schedule for a merge_group composition, so the
+// required check would sit permanently pending on every queue entry -- the quiet failure, not a
+// loud one.
+test fn w_the_required_workflow_can_schedule_for_a_composition() -> Bool {
+  floor_workflow_admits_merge_group()
+}
+
+// THE TWO TERMINALS. The gap between them is the bypass standing and nothing else, so the two
+// assertions below differ in ONE argument.
+fn configured_standing() -> MergeQueueStanding {
+  MergeQueueConfigured {
+    grouping_strategy: AllGreenGrouping,
+    merge_method: QueueSquash,
+    check_response_timeout_minutes: 180,
+    max_entries_to_build: 5,
+    max_entries_to_merge: 1,
+    min_entries_to_merge: 1,
+    min_entries_to_merge_wait_minutes: 5,
+  }
+}
+
+test fn w_a_configured_queue_with_no_bypass_is_exclusive() -> Bool {
+  match merge_queue_terminal(standing: configured_standing(), bypass: BypassNever) {
+    MergeQueueExclusive { grouping_strategy: g } => g == "ALLGREEN"
+    _ => false
+  }
+}
+
+// THE RUNG-INFLATION GUARD. A bypass standing leaves a route around admission, so the same queue
+// is Operational and NOT Exclusive. Both documented grants are checked, because either one is a
+// route and collapsing them would let one of them read as no route at all.
+test fn w_RED_a_bypass_standing_holds_the_terminal_at_operational() -> Bool {
+  let always = match merge_queue_terminal(standing: configured_standing(), bypass: BypassAlways) {
+    MergeQueueOperational { grouping_strategy: _ } => true
+    _ => false
+  }
+  let prs_only = match merge_queue_terminal(standing: configured_standing(), bypass: BypassPullRequestsOnly) {
+    MergeQueueOperational { grouping_strategy: _ } => true
+    _ => false
+  }
+  always && prs_only
+}
+
+test fn w_RED_an_absent_or_ambiguous_queue_rule_is_unconfigured() -> Bool {
+  let absent = match merge_queue_terminal(standing: NoMergeQueueRule, bypass: BypassNever) {
+    MergeQueueUnconfigured { reason: _ } => true
+    _ => false
+  }
+  let ambiguous = match merge_queue_terminal(
+    standing: MultipleMergeQueueRules { count: 2 },
+    bypass: BypassNever,
+  ) {
+    MergeQueueUnconfigured { reason: _ } => true
+    _ => false
+  }
+  absent && ambiguous
+}
+
+data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

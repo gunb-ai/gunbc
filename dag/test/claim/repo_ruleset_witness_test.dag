@@ -13,7 +13,15 @@ import gunbc.repo_ruleset {
   gunbc_passing_ci_ruleset_name,
   desired_strict_required_status_checks_policy,
   desired_do_not_enforce_on_create,
+  desired_ruleset_rule_types,
+  desired_merge_queue,
+  desired_merge_queue_policy,
+  gunbc_merge_queue_proposal,
+  MergeQueueUnsigned,
+  MergeQueueSignedOff,
+  merge_queue_projection_refusal,
 }
+import v2.std.collection { Absent, Present }
 import extdeps.github.rulesets {
   RulesetBypassStanding,
   RulesetActive,
@@ -35,6 +43,18 @@ import extdeps.github.rulesets {
   required_status_checks_rule,
   parameterless_rule,
   required_status_check_row,
+  MergeQueueStanding,
+  NoMergeQueueRule,
+  MergeQueueConfigured,
+  MultipleMergeQueueRules,
+  AllGreenGrouping,
+  HeadGreenGrouping,
+  QueueSquash,
+  MergeQueueRule,
+  MergeQueueGroupingStrategy,
+  merge_queue_grouping_strategy_wire_label,
+  merge_queue_merge_method_wire_label,
+  ruleset_rule_type_wire_label,
 }
 
 // WHAT THESE WITNESSES COVER AND WHAT THEY DO NOT, stated first because the gap is the reason to
@@ -111,6 +131,7 @@ fn divergences_of_desired_shaped_observation() -> List<String> {
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
     standing: desired_shaped_standing(),
+    merge_queue: NoMergeQueueRule,
   )
 }
 
@@ -133,6 +154,7 @@ test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
     standing: desired_shaped_standing(),
+    merge_queue: NoMergeQueueRule,
   )) == 1
 }
 
@@ -146,6 +168,7 @@ fn divergences_for_bypass(bypass: RulesetBypassStanding) -> List<String> {
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
     standing: desired_shaped_standing(),
+    merge_queue: NoMergeQueueRule,
   )
 }
 
@@ -204,6 +227,7 @@ test fn w_RED_an_extra_required_context_is_a_divergence() -> Bool {
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
     standing: extra,
+    merge_queue: NoMergeQueueRule,
   )
   length(ds) == 1 && string_contains(s: render_divergences(ds: ds), pattern: "some-other-context")
 }
@@ -221,6 +245,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule],
     standing: NoRequiredStatusChecksRule,
+    merge_queue: NoMergeQueueRule,
   )
   let empty_roster = observed_ruleset_divergences(
     name: gunbc_passing_ci_ruleset_name,
@@ -237,6 +262,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
         do_not_enforce_on_create: desired_do_not_enforce_on_create,
       ),
     ]),
+    merge_queue: NoMergeQueueRule,
   )
   string_contains(s: render_divergences(ds: ds), pattern: "no required_status_checks rule")
     && string_contains(s: render_divergences(ds: ds), pattern: "rule absent: required_status_checks")
@@ -256,9 +282,110 @@ test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
     standing: MultipleRequiredStatusChecksRules { count: 2 },
+    merge_queue: NoMergeQueueRule,
   )
   length(ds) == 1
     && string_contains(s: render_divergences(ds: ds), pattern: "more than one required_status_checks rule")
+}
+
+
+// THE MERGE-QUEUE HALF. The proposal is DECLARED and NOT ACTUATED, and these witnesses assert both
+// halves of that sentence separately, because getting either wrong is the whole risk: a proposal
+// nobody can see, or a proposal a converge run quietly applies to a live repository.
+
+// THE SIGN-OFF GATE. While the desire is unsigned, the projection converge sends carries no
+// merge_queue rule -- so no converge run can enable a queue on the strength of this file.
+test fn w_the_unsigned_proposal_contributes_no_rule_to_what_converge_sends() -> Bool {
+  let unsigned = match desired_merge_queue {
+    MergeQueueUnsigned { proposal: _, awaiting: _ } => true
+    MergeQueueSignedOff { policy: _, ruling: _ } => false
+  }
+  let no_policy = match desired_merge_queue_policy() {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let no_rule = !any(desired_ruleset_rule_types(), t =>
+    ruleset_rule_type_wire_label(t: t) == "merge_queue")
+  unsigned && no_policy && no_rule
+}
+
+// AND IT IS NOT A VACUOUS GATE: the proposal it holds back is the one the lane argued for. If this
+// goes red, the row above is gating something other than what the module's annotation describes.
+test fn w_the_held_proposal_is_the_allgreen_squash_one() -> Bool {
+  merge_queue_grouping_strategy_wire_label(g: gunbc_merge_queue_proposal.grouping_strategy) == "ALLGREEN"
+    && merge_queue_merge_method_wire_label(m: gunbc_merge_queue_proposal.merge_method) == "SQUASH"
+    && gunbc_merge_queue_proposal.max_entries_to_merge == 1
+}
+
+// A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop
+// being invisible, and it must name WHICH guarantee the live queue provides -- an undeclared
+// HEADGREEN queue and an undeclared ALLGREEN one are different facts.
+fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<String> {
+  observed_ruleset_divergences(
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: BypassNever,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule, MergeQueueRule],
+    standing: desired_shaped_standing(),
+    merge_queue: standing,
+  )
+}
+
+fn live_queue(grouping: MergeQueueGroupingStrategy) -> MergeQueueStanding {
+  MergeQueueConfigured {
+    grouping_strategy: grouping,
+    merge_method: QueueSquash,
+    check_response_timeout_minutes: 180,
+    max_entries_to_build: 5,
+    max_entries_to_merge: 1,
+    min_entries_to_merge: 1,
+    min_entries_to_merge_wait_minutes: 5,
+  }
+}
+
+test fn w_RED_an_undeclared_live_merge_queue_is_reported_with_its_grouping() -> Bool {
+  let allgreen = render_divergences(ds: divergences_with_live_queue(standing: live_queue(grouping: AllGreenGrouping)))
+  let headgreen = render_divergences(ds: divergences_with_live_queue(standing: live_queue(grouping: HeadGreenGrouping)))
+  string_contains(s: allgreen, pattern: "no signed desire declares")
+    && string_contains(s: allgreen, pattern: "ALLGREEN")
+    && string_contains(s: headgreen, pattern: "HEADGREEN")
+    && !string_contains(s: allgreen, pattern: "HEADGREEN")
+}
+
+// THE PUT HAZARD, WHICH IS THE REASON THE UNEXPECTED DIRECTION EXISTS AT ALL. converge sends the
+// WHOLE ruleset, so a live rule absent from desired is DELETED with no divergence reported by a
+// fold that only looks for missing rules. The refusal must fire on the rule TYPE LIST alone --
+// before any question about what the rule contains -- because that is the only input the actuation
+// path has before it writes.
+test fn w_RED_converge_refuses_rather_than_deleting_a_rule_it_cannot_express() -> Bool {
+  match merge_queue_projection_refusal(rule_types: [
+    DeletionRule, NonFastForwardRule, RequiredStatusChecksRule, MergeQueueRule,
+  ]) {
+    Present { value: cause } =>
+      string_contains(s: cause, pattern: "would delete")
+        && string_contains(s: cause, pattern: "merge_queue")
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THAT REFUSAL. The rule list this repository actually declares must NOT
+// refuse, or converge would be dead rather than careful.
+test fn w_the_declared_rule_list_does_not_trip_the_actuation_refusal() -> Bool {
+  match merge_queue_projection_refusal(rule_types: desired_ruleset_rule_types()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// TWO merge_queue RULES REFUSE RATHER THAN PICKING ONE, the same shape as the status-check rule.
+test fn w_RED_two_merge_queue_rules_refuse_rather_than_merging() -> Bool {
+  string_contains(
+    s: render_divergences(ds: divergences_with_live_queue(standing: MultipleMergeQueueRules { count: 2 })),
+    pattern: "more than one merge_queue rule",
+  )
 }
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

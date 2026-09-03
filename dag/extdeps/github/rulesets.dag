@@ -51,6 +51,7 @@ type RulesetRuleType
   | PullRequestRule
   | CreationRule
   | UpdateRule
+  | MergeQueueRule
   | UnrecognizedRuleType { raw: String }
 
 // current_user_can_bypass is documented as one of never / pull_requests_only / always. It is the
@@ -151,7 +152,8 @@ fn parse_ruleset_rule_type(raw: String) -> RulesetRuleType {
   else { if raw == "pull_request" { PullRequestRule }
   else { if raw == "creation" { CreationRule }
   else { if raw == "update" { UpdateRule }
-  else { UnrecognizedRuleType { raw: raw } } } } } } } } }
+  else { if raw == "merge_queue" { MergeQueueRule }
+  else { UnrecognizedRuleType { raw: raw } } } } } } } } } }
 }
 
 fn ruleset_rule_type_wire_label(t: RulesetRuleType) -> String {
@@ -164,6 +166,7 @@ fn ruleset_rule_type_wire_label(t: RulesetRuleType) -> String {
     PullRequestRule => "pull_request"
     CreationRule => "creation"
     UpdateRule => "update"
+    MergeQueueRule => "merge_queue"
     UnrecognizedRuleType { raw: r } => r
   }
 }
@@ -231,6 +234,113 @@ fn required_status_check_standing(rules: List<RulesetRuleWire>) -> RequiredStatu
 
 fn ruleset_rule_types(rules: List<RulesetRuleWire>) -> List<RulesetRuleType> {
   map(rules, r => ruleset_rule_wire_type(rule: r))
+}
+
+// THE MERGE_QUEUE RULE. GitHub's merge queue is configured as a ruleset rule, not as a repository
+// setting, so it is decoded here beside the rule this repository already gates on. Its parameters
+// are documented under the same rules API this module anchors on
+// (docs.github.com/en/rest/repos/rules, the `merge_queue` entry of the rules array); the two
+// enumerated fields carry GitHub's own SCREAMING spellings on the wire and are parsed into closed
+// coproducts with an unrecognized arm, exactly as enforcement, target and bypass standing are.
+//
+// grouping_strategy IS THE FIELD THE WHOLE QUEUE TURNS ON, so it is decoded rather than skipped.
+// ALLGREEN admits an entry only when it and every entry ahead of it in the group passed;
+// HEADGREEN admits on the head entry's result alone, which re-opens exactly the joint-failure
+// class a queue exists to close — two changes independently green and jointly broken. A queue
+// running HEADGREEN is therefore a materially different guarantee wearing the same name, and this
+// module's job is to make that difference readable rather than to have an opinion about it.
+type MergeQueueGroupingStrategy
+  = AllGreenGrouping
+  | HeadGreenGrouping
+  | UnrecognizedGroupingStrategy { raw: String }
+
+// The queue's OWN merge method, which is a separate fact from what the repository allows: a queue
+// configured to MERGE composes merge commits onto the default branch whatever
+// allow_merge_commit says, because the queue merges as the app rather than as a person.
+type MergeQueueMergeMethod
+  = QueueMergeCommit
+  | QueueSquash
+  | QueueRebase
+  | UnrecognizedQueueMergeMethod { raw: String }
+
+fn parse_merge_queue_grouping_strategy(raw: String) -> MergeQueueGroupingStrategy {
+  if raw == "ALLGREEN" { AllGreenGrouping }
+  else { if raw == "HEADGREEN" { HeadGreenGrouping }
+  else { UnrecognizedGroupingStrategy { raw: raw } } }
+}
+
+fn merge_queue_grouping_strategy_wire_label(g: MergeQueueGroupingStrategy) -> String {
+  match g {
+    AllGreenGrouping => "ALLGREEN"
+    HeadGreenGrouping => "HEADGREEN"
+    UnrecognizedGroupingStrategy { raw: r } => r
+  }
+}
+
+fn parse_merge_queue_merge_method(raw: String) -> MergeQueueMergeMethod {
+  if raw == "MERGE" { QueueMergeCommit }
+  else { if raw == "SQUASH" { QueueSquash }
+  else { if raw == "REBASE" { QueueRebase }
+  else { UnrecognizedQueueMergeMethod { raw: raw } } } }
+}
+
+fn merge_queue_merge_method_wire_label(m: MergeQueueMergeMethod) -> String {
+  match m {
+    QueueMergeCommit => "MERGE"
+    QueueSquash => "SQUASH"
+    QueueRebase => "REBASE"
+    UnrecognizedQueueMergeMethod { raw: r } => r
+  }
+}
+
+fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
+  match ruleset_rule_wire_type(rule: rule) {
+    MergeQueueRule => true
+    _ => false
+  }
+}
+
+// THREE STATES FOR THE SAME REASON RequiredStatusCheckStanding HAS THREE. "No queue is configured"
+// and "a queue is configured with these settings" are different facts with different remedies, and
+// both would render as a default-valued record under a projection returning bare settings. The
+// third refuses rather than picking: GitHub admits at most one merge_queue rule per ruleset, so two
+// means the upstream shape moved and this module's reading of it is no longer established.
+type MergeQueueStanding
+  = NoMergeQueueRule
+  | MergeQueueConfigured {
+      grouping_strategy: MergeQueueGroupingStrategy
+      merge_method: MergeQueueMergeMethod
+      check_response_timeout_minutes: Int
+      max_entries_to_build: Int
+      max_entries_to_merge: Int
+      min_entries_to_merge: Int
+      min_entries_to_merge_wait_minutes: Int
+    }
+  | MultipleMergeQueueRules { count: Int }
+
+fn merge_queue_standing(rules: List<RulesetRuleWire>) -> MergeQueueStanding {
+  let matched = filter(rules, r => rule_is_merge_queue(rule: r))
+  if length(matched) == 0 {
+    NoMergeQueueRule
+  } else {
+    if length(matched) > 1 {
+      MultipleMergeQueueRules { count: length(matched) }
+    } else {
+      fold(matched, init: NoMergeQueueRule, f: fn(_, rule) {
+        MergeQueueConfigured {
+          grouping_strategy:
+            parse_merge_queue_grouping_strategy(raw: rule.parameters.grouping_strategy),
+          merge_method:
+            parse_merge_queue_merge_method(raw: rule.parameters.merge_method),
+          check_response_timeout_minutes: rule.parameters.check_response_timeout_minutes,
+          max_entries_to_build: rule.parameters.max_entries_to_build,
+          max_entries_to_merge: rule.parameters.max_entries_to_merge,
+          min_entries_to_merge: rule.parameters.min_entries_to_merge,
+          min_entries_to_merge_wait_minutes: rule.parameters.min_entries_to_merge_wait_minutes,
+        }
+      })
+    }
+  }
 }
 
 fn required_status_check_row(context: String, integration_id: Int) -> RequiredStatusCheckWire {
