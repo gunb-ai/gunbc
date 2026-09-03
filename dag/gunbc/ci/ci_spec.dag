@@ -34,6 +34,7 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
   gunbc_run_invocation_script_with_env,
+  gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline
 }
 import gunbc.commit_workflow {
@@ -1767,35 +1768,43 @@ fn ci_heal_shell_lines() -> List<String> {
   )
 }
 
-// THE PUSHED HEAD IS NOT REVALIDATED BY THIS JOB, AND THE JOB SAYS SO RATHER THAN IMPLYING IT.
-// A push made with the Actions job credential does not start a new workflow run -- GitHub
-// suppresses that edge to stop a job from triggering itself -- so after a successful heal the
-// pull request's checks describe PRIOR_HEAD and no longer describe the branch. That is a real
-// gap and the arm below is the fail-closed answer to it: the job prints SupersededByHealedHead
-// naming both revisions and EXITS NONZERO, so the healed head arrives with a red job whose text
-// says why, and a human or a re-run decides. It does not exit zero on a head nothing has judged.
+// THE PUSHED HEAD IS NOW REVALIDATED, AND THE JOB STILL EXITS NONZERO. READ THE PARAGRAPH BELOW
+// IN THE PAST TENSE FOR THE GAP, AND THIS ONE FOR WHAT CLOSES IT. A healed head H1 must be judged
+// on its own tree, and used to arrive carrying only H0's receipts. The precise form of the premise
+// -- GitHub CREATES a run for that push and withholds its EXECUTION, so nothing judges H1
+// automatically -- and its measurement live once, on gunbc.witness_floor_workflow
+// ci_heal_expected_healed_sha_input, and are not restated here. The dispatch invocation below
+// runs INSIDE the produced-a-heal arm, immediately after the push and before the nonzero exit,
+// because $HEALED_HEAD is a variable of this script and the immutable subject is the whole point:
+// tools.ci_heal_dispatch sends the branch ref (the only thing GitHub's endpoint accepts) and that
+// sha as separate inputs, and gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input is
+// the head every dispatched lane binds its own github.sha and checkout against before a witness
+// counts. A dispatch that could not name its head would report a verdict about a tree it cannot
+// identify, which is why the binding landed first and this wire depends on it.
 //
-// WHAT WOULD CLOSE IT, named as a capability rather than as an artifact: a workflow_dispatch
-// entry point on this same workflow carrying the healed sha as a declared input, which every
-// dispatched run binds its own github.sha and checkout against before any witness counts.
-// gunbc.ci_spec gunbc_ci_heal_dispatch_target and tools.ci_heal_dispatch are the modeled half of
-// exactly that and stay unconsumed here, because the workflow they name (`ci.yml`) does not exist
-// and witnesses.yml declares no dispatch inputs. Wiring the invocation without those inputs would
-// dispatch a run that cannot check WHICH head it got -- the revalidation would be fabricated, not
-// performed -- so this cut restores the write-and-push capability and leaves the revalidation
-// half openly missing rather than apparently present.
+// THE NONZERO EXIT IS NOT SOFTENED BY THE DISPATCH, and that is deliberate. This run judged
+// PRIOR_HEAD; it has no standing to speak for H1 whatever it dispatched. So SupersededByHealedHead
+// still prints and this job still fails -- the verdict on H1 belongs to the run now starting, not
+// to this one. A dispatch refusal makes the gunbc invocation nonzero under FailFast, so the
+// transport failure surfaces as a red step rather than as an unremarked absence of a run.
+//
+// PAST TENSE FROM HERE. That gap and the arm below were the fail-closed answer to it: the job
+// printed SupersededByHealedHead naming both revisions and EXITED NONZERO, so the healed head
+// arrived with a red job whose text said why, and a human or a re-run decided. It did not exit
+// zero on a head nothing had judged. gunbc.ci_spec gunbc_ci_heal_dispatch_target and
+// tools.ci_heal_dispatch stayed unconsumed here because the workflow they named (`ci.yml`) did not
+// exist and witnesses.yml declared no dispatch inputs.
 fn gunbc_ci_heal_commit_push_script() -> String {
-  concat(
-    fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
-    concat(
+  join(
+    [
+      gunbc_invoke_root_stamp_script(),
+      fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
+      concat("  ", concat(gunbc_ci_heal_dispatch_invoke(), "\n")),
       "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
-      concat(
-        "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
-        concat(
-          concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
-          "  fi\n  exit 1\nfi\n"
-        )
-      )
-    )
+      "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
+      concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
+      "  fi\n  exit 1\nfi\n"
+    ],
+    ""
   )
 }
