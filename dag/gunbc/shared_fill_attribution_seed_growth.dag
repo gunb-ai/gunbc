@@ -58,6 +58,14 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // third state has no spelling and the bracket cannot be forgotten. That is a construction this
 // change does not make and does not claim.
 //
+// THE TRIGGER ABOVE IS NO LONGER THIS FILE'S TO CARRY, AND THIS PARAGRAPH RETIRES IT AS AN
+// AUTHORITY WHILE LEAVING THE REASONING IT SITS BESIDE INTACT. The class is now filed as
+// gunbc.recurring_failure_mode `claim_forced_and_unbracketed`, which is a TYPED CARRIER a fold can
+// read; these lines are a section 4c annotation, which no Accepted program can. Two statements of
+// one trigger in two places is the section 3 fork, and the one that survives is the one something
+// can consume -- so the row is the trigger's home and the wording above is kept only as the
+// rationale for why this change has the shape it does. If the two ever disagree, the row wins.
+//
 // WHY IT IS RUST AND NOT .dag. The measured subject is a host builtin. compile_dag_rust_emit_check
 // runs the seed compiler synchronously and its memo lives beside it, so the fill interval exists
 // only inside the host call; the substrate has no representation of that call to time. A
