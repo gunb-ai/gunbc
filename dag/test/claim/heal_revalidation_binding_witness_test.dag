@@ -15,7 +15,7 @@ import gunbc.witness_floor_workflow {
   heal_revalidation_preflight_step_name,
   ci_heal_expected_healed_sha_input_name,
   ci_heal_checkout_ref_expression,
-  heal_generated_artifacts_job_id,
+  heal_generated_artifacts_job,
   witness_floor_lane_jobs,
   witness_floor_triggers
 }
@@ -72,15 +72,6 @@ fn preflight_immediately_follows_checkout(j: Job) -> Bool {
     }).found
 }
 
-fn job_by_id(id: String) -> Job? {
-  fold(witness_floor_lane_jobs(), init: none, f: fn(acc, j) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if j.id == id { Present { value: j } } else { none }
-    }
-  })
-}
-
 fn job_has_checkout(j: Job) -> Bool {
   any(job_step_names(j: j), n => n == "Checkout")
 }
@@ -94,10 +85,10 @@ fn job_has_checkout(j: Job) -> Bool {
 // WITH A RECEIPT. Reading the record forced `required_lanes_aggregate_job`, whose serialized gate
 // script was about seven eighths of the assembled workflow's cost -- a subject no row in this file
 // says anything about, and the reason three of them exceeded the floor's per-claim ceiling on check
-// 100530537497. The figures are deliberately not restated here as milliseconds: they were taken on
-// a session container measuring about three times the runner, so the proportion transfers and the
-// absolute numbers do not. `gunbc.witness_floor_workflow` `witness_floor_triggers` carries the
-// measurement, the instrument, and why splitting the rows was the wrong repair.
+// 100530537497. `gunbc.witness_floor_workflow` `witness_floor_triggers` carries the measurement, the
+// instrument, why splitting the rows was the wrong repair, and this row's own standing margin --
+// 392ms of a 500ms ceiling on check 100560747021, irreducible because the six lanes ARE the subject,
+// with the declared-ceiling lane named as its trigger.
 test fn every_ordinary_checkout_lane_preflights_before_its_first_witness() -> Bool {
   let lanes = filter(witness_floor_lane_jobs(), j => job_has_checkout(j: j))
   lanes.length() >= 5
@@ -107,13 +98,19 @@ test fn every_ordinary_checkout_lane_preflights_before_its_first_witness() -> Bo
 // The heal job is the one lane that must NOT bind its checkout to an expected healed head: it
 // checks out the triggering branch head in order to PRODUCE one. Binding it would refuse the job
 // that creates the subject every other lane is being asked to verify.
+//
+// IT ASKS THE JOB DIRECTLY RATHER THAN SEARCHING THE LANE LIST FOR IT, and the reason is the same
+// defect this file already fixed once, in miniature. The first cut folded
+// `witness_floor_lane_jobs` looking for the id, which MATERIALIZES ALL SIX LANES -- and every lane
+// carries its steps' emitted bash -- to answer a question about ONE of them. Measured on the
+// required floor at check 100560747021: 392ms of a 500ms ceiling, for a row whose subject is a
+// single job. A search over a population is not the shape of a claim about a named member; naming
+// the producer is, and it also removes the `Absent` arm, which existed only because a search can
+// miss and could never fire against a list the workflow is assembled from.
 test fn the_heal_job_carries_no_revalidation_preflight() -> Bool {
-  match job_by_id(id: heal_generated_artifacts_job_id) {
-    Absent => false
-    Present { value: heal } =>
-      !any(job_step_names(j: heal), n => n == heal_revalidation_preflight_step_name)
-        && !job_has_checkout(j: heal)
-  }
+  let heal = heal_generated_artifacts_job()
+  !any(job_step_names(j: heal), n => n == heal_revalidation_preflight_step_name)
+    && !job_has_checkout(j: heal)
 }
 
 // ONE ACCESSOR, USED THREE TIMES, INSTEAD OF THREE NESTED HAND-ROLLED WALKS. The first cut of this
