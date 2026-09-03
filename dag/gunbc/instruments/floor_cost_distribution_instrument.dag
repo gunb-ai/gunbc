@@ -142,6 +142,22 @@ fn percentile_line(values: List<Int>, percent: Int) -> String {
 // The whole analysis over one loaded set of runs. `baseline` and `contended` name the pair the
 // inflation percentiles are paired over; `repaired` is the counterfactual exclusion set; `order`
 // is the ladder's removal order.
+// THREE DISCLOSURES TRAVEL WITH THE FIGURES THEY QUALIFY, and each exists because the figure
+// beside it is incomplete in a way a reader cannot see:
+//
+// `rows excluded from the bands as right-censored` -- the band histogram's bands sum to the
+// OBSERVED rows only. Censored rows have no cost to place, so the difference between the band
+// total and the population is stated rather than left silent.
+//
+// `rows undecidable for crossing` -- what the refusal verdict COULD NOT DECIDE. A censored row
+// whose bound does not clear the ceiling is neither a crosser nor a non-crosser. Empty is the
+// expected reading while the CPU safety ceiling sits above the cost line; a non-empty list means
+// that ordering has broken and every crossing figure on this report is qualified by it.
+//
+// `pairs available` and `pairs refused as right-censored` -- the denominator and the exclusion
+// beside the percentiles. A ratio needs two costs, so a pair with a censored member yields none,
+// and those are systematically the EXPENSIVE pairs -- which is what makes an unstated exclusion
+// here biased low rather than merely incomplete.
 fn floor_cost_distribution_lines(
   loads: List<RunLoad>,
   baseline: NonEmptyStr,
@@ -166,9 +182,6 @@ fn floor_cost_distribution_lines(
           concat(
             [
               concat("band histogram for run ", c.run as String),
-              // THE HISTOGRAM'S OWN DISCLOSURE. Its bands sum to the OBSERVED rows only; the
-              // censored rows have no cost to place and are stated here rather than left as a
-              // silent difference between the band total and the population.
               concat("rows excluded from the bands as right-censored\t", to_string(censored_rows(rows: c.rows)))
             ],
             cost_bands(rows: c.rows, edges: band_edges) |> map(b => band_line(b: b))
@@ -183,11 +196,6 @@ fn floor_cost_distribution_lines(
     concat(
       [
         concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: []))),
-        // WHAT THE REFUSAL VERDICT COULD NOT DECIDE. A censored row whose bound does not clear the
-        // ceiling is neither a crosser nor a non-crosser, and it is reported rather than resolved
-        // in either direction. Empty is the expected reading while the CPU safety ceiling sits
-        // above the cost line; a non-empty list means that ordering has broken and every crossing
-        // figure on this report is now qualified by it.
         concat("rows undecidable for crossing\t", to_string(count(runs_crossing_undecidable(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: [])))),
         concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: repaired))),
         concat("worst row over all runs, repaired excluded\t", to_string(millisecond_count(m: worst_over_runs(runs: runs, excluded_modules: repaired))))
@@ -204,10 +212,6 @@ fn floor_cost_distribution_lines(
               concat(
                 [
                   concat("paired inflation observations\t", to_string(count(obs.permille))),
-                  // THE DENOMINATOR AND THE EXCLUSION, BESIDE THE PERCENTILES THEY QUALIFY. A
-                  // ratio needs two costs, so a pair with a right-censored member yields none --
-                  // and those are systematically the EXPENSIVE pairs, which is what makes an
-                  // unstated exclusion here biased low rather than merely incomplete.
                   concat("pairs available\t", to_string(obs.paired)),
                   concat("pairs refused as right-censored\t", to_string(obs.censored_pairs))
                 ],

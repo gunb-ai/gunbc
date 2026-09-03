@@ -397,13 +397,14 @@ test fn an_identity_crossing_in_two_runs_is_counted_twice_and_reported_recurring
 // "population dense near the ceiling" reading a band histogram is built to test for. Every
 // interrupted row in a real artifact sits at approximately the same ceiling, so the manufactured
 // density is guaranteed for ANY ceiling over ANY population and carries no information at all.
+// FIXTURE SHAPE, so the expected values below are checkable without running anything: run_c holds
+// 300ms and 100ms OBSERVED plus one row censored at >=502ms; run_b is the same three-row shape with
+// every row observed (600/300/100). run_b is THE CONTROL -- it puts two rows in the top band, so
+// the zero run_c reports there is the censoring and not an empty filter.
 test fn a_censored_row_enters_no_band_and_is_counted_as_excluded() -> Bool {
-  // run_c holds 300ms and 100ms observed, plus one row censored at >=502ms.
   censored_rows(rows: run_c.rows) == 1
     && rows_in_band(rows: run_c.rows, lower_ms: millisecond(count: 500), upper_ms: millisecond(count: 1000)) == 0
     && rows_in_band(rows: run_c.rows, lower_ms: millisecond(count: 100), upper_ms: millisecond(count: 500)) == 2
-    // THE CONTROL: the same three-row shape with every row observed puts two rows in the top band,
-    // so the zero above is the censoring and not an empty filter.
     && rows_in_band(rows: run_b.rows, lower_ms: millisecond(count: 300), upper_ms: millisecond(count: 1000)) == 2
     && censored_rows(rows: run_b.rows) == 0
 }
@@ -416,10 +417,11 @@ test fn a_censored_row_enters_no_band_and_is_counted_as_excluded() -> Bool {
 // SO THE TWO RULINGS SIT SIDE BY SIDE OVER ONE ROW: it enters no band and it does cross. That is
 // not an inconsistency, it is the whole distinction -- a threshold question against a point
 // question -- and this pair is the executable statement of it.
+// THE THIRD ASSERTION IS NOT AN AFTERTHOUGHT: a censored row stays EXCLUDABLE BY MODULE, so the
+// counterfactual replay reaches it like any other row rather than being pinned into every result.
 test fn a_censored_row_still_counts_as_a_crossing_because_that_question_is_a_lower_bound() -> Bool {
   count(run_crossings(run: run_c, ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 1
     && runs_refused(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: []) == 1
-    // AND IT IS STILL EXCLUDABLE BY MODULE, so the counterfactual replay reaches it like any row.
     && runs_refused(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: ["m.hot"]) == 0
 }
 
@@ -464,15 +466,17 @@ test fn one_censored_row_in_any_run_makes_the_fleet_wide_worst_a_bound() -> Bool
 // analysis is looking. Returning `censored_pairs` beside `permille` is what makes the exclusion
 // STATED rather than silent, and a caller quoting a percentile without it has re-created that
 // class from this one.
+// FIXTURE SHAPE: run_b -> run_c pairs on m.mid.y (300->300) and m.mid.z (100->100); m.hot.x has no
+// partner in run_c and m.hot.k none in run_b, so neither pairs at all.
+//
+// THE SECOND HALF IS THE ARM THAT REDS IF A BOUND EVER REACHES THE DIVISION, and it is why the
+// test pairs a run against ITSELF: only then does the censored row have a partner. m.hot.k pairs
+// with m.hot.k, and that pair must be refused and COUNTED rather than contributing a 1000-permille
+// "no inflation" observation -- which is exactly what dividing the bound by itself would produce,
+// and it is a perfectly plausible number.
 test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Bool {
-  // run_b -> run_c pairs on m.mid.y (300->300) and m.mid.z (100->100); m.hot.x has no partner in
-  // run_c and m.hot.k none in run_b, so neither pairs at all.
   let obs = identity_inflation(base: run_b, other: run_c, min_base_ms: millisecond(count: 50))
   count(obs.permille) == 2 && obs.paired == 2 && obs.censored_pairs == 0
-    // AND THE ARM THAT REDS IF A BOUND EVER REACHES THE DIVISION: pairing a run against ITSELF
-    // where a censored row does have a partner. m.hot.k pairs with itself, and that pair must be
-    // refused and counted rather than contributing a 1000-permille "no inflation" observation --
-    // which is what dividing the bound by itself would produce, a perfectly plausible number.
     && match identity_inflation(base: run_c, other: run_c, min_base_ms: millisecond(count: 50)) {
          InflationObservations { permille: p, paired: pd, censored_pairs: cp } =>
            count(p) == 2 && pd == 3 && cp == 1
@@ -492,19 +496,20 @@ test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Boo
 // THE FIXTURE MOVES THE LINE ABOVE THE BOUND rather than editing any live constant: asked about a
 // 600ms line, the row censored at >=502ms is genuinely undecidable -- its true cost may be on
 // either side of 600 and nothing in the artifact can say which.
+// IT IS NOT SILENTLY DROPPED EITHER: the row leaves the crossed list and APPEARS in the
+// undecidable one, so the count a caller reports is a refusal rather than an absence.
+//
+// AND THE CONTROL IS THE ARM THAT ACTUALLY HOLDS TODAY: at the real 500ms line the same row's
+// bound clears it, so it is a sound crossing and the undecidable list is EMPTY. Without that half,
+// a function answering Undecidable for every censored row would pass the first half and have
+// destroyed the admission rather than guarded it.
 test fn a_censored_row_below_the_line_is_undecidable_rather_than_assumed_to_have_crossed() -> Bool {
   match row_crossing(row: row_c_censored, ceiling_ms: millisecond(count: 600)) {
     RowCrossed => false
     RowBelowLine => false
     RowCrossingUndecidable =>
-      // IT IS NOT SILENTLY DROPPED EITHER: it leaves the crossed list and appears in the
-      // undecidable one, so the count a caller reports is a refusal rather than an absence.
       count(run_crossing_census(run: run_c, ceiling_ms: millisecond(count: 600), excluded_modules: []).crossed) == 0
         && count(runs_crossing_undecidable(runs: [run_c], ceiling_ms: millisecond(count: 600), excluded_modules: [])) == 1
-        // AND THE CONTROL, WHICH IS THE ARM THAT ACTUALLY HOLDS TODAY: at the real 500ms line the
-        // same row's bound clears it, so it is a sound crossing and the undecidable list is EMPTY.
-        // Without this half, a function that answered Undecidable for every censored row would
-        // pass the first half and have destroyed the admission rather than guarded it.
         && match row_crossing(row: row_c_censored, ceiling_ms: millisecond(count: 500)) {
              RowCrossed =>
                count(runs_crossing_undecidable(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 0

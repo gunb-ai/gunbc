@@ -4,6 +4,18 @@ import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.text { String }
+// THE CLOCK QUANTITIES ARE `Millisecond`, NOT `Int`, AND THIS AUTHORITY MAY NOT BE THE WEAKER
+// REPRESENTATION. `gunbc.floor_cost_distribution` reads the same three quantities off the artifact
+// as `Millisecond`; typing them as bare scalars here would give one clock quantity two
+// representations with the AUTHORITY side unable to stop a figure from another clock being
+// assigned into it -- the exact fork DESIGN section 3 forbids, and validation-by-naming standing
+// where construction was available (DESIGN section 5). The `exact_` / `_lower_bound_` spellings
+// separate the two READINGS; `Millisecond` is what makes each one a duration at all. Both are
+// needed and neither substitutes for the other.
+//
+// `v2.workflow.floor_changed_witness` and `v2.workflow.dag_acceptance` already import this same
+// authority from a v2 workflow module, so this is the existing route rather than a new seam.
+import std.measure { Millisecond }
 
 // ONE COST FACT, TWO KINDS OF READING, AND THE KINDS DO NOT SHARE A FIELD NAME.
 //
@@ -41,8 +53,8 @@ import v2.std.text { String }
 // cannot be written into it by a caller who did not read one.
 type ExactCompletionCost {
   witness_identity: String
-  exact_cpu_ms: Int
-  exact_wall_ms: Int
+  exact_cpu_ms: Millisecond
+  exact_wall_ms: Millisecond
 }
 
 // The censored arm. `_lower_bound_` is the whole point of the spelling: these are genuine
@@ -52,9 +64,9 @@ type ExactCompletionCost {
 // property of that ceiling before it is a property of the subject.
 type RightCensoredCost {
   witness_identity: String
-  cpu_lower_bound_ms: Int
-  wall_lower_bound_ms: Int
-  censoring_ceiling_ms: Int
+  cpu_lower_bound_ms: Millisecond
+  wall_lower_bound_ms: Millisecond
+  censoring_ceiling_ms: Millisecond
 }
 
 // The dynamic population's element. A reader that has not yet decided which kind it holds holds

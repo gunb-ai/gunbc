@@ -369,17 +369,19 @@ type RowCrossing
   | RowBelowLine
   | RowCrossingUndecidable
 
+// THE TWO CENSORED ARMS, SO THE BRANCH BELOW CAN BE READ WITHOUT RE-DERIVING THEM. When the bound
+// CLEARS the line the row is known to be above it whatever its true cost was, which is a sound
+// crossing. When the bound sits BELOW the line, the row is known only to be above the bound, the
+// true cost may be on either side, and this module cannot tell -- so it refuses rather than
+// guessing in either direction.
 fn row_crossing(row: FloorCostRow, ceiling_ms: Millisecond) -> RowCrossing {
   match row.cost {
     ObservedCost { cpu_ms: c } =>
       if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) { RowCrossed } else { RowBelowLine }
     RightCensoredCost { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } =>
-      // The bound clears the line, so the row is known to be above it whatever its true cost was.
       if millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
         RowCrossed
       } else {
-        // Known to be above `b`, and `b` is below the line. The true cost may be on either side and
-        // this module cannot tell. It refuses rather than guessing in either direction.
         RowCrossingUndecidable
       }
   }
@@ -589,10 +591,10 @@ fn inflation_pair_permille(b: FloorCostRow, o: FloorCostRow) -> Int? {
   }
 }
 
+// THE FLOOR IS APPLIED TO THE OBSERVED BASE ONLY. A censored base row has no figure to compare
+// against `min_base_ms` at all, so it is not "below the floor" -- it is unpairable, and it is
+// counted as such rather than disappearing into the same bucket as a cheap row.
 fn identity_inflation(base: RunCost, other: RunCost, min_base_ms: Millisecond) -> InflationObservations {
-  // THE FLOOR IS APPLIED TO THE OBSERVED BASE ONLY. A censored base row has no figure to compare
-  // against `min_base_ms` at all, so it is not "below the floor" -- it is unpairable, and it is
-  // counted as such rather than disappearing into the same bucket as a cheap row.
   let candidates = base.rows
     |> flat_map(b => match other.rows |> filter(o => o.identity == b.identity) |> first {
          Absent => []
