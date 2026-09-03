@@ -565,3 +565,238 @@ fn same_head_eval_step_violations(pair: SameHeadAttemptPair) -> List<EvalStepDet
 fn same_head_eval_steps_are_deterministic(pair: SameHeadAttemptPair) -> Bool {
   count(same_head_eval_step_violations(pair: pair)) == 0
 }
+
+// THE BETWEEN-RUN ENVELOPE: THE QUANTITY A BUDGET MAY BE SET FROM, AND THE ONE THE PAIRWISE
+// INFLATION ABOVE IS NOT.
+//
+// `identity_inflation_permille` pairs ONE run against ONE other. Its percentiles are computed
+// across ROWS inside a single pair, so they describe how unevenly one host-pair ratio lands over
+// different rows -- they say nothing about how that ratio varies from run to run. Two runs are ONE
+// SAMPLE of the between-run quantity and one sample has no spread at all, so a pairwise median is a
+// POINT ESTIMATE dressed as a distribution. Reading it as fleet variance indexes the distribution
+// over the wrong thing, and a budget set from it moves the cliff rather than closing it: if the
+// admitted envelope set is wider than the two hosts sampled, the pairwise figure is a LOWER BOUND
+// and the margin is WORSE than stated. The error direction is safe for a claim that the spread
+// exists and UNSAFE for anyone using the number as a budget input.
+//
+// This family indexes over RUNS instead. One row's envelope is its max over N runs against its min
+// over the same N, so N runs contribute N-1 degrees of freedom rather than one, and the percentile
+// is taken over rows whose figure is already a between-run quantity.
+//
+// COMPLETENESS IS CHECKED AT IDENTITY GRAIN AND NEVER ASSUMED. `runs_observed` is carried on every
+// envelope so a row missing from some run -- interrupted, or not in that vintage's plan -- is
+// EXCLUDED by a predicate the caller can see rather than silently contributing a narrower envelope
+// computed over however many runs happened to carry it. A row present in three of twelve runs would
+// otherwise report a smaller spread than one present in all twelve and be indistinguishable from a
+// genuinely stable row.
+//
+// A CENSORED ROW IS NEVER A COST. `verdict_reached == false` means the deadline fired and the figure
+// is a lower bound describing when, not what the row costs; `v2.workflow.floor_cost_debt` measured
+// that the bound and the true cost are essentially uncorrelated in that population. Such rows are
+// dropped from the scan, which lowers `runs_observed` and therefore removes the identity through the
+// completeness predicate rather than through a silent filter.
+//
+// `hottest_run` AND `coolest_run` NAME WHICH RUN ACHIEVED EACH EXTREME, and that pair is the whole
+// reason this type is not just a min and a max. A spread is compatible with two different worlds:
+// per-row jitter that lands on a different run every time, and a systematically hot or cold run
+// that lands on the same one. A median run factor cannot separate them -- it is robust exactly
+// where the envelope is driven -- so `run_extreme_census` below counts argmax and argmin instead.
+// Under per-row jitter each run is hottest for about one Nth of the population; a run that is
+// coolest for most of the corpus is a property of the machine and not of the tree.
+//
+// `work_invariant` IS TRUE when every observation of this identity reported the same `eval_steps`.
+// Equal evaluator steps means the evaluator executed the same work in every run, so the remaining
+// cpu movement is inflation rather than a tree change -- the same confound removal
+// `identity_inflation_permille_at_equal_work` performs, carried per row so one scan serves both the
+// raw and the controlled population instead of two near-identical folds. It means equal EVALUATOR
+// work and not equal HOST work: a row that spends its time inside one opaque host call reports few
+// steps in every run and is admitted here while its real variation lives outside the evaluator,
+// which is the region `v2.workflow.required_floor` already carries a rung drop for.
+type IdentityEnvelope {
+  identity: String
+  runs_observed: Int
+  min_ms: Millisecond
+  max_ms: Millisecond
+  hottest_run: NonEmptyStr
+  coolest_run: NonEmptyStr
+  work_invariant: Bool
+}
+
+type RunTaggedRow {
+  run: NonEmptyStr
+  row: FloorCostRow
+}
+
+// THE SCAN STATE IS A COPRODUCT AND NOT A `started: Bool`, WHICH IS THE ONE PLACE THIS FAMILY
+// DIFFERS FROM `crossing_recurrence`'S IDIOM ABOVE, DELIBERATELY. A flag-plus-fields accumulator
+// needs a value for every field before the first row, and two of these fields are `NonEmptyStr`.
+// The only sentinel available is `"" as NonEmptyStr`, which TYPECHECKS AND REFUSES AT RUNTIME --
+// the cast is the sole constructor and carries no total unwrap -- so the unstarted state would be
+// spelled with a value that cannot exist. Splitting the state removes the question: the empty scan
+// has no run fields to invent. DESIGN section 4b(4): the invalid state has no constructor.
+type EnvelopeScan
+  = EnvelopeScanEmpty
+  | EnvelopeScanOpen {
+      current: String
+      seen: Int
+      lo: Millisecond
+      hi: Millisecond
+      lo_run: NonEmptyStr
+      hi_run: NonEmptyStr
+      steps: Int
+      steps_equal: Bool
+      done: List<IdentityEnvelope>
+    }
+
+// SORTED-SCAN GROUPING, for the reason `crossing_recurrence` above states: a fold that re-filters
+// the whole population per identity is quadratic in the corpus, and the corpus here is every
+// executed claim in every sampled run. The rows are sorted once and scanned once, and the
+// accumulator is built by prepending and reversed at the end rather than by `concat`, which copies.
+fn envelope_scan_close(current: String, seen: Int, lo: Millisecond, hi: Millisecond, lo_run: NonEmptyStr, hi_run: NonEmptyStr, steps_equal: Bool) -> IdentityEnvelope {
+  IdentityEnvelope {
+    identity: current,
+    runs_observed: seen,
+    min_ms: lo,
+    max_ms: hi,
+    hottest_run: hi_run,
+    coolest_run: lo_run,
+    work_invariant: steps_equal
+  }
+}
+
+fn envelope_scan_open(t: RunTaggedRow, carry: List<IdentityEnvelope>) -> EnvelopeScan {
+  EnvelopeScanOpen {
+    current: t.row.identity,
+    seen: 1,
+    lo: t.row.cpu_ms,
+    hi: t.row.cpu_ms,
+    lo_run: t.run,
+    hi_run: t.run,
+    steps: t.row.eval_steps,
+    steps_equal: true,
+    done: carry
+  }
+}
+
+fn identity_envelopes(runs: List<RunCost>) -> List<IdentityEnvelope> {
+  let tagged = runs
+    |> flat_map(run => run.rows |> filter(r => r.verdict_reached) |> map(r => RunTaggedRow { run: run.run, row: r }))
+    |> sort_by(t => t.row.identity)
+  let scanned = fold(
+    tagged,
+    init: EnvelopeScanEmpty {},
+    f: (acc, t) => match acc {
+      EnvelopeScanEmpty => envelope_scan_open(t: t, carry: [])
+      EnvelopeScanOpen { current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps: st, steps_equal: same_work, done: prior } =>
+        if cur == t.row.identity {
+          let cpu = millisecond_count(m: t.row.cpu_ms)
+          let colder = cpu < millisecond_count(m: lo)
+          let hotter = cpu > millisecond_count(m: hi)
+          EnvelopeScanOpen {
+            current: cur,
+            seen: n + 1,
+            lo: if colder { t.row.cpu_ms } else { lo },
+            hi: if hotter { t.row.cpu_ms } else { hi },
+            lo_run: if colder { t.run } else { cool },
+            hi_run: if hotter { t.run } else { hot },
+            steps: st,
+            steps_equal: same_work && st == t.row.eval_steps,
+            done: prior
+          }
+        } else {
+          envelope_scan_open(
+            t: t,
+            carry: concat([envelope_scan_close(current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps_equal: same_work)], prior)
+          )
+        }
+    }
+  )
+  match scanned {
+    EnvelopeScanEmpty => []
+    EnvelopeScanOpen { current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps: _, steps_equal: same_work, done: prior } =>
+      reverse(concat([envelope_scan_close(current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps_equal: same_work)], prior))
+  }
+}
+
+// THE ADMISSIBLE POPULATION, STATED AS A PREDICATE RATHER THAN APPLIED INSIDE THE SCAN.
+//
+// `runs_expected` is the caller's own count of sampled runs, so an identity absent from any one of
+// them is excluded by an identity-grain join and not by a count that could be satisfied by the
+// wrong twelve observations. `min_ms` exists because the artifact records whole milliseconds: at a
+// 2ms baseline a one-millisecond scheduling difference is a 50% "inflation" that says nothing about
+// contention, so rows below the floor are dropped rather than smoothed.
+fn complete_envelopes(
+  envelopes: List<IdentityEnvelope>,
+  runs_expected: Int,
+  min_ms: Millisecond
+) -> List<IdentityEnvelope> {
+  envelopes |> filter(e =>
+    e.runs_observed == runs_expected
+      && millisecond_count(m: e.min_ms) >= millisecond_count(m: min_ms))
+}
+
+fn work_invariant_envelopes(envelopes: List<IdentityEnvelope>) -> List<IdentityEnvelope> {
+  envelopes |> filter(e => e.work_invariant)
+}
+
+// Carried in permille as an Int for the reason `identity_inflation_permille` states: an exact
+// integer permille is comparable and orderable without a float, and `permille_percentile` selects
+// an observed member rather than interpolating, so no figure it returns is one this repository did
+// not measure.
+//
+// A ZERO BASELINE HAS NO RATIO AND IS REFUSED RATHER THAN DEFAULTED. The artifact records whole
+// milliseconds and a cheap row genuinely reports 0, for which max-over-min is undefined; returning
+// 0 or 1000 there would place an unmeasurable row at the bottom of every percentile and silently
+// enlarge the safe population, which is the absorbing fallback DESIGN section 5 forbids. `Absent`
+// reaches the caller as the fact it is. `complete_envelopes`' `min_ms` floor already excludes these
+// from any admitted population, so on the analysis path this arm is unreachable and the refusal is
+// the guarantee that it stays so.
+fn envelope_permille(e: IdentityEnvelope) -> Int? {
+  if millisecond_count(m: e.min_ms) <= 0 {
+    none
+  } else {
+    Present { value: (millisecond_count(m: e.max_ms) * 1000) / millisecond_count(m: e.min_ms) }
+  }
+}
+
+fn envelope_permilles(envelopes: List<IdentityEnvelope>) -> List<Int> {
+  envelopes |> flat_map(e => match envelope_permille(e: e) {
+    Absent => []
+    Present { value: v } => [v]
+  })
+}
+
+// THE DISCRIMINATOR BETWEEN A PROPERTY OF THE ROW AND A PROPERTY OF THE RUN.
+//
+// Under per-row jitter every run is hottest for roughly one Nth of the population and coolest for
+// roughly one Nth; a run that carries the extreme for most of the corpus is systematically hot or
+// cold, and the verdict a ceiling returns is then a property of WHICH RUNNER PICKED UP THE JOB
+// rather than of the tree. This is a CENSUS and not a test: it reports the concentration and names
+// no threshold, because how much concentration disqualifies a cost verdict is an operator question
+// and `v2.workflow.required_floor` is where that ruling lives.
+type RunExtremeCount {
+  run: NonEmptyStr
+  hottest_for: Int
+  coolest_for: Int
+}
+
+fn run_extreme_census(runs: List<RunCost>, envelopes: List<IdentityEnvelope>) -> List<RunExtremeCount> {
+  runs |> map(run => RunExtremeCount {
+    run: run.run,
+    hottest_for: count(envelopes |> filter(e => e.hottest_run == run.run)),
+    coolest_for: count(envelopes |> filter(e => e.coolest_run == run.run))
+  })
+}
+
+// THE WORST BETWEEN-RUN INFLATION OBSERVED, which is the input the attention constant in
+// `docs/design-rung-drops.md` is derived from. That row states its own revision condition -- the
+// constant MUST be re-derived the moment a larger inflation floor is measured -- so this is the
+// producer that decides whether it has been, and a caller re-runs it rather than trusting the
+// digits in that prose.
+//
+// IT IS A FLOOR AND NOT THE INFLATION. The sampled runs are a subset of the admitted execution
+// envelopes, so a wider sample can only find a larger value; the figure can never be read as a
+// bound on what the fleet can do.
+fn worst_envelope_permille(envelopes: List<IdentityEnvelope>) -> Int {
+  fold(envelope_permilles(envelopes: envelopes), init: 0, f: (worst, v) => if v > worst { v } else { worst })
+}

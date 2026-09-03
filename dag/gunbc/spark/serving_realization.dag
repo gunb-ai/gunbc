@@ -344,6 +344,20 @@ fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementR
   }
 }
 
+fn realization_list_head_of(xs: List<SparkServingRealization>) -> SparkServingRealization? {
+  match list_head(xs: xs) {
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => none
+  }
+}
+
+fn realization_list_tail_of(xs: List<SparkServingRealization>) -> List<SparkServingRealization> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => xs
+  }
+}
+
 // ── Normative policy and selection ────────────────────────────────────────────────────────────
 
 // Capabilities and contracts say what is POSSIBLE. They cannot rank two equally capable
@@ -866,15 +880,15 @@ fn select_spark_serving_realization(
       match policy.privilege {
         LeastRequiredEffects => RealizationSelected { realization: best }
         PreferSystemIntegration =>
-          match list_head_of(xs: admitted) {
+          match realization_list_head_of(xs: admitted) {
             Absent => RealizationSelected { realization: best }
             Present { value: head } =>
-              match list_head_of(xs: list_tail_of(xs: admitted)) {
+              match realization_list_head_of(xs: realization_list_tail_of(xs: admitted)) {
                 Absent => RealizationSelected { realization: head }
                 Present { value: second } => RealizationChoiceRequired {
                   first: head,
                   second: second,
-                  more: list_tail_of(xs: list_tail_of(xs: admitted)),
+                  more: realization_list_tail_of(xs: realization_list_tail_of(xs: admitted)),
                   cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
                 }
               }

@@ -110,6 +110,7 @@ pub enum ImportStripOutcome {
     ImportStatementsStripped {
         rewritten_source: String,
         removed_statements: Rc<Vec<String>>,
+        coordinate_map: Rc<Vec<Rc<ImportStripCoordinateSegment>>>,
     },
     ImportStripRefused {
         refusal: Rc<ImportStripRefusal>,
@@ -121,12 +122,23 @@ pub enum ImportStripOutcome {
 pub enum ImportStripProgress {
     ImportStripScanning {
         cursor: i64,
+        rewritten_cursor: i64,
         kept_segments: Rc<Vec<String>>,
         removed_statements: Rc<Vec<String>>,
+        coordinate_map: Rc<Vec<Rc<ImportStripCoordinateSegment>>>,
     },
     ImportStripHalted {
         refusal: Rc<ImportStripRefusal>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportStripCoordinateSegment {
+    pub source_file: FilePath,
+    pub original_start: i64,
+    pub original_end: i64,
+    pub rewritten_start: i64,
+    pub rewritten_end: i64,
 }
 
 pub fn import_statement_keyword() -> String {
@@ -203,8 +215,10 @@ pub fn import_strip_step(
         }),
         ImportStripProgress::ImportStripScanning {
             cursor,
+            rewritten_cursor,
             kept_segments,
             removed_statements,
+            coordinate_map,
             ..
         } => {
             if !(statement.span.clone().file.clone() == source_file.clone()) {
@@ -273,6 +287,9 @@ pub fn import_strip_step(
                                     } else {
                                         Rc::new(ImportStripProgress::ImportStripScanning {
                                             cursor: statement.span.clone().end.clone(),
+                                            rewritten_cursor: (rewritten_cursor.clone()
+                                                + (statement.span.clone().start.clone()
+                                                    - cursor.clone())),
                                             kept_segments: v1_rt::rc_list_push(
                                                 kept_segments.clone(),
                                                 v1_rt::substring(
@@ -284,6 +301,22 @@ pub fn import_strip_step(
                                             removed_statements: v1_rt::rc_list_push(
                                                 removed_statements.clone(),
                                                 statement_text.clone(),
+                                            ),
+                                            coordinate_map: v1_rt::rc_list_push(
+                                                coordinate_map.clone(),
+                                                Rc::new(ImportStripCoordinateSegment {
+                                                    source_file: source_file.clone(),
+                                                    original_start: cursor.clone(),
+                                                    original_end: statement
+                                                        .span
+                                                        .clone()
+                                                        .start
+                                                        .clone(),
+                                                    rewritten_start: rewritten_cursor.clone(),
+                                                    rewritten_end: (rewritten_cursor.clone()
+                                                        + (statement.span.clone().start.clone()
+                                                            - cursor.clone())),
+                                                }),
                                             ),
                                         })
                                     }
@@ -307,8 +340,10 @@ pub fn strip_import_statements(
         let scanned = statements.iter().cloned().fold(
             Rc::new(ImportStripProgress::ImportStripScanning {
                 cursor: 0,
+                rewritten_cursor: 0,
                 kept_segments: Rc::new(vec![]),
                 removed_statements: Rc::new(vec![]),
+                coordinate_map: Rc::new(vec![]),
             }),
             |progress: Rc<ImportStripProgress>, statement: Rc<ParsedImportStatement>| {
                 import_strip_step(
@@ -328,8 +363,10 @@ pub fn strip_import_statements(
             }),
             ImportStripProgress::ImportStripScanning {
                 cursor,
+                rewritten_cursor,
                 kept_segments,
                 removed_statements,
+                coordinate_map,
                 ..
             } => Rc::new(ImportStripOutcome::ImportStatementsStripped {
                 rewritten_source: v1_rt::rc_list_push(
@@ -338,6 +375,17 @@ pub fn strip_import_statements(
                 )
                 .join(&"".to_string()),
                 removed_statements: removed_statements.clone(),
+                coordinate_map: v1_rt::rc_list_push(
+                    coordinate_map.clone(),
+                    Rc::new(ImportStripCoordinateSegment {
+                        source_file: source_file.clone(),
+                        original_start: cursor.clone(),
+                        original_end: source_length.clone(),
+                        rewritten_start: rewritten_cursor.clone(),
+                        rewritten_end: (rewritten_cursor.clone()
+                            + (source_length.clone() - cursor.clone())),
+                    }),
+                ),
             }),
         }
     }

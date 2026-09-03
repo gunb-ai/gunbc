@@ -1,0 +1,140 @@
+module gunbc.spark.serving_convergence_withholding
+
+import std.types { Bool, List, String }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+
+// WHY A HOST IS REFUSED BY NAME RATHER THAN QUIETLY FAILING TO MATCH.
+//
+// gunbc.spark.serving_desired asserts ONE realization for every host holding SparkServingCell: an
+// Ollama runtime serving an IQ2_XXS DeepSeek artifact. The serving-cell roster is srv5 and srv6, and
+// those two hosts are running a vLLM tensor-parallel deployment that no desired state in this corpus
+// models.
+//
+// SO A WET CONVERGENCE TODAY WOULD NOT FAIL TO FIND ITS TARGET -- IT WOULD FIND IT AND ASSERT THE
+// WRONG THING. Desired state is not silent about these hosts; it names them and names an engine, so
+// convergence would install Ollama over a working tensor-parallel pair and report success. That is
+// the destructive case, and it is destructive precisely because every part of it behaves as
+// specified.
+//
+// A NON-MATCH IS NOT A REFUSAL, WHICH IS THE WHOLE REASON THIS MODULE EXISTS. It is tempting to leave
+// the hosts off a roster and let convergence find nothing to do. That state is an ACCIDENT: it holds
+// only while the manifest happens not to match, it emits no diagnostic when it stops holding, and one
+// edit to the desired manifest silently turns it back into an actuation. A refusal is a MODELLED FACT
+// -- it has a subject, a cause and a discharge condition, and removing it is a deliberate act by
+// someone who has read why it is there.
+//
+// THIS IS NOT THE FIT GATE AND MUST NOT BE MISTAKEN FOR IT. gunbc.model.choice decides whether a
+// candidate fits a host's memory. This decides whether a host may receive serving convergence AT ALL
+// while the corpus cannot describe what is already running on it. The two are independent: a
+// candidate that fits perfectly still must not be installed over an unmodelled realization, and a
+// host carrying no withholding still has to pass the fit gate.
+type SparkServingWithholdingReason
+  = RunsARealizationNoDesiredStateModels
+  | HeldByOperatorDecision
+
+// THE REASON IS A TYPED ARM AND NOT A SENTENCE, because the two arms discharge differently and a
+// reader has to be able to ask which one applies without parsing prose.
+// RunsARealizationNoDesiredStateModels discharges when the corpus grows a realization for what is
+// running AND desired state selects it -- a modelling act with an observable completion.
+// HeldByOperatorDecision discharges only when the operator says so, and no amount of modelling
+// retires it. Collapsing the two into one string would make a hold a pull request can lift look
+// identical to one it cannot.
+type SparkServingConvergenceWithholding sole_constructor {
+  host: HostIdentity
+  reason: SparkServingWithholdingReason
+}
+
+fn spark_serving_convergence_withholding(
+  host: HostIdentity,
+  reason: SparkServingWithholdingReason,
+) -> SparkServingConvergenceWithholding {
+  SparkServingConvergenceWithholding { host: host, reason: reason }
+}
+
+// THE TWO HOSTS RUNNING THE UNMODELLED REALIZATION, 2026-09-03.
+//
+// WHAT WAS ACTUALLY OBSERVED, by HTTP readback of the front door rather than by report: it answers
+// /v1/models with owned_by "vllm" and /version with a vLLM build string, serving the official
+// DeepSeek-V4-Flash checkpoint, and its /metrics carries a vLLM cache-config gauge naming an
+// fp8_ds_mla KV dtype and a prefix-caching flag. This corpus has no vLLM realization and no KV-dtype
+// or context-length vocabulary to describe any of that with, and the desired state these hosts would
+// be converged to names an Ollama runtime -- so the mismatch is total rather than partial.
+//
+// WHAT WAS NOT OBSERVED, AND IS THEREFORE NOT ASSERTED HERE. An earlier draft of this note said the
+// pair "serves vLLM at tensor-parallel degree 2". That was a report repeated as an observation: no
+// HTTP surface on the front door exposes a parallel-config gauge, so parallel degree, worker
+// population and image identity are not readable from the vantage that established everything else
+// above. The withholding does not need them -- one unmodelled engine is enough to refuse -- and
+// asserting them to make the row look complete is the fabricated-plausible-output this repository
+// refuses everywhere else. The second host does not answer on the front-door port at all, which is
+// consistent with a single front door and establishes nothing further on its own.
+//
+// THE DISCHARGE IS A MODELLING ACT WITH AN OBSERVABLE COMPLETION, which is what keeps this from being
+// an indefinite freeze: read the running deployment back into a vLLM realization and have desired
+// state select it.
+//
+// BUT THE REMOVAL IS ATOMIC WITH THE PLANNER CONSUMING AN ADMITTED TARGET, AND THAT IS THE WHOLE
+// SAFETY OF THE DISCHARGE. Deleting these rows the moment a vLLM realization merely EXISTS would
+// reopen the exact hazard this module was built for: the wall would be gone and the planner would
+// still construct desired members from whatever the manifest happens to name, which is how converge
+// came to be pointed at an Ollama runtime over a working deployment in the first place. So the rows
+// come out in the SAME motion that makes the serving axis consume an admitted target before it
+// constructs any member -- never in a separate, earlier, smaller change. A window in which neither
+// gate stands is worse than the state this module was written to fix, because it looks resolved.
+data spark_serving_withheld_hosts: List<SparkServingConvergenceWithholding> = [
+  spark_serving_convergence_withholding(
+    host: operator_host_srv5, reason: RunsARealizationNoDesiredStateModels),
+  spark_serving_convergence_withholding(
+    host: operator_host_srv6, reason: RunsARealizationNoDesiredStateModels),
+]
+
+// THE ROSTER IS A PARAMETER FOR THE SAME REASON gunbc.spark.cell_role `spark_cell_role_in` takes one:
+// evidence for this refusal must not depend on which machines happen to be withheld today. A witness
+// pinned to srv5 and srv6 goes red the moment the vLLM realization lands and the rows come out --
+// red for the reason the wall was BUILT for, which is the worst possible time to lose it.
+fn spark_serving_withholdings_for_in(
+  withheld: List<SparkServingConvergenceWithholding>,
+  host: HostIdentity,
+) -> List<SparkServingConvergenceWithholding> {
+  filter(withheld, w => host_identity_eq(a: w.host, b: host))
+}
+
+fn spark_serving_host_is_withheld_in(
+  withheld: List<SparkServingConvergenceWithholding>,
+  host: HostIdentity,
+) -> Bool {
+  length(spark_serving_withholdings_for_in(withheld: withheld, host: host)) > 0
+}
+
+fn spark_serving_host_is_withheld(host: HostIdentity) -> Bool {
+  spark_serving_host_is_withheld_in(withheld: spark_serving_withheld_hosts, host: host)
+}
+
+// DUPLICATE ROWS FOR ONE HOST DO NOT NEED AN AMBIGUITY ARM, and the reason is worth stating because
+// the neighbouring role lookup DOES have one. There, two rows can name two different roles, so the
+// roster genuinely fails to decide what the host is. Here every row says the same thing about the
+// decision -- withheld -- and differs only in why. So the lookup stays total, reports every reason it
+// found, and no arm is minted for a state that changes no outcome.
+fn spark_serving_withholding_reason_wire(reason: SparkServingWithholdingReason) -> String {
+  match reason {
+    RunsARealizationNoDesiredStateModels =>
+      "the host runs a realization no desired state in this corpus models, so converging it would install the modelled engine over an unmodelled working one"
+    HeldByOperatorDecision =>
+      "the operator has withheld this host from serving convergence"
+  }
+}
+
+fn spark_serving_withholding_cause_in(
+  withheld: List<SparkServingConvergenceWithholding>,
+  host: HostIdentity,
+) -> String {
+  join([
+    "spark serving plan refused: this host is withheld from serving convergence — ",
+    join(
+      map(
+        spark_serving_withholdings_for_in(withheld: withheld, host: host),
+        w => spark_serving_withholding_reason_wire(reason: w.reason)),
+      "; also "),
+  ], "")
+}

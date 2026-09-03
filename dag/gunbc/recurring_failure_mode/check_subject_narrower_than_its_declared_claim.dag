@@ -79,7 +79,37 @@ data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = Recu
 
     "The population was closed; the claim about its members was never checked -- a real enumeration, divided by nothing. ",
 
-    "It was refuted by the very rows that refused the pull request being worked on.",
+    "It was refuted by the very rows that refused the pull request being worked on.AN EIGHTH FORM, AND THE FIRST WHERE THE BLIND SPOT IS NOT ARBITRARY BUT CORRELATED WITH RECENCY (2026-09-03, tidy-koi-619 on gunbc#10106, with warm-seal-35 as the finder). ",
+
+    "Every form above treats the narrowing as ARBITRARY -- 'never a decision, the shape of the first implementation'. ",
+
+    "When the narrowed axis is a DIRECTION over a time-ordered subject, the narrowing stops being arbitrary and starts tracking recency, which makes it strictly worse than a random miss. ",
+
+    "THE INSTANCE: a squash-merged branch survives as a divergent-looking branch and auto-opens a pull request that would REVERT main. ",
+
+    "Diagnosing gunbc#10242 I enumerated what a merge would wrongly RE-ADD -- 47 namespace admissions consumed by their own merge, plus three files deleted on main -- and concluded, in the comment closing it, 'there is no file where this branch carries content main wants'. ",
+
+    "THAT SENTENCE IS TRUE. ",
+
+    "Its subject is one direction; its reading is completeness. ",
+
+    "The 54 differing paths were 43 common-but-differing, 3 branch-only which a merge RE-ADDS, and 8 main-only which a merge DELETES -- and the deletion category, which the sweep never ranged over, contained a witness test that had landed twenty minutes earlier. ",
+
+    "WHY RECENCY MAKES IT WORSE: the newest work on main is NECESSARILY in the merge-would-delete category, because the more recently something landed the more certain it is to be absent from a superseded branch. ",
+
+    "So this sweep's blind spot is not spread evenly over the population -- it concentrates on exactly the rows that are newest, least recoverable, and least likely to be noticed missing, since nobody is yet watching for the absence of a thing that landed twenty minutes ago. ",
+
+    "A check whose miss probability rises with the value of what is missed is a different economic object from one that misses uniformly, and the review tell is different too: it is not 'what population did this range over' but 'is the missed set correlated with anything, and with what'. ",
+
+    "RECOGNITION RULE FOR THIS FORM: when a check's subject is a COMPARISON between two states, name both directions as separate sentences and range over both -- present-on-A-absent-on-B and present-on-B-absent-on-A are two populations, and a size or presence heuristic run one way answers only one of them. ",
+
+    "WHY IT IS FILED HERE AND NOT AS ITS OWN CLASS: three instances arrived within one day from three unrelated angles -- a record comparator that could not parse a parameterized constructor and so reported None == None as agreement on the `standing` field; an assert-count-is-1 guard over a citation sweep that held because the PATTERN was narrow rather than because the file was clean; and this one-directional diff sweep. ",
+
+    "The author's first instinct was to mint a new class around the sentence 'a check that does not state its own denominator cannot be distinguished from a complete one'. ",
+
+    "That sentence is this row's INVALID STATE restated, so a new row would have been a second authority for a rostered fact -- the DESIGN section 2 failed decomposition, committed inside the ledger that exists to prevent it, which is the same self-demonstration the seventh form records. ",
+
+    "The class was already here; only the recency observation was new.",
   ],
 
   evidence: [],
