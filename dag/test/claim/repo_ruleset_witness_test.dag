@@ -6,6 +6,7 @@ import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_flo
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import gunbc.repo_ruleset {
+  RulesetDivergence,
   desired_required_contexts,
   desired_ruleset_rules,
   desired_ruleset_conditions,
@@ -131,7 +132,7 @@ fn desired_shaped_standing() -> RequiredStatusCheckStanding {
   required_status_check_standing(rules: desired_ruleset_rules())
 }
 
-fn divergences_of_desired_shaped_observation() -> List<String> {
+fn divergences_of_desired_shaped_observation() -> List<RulesetDivergence> {
   observed_ruleset_divergences(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
@@ -168,7 +169,7 @@ test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
   )) == 1
 }
 
-fn divergences_for_bypass(bypass: ReaderBypassStanding) -> List<String> {
+fn divergences_for_bypass(bypass: ReaderBypassStanding) -> List<RulesetDivergence> {
   observed_ruleset_divergences(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
@@ -346,7 +347,7 @@ test fn w_the_queue_timeout_is_never_below_the_floors_execution_envelope() -> Bo
 // A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop
 // being invisible, and it must name WHICH guarantee the live queue provides -- an undeclared
 // HEADGREEN queue and an undeclared ALLGREEN one are different facts.
-fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<String> {
+fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<RulesetDivergence> {
   observed_ruleset_divergences(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,

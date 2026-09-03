@@ -693,7 +693,7 @@ fn signed_desire_projection_refusal_for(
         Present { value: concat(
           "the merge queue is signed off but the desired projection does not carry the signed policy, so converge would send a ruleset that cannot converge. Refusing rather than actuating. ",
           join(map(drift, d => render_signed_projection_refusal(r: d)), "; "),
-        ) }
+        ) as NonEmptyStr }
       }
     }
   }
@@ -711,7 +711,7 @@ fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmpty
     Present { value: concat(
       "the live ruleset carries rules this repository's desired projection does not declare, and converge sends the WHOLE ruleset: applying desired would delete them. Refusing rather than repairing. ",
       render_divergences(ds: unexpected),
-    ) }
+    ) as NonEmptyStr }
   }
 }
 
