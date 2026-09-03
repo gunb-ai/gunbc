@@ -15,8 +15,8 @@ fn string_lex_compare(left: String, right: String) -> Ordering {
   } else if right_len == 0 {
     Greater
   } else {
-    let left_cp = code_point(ch: char_at(s: left, i: 0))
-    let right_cp = code_point(ch: char_at(s: right, i: 0))
+    let left_cp = code_point(c: char_at(s: left, pos: 0))
+    let right_cp = code_point(c: char_at(s: right, pos: 0))
     if left_cp < right_cp {
       Less
     } else if left_cp > right_cp {

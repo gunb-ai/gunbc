@@ -1,0 +1,334 @@
+module v2.test.claim.local_repo_wet_terminal_test
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { length, filter }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger {
+  ClaimAttemptTerminal, Returned, Panicked, RouteGap,
+  ClaimObservation, ObservedVerdict,
+  ClaimExpectation, ExpectedToHold,
+  BudgetRefused
+}
+import v2.workflow.floor_route_gap { FloorRouteGapGround, NoMockResponse }
+import v2.workflow.required_floor {
+  ClaimSafetyOutcome, CompletedPastSafetyLimit,
+  ClaimPreemptionReachability, CooperativelyPollable
+}
+import v2.workflow.wet_evidence {
+  WetRoute, LocalRepoCoResidentRoute, SelfHostTransportedRoute,
+  WetScheduledClaim, WetTerminalRow,
+  WetEvidenceBinding, CoResidentPreparedSubject, TransportedReceiptSubject,
+  WetEvidenceRefusal, WetTerminalMissing, WetTerminalDuplicated, WetTerminalUnscheduled,
+  WetTerminalForeignEntry, WetTerminalForeignFunction, WetTerminalVerdictNotExpected,
+  WetTerminalForeignRoute, WetBindingPreparedSubjectDiffers, WetBindingSemanticSubjectDiffers,
+  WetBindingExecutorContractDiffers, WetBindingRelationMismatch, WetCrossRouteIdentityOverlap
+}
+import v2.workflow.local_repo_wet_terminal {
+  LocalRepoWetExecution, LocalRepoWetExecutorNotInvoked, LocalRepoWetExecutorRan,
+  LocalRepoWetFinalization, LocalRepoWetFinalizationHolds, LocalRepoWetFinalizationRefused,
+  LocalRepoWetFinalizationRefusal, LocalRepoWetExecutorAbsent,
+  LocalRepoWetExecutionForeignCandidate, LocalRepoWetFinalizationJoinCause,
+  local_repo_wet_schedule, local_repo_wet_scheduled_identities,
+  local_repo_wet_requirement, local_repo_wet_finalize,
+  local_repo_wet_identity_passed_on_candidate, local_repo_wet_terminal_binds_to
+}
+
+// WHAT THIS MODULE STILL OWNS AFTER THE JOIN MOVED OUT, and why it is smaller rather than thinner.
+//
+// The completeness join that used to live here is now `wet_evidence_validate`, shared with the
+// transported route, and its acceptance matrix moved with it to `v2.test.wet_evidence` -- one
+// authority, one matrix. Re-asserting those causes here would be a second test over one behaviour,
+// which is the duplication the migration exists to remove.
+//
+// WHAT DOES NOT MOVE IS WHAT IS LOCAL: the roster, the requirement this route derives, the
+// invocation wall, and the narrow per-identity predicate the changed-witness gate consults. Each is
+// a fact about THIS lane that the shared validator cannot state.
+
+data fixture_candidate: String = "candidate-tree-aaaa"
+data fixture_other_candidate: String = "candidate-tree-bbbb"
+data fixture_entry: String = "dag/test/claim/x_test.dag"
+data fixture_function: String = "w_holds"
+
+fn fixture_identity() -> WitnessIdentity {
+  WitnessIdentity { module_path: "test.claim.x", function: fixture_function }
+}
+
+fn scheduled_one() -> List<WetScheduledClaim> {
+  [WetScheduledClaim {
+    identity: fixture_identity(),
+    entry: fixture_entry,
+    function: fixture_function,
+    expectation: ExpectedToHold {}
+  }]
+}
+
+// ONE CONSTRUCTOR PER AXIS, so each red below differs from the green in exactly one field. A
+// fixture set assembled per test would let two axes move at once and still read as a one-axis
+// experiment.
+fn terminal_of(
+  identity: WitnessIdentity,
+  entry: String,
+  function: String,
+  binding: WetEvidenceBinding,
+  terminal: ClaimAttemptTerminal,
+) -> WetTerminalRow {
+  WetTerminalRow {
+    route: LocalRepoCoResidentRoute {},
+    identity: identity,
+    observed_entry: entry,
+    observed_function: function,
+    terminal: terminal,
+    binding: binding
+  }
+}
+
+fn passed() -> ClaimAttemptTerminal {
+  Returned { observation: ObservedVerdict { holds: true } }
+}
+
+fn failed() -> ClaimAttemptTerminal {
+  Returned { observation: ObservedVerdict { holds: false } }
+}
+
+// THE THREE NON-PASSING SHAPES THIS LANE CAN OBSERVE, each a DISTINCT TERMINAL rather than three
+// spellings of one. They are the migration of the deleted `LocalRepoWetRefused`,
+// `LocalRepoWetNonterminal` and `LocalRepoWetCompletedOverBudget` onto the ledger's vocabulary, and
+// they are kept as separate constructors here so the witness below cannot be satisfied by whichever
+// one an implementation happens to handle.
+fn route_gapped() -> ClaimAttemptTerminal {
+  RouteGap { operation: "git.merge-driver", ground: NoMockResponse {} }
+}
+
+fn panicked() -> ClaimAttemptTerminal {
+  Panicked { payload: "assertion failed" }
+}
+
+fn completed_over_budget() -> ClaimAttemptTerminal {
+  BudgetRefused {
+    safety: CompletedPastSafetyLimit {
+      observed_cpu: 640,
+      observed_wall: 700,
+      preemption: CooperativelyPollable {}
+    }
+  }
+}
+
+fn co_resident(subject: String) -> WetEvidenceBinding {
+  CoResidentPreparedSubject { prepared_subject: subject }
+}
+
+fn terminal_matching() -> WetTerminalRow {
+  terminal_of(
+    identity: fixture_identity(), entry: fixture_entry, function: fixture_function,
+    binding: co_resident(subject: fixture_candidate), terminal: passed()
+  )
+}
+
+// THE ROSTER DOES NOT LAND EMPTY. An empty roster would make this lane's coverage claim vacuously
+// true and leave nothing proving the executor runs anything at all -- permanently green by
+// construction, which DESIGN 4b calls a decoration rather than a wall. This is the witness that
+// keeps every guard below non-vacuous, so it is asserted rather than assumed.
+test fn the_local_roster_is_not_empty() -> Bool {
+  length(xs: local_repo_wet_schedule()) > 0
+    && length(xs: local_repo_wet_scheduled_identities()) == length(xs: local_repo_wet_schedule())
+}
+
+// THE ROW'S TWO SPELLINGS OF ITS FUNCTION MUST AGREE. `WetScheduledClaim` carries the function name
+// TWICE -- once inside `identity` and once as its own field -- so a row can be authored whose
+// `function` says one thing and whose `identity.function` says another. That is authorable today,
+// which is what makes this witness a wall rather than a decoration: the gate keys on the identity
+// and a reader keys on the field, so a disagreeing row is admitted under one name and reported
+// under the other.
+//
+// AN EARLIER REVISION OF THIS WITNESS COMPARED `witness_identity_qualified_name` TO A HAND-BUILT
+// RECONSTRUCTION OF THE SAME TWO FIELDS. Nothing could have made that red -- the qualified name is
+// DERIVED from the identity, so both sides were the same computation and the check carried no
+// information. The duplication worth guarding is this one, and it is in the carrier rather than in
+// the derivation.
+test fn every_roster_row_spells_its_function_the_same_way_twice() -> Bool {
+  length(
+    xs: filter(
+      xs: local_repo_wet_schedule(),
+      predicate: fn(s) { s.function != s.identity.function }
+    )
+  ) == 0
+}
+
+// THIS ROUTE DERIVES A CO-RESIDENT REQUIREMENT AND NOTHING ELSE. The requirement is what carries the
+// candidate into the shared validator, so a route that derived the transported shape would compare
+// digests against a tree it never prepared.
+test fn the_local_requirement_binds_the_candidate_as_a_prepared_subject() -> Bool {
+  match local_repo_wet_requirement(candidate: fixture_candidate) {
+    LocalRepoCoResidentRequirement { prepared_subject: p } => p == fixture_candidate
+    SelfHostTransportedRequirement { semantic_subject: _, executor_contract: _ } => false
+  }
+}
+
+// A TRANSPORTED RECEIPT IS NOT THIS TREE'S EVIDENCE AND DOES NOT COMPARE. It reaches the wrong arm
+// and answers false rather than comparing a digest, which is the state-space conflation an untyped
+// candidate string could not express.
+test fn a_transported_binding_never_binds_to_a_local_candidate() -> Bool {
+  local_repo_wet_terminal_binds_to(terminal: terminal_matching(), candidate: fixture_candidate)
+    && !local_repo_wet_terminal_binds_to(terminal: terminal_matching(), candidate: fixture_other_candidate)
+    && !local_repo_wet_terminal_binds_to(
+      terminal: terminal_of(
+        identity: fixture_identity(), entry: fixture_entry, function: fixture_function,
+        binding: TransportedReceiptSubject {
+          semantic_subject: fixture_candidate, executor_contract: "self-host-v1"
+        },
+        terminal: passed()
+      ),
+      candidate: fixture_candidate
+    )
+}
+
+fn finalize_of(execution: LocalRepoWetExecution) -> LocalRepoWetFinalization {
+  local_repo_wet_finalize(
+    scheduled: scheduled_one(), execution: execution, candidate: fixture_candidate
+  )
+}
+
+fn finalize_refused_with_one(f: LocalRepoWetFinalization, p: fn(LocalRepoWetFinalizationRefusal) -> Bool) -> Bool {
+  match f {
+    LocalRepoWetFinalizationHolds => false
+    LocalRepoWetFinalizationRefused { causes: cs } =>
+      length(xs: cs) == 1 && match first(cs) { Absent => false, Present { value: c } => p(c) }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE DELETED INVOCATION. A schedule with members and no executor call
+// refuses BY NAME, naming how many members went unrun -- which the join alone cannot say, because
+// with nothing invoked there are no terminals and a join over zero terminals and zero members holds.
+test fn a_nonempty_schedule_with_no_executor_invocation_refuses_as_executor_absent() -> Bool {
+  finalize_refused_with_one(f: finalize_of(execution: LocalRepoWetExecutorNotInvoked {}), p: fn(c) {
+    match c {
+      LocalRepoWetExecutorAbsent { scheduled: n } => n == 1
+      LocalRepoWetExecutionForeignCandidate { observed: _, required: _ } => false
+      LocalRepoWetFinalizationJoinCause { cause: _ } => false
+    }
+  })
+}
+
+// THE OPPOSITE CELL OF THE SAME ARM: absence refuses BECAUSE members were scheduled, not because
+// absence is refused unconditionally. Without this the arm above would also pass an implementation
+// that refuses every not-invoked execution, including the vacuous one.
+test fn an_empty_schedule_with_no_executor_invocation_holds() -> Bool {
+  match local_repo_wet_finalize(
+    scheduled: [], execution: LocalRepoWetExecutorNotInvoked {}, candidate: fixture_candidate
+  ) {
+    LocalRepoWetFinalizationHolds => true
+    LocalRepoWetFinalizationRefused { causes: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE WALL. A wall that refused here would be permanently red and equally
+// uninformative.
+test fn an_executor_that_ran_this_candidate_completely_holds() -> Bool {
+  match finalize_of(execution: LocalRepoWetExecutorRan {
+    candidate: fixture_candidate, terminals: [terminal_matching()]
+  }) {
+    LocalRepoWetFinalizationHolds => true
+    LocalRepoWetFinalizationRefused { causes: _ } => false
+  }
+}
+
+// A RUN AGAINST ANOTHER TREE IS NOT THIS TREE'S EVIDENCE, and it is refused BEFORE the join so the
+// reader is sent to the receipt's provenance rather than to a roster that is not at fault. This is
+// the run-level fact; its per-terminal twin lives in the shared validator and the two are kept
+// apart deliberately.
+test fn an_executor_that_ran_another_candidate_refuses_as_foreign_candidate() -> Bool {
+  finalize_refused_with_one(
+    f: finalize_of(execution: LocalRepoWetExecutorRan {
+      candidate: fixture_other_candidate, terminals: [terminal_matching()]
+    }),
+    p: fn(c) {
+      match c {
+        LocalRepoWetExecutorAbsent { scheduled: _ } => false
+        LocalRepoWetExecutionForeignCandidate { observed: o, required: r } =>
+          o == fixture_other_candidate && r == fixture_candidate
+        LocalRepoWetFinalizationJoinCause { cause: _ } => false
+      }
+    }
+  )
+}
+
+// AN INVOKED EXECUTOR STILL ANSWERS TO THE JOIN. The wall is added BESIDE the completeness join,
+// never in front of it: an executor that ran and skipped a member reaches the same missing-terminal
+// cause it always did, now carried as a finalization cause wrapping the shared vocabulary.
+test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> Bool {
+  finalize_refused_with_one(
+    f: finalize_of(execution: LocalRepoWetExecutorRan {
+      candidate: fixture_candidate, terminals: []
+    }),
+    p: fn(c) {
+      match c {
+        LocalRepoWetExecutorAbsent { scheduled: _ } => false
+        LocalRepoWetExecutionForeignCandidate { observed: _, required: _ } => false
+        LocalRepoWetFinalizationJoinCause { cause: j } =>
+          match j {
+            WetTerminalMissing { identity: i } => i == "test.claim.x.w_holds"
+            WetTerminalDuplicated { identity: _, occurrences: _ } => false
+            WetTerminalUnscheduled { identity: _ } => false
+            WetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+            WetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+            WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+            WetTerminalForeignRoute { identity: _ } => false
+            WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
+            WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
+            WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+            WetBindingRelationMismatch { identity: _ } => false
+            WetCrossRouteIdentityOverlap { identity: _ } => false
+          }
+      }
+    }
+  )
+}
+
+// EVERY NON-PASSING OBSERVATION IS REFUSED BY THE GATE PREDICATE, AND THE FOUR ARE CHECKED
+// SEPARATELY RATHER THAN AS ONE REPRESENTATIVE. The host used to fold them into a single not-passed
+// Bool; asserting only one would let a re-collapse stay green. `PassedOverBudget` is included on
+// purpose: a claim that reached its verdict past its cost line is NOT admitted, exactly as the
+// deleted local arm behaved, and that is the cell most likely to be silently widened.
+fn gate_admits(terminal: ClaimAttemptTerminal) -> Bool {
+  local_repo_wet_identity_passed_on_candidate(
+    identity: "test.claim.x.w_holds",
+    terminals: [terminal_of(
+      identity: fixture_identity(), entry: fixture_entry, function: fixture_function,
+      binding: co_resident(subject: fixture_candidate), terminal: terminal
+    )],
+    candidate: fixture_candidate
+  )
+}
+
+test fn the_gate_predicate_admits_only_a_passing_disposition() -> Bool {
+  gate_admits(terminal: passed())
+    && !gate_admits(terminal: failed())
+    && !gate_admits(terminal: route_gapped())
+    && !gate_admits(terminal: panicked())
+    && !gate_admits(terminal: completed_over_budget())
+}
+
+// THE NARROW PER-IDENTITY PREDICATE THE GATE CONSULTS, discriminated on all three of its facts and
+// on cardinality. A duplicate is not admitted even when both copies pass: two receipts for one
+// identity means the lane cannot say which one it is reporting.
+test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool {
+  local_repo_wet_identity_passed_on_candidate(
+    identity: "test.claim.x.w_holds", terminals: [terminal_matching()], candidate: fixture_candidate
+  )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: "test.claim.x.w_holds", terminals: [terminal_matching()], candidate: fixture_other_candidate
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: "test.claim.x.w_other", terminals: [terminal_matching()], candidate: fixture_candidate
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: "test.claim.x.w_holds", terminals: [], candidate: fixture_candidate
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: "test.claim.x.w_holds",
+      terminals: [terminal_matching(), terminal_matching()],
+      candidate: fixture_candidate
+    )
+}

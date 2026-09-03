@@ -459,6 +459,125 @@ mod compiler_tests {
         result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
     }
 
+    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.
+    ///
+    /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the
+    /// emitted text and asserts on substrings. A meaning-level emitter defect is invisible to
+    /// that whenever the wrong bytes still contain the right substring -- and it is exactly
+    /// what rustc's type checker refuses. This arm is the one that asks rustc.
+    ///
+    /// THE PAIR IS THE SUBJECT, NOT EITHER ARM. The control must COMPILE, or a red below
+    /// proves only that something in the tree is broken. The red must be refused BY RUSTC and
+    /// ATTRIBUTED to the fixture's own emitted module, or a non-zero status from any of the
+    /// hundreds of modules in its closure would pass for the fixture's own defect -- and the
+    /// attributed diagnostic must be the ERROR CLASS this arm claims (rustc E0308, mismatched
+    /// types), because a location says WHERE rustc refused and never WHAT. Without the code a
+    /// fixture edited into a syntax error, or an emitter regression producing an unresolved
+    /// path, reds in the right file and passes for the text-boundary subject it is not.
+    ///
+    /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds, and
+    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It
+    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and
+    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn fixture_closure_rustc_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("{}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the control must compile and the meaning-level red must be refused by rustc, attributed to its own emitted module, and carry the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
+    /// THE FUNCTION-VALUE ADAPTER, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_call_arg_function_value_adapt`: the call-position
+    /// transform that lets an arrow value carried as `Rc<dyn Fn(..) -> ..>` satisfy a parameter
+    /// rendered as `impl Fn(..) -> .. + Clone`. That claim is a TRAIT OBLIGATION, and a trait
+    /// obligation is not a spelling: a substring oracle can see `__adapt_f` in the emitted bytes and
+    /// still say nothing about whether the wrapper satisfies the bound. rustc is the oracle that can.
+    ///
+    /// THE TWO ARMS DIFFER IN ONE AUTHORED SPELLING. Same producer, same consumer, same call: the
+    /// control passes the producer result AS A CALL EXPRESSION (the shape the adapter keys on), the
+    /// red binds it to a `let` first and passes the binding (which the adapter does not touch). So
+    /// the only variable across the pair is whether the adapter fired.
+    ///
+    /// THE RED IS A KNOWN HOLE AND NOT A WALL WORKING. gunbc accepts the red fixture with zero
+    /// blocking diagnostics and emits a crate rustc refuses --
+    /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at the
+    /// function-value seam. When that hole closes the arm FLIPS and is kept as a permanent
+    /// regression control (DESIGN 4b(4)); this pair's expectation is what changes, not the fixture.
+    ///
+    /// #[ignore] AND ITS LANE MEMBERSHIP, STATED RATHER THAN LEFT TO BE DISCOVERED, on the same
+    /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
+    /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
+    /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
+    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
+    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
+    /// executes on the merge path or as a rung for the adapter.
+    #[test]
+    #[ignore]
+    fn function_value_adapter_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_function_value_adapter_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("function-value-adapter {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        // THE PAIR'S OWN PREDICATE IS NOT ENOUGH FOR THIS SUBJECT, AND SAYING SO IS THE POINT.
+        // fixture_discrimination_passed asks four questions -- control compiled, red reached
+        // rustc, red did not compile, red named its own emitted module -- and NONE of them is
+        // about the Fn bound. A syntax error, a dropped import, any unrelated emission defect in
+        // the red fixture's own module answers all four, and this arm would go on passing while
+        // the adapter discrimination it claims to measure had silently stopped existing (codex
+        // review 58546). So the diagnostic is ADJUDICATED here rather than merely printed.
+        //
+        // THE THREE SUBSTRINGS ARE ABOUT THE SEAM, NOT ABOUT RUSTC'S PROSE. `error[E0277]` is a
+        // stable code and is the trait-obligation class specifically; `Rc<dyn Fn` is the
+        // function-VALUE rendering (callable_type_template); `let_apply` is the consumer whose
+        // parameter carries the `impl Fn(..) + Clone` bound. Together they say the two renderings
+        // met and did not compose -- the seam the adapter closes at the call position.
+        // Wording-sensitive phrases are deliberately avoided: a rustc release that rephrases its
+        // message must not silently turn this into a check of nothing.
+        let red_diagnostic =
+            crate::cli_run::fixture_arm_diagnostic_lines("red", &pair.red).join("\n");
+        assert!(
+            red_diagnostic.contains("error[E0277]")
+                && red_diagnostic.contains("Rc<dyn Fn")
+                && red_diagnostic.contains("let_apply"),
+            "the red arm must be refused for the Fn-BOUND SEAM this pair measures -- E0277 naming the Rc<dyn Fn> carrier at let_apply -- not for some other defect in the same emitted module; a red failing this is a pair that stopped discriminating: {}",
+            red_diagnostic
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the adapted call-position control must compile and the unadapted let-bound arm must be refused by rustc and attributed to its own emitted module; control={} red={} attribution={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
@@ -901,30 +1020,25 @@ mod compiler_tests {
         );
     }
 
-    // KNOWN-HOLE PROBE (not a desired-behavior control), DESIGN section 4b(4).
+    // PERMANENT REGRESSION CONTROL, DESIGN section 4b(4). It landed as a KNOWN-HOLE
+    // PROBE asserting the wrong behavior, and it FLIPPED when the wall landed rather
+    // than retiring: a climb deletes the lower-rung production machinery it obsoletes,
+    // never the evidence that the higher rung is real.
     //
-    // The shell service-emission path FABRICATES rather than refuses: every declared
-    // output field is bound to `stdout`, whatever source the declaration named, and the
-    // error arm returns a bare String against a declared Box<dyn std::error::Error>.
-    // Both produce Rust that does not compile, with ZERO diagnostics -- section 5's
+    // WHAT IT PINNED. The shell service-emission path bound every declared output field
+    // to `stdout`, whatever source the declaration named, and returned a bare String
+    // from the error arm against a declared Box<dyn std::error::Error>. Both emitted
+    // Rust that does not compile, with ZERO diagnostics -- section 5's
     // fabricated-plausible-output arm, in the emitter.
     //
-    // The three-output fixture is load-bearing. The two-field case this was first seen
-    // on (an operation declaring `success: Bool from "exit_success"` beside
-    // `stdout: String from "stdout"`) cannot distinguish "wrong tuple index" from "the
-    // declared source never arrived": with two fields, "always the first output" and
-    // "always stdout" produce the same bytes. Three fields separate them, and the
-    // ABSENCE of the `let stderr = ...` prelude line is the positive evidence -- that
-    // line is emitted only when some field claims the stderr channel, so its absence
-    // proves the `from "stderr"` field was invisible to the renderer rather than
-    // mis-ordered. child_from_key returns Absent for all three.
-    //
-    // WHEN THE WALL LANDS THIS PROBE MUST FLIP and become a permanent regression
-    // control: the emitted body must bind each field to its named source, box the error
-    // arm, and REFUSE -- typed and located, naming the field and the unresolvable
-    // source -- for any source it cannot realize.
+    // THE THREE-OUTPUT FIXTURE IS STILL LOAD-BEARING, for the reason it was chosen: two
+    // fields cannot distinguish "wrong tuple index" from "the declared source never
+    // arrived", because "always the first output" and "always stdout" produce the same
+    // bytes. Three separate them, and the PRESENCE of the `let stderr = ...` prelude is
+    // the positive evidence that the `from "stderr"` field reached the renderer -- that
+    // line is emitted only when some field claims the stderr channel.
     #[test]
-    fn shell_service_output_projection_fabricates_stdout_known_hole_probe() {
+    fn shell_service_output_projection_binds_each_declared_channel() {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
@@ -943,8 +1057,8 @@ mod compiler_tests {
                     .collect();
                 assert!(
                     errors.is_empty(),
-                    "KNOWN HOLE today: the emitter does not refuse; it fabricates silently. \
-                     When the wall lands this becomes the refusal assertion. Got: {:?}",
+                    "every declared channel is modeled, so this operation must emit \
+                     without a diagnostic. Got: {:?}",
                     errors
                 );
                 let emitted = r
@@ -954,7 +1068,7 @@ mod compiler_tests {
                     .map(|f| f.content.clone())
                     .expect("service module must emit src/probe.rs");
 
-                // The signature reads the declaration correctly...
+                // The signature reads the declaration...
                 assert!(
                     emitted.contains(
                         "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
@@ -962,26 +1076,459 @@ mod compiler_tests {
                     "signature must project the three declared output types, got:\n{}",
                     emitted
                 );
-                // ...and the body then ignores every declared source.
+                // ...and the body now answers each field from the source it named.
                 assert!(
-                    emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
-                    "KNOWN HOLE: every output field is bound to stdout regardless of its \
-                     declared source. If this assertion fails the wall may have landed -- \
-                     flip this probe to assert the correct per-channel binding. Got:\n{}",
+                    emitted.contains(
+                        "Ok((output.status.success(), stdout.clone(), stderr.clone()))"
+                    ),
+                    "each output field must bind the channel its `from` key names. Got:\n{}",
                     emitted
                 );
-                // The stderr prelude is the absence that proves the source was never read.
+                // The stderr prelude is the presence that proves the source was read.
                 assert!(
-                    !emitted.contains("String::from_utf8_lossy(&output.stderr)"),
-                    "KNOWN HOLE: the `from \"stderr\"` field is invisible to the renderer, \
-                     so no stderr prelude line is emitted. Got:\n{}",
+                    emitted.contains("String::from_utf8_lossy(&output.stderr)"),
+                    "a field claiming the stderr channel must emit the stderr prelude. \
+                     Got:\n{}",
+                    emitted
+                );
+                // The fabricated form must be gone, not merely joined by the correct one.
+                assert!(
+                    !emitted.contains("Ok((stdout.clone(), stdout.clone(), stdout.clone()))"),
+                    "stdout must not answer for every declared field. Got:\n{}",
                     emitted
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result
-            .expect("shell_service_output_projection_fabricates_stdout_known_hole_probe panicked");
+        result.expect("shell_service_output_projection_binds_each_declared_channel panicked");
+    }
+
+    #[test]
+    fn shell_service_unmodeled_output_key_refuses() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                // The SAME module, differing only in WHICH output field carries the
+                // unmodeled key. Any span that does not belong to the offending field
+                // is identical across the pair, so assertion four cannot be satisfied
+                // by a location that merely lands somewhere inside the service.
+                let first_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let second_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"stdout\"\n      out: String from \"not_a_channel\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let probe = |content: &str| {
+                    let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: "probe.dag".to_string(),
+                        content: content.to_string(),
+                    });
+                    let r = crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![source]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    );
+                    let located = r
+                        .diagnostics
+                        .iter()
+                        .filter_map(|d| match &*d.diagnostic {
+                            crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                                missing_realization_fact,
+                                span,
+                                ..
+                            } if missing_realization_fact.contains("not_a_channel") => {
+                                Some((span.start, span.end, missing_realization_fact.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    let emitted = r
+                        .files
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<_>>();
+                    (located, emitted, format!("{:?}", r.diagnostics))
+                };
+                let (a_hits, a_files, a_all) = probe(first_field_offends);
+                let (b_hits, b_files, _) = probe(second_field_offends);
+
+                // ONE: the refusal class, and exactly one row of it.
+                assert_eq!(
+                    a_hits.len(),
+                    1,
+                    "an unmodeled output key must refuse with exactly one TransportEmissionNotModeled naming the key, got: {}",
+                    a_all
+                );
+                assert_eq!(b_hits.len(), 1, "the mutated module must refuse the same way");
+                let (a_start, a_end, a_fact) = a_hits[0].clone();
+                let (b_start, b_end, _) = b_hits[0].clone();
+
+                // TWO: the EXACT refused output key, not merely that something was unmodeled.
+                assert!(
+                    a_fact.contains("not_a_channel"),
+                    "the refusal must name the offending key. Got: {}",
+                    a_fact
+                );
+
+                // THREE: the span belongs to THAT key -- checked by slicing the span
+                // back out of the source it points into, not by trusting the offsets.
+                // The span covers the offending FIELD'S NAME rather than the key
+                // literal, so the slice is the field name and the assertion says so
+                // exactly; asserting it merely "contains" something would pass on a
+                // span that had swallowed the whole output block.
+                let a_text = &first_field_offends[a_start as usize..a_end as usize];
+                let b_text = &second_field_offends[b_start as usize..b_end as usize];
+                assert_eq!(
+                    a_text, "first",
+                    "the span must cover the field carrying the unmodeled key. It covers: {:?}",
+                    a_text
+                );
+
+                // FOUR, the discriminator: moving the unmodeled key to a DIFFERENT field
+                // must MOVE the location. Without this a span pointing anywhere fixed
+                // inside the service satisfies one through three and proves nothing.
+                // Asserted on the RESOLVED TEXT and not only on the offsets, because
+                // equal-length fields could move the numbers without the location ever
+                // having been derived from the offending field at all.
+                assert_eq!(
+                    b_text, "out",
+                    "when the unmodeled key moves to the other field, the span must follow it. It covers: {:?}",
+                    b_text
+                );
+                assert_ne!(
+                    (a_start, a_end),
+                    (b_start, b_end),
+                    "the refusal is not located: the span did not move when the offending key moved to another field. Both refusals point at {}..{}",
+                    a_start,
+                    a_end
+                );
+
+                // The line stops: a refused operation emits no module carrying the
+                // refusal into its own runtime.
+                assert!(
+                    !a_files.iter().any(|p| p == "src/probe.rs"),
+                    "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
+                    a_files
+                );
+                assert!(
+                    !b_files.iter().any(|p| p == "src/probe.rs"),
+                    "likewise when the offending field moves. Emitted: {:?}",
+                    b_files
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shell_service_unmodeled_output_key_refuses panicked");
+    }
+
+    #[test]
+    fn shell_service_exit_error_arm_is_boxed() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n    exit { 0 => Unit  nonzero => String }\n  }\n}\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("service module must emit src/probe.rs");
+                assert!(
+                    emitted.contains("Err(stderr.into())"),
+                    "the error arm must box into the declared error type. Got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("Err(stderr)"),
+                    "the unboxed String error arm must be gone. Got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shell_service_exit_error_arm_is_boxed panicked");
+    }
+
+    // REGRESSION CONTROL for a property that holds BY CONSTRUCTION today, and which nothing
+    // else would notice losing. DESIGN section 4b(4): the evidence stays enrolled.
+    //
+    // A function-VALUE realizes as `Rc<dyn Fn(..)>`; a function-typed PARAMETER realizes as an
+    // `impl Fn(..) + Clone` bound, and `Rc<F>` carries no blanket `impl Fn`, so passing the first
+    // into the second is an E0277 seam. rust_call_arg_function_value_adapt closes it by wrapping
+    // the argument in a forwarding closure, and it decides on
+    // `param_node_type_expr(n: param).params |> count > 0`.
+    //
+    // THAT IS THE SAME EXPRESSION ON THE SAME NODE that emit_param/emit_rust_param_type use to
+    // decide whether to emit the `impl Fn` bound at all. So the adapter fires exactly where the
+    // seam exists, and cannot fire where it does not -- the two predicates cannot disagree while
+    // they remain one expression. This control is what notices if they are ever forked.
+    //
+    // WHAT THIS ESTABLISHES, AT ITS DECLARED GRAIN. Emission SUCCEEDS on this fixture -- zero
+    // error diagnostics, asserted FIRST, so a refusal fails here rather than being matched past
+    // -- and the emitted bytes carry, for this fixture, all six of:
+    //   the function-valued producer emitted as `Rc<dyn Fn(..)>`;
+    //   the declared-arrow formal emitted as `impl Fn(..) + Clone`;
+    //   a forwarding closure emitted AT that formal;
+    //   the bare type-variable formal carrying NO Fn bound;
+    //   NO forwarding closure at that formal;
+    //   and hence the two emitter decisions staying aligned on this fixture.
+    // Those are structural facts about the emitter, and substring matching can decide them.
+    // That list is the WHOLE claim.
+    //
+    // IT DOES NOT ESTABLISH THAT THE E0277 SEAM IS CLOSED, AND NOTHING EXECUTING TODAY DOES.
+    // Whether these bytes compile is a RUSTC verdict, and no amount of exact rendering is
+    // evidence about one; a substring assertion could not decide it at any lane membership.
+    //
+    // NO ENROLLED FAIL-CLOSED RUSTC CONSUMER COVERS THIS SYNTHETIC FIXTURE. That is a statement
+    // about the whole tree as it stands, not a pointer at some other test that would do it --
+    // deliberately, because naming a candidate invites the next reader to read 'not yet' as
+    // 'once someone schedules it', and a candidate cited that way becomes coverage in the telling.
+    //
+    // NO PER-FIXTURE RUSTC CONSUMER IS BUILT HERE EITHER. probe.rs references the crate runtime
+    // (im::vector, v1_std_core, the artifact types) and does not stand alone, and a second
+    // per-fixture compile path is the parallel authority section 6 warns about. The standing
+    // execution half would be a real COMMITTED occurrence of this adapter shape joined BY
+    // IDENTITY to a rustc consumer that runs and REFUSES. That join does not exist today.
+    //
+    // WHY THE BARE TYPE VARIABLE IS THE DISCRIMINATING HALF. It was reported (by me, wrongly) as a
+    // silent defect: a parameter declared `T` has arity 0, so no adapter is emitted, and nothing
+    // refuses. The bytes below are the refutation -- `T` renders as a plain generic with NO Fn
+    // bound, so there is no seam to close, and adapting there would be a fabricated repair.
+    // Arity is invariant under substitution anyway: instantiation changes an arrow's type
+    // ARGUMENTS, never its parameter count.
+    #[test]
+    fn function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted() {
+        let result = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe.dag".to_string(),
+                    content: "module probe\nfn add_one(x: Int) -> Int { x + 1 }\nfn make_adder() -> fn(Int) -> Int { fn(n) { add_one(x: n) } }\nfn hold_tv<T>(value: T) -> T { value }\nfn apply_arrow(f: fn(Int) -> Int, v: Int) -> Int { f(v) }\nfn through_type_variable() -> Int { apply_arrow(f: hold_tv(value: make_adder()), v: 1) }\nfn through_declared_arrow() -> Int { apply_arrow(f: make_adder(), v: 1) }\n".to_string(),
+                });
+                let r = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![source]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let errors: Vec<_> = r
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "the fixture is ordinary admissible source; a refusal here is a compiler \
+                     defect rather than a defect in the fixture. Got: {:?}",
+                    errors
+                );
+                let emitted = r
+                    .files
+                    .iter()
+                    .find(|f| f.path == "src/probe.rs")
+                    .map(|f| f.content.clone())
+                    .expect("probe module must emit src/probe.rs");
+
+                // (1) the producer side of the seam: a function VALUE is the Rc carrier.
+                assert!(
+                    emitted.contains("pub fn make_adder() -> Rc<dyn Fn(i64) -> i64>"),
+                    "a function-valued return must realize as the Rc carrier, got:\n{}",
+                    emitted
+                );
+                // (2) a DECLARED-ARROW parameter carries the impl Fn bound -- the seam exists here.
+                assert!(
+                    emitted.contains("pub fn apply_arrow(f: impl Fn(i64) -> i64 + Clone, v: i64)"),
+                    "a declared-arrow parameter must carry the impl Fn bound, got:\n{}",
+                    emitted
+                );
+                // (3) a BARE TYPE VARIABLE parameter carries NO Fn bound -- no seam exists here.
+                assert!(
+                    emitted.contains("pub fn hold_tv<T: Clone>(value: T) -> T"),
+                    "a bare type-variable parameter must render as a plain generic with no Fn \
+                     bound -- if this ever gains one, the adapter predicate must move with it, \
+                     got:\n{}",
+                    emitted
+                );
+                // (4) THE ALIGNMENT, both directions. The adapter wraps the argument at the
+                // impl-Fn-bound parameter, and does NOT wrap it at the type-variable parameter --
+                // whose argument is equally a call result, so shape alone does not explain it.
+                assert!(
+                    emitted.contains(
+                        "apply_arrow({ let __adapt_f = hold_tv(make_adder()); move |__adapt_a0| __adapt_f(__adapt_a0) }, 1)"
+                    ),
+                    "the forwarding adapter must be emitted at the impl Fn parameter, got:\n{}",
+                    emitted
+                );
+                assert!(
+                    !emitted.contains("hold_tv({ let __adapt_f"),
+                    "no adapter may be injected at a parameter that carries no Fn bound -- that \
+                     would be a fabricated repair of a seam that does not exist, got:\n{}",
+                    emitted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "function_value_adapter_fires_exactly_where_the_impl_fn_bound_is_emitted panicked",
+        );
+    }
+
+    #[test]
+    fn rendered_leaf_use_site_preserves_authored_occurrence_identity() {
+        let mut authored_value = (*named_type_node("Time")).clone();
+        authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 101 },
+            },
+        );
+        let authored = std::rc::Rc::new(authored_value);
+        let mut resolved_value = (*named_type_node("Quantity")).clone();
+        resolved_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 202 },
+            },
+        );
+        let resolved = std::rc::Rc::new(resolved_value);
+        let rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            authored.clone(),
+            resolved.clone(),
+        );
+        let mut expected_value = (*resolved).clone();
+        expected_value.occurrence_identity = authored.occurrence_identity.clone();
+        assert_eq!(
+            rendered,
+            std::rc::Rc::new(expected_value),
+            "a rendered leaf must preserve the exact authored occurrence identity while every other field remains the selected declaration's field"
+        );
+        let mut wrong_present_value = (*rendered).clone();
+        wrong_present_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        );
+        assert_ne!(
+            rendered,
+            std::rc::Rc::new(wrong_present_value),
+            "a wrong-but-present occurrence identity must not satisfy exact fidelity"
+        );
+        let mut sibling_a_value = (*named_type_node("Time")).clone();
+        sibling_a_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 301 },
+            },
+        );
+        let sibling_a = std::rc::Rc::new(sibling_a_value);
+        let mut sibling_b_value = (*named_type_node("Time")).clone();
+        sibling_b_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 302 },
+            },
+        );
+        let sibling_b = std::rc::Rc::new(sibling_b_value);
+        let sibling_a_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_a.clone(),
+            resolved.clone(),
+        );
+        let sibling_b_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            sibling_b.clone(),
+            resolved.clone(),
+        );
+        assert_eq!(
+            sibling_a_rendered.name, sibling_b_rendered.name,
+            "equal-looking siblings must render the same textual carrier"
+        );
+        assert_eq!(
+            sibling_a_rendered.occurrence_identity,
+            sibling_a.occurrence_identity
+        );
+        assert_eq!(
+            sibling_b_rendered.occurrence_identity,
+            sibling_b.occurrence_identity
+        );
+        assert_ne!(
+            sibling_a_rendered.occurrence_identity, sibling_b_rendered.occurrence_identity,
+            "equal-looking siblings must not exchange occurrences"
+        );
+        let projected_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceProjected {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 401 },
+                caused_by: std::rc::Rc::new(crate::std_occurrence_identity::ScopedOccurrenceRef {
+                    scope: std::rc::Rc::new(crate::std_content_hash::Fnv1a64Structural {
+                        digest: "scope-identity".to_string(),
+                    }),
+                    occurrence: crate::std_occurrence_identity::OccurrenceId { value: 400 },
+                }),
+            },
+        );
+        let mut projected_authored_value = (*named_type_node("Time")).clone();
+        projected_authored_value.occurrence_identity = projected_identity.clone();
+        let projected_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            std::rc::Rc::new(projected_authored_value),
+            resolved.clone(),
+        );
+        assert_eq!(
+            projected_rendered.occurrence_identity, projected_identity,
+            "projected id and caused_by must survive exactly"
+        );
+        let mut nonleaf_authored_value =
+            (*shaped_type_node("Box", vec![named_type_node("Time")])).clone();
+        nonleaf_authored_value.occurrence_identity = std::rc::Rc::new(
+            crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted {
+                id: crate::std_occurrence_identity::OccurrenceId { value: 501 },
+            },
+        );
+        let nonleaf_authored = std::rc::Rc::new(nonleaf_authored_value);
+        let nonleaf_resolved = shaped_type_node("Vec", vec![named_type_node("Int")]);
+        let nonleaf_rendered = crate::v1_compiler_infer_resolve::rendered_use_site_type(
+            nonleaf_authored.clone(),
+            nonleaf_resolved.clone(),
+        );
+        let mut nonleaf_expected_value = (*nonleaf_authored).clone();
+        nonleaf_expected_value.children = nonleaf_resolved.children.clone();
+        nonleaf_expected_value.inferred = Some(std::rc::Rc::new(
+            crate::v1_std_core::InferredNode::Resolved {
+                node: nonleaf_resolved.clone(),
+            },
+        ));
+        nonleaf_expected_value.properties = nonleaf_resolved.properties.clone();
+        assert_eq!(
+            nonleaf_rendered,
+            std::rc::Rc::new(nonleaf_expected_value),
+            "the children-present arm must remain byte-for-byte structurally stable"
+        );
+    }
+
+    #[test]
+    fn resolved_pipeline_preserves_leaf_type_reference_occurrence_identity() {
+        let result = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {
+            let producer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_producer.dag".to_string(),
+                content: "module identity.producer\ntype Foreign { value: Int }\n".to_string(),
+            });
+            let consumer_text = "module identity.consumer\nimport identity.producer { Foreign }\nfn leaf(x: Foreign) -> Int { x.value }\nfn applied(x: List<Foreign>) -> Int { 0 }\n".to_string();
+            let consumer = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: "identity_consumer.dag".to_string(),
+                content: consumer_text.clone(),
+            });
+            let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                std::rc::Rc::new(im::vector![producer, consumer]),
+            );
+            let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
+            assert!(blocking.is_empty(), "identity fixture must traverse the live acceptance path: {:?}", blocking);
+            let graph = resolved.graph.as_ref().expect("identity fixture must produce a typed graph");
+            let typed = graph.modules.iter().find(|m| m.module.name == "identity.consumer").expect("consumer typed module");
+            let transport = typed.occurrence_transport.as_ref().expect("consumer occurrence transport");
+            let occurrence_at = |needle: &str, ordinal: usize| {
+                let start = consumer_text.match_indices(needle).nth(ordinal).expect("fixture occurrence").0 as i64;
+                transport.index.entries.iter().find(|e| e.projection.diagnostic_span.start == start).expect("transport projection at fixture occurrence").projection.occurrence
+            };
+            let leaf = typed.items.iter().find(|item| item.name == "leaf").expect("leaf function");
+            let leaf_type = crate::v1_std_core::param_node_type_expr(leaf.params[0].clone());
+            let leaf_reference = occurrence_at("Foreign", 1);
+            assert_eq!(leaf_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: leaf_reference }), "typed leaf must carry the authored parameter reference, not the resolved declaration occurrence");
+            let applied = typed.items.iter().find(|item| item.name == "applied").expect("applied function");
+            let applied_type = crate::v1_std_core::param_node_type_expr(applied.params[0].clone());
+            let applied_reference = occurrence_at("List", 0);
+            assert_eq!(applied_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: applied_reference }), "neighbouring children-present type must retain its authored outer occurrence");
+        }).expect("spawn identity pipeline test").join().expect("identity pipeline test panicked");
     }
 
     #[test]
@@ -1735,8 +2282,8 @@ mod compiler_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn contracts_sidecar_wired_into_emit_scope() {
         // Discriminating witness: AnthropicChatMessage is declared in
-        // extdeps.llm.anthropic; its tag = "role" wire_contract lives in the
-        // anthropic_contracts.dag sidecar. This proves contracts_items_for_module
+        // extdeps.llm.anthropic_messages_api; its tag = "role" wire_contract lives in the
+        // anthropic_messages_api_contracts.dag sidecar. This proves contracts_items_for_module
         // and the wire_contract alias-resolution scope merge the sidecar into the
         // emitted module -- red if the sidecar wiring or alias scope regresses.
         let result = std::thread::Builder::new()
@@ -1749,8 +2296,8 @@ mod compiler_tests {
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let anthropic_file = result.files.iter()
-                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
-                    .expect("emitted file for extdeps.llm.anthropic not found in source closure");
+                    .find(|f| f.path.ends_with("extdeps_llm_anthropic_messages_api.rs"))
+                    .expect("emitted file for extdeps.llm.anthropic_messages_api not found in source closure");
                 assert!(
                     anthropic_file.content.contains("#[serde(tag = \"role\""),
                     "AnthropicChatMessage serde tag = role must be present in emitted Rust (contracts_items_for_module merged into emit scope); missing from: {}",
@@ -1989,35 +2536,91 @@ mod compiler_tests {
     fn coercion_rust_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Int".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Int".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Int".into()
+            ),
             "i64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Float".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Float".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Float".into()
+            ),
             "f64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bool".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Bool".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bool".into()
+            ),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Unit".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Unit".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Unit".into()
+            ),
             "()"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "String".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "String".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "String".into()
+            ),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bytes".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Bytes".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bytes".into()
+            ),
             "Vec<u8>"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Secret".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Secret".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Secret".into()
+            ),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Json".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Rust,
+                    "Json".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Json".into()
+            ),
             "serde_json::Value"
         );
     }
@@ -2026,35 +2629,91 @@ mod compiler_tests {
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Int".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Int".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Int".into()
+            ),
             "int"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Float".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Float".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Float".into()
+            ),
             "float"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bool".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Bool".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bool".into()
+            ),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Unit".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Unit".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Unit".into()
+            ),
             "None"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "String".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "String".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "String".into()
+            ),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bytes".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Bytes".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bytes".into()
+            ),
             "bytes"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Secret".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Secret".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Secret".into()
+            ),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Json".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Python,
+                    "Json".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Json".into()
+            ),
             "dict"
         );
     }
@@ -2063,35 +2722,91 @@ mod compiler_tests {
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Int".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Int".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Int".into()
+            ),
             "int64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Float".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Float".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Float".into()
+            ),
             "float64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bool".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Bool".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bool".into()
+            ),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Unit".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Unit".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Unit".into()
+            ),
             "struct{}"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "String".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "String".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "String".into()
+            ),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bytes".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Bytes".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Bytes".into()
+            ),
             "[]byte"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Secret".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Secret".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Secret".into()
+            ),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Json".into(), "".into()),
+            coerce_primitive_type(
+                type_realization_decision(
+                    RenderTarget::Go,
+                    "Json".into(),
+                    std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                ),
+                "Json".into()
+            ),
             "interface{}"
         );
     }
@@ -2207,35 +2922,67 @@ mod compiler_tests {
     fn coercion_is_copy_from_checkpoint() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Int".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Int".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Float".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Float".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Bool".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Bool".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Unit".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Unit".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(true)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "String".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "String".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Bytes".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Bytes".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Secret".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Secret".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
         assert_eq!(
-            is_copy(RenderTarget::Rust, "Json".into(), "".into()),
+            is_copy(type_realization_decision(
+                RenderTarget::Rust,
+                "Json".into(),
+                std::rc::Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            )),
             Some(false)
         );
     }
@@ -2456,7 +3203,9 @@ mod compiler_tests {
         let shared = std::rc::Rc::new(im::OrdSet::new());
         let generics = std::rc::Rc::new(im::Vector::new());
         let variant_to_enum = std::rc::Rc::new(HashMap::new());
-        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let mut env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
+        env_value.unit_variant_index_observed = true;
+        let env = std::rc::Rc::new(env_value);
         let arg = named_type_node("Int");
         let applied = shaped_type_node("std.algebra.FreeMonoid", vec![arg]);
         let rendered = crate::v1_compiler_emit_rust::render_rust_applied_type(
@@ -2472,6 +3221,140 @@ mod compiler_tests {
             "applied-type base must not emit namespace dots in generic position"
         );
         assert_eq!(rendered, "Vec<i64>");
+        let marker = named_type_node("Time");
+        let contribution =
+            std::rc::Rc::new(crate::v1_compiler_infer_env::UnitVariantContribution {
+                count: 1,
+                variant: marker,
+            });
+        let by_parent = crate::v1_rt::rc_map_insert(
+            crate::v1_rt::rc_empty_map(),
+            "Quantity".to_string(),
+            contribution,
+        );
+        let mut populated_env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
+        populated_env_value.unit_variant_index = crate::v1_rt::rc_map_insert(
+            crate::v1_rt::rc_empty_map(),
+            "Time".to_string(),
+            by_parent,
+        );
+        populated_env_value.unit_variant_index_observed = true;
+        let populated = crate::v1_compiler_emit_rust::render_rust_applied_type(
+            shaped_type_node("Box", vec![named_type_node("Time")]),
+            std::rc::Rc::new(im::Vector::new()),
+            std::rc::Rc::new(im::OrdSet::new()),
+            std::rc::Rc::new(HashMap::new()),
+            std::rc::Rc::new(HashMap::new()),
+            std::rc::Rc::new(populated_env_value),
+        );
+        assert_eq!(
+            populated, "Box<Time>",
+            "a populated unit-variant census must preserve the selected marker identity"
+        );
+        let unavailable = crate::v1_compiler_emit_rust::render_rust_applied_type(
+            shaped_type_node("Box", vec![named_type_node("Time")]),
+            std::rc::Rc::new(im::Vector::new()),
+            std::rc::Rc::new(im::OrdSet::new()),
+            std::rc::Rc::new(HashMap::new()),
+            std::rc::Rc::new(HashMap::new()),
+            crate::v1_compiler_infer_env::empty_type_env(),
+        );
+        assert!(
+            unavailable.contains("unit-variant marker identity evidence unavailable for Time"),
+            "an unobserved empty census must refuse instead of answering non-marker: {}",
+            unavailable
+        );
+    }
+
+    #[test]
+    fn renderer_hop_decides_realization_from_declaration_identity_without_an_env() {
+        // A type-expression renderer that is handed a Node and source_indices and NO env still
+        // DECIDES realization from the declaration identity it reads off that node: it computes
+        // dag_name at runtime with authored_name_at and hands it to the structural and numeric
+        // gates in v1.compiler.coercion. Each pair below holds the authored NAME constant and
+        // varies ONLY the declaring file, so no rule keyed on the name, and no disabled gate,
+        // satisfies both halves.
+        fn reference_at(name: &str, decl_file: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let span = std::rc::Rc::new(crate::std_types::SourceSpan {
+                file: decl_file.to_string(),
+                start: 0,
+                end: 0,
+            });
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                occurrence_identity: std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                name: name.to_string(),
+                ident: None,
+                span: span.clone(),
+                ident_span: Some(span),
+                children: std::rc::Rc::new(im::Vector::new()),
+                connective: crate::v1_std_core::Connective::NoConnective,
+                params: std::rc::Rc::new(im::Vector::new()),
+                inferred: None,
+                return_cardinality: crate::v1_std_core::Cardinality::Required,
+                uses: std::rc::Rc::new(im::Vector::new()),
+                body: None,
+                transport: None,
+                properties: std::rc::Rc::new(im::Vector::new()),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
+            })
+        }
+        // No inference is bound, which is the position a record FIELD type expression occupies in
+        // production, and the empty source_indices map means authored_name_at answers node.name.
+        // The fixture therefore supplies a NAME and a DECLARING FILE and nothing else.
+        fn base(name: &str, decl_file: &str) -> String {
+            crate::v1_compiler_emit::render_named_type_base(
+                reference_at(name, decl_file),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+                std::rc::Rc::new(HashMap::new()),
+            )
+        }
+        // PAIR 1 -- the structural roster (structural_declaration_modules_for).
+        assert_eq!(
+            base("Bool", "src/v2/std/logic.dag"),
+            "Bool",
+            "a structurally-declared Bool must render its dag spelling through the renderer hop"
+        );
+        assert_eq!(
+            base("Bool", "dag/std/types.dag"),
+            "bool",
+            "the prelude Bool must still reach the checkpoint row through the same renderer"
+        );
+        // PAIR 2 -- the numeric roster (numeric_realization_declaring_modules). Nat has no
+        // checkpoint row, so this pair reaches provenance_realizes_natively rather than
+        // provenance_declares_structurally: both deciding arms are witnessed at this hop.
+        assert_eq!(
+            base("Nat", "dag/std/nat.dag"),
+            "i64",
+            "the grounded numeric declaration must realize as the host numeric"
+        );
+        assert_eq!(
+            base("Nat", "src/v2/std/nat.dag"),
+            "Nat",
+            "the Peano declaration of the same spelling must NOT realize as a machine integer"
+        );
+        // POSITIVE CONTROL. Without it every row above is satisfied by a renderer that had simply
+        // stopped consulting identity and echoed the authored name, which is half of each pair.
+        assert_eq!(
+            base("Int", "src/v2/std/integer.dag"),
+            "i64",
+            "a table-present name bypasses identity and must still render the host spelling"
+        );
+        // MEASURED VACUITY, asserted rather than omitted. String is the obvious subject and
+        // cannot witness this hop: the structural arm renders qualified_last_segment(dag_name)
+        // and the checkpoint arm renders that row target_type, and for String both are "String".
+        // This row goes red if either spelling ever diverges, at which point String becomes an
+        // eligible subject and gets a pair like the two above.
+        assert_eq!(
+            base("String", "dag/std/string_type.dag"),
+            base("String", "dag/std/types.dag"),
+            "String is indistinguishable in rendered bytes across the structural gate"
+        );
     }
 
     fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {

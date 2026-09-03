@@ -1,16 +1,25 @@
 
 module gunbc.generated_artifact_emit
 
+import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
   artifact_path,
+  artifact_commit_policy,
+  CommitRequired, NotCommitted,
+  GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   committed_generated_artifacts
+}
+import gunbc.generated_workflow_provenance {
+  generated_workflow_provenance_header,
+  GeneratedWorkflowProvenanceHeaderProduced,
+  GeneratedWorkflowProvenanceHeaderNotApplicable,
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
@@ -20,7 +29,7 @@ import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
-import gunbc.design_ledgers { expected_design_ledgers_md }
+import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
@@ -54,7 +63,7 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
   ArtifactGenerated { content: content }
 }
 
-fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
     WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
       WitnessFloorGenerated { content } => artifact_generated(content: content)
@@ -75,11 +84,16 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     }
     RoadmapArtifact => artifact_generated(content: expected_roadmap_md())
     DesignArtifact => artifact_generated(content: expected_design_md())
-    DesignLedgersArtifact => artifact_generated(content: expected_design_ledgers_md())
+    DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
+    DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
     GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
+    CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
+      CouponProgramGenerated { content } => artifact_generated(content: content)
+      CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
     Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
     Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
     Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_partition_generated_dag())
@@ -110,6 +124,29 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   }
 }
 
+// One bytes boundary owns workflow provenance. A workflow admitted by the commit-policy registry
+// without a provenance projection refuses here; non-workflow artifacts pass through unchanged.
+// This is a rung-3 wall, not a rung-4 constructor removal: the inconsistent pair remains writable
+// in the two authorities, but it cannot produce committed workflow bytes.
+fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+  let generated = artifact_generate_unadorned(a: a)
+  match generated_workflow_provenance_header(a: a) {
+    GeneratedWorkflowProvenanceHeaderProduced { content: header } => match generated {
+      ArtifactGenerated { content } => artifact_generated(content: concat(header, content))
+      ArtifactGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    GeneratedWorkflowProvenanceHeaderNotApplicable => match artifact_commit_policy(a: a) {
+      CommitRequired { consumer: GithubActionsWorkflow } => ArtifactGenerationRefused {
+        reason: "GithubActionsWorkflow artifact has no generated-workflow provenance projection"
+      }
+      CommitRequired { consumer: GitProtocol } => generated
+      CommitRequired { consumer: ProjectDocumentation } => generated
+      CommitRequired { consumer: HostReconciler } => generated
+      NotCommitted => generated
+    }
+  }
+}
+
 // P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED
 // generation outcome rather than calling artifact_generate itself. The two variants whose extra
 // check depends on generation success (Stage0EmitPlanGeneratedDagArtifact,
@@ -129,11 +166,13 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     GitattributesArtifact => true
     RoadmapArtifact => true
     DesignArtifact => true
-    DesignLedgersArtifact => true
+    DesignFailureModesArtifact => true
+    DesignRungDropsArtifact => true
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
     GeneratedArtifactMergeDriverArtifact => true
     RunnerDeployArtifact => true
+    CouponCadQueryProgramArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true

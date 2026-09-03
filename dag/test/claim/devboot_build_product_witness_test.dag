@@ -37,8 +37,8 @@ import gunbc.devboot.build {
   poll_settled,
   request_ref_of,
   produced_ref_of,
+  exchange_materialization_coordinate,
 }
-import gunbc.devboot.produce { SnapshotRefused, ToolchainObservationRefused }
 import gunbc.devboot.subject { FeatureNameEmpty, BuildSubjectRefusalCause }
 import gunbc.devboot.lease { request_ref_namespace, produced_ref_namespace }
 import extdeps.gnu.libc {
@@ -47,6 +47,8 @@ import extdeps.gnu.libc {
   LibcUnobserved,
   platform_c_library_identity_tag,
 }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.build_identity { materialized_tree_build_identity_text }
 
 // WHAT THE PRODUCT PROMISES, PINNED. The operation's promise is that a caller receives an exact executable or a reason, and the decisions that keep that promise are ordinary functions over ordinary values -- so they are witnessed here rather than being demonstrated once by a live run against one producer on one afternoon. The live run proves the vertical exists; these prove the arms that keep it honest still discriminate.
 
@@ -138,6 +140,32 @@ test fn the_produced_ref_is_built_from_the_declared_namespace() -> Bool {
 // THE TWO NAMESPACES ARE DISTINCT, which is the property that keeps a request from ever being mistaken for an answer. If they collided, a caller's own pushed request would satisfy its poll immediately and the caller would then try to read an artifact out of the tree it had just sent.
 test fn a_request_and_an_answer_never_share_a_ref() -> Bool {
   !(request_ref_of(token: "fnv1a64-deadbeef") == produced_ref_of(token: "fnv1a64-deadbeef"))
+}
+
+// THE GIT WRITER AND FILESYSTEM READER SHARE ONE COORDINATE. The repository-relative prefix is
+// what checkout-index consumes; the caller-visible path is its projection beneath that exact
+// scratch repository. Reintroducing the former caller-root-relative prefix makes this equality
+// false before a live producer can turn the coordinate error into an unrelated read refusal.
+test fn answer_materialization_writer_and_reader_share_one_scratch_repository_coordinate() -> Bool {
+  let coordinate = exchange_materialization_coordinate(
+    exchange_repo: ".gunbc/devboot-work/exchange.git",
+    token: "fnv1a64-deadbeef",
+  )
+  coordinate.repo_relative_dir == "answers/fnv1a64-deadbeef"
+    && coordinate.caller_visible_dir == ".gunbc/devboot-work/exchange.git/answers/fnv1a64-deadbeef"
+    && coordinate.repo_relative_index == "answers/fnv1a64-deadbeef.index"
+}
+
+// PRODUCT-BUILT ARTIFACTS HAVE CONTENT PROVENANCE, NOT AMBIENT CHECKOUT HISTORY. The tree tag and
+// Git object-format family are load-bearing: without either, a SHA-1 tree is indistinguishable
+// from the 40-hex commit spelling used by the ordinary checkout-build arm.
+test fn materialized_tree_build_identity_is_tree_and_object_format_tagged() -> Bool {
+  match git_object_id_from_untagged_hex(hex: "0123456789abcdef0123456789abcdef01234567") {
+    Absent => false
+    Present { value: tree } =>
+      materialized_tree_build_identity_text(tree: tree)
+        == "tree:sha1:0123456789abcdef0123456789abcdef01234567"
+  }
 }
 
 // AN OFFERED PROGRAM IS SELECTED, and it names the bin it selected rather than assuming the caller's string reaches cargo unchanged.

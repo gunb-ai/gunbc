@@ -61,7 +61,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-std-surface".to_string(),
         crate_dir: "src/v1/stage0_std_surface".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["std_effects".to_string(), "std_execution_mode".to_string(), "extdeps_uri_path".to_string(), "std_interface_summary".to_string(), "std_pareto".to_string(), "std_realization_schedule".to_string(), "std_trait_derive_shape".to_string(), "std_witness_admission".to_string()]),
+        modules: Rc::new(vec!["std_effects".to_string(), "std_execution_mode".to_string(), "extdeps_uri_path".to_string(), "std_interface_summary".to_string(), "std_interval".to_string(), "std_pareto".to_string(), "std_realization_schedule".to_string(), "std_trait_derive_shape".to_string(), "std_witness_admission".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {
@@ -82,7 +82,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-v1-infer".to_string(),
         crate_dir: "src/v1/stage0_v1_infer".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["gunbc_rust_source_type_bindings".to_string(), "gunbc_structural_realization_bindings".to_string(), "v1_compiler_coercion".to_string(), "v1_compiler_infer_emit_info".to_string(), "v1_compiler_infer_env".to_string(), "v1_compiler_infer_items".to_string(), "v1_compiler_infer_occurrence_binding".to_string(), "v1_compiler_infer_service".to_string(), "v1_compiler_infer_sigs".to_string(), "v1_compiler_infer_types".to_string(), "v1_compiler_type_head_exposure".to_string()]),
+        modules: Rc::new(vec!["gunbc_rust_source_type_bindings".to_string(), "gunbc_structural_realization_bindings".to_string(), "v1_compiler_coercion".to_string(), "v1_compiler_compiler_tests_rust".to_string(), "v1_compiler_infer_emit_info".to_string(), "v1_compiler_infer_env".to_string(), "v1_compiler_infer_items".to_string(), "v1_compiler_infer_occurrence_binding".to_string(), "v1_compiler_infer_service".to_string(), "v1_compiler_infer_sigs".to_string(), "v1_compiler_infer_types".to_string(), "v1_compiler_type_head_exposure".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string(), "v1-stage0-std-surface".to_string(), "v1-stage0-extdeps-languages".to_string(), "v1-stage0-v1-artifact".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {

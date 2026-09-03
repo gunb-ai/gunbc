@@ -59,14 +59,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sig: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
 data gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
-data core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+data fr4_core: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
 
 // Top signal, then ground, then signal: three copper layers, ordinals 0, 1, 2.
 data three_layer: Stackup = Stackup {
   top: sig,
   plies: [
-    StackupPly { dielectric: core, copper: gnd },
-    StackupPly { dielectric: core, copper: sig },
+    StackupPly { dielectric: fr4_core, copper: gnd },
+    StackupPly { dielectric: fr4_core, copper: sig },
   ],
 }
 
@@ -75,9 +75,9 @@ data three_layer: Stackup = Stackup {
 data four_layer: Stackup = Stackup {
   top: sig,
   plies: [
-    StackupPly { dielectric: core, copper: gnd },
-    StackupPly { dielectric: core, copper: sig },
-    StackupPly { dielectric: core, copper: gnd },
+    StackupPly { dielectric: fr4_core, copper: gnd },
+    StackupPly { dielectric: fr4_core, copper: sig },
+    StackupPly { dielectric: fr4_core, copper: gnd },
   ],
 }
 
@@ -109,8 +109,8 @@ data thick_gnd: CopperLayer = CopperLayer { function: GroundPlane, thickness: mi
 data other_board: Stackup = Stackup {
   top: thick,
   plies: [
-    StackupPly { dielectric: core, copper: thick_gnd },
-    StackupPly { dielectric: core, copper: thick },
+    StackupPly { dielectric: fr4_core, copper: thick_gnd },
+    StackupPly { dielectric: fr4_core, copper: thick },
   ],
 }
 

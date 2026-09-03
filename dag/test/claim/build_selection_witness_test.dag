@@ -7,7 +7,8 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { Bandwidth, ByteSize, MoneyOnce, Watt, byte_size, money_amount_micro, watt }
 import std.pareto {
   DominatedBy,
-  IncomparablePendingEvidence,
+  NotComputable,
+  PendingEvidence,
   ProvisionallyNonDominated,
   SelectionRefused,
 }
@@ -126,9 +127,15 @@ test fn w_a_tradeoff_is_not_a_domination() -> Bool {
   }
 }
 
-// THE WALL THE BRIEF NAMES: an unread compatibility is pending evidence, never
-// a comparable candidate — and it reaches that verdict through std.pareto's own
-// missing-input rule rather than through a second check here.
+// THE WALL THE BRIEF NAMES: an unread compatibility is NOT COMPUTABLE, never a comparable
+// candidate — and it reaches that verdict through std.pareto's own missing-input rule rather than
+// through a second check here.
+//
+// The wording was "pending evidence" until std.pareto split that arm in two, and the distinction
+// lands exactly here: an UNREAD compatibility is a hole in the inputs, so no standing can be
+// derived at all. That is not the same answer as two present-but-overlapping readings, which do
+// yield a standing and merely fail to separate. Same refusal to call it a winner; different reason,
+// different remedy — supply the reading, rather than measure it more sharply.
 fn pending_build() -> BuildCandidate {
   BuildCandidate {
     identity: pending_ref,
@@ -150,9 +157,10 @@ fn pending_build() -> BuildCandidate {
   }
 }
 
-test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> Bool {
+test fn w_an_unread_compatibility_is_not_computable_not_a_winner() -> Bool {
   match build_standing(subject: pending_build(), field: [cheap_build(), pending_build()], declared: Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    NotComputable { missing: _ } => true
+    PendingEvidence { undecided: _ } => false
     _ => false
   }
 }
@@ -182,7 +190,8 @@ test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
   match build_standing(subject: eur, field: [cheap_build(), eur], declared: Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    NotComputable { missing: _ } => true
+    PendingEvidence { undecided: _ } => false
     _ => false
   }
 }
@@ -201,7 +210,8 @@ test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
   match build_standing(subject: broken, field: [cheap_build(), broken], declared: Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    NotComputable { missing: _ } => true
+    PendingEvidence { undecided: _ } => false
     _ => false
   }
 }
@@ -240,7 +250,8 @@ test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
     ceiling: CeilingUnconstrainedByAnyLine,
   }
   match build_standing(subject: unbounded, field: [cheap_build(), unbounded], declared: Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    NotComputable { missing: _ } => true
+    PendingEvidence { undecided: _ } => false
     _ => false
   }
 }

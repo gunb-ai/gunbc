@@ -25,11 +25,13 @@ import gunbc.explicit_witness_admission {
 }
 import std.witness_admission {
   WitnessConsumerCadence,
+  witness_consumer_cadence_eq,
   DiscoverySelection,
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane,
   BinWitnessWet,
+  LocalRepoWetLane,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
   FixtureExplicitRoster,
@@ -38,6 +40,52 @@ import std.witness_admission {
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
+
+// WITNESS NAMESPACES THE REQUIRED FOLD DOES NOT EXECUTE, DECLARED SO A MACHINE CAN JOIN ON IT.
+//
+// WHY THIS ROW EXISTS AND WHY IT IS NOT THE COMPLEMENT OF `witness_layer_roots`. The floor's
+// changed-witness projection blocks on any decline, which is right for a witness that COULD have
+// run and did not. A root the fold structurally cannot reach is a different subject: its
+// non-execution is already a declared 4b(2) tracked stall with a named trigger, so blocking it
+// surfaces no new silence and instead forbids touching debt the tree has already declared --
+// including by the very program whose trigger is supposed to retire it.
+//
+// The arm that reads this MUST be fail-closed against THIS ROSTER and never against the absence of
+// a match in `witness_layer_roots`. "Not declared executing" and "declared non-executing" are
+// different claims: only the second carries the stall, the trigger and the operator ruling. Keying
+// an exemption on the first grants it BY ABSENCE, so an unrostered tree, a typo'd path or a future
+// src/v3 would go silently non-blocking -- authority substitution that reads as correct at the arm.
+//
+// THIS ROW SUPERSEDES the prose `witness_fold_src_v1_coverage_gap_note` carried here until
+// 2026-09-02, which stated the same fact in a String no mechanism could read. Its irreducible
+// rationale -- WHY the one-token `--source-root src/v1` fix was refused -- is preserved below
+// because it is a judgement a reader cannot re-derive from the row: admitting src/v1 would also
+// admit the 52 non-test .dag modules under it into the ONE shared flat prepared subject the fold
+// depends on, and the v1 tree declares its own module population, so the fold's first census would
+// be taken against a colliding subject nobody has run. Chasing coverage that way costs more than
+// the gap it closes.
+//
+// IT EVAPORATES ON ITS OWN TRIGGER rather than needing deletion: when the namespace cut lands and
+// src/v1 witnesses resolve by containment, the root leaves this roster, the exemption it grants
+// disappears with it, and the arm goes dead by construction. It has no independent dissolution
+// condition because it has no independent existence.
+// THE GRAIN IS THE MODULE NAMESPACE, NOT THE FILESYSTEM ROOT, AND THAT IS FORCED RATHER THAN
+// CHOSEN. The population this roster exempts is undiscovered BY DEFINITION -- the fold never
+// enumerated the file -- so no file path exists at the arm to compare against a directory. The
+// authored module identity is the only fact available there, so declaring a directory would be
+// declaring something the consumer cannot read.
+//
+// It is faithful, measured rather than assumed (2026-09-02): every module named `v1.*` in the tree
+// lives under src/v1 (zero outside), so the namespace prefix and the directory pick out the same
+// modules. The correspondence is not exact in the other direction -- four fixture modules under
+// src/v1 carry other names -- and those are deliberately NOT exempted: a narrower exemption is the
+// fail-closed side of an inexact join.
+data non_executing_witness_module_prefixes: List<String> = ["v1"]
+
+// The 4b(2) standing the roster above carries, as a typed trigger rather than a sentence. Named as
+// the CAPABILITY: bare cross-module references binding by containment, whose vehicle is the
+// namespace cut -- explicitly NOT the floor getting faster and NOT widening the fold's roots.
+data non_executing_witness_module_prefixes_restoration: DissolutionCondition = unbound_dissolution(description: "dissolve-on: bare cross-module references bind BY CONTAINMENT rather than by pool-membership coincidence, so src/v1 and src/v2 can share a prepared subject without their twelve last-segment collisions (artifact, coercion, common, compile, complexity, emit, infer, normalize, ownership, parse, resolve, tokenize) silently rebinding. Current vehicle: the namespace cut, gunbc#8282. Satisfied by NEITHER a faster floor NOR adding --source-root src/v1 to the required fold: both leave the collisions standing, which is the condition this roster exists to survive. When it is satisfied, the `v1` prefix leaves non_executing_witness_module_prefixes and the changed-witness exemption keyed on it disappears with the row.")
 
 // The v2 entry roster a v2-emission phase compiles.
 //
@@ -311,6 +359,14 @@ data excl_predates_per_row_reason: String = "operator/lane-ruled discovery exclu
 data excl_predates_per_row_dissolve: DissolutionCondition = unbound_dissolution(description: "the owning lane records a scheduled consumer for the file, or the row proves dead (excludes nothing) and deletes")
 
 data excl_install_media_reason: String = "real host-effect execution witness (shell effects with no mock_response coverage, or real network/build effects) refused by the hermetic envelope; runs in the bin-witness wet lane (install_media_real_execution_wet_note)"
+
+data excl_local_repo_wet_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY -- refused by the hermetic envelope, so excluded from the discovery corpus, and executed instead by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). This row is NOT the dark bin-wet class: every function in the named file is on that schedule, the floor decodes it, runs each member wet, and joins the observed terminals back to the roster at identity grain, so a member that stops executing refuses rather than reading as covered."
+
+data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
+
+data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
+
+data excl_local_repo_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the git plumbing these witnesses reach and the assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
 data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
@@ -796,10 +852,15 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
+    pattern: "required_ci_epoch_real_execution_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "generated_artifact_merge_driver_real_execution_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_install_media_reason,
-    dissolution: excl_install_media_dissolve},
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "proc_self_cgroup_real_execution_witness_test.dag",
     classification: BinWitnessWet,
@@ -812,9 +873,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "commit_writer_heal_admission_real_execution_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_install_media_reason,
-    dissolution: excl_install_media_dissolve},
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "effect_plan_bash_materialize_real_execution_witness_test.dag",
     classification: BinWitnessWet,
@@ -832,9 +893,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "host_cli_dependency_wet_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: "WET shell.PosixCommandV.Check probes for observe_host_cli_dependency: hermetic discovery refuses host effects (no mock_response for operation Check). Enrolled on bin-witness wet roster; falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590).",
-    dissolution: excl_bin_wet_dissolve},
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_host_probe_reason,
+    dissolution: excl_local_repo_wet_host_probe_dissolve},
   WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
@@ -857,6 +918,7 @@ fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     FixtureExplicitRoster => false
     NoConsumer => false
@@ -871,6 +933,7 @@ fn witness_exclusion_row_is_fixture(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     NoConsumer => false
@@ -884,6 +947,7 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -896,6 +960,7 @@ fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => true
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
@@ -910,6 +975,7 @@ fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Boo
     FalsifierSubstrateLongLane => true
     FalsifierRehomedBinWet => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
@@ -919,10 +985,21 @@ fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Boo
   }
 }
 
+// ASKED OF THE CADENCE AUTHORITY, NOT RE-DECIDED HERE. The nine predicates around this one each
+// hand-match all ten arms, which is one comparison authored ten times over a coproduct whose own
+// module already answers it -- std.witness_admission.witness_consumer_cadence_eq. Adding an
+// eleventh instance of that shape would be the authored duplication DESIGN section 2 names, so
+// this row asks the existing authority instead. Collapsing the other nine is the same edit and a
+// separate cut: they are consumed by filters this change does not touch.
+fn witness_exclusion_row_is_local_repo_wet_lane(row: WitnessExclusionRow) -> Bool {
+  witness_consumer_cadence_eq(a: row.classification, b: LocalRepoWetLane)
+}
+
 fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     BinWitnessWet => true
     DiscoverySelection => false
+    LocalRepoWetLane => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
@@ -937,6 +1014,7 @@ fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     QuarantineProbeExpectRed => true
     DiscoverySelection => false
+    LocalRepoWetLane => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
@@ -954,6 +1032,7 @@ fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
     FalsifierSubstrateLongLane => false
     DiscoverySelection => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -969,6 +1048,7 @@ fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -1147,7 +1227,18 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
 
 data v1_claim_scoped_witness_batch_deleted_note: String = "THE SCOPED WITNESS BATCH IS DELETED (2026-08-15), and with it the only ScopedWitnessBatch instance that ever existed. It ran five file-grain v1 claim entries under a dag plus src/v1 source-root envelope, in a sequential child worker, so the v1 compiler closure could be resolved without widening witness_layer_roots for everything else.\n\nWHY IT COULD NOT SURVIVE AFFECTED-SET SELECTION. It was the last SelectionApplied consumer on the required path, and its 720-second clamp was derived (PR #8259) from a measured 565-second wall on the assumption that unrelated PRs skip it. With selection deleted the two available readings were both wrong: run it every PR and the required floor grows by roughly nine minutes under a clamp basis that no longer describes it, or keep a selection mechanism alive for one batch. Its cost was also never really the witnesses — the same receipt measured about 390 seconds of closure materialization before the first witness line and about 30 seconds of witness evaluation, so it was paying a whole second subject preparation to check thirty rows.\n\nWHAT THIS NARROWS, stated rather than implied: the five entries under src/v1/tests/claim have NO executing consumer. They are not covered by ordinary discovery, whose roots are dag plus src/v2. Their generated stage0 emissions still compile into the seed crate, which is not execution. This is a real loss of coverage over v1 parser and namespace-binding behavior, taken deliberately as part of deleting the floor rather than discovered later, and it is NOT backstopped by any cadence — the cadence lane those rows might have moved to was refused for the same reason the per-PR slot was: a second subject envelope is the defect, not the schedule it runs on.\n\nRESTORATION: one prepared subject spanning dag, src/v1 and src/v2, at which point a separate envelope, a separate worker, a separate clamp and a separate receipt family all stop existing and these rows are ordinary discovery."
 
-data witness_fold_src_v1_coverage_gap_note: String = "DECLARED COVERAGE GAP (operator ruling relayed 2026-08-15, at the re-add #1 boundary). The required witness fold runs `claim_executor --required-ci --source-root dag --source-root src/v2` (the flag was `--required-floor` until the 2026-08-20 consolidation folded parse, regen and the floor into one invocation; the source roots are unchanged, so this gap is unchanged too), so every witness under src/v1 is OUTSIDE it. Measured at declaration: 116 `test fn` declarations across 15 files under src/v1/tests/claim. Their previous consumer was the scoped witness batch deleted above; nothing has replaced it, and no cadence backstops them.\n\nWHY THE ONE-TOKEN FIX WAS REFUSED. Adding --source-root src/v1 would also admit the 52 non-test .dag modules under src/v1 into the ONE shared prepared subject the fold depends on. That subject is a single flat namespace per scope, and the v1 tree declares its own module population; poisoning the fold's first census with collisions to chase coverage costs more than the gap, and a first measurement taken against a subject nobody has run before is not a measurement worth having.\n\nWHY IT IS DECLARED RATHER THAN QUIET. run_required_floor refuses internally when planned, executed and terminal identity counts disagree, precisely so a narrowed roster cannot present as a roster. That wall operates INSIDE the subject; it cannot see a population the subject never admitted. So the same honesty has to be carried here, in prose, at the boundary: the fold runs every witness IN ITS SUBJECT, and its subject is two roots, not three.\n\nPOPULATION LOCATION IS BRANCH-DEPENDENT (relayed 2026-08-15, after this row was authored). The 15 files are present on main and DELETED on integration/v1-cut, where a src/v1/**/*.dag root deletion swept 16 witness .dag files under src/v1/tests/claim — this population — as collateral. So a reader checking main and a reader checking that cut branch will disagree about whether the gap has a subject at all, and the dissolve-on below is only satisfiable on a branch where the files still exist. A per-file disposition proposal (re-home under a surviving subject, or retire with a receipt naming the rejected behavior) is routed elsewhere and is deliberately NOT acted on here; several of the 16 witness LANGUAGE behavior rather than v1-compiler behavior (§4c annotation capture and erasure, the line-continuation operator-table derivation), so a blanket retire would drop evidence for obligations the replacement still claims. This row stays a declared gap until that proposal lands, at which point it either dissolves for real (files re-homed and inside the fold) or converts to a retirement receipt.\n\nDISSOLVE-ON: the boundary decision on these 15 files. The recommendation carried into that decision is RELOCATION into the dag test root rather than widening the root set — one tree, one namespace, consistent with every cut currently consolidating away from src/v1 — with the caveat that three sibling cuts are reshaping src/v1 concurrently and some of these 116 may die with them, so the relocation census is taken at the boundary and not before it."
+// `witness_fold_src_v1_coverage_gap_note` STOOD HERE UNTIL 2026-09-02 AND IS RETIRED, NOT LOST.
+// It was a String declaring that the required witness fold does not reach src/v1 -- the fact
+// `non_executing_witness_module_prefixes` above now owns as data. Leaving both would be one meaning with two
+// names, which section 3 forbids, and the String was the half no mechanism could read: a gate arm
+// needed this fact and had to be told to stop rather than infer it. The measurement it carried
+// (116 `test fn` declarations across 15 files under src/v1/tests/claim, at declaration) is a
+// dated observation rather than a live figure and is not re-asserted here; the roster names the
+// namespace, and the population is whatever the tree currently holds under it. Its irreducible
+// rationale -- why the one-token --source-root fix was refused -- is preserved at the roster.
+// The two notes that cite this name in their own prose, v1_dead_witness_tree_triage_receipt and
+// v1_claim_scoped_witness_batch_deleted_note, still read correctly: they cite what it SAID, and
+// what it said is now declared above.
 
 data v1_dead_witness_tree_triage_receipt: String = "DISCHARGES witness_fold_src_v1_coverage_gap_note's routed-elsewhere per-file disposition proposal (dashboard node adhoc-9b80ec49-d63, session zesty-newt-828, 2026-08-18/19). COUNT CORRECTION: that note measured 116 test fn declarations across 15 files at 2026-08-15 declaration time; by the time this triage read the tree the population was 17 files (12 disposed directly in this receipt, plus 5 files — checkpoint_identity_keying_witness_test.dag, occurrence_binding_parser_walk_witness_test.dag, occurrence_identity_debt_receipt_test.dag, pattern_binder_declaration_node_test.dag, v1_match_pattern_identity_test.dag — dispositioned by a concurrent batch and not re-narrated here; ATTRIBUTION, confirmed against git show --stat 11113ac9e9: all 17 files, including these 5, were deleted in that ONE commit, one author (Brian Searls), on this same branch session/zesty-newt-828 — there is no separate sibling dashboard session to attribute for PR purposes, 'concurrent' here means a parallel work stream inside this session, not a different session's contribution; checkpoint_identity_keying_witness_test.dag alone is carved out to stern-fox-619's own PR per the binding scope exclusion, unaffected by this attribution). The 15-vs-17 gap is branch drift between 2026-08-15 and the triage read, not a miscount of either measurement.\n\nDISPOSITION, MIGRATED (relocated to dag/test/claim, rewritten onto compile_dag_rust_emit_check, running under ordinary discovery — source roots dag + src/v2, no v1 import): dag_parse_continuation_operator_witness_test.dag -> dag/test/claim/dag_parse_continuation_operator_witness_test.dag (8 of 9 tests migrated black-box; w_dual_role_exclusion_intersection_is_singleton_minus retired in-file, pure operator-table introspection with no compile-observable surface, its protected family covered black-box by the comparison-family test beside it). required_expr_newline_continuation_test.dag -> dag/test/claim/required_expr_newline_continuation_witness_test.dag (all 8 tests migrated 1:1, 5 parse-clean + 3 refuses-to-compile each paired against a proven-clean sibling). ordinary_frontend_observation_test.dag -> dag/test/claim/frontend_literal_and_compile_witness_test.dag (2 pure interpreter-literal tests moved unchanged, no v1 import ever needed; 2 compile-observation tests converted to compile_dag_rust_emit_check clean/broken-subject pairs). caret_parse_smoke_test.dag -> dag/test/claim/caret_syntax_witness_test.dag (3 black-box compile/emit-substring tests migrated; 7 white-box tokenizer/parser-internals tests retired in-file, no compile-observable equivalent). v1_annotation_target_emission_test.dag -> dag/test/claim/annotation_erasure_emission_witness_test.dag (the D-C property 4 erasure claim plus a non-vacuity control, both via compile_dag_rust_emit_check includes/excludes on emitted Rust text; not a byte-identical replay of the 2026-08-05 host-execution diff receipt, which stands as separate historical evidence).\n\nDISPOSITION, RETIRED (white-box, no compile-observable proxy for the same claim; deleted with this receipt as the record): v1_annotation_binding_test.dag, v1_annotation_capture_test.dag, v1_annotation_round_trip_test.dag, v1_annotation_erasure_test.dag — all four inspect v1-internal occurrence-identity/annotation-graph/span-provenance/node-fingerprint state directly (std.occurrence_identity, v1.compiler.annotation_bind, dag_node_surface_fingerprint) that has no representation in emitted Rust text; per DESIGN §4c, annotation capture/erasure is disjoint from semantic occurrence identity by construction, so these are facts about the FRONTEND's internal bookkeeping, not about a compiled program, and cannot be reduced to a compile_dag_rust_emit_check assertion without inventing a second v1-internal-state-reading surface this triage was not chartered to build. v1_annotation_erasure_test.dag's own erasure claim (prose does not leak into emitted output) is separately and already covered black-box by the migrated annotation_erasure_emission_witness_test.dag above — that file migrates v1_annotation_target_emission_test.dag, a distinct source, not this one; naming this precisely to avoid the false impression that this exact file was migrated rather than retired. v1_complexity_eviction_hazard_test.dag — retired with a live-defect note, not a clean retirement, structured as an explicit DESIGN §4b(3) declared bounded rung-drop rather than left as prose implying it: it documents a real fail-open in v1.compiler.complexity's evict_summary/lookup_summary (a §5 absorbing-fallback shape) that is orthogonal to emitted-Rust text and therefore not compile-observable, and the defect itself remains live and unfixed by this retirement. PREVIOUS RUNG: mechanically preventable — before v1_claim_scoped_witness_batch was deleted (2026-08-15), this file's assertions executed and would have caught a regression in the eviction fail-open shape. TEMPORARY RUNG: mitigatable — the fail-open itself is unrepaired, so this class sits at the floor rung DESIGN §5 names for an absorbing fallback (a typed, located, counted diagnostic is owed but not yet built); this retirement removes only the dead witness, it does not climb or lower the underlying defect's own rung. REASON: the witness's sole execution path (v1_claim_scoped_witness_batch) is gone and RESTORE (widening the required floor to admit src/v1) was measured and ruled out repo-wide in this same triage. RE-MEASURED 2026-08-19 (gunbc#8520, CI run 32219326621): the stall does NOT reproduce -- preparation completes in ~9 minutes and refuses with 532 typed located diagnostics, none of them in src/v1. The ruling stands on a different cause (twelve last-segment module collisions between src/v1 and src/v2 breaking bare cross-module references that resolve only by pool coincidence), and the trigger is namespace-only resolution rather than any floor speedup. The single corrected measurement lives in v1_dead_witness_tree_triage_receipt_remainder; this row cites it rather than restating it. RESTORATION TRIGGER: a v1-compiler-local cargo test (v1 is semantics-frozen with active maintenance per gunbc.v1_maintenance_standing, and a local Rust-side regression test is an admitted maintenance-class change under that standing, unlike widening the required floor's source roots) — or, separately and preferably, root-causing the fail-open itself into a typed refusal per §5, which would obsolete this witness's assertions rather than merely restore them. namespace_reference_derived_closure_production_admissions_witness_test.dag — retired: white-box, matched ReferenceBindingObservation variant shapes directly rather than compile outcomes; its own fixtures were already documented in-file as illustrative-only and not satisfying the namespace-structural-observations closing contract (see below).\n\nOUT OF SCOPE, NOT A WITNESS, LEFT IN PLACE: src/v1/gunbc/namespace_reference_derived_closure_production_observations.dag is a v1 PRODUCTION module (four ReferenceBindingObservation producers for the namespace-reference-derived-closure clauses a-d), not a test file, so it is outside this triage's 17-file population. Its only historical test consumer was the retired namespace_reference_derived_closure_production_admissions_witness_test.dag above, so it currently has zero executing consumers and zero test coverage — but it is not dead code: gunbc.roadmap_authority's namespace_reference_derived_closure_execution_contract (an open WorkItemExecutionContract, enrolled QuarantineProbeExpectRed) names 'the gated node' supplying production observations for clauses a-d as the precondition for that contract to green, and this module's namespace_structural_binding_observations_a_through_d export is the designated future producer for exactly that seam. Retiring it would delete a still-claimed future authority, not dead scaffolding; it is left in place with this receipt recording its coverage gap rather than silently carrying it.\n\nRECEIPT COMPLETENESS: undispositioned files = 0 among the 12 handled directly here; retired files' evidence is deleted with them (no discriminating claim survives that a compile-observable check could re-prove); migrated files' evidence is the new dag/test/claim files enumerated above, executing under ordinary per-PR discovery. witness_fold_src_v1_coverage_gap_note's dissolve-on ('the boundary decision on these 15 files... RELOCATION into the dag test root rather than widening the root set') is satisfied by this receipt for the population it could reach; that note is retained rather than deleted because it is still the correct historical account of why the gap existed and how the fold's subject is bounded, and because the 5-file concurrent-batch population is disposed under a separate session-local record this row does not restate."
 
@@ -1234,6 +1325,10 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag", f: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "one_sided_generated_artifact_change_merges_clean_by_real_execution"),

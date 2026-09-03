@@ -9,6 +9,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, Minute, minute, minute_count }
+import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
 import gunbc.ci_release_bins {
@@ -701,6 +702,11 @@ data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarge
   function: "fleet_converge_plan_wet",
 }
 
+data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_launch_environment_plan_wet",
+}
+
 data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_allocation_store_plan_wet",
@@ -830,12 +836,13 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 21 declarations, 21 entries. That equality is the thing nothing checks.
+// Counted at authoring: 22 declarations, 22 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
     gunbc_ci_multi_principal_probe_target,
     gunbc_ci_fleet_converge_plan_target,
+    gunbc_ci_fleet_converge_launch_environment_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
@@ -1255,6 +1262,16 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   )
 }
 
+fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_launch_environment_plan_target.entry,
+    function: gunbc_ci_fleet_converge_launch_environment_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1504,8 +1521,46 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   )
 }
 
-data ci_heal_regen_note: String = "The heal REGEN invoke: gunbc run on the generated-artifact drift gate's main_wet, which writes each committed_generated_artifacts() projection to its path (fail-closed fold — a write error stops the line, never a partial commit). Runs on the same witness_layer_roots and released gunbc binary the deploy job consumes. Idempotent by construction: on a tree already at the fixed point the writes are byte-identical, so the downstream commit-push step sees no git diff and pushes nothing — the loop terminates in one heal. That fixed point is the enforced contract of generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point (committed bytes == artifact_generate), so a non-terminating heal loop is unwritable while that witness stays green."
-
+// THE HEAL REGEN INVOKE: `gunbc run` on the generated-artifact drift gate's `main_wet`, which
+// writes each `committed_generated_artifacts()` projection to its path -- a fail-closed fold, so a
+// write error stops the line and never leaves a partial commit. It runs on the same
+// `witness_layer_roots` and released `gunbc` binary the deploy job consumes. Idempotent by
+// construction: on a tree already at the fixed point the writes are byte-identical, the downstream
+// commit-push step sees no git diff and pushes nothing, and the loop terminates in one heal.
+//
+// THAT FIXED POINT IS ENFORCED, AND WHAT THIS NOTE GOT WRONG IS WORTH MORE THAN WHAT IT GOT RIGHT.
+// A STALE CITATION DOES NOT MERELY FAIL TO NOTICE A DELETION -- IT FAILS TO NOTICE A RESTORATION,
+// and the second failure is the damaging one, because it makes a LIVE guarantee read as absent to
+// everyone consulting the authority. This note did both, in order. Until 2026-08-17 it named
+// `generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point` as the
+// enforcing contract. 611fd027708211a0c435d937ed3e45b8b936e28a (#8283, the FLOOR-Y cut) DELETED
+// that witness, and the sentence citing it survived unchanged for a fortnight -- nothing at this
+// citing end went red, because removing a route orphans every inbound citation of it silently. The
+// GUARANTEE was then restored by a DIFFERENT mechanism while the citation stayed stale, so the note
+// was wrong in both directions at once: it named a dead witness, and it would have gone on naming
+// one after the capability came back.
+//
+// WHAT ENFORCES IT NOW, named by symbol so the next deletion is decidable: `RequiredCiPhase`
+// `GeneratedArtifactPhase` (`gunbc.required_ci_phase_roster`), enrolled by #9415 and restored to
+// the required roster by #9814 on 2026-08-31, running in the BuildLane of the required merge
+// context -- `claim_executor --required-ci --required-lane build`. Its host boundary asks the
+// authority for `committed_generated_artifact_paths` and adjudicates each path's committed bytes
+// against what `artifact_generate` produces, refusing on any Drifted or Absent verdict.
+//
+// THE GRAIN MATCHES EXACTLY, which is what makes this a termination argument and not a nearby
+// comfort: that roster and the one `main_wet` writes are one fold over one registry, so the phase
+// being green on a merge candidate IS the statement that every path this invoke would write is
+// already at its fixed point -- hence no git diff, and no second heal.
+//
+// TWO BOUNDARIES, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The phase covers the
+// REGISTRY, roughly 35 artifacts including DESIGN.md, ROADMAP.md and the workflow emissions; the
+// stage0 mirror population is the separate RegenPhase. A generated `.rs` outside both --
+// `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
+// landed there without its projection and merged green. That is a real coverage gap about a THIRD
+// population and it is not this loop's: `main_wet` writes the registry and nothing else, so the
+// population the heal touches is the population the phase adjudicates. And the loop has no runner
+// today regardless -- the heal job went with `ci.yml` at the same cut, so `.github/workflows`
+// carries fleet-converge, fleet-desired and witnesses, and none of them heals.
 fn gunbc_ci_heal_regen_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1704,8 +1759,7 @@ fn ci_heal_shell_lines() -> List<String> {
             "  git commit --no-verify -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
             "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
-            "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\"",
-            "  ROOT=$(git rev-parse --show-toplevel)"
+            "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""
           ]
         )
       )
@@ -1713,19 +1767,33 @@ fn ci_heal_shell_lines() -> List<String> {
   )
 }
 
+// THE PUSHED HEAD IS NOT REVALIDATED BY THIS JOB, AND THE JOB SAYS SO RATHER THAN IMPLYING IT.
+// A push made with the Actions job credential does not start a new workflow run -- GitHub
+// suppresses that edge to stop a job from triggering itself -- so after a successful heal the
+// pull request's checks describe PRIOR_HEAD and no longer describe the branch. That is a real
+// gap and the arm below is the fail-closed answer to it: the job prints SupersededByHealedHead
+// naming both revisions and EXITS NONZERO, so the healed head arrives with a red job whose text
+// says why, and a human or a re-run decides. It does not exit zero on a head nothing has judged.
+//
+// WHAT WOULD CLOSE IT, named as a capability rather than as an artifact: a workflow_dispatch
+// entry point on this same workflow carrying the healed sha as a declared input, which every
+// dispatched run binds its own github.sha and checkout against before any witness counts.
+// gunbc.ci_spec gunbc_ci_heal_dispatch_target and tools.ci_heal_dispatch are the modeled half of
+// exactly that and stay unconsumed here, because the workflow they name (`ci.yml`) does not exist
+// and witnesses.yml declares no dispatch inputs. Wiring the invocation without those inputs would
+// dispatch a run that cannot check WHICH head it got -- the revalidation would be fabricated, not
+// performed -- so this cut restores the write-and-push capability and leaves the revalidation
+// half openly missing rather than apparently present.
 fn gunbc_ci_heal_commit_push_script() -> String {
   concat(
     fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
     concat(
-      concat("  if ! ", gunbc_ci_heal_dispatch_invoke()),
+      "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
       concat(
-        "  then\n  echo \"::error::HealDispatchRefused healed_head=$HEALED_HEAD cause=CreateWorkflowDispatchFailed\" >&2\n  exit 1\n  fi\n",
+        "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
         concat(
-          "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
-          "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
           concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
-          "  fi\n",
-          "  exit 1\nfi\n"
+          "  fi\n  exit 1\nfi\n"
         )
       )
     )

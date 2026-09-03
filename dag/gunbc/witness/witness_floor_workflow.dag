@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
@@ -14,7 +15,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { list_map }
+import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -29,6 +30,12 @@ import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
+import gunbc.compile_permit_scope {
+  FleetCompileCancellationStanding,
+  FleetCancellationSafe,
+  FleetCancellationNotSafe,
+  fleet_compile_cancellation_standing
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -36,11 +43,26 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead, PermWrite,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
+  CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
+  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_heal_credential {
+  ci_heal_branch_head_checkout_step,
+  ci_regen_heal_if,
+  ci_heal_job_permissions
+}
+import gunbc.ci_spec {
+  gunbc_ci_heal_regen_invoke,
+  gunbc_ci_heal_repo_local_git_config_invoke,
+  gunbc_ci_heal_commit_push_script,
+  ci_heal_author_commit_artifact_dir,
+  ci_heal_author_commit_artifact_name,
+  ci_heal_author_commit_required_output
+}
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -49,7 +71,7 @@ import gunbc.claim_executor_cli { claim_batch_command }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard }
 import v2.workflow.floor_wet_route { floor_wet_route_receipt_json_rel_path, floor_wet_route_receipt_tsv_rel_path }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
@@ -181,6 +203,8 @@ data build_lane_job_id: String = "required-witnesses-build"
 
 data fabric_evidence_job_id: String = "fabric-evidence"
 
+data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
+
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
 // not the required floor's; spelling "witnesses" a second time there would fork the name
@@ -207,24 +231,152 @@ data witness_floor_workflow_name: String = "witnesses"
 // under `target/` is worth identifying before this is widened further.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
-// SUPERSESSION IS AVAILABLE ONLY WHERE THIS EXPRESSION IS TRUE, AND THAT FACT NOW HAS ONE HOME.
+// SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
-// This expression decides, per event, whether GitHub cancels an in-flight run when a newer one
-// joins the group. It was previously an inline literal inside the workflow value below, unreachable
-// by name: any consumer reasoning about whether a cancellation COULD have been a lawful
-// supersession had to restate `pull_request` in its own module -- the DESIGN section 3 nicknaming
-// violation, with the specific decay that nothing relates a policy literal in a classifier to a
-// string in an emitted workflow, so the two drift silently. Hoisting it changes no emitted byte.
+// This value decides whether GitHub cancels an in-flight run when a newer one joins the group. It
+// was `${{ github.event_name == 'pull_request' }}` -- superseding pull-request runs to save fleet
+// occupancy. It is now false for every event, and that is a DECLARED, TEMPORARY REGRESSION in
+// capacity efficiency taken to stop a capacity LEAK, which is the larger loss.
 //
-// The consumer is gunbc.run_disposition, which derives supersession AVAILABILITY from this row
-// rather than hardcoding the event name it mentions.
-data witness_floor_cancel_in_progress_expression: String = "${{ github.event_name == 'pull_request' }}"
+// WHY, MEASURED RATHER THAN ARGUED. The fleet's builds are bounded by a host-persistent GNU
+// jobserver whose permits are returned COOPERATIVELY. A cancelled run SIGKILLs cargo mid-build, so
+// every borrowed permit that process held is lost for the lifetime of the daemon -- there is no
+// action a process can take after SIGKILL. The pool therefore decays monotonically toward zero
+// under normal supersession, and a host at zero permits still accepts jobs: they simply wait.
+//
+// srv1 reached 0 of 128 permits with 86.8% CPU idle and 21 runner jobs resident. Its
+// required-witnesses-build median was 26.1 minutes over 11 runs, range 24.8-27.3. Its daemon
+// self-restarted on RuntimeMaxSec=86400 at 2026-08-30T22:35:54Z with no human action and reseeded
+// 128 permits; the next two builds took 11.0 and 12.2 minutes, and the median over the following
+// six was 12.5. The band was registered BEFORE the restart, which is what makes this an
+// intervention rather than a correlation -- the earlier host-contention account had already failed
+// against the timing, since durations were flat across fleet concurrency 0/30/41/14. srv3, never
+// reseeded, still medians 22.8 minutes against srv4's 11.8.
+//
+// THE COST OF THIS ROW IS N CONCURRENT RUNS PER PULL REQUEST where one used to survive. That is
+// the same trade the concurrency group above already accepts for main, for the same reason: stale
+// work completing is expensive, and capacity silently disappearing is not recoverable. Cancelling
+// is only cheaper than not cancelling while the permits come back.
+//
+// DISSOLVE-ON, and it is the CAPABILITY rather than any artifact: no client of the required floor
+// holds a host-persistent cooperative permit -- either the ctrl host FIFO is deleted and compile
+// parallelism is invocation-local to cargo, or the pool is server-owned with admission that
+// survives client death. At that point a SIGKILL costs only the work in flight, supersession stops
+// destroying capacity, and this row goes back to an expression. Re-enabling it earlier restores
+// the leak; re-enabling it as part of the cutover canary is how the cutover proves itself, because
+// a cancelled build that leaves the next build at full declared capacity IS the acceptance test.
+// THE SUPERSESSION POLICY IS SEMANTIC, AND THE YAML SPELLING IS ITS PROJECTION.
+//
+// `cancel-in-progress` is a SERIALIZED SPELLING of a business decision, and the decision is a
+// workflow fact this repository owns -- DESIGN section 3 puts business policy in the workflow layer
+// and calls modelling it in extdeps a layer inversion. So the policy is declared here as a closed
+// vocabulary and the extdeps spec is DERIVED from it, never the reverse.
+//
+// WHY THIS IS NOT COSMETIC: the classifier used to consult the serialized form by asking whether
+// the expression text CONTAINED the event name. That is not expression evaluation, and it inverts
+// on a perfectly ordinary policy -- `${{ github.event_name != 'pull_request' }}` contains
+// `pull_request` while authorizing exactly the opposite population, so a substring reader would
+// report supersession available for the one event the policy excludes. Reading the semantic arm
+// makes the question decidable by construction instead of by text search.
+type RunningSupersessionPolicy
+  = NeverSupersedeRunning
+  | SupersedeRunningForEvent { event: String }
 
-// The event name the expression above tests, declared beside the expression in the module that
-// owns it so the pair cannot drift apart -- and a witness asserts this name actually occurs within
-// that expression, the only mechanical link available between a GitHub expression string and the
-// event vocabulary it names.
-data witness_floor_cancel_in_progress_event: String = "pull_request"
+// THE QUEUE AXIS IS THE SECOND HALF OF THE SAME FACT, and omitting it left the classifier carrying
+// a hardcoded copy of today's regime. ConcurrencySpec already distinguishes QueueMax from
+// QueueNotMax: under the not-max regime a newly queued run REPLACES the existing pending member,
+// which is what makes a pending cancellation lawful whatever cancel-in-progress says. A classifier
+// that assumes replacement is universally lawful is asserting QueueNotMax without consulting it,
+// and would go on asserting it if this workflow ever moved to the retaining regime.
+type PendingReplacementPolicy
+  = ReplaceExistingPending
+  | RetainPendingQueue
+
+type WitnessFloorConcurrencyPolicy {
+  pending: PendingReplacementPolicy
+  running: RunningSupersessionPolicy
+}
+
+// THE RUNNING AXIS IS DERIVED FROM THE OBSERVED FLEET STANDING, not authored beside it and not read
+// off a desired-state row.
+//
+// gunbc#9789 declared NeverSupersedeRunning and a DESIGN 4b(3) drop whose dissolve-on is a
+// capability: no client of the required floor holds a permit whose abandonment costs future compile
+// capacity. Written as a literal, that row survives its own reason -- the fleet stops leaking and CI
+// goes on refusing to supersede, the drop stays standing, and nothing refuses because nothing joins
+// the two facts. Section 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the
+// trigger is the whole check, and a check nothing evaluates is diligence rather than a check.
+//
+// IT READS THE STANDING AND NOT THE REALIZATION, for a reason that is a safety property rather than
+// a taste: a desired realization row and the live hosts are two independently actuated systems, and
+// a generated artifact cannot make them transition together. Deriving from the row would restore
+// cancellation the moment this workflow reached main, while hosts that had not yet restarted onto
+// the new unit went on losing a permit per kill. The unobserved fleet is on the refusing side, so
+// that interval is unwritable rather than merely unlikely.
+fn running_supersession_for_fleet_standing(
+  standing: FleetCompileCancellationStanding,
+) -> RunningSupersessionPolicy {
+  match standing {
+    FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
+    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+  }
+}
+
+data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
+  pending: ReplaceExistingPending,
+  running: running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing)
+}
+
+data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running
+
+data witness_floor_pending_replacement_policy: PendingReplacementPolicy = witness_floor_concurrency_policy.pending
+
+fn supersession_event_expression(event: String) -> String {
+  concat(concat("${{ github.event_name == '", event), "' }}")
+}
+
+fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
+  match policy {
+    NeverSupersedeRunning => CancelInProgressBool { value: false }
+    SupersedeRunningForEvent { event: e } =>
+      CancelInProgressExpression { expression: supersession_event_expression(event: e) }
+  }
+}
+
+
+// THE QUEUE AXIS EMITS FROM THE SAME ROW THE CLASSIFIER READS, or the policy is not the authority.
+// Raised in review 58012: the running axis was already derived through cancel_in_progress_of_policy
+// while the emitted mapping named ConcurrencyMappingQueueNotMax as a literal, so flipping the
+// modeled policy to RetainPendingQueue would have moved the classifier and left CI in replacement
+// mode -- one fact with two authorities, which is the thing DESIGN 3 forbids. Both axes now fold
+// out of witness_floor_concurrency_policy, so the emission cannot disagree with the classifier.
+//
+// The QueueMax arm is not a hypothetical: GitHub forces cancel-in-progress into its own
+// CancelInProgressWhenQueueMax vocabulary there, and this fold carries the running policy across
+// that boundary rather than dropping it, so the retaining regime stays expressible without a
+// second edit here.
+fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressWhenQueueMax {
+  match policy {
+    NeverSupersedeRunning => QueueMaxCancelInProgressFalse
+    SupersedeRunningForEvent { event: e } =>
+      QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
+  }
+}
+
+fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -> ConcurrencySpec {
+  let pending = policy.pending
+  match pending {
+    ReplaceExistingPending => ConcurrencyMappingQueueNotMax {
+      group: group,
+      cancel_in_progress: Present { value: cancel_in_progress_of_policy(policy: policy.running) },
+      explicit_single: none
+    }
+    RetainPendingQueue => ConcurrencyMappingQueueMax {
+      group: group,
+      cancel_in_progress: Present { value: queue_max_cancel_of_policy(policy: policy.running) }
+    }
+  }
+}
 
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
@@ -382,9 +534,18 @@ fn build_lane_build_script() -> String {
   )
 }
 
-fn witness_floor_build_step(build_script: String) -> Step {
+data witness_floor_build_step_name: String = "Build the witness fold"
+
+data heal_build_step_name: String = "Build the regenerator this job runs against its own checkout"
+
+// THE STEP NAME IS A PARAMETER BECAUSE THE JOBS BUILD DIFFERENT THINGS FOR DIFFERENT REASONS.
+// It was the literal "Build the witness fold" until the heal job bound this same function to
+// build a regenerator, at which point one name would have described two obligations -- the
+// meaning fork DESIGN section 3 names, and the emitted yaml is exactly where a reader looks to
+// find out what a job does. The construction is shared; what it is FOR is per caller.
+fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
   RunStep {
-    name: Present { value: "Build the witness fold" },
+    name: Present { value: step_name },
     id: Present { value: "build_witness_fold" },
     run: concat(build_script, "\n"),
     shell: none,
@@ -554,49 +715,58 @@ fn witness_floor_precondition() -> String {
 
 // AN INSTRUMENT, NOT A CHECK. It records and it never refuses.
 //
-// `spawn rustfmt: No such file or directory (os error 2)` refused a required run on 2026-08-22 and
-// the message reports the syscall and NOTHING about the environment that produced it. The failure
-// destroys its own evidence, so every occurrence is as unreadable as the last: two sessions
-// produced three mutually incompatible readings from it in one night (a per-host fact, a runner
-// lottery, a missing component), and all three were refuted by data neither reading had. The
-// rustup toolchain reported `component rustfmt is up to date` in the same job that could not spawn
-// it, so a bare PATH lookup found neither a rustup shim nor a toolchain binary -- and no run, red
-// or green, records which of those exists.
+// `rustc` and `rustfmt` have both vanished after successful use in the same job. The syscall
+// message reports absence but neither when nor why the file disappeared, so it cannot distinguish
+// disk pressure, age-based cleanup and another runner's initialization. A PATH/toolchain listing
+// added after the build answered a different question and was silent when setup itself failed.
 //
-// THIS IS ALSO WHY IT RUNS ON GREEN JOBS. There is no baseline: nobody knows what a WORKING job's
-// PATH, shim directory or toolchain list looks like either, so a failed run's environment could
-// not be compared against anything. A zero is readable only beside a nonzero, and today there is
-// neither.
-//
-// IT IS GUARDED ONLY ON `!cancelled()`, deliberately weaker than witness_floor_precondition, which
-// additionally requires the build to have succeeded. A build failure is precisely a case where the
-// environment is in question, so gating the recorder on the build would blind it exactly when it
-// is wanted.
-//
-// EVERY PROBE IS TOTAL BY CONSTRUCTION -- each falls back to a printed marker rather than a nonzero
-// exit, so the step cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
+// EVERY PROBE IS TOTAL BY CONSTRUCTION -- fallbacks and output-consuming pipelines turn absent
+// files, commands and filesystems into prefixed readings rather than nonzero exits, so the step
+// cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
 // `continue-on-error` is a step that MAY report a verdict and has been told to be ignored, the
 // escape-hatch shape DESIGN 5 forbids. A step with no verdict to give is a different thing.
-fn witness_toolchain_environment_probe_script() -> String {
+// THIS INSTRUMENT IS TEMPORARY. Its readings distinguish the three live eviction hypotheses:
+// falling free blocks/inodes identifies pressure reclamation; old mtimes plus wall-clock/uptime
+// identify age or periodic cleanup; and an end disappearance coincident with another job's start
+// on the same host/slot identifies runner-initiated cleanup. The start observation is deliberately
+// the FIRST step, before toolchain_home_isolation_step legitimately removes the previous job's
+// homes. The end observation is deliberately the LAST step and uses `always()`: the failing runs
+// are the subject, so a success-conditioned end observation would erase the evidence it exists to
+// collect. An empty start population is still evidence: setup can fail before creating a new
+// toolchain, and the first probe records what the previous job left before isolation deletes it.
+// Every output line has one prefix and a phase so logs can be joined across jobs/runs.
+//
+// DIRECTORY MTIME IS THE EVENT-TIME PROXY. Binary state at two boundaries leaves a deletion
+// window as wide as the job; unlink updates the containing directory's mtime, narrowing the join
+// against another job start or a periodic cleanup boundary to seconds without a background
+// sampler. Both present and absent parents are rendered, so removal of the whole tree cannot look
+// like a probe that failed to run.
+//
+// Shell remains a §6 tell, bounded by the explicit condition below rather than permanent workflow
+// furniture. Runner microVM isolation is independently sufficient because it makes another job's
+// cleanup incapable of reaching this filesystem even before the particular deleter is known.
+data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible")
+
+fn witness_toolchain_filesystem_probe_script(phase: String) -> String {
   concat(
-    "echo \"host=$(hostname) runner=$\{RUNNER_NAME:-unset}\"\n",
+    concat("# ", concat(dissolution_description(condition: toolchain_filesystem_probe_dissolution_condition), "\n")),
     concat(
-      "echo \"PATH=$PATH\"\n",
+      concat("GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=", concat(phase, "'\n")),
       concat(
-        "which -a rustfmt || echo \"which rustfmt: absent from PATH\"\n",
+        "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=$\{RUNNER_NAME:-unset}\"\n",
         concat(
-          "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
+          "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=$\{RUNNER_TEMP:-unset} rustup_home=$\{RUSTUP_HOME:-unset} cargo_home=$\{CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)\"\n",
           concat(
-            concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
+            "echo \"$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)\"\n",
             concat(
-            "ls -l \"$CARGO_HOME/bin\" || echo \"cargo bin dir: absent\"\n",
-            concat(
-              "rustup which rustfmt || echo \"rustup which rustfmt: no answer\"\n",
+              "df -Pk \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
               concat(
-                "rustup toolchain list || echo \"rustup toolchain list: no answer\"\n",
-                "rustup default || echo \"rustup default: no answer\"\n"
+                "df -Pik \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
+                concat(
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustc \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustfmt \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin/cargo; do if [ -e \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n",
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin; do if [ -d \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n"
+                )
               )
-            )
             )
           )
         )
@@ -605,11 +775,38 @@ fn witness_toolchain_environment_probe_script() -> String {
   )
 }
 
-fn witness_toolchain_environment_probe_step() -> Step {
+fn witness_toolchain_filesystem_probe_step(phase: String, condition: String) -> Step {
   RunStep {
-    name: Present { value: "Record the toolchain environment" },
+    name: Present { value: concat("Record runner filesystem at job ", phase) },
     id: none,
-    run: witness_toolchain_environment_probe_script(),
+    run: witness_toolchain_filesystem_probe_script(phase: phase),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: condition },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn witness_toolchain_filesystem_start_probe_step() -> Step {
+  witness_toolchain_filesystem_probe_step(phase: "start", condition: "always()")
+}
+
+fn witness_toolchain_filesystem_end_probe_step() -> Step {
+  witness_toolchain_filesystem_probe_step(phase: "end", condition: "always()")
+}
+
+// A WALL, NOT PART OF THE INSTRUMENT. The filesystem probe above must be total because it reports
+// evidence at a boundary; this step must refuse because an unset isolated home means the job can
+// share a mutable toolchain with another runner slot. Keeping the decision separate from the
+// recorder prevents either fact from weakening the other: a missing stat cannot trip this wall,
+// and a missing home cannot be rendered as a merely observational `unset` and allowed onward.
+fn witness_toolchain_homes_isolated_guard_step() -> Step {
+  RunStep {
+    name: Present { value: "Require isolated toolchain homes" },
+    id: none,
+    run: concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -745,7 +942,9 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 // The three rows above record files the floor wrote on every run and nobody collected. This one is
 // a rung below: `cli_run.rs` reads GUNBC_REQUIRED_FLOOR_CLAIM_COST and calls
 // `write_required_floor_claim_cost_tsv` -- one row per EXECUTED claim, carrying identity, module,
-// outcome, verdict_reached, and BOTH clocks (wall_ms and cpu_ms) -- but this job never set the
+// outcome, verdict_reached, BOTH clocks (wall_ms and cpu_ms) and the evaluator-step work measure
+// (eval_steps, marginal of stored shared fills, the one column that is not a clock and therefore
+// the one column invariant across the execution envelope) -- but this job never set the
 // variable, so the writer was never armed and the population was recomputed and discarded on every
 // required run since the floor cut.
 //
@@ -787,6 +986,73 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 data required_floor_claim_cost_path: String = "required_floor_claim_cost.tsv"
 
 data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cost"
+
+// THE FIFTH FILE: THE CROSS-CLAIM DEMAND CENSUS, and it answers a question the four above
+// structurally cannot.
+//
+// The per-claim cost receipt says WHAT each claim was charged. It cannot say what the charge was
+// FOR, and on this corpus most of a tail row's charge is not its own work: measured on main run
+// 33615659836, a witness and its discriminating RED -- which do materially different work -- cost
+// within 2ms of each other while both sit near the ceiling, and one 34-row module spans 0ms to the
+// ceiling in three bands that track WHICH SHARED PRODUCER a row forces rather than what it
+// asserts. That is the floor's fresh-frame-per-claim boundary re-deriving each closure's pure
+// substrate once per claim, and DESIGN section 2 prices it as authored duplication whose least
+// common ancestor is the RUN.
+//
+// THE REPAIR ALREADY EXISTS AND ITS DISCOVERY MECHANISM DID NOT. `v2.workflow.floor_pure_producer_share`
+// serves one evaluation of a declared pure producer across claim frames -- and its roster is
+// hand-authored, because the interpreter's recompute ledger is scoped to ONE evaluation frame and
+// reports only keys re-hit inside it. A producer evaluated exactly once per claim, in thousands of
+// claims, has count=1 in every frame's ledger and appears in none of them. So the instrument that
+// ranks redundant recompute was blind to the entire population the roster is enrolled from, and
+// candidates were discovered when a budget refusal landed on an unrelated lane's pull request.
+// `absorb_claim_recompute_demand` folds each claim's ledger into a run-scoped census before the
+// frame is dropped, and this artifact is that census.
+//
+// WHAT IT DOES NOT ANSWER, said here because an artifact is read for more than it measures. It
+// explains the LEVEL -- why a family sits pinned near the ceiling -- and not the VARIANCE: a
+// per-closure constant is the same on two runs of one tree, while 32 rows have been measured with
+// byte-identical eval_steps and cpu up 1.31-1.80x across runs over a byte-identical payload. The
+// two compose (the constant puts the family AT the line, something run-to-run decides which rows
+// cross). Two receipts, neither a cross-run comparison: two rows of one module measured 502ms and
+// EXACTLY 500ms against the 500ms budget, and one row was observed crossing the two populations on
+// ONE tree -- run 33620893203 attempt 1 records it INTERRUPTED-BEFORE-VERDICT with cost=UNMEASURED
+// while attempt 2 of the same run records it COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500. Which
+// population a row lands in at that margin is decided by whether the poll fired before or after
+// the work finished. The pair is a BOUND beside a VALUE rather than two measurements of one
+// quantity, so no cost is written for attempt 1: an interrupted row's reported figure names where
+// the poll observed the ceiling, which is a property of the budget. Both citations pin the ATTEMPT, because a bare run id and a bare job id
+// resolve to the latest one and a rerun silently changes what they serve. The tipping
+// variable is separately open. And a cost inside a native builtin called directly from a claim
+// body is not a row here at all, because the ledger keys pure named fn evaluations -- the same
+// boundary std.evaluation_budget's opaque-host-call note draws for the deadline.
+//
+// THE COST COLUMN IS NOT ADDITIVE AND THE ARTIFACT SAYS SO IN ITS OWN SUMMARY LINE. Durations are
+// inclusive of callees, so a producer and everything it calls both appear and their figures
+// overlap; summing the column counts the same nanoseconds once per level of nesting. On the first
+// run that produced this artifact the naive sum over shared rows was ~1850s against a run whose
+// entire claim-side CPU was 130s. So the summary carries claim_cpu_total_ms as the ceiling any
+// true total must sit under, and a displaceable-cost figure needs self-time, which the ledger does
+// not carry yet.
+//
+// THE NEGATIVE CONTROL IS EXECUTED RATHER THAN PROMISED, and it is the strongest thing that can
+// be said about this artifact's separation of discovery from policy. The two rust target models
+// were enrolled in the share roster and REMOVED, because a measured present-versus-absent
+// experiment priced their serve above their recompute. They are exactly the kind of row this
+// census ranks highly -- and on the first run that produced the artifact, the rust target-model
+// chain does rank in the top ten by cross-claim recomputation while remaining unenrolled and
+// unenrollable by any path from here. Demand is observed; enrolment stays a separate decision
+// with its own measurement, in this order: demand observed, candidate selected, present/absent
+// serve experiment on ONE exact tree, portability and argument-reuse evidence, serve cheaper than
+// recompute, and only then a roster edit in floor_pure_producer_share.
+//
+// IT GATES NOTHING AND ENROLS NOTHING. A row is a CANDIDATE whose SERVE cost is unmeasured, and
+// `floor_pure_producer_share` records the case where the serve lost to the recompute and the row
+// was removed. Arming this variable changes no threshold and no verdict: the writer is a pure
+// write of rows the fold already produced, on the same completion path as the four above.
+data required_floor_cross_claim_demand_path: String = "required_floor_cross_claim_demand.tsv"
+
+data required_floor_cross_claim_demand_artifact_name: String = "required-floor-cross-claim-demand"
 
 // THE FLOOR HAS BEEN WRITING THREE FILES ON EVERY RUN AND THROWING ALL THREE AWAY.
 //
@@ -896,6 +1162,11 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_start_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job start",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
@@ -918,9 +1189,9 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     WitnessFloorBoundStep {
-      step: witness_floor_build_step(build_script: build_script),
+      step: witness_floor_build_step(step_name: witness_floor_build_step_name, build_script: build_script),
       role: consumes_only(capabilities: [CargoCapability]),
-      step_name: "Build the witness fold",
+      step_name: witness_floor_build_step_name,
     },
   ]
 }
@@ -940,9 +1211,9 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: witness_floor_build_script()),
     items: [
       WitnessFloorBoundStep {
-        step: witness_toolchain_environment_probe_step(),
+        step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
-        step_name: "Record the toolchain environment",
+        step_name: "Require isolated toolchain homes",
       },
       WitnessFloorBoundStep {
         step: witness_floor_run_step(),
@@ -984,6 +1255,20 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         ),
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the floor's cross-claim demand census",
+          artifact_name: required_floor_cross_claim_demand_artifact_name,
+          path: required_floor_cross_claim_demand_path
+        ),
+        role: capability_neutral,
+        step_name: "Upload the floor's cross-claim demand census",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1090,14 +1375,19 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
     prepared_bound_steps(build_script: build_lane_build_script()),
     items: [
       WitnessFloorBoundStep {
-        step: witness_toolchain_environment_probe_step(),
+        step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
-        step_name: "Record the toolchain environment",
+        step_name: "Require isolated toolchain homes",
       },
       WitnessFloorBoundStep {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "Required CI: build lane (phases named by the run, not by this label)",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
       },
     ],
   )
@@ -1213,12 +1503,41 @@ fn witness_floor_job() -> Job {
 // -- regen's receipt is consumed by nothing outside its own process, and the floor's three TSVs
 // are written and uploaded inside the witnesses job -- so there is nothing an ordering edge could
 // protect.
-// THE RUST UNIT TESTS, IN THEIR OWN JOB AND NOT IN EITHER REQUIRED LANE (operator ruling
-// 2026-08-29: "add the rust unit tests but keep them in a separate job for now"). The 774
-// `#[test]`s under src/v1/stage0 ran on no CI path before this job existed. It is not a `needs` of
-// the aggregate, so it does not gate a merge yet; it is a third context beside the two lanes, and
-// promoting it is a one-row edit to `required_lanes_aggregate_job` once its wall clock is measured
-// on the fleet runner.
+// THE RUST UNIT TESTS, NOW A REQUIRED LANE. The 774 `#[test]`s under src/v1/stage0 ran on no CI
+// path at all before this job existed, then ran on every push and pull request while GATING
+// NOTHING -- and that gap produced exactly the harm it predicts: #9886 landed two failing tests on
+// main with every required check green. This job is a member of `required_lanes_roster`, so its
+// result is read by the aggregate's verdict and a failure here blocks.
+//
+// PROMOTED UNDER THE 2026-08-29 OPERATOR RULING'S OWN TERMS -- "add the rust unit tests but keep
+// them in a separate job FOR NOW", conditioned on its wall clock being measured on the fleet
+// runner. It is still a separate JOB; what changed is that the aggregate now reads it.
+//
+// THE COST IS ZERO ON THE CRITICAL PATH, and the reason is a comparison rather than a bound. The
+// lanes run in PARALLEL with the aggregate only waiting, so promotion adds nothing unless this
+// becomes the SLOWEST lane -- and measured across 120 witnesses runs it sits BELOW
+// `required-witnesses-floor` at every quantile. Re-derive with
+// `gh api repos/OWNER/REPO/actions/runs/<id>/jobs` over a stated window rather than trusting a
+// remembered figure: the numbers move, the comparison is the claim, and a timeout-headroom
+// argument would have been the wrong one -- headroom says nothing about what the aggregate waits
+// for.
+//
+// WHAT THE PROMOTION WAITED ON WAS NEVER THE EDIT SIZE, and all three conditions were discharged
+// before this landed rather than argued away. Main had to be GREEN, because a promotion whose
+// first act blocks every open pull request on a defect already fixed elsewhere is a self-inflicted
+// outage -- and that was not hypothetical: while this was held, #10036 was blocked by
+// `shell_service_unmodeled_output_key_refuses`, main's own defect, whose fix its author had
+// already landed under another number. The FLEET had to be healthy, because a lane that cannot be
+// delivered its admitted memory or toolchain produces reds carrying no information about the diff,
+// and gating on it converts an uninformative signal into repository-wide blocking authority. And
+// the required floor's per-claim COST ACCOUNTING had to be understood, for the same reason one
+// layer down -- `gunbc.recurring_failure_mode` `recurrence_ledger_scoped_below_the_recurrence`.
+//
+// THAT LAST CONDITION IS THE ONE A LATER READER WILL BE TEMPTED TO DROP, so it is stated as the
+// rule and not as history: A LANE MAY BE PROMOTED ONLY WHEN A RED IN IT DISCRIMINATES. Wall clock
+// is the cheap question; whether the lane's failures are ABOUT THE DIFF is the load-bearing one,
+// and a lane that reds for shared or host reasons is worse promoted than unpromoted, because it
+// converts a known-uninformative signal into a merge block nobody can act on.
 data rust_unit_tests_job_id: String = "rust-unit-tests"
 
 fn rust_unit_tests_step() -> Step {
@@ -1263,6 +1582,11 @@ fn rust_clippy_all_targets_step() -> Step {
 fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_start_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job start",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
@@ -1293,6 +1617,11 @@ fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
       step: rust_clippy_all_targets_step(),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "clippy, all targets",
+    },
+    WitnessFloorBoundStep {
+      step: witness_toolchain_filesystem_end_probe_step(),
+      role: capability_neutral,
+      step_name: "Record runner filesystem at job end",
     },
   ]
 }
@@ -1523,6 +1852,11 @@ fn fabric_evidence_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Calibrate fabric CI evidence boundary",
       },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
+      },
     ],
   )
 }
@@ -1625,6 +1959,11 @@ fn emit_copy_qualification_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [CargoCapability]),
         step_name: "EMIT-COST-QUAL-0: wet copy/share qualification battery",
       },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
+      },
     ],
   )
 }
@@ -1654,6 +1993,245 @@ fn emit_copy_qualification_battery_job() -> Job {
     continue_on_error: none,
     concurrency: none,
     permissions: none
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE HEAL JOB, RESTORED AS AN EMISSION OF THIS AUTHORITY (gunbc.rung_drop floor_cut_heal).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// WHAT WAS ACTUALLY MISSING, which is smaller than the row reads and worth stating exactly. The
+// 2026-08-15 floor cut deleted `gunbc.ci_workflow` and `ci.yml` with it, and the heal JOB went
+// with them. Everything the job DOES survived that cut unconsumed: gunbc.heal_push_plan decides
+// per artifact whether the Actions job credential may advance its path, gunbc.ci_spec renders the
+// git config / drift census / staging / commit / push script from that decision, and
+// gunbc.ci_heal_credential models the checkout step whose persisted credential is the push
+// authority. What did not survive was a WORKFLOW that emits a job binding them, so the whole
+// model was a check with no consumer -- specification-without-execution, DESIGN §5. This job is
+// that consumer, and it is emitted here because this file is now the repository's only CI
+// workflow authority.
+//
+// THIS JOB IS SMALLER THAN THE ONE IN HISTORY AND THAT IS A CLIMB, NOT A CAPABILITY LOSS -- read
+// this paragraph before concluding otherwise. `git show 611fd027708^:.github/workflows/ci.yml`
+// carries a 223-line heal_generated_artifacts, and FOUR of its arms are absent here:
+//
+//   * the binary/source revision skew guard (`git rev-list HEAD..$BUILT_FROM -- src/v1`)
+//   * its automatic merge remedy (`git merge --no-edit $BUILT_FROM`)
+//   * the conflict resolution that took the ours side of a generated artifact
+//   * the ~200-path hand-maintained `:(exclude)` roster that classified a conflicting path as
+//     authored or generated
+//
+// All four existed to manage ONE defect, and none of them is a capability in its own right.
+// Incident 2026-07-29: the release binary came from a job that checked out the MERGE ref while
+// the heal checked out the BRANCH HEAD, so the two could name different revisions of `src/v1`;
+// a seed commit adding a Rust->.dag call then made the regen die mid-run on every branch that
+// predated it (#7392, #7394, #7395, none at fault). The guard detected that state, the merge
+// repaired it, the --ours arm resolved what the merge could not, and the roster decided which
+// paths the --ours arm was allowed to touch.
+//
+// THIS JOB BUILDS ITS OWN `gunbc` FROM THE SAME BRANCH-HEAD CHECKOUT IT THEN REGENERATES, in one
+// job, so the binary and the tree are one revision BY CONSTRUCTION. There is no second revision
+// to skew against, hence nothing to detect, nothing to merge, no conflict to resolve, and no
+// authored-versus-generated classification to make. The class moves from `guarded by a check`
+// (DESIGN §4b rung 2) to `has no constructor` (rung 4); the arms are dissolved by the climb, per
+// §4b(4), rather than deleted from a job that still needs them.
+//
+// TWO OF THEM WOULD ALSO BE DEFECTS TO RESTORE, independently of the above, and they are named
+// so a future reader does not helpfully rebuild them. Taking the ours side of a diverged
+// generated artifact is exactly what the generated-artifact merge driver now REFUSES to do
+// (DESIGN, Building & checks: it dropped the other side's authority-derived bytes with no
+// conflict, twice on #7836) -- a silent widen, which §5 forbids. And the `:(exclude)` roster was
+// a second authority for a fact `gunbc.generated_artifact` already owns, which rots silently
+// (§3). The auto-push-versus-author-commit split this job DOES make is derived instead: it folds
+// that registry through gunbc.heal_push_plan, and no path is retyped anywhere.
+//
+// WHY THE BRANCH HEAD AND NOT THE MERGE REF: the job pushes the regeneration back, and a merge
+// ref is not a branch anyone can push. `ci_heal_branch_head_checkout_step` is the modeled step
+// carrying that, including the persisted-credentials binding gunbc.heal_push_plan resolves the
+// push authority from -- so editing the checkout's inputs moves the plan's verdict rather than
+// silently breaking the push.
+//
+// IT MUST NOT BE ADDED TO THE `witnesses` AGGREGATE'S `needs` LIST, and the reason is a role
+// split rather than a preference (manager ruling, 2026-09-02). HEAL REMEDIATES; the build lane's
+// `generated-artifact` phase ADJUDICATES. Drift is caught by that phase whether or not this job
+// ran, so leaving heal out of the required needs does not weaken the gate -- and putting it in
+// would turn a remediator into one, at which point its own nonzero SupersededByHealedHead arm
+// would block the very branch it had just repaired. It also holds contents:write, and a merge
+// gate holding a write credential is a different safety question from the one this row answers.
+// So it carries no lane and no `needs` edge: advisory to the merge, load-bearing to the branch.
+data heal_generated_artifacts_timeout_minutes: Int = 90
+
+data heal_generated_artifacts_required_bins: List<String> = ["gunbc"]
+
+fn heal_generated_artifacts_build_script() -> String {
+  repo_self_build_command(bins: heal_generated_artifacts_required_bins)
+}
+
+fn heal_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate every committed generated artifact" },
+    id: none,
+    run: gunbc_ci_heal_regen_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The generated pre-commit hook re-asserts core.hooksPath and the generated-artifact merge driver
+// binding. Converging it here is what makes the commit below run under the same hook configuration
+// a developer's clone has, rather than under whatever a fresh runner checkout defaults to.
+fn heal_repo_local_git_config_step() -> Step {
+  RunStep {
+    name: Present { value: "Converge repository-local git config" },
+    id: none,
+    run: gunbc_ci_heal_repo_local_git_config_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+data heal_commit_push_step_id: String = "heal_commit_push"
+
+fn heal_commit_push_step() -> Step {
+  RunStep {
+    name: Present { value: "Commit and push the regeneration" },
+    id: Present { value: heal_commit_push_step_id },
+    run: gunbc_ci_heal_commit_push_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE REFUSED HALF LEAVES WITH ITS BYTES, WHICH IS THE DIFFERENCE BETWEEN A REFUSAL AND A DEAD
+// END. A path gunbc.heal_push_plan classifies AuthorCommitRequired -- today the workflow
+// projections, because the Actions job credential carries no `workflows` scope -- cannot be pushed
+// by this job at all. Printing "regenerate it yourself" and discarding the regenerated bytes would
+// make the author redo work the runner already did; uploading them means the remedy is a download
+// and a commit. The step that produced them exits nonzero either way, so this is not an escape
+// hatch: the line is stopped, and the repair is handed over rather than withheld.
+fn heal_author_commit_bundle_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the author-commit-required regeneration" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
+        kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 14)),
+      ]
+    },
+    env: none,
+    if_condition: Present {
+      value: concat(
+        concat(concat("always() && steps.", heal_commit_push_step_id), concat(".outputs.", ci_heal_author_commit_required_output)),
+        " == '1'"
+      )
+    },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE REGEN STEP IS capability_neutral, AND THE FLOOR'S RUN STEP IS NOT THE PRECEDENT IT LOOKS
+// LIKE. That step declares RustfmtCapability because `claim_executor --required-ci` carries a
+// REGEN PHASE that shells to rustfmt to normalize the emitted stage0 mirror. This job's regen step
+// runs a different producer: `main_wet` folds `committed_generated_artifacts()` through
+// `artifact_generate` and writes the bytes, and nothing on that path spawns a formatter -- the
+// emitters that could care author `#[rustfmt::skip]` into their own output instead. Declaring
+// rustfmt here by analogy would be the false declaration this file already caught once on the
+// floor's run step, in the opposite direction: claiming a consumer that does not exist rather than
+// omitting one that does. The toolchain provider is still consumed, by the build step above it.
+fn heal_generated_artifacts_bound_steps() -> List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: ci_heal_branch_head_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout triggering branch head (heal pushes the regeneration back to this branch)",
+    },
+    WitnessFloorBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [
+        CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+      ]),
+      step_name: "Install Rust toolchain",
+    },
+    WitnessFloorBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_build_step(step_name: heal_build_step_name, build_script: heal_generated_artifacts_build_script()),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: heal_build_step_name,
+    },
+    WitnessFloorBoundStep {
+      step: heal_regen_step(),
+      role: capability_neutral,
+      step_name: "Regenerate every committed generated artifact",
+    },
+    WitnessFloorBoundStep {
+      step: heal_repo_local_git_config_step(),
+      role: capability_neutral,
+      step_name: "Converge repository-local git config",
+    },
+    WitnessFloorBoundStep {
+      step: heal_commit_push_step(),
+      role: capability_neutral,
+      step_name: "Commit and push the regeneration",
+    },
+    WitnessFloorBoundStep {
+      step: heal_author_commit_bundle_step(),
+      role: capability_neutral,
+      step_name: "Upload the author-commit-required regeneration",
+    },
+  ]
+}
+
+fn heal_generated_artifacts_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: heal_generated_artifacts_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn heal_generated_artifacts_job() -> Job {
+  Job {
+    id: heal_generated_artifacts_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: heal_generated_artifacts_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_regen_heal_if },
+    timeout_minutes: heal_generated_artifacts_timeout_minutes,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: ci_heal_job_permissions }
   }
 }
 
@@ -1881,6 +2459,40 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_unit_var: String = "UNIT"
+
+// THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
+//
+// The gate's verdict and the step's `env` block are the same fact asked in two directions -- which
+// jobs decide the merge -- and they were previously two hand-kept lists whose agreement nothing
+// checked. A lane present here but absent from `needs` reads an unset variable; a lane in `needs`
+// but absent here is a job that runs and cannot block. Both are silent. Deriving both surfaces
+// from this row makes the second state unwritable and leaves only the `needs` edge to keep in
+// step, which is the one edge GitHub owns rather than us.
+//
+// NON-EMPTY BY CONSTRUCTION -- see `RequiredLane` in `gunbc.required_lanes_gate` for why an empty
+// roster is a fail-open rather than a degenerate case.
+fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
+  FreeSemigroup {
+    head: RequiredLane {
+      job_id: build_lane_job_id,
+      label: "build",
+      var_name: required_lanes_gate_build_var
+    },
+    tail: [
+      RequiredLane {
+        job_id: floor_lane_job_id,
+        label: "floor",
+        var_name: required_lanes_gate_floor_var
+      },
+      RequiredLane {
+        job_id: rust_unit_tests_job_id,
+        label: "unit",
+        var_name: required_lanes_gate_unit_var
+      }
+    ]
+  }
+}
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
 data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
@@ -1893,8 +2505,7 @@ data required_lanes_gate_attribution_var: String = "ATTRIBUTION"
 fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
     stmts: required_lanes_gate_stmts(
-      build_var: required_lanes_gate_build_var,
-      floor_var: required_lanes_gate_floor_var,
+      lanes: required_lanes_roster(),
       pull_request_var: required_lanes_gate_pull_request_var,
       event_name_var: required_lanes_gate_event_name_var,
       measured_head_var: required_lanes_gate_measured_head_var,
@@ -1946,19 +2557,25 @@ fn required_lanes_aggregate_script() -> String {
 // takes variable NAMES only and reads them as shell variables; the expressions live here, one row
 // per variable, joined to the gate by the same declarations the gate is handed.
 fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
-  [
-    kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
-    kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+  list_append(
+    left: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) {
+      kv(
+        key: lane.var_name,
+        value: yaml_string(s: required_lane_result_expression(job_id: lane.job_id))
+      )
+    }),
+    right: [
     kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
     kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
     kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
     kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
-  ]
+    ]
+  )
 }
 
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
-    name: Present { value: "Both required lanes must have succeeded" },
+    name: Present { value: "Every required lane must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
@@ -1988,7 +2605,7 @@ fn required_lanes_aggregate_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: [required_lanes_aggregate_step()],
-    needs: [build_lane_job_id, floor_lane_job_id],
+    needs: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) { lane.job_id }),
     env: none,
     outputs: none,
     if_condition: Present { value: required_lanes_aggregate_job_condition() },
@@ -2013,15 +2630,9 @@ data witness_floor_workflow: Workflow = {
     }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
-      group: witness_floor_concurrency_group,
-      cancel_in_progress: Present {
-        value: CancelInProgressExpression {
-          expression: witness_floor_cancel_in_progress_expression
-        }
-      },
-      explicit_single: none
-    }
+    value: concurrency_of_policy(
+      policy: witness_floor_concurrency_policy,
+      group: witness_floor_concurrency_group)
   },
   env: Present {
     value: [
@@ -2029,7 +2640,9 @@ data witness_floor_workflow: Workflow = {
       kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
-      kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path))
+      kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path)),
+      kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
     ]
   },
   permissions: Present {
@@ -2041,7 +2654,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), fabric_evidence_job(), emit_copy_qualification_battery_job(), wet_receipts_job(), required_lanes_aggregate_job()]
+  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), fabric_evidence_job(), emit_copy_qualification_battery_job(), heal_generated_artifacts_job(), wet_receipts_job(), required_lanes_aggregate_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim. A
@@ -2143,8 +2756,10 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && emit_copy_qualification_capability_closure_holds() && wet_receipts_capability_closure_holds() && required_lanes_gate_is_renderable() {
-        WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && emit_copy_qualification_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && wet_receipts_capability_closure_holds() && required_lanes_gate_is_renderable() {
+        WitnessFloorGenerated {
+          content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+        }
       } else {
         WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
       }

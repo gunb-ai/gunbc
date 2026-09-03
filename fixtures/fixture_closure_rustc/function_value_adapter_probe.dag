@@ -1,0 +1,26 @@
+module fixture.closure.rustc_function_value_adapter_probe
+
+// THE GREEN ARM OF THE FUNCTION-VALUE ADAPTER PAIR, posed through
+// v1_compiler.emitted_closure_compile_host run_function_value_adapter_discrimination.
+//
+// The subject is v1.compiler.emit_rust rust_call_arg_function_value_adapt. `adapter_add` returns
+// an arrow type, so its result is carried as the function-VALUE rendering (Rc<dyn Fn(..) -> ..>,
+// callable_type_template); `adapter_apply`'s parameter is rendered through the other path
+// (emit_rust_param_type) as an opaque `impl Fn(..) -> .. + Clone` bound. Rc<F> has no blanket
+// `impl Fn` in std, so the two do not meet on their own -- the adapter wraps the argument in a
+// forwarding closure at the call position, and that wrapper is what this arm asks rustc about.
+//
+// THE CALL SPELLING IS THE SUBJECT AND MUST NOT BE "TIDIED" INTO A LET. The adapter keys on the
+// argument being a CALL EXPRESSION; binding `adapter_add(k: 1)` to a local first and passing the
+// binding is the RED arm of this pair (function_value_let_probe.dag), which rustc refuses. So
+// hoisting the call out of the argument position here does not simplify this fixture, it deletes
+// the subject and turns the pair's control into a copy of its red.
+//
+// NO IMPORTS, deliberately: the emitted closure is this module plus the runtime, so a red here
+// cannot come from anything but this file.
+
+fn adapter_add(k: Int) -> fn(Int) -> Int { fn(n) { n + k } }
+
+fn adapter_apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+
+fn adapter_probe() -> Int { adapter_apply(f: adapter_add(k: 1), x: 41) }

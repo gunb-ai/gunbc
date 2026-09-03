@@ -4,11 +4,13 @@ import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { content_hash_atom, Sha1Digest }
 import extdeps.git.object_store { GitSha1ObjectId }
 import extdeps.crypto.hash { sha256_digest }
-import v2.workflow.floor_discovery { floor_discovery_tree_id }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
 import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
 import gunbc.self_host_compile_phase_frontier {
+  TargetDefaultedToHost,
+  TargetPinnedOnInvocation,
   PhaseCount,
   PhaseNotYetReached,
   Observed,
@@ -35,7 +37,6 @@ import gunbc.self_host_compile_phase_frontier {
   PhaseBoardSeriesRefused,
   ExposedByPhaseAdvance,
   PhaseBoardSeriesHeld,
-  phase_board_series_ratchet,
   self_host_compile_phase_frontier_receipts,
   PersistedPhaseBoardFold,
   phase_board_from_census_identities,
@@ -51,6 +52,12 @@ import gunbc.self_host_compile_phase_frontier {
   board_row,
   CompilePhaseFrontierValidated,
   compile_phase_frontier_standing,
+  current_compile_phase_frontier_standing,
+  CompilePhaseFrontierCoverage,
+  FrontierCoversSubjectTree,
+  FrontierReceiptTreeStale,
+  FrontierCoverageRefused,
+  compile_phase_frontier_coverage,
   genesis_5006ddc6_parse_observation,
   genesis_5006ddc6_raw_error_diagnostic_identities,
   phase_census_digest,
@@ -59,6 +66,7 @@ import gunbc.self_host_compile_phase_frontier {
   EmissionOrderedV1,
   census_identity_domain_separator,
   census_population_is_duplicate_free,
+  deduplicate_identities,
   render_phase_board
 }
 import extdeps.cargo_diagnostic {
@@ -172,10 +180,41 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
 // The required witness executes over the persisted series, not a fixture or a copied count. The
 // genesis is the only row today; once a successor is appended this same call validates the link and
 // applies the phase/identity ratchet to the latest validated pair.
+// ASKED THROUGH THE STANDING RATHER THAN THROUGH THE RATCHET, and the two are not the same
+// question by a hair: `CompilePhaseFrontierValidated` is `PhaseBoardSeriesHeld` AND a latest
+// receipt existing, so this asserts strictly MORE than it did. The extra conjunct cannot go green
+// where the old one went red -- a held series with no latest would now refuse here, which is the
+// fail-closed direction.
+//
+// IT ALSO STOPS BEING THE MOST EXPENSIVE ROW IN THE CORPUS. Asking the ratchet directly re-derived
+// the whole fold in this claim's own frame; asking the standing reads the value
+// `v2.workflow.floor_pure_producer_share` already holds. Measured on this branch: 427ms on the
+// absent arm and 461ms with the share enrolled but this row still folding for itself -- the single
+// highest row in a 3499-row corpus at 92% of the 500ms ceiling.
+//
+// WHAT THIS ROW NOW TRUSTS, STATED PRECISELY, BECAUSE AN EARLIER REVISION OF THIS COMMENT OVERCLAIMED
+// IT. It said this row's safety rested on
+// `the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series` acting as the
+// corpus's cache cross-check, which would make the share tier's correctness depend on one test in
+// one module. That is the wrong home for that fact and it is not where it lives.
+//
+// THE SERVE IS THE TIER'S OWN GUARANTEE. `v2.workflow.floor_pure_producer_share` keys every entry on
+// FN-NODE IDENTITY plus a content hash of the full argument row and serves only after the stored
+// argument row verifies structurally equal in portable form, a hash collision degrading to
+// recompute rather than to a wrong value. For a NULLARY producer the argument row is empty, so a
+// wrong serve would mean one declaration's value returned under another declaration's node
+// identity. That invariant is the tier's, it carries the tier's own evidence, and re-asserting it
+// here would be a second authority for it.
+//
+// SO THE WITNESS BELOW GUARDS A DIFFERENT HAZARD, AND THE TWO WERE CONFLATED. Its subject is
+// AUTHORING: whether `current_compile_phase_frontier_standing` names the series its name claims.
+// That is decidable without the cache and is not a statement about serving at all. Its removal is
+// an ordinary loss of a discriminating red -- which is a real loss -- and not a silent conversion of
+// a verified share into an unverified one.
 test fn current_persisted_compile_phase_frontier_holds() -> Bool {
-  match phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts) {
-    PhaseBoardSeriesHeld => true
-    verdict => false
+  match current_compile_phase_frontier_standing() {
+    CompilePhaseFrontierValidated { latest: _ } => true
+    standing => false
   }
 }
 
@@ -405,7 +444,7 @@ test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool
 // the document renders may not say the emitted compiler clears typeck or borrowck while the latest
 // validated receipt's census says otherwise.
 test fn the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed() -> Bool {
-  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+  match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => {
       let rendered = render_phase_board(board: latest.board)
       !string_contains(s: rendered, pattern: "typeck PASSES")
@@ -497,6 +536,33 @@ test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
 // The refused-file population had no duplicate wall at all until this predicate was wired into
 // receipt_population_coherent: rustfmt refusing one path twice would double-count the Parse row and
 // carry the repeat into the digest. This is the discriminating pair for that wall.
+// THE SORT IS LOAD-BEARING FOR CORRECTNESS, NOT FOR TIDINESS, AND NOTHING PINNED THAT.
+//
+// `deduplicate_identities` decides membership by comparing against the LAST KEPT element only. That
+// is sound exactly because the input was sorted first, which puts equal identities adjacent -- so the
+// sort is not a presentation choice that happens to precede the fold, it is the precondition the
+// one-element comparison depends on. Delete `|> sort_by(identity => identity)` and the fold silently
+// stops collapsing duplicates that are separated by any other identity, while continuing to collapse
+// adjacent ones: a dedup that works on the easy inputs and quietly fails on the real ones.
+//
+// THE SUBJECT IS CHOSEN SO THE MUTANT CANNOT PASS. ["b", "a", "b"] holds a duplicate that is NOT
+// adjacent in encounter order; the sorted fold answers ["a", "b"], and the same fold without its sort
+// answers ["b", "a", "b"] -- three elements, both `b`s surviving. The all-adjacent case is asserted
+// beside it as the positive control that the mutant still passes, which is what makes the first arm
+// the discriminating one rather than the pair merely being two examples.
+//
+// WHY THIS AND NOT AN ORDER ASSERTION: encounter order is unobservable through either consumer --
+// `canonical_identity_set` sorts the result and `census_population_is_duplicate_free` reads only the
+// count -- so pinning the output ORDER would assert a property no caller can distinguish. What IS
+// observable through both is whether a duplicate survives, and that is what this holds.
+test fn deduplication_collapses_a_non_adjacent_duplicate_and_not_only_an_adjacent_one() -> Bool {
+  count(deduplicate_identities(identities: ["b", "a", "b"])) == 2
+    && count(deduplicate_identities(identities: ["b", "b", "a"])) == 2
+    && count(deduplicate_identities(identities: ["a", "a", "a"])) == 1
+    && count(deduplicate_identities(identities: [])) == 0
+    && count(deduplicate_identities(identities: ["b", "a", "c"])) == 3
+}
+
 test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
   !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
     && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
@@ -607,7 +673,7 @@ fn duplicated_refusal_receipt() -> CompilePhaseFrontierReceipt {
       assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
       cargo_identity: "cargo fixture" as NonEmptyStr,
       rustc_identity: "rustc fixture" as NonEmptyStr,
-      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      invocation: CompilePhaseInvocation { target: "fixture-target", target_selection: TargetDefaultedToHost, profile: "check/dev", features: [] },
       classification_policy_digest: rustc_phase_classification_policy_digest,
       comparison_epoch: "fixture-epoch" as NonEmptyStr
     },
@@ -655,7 +721,7 @@ fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
       assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
       cargo_identity: "cargo fixture" as NonEmptyStr,
       rustc_identity: "rustc fixture" as NonEmptyStr,
-      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      invocation: CompilePhaseInvocation { target: "fixture-target", target_selection: TargetDefaultedToHost, profile: "check/dev", features: [] },
       classification_policy_digest: rustc_phase_classification_policy_digest,
       comparison_epoch: "fixture-epoch" as NonEmptyStr
     },
@@ -680,4 +746,95 @@ fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
 
 test fn the_same_receipt_without_the_repeat_is_coherent() -> Bool {
   receipt_population_coherent(receipt: clean_refusal_receipt())
+}
+
+// THE LIVE-COVERAGE JOIN, AND THESE FOUR PROBES ARE ITS ENROLLED EVIDENCE. The judgment gates
+// nothing today -- see the module annotation on compile_phase_frontier_coverage for why an
+// actuated arm would refuse every merge -- so these fixtures are the only thing that executes it,
+// and they stay enrolled when the measurement surface that actuates it arrives.
+fn fixture_tree_at(hex: String) -> FloorDiscoveryTreeId {
+  floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: hex } })
+}
+
+// The tree clean_refusal_receipt names. Written once so the covered and stale probes cannot drift
+// apart into agreeing for a reason other than the one under test.
+fn fixture_receipt_tree_hex() -> String { "2222222222222222222222222222222222222222" }
+
+test fn a_receipt_naming_the_tree_under_judgment_covers_it() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [clean_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoversSubjectTree { latest: _ } => true
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED. Same validated series, a different tree under judgment -- which is the
+// ordinary state of every merge, since the live tree moves and receipts are authored rarely. If
+// this answered Covered the judgment would be a decoration that reports coverage it never checked.
+test fn a_receipt_naming_a_different_tree_is_stale_against_the_tree_under_judgment() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [clean_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: "7777777777777777777777777777777777777777") }
+  ) {
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      r == concat("sha1:", fixture_receipt_tree_hex())
+        && s == "sha1:7777777777777777777777777777777777777777"
+    _ => false
+  }
+}
+
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller with no tree identity gets a typed
+// refusal; answering Covered there is the absorbing fallback, and answering Stale would be a
+// fabricated comparison against a subject nobody observed.
+test fn an_unobserved_tree_under_judgment_refuses_rather_than_covering() -> Bool {
+  match compile_phase_frontier_coverage(series: [clean_refusal_receipt()], subject_tree: none) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+// AN INVALID SERIES MAY NOT COVER ANYTHING, EVEN WHEN THE TREES MATCH. duplicated_refusal_receipt
+// names the SAME tree as the clean one and is refused by receipt_population_coherent, so a
+// coverage judgment that compared tree identities before validating the series would answer
+// Covered here. This is the probe that pins the ordering.
+test fn an_incoherent_series_refuses_coverage_of_the_tree_it_names() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [duplicated_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+// THE CONSOLIDATED ACCESSOR NAMES THE SAME SUBJECT AS THE SPELLING IT REPLACED.
+//
+// gunbc.self_host_compile_phase_frontier current_compile_phase_frontier_standing exists so that
+// "the standing of THE persisted series" has one home instead of being re-spelled at five call
+// sites. That consolidation has exactly one way to go wrong and it goes wrong SILENTLY: the
+// accessor binds a DIFFERENT series -- a truncated one, a fixture one, a second data declaration
+// added later -- and every consumer keeps compiling and keeps answering, about the wrong subject.
+// No existing claim in either consuming closure would notice, because they all read the accessor
+// and would agree with each other about the wrong thing.
+//
+// So this asserts the identity the rewire assumed, against the general function it delegates to,
+// applied to the series by name. It is not a restatement of the delegation: it is authored one
+// layer above it and it is the only executing place the two spellings are compared. Rebind the
+// accessor to `self_host_compile_phase_frontier_receipts |> skip(n: 1)` -- the perturbation this
+// module's sibling live-gate witnesses already use -- and this reds while nothing else does.
+test fn the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series() -> Bool {
+  current_compile_phase_frontier_standing()
+    == compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
 }

@@ -43,7 +43,9 @@ pub use crate::v1_compiler_complexity::{
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
 pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
-pub use crate::v1_compiler_emit::unmodeled_file_transport_diagnostics;
+pub use crate::v1_compiler_emit::{
+    unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics,
+};
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
@@ -431,9 +433,15 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
     {
-        let unmodeled_transports = crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(
-            typed.clone(),
-            artifact.target.clone(),
+        let unmodeled_transports = v1_rt::concat(
+            crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(
+                typed.clone(),
+                artifact.target.clone(),
+            ),
+            crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(
+                typed.clone(),
+                artifact.target.clone(),
+            ),
         );
         if ((unmodeled_transports.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
@@ -1916,6 +1924,7 @@ pub fn serialize_inferred_node_ref(
             ),
             "}".to_string(),
         ),
+        InferredNode::Divergent => "{\"kind\": \"Divergent\"}".to_string(),
         InferredNode::TypeVariable { id: id, .. } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"TypeVariable\", \"id\": ".to_string(),

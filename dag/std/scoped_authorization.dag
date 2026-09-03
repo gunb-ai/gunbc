@@ -1,0 +1,531 @@
+module std.scoped_authorization
+
+import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  compare_content_hash,
+  serialize_content_hash,
+  content_hash_of_value,
+}
+import std.effect_grant {
+  Verb,
+  NamespacePosition,
+  verb_eq,
+  position_under,
+  effect_verb_label,
+  namespace_position_label,
+}
+import std.durable_compare_and_set {
+  CasAttempt,
+  CasExpectation,
+  CasGeneration,
+  CasOutcome,
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+  CasReadableSlot,
+  CasReadableAbsent,
+  CasReadablePresent,
+  ExpectSlotAbsent,
+  ExpectSlotGeneration,
+  cas_attempt,
+}
+
+// A SCOPED OPERATOR AUTHORIZATION CONSUMED BY EXACTLY ONE ATTEMPT.
+//
+// The concept this module makes single-authority is the one an operator actually performs when
+// they approve a step: they authorize ONE named action, on ONE named resource, for ONE named
+// attempt, until ONE named instant. Before this module the repository carried the SHAPE of that
+// act in two places and the CONTENT in neither:
+//
+//   gunbc.workflow_escalation ApprovalGranted { escalation_id, granted_by }
+//     -- production-consumed (srv3 boot-once-cd) and ambient: once granted it names no access,
+//        no resource, no attempt and no end, so it is a standing credential wearing an approval's
+//        name. A second run reuses it; any action reuses it.
+//   std.temporal_effect DurableApprovalGrant
+//     -- expiry and single-use were modeled here, with ZERO production consumers, and this is
+//        the §3 meaning fork of the carrier above: one meaning, two names.
+//
+// Both are dissolved into ScopedAuthorization. This is the reach layer for OPERATOR CONSENT
+// standing above std.effect_grant, exactly as std.effect_grant stands above std.effects: the
+// scope/resource vocabulary is IMPORTED from std.effect_grant (Verb, NamespacePosition,
+// position_under) and never re-coined here. What this module adds that a Grant does not carry is
+// the consent axis -- who granted, why, until when, and for which single attempt.
+//
+// THREE instances are in flight, and they are why this is PARAMETERIZED rather than a coproduct of
+// subjects: the just-in-time Secret Manager version-access token grant, the Spark first-boot
+// agreement acceptance, and the Spark bootstrap credential lease that
+// gunbc.spark.grant_privileged_operation used to carry as its own type. A
+// `AuthorizationSubject = EulaSubject | SecretSubject | ...` would make this module depend on every
+// consuming domain and require an edit here every time any lane needs a grant -- the module would
+// grow a row per consumer, which is the growth surface §3 exists to prevent. So the domain owns its
+// Subject and this module never names one.
+//
+// SCOPE AND SUBJECT ARE TWO FACTS, and only the first enforces. AuthorizationScope is the ENFORCING
+// authority: typed, closed, compared by verb equality and the namespace prefix relation, and never a
+// free string. Subject is the domain payload the consumer needs in order to ACT once permitted --
+// a device occurrence, a credential standing, an agreement identity -- and no decision in this
+// module reads it. purpose is neither: it is the sentence the operator reads before clicking, and
+// it can never be the enforcing authority. The lease this module dissolves had ONLY a rendered
+// purpose string where its scope should have been, which is exactly that failure.
+
+type AuthorizedAction = NonEmptyStr where brand("AuthorizedAction")
+
+// The attempt is the CONSUMER identity, not the operator's. A grant issued for attempt A refuses
+// attempt B even when every other field agrees -- that refusal is the whole difference between a
+// just-in-time grant and a standing credential.
+type AttemptIdentity = NonEmptyStr where brand("AttemptIdentity")
+
+// resource AND scope are two facts, not one. `resource` is WHICH position in a cited namespace
+// tree (one secret version, one device agreement); `verb` x `action` is WHAT may be done to it.
+// A grant naming only the resource is a write grant by omission; a grant naming only the action
+// is ambient across the tree.
+type AuthorizationScope {
+  verb: Verb
+  resource: NamespacePosition
+  action: AuthorizedAction
+}
+
+// What the workflow asks the operator for, and what the notification renders. `purpose` is the
+// human-readable sentence the operator reads before clicking -- it is the only field here whose
+// consumer is a person, and it is REQUIRED because an approval request that cannot say what it is
+// for is not a request for consent.
+type AuthorizationRequest<Subject> {
+  escalation_id: NonEmptyStr
+  scopes: List<AuthorizationScope>
+  subject: Subject
+  purpose: NonEmptyStr
+  attempt: AttemptIdentity
+  intent_hash: ContentHash
+  destructive: Bool
+}
+
+// What the operator's click produces. Every field is load-bearing at the consuming end:
+// escalation_id joins it to the request, scope bounds it, attempt binds it to one run,
+// intent_hash binds it to the exact planned action content (inherited from the dissolved
+// std.temporal_effect check -- dropping it would have been a §4b(3) regression), and expires_at
+// ends it without anyone having to remember to revoke it.
+type OperatorGrant<Subject> {
+  escalation_id: NonEmptyStr
+  scopes: List<AuthorizationScope>
+  subject: Subject
+  purpose: NonEmptyStr
+  attempt: AttemptIdentity
+  intent_hash: ContentHash
+  granted_by: NonEmptyStr
+  granted_at: Timestamp
+  expires_at: Timestamp
+}
+
+// SINGLE USE IS A STATE TRANSITION, NOT A CHECK, and this is the correction that matters most.
+//
+// An earlier revision carried AuthorizationConsumed as a third arm here and treated
+// "already consumed" purely as a refusal cause. That validates single-use and it RACES: two
+// concurrent runs, or one run restarted after a crash, each read the same valid grant, each observe
+// "not yet consumed", and each proceed -- the exact interleaving a destructive step must not admit.
+// A cause without a transition is a check, and the check is decided at the reader.
+//
+// So consumption lives in AuthorizationClaimState below, carried BESIDE the grant and moved through
+// std.durable_compare_and_set, whose losing arm IS the concurrent-claim refusal. AuthorizationConsumed
+// is gone rather than kept alongside CompletedBy, because two spellings of one fact is the fork this
+// module exists to remove.
+type ScopedAuthorization<Subject>
+  = AuthorizationPending { request: AuthorizationRequest<Subject> }
+  | AuthorizationGranted {
+      grant: OperatorGrant<Subject>
+      claim: AuthorizationClaimState
+    }
+
+// The claim lifecycle of ONE grant. AbortedBy is a distinct terminal from CompletedBy because the
+// operator remedies differ: an aborted attempt may warrant re-issuing a grant, a completed one
+// never does, and collapsing them would make "it already ran" and "it failed and stopped" produce
+// the same next action.
+type AuthorizationClaimState
+  = Unclaimed
+  | ClaimedBy { attempt: AttemptIdentity, claimed_at: Timestamp }
+  | CompletedBy { attempt: AttemptIdentity, completed_at: Timestamp }
+  | AbortedBy { attempt: AttemptIdentity, aborted_at: Timestamp, cause: NonEmptyStr }
+
+// ABSENCE, STALENESS and MISMATCH are three different facts about a refused step and lead to three
+// different operator actions -- ask for the grant, ask again because it aged out, or stop because
+// something asked for access nobody approved. Collapsing them to a boolean loses exactly the
+// distinction the operator needs, so each is a located, typed cause (§5). The mismatch family is
+// split further because escalation, scope and attempt mismatches are not the same incident: an
+// attempt mismatch is a REPLAY, a scope mismatch is a PRIVILEGE WIDENING, and an intent mismatch
+// is the planned action having changed under a grant issued for the old one.
+type AuthorizationRefusalCause
+  = AuthorizationNotGranted { escalation_id: NonEmptyStr }
+  | AuthorizationExpired { expires_at: Timestamp, observed_at: Timestamp }
+  | AuthorizationAlreadyCompleted { completed_by: AttemptIdentity, completed_at: Timestamp }
+  | AuthorizationClaimedByOtherAttempt { requested: AttemptIdentity, holder: AttemptIdentity }
+  | AuthorizationAborted { aborted_by: AttemptIdentity, cause: NonEmptyStr }
+  | AuthorizationEscalationMismatch { requested: NonEmptyStr, granted: NonEmptyStr }
+  | AuthorizationScopeNotGranted { required: AuthorizationScope, granted: List<AuthorizationScope> }
+  | AuthorizationScopesUnstated { escalation_id: NonEmptyStr }
+  | AuthorizationAttemptMismatch { requested: AttemptIdentity, granted: AttemptIdentity }
+  | AuthorizationIntentMismatch { requested: ContentHash, granted: ContentHash }
+  | AuthorizationIntentIncomparable { requested: ContentHash, granted: ContentHash }
+
+type AuthorizationDecision<Subject>
+  = AuthorizationPermitted { grant: OperatorGrant<Subject> }
+  | AuthorizationRefused { cause: AuthorizationRefusalCause }
+
+// Scope coverage is the std.effect_grant reach relation, unchanged: same verb, requested position
+// UNDER the granted root, same named action. The prefix relation is what makes a grant on
+// .../secrets/spark-administrator-password/versions/1 refuse a request for
+// .../secrets/some-other-secret/versions/1 without either side enumerating the tree.
+fn scope_covers(granted: AuthorizationScope, requested: AuthorizationScope) -> Bool {
+  verb_eq(a: granted.verb, b: requested.verb)
+    && position_under(target: requested.resource, root: granted.resource)
+    && granted.action == requested.action
+}
+
+// ONE OPERATION NEEDS EVERY CAPABILITY IT EXERCISES, so the enforcing fact is a SET and coverage
+// is universal over the required side, existential over the granted side: every required scope must
+// be covered by SOME granted scope. A single-scope grant was a fail-open by shape rather than by
+// logic -- an operation that patches a boot override and then posts a system reset exercises two
+// capabilities, and a grant naming only the first authorized the second by saying nothing about it.
+//
+// AN EMPTY REQUIRED SET REFUSES rather than passing vacuously. "Every member of the empty set is
+// covered" is true, which would make an operation that stated no scopes the most-authorized one in
+// the corpus -- the degenerate-input trap, and the one shape a universal quantifier always has.
+fn scope_covered_by_any(granted: List<AuthorizationScope>, required: AuthorizationScope) -> Bool {
+  fold(
+    granted,
+    init: false,
+    f: (acc, g) => acc || scope_covers(granted: g, requested: required),
+  )
+}
+
+fn first_uncovered_scope(
+  granted: List<AuthorizationScope>,
+  required: List<AuthorizationScope>,
+) -> AuthorizationScope? {
+  fold(
+    required,
+    init: none,
+    f: (acc, r) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => if scope_covered_by_any(granted: granted, required: r) { none } else { Present { value: r } }
+      },
+  )
+}
+
+fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
+  observed_at <= expires_at
+}
+
+// The single decision procedure. Ordered so the cause reported is the FIRST thing wrong rather
+// than the last check to run: identity, then reach, then time.
+//
+// The intent-hash agreement goes through std.content_hash.compare_content_hash, the ONE
+// hash-comparison authority, which deliberately refuses to collapse a cross-family pair into a
+// silent false. Writing `granted != requested` here would be fail-OPEN: two hashes of different
+// families are unequal-by-`!=`, which reads as "mismatch" under one negation and as "agrees"
+// under none, and neither is the truth. The dissolved std.temporal_effect check compared intent
+// hashes with `==` and carried exactly that hole. Matching the three-valued outcome is why
+// AuthorizationIntentIncomparable exists as its own cause rather than as a widened mismatch.
+fn authorize_granted<Subject>(
+  grant: OperatorGrant<Subject>,
+  request: AuthorizationRequest<Subject>,
+  observed_at: Timestamp,
+) -> AuthorizationDecision<Subject> {
+  if grant.escalation_id != request.escalation_id {
+    AuthorizationRefused {
+      cause: AuthorizationEscalationMismatch {
+        requested: request.escalation_id,
+        granted: grant.escalation_id,
+      },
+    }
+  } else if grant.attempt != request.attempt {
+    AuthorizationRefused {
+      cause: AuthorizationAttemptMismatch {
+        requested: request.attempt,
+        granted: grant.attempt,
+      },
+    }
+  } else {
+    match compare_content_hash(left: grant.intent_hash, right: request.intent_hash) {
+      ContentHashDifferent =>
+        AuthorizationRefused {
+          cause: AuthorizationIntentMismatch {
+            requested: request.intent_hash,
+            granted: grant.intent_hash,
+          },
+        }
+      ContentHashCrossFamilyIncomparable =>
+        AuthorizationRefused {
+          cause: AuthorizationIntentIncomparable {
+            requested: request.intent_hash,
+            granted: grant.intent_hash,
+          },
+        }
+      ContentHashEqual =>
+        authorize_reached_scope(grant: grant, request: request, observed_at: observed_at)
+    }
+  }
+}
+
+// Reach and time, decided only once identity has already agreed.
+fn authorize_reached_scope<Subject>(
+  grant: OperatorGrant<Subject>,
+  request: AuthorizationRequest<Subject>,
+  observed_at: Timestamp,
+) -> AuthorizationDecision<Subject> {
+  if is_empty(request.scopes) {
+    AuthorizationRefused {
+      cause: AuthorizationScopesUnstated { escalation_id: request.escalation_id },
+    }
+  } else {
+    match first_uncovered_scope(granted: grant.scopes, required: request.scopes) {
+      Present { value: missing } =>
+        AuthorizationRefused {
+          cause: AuthorizationScopeNotGranted { required: missing, granted: grant.scopes },
+        }
+      Absent => authorize_reached_time(grant: grant, observed_at: observed_at)
+    }
+  }
+}
+
+// Time, decided only once identity and reach have already agreed.
+fn authorize_reached_time<Subject>(
+  grant: OperatorGrant<Subject>,
+  observed_at: Timestamp,
+) -> AuthorizationDecision<Subject> {
+  if !grant_not_expired_at(observed_at: observed_at, expires_at: grant.expires_at) {
+
+    AuthorizationRefused {
+      cause: AuthorizationExpired {
+        expires_at: grant.expires_at,
+        observed_at: observed_at,
+      },
+    }
+  } else {
+    AuthorizationPermitted { grant: grant }
+  }
+}
+
+// The claim state is consulted BEFORE the grant's own fields, because a completed or foreign-held
+// claim is decisive regardless of how well the grant matches: a perfectly valid grant that another
+// attempt already holds must refuse, and refuse with THAT cause rather than with a scope or expiry
+// answer that would send the operator to the wrong remedy.
+fn authorize<Subject>(
+  authorization: ScopedAuthorization<Subject>,
+  request: AuthorizationRequest<Subject>,
+  observed_at: Timestamp,
+) -> AuthorizationDecision<Subject> {
+  match authorization {
+    AuthorizationPending { request: _ } =>
+      AuthorizationRefused {
+        cause: AuthorizationNotGranted { escalation_id: request.escalation_id },
+      }
+    AuthorizationGranted { grant: grant, claim: claim } =>
+      match claim {
+        Unclaimed =>
+          authorize_granted(grant: grant, request: request, observed_at: observed_at)
+        ClaimedBy { attempt: holder, claimed_at: _ } =>
+          if holder == request.attempt {
+            authorize_granted(grant: grant, request: request, observed_at: observed_at)
+          } else {
+            AuthorizationRefused {
+              cause: AuthorizationClaimedByOtherAttempt {
+                requested: request.attempt,
+                holder: holder,
+              },
+            }
+          }
+        CompletedBy { attempt: who, completed_at: when } =>
+          AuthorizationRefused {
+            cause: AuthorizationAlreadyCompleted { completed_by: who, completed_at: when },
+          }
+        AbortedBy { attempt: who, aborted_at: _, cause: why } =>
+          AuthorizationRefused {
+            cause: AuthorizationAborted { aborted_by: who, cause: why },
+          }
+      }
+  }
+}
+
+// THE CLAIM TRANSITION, and the reason it is a std.durable_compare_and_set attempt rather than a
+// function that returns a new state.
+//
+// Returning a new state would make the caller the arbiter of who won, and two callers each holding
+// a valid grant would each mint ClaimedBy{self} and each believe they hold it. cas_attempt names
+// the slot, the EXPECTED prior generation, and the proposed state; the store decides. Losing is
+// then CasPreconditionFailed carrying both sides -- which is how a loser distinguishes "another
+// attempt claimed this grant" from "I addressed the wrong slot", a distinction a boolean cannot
+// carry and a retry loop needs.
+//
+// The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
+// exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
+// nothing, which is the shape of the race rather than its resolution.
+fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  concat("scoped-authorization/", escalation_id as String) as NonEmptyStr
+}
+
+// THE SLOT HOLDS WHAT THE STORE HOLDS. std.durable_compare_and_set's realization
+// (gunbc.durable_cas_file_store) reads and writes NonEmptyStr, so a claim typed over
+// AuthorizationClaimState could never be handed to it -- the earlier shape typechecked and had no
+// reachable production consumer for exactly that reason. The state is serialized on the way in and
+// the attempt's digest is derived from the same bytes rather than supplied beside them.
+fn serialize_authorization_claim_state(state: AuthorizationClaimState) -> NonEmptyStr {
+  match state {
+    Unclaimed => "unclaimed" as NonEmptyStr
+    ClaimedBy { attempt: who, claimed_at: when } =>
+      concat("claimed-by\t", concat(who as String, concat("\t", when))) as NonEmptyStr
+    CompletedBy { attempt: who, completed_at: when } =>
+      concat("completed-by\t", concat(who as String, concat("\t", when))) as NonEmptyStr
+    AbortedBy { attempt: who, aborted_at: when, cause: why } =>
+      concat(
+        "aborted-by\t",
+        concat(who as String, concat("\t", concat(when, concat("\t", why as String)))),
+      ) as NonEmptyStr
+  }
+}
+
+fn claim_authorization(
+  escalation_id: NonEmptyStr,
+  expected: CasExpectation,
+  proposed: AuthorizationClaimState,
+) -> CasAttempt<NonEmptyStr> {
+  let payload = serialize_authorization_claim_state(state: proposed)
+  cas_attempt(
+    key: authorization_claim_key(escalation_id: escalation_id),
+    expected: expected,
+    proposed: payload,
+    proposed_content: content_hash_of_value(value: payload),
+  )
+}
+
+// The three transitions a holder may propose, each naming the state it moves TO. There is no
+// transition back to Unclaimed: a spent grant is spent, and a re-issue is a new grant with a new
+// expiry, not a reset of this one.
+fn claim_transition_claimed(attempt: AttemptIdentity, at: Timestamp) -> AuthorizationClaimState {
+  ClaimedBy { attempt: attempt, claimed_at: at }
+}
+
+fn claim_transition_completed(attempt: AttemptIdentity, at: Timestamp) -> AuthorizationClaimState {
+  CompletedBy { attempt: attempt, completed_at: at }
+}
+
+fn claim_transition_aborted(
+  attempt: AttemptIdentity,
+  at: Timestamp,
+  cause: NonEmptyStr,
+) -> AuthorizationClaimState {
+  AbortedBy { attempt: attempt, aborted_at: at, cause: cause }
+}
+
+// A claim outcome read as an authorization fact. The CasStoreRefused arm REFUSES rather than
+// proceeding: "the claim store was unreadable" is not evidence that nobody else holds the grant,
+// and treating it as such is the absorbing fallback on the exact operation whose purpose is
+// exclusion.
+type AuthorizationClaimOutcome
+  = ClaimHeld { state: AuthorizationClaimState, generation: CasGeneration }
+  | ClaimLost { holder: NonEmptyStr }
+  | ClaimUndecided { reason: NonEmptyStr }
+
+// THE HELD STATE IS THE ONE WE PROPOSED, not one decoded back out of the slot. A committed write
+// is proof the store took our bytes, so re-deriving the state from them would be a round trip
+// proving the serializer agrees with itself. The LOST arm carries the winner's raw payload rather
+// than a decoded state: nothing here can parse another writer's bytes without minting a parser
+// whose failure arm would have to guess, and "some other attempt holds it, here is what it wrote"
+// is the honest report. An absent slot on the losing side is reported as such rather than as
+// Unclaimed, because "nobody holds it" and "we lost to a writer whose slot then vanished" are not
+// the same fact.
+fn authorization_claim_outcome(
+  proposed: AuthorizationClaimState,
+  outcome: CasOutcome<NonEmptyStr>,
+) -> AuthorizationClaimOutcome {
+  match outcome {
+    CasCommitted { committed: v } =>
+      ClaimHeld { state: proposed, generation: v.generation }
+    CasPreconditionFailed { expected: _, observed: observed } =>
+      ClaimLost { holder: claim_holder_payload(readable: observed) }
+    CasStoreRefused { cause: _ } =>
+      ClaimUndecided {
+        reason: "authorization claim slot unreadable; cannot establish exclusive claim" as NonEmptyStr,
+      }
+  }
+}
+
+fn claim_holder_payload(readable: CasReadableSlot<NonEmptyStr>) -> NonEmptyStr {
+  match readable {
+    CasReadableAbsent => "claim slot absent at the losing read" as NonEmptyStr
+    CasReadablePresent { version: v } => v.value
+  }
+}
+
+// EVERY FIELD THE SCOPE COMPARISON READS IS RENDERED, and that is the whole rule. scope_covers
+// judges verb, resource and action, so a render omitting any of the three can print two identical
+// strings for a mismatch it just refused -- a diagnostic that cannot distinguish the two sides of
+// its own refusal. The tree comes from the position rather than the path alone for the same reason:
+// `std.effect_grant` namespace_tree_label owns that spelling, and effect_target_label owns the path
+// one, so neither is re-coined here.
+fn authorization_scopes_render(scopes: List<AuthorizationScope>) -> String {
+  if is_empty(scopes) {
+    "no scopes"
+  } else {
+    fold(
+      scopes,
+      init: "",
+      f: (acc, s) =>
+        if acc == "" { authorization_scope_render(scope: s) }
+        else { concat(acc, concat(" + ", authorization_scope_render(scope: s))) },
+    )
+  }
+}
+
+fn authorization_scope_render(scope: AuthorizationScope) -> String {
+  concat(
+    effect_verb_label(verb: scope.verb),
+    concat(
+      " ",
+      concat(
+        scope.action as String,
+        concat(" on ", namespace_position_label(position: scope.resource)),
+      ),
+    ),
+  )
+}
+
+// One refusal, one destination: every arm renders the cause the operator or the log needs, and no
+// arm renders "" -- an empty reason read as "no refusal" is the fail-open this vocabulary exists
+// to close.
+fn authorization_refusal_reason(cause: AuthorizationRefusalCause) -> String {
+  match cause {
+    AuthorizationNotGranted { escalation_id: id } =>
+      concat("operator authorization absent for escalation ", id as String)
+    AuthorizationExpired { expires_at: exp, observed_at: at } =>
+      concat("operator authorization expired at ", concat(exp, concat(", observed at ", at)))
+    AuthorizationAlreadyCompleted { completed_by: who, completed_at: when } =>
+      concat("operator authorization already completed by attempt ", concat(who as String, concat(" at ", when)))
+    AuthorizationClaimedByOtherAttempt { requested: req, holder: holder } =>
+      concat("operator authorization is claimed by another attempt: requested ", concat(req as String, concat(", held by ", holder as String)))
+    AuthorizationAborted { aborted_by: who, cause: why } =>
+      concat("operator authorization aborted by attempt ", concat(who as String, concat(": ", why as String)))
+    AuthorizationEscalationMismatch { requested: req, granted: got } =>
+      concat("operator authorization escalation mismatch: requested ", concat(req as String, concat(", granted ", got as String)))
+    AuthorizationScopeNotGranted { required: missing, granted: got } =>
+      concat(
+        "operator authorization does not cover a required capability: ",
+        concat(
+          authorization_scope_render(scope: missing),
+          concat("; granted ", authorization_scopes_render(scopes: got)),
+        ),
+      )
+    AuthorizationScopesUnstated { escalation_id: id } =>
+      concat("operator authorization request states no scopes for escalation ", id as String)
+    AuthorizationAttemptMismatch { requested: req, granted: got } =>
+      concat("operator authorization issued for a different attempt: requested ", concat(req as String, concat(", granted ", got as String)))
+    AuthorizationIntentMismatch { requested: req, granted: got } =>
+      concat("operator authorization issued for a different planned action: requested intent ", concat(serialize_content_hash(hash: req) as String, concat(", granted intent ", serialize_content_hash(hash: got) as String)))
+    AuthorizationIntentIncomparable { requested: req, granted: got } =>
+      concat("operator authorization intent hash is cross-family incomparable: requested ", concat(serialize_content_hash(hash: req) as String, concat(", granted ", serialize_content_hash(hash: got) as String)))
+  }
+}

@@ -1,0 +1,85 @@
+module std.contract_identity
+
+import std.types { Bool, NonEmptyStr }
+
+// ONE CANONICAL CONTRACT IDENTITY, because DESIGN §3 makes a name a semantic carrier: within one
+// naming surface and one declared effective version or epoch, holding the name constant may not
+// silently change the obligations, quality floor, refusal behavior, billing consequence or remedy.
+// A materially different contract needs a materially different name -- and where the name is
+// deliberately held constant across a material change, an EPOCH is the only thing that can
+// distinguish the two meanings. Without an epoch component a contract identity cannot express the
+// difference between "the same contract" and "the same spelling", which is the meaning-fork half of
+// §3 in its exact form.
+//
+// THE IDENTITY IS THE TRIPLE AND NOTHING ELSE. It names WHICH CONTRACT is in question, never what
+// that contract does internally. The rule is inherited rather than invented: the fleet's Required CI
+// identity already records that a phases_run field would make every phase added to the floor a
+// breaking change to fleet admission, which is backwards -- the roster is the contract's own
+// business and its evidence, not its consumer's precondition. Generalising that identity here keeps
+// that law and adds the one component it was missing.
+//
+// WHY THE COMPONENTS ARE BRANDED STRINGS IN std RATHER THAN THREE TYPE PARAMETERS. A naming surface,
+// a name and an epoch are identity spellings in every domain that has them, so parameterising all
+// three would buy no realized variation and would force every consumer to plumb three comparators
+// through every equality site (the std.key_relation shape). One equality law, stated once here, is
+// what makes "field equality over exactly the three identity components" checkable by reading rather
+// than by auditing each caller's comparators. The SUBJECT stays a type parameter, so two domains'
+// identities cannot be compared or substituted even though their components share a representation.
+type ContractNamingSurface = NonEmptyStr where brand("ContractNamingSurface")
+type ContractName = NonEmptyStr where brand("ContractName")
+
+// THE EPOCH IS DISCRETE IDENTITY, NOT A QUANTITY (reviewing-authority ruling, 2026-09-01). It is
+// opaque: not ordered, not a semantic version, and nothing arithmetic is performed on it. Giving it
+// a numeric or semver grammar would add interpretation no consumer needs, and would create decode
+// failures that cannot occur. Consequently a reader of an epoch carried in a text container is
+// TOTAL once the container yields a nonempty string -- absent, duplicated and malformed are
+// container facts, and there is deliberately NO undecodable arm, because after a nonempty string
+// there is no second decoding step that could refuse. Such an arm would be a permanently unreachable
+// RED, which §4b forbids at the top rung: a check whose failure is unauthorable carries no
+// information and would later be cited as coverage.
+type ContractEpoch = NonEmptyStr where brand("ContractEpoch")
+
+// Subject is a phantom: it is the contract this identity is FOR, so a Required CI identity and any
+// other domain's identity are different types even though both are surface/name/epoch triples.
+type ContractIdentity<Subject> {
+  surface: ContractNamingSurface
+  name: ContractName
+  epoch: ContractEpoch
+}
+
+fn contract_identity_eq<Subject>(
+  left: ContractIdentity<Subject>,
+  right: ContractIdentity<Subject>,
+) -> Bool {
+  (left.surface as NonEmptyStr) == (right.surface as NonEmptyStr)
+    && (left.name as NonEmptyStr) == (right.name as NonEmptyStr)
+    && (left.epoch as NonEmptyStr) == (right.epoch as NonEmptyStr)
+}
+
+// THE THREE COMPONENT-WISE ANSWERS ARE SEPARATE BECAUSE THEIR REMEDIES ARE SEPARATE. A consumer that
+// learns only "not equal" cannot tell reading the wrong producer from reading a different repository
+// from reading a contract whose obligations were deliberately revised, and those are three different
+// operator actions. This module supplies the component predicates; naming the REFUSAL is the
+// consumer's business, because the cause vocabulary belongs to the boundary that refuses. No arm
+// here projects a Bool over the three -- that is the no-Bool-projection rule the floor receipt
+// authority already established for exactly this shape.
+fn contract_surface_eq<Subject>(
+  left: ContractIdentity<Subject>,
+  right: ContractIdentity<Subject>,
+) -> Bool {
+  (left.surface as NonEmptyStr) == (right.surface as NonEmptyStr)
+}
+
+fn contract_name_eq<Subject>(
+  left: ContractIdentity<Subject>,
+  right: ContractIdentity<Subject>,
+) -> Bool {
+  (left.name as NonEmptyStr) == (right.name as NonEmptyStr)
+}
+
+fn contract_epoch_eq<Subject>(
+  left: ContractIdentity<Subject>,
+  right: ContractIdentity<Subject>,
+) -> Bool {
+  (left.epoch as NonEmptyStr) == (right.epoch as NonEmptyStr)
+}

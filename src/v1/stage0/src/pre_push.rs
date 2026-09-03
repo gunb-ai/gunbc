@@ -4,6 +4,20 @@
 //! projected from `commit_gate_roster`. This module: stdin parse, git host effects,
 //! plan evaluation, step dispatch.
 
+// CLIPPY ROSTER -- 9 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::disallowed_macros,  // 6
+    dead_code,  // 1
+    unused_imports,  // 1
+    unused_variables,  // 1
+)]
+
 use std::collections::BTreeSet;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};

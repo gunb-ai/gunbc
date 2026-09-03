@@ -1,0 +1,437 @@
+module test.claim.scm.scm_cli_witness
+
+// WHAT THIS MODULE DECIDES, AND THEREFORE WHAT MUST BE HELD TO EXECUTION.
+//
+// `gunbc.scm.cli` makes exactly two choices the render layer leaves open: which RenderTarget and
+// which RenderCapability a terminal invocation gets. `gunbc.scm.render` is already witnessed
+// against PlainTerminal and an ASCII no-colour capability by test.claim.scm.scm_render_witness,
+// but nothing held gunbc.scm.cli to passing THOSE -- setting `color: true` on
+// `plain_terminal_capability` would have turned no claim red.
+//
+// These claims call the PURE half (`scm_log_response` / `scm_status_response`) rather than the
+// path-taking verbs, because the verbs read a file and this witness family is SubstrateInputsOnly:
+// a file-reading claim refuses at the hermetic boundary before producing a verdict.
+import std.types { String }
+import std.symbols { Ascii }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import std.process { ExitSuccess, ExitFailure }
+import std.render { RenderCapability }
+import gunbc.scm.read_command { ScmReadAnswered, ScmReadRepositoryUnavailable }
+import gunbc.scm.repository_load { RepositoryFileUnreadable }
+import gunbc.scm.repository_envelope { empty_repository }
+import gunbc.scm.log { repository_log }
+import gunbc.scm.status { repository_status }
+import gunbc.scm.authoring { empty_proposal }
+import gunbc.scm.cli { scm_log_response, scm_status_response, scm_init_response, plain_terminal_capability }
+import gunbc.scm.init {
+  ScmInitRefused,
+  ScmInitRepositoryPresent,
+  ScmInitForeignFilePresent,
+  ScmInitPathUnobserved,
+  ScmInitNameNotAnEntry,
+  ScmInitDecision,
+  ScmInitMayCreate,
+  ScmInitDecided,
+  ScmInitialized,
+  ScmInitWriteRefused,
+  scm_init_decision,
+  init_outcome_of_save,
+  initialize_repository
+}
+import gunbc.scm.repository_save {
+  RepositorySave,
+  RepositorySaved,
+  RepositoryFileUnwritable,
+  RepositoryWriteByteCountUnrepresentable,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEncodeOutcome,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  encode_repository_checked,
+}
+import extdeps.languages.json.emit { serialize_json }
+import std.measure { byte_size }
+import extdeps.filesystem.filesystem_io {
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  FilesystemDirectoryListing,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileObservation,
+  filesystem_listing_observation,
+  filesystem_read_outcome,
+  filesystem_file_observation,
+  admit_filesystem_entry_name,
+  FilesystemEntryNameAdmitted,
+  FilesystemEntryNameRefused,
+  filesystem_established_absence_path
+}
+
+// THE BYTES PIN THE CAPABILITY. This is the same expected string the render-level witness pins for
+// PlainTerminal + ASCII no-colour, so an equal answer here is evidence that gunbc.scm.cli passes
+// that target and that capability -- not merely that it passes something. A colour-enabled
+// capability renders different bytes and turns this red.
+test fn cli_log_renders_the_plain_terminal_bytes_for_an_unavailable_repository() -> Bool {
+  match scm_log_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+    }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: _ } =>
+      b == "cannot read repository at repo.json\n  No such file or directory\n"
+  }
+}
+
+// A REFUSED READ STILL FAILS, through this module's composition and not only the render layer's.
+test fn cli_log_exits_failure_for_an_unavailable_repository() -> Bool {
+  match scm_log_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+    }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: _ } => true
+      }
+  }
+}
+
+// AN EMPTY REPOSITORY ANSWERED, so it prints and succeeds. The pair with the claim above is the
+// distinction a caller needs: "no commits" is not "no repository".
+test fn cli_log_answers_and_succeeds_for_an_empty_repository() -> Bool {
+  match scm_log_response(
+    result: ScmReadAnswered { path: "repo.json", answer: repository_log(envelope: empty_repository()) }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: e } =>
+      b == "no commits yet\n"
+        && match e {
+             ExitSuccess => true
+             ExitFailure { code: _, reason: _ } => false
+           }
+  }
+}
+
+test fn cli_status_answers_and_succeeds_for_an_empty_repository() -> Bool {
+  match scm_status_response(
+    result: ScmReadAnswered {
+      path: "repo.json",
+      answer: repository_status(envelope: empty_repository(), pending: empty_proposal()),
+    }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+  }
+}
+
+// THE CAPABILITY ROW ITSELF, stated so a change to it is a change to a claim. Bytes already pin it
+// indirectly; this says which property is load-bearing and why, so a reader editing the row learns
+// it is a contract rather than a default.
+test fn the_declared_terminal_capability_is_ascii_without_colour_or_cursor_addressing() -> Bool {
+  plain_terminal_capability.color == false
+    && plain_terminal_capability.cursor_addressable == false
+    && match plain_terminal_capability.tier {
+         Ascii => true
+         _ => false
+       }
+}
+
+// PROJECTIONS OVER THE WIRE RESPONSE, SHARED BY THE INIT CLAIMS BELOW so that neither of them
+// carries its own copy of the same two-arm match.
+fn wire_refuses(r: CliWireResponse) -> Bool {
+  match r {
+    CliWireUnprintable { cause: _ } => true
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: _ } => true
+      }
+  }
+}
+
+fn wire_bytes(r: CliWireResponse) -> String {
+  match r {
+    CliWireUnprintable { cause: _ } => ""
+    CliWirePrintable { bytes: b, exit: _ } => b
+  }
+}
+
+// EVERY NON-ABSENT OBSERVATION REFUSES, AND THE THREE REFUSALS ARE DISTINGUISHABLE.
+//
+// `initialize_repository` itself takes a directory listing and a read, so it is not hermetic and is
+// witnessed by the execution matrix in docs/plans/scm-demo-cli-rebuild.md. What IS decidable here is
+// the half that turns an outcome into an operator's answer: that no refusal arm can render as a
+// success, and that the three say different things. A change that made the unobserved arm print the
+// foreign-file line -- telling an operator their bytes are being protected when in fact nothing was
+// observed -- would turn these red.
+test fn an_init_refusal_never_exits_success() -> Bool {
+  wire_refuses(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
+    && wire_refuses(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
+    && wire_refuses(r: scm_init_response(
+      outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "the directory could not be listed" } }
+    ))
+    && wire_refuses(r: scm_init_response(
+      outcome: ScmInitRefused { cause: ScmInitNameNotAnEntry { name: "../victim", cause: "it is a path, not one child" } }
+    ))
+}
+
+// THE POPULATION IS FOUR, AND IT SAYS SO. ScmInitNameNotAnEntry became a fourth refusal arm and
+// these claims still enumerated three, so the direct admission test proved the name refuses EARLY
+// while nothing proved it reaches an operator as its own answer. A claim that names a population
+// has to move when the population does, or it silently covers a shrinking fraction of its subject.
+// Review 5089156132 finding 5.3 on gunbc#10026.
+test fn the_four_init_refusals_render_differently() -> Bool {
+  let present = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitRepositoryPresent { path: "repo.json" } }))
+  let foreign = wire_bytes(r: scm_init_response(outcome: ScmInitRefused { cause: ScmInitForeignFilePresent { path: "repo.json" } }))
+  let unobserved = wire_bytes(r: scm_init_response(
+    outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "the directory could not be listed" } }
+  ))
+  let not_an_entry = wire_bytes(r: scm_init_response(
+    outcome: ScmInitRefused { cause: ScmInitNameNotAnEntry { name: "../victim", cause: "it is a path, not one child" } }
+  ))
+  present != foreign && foreign != unobserved && present != unobserved && present != ""
+    && not_an_entry != present && not_an_entry != foreign && not_an_entry != unobserved
+    && not_an_entry != ""
+}
+
+// THE UNOBSERVED ARM CARRIES THE HOST'S CAUSE THROUGH. A refusal that dropped it would tell the
+// operator to investigate without saying what could not be observed.
+test fn the_unobserved_refusal_names_what_could_not_be_observed() -> Bool {
+  match scm_init_response(
+    outcome: ScmInitRefused { cause: ScmInitPathUnobserved { path: "repo.json", cause: "Permission denied" } }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: _ } => b.contains("Permission denied") && b.contains("repo.json")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE INIT DECISION, DRIVEN DIRECTLY. Review 5085479276 on gunbc#9864 found that every enrolled init
+// claim constructed a REFUSAL OUTCOME and checked how it rendered, so nothing executed the step that
+// CHOOSES an outcome from an observation. A mutation routing the indeterminate or the disagreement
+// arm to the write arm left the whole family green -- the claims were about a renderer, and the
+// safety content is in the decision.
+//
+// scm_init_decision is that step with the two filesystem operations lifted out, so all four
+// observation arms are drivable one fact apart. Only FilesystemFileAbsent may reach ScmInitMayCreate.
+// ------------------------------------------------------------------------------------------------
+
+fn decision_arm(d: ScmInitDecision) -> String {
+  match d {
+    ScmInitMayCreate(_) => "may_create"
+    ScmInitDecided { cause: c } =>
+      match c {
+        ScmInitRepositoryPresent { path: _ } => "repository_present"
+        ScmInitForeignFilePresent { path: _ } => "foreign_present"
+        ScmInitPathUnobserved { path: _, cause: _ } => "unobserved"
+        ScmInitNameNotAnEntry { name: _, cause: _ } => "name_not_an_entry"
+      }
+  }
+}
+
+fn decide(o: FilesystemFileObservation) -> String {
+  decision_arm(d: scm_init_decision(observation: o, path: "d/repo.json"))
+}
+
+// THE OBSERVATION IS BUILT BY THE REAL FOLD, NOT HANDED IN. FilesystemEstablishedAbsence is
+// sole_constructor, so a witness CANNOT mint an absence -- which is the seal doing its job, and it
+// forces this evidence to be stronger than it would otherwise have been: every cell below drives
+// filesystem_file_observation over listing and read channels, so the claims cover the fold and the
+// decision together rather than the decision over a fabricated input.
+fn observe(listed: Bool, entries: String, read_ok: Bool, content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "d",
+      success: listed,
+      entries: entries,
+      error: if listed { "" } else { "Permission denied" },
+    ),
+    name: "repo.json",
+    path: "d/repo.json",
+    read: filesystem_read_outcome(
+      content: content,
+      success: read_ok,
+      error: if read_ok { "" } else { "No such file or directory" },
+    ),
+  )
+}
+
+// AN ESTABLISHED ABSENCE IS THE ONLY THING THAT MAY WRITE. This is the positive control: without it
+// every refusal claim below could be satisfied by a decision that refuses unconditionally.
+test fn only_an_established_absence_may_create() -> Bool {
+  decide(o: observe(listed: true, entries: "other.json", read_ok: false, content: "")) == "may_create"
+}
+
+// THE THREE NON-ABSENT ARMS EACH REFUSE, AND EACH KEEPS ITS OWN CAUSE. Collapsing indeterminate or
+// disagreement into the absent arm is the fail-open this module exists to prevent; collapsing them
+// into EACH OTHER would tell an operator to investigate the wrong thing.
+test fn an_unobservable_path_does_not_authorize_a_write() -> Bool {
+  decide(o: observe(listed: false, entries: "", read_ok: false, content: "")) == "unobserved"
+}
+
+// THE LISTING DID NOT NAME IT AND THE READ OF IT SUCCEEDED. One fact apart from the absence cell
+// above -- same listing, read flipped -- so this pair is what distinguishes "nothing is there" from
+// "the two observations describe different worlds".
+test fn two_disagreeing_observations_do_not_authorize_a_write() -> Bool {
+  decide(o: observe(listed: true, entries: "other.json", read_ok: true, content: "{}"))
+    == "unobserved"
+}
+
+// AND THE VALID REPOSITORY IS PINNED TO ITS OWN ARM, NOT MERELY AWAY FROM THE WRITE ARM. This
+// asserted `!= may_create` for a decodable repository, which is satisfied by mapping EVERY present
+// file -- valid repository included -- to ScmInitForeignFilePresent. That would tell an operator a
+// foreign file is in the way of their own repository, and the claim would have stayed green. The
+// two present arms are one fact apart (the same listing and read, differing only in whether the
+// content decodes), so pinning each to its own arm is what makes the classification evidence rather
+// than a not-the-write-arm check. Review 5089156132 finding 5.2 on gunbc#10026.
+// THE VALID-REPOSITORY FIXTURE IS THE WRITER'S OWN OUTPUT, not a hand-authored literal. A literal
+// here is a second authority for the repository wire format (DESIGN section 3): it agrees with the
+// codec only for as long as someone keeps retyping it, and the version it drifts to is silently
+// classified `foreign_present` -- the classifier reporting a repository this program just wrote as
+// a foreign file. Deriving the bytes from `encode_repository_checked` makes writer and classifier
+// agree BY EXECUTION, so a codec change that breaks the round trip turns this claim red at the
+// change rather than at the next hand edit.
+//
+// A refused encode yields "" here, which decodes as foreign rather than as a repository, so the
+// refusal arm fails this claim instead of vacuously satisfying it.
+fn saved_repository_bytes() -> String {
+  match encode_repository_checked(repo: empty_repository()) {
+    RepositoryEncodeRefused { cause: _ } => ""
+    RepositoryEncoded { value: v } => serialize_json(v: v)
+  }
+}
+
+test fn present_bytes_do_not_authorize_a_write_and_are_classified() -> Bool {
+  decide(o: observe(listed: true, entries: "repo.json", read_ok: true, content: "not json at all"))
+      == "foreign_present"
+    && decide(o: observe(
+      listed: true,
+      entries: "repo.json",
+      read_ok: true,
+      content: saved_repository_bytes(),
+    )) == "repository_present"
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE ENTRY NAME IS ADMITTED BEFORE IT IS USED TWICE, and these are the spellings that made the
+// listing and the path describe different subjects.
+// ------------------------------------------------------------------------------------------------
+
+fn name_admits(n: String) -> Bool {
+  match admit_filesystem_entry_name(name: n) {
+    FilesystemEntryNameAdmitted(_) => true
+    FilesystemEntryNameRefused { name: _, cause: _ } => false
+  }
+}
+
+test fn an_ordinary_entry_name_is_admitted() -> Bool {
+  name_admits(n: "repo.json")
+}
+
+test fn a_name_that_is_not_one_child_of_the_directory_is_refused() -> Bool {
+  !name_admits(n: "")
+    && !name_admits(n: ".")
+    && !name_admits(n: "..")
+    && !name_admits(n: "subdir/repo.json")
+    && !name_admits(n: "../victim")
+}
+
+// THE GRAMMAR IS THE UNION OVER SUPPORTED TARGETS, NOT THE AUTHOR'S HOST. Review on gunbc#10026
+// found this carrier rejecting `/` while admitting `\\` and NUL, with WriteCreateNew implemented on
+// non-Unix rather than refusing there -- so `..\\victim` is a parent traversal on Windows that
+// passes a check named for making traversal impossible, and a NUL makes the syscall see a PREFIX of
+// the name the listing was asked about. Both are the one-name-two-subjects defect the carrier
+// exists to close, reached by spellings the first cut did not model.
+test fn a_name_carrying_another_hosts_separator_or_a_nul_is_refused() -> Bool {
+  !name_admits(n: "..\\victim")
+    && !name_admits(n: "subdir\\repo.json")
+    && !name_admits(n: "repo.json\0.bak")
+}
+
+// THE NEWLINE CASE IS THIS MODULE'S OWN, because the delimiter belongs to Filesystem.List's encoding:
+// a name carrying one can make the membership test answer about an entry that is not present.
+test fn a_name_carrying_the_listing_delimiter_is_refused() -> Bool {
+  !name_admits(n: "repo.json\nother.json")
+    && !name_admits(n: "repo.json\rother.json")
+}
+
+// A REFUSED NAME NEVER REACHES THE FILESYSTEM. initialize_repository is effectful, but this arm
+// returns before either operation runs, so it is reachable in a SubstrateInputsOnly witness -- and
+// that is exactly the property being claimed.
+test fn a_refused_name_refuses_before_any_filesystem_operation() -> Bool {
+  match initialize_repository(directory: "d", name: "../victim") {
+    ScmInitialized { path: _, written: _ } => false
+    ScmInitWriteRefused { save: _ } => false
+    ScmInitRefused { cause: c } =>
+      match c {
+        ScmInitNameNotAnEntry { name: _, cause: _ } => true
+        ScmInitRepositoryPresent { path: _ } => false
+        ScmInitForeignFilePresent { path: _ } => false
+        ScmInitPathUnobserved { path: _, cause: _ } => false
+      }
+  }
+}
+
+// A FAILED SAVE MAY NOT WEAR THE SUCCESS ARM. This is the discriminating control for the defect
+// review found on gunbc#10026: ScmInitialized used to carry the whole RepositorySave, so
+// `ScmInitialized { save: RepositoryFileUnwritable { .. } }` was spellable and told every consumer
+// matching the outer arm that initialization happened. init_outcome_of_save is a total fold and only
+// RepositorySaved may reach ScmInitialized; routing ANY other arm there turns these red.
+//
+// It is driven over the save arms directly rather than through the effectful entry, because the
+// property is about the FOLD and a SubstrateInputsOnly witness cannot make a real write fail.
+fn init_outcome_claims_success(save: RepositorySave) -> Bool {
+  match init_outcome_of_save(save: save) {
+    ScmInitialized { path: _, written: _ } => true
+    ScmInitWriteRefused { save: _ } => false
+    ScmInitRefused { cause: _ } => false
+  }
+}
+
+test fn a_saved_repository_is_the_only_initialized_outcome() -> Bool {
+  init_outcome_claims_success(
+    save: RepositorySaved { path: "/d/repo.json", written: byte_size(count: 12) }
+  )
+}
+
+test fn no_failed_save_arm_reaches_the_initialized_outcome() -> Bool {
+  !init_outcome_claims_success(
+    save: RepositoryFileUnwritable { path: "/d/repo.json", error: "Permission denied" }
+  )
+    && !init_outcome_claims_success(
+      save: RepositoryWriteByteCountUnrepresentable { path: "/d/repo.json", reported: 0 - 1 }
+    )
+}
+
+// THE ABSENCE NAMES THE SUBJECT IT AUTHORIZES. The second review defect: the token was matched as
+// `_` and the write actuated on an independently supplied path, so evidence about one directory
+// entry could sit beside a create against another. The path now has ONE derivation, from the
+// carrier's own fields, and this pins it -- an absence for directory d and name n authorizes
+// exactly d/n and nothing else.
+test fn an_established_absence_derives_the_only_path_it_authorizes() -> Bool {
+  let listed = filesystem_listing_observation(
+    directory: "/d", success: true, entries: "other.json", error: ""
+  )
+  match filesystem_file_observation(
+    listing: listed,
+    name: "repo.json",
+    path: "/d/repo.json",
+    read: filesystem_read_outcome(content: "", success: false, error: "No such file")
+  ) {
+    FilesystemFileAbsent(absence) =>
+      filesystem_established_absence_path(absence: absence) == "/d/repo.json"
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+  }
+}

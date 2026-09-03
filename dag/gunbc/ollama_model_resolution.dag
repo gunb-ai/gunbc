@@ -244,9 +244,49 @@ fn gpt_oss_120b_blob_closure_count() -> Int {
 // imported -- DESIGN §3's fork, in the input to a materializer. One constructor carrying both makes
 // the association the thing consumers hold, so a claim about a manifest is unavoidably a claim
 // about its closure too.
+// WHERE A RESOLVED MANIFEST'S BYTES WERE SELECTED, which is a PROPERTY OF THE SUBJECT and not a gap
+// in its evidence list.
+//
+// THE DISTINCTION IS FORCED BY A REAL ARTIFACT. Every manifest in this file until now was an
+// upstream-published library tag, and the note on OllamaManifestReading states the discipline that
+// rests on it: "the registry is what SELECTS the bytes, and the two host readings are independent
+// confirmations that the host already holds what the registry now serves." That sentence is exactly
+// true and exactly unavailable for deepseek-v4-gguf:no-h3-stop, which was produced by POST
+// /api/create on each host. There is no registry to read, and there never will be.
+//
+// WHY THIS IS NOT A DECLARED RUNG DROP. A §4b(3) drop records a TEMPORARY loss retired BY ITS
+// TRIGGER. A trigger naming "a registry reading for a locally-created tag" names a thing that cannot
+// come into existence, so the row could never be retired and would sit in the roster forever. "No
+// upstream exists" is a true and permanent property, and a property is MODELED, not deferred.
+//
+// WHY NOT SIMPLY AUTHOR MORE READINGS. Four readings were available for the local tag -- two hosts x
+// (manifest file, /api/tags) -- and they are unanimous, which is numerically MORE corroboration than
+// gpt-oss:120b's three. Authoring them under the same carrier would have been the worst of the
+// options on offer, because it inflates a count while deleting a kind. Ask whether the RED of
+// ollama_resolved_manifest_evidence_is_unanimous is AUTHORABLE for a locally-materialized manifest:
+// both hosts were fed by the same hand, so an artifact that is wrong is IDENTICALLY wrong on both,
+// and the check is permanently green by construction for the failure that registry corroboration
+// exists to catch. That is DESIGN §4b's decoration case, and it would have been cited as coverage
+// precisely BECAUSE the count was higher.
+//
+// So the two arms carry different guarantees at different grains, and both are real:
+//   - UpstreamPublished: an independent authority selected the bytes; host readings can DISAGREE
+//     with it, which is the 2026-08-19 republish this file was built to record.
+//   - LocallyMaterialized: no independent selector exists. Cross-host agreement is still a genuine
+//     property at its own grain -- a host whose store diverged IS detectable -- but it is a
+//     different claim and is named as one rather than borrowing the word "unanimous".
+type OllamaManifestProvenance
+  = UpstreamPublished { registry_authority: NonEmptyStr }
+  | LocallyMaterialized { producer: NonEmptyStr, derived_from: NonEmptyStr }
+
 type OllamaResolvedManifest {
   resolution: TrackedReferenceResolution<OllamaModelRef, OllamaManifestReading>
   closure: List<OllamaBlobDigest>
+  provenance: OllamaManifestProvenance
+}
+
+fn ollama_resolved_manifest_provenance(m: OllamaResolvedManifest) -> OllamaManifestProvenance {
+  m.provenance
 }
 
 fn ollama_resolved_manifest_reference(m: OllamaResolvedManifest) -> OllamaModelRef {
@@ -301,11 +341,121 @@ fn ollama_resolved_manifest_evidence_is_unanimous(m: OllamaResolvedManifest) -> 
 data gpt_oss_20b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
   resolution: gpt_oss_20b_resolution(),
   closure: gpt_oss_20b_blob_closure,
+  provenance: UpstreamPublished {
+    registry_authority: "registry.ollama.ai/v2/library/gpt-oss/manifests/20b" as NonEmptyStr,
+  },
 }
 
 data gpt_oss_120b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
   resolution: gpt_oss_120b_resolution(),
   closure: gpt_oss_120b_blob_closure,
+  provenance: UpstreamPublished {
+    registry_authority: "registry.ollama.ai/v2/library/gpt-oss/manifests/120b" as NonEmptyStr,
+  },
+}
+
+// ============================================================================================
+// THE LOCALLY MATERIALIZED SERVING ARTIFACT
+// ============================================================================================
+//
+// WHAT THIS TAG IS AND WHY IT EXISTS. deepseek-v4-gguf:no-h3-stop is the repair of a DEFECT IN A
+// MODELFILE, not a new model. Its parent, hf.co/antirez/deepseek-v4-gguf:latest, carries
+// `PARAMETER stop "###"`. Markdown H3 is `###`, so generation TERMINATED SILENTLY the first time an
+// answer reached a third-level heading -- a truncated response with a normal stop reason and no
+// error anywhere, which is DESIGN §5's fabricated-plausible-output failure arriving through a
+// configuration row. The repair removes that one parameter and changes nothing else.
+//
+// THE REFERENCE IS DECLARED HERE, IN THE GUNBC LAYER, AND NOT IN extdeps.ollama.capability. DESIGN's
+// external-upstream rule is explicit that observations produced by this repository are receipts in
+// the observing layer and never facts authored inside the observed upstream's module. There is no
+// `deepseek-v4-gguf` in the ollama library; this name exists because we created it on our own hosts.
+// Writing it into the upstream catalogue would be authoring a fact about ollama that ollama does not
+// hold.
+data deepseek_v4_no_h3_stop_model_ref: OllamaModelRef = OllamaModelRef {
+  name: "deepseek-v4-gguf" as NonEmptyStr,
+  tag: "no-h3-stop" as NonEmptyStr,
+}
+
+data deepseek_v4_no_h3_stop_manifest_digest_2026_09_02: Sha256Digest = Sha256Digest {
+  hex: "52ff2c31b90ec6680869fa0604e4c719a1a8553ee498c2e46109f331e83f6eed" as Sha256DigestHex,
+}
+
+// FOUR READINGS, TWO HOSTS x TWO SOURCES, and the pairing is the point rather than the count. There
+// is no registry row because there is no registry (see OllamaManifestProvenance). What these four
+// CAN establish is that the two serving cells hold the same artifact; what they cannot establish is
+// that the artifact is the one anyone intended, because both stores were filled by the same hand.
+data deepseek_v4_no_h3_stop_srv5_manifest_file_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv5 ollama model store manifest file for deepseek-v4-gguf:no-h3-stop" as NonEmptyStr,
+  observed_at: "2026-09-02T17:00Z",
+  observed_identity: deepseek_v4_no_h3_stop_manifest_digest_2026_09_02,
+}
+
+data deepseek_v4_no_h3_stop_srv5_api_tags_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv5 ollama /api/tags digest for deepseek-v4-gguf:no-h3-stop" as NonEmptyStr,
+  observed_at: "2026-09-02T17:00Z",
+  observed_identity: deepseek_v4_no_h3_stop_manifest_digest_2026_09_02,
+}
+
+data deepseek_v4_no_h3_stop_srv6_manifest_file_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv6 ollama model store manifest file for deepseek-v4-gguf:no-h3-stop" as NonEmptyStr,
+  observed_at: "2026-09-02T17:00Z",
+  observed_identity: deepseek_v4_no_h3_stop_manifest_digest_2026_09_02,
+}
+
+data deepseek_v4_no_h3_stop_srv6_api_tags_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv6 ollama /api/tags digest for deepseek-v4-gguf:no-h3-stop" as NonEmptyStr,
+  observed_at: "2026-09-02T17:00Z",
+  observed_identity: deepseek_v4_no_h3_stop_manifest_digest_2026_09_02,
+}
+
+fn deepseek_v4_no_h3_stop_resolution() -> TrackedReferenceResolution<OllamaModelRef, OllamaManifestReading> {
+  tracked_reference_resolution(
+    reference: deepseek_v4_no_h3_stop_model_ref,
+    resolved_identity: as_content_hash_cryptographic(digest: deepseek_v4_no_h3_stop_manifest_digest_2026_09_02),
+    resolved_at: "2026-09-02T17:00Z",
+    first_evidence: deepseek_v4_no_h3_stop_srv5_manifest_file_reading,
+    further_evidence: [
+      deepseek_v4_no_h3_stop_srv5_api_tags_reading,
+      deepseek_v4_no_h3_stop_srv6_manifest_file_reading,
+      deepseek_v4_no_h3_stop_srv6_api_tags_reading,
+    ],
+  )
+}
+
+// FOUR ENTRIES AND NOT FIVE. The upstream gpt-oss closures carry a license blob; this manifest names
+// none, because POST /api/create wrote exactly the layers the Modelfile produced. The absence is
+// read off the manifest body, not inferred from the parent.
+//
+// THE MODEL LAYER IS ESTABLISHED BY SIZE, NOT BY CONTENT, and that is stated rather than rounded up.
+// The config, template and params blobs are small and were hashed where they sit. The model layer is
+// 86720111200 bytes -- the size the manifest declares for it, to the byte -- and was not re-hashed,
+// because that read is not worth 86 GB twice on a serving host.
+data deepseek_v4_no_h3_stop_blob_closure: List<OllamaBlobDigest> = [
+  OllamaBlobDigest {
+    hex: "1ad5a11ea2211e0c4bbf043c51c700b72ea9549f7289a1de6e2b23644039b16f" as NonEmptyStr,
+    media_type: "application/vnd.docker.container.image.v1+json" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "31598c67c8b8744d3bcebcd19aa62253c6dc43cef3b8adf9f593656c9e86fd8c" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.model" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "e7f556cf8c743a7fd7b3fe31bd5c21ca2c6d82ba31e76a17292da22328215935" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.template" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "efa91d1caeb37df9399b480bfd40b84da3d8f63544a15983458ed816b7278ee0" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.params" as NonEmptyStr,
+  },
+]
+
+data deepseek_v4_no_h3_stop_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
+  resolution: deepseek_v4_no_h3_stop_resolution(),
+  closure: deepseek_v4_no_h3_stop_blob_closure,
+  provenance: LocallyMaterialized {
+    producer: "POST /api/create on each serving cell, from a Modelfile removing PARAMETER stop \"###\"" as NonEmptyStr,
+    derived_from: "hf.co/antirez/deepseek-v4-gguf:latest@sha256:32af248f4cab44ffcb631298f66ff0bdf92a9350a3763a86b9a5b304fc4c1e64" as NonEmptyStr,
+  },
 }
 
 fn ollama_manifest_reading_wire(reading: OllamaManifestReading) -> String {
@@ -329,4 +479,47 @@ fn gpt_oss_20b_resolution_wire() -> String {
 
 fn gpt_oss_20b_resolution_evidence_count() -> Int {
   length(tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()))
+}
+
+// WHAT THE EVIDENCE ACTUALLY ESTABLISHES, DECIDED PER ARM.
+//
+// ollama_resolved_manifest_evidence_is_unanimous answers one question -- do the readings agree with
+// the settled identity -- and that question is necessary for both arms and SUFFICIENT for neither on
+// its own. Read alone it invites the inference this file most needs to prevent: that a higher
+// reading count is stronger provenance. It is not. Four readings taken from two hosts filled by the
+// same hand cannot disagree about a locally-authored artifact that is wrong, so unanimity there is
+// silent on the failure mode registry corroboration exists to catch.
+//
+// So the word is not reused across the two arms. This projects what each one has EARNED, and it is
+// the value consumers match on rather than a Bool they can read as a grade.
+//
+// THE REFUSAL ARM IS REACHABLE FROM BOTH SIDES, which is what keeps this from being decoration:
+// disagreeing readings refuse under either provenance, and a locally-materialized manifest resting
+// on a SINGLE reading refuses as well -- one host agreeing with itself is not corroboration, and it
+// is the state a copy-paste of this block onto a new tag would most easily produce.
+type OllamaManifestCorroboration
+  = IndependentlySelected { registry_authority: NonEmptyStr, reading_count: Int }
+  | CrossHostAgreementOnly { reading_count: Int }
+  | CorroborationRefused { cause: NonEmptyStr }
+
+fn ollama_resolved_manifest_corroboration(m: OllamaResolvedManifest) -> OllamaManifestCorroboration {
+  let readings = ollama_resolved_manifest_evidence(m: m)
+  if !ollama_resolved_manifest_evidence_is_unanimous(m: m) {
+    CorroborationRefused {
+      cause: "a reading disagrees with the identity this resolution settled on" as NonEmptyStr,
+    }
+  } else {
+    match m.provenance {
+      UpstreamPublished { registry_authority: a } =>
+        IndependentlySelected { registry_authority: a, reading_count: length(readings) }
+      LocallyMaterialized { producer: _, derived_from: _ } =>
+        if length(readings) < 2 {
+          CorroborationRefused {
+            cause: "a locally materialized manifest rests on fewer than two readings, so nothing independent corroborates it" as NonEmptyStr,
+          }
+        } else {
+          CrossHostAgreementOnly { reading_count: length(readings) }
+        }
+    }
+  }
 }

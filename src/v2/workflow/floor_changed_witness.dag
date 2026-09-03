@@ -3,8 +3,8 @@ module v2.workflow.floor_changed_witness
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
-  DeclinedRoutedToWetLane,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedRoutedToWetLane,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
 import v2.workflow.floor_terminal_ledger {
@@ -14,9 +14,8 @@ import v2.workflow.floor_terminal_ledger {
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
   NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
 }
-import v2.workflow.floor_wet_route {
-  WetLaneReceiptStanding,
-  wet_route_standing_blocks_floor,
+import v2.workflow.wet_evidence {
+  WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -43,13 +42,60 @@ import std.observation { Measured, MeasuredValue, MeasuredUnavailable, TimedMeas
 // THE STANDING IS A JOIN OF TWO FACTS THE RUN ALREADY HOLDS — the identity's
 // `RequiredFloorDisposition` and, where it executed, its terminal `ClaimDisposition` — restated
 // in no new vocabulary: the `Declined` arm CARRIES the disposition rather than renaming it.
+// THE THREE FACTS THAT TOGETHER REPLACE A VERDICT, and the reason they are one record rather than
+// three loose booleans at the call site: any two of them without the third is a different, and
+// wrong, claim. A route-gap agreement alone says only that the hermetic route could not reach the
+// identity. A scheduled route alone says a policy claims to run it. A wet terminal alone says
+// something passed somewhere. Only the conjunction, at the SAME identity, says the assertion
+// actually ran against THIS candidate and held.
+//
+// THIS IS NOT `RouteGapBeforeVerdict` REINTERPRETED AS A PASS. That outcome stays nonterminal and
+// stays blocking on its own; what changes is that a SECOND, independently produced terminal can be
+// joined to it. The pattern is the cost-debt one directly above: a nonstandard path becomes
+// admissible only when it carries the replacement observation, never because a roster says one
+// ought to exist.
+// THREE BOOLEANS WERE NOT THIS RECORD, THEY WERE THREE INDEPENDENT ASSERTIONS PACKAGED TOGETHER.
+// The shape above read `route_gap_expectation_agreed / scheduled_route_live /
+// wet_terminal_passed_on_candidate: Bool`, and nothing in it established that the three facts
+// concerned the SAME identity or the same tree -- a caller could author true/true/true while
+// supplying no route-gap row, no scheduled row, no terminal, no identity and no candidate. The
+// paragraph above says the conjunction only means something "at the SAME identity"; the record did
+// not carry an identity, so it could not say that, and the composition it describes was checked
+// nowhere. What is carried now is the evidence itself, and the completeness predicate does the
+// same-identity, same-candidate join the paragraph always claimed.
+type WetTerminalAdmitted {
+  identity: String
+  candidate: String
+}
+
+type HermeticRouteGapWetEvidence
+  = HermeticRouteGapWetUnavailable
+  | HermeticRouteGapWetAdmitted { admitted: WetTerminalAdmitted, lane: WetEvidenceValidation }
+
+fn hermetic_route_gap_wet_join_complete(
+  evidence: HermeticRouteGapWetEvidence,
+  identity: String,
+  candidate: String,
+) -> Bool {
+  match evidence {
+    HermeticRouteGapWetUnavailable => false
+    HermeticRouteGapWetAdmitted { admitted: a, lane: l } =>
+      (a.identity == identity)
+        && (a.candidate == candidate)
+        && match l {
+          WetEvidenceAdmitted { binding: _, terminals: _ } => true
+          WetEvidenceRefused { causes: _ } => false
+        }
+  }
+}
+
 type ChangedWitnessExecutionStanding =
     PlannedAndPassed
   | PlannedAndKnownRedHeld
   | PlannedAndPassedWithCostDebtObserved { observation: ChangedWitnessCostObservation }
   | CostObservationMissingUnderVerdictOnly
   | PlannedWithoutTerminalVerdict
-  | RoutedWithCandidateExactReceipt
+  | HermeticRouteGapHeldAndWetPassed { evidence: HermeticRouteGapWetEvidence, identity: String, candidate: String }
   | Declined { disposition: RequiredFloorDisposition }
   | MissingDisposition
 
@@ -143,19 +189,6 @@ type ChangedWitnessDispositionReading =
 // are spelled rather than wildcarded so a thirteenth `ClaimDisposition` arm must be classified
 // here, never absorbed.
 //
-// `DeclinedRoutedToWetLane` IS ADMITTED ONLY UNDER A CANDIDATE-EXACT FRESH RECEIPT (parent
-// amendment 2026-08-30, #9717 composition): the wet subject digest covers every routed
-// witness's closure, so `ReceiptFreshExactSubject` PROVES the wet lane executed exactly this
-// candidate's wet subject — the changed declaration included — and that is the terminal
-// verdict a merge may stand on, `RoutedWithCandidateExactReceipt`. Under EVERY other standing
-// the edit blocks: an ancestor-subject receipt is a verdict about a tree without the edit
-// (blocked by ruling, no cadence-lag arm), and greening the edit by decline would be the
-// coverage inflation `v2.workflow.floor_wet_route` exists to refuse. The polarity is read
-// from `wet_route_standing_blocks_floor` rather than re-enumerated, so the two consumers of
-// the standing cannot disagree about which arm is clean. The red's remedy is live, not dead:
-// dispatch the wet receipts lane on the head (workflow_dispatch executes the routed roster
-// with the edit applied) and land its envelope with the change.
-//
 // `PlannedAndPassedWithCostDebtObserved` and `CostObservationMissingUnderVerdictOnly` are the two
 // arms the FLOOR-CHANGED-COST-0 ruling adds, and they exist only under
 // `ChangedCostDebtVerdictOnly` -- the join of changed selection with cost-debt enrollment. The
@@ -207,6 +240,9 @@ fn changed_witness_planned_standing(
   terminal: ChangedWitnessTerminalReading,
   cost_policy: ChangedWitnessCostPolicy,
   cost: ChangedWitnessCostReading,
+  wet: HermeticRouteGapWetEvidence,
+  identity: String,
+  candidate: String,
 ) -> ChangedWitnessExecutionStanding {
   match terminal {
     NotExecuted => PlannedWithoutTerminalVerdict {}
@@ -224,7 +260,12 @@ fn changed_witness_planned_standing(
         BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
         HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-        RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        RouteGapBeforeVerdict =>
+          if hermetic_route_gap_wet_join_complete(evidence: wet, identity: identity, candidate: candidate) {
+            HermeticRouteGapHeldAndWetPassed { evidence: wet, identity: identity, candidate: candidate }
+          } else {
+            PlannedWithoutTerminalVerdict {}
+          }
         RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
         PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
@@ -235,15 +276,17 @@ fn changed_witness_planned_standing(
 
 fn changed_witness_execution_standing(
   reading: ChangedWitnessDispositionReading,
-  wet_standing: WetLaneReceiptStanding,
+  wet: HermeticRouteGapWetEvidence,
+  identity: String,
+  candidate: String,
 ) -> ChangedWitnessExecutionStanding {
   match reading {
     NoDispositionRow => MissingDisposition {}
     DispositionRow { disposition: d, terminal: t, cost_policy: p, cost: c } =>
       match d {
-        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c)
+        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
         PlannedAsChangedWitness =>
-          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c)
+          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
         DeclinedLongModule { matched_prefix: _ } => Declined { disposition: d }
         DeclinedFixtureMember { matched_prefix: _ } => Declined { disposition: d }
         DeclinedOutsideRequiredGate => Declined { disposition: d }
@@ -251,21 +294,31 @@ fn changed_witness_execution_standing(
         DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
         DeclinedCostDebt => Declined { disposition: d }
         DeclinedRoutedToWetLane =>
-          if wet_route_standing_blocks_floor(standing: wet_standing) {
-            Declined { disposition: d }
+          if hermetic_route_gap_wet_join_complete(evidence: wet, identity: identity, candidate: candidate) {
+            HermeticRouteGapHeldAndWetPassed { evidence: wet, identity: identity, candidate: candidate }
           } else {
-            RoutedWithCandidateExactReceipt {}
+            Declined { disposition: d }
           }
       }
   }
 }
 
-// THE BLOCKING POLARITY, STATED ONCE. Exactly three standings are green, and each carries an
-// executed verdict for the candidate: a hermetic pass, an enrolled expected-red holding exactly
-// as enrolled, or a wet receipt whose subject digest proves the lane ran this candidate's wet
-// subject. Everything else — a changed witness identity that did not run to such a verdict, for
-// any reason, including a decline that is perfectly lawful for the STANDING population — is a
-// red at the changed-set grain, because the change is precisely the moment its author is
+// `DeclinedRoutedToWetLane` IS NOT AN ORDINARY DECLINE, and it is the one disposition whose
+// greenness is bought by execution elsewhere rather than by exclusion. Routing an identity to the
+// wet lane says the ordinary floor did not run it; greening the edit on that alone would be exactly
+// the coverage inflation the wet route exists to refuse. So it greens ONLY when the wet join is
+// complete for THIS candidate, and it falls to `Declined` otherwise.
+//
+// THE JOIN IT CONSULTS IS `wet_evidence`'s, NOT A SECOND ONE. The branch that authored this arm
+// read it from `v2.workflow.floor_wet_route`'s own receipt standing, which since #9975 would be a
+// second authority answering a question `hermetic_route_gap_wet_join_complete` already answers. The
+// polarity is therefore read from that predicate rather than re-enumerated here, so the arm and the
+// blocking fold below cannot disagree about which standing is clean.
+//
+// THE BLOCKING POLARITY, STATED ONCE. Exactly two standings are green, and both required
+// execution: a changed witness identity that did not run to a passing or enrolled-held verdict
+// — for any reason, including a decline that is perfectly lawful for the STANDING population —
+// is a red at the changed-set grain, because the change is precisely the moment its author is
 // present to route it, rename it into the gate, or remove it deliberately.
 fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) -> Bool {
   match standing {
@@ -274,7 +327,8 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedAndPassedWithCostDebtObserved { observation: _ } => false
     CostObservationMissingUnderVerdictOnly => true
     PlannedWithoutTerminalVerdict => true
-    RoutedWithCandidateExactReceipt => false
+    HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
+      !hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
     Declined { disposition: _ } => true
     MissingDisposition => true
   }

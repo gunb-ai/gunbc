@@ -27,6 +27,10 @@ use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
+pub use crate::std_coercion::TypeDeclarationProvenance;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -187,6 +191,31 @@ pub enum InferredNode {
     TypeVariable {
         id: String,
     },
+    Divergent,
+}
+
+pub fn divergent_type() -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: "".to_string(),
+        span: no_span(),
+        ident_span: Some(no_span()),
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Divergent)),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
+        properties: Rc::new(vec![]),
+        type_annotation: std::option::Option::None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: std::option::Option::None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
 }
 
 pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
@@ -194,6 +223,7 @@ pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
         InferredNode::Resolved { node: n, .. } => Some(n.clone()),
         InferredNode::CompilerError { .. } => std::option::Option::None,
         InferredNode::TypeVariable { id: _, .. } => std::option::Option::None,
+        InferredNode::Divergent => std::option::Option::None,
     }
 }
 
@@ -202,6 +232,7 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
         InferredNode::Resolved { node: _, .. } => false,
         InferredNode::CompilerError { .. } => true,
         InferredNode::TypeVariable { id: _, .. } => false,
+        InferredNode::Divergent => false,
     }
 }
 
@@ -435,6 +466,10 @@ pub enum CompilerDiagnostic {
         span: Rc<SourceSpan>,
     },
     UnresolvedType {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
+    UnitVariantPhantomIdentityEvidenceUnavailable {
         name: String,
         span: Rc<SourceSpan>,
     },
@@ -757,6 +792,9 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
+        CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
+            s.clone()
+        }
         CompilerDiagnostic::TypeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
@@ -823,6 +861,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
     CompilerDiagnostic::VariantNotFound { variant: v, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
@@ -1682,16 +1721,25 @@ pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
+pub fn field_from_key_property_name() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "from".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn field_node_from_key(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match find_property(
         n.properties.clone(),
-        "from_key".to_string(),
+        field_from_key_property_name(),
         source_indices.clone(),
     ) {
-        Some(p) => Some(authored_name_at(source_indices.clone(), p.clone())),
+        Some(p) => expr_literal_string_optional(p.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -3944,6 +3992,44 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
         start: 0,
         end: v1_rt::string_length(&name),
     })
+}
+
+pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
+    match item.ident_span.clone() {
+        std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+        Some(sp) => {
+            if (sp.file.clone() == "".to_string()) {
+                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            } else {
+                if (sp.file.clone() == kernel_span(item.name.clone()).file.clone()) {
+                    Rc::new(TypeDeclarationProvenance::KernelMinted {
+                        minted_name: item.name.clone(),
+                    })
+                } else {
+                    Rc::new(TypeDeclarationProvenance::CorpusDeclared {
+                        decl_file: sp.file.clone(),
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn type_reference_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => declaration_provenance_of(rt.clone()),
+        _ => declaration_provenance_of(n.clone()),
+    }
+}
+
+pub fn provenance_reported_file(p: Rc<TypeDeclarationProvenance>) -> String {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => f.clone(),
+        TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm, ..
+        } => kernel_span(nm.clone()).file.clone(),
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => "".to_string(),
+    }
 }
 
 pub fn unit_type() -> Rc<Node> {

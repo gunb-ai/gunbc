@@ -6,9 +6,25 @@ import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
+// THE SAFETY VOCABULARY IS IMPORTED, NOT DECLARED HERE. `ClaimSafetyOutcome` and
+// `ClaimPreemptionReachability` moved to `v2.workflow.floor_terminal_ledger`, beside the
+// `ClaimAttemptTerminal` arm that carries them. They are TERMINAL VOCABULARY -- what a claim attempt
+// reached -- and this module is a CONSUMER that classifies safety outcomes rather than the authority
+// that defines them. Declaring them here made a vocabulary depend on one of its readers, which
+// closed a cycle the moment a third module needed both; DESIGN section 4 makes acyclicity the import
+// graph's only structural law, so this direction is forced rather than preferred.
+//
+// WHAT STAYED: the opaque-host-operation POPULATION below. That is policy declared OVER this
+// vocabulary, not the vocabulary, and it is the same split `floor_route_gap` already draws between
+// its ground type and its expectation roster.
+import v2.workflow.floor_terminal_ledger {
+  ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
+  ClaimPreemptionReachability, CooperativelyPollable, OpaqueHostCallUnbounded
+}
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
 import v2.workflow.floor_wet_route { floor_wet_route_holds }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
@@ -383,6 +399,11 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // "the failure surfaces only from a full CI run". It cost a ~30-minute fold to learn, on a
 // change whose whole subject is the cost of folds.
 //
+// `v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule` is the FIFTH, on the same terms
+// and with the same diagnostic, and it cost the same full-CI fold to learn. It is reported here
+// as the fifth data point for the derivation named above rather than as a fifth apology; the
+// import is reachability only, and the host still calls the schedule by its real qualified name.
+//
 // FOUR OCCURRENCES IS NOT FOUR CARELESS AUTHORS. Each of us read a file that says, in prose, at
 // the exact place we were editing, that this edge must be added by hand -- and the prose did not
 // stop any of us, because a reader adding a roster is thinking about the roster's CONTENT while
@@ -541,6 +562,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.v1_dag_parse_witness",
     "test.claim.generic_lambda_parameter_binding_witness",
     "test.claim.arity_zero_import_refusal_witness",
+    "test.claim.prose_citation_census_witness",
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
     "test.claim.compiler_frontend_program_status_witness",
@@ -793,12 +815,15 @@ fn required_floor_site_disposition(
 // -- they are NOT hard bounds across an opaque host operation unless that operation separately
 // carries a deadline-aware contract or a killable process boundary. Whichever deadline a poll
 // DOES observe crossing raises a genuinely terminal-before-verdict occurrence
-// (`ClaimSafetyOutcome.SafetyInterrupted`, below); a claim whose cost accrues where no poll can
+// (`ClaimSafetyOutcome.SafetyInterrupted`, declared in `v2.workflow.floor_terminal_ledger`); a claim
+// whose cost accrues where no poll can
 // land instead completes and is classified `CompletedPastSafetyLimit`, which blocks identically
 // (`claim_safety_outcome_blocks`) but is never mislabeled as an interrupt it did not receive. The
-// typed model -- `ClaimPreemptionReachability`, `ClaimSafetyOutcome`, `claim_safety_outcome`,
-// `claim_safety_outcome_blocks`, the migration wall, and the §4b rung drop -- is declared further
-// down this file rather than described here in prose a second time; the measured receipt behind
+// typed model is declared rather than described here in prose a second time, and it now spans TWO
+// modules: the VOCABULARY -- `ClaimPreemptionReachability` and `ClaimSafetyOutcome` -- lives in
+// `v2.workflow.floor_terminal_ledger` beside the terminal that carries it, while the CLASSIFICATION
+// over it -- `claim_safety_outcome`, `claim_safety_outcome_blocks`, the migration wall and the §4b
+// rung drop -- stays in this module, which is the consumer. The measured receipt behind
 // it (floor run 32301212975, `root_d_checkpoint_scalar_declared_arity_witness_holds` reaching a
 // verdict at 60317ms CPU against this module's 5000ms `required_floor_claim_cpu_safety_limit_ms`,
 // twelve times over and uninterrupted, not a first occurrence -- 2792-2855ms isolated per
@@ -1008,30 +1033,102 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // a deadline-aware contract or a killable process boundary -- neither of which
 // `compile_dag_rust_emit_check` has today.
 
-// WHICH REACHABILITY ONE CLAIM HAS, closed and named rather than left implicit per-occurrence.
-// A claim either stays inside `eval_expr`'s own poll loop for its whole duration
-// (`CooperativelyPollable` -- the case the two safety limits above genuinely protect), or it
-// crosses into a synchronous native `free_call.*` arm that never re-enters `eval_expr` while it
-// runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
-// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
-// comment already described in prose; this type is what the ruling asked that prose become.
-type ClaimPreemptionReachability =
-    CooperativelyPollable
-  | OpaqueHostCallUnbounded { operation: String }
 
-// THE ONE CLOSED, NO-GROWTH POPULATION of opaque host operations grandfathered under a per-claim
-// safety guarantee TODAY, and it is exhaustive rather than illustrative: `compile_dag_rust_emit_check`
-// is the only native `free_call.*` arm this corpus has measured reaching CPU cost the safety poll
-// cannot see (root_d_checkpoint_scalar_declared_arity_witness_holds, floor run 32301212975,
-// 60317ms against a 5000ms `required_floor_claim_cpu_safety_limit_ms`). This is the population
-// the §4b rung-drop below reads -- named by the operations actually found reaching an opaque host
-// call, not by which CLAIMS happen to call them today, so the population does not grow by a claim
-// being added or removed; it grows only when a DIFFERENT operation is found to share this shape,
-// which is a new finding, not a declaration.
+// THE POPULATION OF OPAQUE HOST OPERATIONS THE PREEMPTION-1 RUNG DROP IS DECLARED OVER, AND IT
+// IS EIGHT MEMBERS RATHER THAN ONE. CORRECTED 2026-09-02; the correction is a rung-honesty repair,
+// not a widening of what is tolerated.
+//
+// WHAT THE PRIOR REVISION SAID AND WHY IT WAS WRONG. It carried exactly one member and called
+// itself "exhaustive rather than illustrative", on this reasoning: `compile_dag_rust_emit_check`
+// "is the only native `free_call.*` arm this corpus has MEASURED reaching CPU cost the safety poll
+// cannot see", citing root_d_checkpoint_scalar_declared_arity_witness_holds at 60317ms in floor run
+// 32301212975. Both halves of that sentence are true and the arrow between them is invented: being
+// measured over a limit in one floor run is how the operation was FOUND, and is not what makes it
+// unbounded. The finding aid was read as the population -- DESIGN's
+// `selection_view_read_as_population` -- so a §4b drop under-reported its own bounded population by
+// eight to one, and every arm outside the one measured row was left describing itself as covered by
+// a safety guarantee that has never held for it.
+//
+// WHAT DECIDES MEMBERSHIP NOW is the mechanism the drop is about, stated as a falsifiable
+// criterion and owned by one authority: `gunbc.v1_interpreter_opaque_host_call` admits a
+// `free_call.*` dispatch arm whose Rust realization synchronously runs a NESTED COMPILE of `.dag`
+// sources, and grounds every member against `gunbc.v1_interpreter_primitive_surface`
+// `v1_interpreter_primitive_arms` -- the seed's single dispatch-surface authority, itself drift-
+// gated against the generated lookup tables. That module's `opaque_host_call_surface` refuses
+// rather than shortening its list when a member fails to resolve, and names the residue its
+// criterion deliberately excludes (a whole-corpus INDEX build is unbounded in the same way and is
+// not a compile).
+//
+// THIS LIST IS THE V2-TOWER PROJECTION OF THAT AUTHORITY, NOT A SECOND ONE. It is spelled here
+// because `gunbc.v1_interpreter_opaque_host_call` is authored in the `std.types` tower while this
+// module is v2's (`v2.std.collection` List, `v2.std.logic` Bool) -- the same tower gap
+// `flat_scalar_millisecond_fields_dissolve_on` above already records for this file's millisecond
+// fields. The two spellings are held together by an EXECUTED two-way identity join
+// (`test.claim.preemption_reachability` `w_grandfather_population_matches_the_grounded_surface`),
+// which goes red on any member present in one and absent from the other, so drift is decidable
+// rather than trusted.
+//
+// IT STILL DOES NOT GROW BY DECLARATION. It is keyed on OPERATIONS, never on which claims reach
+// them, so adding or retiring a witness moves nothing here; it grows only when an arm is found to
+// meet the criterion, which is a source-verifiable finding against a named Rust entry point.
+data opaque_host_call_population_authority_dissolves_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: opaque_host_call_grandfather_population is deleted and this module imports gunbc.v1_interpreter_opaque_host_call opaque_host_call_surface directly, once a verified List<String> bridge exists between the std.types tower that module is authored in and v2.std.collection's List -- the same tower gap flat_scalar_millisecond_fields_dissolve_on records for this module's millisecond fields. Until then the two spellings are joined at identity by test.claim.preemption_reachability w_grandfather_population_matches_the_grounded_surface, which is executed evidence rather than a promise." as NonEmptyStr,
+)
+
 fn opaque_host_call_grandfather_population() -> List<String> {
   Cons {
     head: "compile_dag_rust_emit_check",
-    tail: Empty {}
+    tail: Cons {
+      head: "compile_dag_diagnostic_census",
+      tail: Cons {
+        head: "compile_dag_multi_module_fixture",
+        tail: Cons {
+          head: "observe_declared_import_closure_symbol_binding",
+          tail: Cons {
+            head: "witness_layer_roots_compile_clean_check",
+            tail: Cons {
+              head: "witness_layer_roots_compile_clean_emit_check",
+              tail: Cons {
+                head: "install_or_consume_floor_compile_clean_gate_receipt",
+                tail: Cons {
+                  head: "witness_compile_clean_cli_floor_verdicts_agree",
+                  tail: Empty {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// TWO PROJECTIONS OF THE POPULATION THAT EXIST FOR THE IDENTITY JOIN, NOT FOR REPORTING. The
+// join with `gunbc.v1_interpreter_opaque_host_call` runs in the witness and can only carry values
+// one way across the tower boundary: it can hand each grounded operation to
+// `claim_preemption_admission` and get an answer, which establishes grounded-surface SUBSET-OF
+// this list. It cannot fold this list against a `std.types`-tower predicate. Cardinality plus
+// distinctness closes the other direction exactly -- an injection from a set of size n into a
+// duplicate-free list of size n is onto -- so the two are held equal at IDENTITY rather than at
+// count, which is what DESIGN section 5 requires of a completeness claim. Both are recursive over
+// the `Cons`/`Empty` spine rather than folds so this module stays inside the vocabulary it
+// already uses.
+fn grandfather_population_size(population: List<String>) -> Int {
+  match population {
+    Empty {} => 0
+    Cons { head: _, tail: t } => 1 + grandfather_population_size(population: t)
+  }
+}
+
+fn grandfather_population_has_duplicate(population: List<String>) -> Bool {
+  match population {
+    Empty {} => false
+    Cons { head: h, tail: t } =>
+      if string_in_grandfather_population(needle: h, population: t) {
+        true
+      } else {
+        grandfather_population_has_duplicate(population: t)
+      }
   }
 }
 
@@ -1064,26 +1161,6 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
   }
 }
 
-// THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
-// prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`
-// is reserved for a claim the poll genuinely stopped before a verdict -- it must never be the
-// label for a claim that ran to completion, however far over its limit, because "terminal" and
-// "interrupted" are different facts and conflating them is exactly the relabeling this ruling
-// forbids. `CompletedPastSafetyLimit` names the other terminal-but-over-limit case and carries
-// its `ClaimPreemptionReachability`, so a reader can tell WHY the poll never had a chance to fire
-// without re-deriving it from a comment.
-type ClaimSafetyOutcome =
-    CompletedWithinSafetyLimits
-  | SafetyInterrupted {
-      raised_by: String
-      elapsed_cpu_at_least: Int
-      elapsed_wall_at_least: Int
-    }
-  | CompletedPastSafetyLimit {
-      observed_cpu: Int
-      observed_wall: Int
-      preemption: ClaimPreemptionReachability
-    }
 
 // FLAT-SCALAR MILLISECOND FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review
 // 53860 on gunbc#8584, BLOCKING on `observed_cpu_ms`/`observed_wall_ms`/`cpu_limit_ms`/
@@ -1169,11 +1246,23 @@ fn claim_safety_outcome(
 // to reach `compile_dag_rust_emit_check` would be uncovered by a list keyed on identity rather
 // than on the operation it reaches. Any claim reaching a listed operation is, by that reach
 // alone, in the dropped population; `claim_preemption_admission` is the decidable membership
-// test over it, and it is exhaustive today at exactly one member.
+// test over it.
+//
+// THE POPULATION WAS RESTATED FROM ONE MEMBER TO EIGHT ON 2026-09-02, and that is a correction to
+// this drop's own honesty rather than a new loss. Nothing about the corpus changed: the seven arms
+// added had always reached the same unpollable dispatch shape, and the drop had simply been
+// declared over the one operation a floor run happened to catch over its limit -- the discovery
+// instrument read as the population. A §4b drop that under-states its bounded population
+// under-states the loss, and the arms outside it were describing themselves as protected by a
+// guarantee that had never held for them, which is rung inflation at the population grain rather
+// than at the rung grain. The criterion, the eight members and the join back to the seed's
+// dispatch authority now live in `gunbc.v1_interpreter_opaque_host_call`; the residue that
+// criterion deliberately excludes is named there too, so the next widening is a stated finding and
+// not a silent one.
 //
 // RESTORATION TRIGGER: this rung restores to mechanically preventable for the
-// `OpaqueHostCallUnbounded` population when `compile_dag_rust_emit_check` (or any future member
-// of the grandfather population) gains a deadline-aware contract or runs behind a killable
+// `OpaqueHostCallUnbounded` population when EVERY member of that population -- all eight today,
+// not the one measured member -- gains a deadline-aware contract or runs behind a killable
 // process/worker boundary -- per `ClaimPreemptionReachability`'s own doc comment and
 // v1_interpreter's `eval_expr` comment naming worker isolation, not a budget, as what would bound
 // it unconditionally. Until then this rung is the honest one, and S2 (building that boundary) is
@@ -1225,11 +1314,33 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // The shared builds a floor run pays before any per-claim timer starts. A CLOSED population --
 // each is an artifact this repository has measured being charged to a first toucher, and the
 // list grows only when another such artifact is FOUND, never by declaration.
+//
+// THE FIFTH WAS FOUND, NOT DECLARED, AND IT WAS ALREADY RUNNING WHEN IT WAS FOUND (2026-09-03).
+// `CrossClaimPureProducerWarm` is the warm fill of the preparation-forceable rows of
+// `floor_pure_producer_share`. It satisfies this population's own membership rule exactly: the
+// work is a one-time build that WAS charged to a first toucher, which is the entire reason the
+// warm exists -- gunbc#10108 measured one such fill at 501ms against a 500ms per-claim ceiling,
+// so leaving it unforced put a shared build inside a claim's timer and over the line.
+//
+// WHAT WAS WRONG BEFORE THIS ROW, and it is the defect the row repairs rather than a note about
+// it: the runner already ran that warm and already printed `phase=pure-producer-share-warm`, but
+// this closed type had no variant for it, so the phase existed in execution and not in the model.
+// The consequence was not cosmetic. Preparation's three-axis refusal iterates the observations
+// collected for the FOUR variants above; the share warm produced no observation at all, so its
+// cost was bounded by NOTHING -- not by the per-claim ceiling, which it is deliberately outside,
+// and not by the preparation limits, which never saw it. An unbounded arm of a mechanism whose
+// stated purpose is that THE SAFETY WALL MOVES WITH THE COST.
+//
+// This is the same shape as review 55338, which found this type naming three phases while one was
+// measured, and it is the mirror image: there the model named more than execution measured, here
+// execution ran more than the model named. Both directions produce an informational wall, which is
+// why the repair is the same -- one observation per phase, one refusal over all of them.
 type FloorPreparationPhase =
     ModulePathIndexBuild
   | SharedModuleIndexBuild
   | BareReferenceEdgeIndexBuild
   | LanguagesConsumerCensusBuild
+  | CrossClaimPureProducerWarm
 
 // The terminal disposition of ONE shared preparation build. `PreparationWithinLimits` carries
 // its observations too: a phase that reports nothing is indistinguishable from a phase that did

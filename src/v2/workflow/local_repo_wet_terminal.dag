@@ -1,0 +1,358 @@
+module v2.workflow.local_repo_wet_terminal
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import v2.std.algebra { Cons, Empty, filter, length }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger {
+  ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
+  ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed
+}
+import v2.workflow.wet_evidence {
+  WetEvidenceRequirement, LocalRepoCoResidentRequirement,
+  WetEvidenceBinding, CoResidentPreparedSubject, TransportedReceiptSubject,
+  WetScheduledClaim, WetTerminalRow,
+  WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
+  WetEvidenceRefusal, wet_evidence_validate
+}
+
+// WHY THIS AUTHORITY EXISTS. `v2.workflow.floor_route_gap` gives an enrolled hermetic route gap a
+// truthful DEBT disposition: the identity executed, reached a host effect the hermetic route has no
+// arm for, and is counted and held. Held is not a verdict, and the changed-witness gate is right to
+// block on it -- a witness that reached no verdict on the day it was authored has established
+// nothing, and two enrolment rows added in the same change would otherwise let an author authorize
+// their own witness's permanent non-execution.
+//
+// What was missing is not awareness of route gaps; it is an ALTERNATE TERMINAL to join against
+// them. This module is that terminal: one receipt per scheduled identity, bound to the candidate it
+// ran against, so "the hermetic route could not reach it" can be paired with "a route that can
+// reach it did, on THIS tree, and it passed".
+//
+// THE RECEIPT IS BOUND TO A CANDIDATE, AND THAT BINDING IS THE WHOLE POINT. A terminal fact with no
+// candidate is a claim that the witness passed SOMEWHERE, which is exactly the standing that let a
+// deleted workflow read as coverage for months. The candidate is carried so a receipt from another
+// tree is a typed refusal rather than an accepted substitute.
+
+// COMPLETED-OVER-BUDGET IS ITS OWN ARM, NOT A NONTERMINAL ONE. It was folded into Nonterminal,
+// which contradicted the producer: the claim REACHED its verdict and then the run exceeded a
+// declared line. Interruption and completion send a reader to different remedies -- one to the
+// route or the program, the other to the budget -- and the floor's own terminal authority already
+// keeps them apart, so collapsing them here re-forked a distinction that exists upstream.
+//
+// It still refuses against this lane's only expectation. A member that passes only by running past
+// its line is not a member this lane can carry; what changes is that the refusal says so.
+//
+// WHAT THIS MODULE OWNS AFTER THE CONVERGENCE, AND WHAT IT NO LONGER DOES.
+//
+// This module used to carry its own verdict type, expectation type, scheduled row, terminal row,
+// join, and seven refusal causes. `v2.workflow.floor_terminal_ledger` already owned the terminal
+// vocabulary and `claim_disposition` already derived the completed-past-limit split, so a second
+// spelling of both was a MEANING FORK: one fact answered by two authorities, which DESIGN section 3
+// forbids and which had already begun to diverge -- this module's `LocalRepoWetRefused { detail:
+// String }` collapsed five typed `ClaimOutcome` arms into prose, while the ledger types them.
+//
+// So the join moved to `v2.workflow.wet_evidence`, which answers it for BOTH routes, and what stays
+// here is exactly what is ROUTE-OWNED and cannot be shared:
+//
+//   THE ROSTER -- which identities this lane claims, and the execution property that admits them.
+//   THE REQUIREMENT -- that this route binds by CO-RESIDENT PREPARED SUBJECT and not by a
+//   transported receipt digest, which is a fact about this route and not about the join.
+//   THE INVOCATION WALL -- that an executor which was never called is a refusal rather than a
+//   silence, which the join cannot see because it compares a schedule against terminals.
+//
+// The seven causes are preserved one-for-one by the shared refusal type and every one still refuses
+// the same population: missing, duplicated, unscheduled, foreign entry, foreign function, and
+// verdict-not-expected map directly, and the foreign CANDIDATE becomes
+// `WetBindingPreparedSubjectDiffers` -- the same comparison, now typed by WHICH relation produced
+// the binding rather than by an untyped String equality.
+
+// THIS ROUTE'S REQUIREMENT, AND WHY IT IS A FUNCTION RATHER THAN A CONSTANT. The prepared subject is
+// the tree the FLOOR prepared for this run, so it arrives as an argument; what is fixed here is the
+// RELATION -- co-resident execution against that subject. A transported receipt cannot satisfy this
+// route no matter what digest it carries, and after the convergence that is true BY CONSTRUCTION
+// rather than by a comparison: the requirement determines the route, so there is no way to write a
+// local schedule under a transported requirement.
+fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
+  LocalRepoCoResidentRequirement { prepared_subject: candidate }
+}
+
+// THE LANE'S COMPLETE ROSTER. Membership is by EXECUTION PROPERTY: every member's real effects are
+// confined to a temporary directory and a local git repository, which the required lane can run in
+// its own checkout. That is what makes std.witness_admission's LocalRepoWetLane route claim true for
+// this population and false for BinWitnessWet, whose members also download ISOs, fetch over the
+// network, build with real cargo and provision remote hosts.
+//
+// THE ROSTER DOES NOT LAND EMPTY, and that is deliberate rather than incidental. An empty roster
+// would make the lane's coverage claim vacuously true and leave nothing proving the executor runs
+// anything at all -- a gate permanently green by construction, which DESIGN section 4b calls a
+// decoration rather than a wall.
+//
+// THIRTEEN MEMBERS IN THREE GROUPS, and the groups are named apart because they were admitted for
+// different reasons and a single sentence covering all of them would be false about two.
+//
+//   SEVEN INHERITED DEBT MEMBERS. They were already on main, their effects are local-repo only, and
+//   they had executed NOWHERE since falsifier.yml was deleted at 611fd02770 on 2026-08-15.
+//   Scheduling them repaid standing debt rather than only serving the change that needed the lane.
+//
+//   FOUR CONTRACT-EPOCH MEMBERS, from the required-CI epoch work. They are NOT inherited debt: they
+//   were authored with that change and have the same execution property, so they are admitted on
+//   the same terms rather than on the same history. Each builds a real temporary repository and
+//   commits into it, reaching shell.Mktemp.Dir, git plumbing over that worktree, and
+//   shell.Remove.RecursiveForce -- no network, no cargo, no remote host.
+//
+//   TWO HOST-PROBE MEMBERS (added 2026-09-02, PR #10055, operator ruling relayed by tidy-lynx-804).
+//   They are admitted on the NEGATIVE half of the property above -- no network, no cargo, no remote
+//   host, no install media -- and NOT on its positive half: they build no temporary repository and
+//   write nothing. Their only effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check,
+//   command -v). That is stated as a distinct admitted effect rather than folded into the sentence
+//   above, because a membership property widened to accommodate its newest member stops bounding
+//   anything.
+//
+//   THE ADMISSION CONDITION WAS HOST-INDEPENDENCE OF THE VERDICT, AND IT WAS MEASURED. The risk the
+//   ruling named is real: npm is provisioned by `apt install npm on falsifier cadence runner image`
+//   (gunbc.host_cli_dependency codex_wet_materialization_host_cli_requirements), the cadence whose
+//   workflow was deleted at 611fd02770, so npm cannot be assumed present on the hosts this lane
+//   runs on. Both fns return the literal true from EVERY arm, and the npm fn was executed on one
+//   host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- yielding
+//   the same verdict in each. A host-conditional red is therefore not what these import. The echo
+//   fn's absent branch was NOT reached by execution (echo resolves in every PATH tested); its
+//   host-independence rests on the same all-arms-true structure, which is total over hosts rather
+//   than sampled.
+//
+//   WHAT THEY CAN STILL RED ON is route-unreachability, not tool presence: with no shell at all the
+//   probe raises TypeError failed to execute 'sh' and reaches no verdict. That is the reachability
+//   risk every member of this lane already carries, and it is recorded here so a future red is read
+//   against the right axis.
+//
+// EACH WAS MEASURED WET BEFORE BEING SCHEDULED, not assumed runnable from its exclusion note. A
+// member the executor cannot actually run would make this lane's route claim false, which is the
+// failure the ruling that ordered this lane forbids by name. The four contract-epoch members were
+// each run wet through `gunbc run` over this tree before this row was written: every one executed
+// its real host effects to completion and returned true. That measurement is the reason they are
+// here, and it is why an unmeasured member does not get added by analogy with a measured one.
+//
+// THE ROWS NOW CARRY `WitnessIdentity` RATHER THAN A QUALIFIED STRING, and that removed a duplicated
+// fact rather than adding a field: every row's `identity` ended with "." plus its own `function`, so
+// the qualified name was authored twice per row and could disagree with itself. It is derived from
+// the pair by `witness_identity_qualified_name`, which is the same projection every other consumer
+// of an identity already uses.
+fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
+  [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_refuses_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "divergent_generated_artifact_merge_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "one_sided_generated_artifact_change_merges_clean_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "clean_staged_index_admits_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "clean_staged_index_admits_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "unmerged_index_with_no_markers_refuses_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "unmerged_index_with_no_markers_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "space_and_tab_named_paths_admit_by_real_execution" },
+      entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
+      function: "space_and_tab_named_paths_admit_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution" },
+      entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
+      function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_echo_wet_posix_command_v_check_does_not_crash" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "observe_echo_wet_posix_command_v_check_does_not_crash",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_npm_wet_posix_command_v_check_does_not_crash" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "observe_npm_wet_posix_command_v_check_does_not_crash",
+      expectation: ExpectedToHold {}
+    }
+  ]
+}
+
+// The identity projection the executor and the changed-witness gate both read, so neither authors a
+// second list beside this one.
+fn local_repo_wet_scheduled_identities() -> List<String> {
+  local_repo_wet_schedule() |> map(s => witness_identity_qualified_name(identity: s.identity))
+}
+
+// THE INVOCATION TOOTH. The join above enforces completeness CONDITIONAL ON THE HOST HAVING RUN THE
+// EXECUTOR: it compares a schedule against terminals, so it is silent about the one state where
+// there are no terminals because nothing was ever called. That is not a hypothetical residue, it is
+// the exact class this lane exists to repair -- `falsifier.yml` was deleted and five cadences went
+// on claiming a scheduled route for months, because the predicate that claimed the route and the
+// workflow that realized it were joined by nothing. `std.witness_admission` now returns true for
+// LocalRepoWetLane, so this module owes an independent wall for the same failure at its own grain:
+// schedule still nonempty, executor invocation gone, nobody notices.
+//
+// THE WALL CANNOT LIVE INSIDE THE EXECUTOR, because an assertion in a function that was deleted
+// does not execute. So execution becomes a VALUE the finalizer must be handed, absence is one of
+// its arms, and the floor's finalization asks this fold rather than asking the executor.
+type LocalRepoWetExecution
+  = LocalRepoWetExecutorNotInvoked
+  | LocalRepoWetExecutorRan { candidate: String, terminals: List<WetTerminalRow> }
+
+// SEPARATED BY REMEDY, like the join causes. An absent executor sends a reader to the floor's call
+// site; a foreign candidate says the executor ran, but not against this tree, which is a receipt
+// imported from elsewhere and is the standing this lane refuses by construction; a join cause sends
+// them to the roster or the member.
+type LocalRepoWetFinalizationRefusal
+  = LocalRepoWetExecutorAbsent { scheduled: Int }
+  | LocalRepoWetExecutionForeignCandidate { observed: String, required: String }
+  | LocalRepoWetFinalizationJoinCause { cause: WetEvidenceRefusal }
+
+type LocalRepoWetFinalization
+  = LocalRepoWetFinalizationHolds
+  | LocalRepoWetFinalizationRefused { causes: List<LocalRepoWetFinalizationRefusal> }
+
+// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once, with execution as an argument rather than
+// as an assumption.
+//
+// NOT-INVOKED WITH AN EMPTY SCHEDULE HOLDS, and that is not a hole: a lane that scheduled nobody
+// claims nobody, so there is nothing for an executor to have failed to run. It is `scheduled > 0`
+// that turns absence into a refusal, and `local_repo_wet_schedule` is non-empty by construction with
+// a witness of its own -- so the accepting cell of this arm is unreachable from production and
+// reachable from a fixture, which is where its control lives.
+//
+// THE EXECUTION-LEVEL CANDIDATE CHECK IS NOT REDUNDANT WITH THE BINDING JOIN, and the two are kept
+// apart deliberately. This one asks whether the EXECUTOR RAN against this tree at all -- one fact
+// about the whole invocation, whose remedy is the floor's call site. The join's
+// `WetBindingPreparedSubjectDiffers` asks it PER TERMINAL, and its remedy is the row. Collapsing
+// them would report a wholly foreign run as N row-level disagreements, or N imported receipts as
+// one run-level one.
+fn local_repo_wet_finalize(
+  scheduled: List<WetScheduledClaim>,
+  execution: LocalRepoWetExecution,
+  candidate: String,
+) -> LocalRepoWetFinalization {
+  match execution {
+    LocalRepoWetExecutorNotInvoked =>
+      if scheduled.length() == 0 {
+        LocalRepoWetFinalizationHolds
+      } else {
+        LocalRepoWetFinalizationRefused {
+          causes: [LocalRepoWetExecutorAbsent { scheduled: scheduled.length() }]
+        }
+      }
+    LocalRepoWetExecutorRan { candidate: ran_candidate, terminals: terminals } =>
+      if ran_candidate != candidate {
+        LocalRepoWetFinalizationRefused {
+          causes: [LocalRepoWetExecutionForeignCandidate { observed: ran_candidate, required: candidate }]
+        }
+      } else {
+        match wet_evidence_validate(
+          scheduled: scheduled,
+          terminals: terminals,
+          requirement: local_repo_wet_requirement(candidate: candidate)
+        ) {
+          WetEvidenceAdmitted { binding: _, terminals: _ } => LocalRepoWetFinalizationHolds
+          WetEvidenceRefused { causes: cs } =>
+            LocalRepoWetFinalizationRefused {
+              causes: map(cs, c => LocalRepoWetFinalizationJoinCause { cause: c })
+            }
+        }
+      }
+  }
+}
+
+// THE ONE FACT THE CHANGED-WITNESS GATE ASKS FOR, per identity: is there a terminal for THIS
+// candidate, for this exact identity, whose disposition is `Passed`. It is deliberately narrower
+// than the join above -- the join answers whether the LANE is honest, this answers whether ONE
+// identity may be admitted -- and both must hold before the gate admits anything.
+//
+// THE PASS TEST IS THE LEDGER'S DERIVATION, NOT A SECOND ONE. It used to match a local verdict arm;
+// it now asks `claim_disposition` under the roster's own expectation, which is what keeps the
+// completed-over-budget split from being re-implemented here for a third time. A claim that reached
+// its verdict past its cost line is NOT admitted by this gate, exactly as before.
+fn local_repo_wet_identity_passed_on_candidate(
+  identity: String,
+  terminals: List<WetTerminalRow>,
+  candidate: String,
+) -> Bool {
+  let hits = filter(
+    xs: terminals,
+    predicate: fn(t) {
+      witness_identity_qualified_name(identity: t.identity) == identity
+        && local_repo_wet_terminal_binds_to(terminal: t, candidate: candidate)
+    }
+  )
+  if length(xs: hits) != 1 {
+    false
+  } else {
+    match first(hits) {
+      Absent => false
+      Present { value: t } =>
+        match claim_disposition(
+          row: ClaimTerminalRow {
+            identity: t.identity,
+            expectation: ExpectedToHold {},
+            terminal: t.terminal
+          }
+        ) {
+          Passed => true
+          _ => false
+        }
+    }
+  }
+}
+
+// WHETHER ONE TERMINAL IS BOUND TO THIS TREE BY THIS ROUTE'S RELATION. A transported receipt reaches
+// the wrong arm and answers false rather than comparing digests, which is the state-space
+// conflation an untyped `candidate: String` could not express.
+fn local_repo_wet_terminal_binds_to(terminal: WetTerminalRow, candidate: String) -> Bool {
+  match terminal.binding {
+    CoResidentPreparedSubject { prepared_subject: p } => p == candidate
+    TransportedReceiptSubject { semantic_subject: _, executor_contract: _ } => false
+  }
+}

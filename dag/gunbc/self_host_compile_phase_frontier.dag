@@ -68,8 +68,37 @@ type RustcPhaseBoard {
 type ParsePhaseEvidence
   = ParseReached { evidence: RustfmtParseObservation }
 
+// WHETHER THE TARGET WAS PINNED IS PART OF THE INVOCATION, NOT A NOTE ABOUT IT. A `cargo check`
+// with no `--target` selects its target from `CARGO_BUILD_TARGET` or cargo configuration, so a
+// receipt taken that way records the triple the gate READ from rustc's host line -- what the machine
+// is -- while a receipt taken under a pinned invocation records what was COMPILED. The two spell the
+// same string whenever nothing overrode the default, which is why a String field cannot tell them
+// apart and why this is a constructor rather than a naming convention on `target`. Comparing a
+// pinned population against a defaulted one is a comparison across an instrument change, and the
+// gate must refuse it rather than discover later that the agreement was incidental. No receipt can
+// be written without answering, which is the point: the distinction is unwritable-wrong rather than
+// checked. The constructors are compared STRUCTURALLY, not through their label: the label exists to
+// render a refusal a human reads, and joining on it would make a display string load-bearing.
+//
+// ONLY THE CROSSING REFUSES, AND NOTHING IN THE EXISTING SERIES IS STRANDED. Both persisted receipts
+// are `TargetDefaultedToHost` -- which is what they WERE, observable from the fact that nothing
+// pinned them, rather than a guess about what they probably compiled as -- so they remain comparable
+// to EACH OTHER and the series ratchet is untouched. What refuses is a pinned population meeting a
+// defaulted one, which is the only pair where the agreement of the triples is incidental.
+type TargetSelection
+  = TargetPinnedOnInvocation
+  | TargetDefaultedToHost
+
+fn target_selection_label(t: TargetSelection) -> String {
+  match t {
+    TargetPinnedOnInvocation => "pinned-on-invocation"
+    TargetDefaultedToHost => "defaulted-to-host"
+  }
+}
+
 type CompilePhaseInvocation {
   target: String
+  target_selection: TargetSelection
   profile: String
   features: List<String>
 }
@@ -110,11 +139,25 @@ fn diagnostic_is_phase(d: RustcCodedDiagnostic, phase: RustcPhase) -> Bool {
   }
 }
 
+// THE MEMBERSHIP TEST IS AGAINST THE PREVIOUS ELEMENT, NOT THE WHOLE ACCUMULATOR, and the sort is
+// what makes that sound. Scanning the accumulated set per element is a quadratic fold over a
+// population that only grows -- 233 identities on the genesis receipt today -- and DESIGN section 6
+// fixes a proven cost-shape defect regardless of the realized n, because "n is small here" stops
+// being true the moment a receipt is added. Sorting first puts equal identities adjacent, so one
+// comparison against the last kept element decides membership.
+//
+// BOTH CALLERS ARE ORDER-INDIFFERENT, WHICH IS WHY THE SORT IS FREE RATHER THAN A SEMANTIC CHANGE:
+// `canonical_identity_set` sorts its result anyway, and `census_population_is_duplicate_free` reads
+// only the count. Encounter order was never observable through either, and the row above states why
+// it must not be: a board is a census at identity grain, not a transcript of emission order.
 fn deduplicate_identities(identities: List<String>) -> List<String> {
   fold(
-    identities,
+    identities |> sort_by(identity => identity),
     init: [],
-    f: (unique, identity) => if any(unique, prior => prior == identity) { unique } else { concat(unique, [identity]) }
+    f: (unique, identity) => match unique |> last {
+      Present { value: prior } => if prior == identity { unique } else { concat(unique, [identity]) }
+      Absent => [identity]
+    }
   )
 }
 
@@ -123,8 +166,14 @@ fn deduplicate_identities(identities: List<String>) -> List<String> {
 // meaning. Give that set one representation here so structural board equality cannot accidentally
 // make cargo/rustfmt emission order semantic. Duplicate refusal remains separate and upstream:
 // canonicalizing a board does not canonicalize either raw population before coherence checks it.
+// THE SORT LIVES IN `deduplicate_identities` AND IS NOT REPEATED HERE. Dedup needs the population
+// ordered to decide membership against one neighbour instead of the whole accumulator, so its
+// result is ALREADY canonical; sorting it again was a second sort of the same list for a property
+// the first one established. On a 233-identity receipt that duplicate sort was the single largest
+// cost in the fold, which is what makes it a section 2 defect rather than a tidy-up: the second
+// demand for an ordering was satisfiable from the first.
 fn canonical_identity_set(identities: List<String>) -> List<String> {
-  deduplicate_identities(identities: identities) |> sort_by(identity => identity)
+  deduplicate_identities(identities: identities)
 }
 
 // A census population carries no repeats, and this predicate is where that is decided. Refusal is
@@ -304,32 +353,95 @@ fn census_identity_code(identity: String) -> String? {
   rustc_diagnostic_row_code(row: identity)
 }
 
-fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
-  match census_identity_code(identity: identity) {
+fn census_phase_of_code(code: String?) -> RustcErrorCodePhase {
+  match code {
     Absent => ErrorCodeUnplaced { code: "malformed-census-identity", index: extdeps.languages.rust.compiler_phases.rustc_error_index_authority }
-    Present { value: code } => rustc_error_code_phase(code: code)
+    Present { value: c } => rustc_error_code_phase(code: c)
   }
 }
 
-fn census_identities_for_phase(identities: List<String>, phase: RustcPhase) -> List<String> {
-  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
-    ErrorCodePlaced { phase: placed, authority: _ } => rustc_phase_order(phase: placed) == rustc_phase_order(phase: phase)
-    ErrorCodeUnplaced { code: _, index: _ } => false
-  }))
+fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
+  census_phase_of_code(code: census_identity_code(identity: identity))
 }
 
-fn census_unplaced_identities(identities: List<String>) -> List<String> {
-  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
-    ErrorCodePlaced { phase: _, authority: _ } => false
-    ErrorCodeUnplaced { code: _, index: _ } => true
-  }))
+// The carried classification of one identity. It exists so the five buckets below are DERIVED from
+// one pass rather than re-deciding the same question per bucket; the rationale for that lives on
+// `census_identity_partition`, which is the function it governs.
+type ClassifiedIdentity {
+  identity: String
+  phase: RustcErrorCodePhase
+  codeless: Bool
 }
 
-fn census_codeless_identities(identities: List<String>) -> List<String> {
-  canonical_identity_set(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
-    Present { value: code } => code == "uncoded"
-    Absent => false
-  }))
+type CensusIdentityPartition {
+  resolve: List<String>
+  typeck: List<String>
+  borrowck: List<String>
+  unplaced: List<String>
+  codeless: List<String>
+}
+
+fn classify_identity(identity: String) -> ClassifiedIdentity {
+  let code = census_identity_code(identity: identity)
+  ClassifiedIdentity {
+    identity: identity,
+    phase: census_phase_of_code(code: code),
+    codeless: match code {
+      Present { value: c } => c == "uncoded"
+      Absent => false
+    }
+  }
+}
+
+fn classified_at_phase(classified: List<ClassifiedIdentity>, phase: RustcPhase) -> List<String> {
+  classified
+    |> filter(c => match c.phase {
+         ErrorCodePlaced { phase: p, authority: _ } => rustc_phase_order(phase: p) == rustc_phase_order(phase: phase)
+         ErrorCodeUnplaced { code: _, index: _ } => false
+       })
+    |> map(c => c.identity)
+}
+
+// THE CLASSIFICATION IS CARRIED, NOT RECOMPUTED, AND THE BUCKETS ARE BUILT BY `filter` RATHER THAN
+// BY APPENDING IN A FOLD. Each bucket below used to be its own `filter` over the whole identity
+// list, so a 233-identity receipt was traversed and re-classified six times to answer six questions
+// about the SAME classification -- DESIGN section 2's authored duplication rather than a caching
+// obligation, since the six demands share a visible ancestor. Classifying once and deriving the
+// buckets removes the recomputation.
+//
+// THE FIRST VERSION OF THIS FUNCTION FOLDED WITH `concat(acc.bucket, [identity])` PER ELEMENT, and
+// that is a copied accumulator across five buckets -- the same section 6 defect this change exists
+// to remove, reintroduced one line below the fix. Found in review on gunbc#10038. Building each
+// bucket with `filter` over the carried classification keeps one pass per bucket over an already
+// classified list and no quadratic append.
+//
+// NO MEASUREMENT IS QUOTED IN THIS ANNOTATION, AND THE REASON IS SHARPER THAN SECTION 6's
+// CITE-THE-INSTRUMENT RULE. An earlier draft carried millisecond figures taken from probes that
+// DELETED the work being timed; the witnesses failed on those runs, so the numbers measured the
+// cost of failing early rather than the cost of the fold. A transcribed number cannot carry the
+// pass/fail context that decides whether it means anything, which is why the rule names the
+// producer instead: `claim_batch` over this module's witness entry re-derives the per-witness cost,
+// and its own PASS/FAIL count is what qualifies the reading. The section 6 argument above needs no
+// number at all -- a copied accumulator and a repeated pass are fixed regardless of realized n.
+//
+// THE BUCKETS ARE NOT DISJOINT AND THE DERIVATION MUST NOT ASSUME THEY ARE. `codeless` is decided on
+// the code spelling and `unplaced` on whether the code resolves in the error index, so an identity
+// carrying `uncoded` belongs to BOTH. A single match with one arm per identity would have silently
+// dropped one of the two memberships.
+fn census_identity_partition(identities: List<String>) -> CensusIdentityPartition {
+  let classified = identities |> map(identity => classify_identity(identity: identity))
+  CensusIdentityPartition {
+    resolve: classified_at_phase(classified: classified, phase: Resolve),
+    typeck: classified_at_phase(classified: classified, phase: Typeck),
+    borrowck: classified_at_phase(classified: classified, phase: Borrowck),
+    unplaced: classified
+      |> filter(c => match c.phase {
+           ErrorCodePlaced { phase: _, authority: _ } => false
+           ErrorCodeUnplaced { code: _, index: _ } => true
+         })
+      |> map(c => c.identity),
+    codeless: classified |> filter(c => c.codeless) |> map(c => c.identity)
+  }
 }
 
 // Persisted receipts are folded from the raw identity rows emitted by the same instrument. This
@@ -338,11 +450,12 @@ fn phase_board_from_census_identities(
   parse_observation: RustfmtParseObservation,
   raw_identities: List<String>
 ) -> PersistedPhaseBoardFold {
-  let resolve_ids = census_identities_for_phase(identities: raw_identities, phase: Resolve)
-  let typeck_ids = census_identities_for_phase(identities: raw_identities, phase: Typeck)
-  let borrowck_ids = census_identities_for_phase(identities: raw_identities, phase: Borrowck)
-  let unplaced = census_unplaced_identities(identities: raw_identities)
-  let codeless = census_codeless_identities(identities: raw_identities)
+  let partition = census_identity_partition(identities: raw_identities)
+  let resolve_ids = canonical_identity_set(identities: partition.resolve)
+  let typeck_ids = canonical_identity_set(identities: partition.typeck)
+  let borrowck_ids = canonical_identity_set(identities: partition.borrowck)
+  let unplaced = canonical_identity_set(identities: partition.unplaced)
+  let codeless = canonical_identity_set(identities: partition.codeless)
   let unique_errors = canonical_identity_set(identities: raw_identities)
   let parse_identities = canonical_identity_set(identities: parse_observation.refused_files)
   let parse_errors = count(parse_identities)
@@ -486,6 +599,7 @@ fn receipt_subject_key(receipt: CompilePhaseFrontierReceipt) -> String {
     receipt.subject.classification_policy_digest.digest as String,
     receipt.subject.comparison_epoch as String,
     receipt.subject.invocation.target,
+    target_selection_label(t: receipt.subject.invocation.target_selection),
     receipt.subject.invocation.profile,
     receipt.subject.invocation.features |> join(separator: ",")
   ], "\t")
@@ -709,7 +823,8 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
         PhaseRatchetHeld => match board_row(board: current, phase: old.phase) {
           Absent => PhaseRatchetRefused { phase: old.phase, identities: [], reason: "current board omitted a phase" as NonEmptyStr }
           Present { value: now } => {
-            let added = now.identities |> filter(identity => !any(old.identities, prior => prior == identity))
+            let prior = identity_membership_index(identities: old.identities)
+            let added = now.identities |> filter(identity => !map_contains_key(prior, identity))
             if phase_closed_at_zero(row: old) && phase_reached_with_diagnostics(row: now) {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
             } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && phase_count_increased(old: old, now: now) {
@@ -729,9 +844,25 @@ type RegressionTransitionVerdict
   = RegressionTransitionHeld { open_unadmitted: List<OpenUnadmittedRegression> }
   | RegressionTransitionMalformed { reason: NonEmptyStr }
 
+// MEMBERSHIP IS ASKED ONCE PER ROW OF THE OTHER POPULATION, SO IT IS INDEXED ONCE RATHER THAN
+// SCANNED PER ROW. Both differences here used to answer each membership question with `any` over
+// the other board's whole identity list, which makes the comparison count the PRODUCT of two
+// populations that only grow with every receipt -- the quadratic fold DESIGN section 6 fixes
+// regardless of the realized n. A board is a census at identity grain (the note on
+// `deduplicate_identities` above states why encounter order is not semantic), so an
+// identity-keyed index is the same fact in the representation the question actually asks for,
+// never a second authority over it.
+fn identity_membership_index(identities: List<String>) -> Map<String, Bool> {
+  fold(identities, init: {}, f: (seen, identity) => map_insert(seen, identity, true))
+}
+
+fn board_identity_index(board: RustcPhaseBoard) -> Map<String, Bool> {
+  identity_membership_index(identities: board_all_identities(board: board))
+}
+
 fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
-  board_all_identities(board: current)
-    |> filter(identity => !any(board_all_identities(board: previous), prior => prior == identity))
+  let prior = board_identity_index(board: previous)
+  board_all_identities(board: current) |> filter(identity => !map_contains_key(prior, identity))
 }
 
 fn diagnostic_identity_file(identity: String) -> String {
@@ -745,8 +876,8 @@ fn diagnostic_semantic_key(identity: String) -> String {
 }
 
 fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
-  board_all_identities(board: previous)
-    |> filter(identity => !any(board_all_identities(board: current), now => now == identity))
+  let now = board_identity_index(board: current)
+  board_all_identities(board: previous) |> filter(identity => !map_contains_key(now, identity))
 }
 
 type RegressionComparisonPredecessor
@@ -779,14 +910,34 @@ fn regression_comparison_predecessor(
   }
 }
 
+// THE SEMANTIC KEYS OF ONE TRANSITION'S ADDED AND REMOVED POPULATIONS, DERIVED ONCE.
+//
+// The hop test below is asked once per added identity and each answer needs the key of EVERY row
+// in both populations. Deriving those keys inside the test made the count of `diagnostic_semantic_key`
+// calls the PRODUCT of the two populations rather than their sum -- a quadratic fold over a
+// population that only grows, which DESIGN section 6 fixes on sight rather than on the realized n.
+// The keys depend on the transition and not on the identity being tested, so this is exactly the
+// demand DESIGN section 2 says to satisfy at the least common ancestor: `apply_regression_transition`
+// builds one index and every test reads it.
+type HopRelocationIndex {
+  added_keys: List<String>
+  removed_keys: List<String>
+}
+
+fn hop_relocation_index(added: List<String>, removed: List<String>) -> HopRelocationIndex {
+  HopRelocationIndex {
+    added_keys: added |> map(row => diagnostic_semantic_key(identity: row)),
+    removed_keys: removed |> map(row => diagnostic_semantic_key(identity: row))
+  }
+}
+
 fn identity_is_hop_relocation(
   identity: String,
-  added: List<String>,
-  removed: List<String>
+  index: HopRelocationIndex
 ) -> Bool {
   let key = diagnostic_semantic_key(identity: identity)
-  let added_same = added |> filter(row => diagnostic_semantic_key(identity: row) == key) |> count
-  let removed_same = removed |> filter(row => diagnostic_semantic_key(identity: row) == key) |> count
+  let added_same = index.added_keys |> filter(row => row == key) |> count
+  let removed_same = index.removed_keys |> filter(row => row == key) |> count
   removed_same > 0 && added_same <= removed_same
 }
 
@@ -860,6 +1011,7 @@ fn apply_regression_transition(
     RegressionComparisonAvailable { board: comparable_previous } => {
       let added = board_added_identities(previous: comparable_previous, current: current.board)
       let removed = board_removed_identities(previous: comparable_previous, current: current.board)
+      let hop_index = hop_relocation_index(added: added, removed: removed)
       let admitted = added |> filter(identity => newly_exposed_identity_admitted(
         previous: comparable_previous,
         current: current.board,
@@ -868,7 +1020,7 @@ fn apply_regression_transition(
       ))
       let unadmitted = added |> filter(identity =>
         !any(admitted, row => row == identity)
-          && !identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+          && !identity_is_hop_relocation(identity: identity, index: hop_index)
       )
       let ratchet_recoverable = match phase_ratchet_with_dispositions(
         previous: comparable_previous,
@@ -880,7 +1032,7 @@ fn apply_regression_transition(
           count(ids) > 0 && all(ids, identity =>
             any(unadmitted, row => row == identity)
               || any(admitted, row => row == identity)
-              || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+              || identity_is_hop_relocation(identity: identity, index: hop_index)
           )
       }
       if !ratchet_recoverable {
@@ -904,13 +1056,17 @@ fn board_all_identities(board: RustcPhaseBoard) -> List<String> {
   board.rows |> flat_map(r => r.identities)
 }
 
-fn newly_exposed_identity_admitted(
+// WHETHER ONE DISPOSITION'S CAUSE ADMITS ONE IDENTITY. Split out of
+// `newly_exposed_identity_admitted` below so the SELECTION of the disposition row happens before
+// this derivation is demanded at all; the two halves are stated separately because only the
+// selection half is cheap.
+fn newly_exposed_cause_admits(
   previous: RustcPhaseBoard,
   current: RustcPhaseBoard,
-  dispositions: List<NewlyExposedDiagnostic>,
-  identity: String
+  identity: String,
+  cause: NewlyExposedCause
 ) -> Bool {
-  any(dispositions, row => row.identity == identity && match row.cause {
+  match cause {
     ExposedByRemovedMaskingIdentity { removed_identity: masking } =>
       any(board_all_identities(board: previous), prior => prior == masking)
         && !any(board_all_identities(board: current), now => now == masking)
@@ -921,7 +1077,45 @@ fn newly_exposed_identity_admitted(
     ExposedByNewEmittedModule { module: file } =>
       diagnostic_identity_file(identity: identity) == file
         && !any(board_all_identities(board: previous), prior => diagnostic_identity_file(identity: prior) == file)
-  })
+  }
+}
+
+// THE FILTER IS THE WHOLE POINT AND IT IS NOT A STYLE CHOICE. This read as
+// `any(dispositions, row => row.identity == identity && <cause derivation>)`, and `&&` in this
+// substrate EVALUATES BOTH OPERANDS: `v1_interpreter` `eval_expr_inner` evaluates the left and the
+// right of an `ExprBinOp` before it applies the operator, so a cheap guard conjoined ahead of an
+// expensive derivation guards NOTHING at evaluation time -- it only narrows the result. The
+// short-circuit an author carries over from Rust or C is not a property of this language, and the
+// emitted Rust for the same expression DOES short-circuit, so the two differ in what they evaluate
+// while agreeing on what they answer. So the cause derivation ran once per (added identity x disposition row)
+// pair rather than once per row that actually names the identity, and two of its three arms scan
+// the whole previous board, one of them re-splitting every identity on it. Selecting the rows
+// first makes the demand graph match the question being asked (DESIGN section 2: minimize the
+// demand graph before materializing its answers), and it is EXACTLY equivalent rather than merely
+// close: for boolean p and q, `any(xs, p && q)` and `any(filter(xs, p), q)` agree on every input,
+// including the empty and the multiple-matching-rows cases.
+//
+// MEASURED, because "n is small here" is the claim DESIGN section 6 refuses. This function was the
+// single largest term in `compile_phase_frontier_standing`, which is the whole cost of three
+// required-floor witness modules -- gunbc.self_host_compile_phase_live_gate's witness,
+// this module's own witness, and test.claim.compiler_frontend_program_status_witness through
+// `gunbc.compiler_frontend_program_status` `milestone_status`. The instrument is
+// `claim_batch --entry <the witness> --functions <its rows>`; the figures are not transcribed here.
+fn newly_exposed_identity_admitted(
+  previous: RustcPhaseBoard,
+  current: RustcPhaseBoard,
+  dispositions: List<NewlyExposedDiagnostic>,
+  identity: String
+) -> Bool {
+  any(
+    dispositions |> filter(row => row.identity == identity),
+    row => newly_exposed_cause_admits(
+      previous: previous,
+      current: current,
+      identity: identity,
+      cause: row.cause
+    )
+  )
 }
 
 fn phase_ratchet_with_dispositions(
@@ -982,6 +1176,7 @@ fn comparison_inputs_same(a: CompilePhaseReceiptSubject, b: CompilePhaseReceiptS
     && a.rustc_identity == b.rustc_identity
     && a.classification_policy_digest == b.classification_policy_digest
     && a.invocation.target == b.invocation.target
+    && a.invocation.target_selection == b.invocation.target_selection
     && a.invocation.profile == b.invocation.profile
     && a.invocation.features == b.invocation.features
 }
@@ -1085,6 +1280,117 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
       Absent => CompilePhaseFrontierInvalid { reason: "held ledger had no latest receipt" as NonEmptyStr }
       Present { value: latest } => CompilePhaseFrontierValidated { latest: latest }
     }
+  }
+}
+
+// THE STANDING OF THE PERSISTED SERIES -- one authority for the question five call sites were
+// each spelling out.
+//
+// WHY IT EXISTS AS A DECLARATION RATHER THAN AS A REPEATED ARGUMENT. `compile_phase_frontier_standing`
+// is general in its series: it judges ANY series of receipts, which is what its own witnesses
+// exercise with perturbed fixtures. But there is only ONE persisted series in this repository, and
+// "the standing of THAT series" is a distinct, singular fact that this module owns. Spelling the
+// pairing at every consumer made the fact positional -- five sites each re-asserting the join --
+// and DESIGN section 3 puts one fact in one place. Consumers that judge a HYPOTHETICAL series keep
+// calling the general function directly; that distinction is the whole reason both spellings stay.
+//
+// THE COST CONSEQUENCE IS A CONSEQUENCE AND NOT THE REASON, but it is why the rewire happened now.
+// The required floor builds a fresh evaluation frame per claim, so the eval-frame memo dies at
+// every claim boundary and each claim re-derived this standing from scratch. Measured on main run
+// 33664768371's `required_floor_cross_claim_demand.tsv`: 22 claims, 36 evaluations, 6508ms
+// inclusive-of-callees, with `phase_board_series_ratchet` (23/23) and `apply_regression_transition`
+// (23/23) nested underneath it. Being NULLARY, this declaration is preparation-forceable, so
+// `v2.workflow.floor_pure_producer_share` can serve it as a WARM row with an empty argument row --
+// no per-serve argument reification of the receipt series at all, which is the cost shape that
+// disqualified earlier candidates from that roster. THAT IS A PROPERTY OF THIS DECLARATION AND NOT
+// A CLAIM THAT A ROW EXISTS: no roster row is enrolled here, and the enrolment is held pending a
+// present-vs-absent measurement on a tree that includes gunbc#10133, which made the recompute side
+// of that comparison cheaper and so moved the denominator the earlier receipt was measured against.
+// The census figures above predate it for the same reason. Re-derive with the instruments the
+// roster names, never from these sentences.
+fn current_compile_phase_frontier_standing() -> CompilePhaseFrontierStanding {
+  compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
+}
+
+// THE RATCHET ABOVE JUDGES RECEIPTS AGAINST EACH OTHER, AND NOTHING IN IT LOOKS AT THE TREE BEING
+// MERGED. compile_phase_frontier_standing answers Validated{latest} from the persisted series
+// alone, so its verdict is a claim about the TREE THE LATEST RECEIPT NAMES -- a past tree by
+// construction, since a receipt is authored after the observation it records. A reader who takes
+// that verdict as a statement about the tree under judgment has read a stronger claim than the
+// series can carry, which is DESIGN 4b(1) rung inflation on the compiler's own self-description.
+//
+// THIS JUDGMENT IS THE JOIN THAT MAKES THE DIFFERENCE DECIDABLE, and it is the whole of what can
+// be decided cheaply: given the tree under judgment, does the latest validated receipt name that
+// same tree? Identity grain, one comparison, no measurement.
+//
+// IT GATES NOTHING TODAY AND THAT IS DELIBERATE. Actuating it as a merge-blocking arm would refuse
+// every merge, because receipts are authored rarely and the live tree moves on every commit; the
+// non-blocking spelling is the inert-lens tier DESIGN 6 names.
+//
+// WHAT IT IS FOR, AND THE CONDITIONS ARE TWO RATHER THAN ONE. This annotation named only the
+// budget condition when it landed, and that was a trigger pointing at something that is not what
+// blocks -- which gets SATISFIED WHILE THE CAPABILITY STAYS DEAD, the mirror of the 4b(3) failure
+// where a trigger names less than it restores. The BINDING condition is a receipt in the required
+// runners' COMPARISON EPOCH: without one, a live population has nothing it may legally be compared
+// against, and the series fold above refuses a cross-epoch comparison unless the predecessor is
+// reclassified. The ENABLING condition is the one first recorded: taking such a receipt means
+// measuring a whole-closure entry, which gunbc.whole_corpus_compile_admission refuses on budget --
+// so an execution surface exposing a real, readable cgroup memory limit makes the measurement
+// TAKEABLE and leaves the epoch condition standing. The figures behind that refusal belong to that
+// authority and to gunbc.host_budget_source memory_stall_refusal and are not transcribed here.
+//
+// AND THE CONSUMER IS BUILT, NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate
+// -- the live measured population joined to the latest receipt through this module's own fold and
+// ratchet -- witnessed and enrolled under the required floor's test.claim.self_host_ prefix, and
+// PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on a defect. When it is
+// unparked it must CONSUME this judgment rather than grow its own tree-identity comparison: this
+// answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the
+// PRECONDITION of that module's population question, since a regression comparison against a
+// receipt that does not describe this tree is meaningless. One module answering the precondition
+// and another consuming it is composition; two modules deciding tree identity is the section 3
+// fork this note exists to prevent.
+//
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller that cannot supply the tree under
+// judgment gets a typed refusal, never Covered and never a pass-shaped unknown: a coverage
+// judgment that answers "covered" when it could not observe the subject is the absorbing fallback
+// of DESIGN 5 wearing this function's name.
+type CompilePhaseFrontierCoverage
+  = FrontierCoversSubjectTree { latest: CompilePhaseFrontierReceipt }
+  | FrontierReceiptTreeStale { receipt_tree: String, subject_tree: String }
+  | FrontierCoverageRefused { reason: NonEmptyStr }
+
+fn compile_phase_frontier_coverage(
+  series: List<CompilePhaseFrontierReceipt>,
+  subject_tree: FloorDiscoveryTreeId?
+) -> CompilePhaseFrontierCoverage {
+  match subject_tree {
+    Absent => FrontierCoverageRefused {
+      reason: "the tree under judgment was not observed, so no coverage claim is available" as NonEmptyStr
+    }
+    Present { value: tree } => match compile_phase_frontier_standing(series: series) {
+      CompilePhaseFrontierEmpty => FrontierCoverageRefused {
+        reason: "the frontier receipt series is empty, so no receipt names any tree" as NonEmptyStr
+      }
+      CompilePhaseFrontierInvalid { reason: why } => FrontierCoverageRefused { reason: why }
+      CompilePhaseFrontierValidated { latest: latest } => {
+        let receipt_tree = floor_discovery_tree_identity(tree: latest.subject.git_tree_object)
+        let judged_tree = floor_discovery_tree_identity(tree: tree)
+        if receipt_tree == judged_tree {
+          FrontierCoversSubjectTree { latest: latest }
+        } else {
+          FrontierReceiptTreeStale { receipt_tree: receipt_tree, subject_tree: judged_tree }
+        }
+      }
+    }
+  }
+}
+
+fn compile_phase_frontier_coverage_label(c: CompilePhaseFrontierCoverage) -> String {
+  match c {
+    FrontierCoversSubjectTree { latest: _ } => "the latest validated receipt names the tree under judgment"
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      concat(concat("the latest validated receipt names tree ", r), concat(", not the tree under judgment ", s))
+    FrontierCoverageRefused { reason: why } => concat("no coverage claim: ", why as String)
   }
 }
 
@@ -1365,6 +1671,7 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
       rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
       invocation: CompilePhaseInvocation {
         target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetDefaultedToHost,
         profile: "check/dev",
         features: []
       },
@@ -1586,6 +1893,7 @@ fn receipt_1_eced9d24_receipt() -> CompilePhaseFrontierReceipt {
       rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
       invocation: CompilePhaseInvocation {
         target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetDefaultedToHost,
         profile: "check/dev",
         features: []
       },

@@ -8,6 +8,7 @@ use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
+use self::PositiveSlotCount::*;
 use self::Quantity::*;
 use self::Scale::*;
 pub use crate::extdeps_currency_currency::CurrencyCode;
@@ -132,6 +133,13 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
     {
         let k = kibi_factor();
         ((k.clone() * k.clone()) * k.clone())
+    }
+}
+
+pub fn mebibyte_scale_factor_bytes() -> Nat {
+    {
+        let k = kibi_factor();
+        (k.clone() * k.clone())
     }
 }
 
@@ -291,22 +299,22 @@ pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) ->
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, i64>> {
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<Time, S, i64>> {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub type ByteSize = Rc<Measure<(), (), i64>>;
+pub type ByteSize = Rc<Measure<Memory, One, i64>>;
 
-pub type Kibibyte = Rc<Measure<(), (), i64>>;
+pub type Kibibyte = Rc<Measure<Memory, Kibi, i64>>;
 
-pub type Mebibyte = Rc<Measure<(), (), i64>>;
+pub type Mebibyte = Rc<Measure<Memory, Mebi, i64>>;
 
-pub type Gibibyte = Rc<Measure<(), (), i64>>;
+pub type Gibibyte = Rc<Measure<Memory, Gibi, i64>>;
 
-pub type Gigabyte = Rc<Measure<(), (), i64>>;
+pub type Gigabyte = Rc<Measure<Memory, Giga, i64>>;
 
 pub fn gigabyte(count: Nat) -> Gigabyte {
     Rc::new(Measure {
@@ -360,59 +368,63 @@ pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
     byte_size((kibibyte_count(k.clone()) * kibi_factor()))
 }
 
-pub type BitWidth = Rc<Measure<(), (), i64>>;
+pub fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
+    byte_size((mebibyte_count(m.clone()) * mebibyte_scale_factor_bytes()))
+}
+
+pub type BitWidth = Rc<Measure<Information, One, i64>>;
 
 pub fn bits_per_byte() -> Nat {
     crate::extdeps_units_iec_80000_13::octet_bit_count()
 }
 
-pub type Hertz = Rc<Measure<(), (), i64>>;
+pub type Hertz = Rc<Measure<Frequency, One, i64>>;
 
-pub type MegatransfersPerSecond = Rc<Measure<(), (), i64>>;
+pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, i64>>;
 
-pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
+pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
 
-pub type CharacterCount = Rc<Measure<(), (), i64>>;
+pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
-pub type TokenCount = Rc<Measure<(), (), i64>>;
+pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
-pub type Millicore = Rc<Measure<(), (), i64>>;
+pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
-pub type Watt = Rc<Measure<(), (), i64>>;
+pub type Watt = Rc<Measure<Power, One, i64>>;
 
-pub type Milliwatt = Rc<Measure<(), (), i64>>;
+pub type Milliwatt = Rc<Measure<Power, Milli, i64>>;
 
-pub type VoltAmpere = Rc<Measure<(), (), i64>>;
+pub type VoltAmpere = Rc<Measure<ApparentPower, One, i64>>;
 
-pub type Volt = Rc<Measure<(), (), i64>>;
+pub type Volt = Rc<Measure<ElectricPotentialDifference, One, i64>>;
 
-pub type Millivolt = Rc<Measure<(), (), i64>>;
+pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, i64>>;
 
-pub type Ampere = Rc<Measure<(), (), i64>>;
+pub type Ampere = Rc<Measure<ElectricCurrent, One, i64>>;
 
-pub type Micrometer = Rc<Measure<(), (), i64>>;
+pub type Micrometer = Rc<Measure<Length, Micro, i64>>;
 
-pub type Millimeter = Rc<Measure<(), (), i64>>;
+pub type Millimeter = Rc<Measure<Length, Milli, i64>>;
 
-pub type SquareMillimeter = Rc<Measure<(), (), i64>>;
+pub type SquareMillimeter = Rc<Measure<Area, Micro, i64>>;
 
-pub type CubicMillimeter = Rc<Measure<(), (), i64>>;
+pub type CubicMillimeter = Rc<Measure<Volume, Nano, i64>>;
 
-pub type SquareMeter = Rc<Measure<(), (), i64>>;
+pub type SquareMeter = Rc<Measure<Area, One, i64>>;
 
-pub type SquareFoot = Rc<Measure<(), (), i64>>;
+pub type SquareFoot = Rc<Measure<Area, SquareFootArea, i64>>;
 
-pub type CubicMeter = Rc<Measure<(), (), i64>>;
+pub type CubicMeter = Rc<Measure<Volume, One, i64>>;
 
-pub type Arcsecond = Rc<Measure<(), (), i64>>;
+pub type Arcsecond = Rc<Measure<PlaneAngle, ArcsecondAngle, i64>>;
 
-pub type ArcsecondDisplacement = Rc<Measure<(), (), i64>>;
+pub type ArcsecondDisplacement = Rc<Measure<PlaneAngle, ArcsecondAngle, i64>>;
 
-pub type Degree = Rc<Measure<(), (), i64>>;
+pub type Degree = Rc<Measure<PlaneAngle, DegreeAngle, i64>>;
 
-pub type Turn = Rc<Measure<(), (), i64>>;
+pub type Turn = Rc<Measure<PlaneAngle, TurnAngle, i64>>;
 
-pub type SignedSquareMillimeter = Rc<Measure<(), (), i64>>;
+pub type SignedSquareMillimeter = Rc<Measure<Area, Micro, i64>>;
 
 pub fn square_meter(count: Nat) -> SquareMeter {
     Rc::new(Measure {
@@ -491,13 +503,13 @@ pub fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> i64 {
     measure_count(a.clone())
 }
 
-pub type RackUnit = Rc<Measure<(), (), i64>>;
+pub type RackUnit = Rc<Measure<Length, RackUnitHeight, i64>>;
 
-pub type Joule = Rc<Measure<(), (), i64>>;
+pub type Joule = Rc<Measure<Energy, One, i64>>;
 
-pub type Celsius = Rc<Measure<(), (), i64>>;
+pub type Celsius = Rc<Measure<Temperature, One, i64>>;
 
-pub type CelsiusDelta = Rc<Measure<(), (), i64>>;
+pub type CelsiusDelta = Rc<Measure<TemperatureDifference, One, i64>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -572,9 +584,22 @@ impl PositiveCelsiusDelta {
     }
 }
 
-pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PositiveSlotCount {
+    PositiveSlotCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveSlotCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveSlotCount::PositiveSlotCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
 
-pub type EventsPerMinute = Rc<Measure<(), (), i64>>;
+pub type RevolutionsPerMinute = Rc<Measure<RotationalSpeed, One, i64>>;
+
+pub type EventsPerMinute = Rc<Measure<Frequency, Sixty, i64>>;
 
 pub fn events_per_minute(count: Nat) -> EventsPerMinute {
     Rc::new(Measure {
@@ -716,6 +741,20 @@ pub fn celsius_delta_count(delta: CelsiusDelta) -> i64 {
     measure_count(delta.clone())
 }
 
+pub fn positive_slot_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveSlotCount> {
+    Rc::new(PositiveSlotCount::PositiveSlotCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_slot_count_value(slots: Rc<PositiveSlotCount>) -> i64 {
+    match (*slots.clone()).clone() {
+        PositiveSlotCount::PositiveSlotCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
+}
+
 pub fn positive_celsius_delta(count: Rc<PositiveMeasureCount>) -> Rc<PositiveCelsiusDelta> {
     Rc::new(PositiveCelsiusDelta::PositiveCelsiusDeltaValue {
         count: count.clone(),
@@ -741,9 +780,9 @@ pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
     measure_count(r.clone())
 }
 
-pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
+pub type MoneyAmount<S> = Rc<Measure<Currency, S, i64>>;
 
-pub type MoneyAmountMicro = MoneyAmount<()>;
+pub type MoneyAmountMicro = MoneyAmount<Micro>;
 
 pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
     Rc::new(Measure {
@@ -925,6 +964,19 @@ pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
 }
 
+pub type ParameterCount = Rc<Measure<Count, Mega, i64>>;
+
+pub fn parameter_count(millions: Nat) -> ParameterCount {
+    Rc::new(Measure {
+        count: millions.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn parameter_count_value(p: ParameterCount) -> Nat {
+    measure_count(p.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -934,6 +986,19 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;
+
+pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
 }
 
 pub fn millicore(count: Nat) -> Millicore {
@@ -947,7 +1012,7 @@ pub fn millicore_count(m: Millicore) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Bandwidth = Rc<Measure<(), (), i64>>;
+pub type Bandwidth = Rc<Measure<DataRate, One, i64>>;
 
 pub fn bandwidth(count: Nat) -> Bandwidth {
     Rc::new(Measure {
@@ -960,7 +1025,7 @@ pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b.clone())
 }
 
-pub type Nanosecond = Rc<Measure<(), (), i64>>;
+pub type Nanosecond = Rc<Measure<Time, Nano, i64>>;
 
 pub fn nanosecond(count: Nat) -> Nanosecond {
     Rc::new(Measure {
@@ -973,7 +1038,7 @@ pub fn nanosecond_count(n: Nanosecond) -> Nat {
     measure_count(n.clone())
 }
 
-pub type Microsecond = Rc<Measure<(), (), i64>>;
+pub type Microsecond = Rc<Measure<Time, Micro, i64>>;
 
 pub fn microsecond(count: Nat) -> Microsecond {
     Rc::new(Measure {
@@ -986,7 +1051,7 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Millisecond = Rc<Measure<(), (), i64>>;
+pub type Millisecond = Rc<Measure<Time, Milli, i64>>;
 
 pub fn millisecond(count: Nat) -> Millisecond {
     Rc::new(Measure {
@@ -1038,7 +1103,7 @@ pub fn nanosecond_to_millisecond_floor(n: Nanosecond) -> Millisecond {
     millisecond((nanosecond_count(n.clone()) / nanoseconds_per_millisecond()))
 }
 
-pub type Second = Rc<Measure<(), (), i64>>;
+pub type Second = Rc<Measure<Time, One, i64>>;
 
 pub fn second(count: Nat) -> Second {
     Rc::new(Measure {
@@ -1070,7 +1135,7 @@ pub fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -
     volt_ampere((volt_count(supply_voltage.clone()) * ampere_count(rated_current.clone())))
 }
 
-pub type Minute = Rc<Measure<(), (), i64>>;
+pub type Minute = Rc<Measure<Time, Sixty, i64>>;
 
 pub fn minute(count: Nat) -> Minute {
     Rc::new(Measure {
@@ -1087,7 +1152,7 @@ pub fn minute_to_millisecond(m: Minute) -> Millisecond {
     millisecond(((minute_count(m.clone()) * seconds_per_minute()) * milliseconds_per_second()))
 }
 
-pub type Percent = Rc<Measure<(), (), i64>>;
+pub type Percent = Rc<Measure<Dimensionless, One, i64>>;
 
 pub fn percent(count: Nat) -> Percent {
     Rc::new(Measure {
@@ -1117,7 +1182,7 @@ pub fn percent_from_computed_int_frontier() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub type BasisPoint = Rc<Measure<(), (), i64>>;
+pub type BasisPoint = Rc<Measure<Dimensionless, One, i64>>;
 
 pub fn basis_point(count: Nat) -> BasisPoint {
     Rc::new(Measure {
@@ -1134,7 +1199,7 @@ pub fn basis_point_unity_count() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
 }
 
-pub type AmortizationMonths = Rc<Measure<(), (), i64>>;
+pub type AmortizationMonths = Rc<Measure<Count, One, i64>>;
 
 pub fn amortization_months(count: Nat) -> AmortizationMonths {
     Rc::new(Measure {

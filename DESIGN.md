@@ -4,7 +4,7 @@
 
 This document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it (or an independent peer) — never a restatement of it. The principles apply recursively, including to this document, which is a projection of `gunbc.design_document` and is never hand-edited.
 
-It carries the REASONING only. The two rosters that used to live here — the recurring failure modes and the declared §4b(3) rung drops — are projected into [docs/design-ledgers.md](docs/design-ledgers.md), because a ledger grows without bound while these sections are fixed by §1, and this file is loaded in full on every turn of every session. Plans and analyses live under `docs/plans/` and are linked from the section that governs them.
+It carries the REASONING only. The two rosters that used to live here — the recurring failure modes and the declared §4b(3) rung drops — are projected into [docs/design-failure-modes.md](docs/design-failure-modes.md) and [docs/design-rung-drops.md](docs/design-rung-drops.md), because a ledger grows without bound while these sections are fixed by §1, and this file is loaded in full on every turn of every session. Plans and analyses live under `docs/plans/` and are linked from the section that governs them.
 
 ---
 
@@ -114,17 +114,7 @@ Four meta-obligations make the ladder operational:
 
 At a service boundary, rung honesty has a commercial consequence: a dimension may remain opaque only above a falsifiable quality floor with a named consequence. A claim that can change billing, trigger a remedy, or require refusal is a contract; without such a consequence it is marketing and establishes no rung. Delivery below the floor must refuse or discharge the remedy; a materially different delivery may be admitted only as its own named and priced product — a different contract subject, not a declared drop of the premium one; and a temporary loss of the ability to verify or enforce a floor is a §4b(3) declared drop on that same subject, which may force the commercial path to refuse and never authorizes silent below-floor delivery. Deviation is allowed; silence is refused.
 
-Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-ledgers.md](docs/design-ledgers.md), authority `gunbc.rung_drop`. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The ones standing today:
-
-- **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
-- **CI required-run composition** — declared 2026-08-15
-- **Self-host emission board measurement** — declared 2026-08-24
-- **Regen candidate-tree producer** — declared 2026-08-20
-- **Blocking emit-stage diagnostics on main** — declared 2026-08-25
-- **Corpus-wide lens enforcement censuses** — declared 2026-08-11
-- **Required gate reduced to the compiler floor** — declared 2026-08-29
-- **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
-- **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
+Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row in [docs/design-failure-modes.md](docs/design-failure-modes.md), authority `gunbc.recurring_failure_mode`: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered separately and in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-rung-drops.md](docs/design-rung-drops.md), authority `gunbc.rung_drop`. The two are separate projections because they are separately appended: one lane recording a failure mode must not rewrite the file another lane is appending a drop to. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The drops standing today are rostered in that file, one section each; this document deliberately does not restate their names, because a list derived here would make every drop declaration regenerate DESIGN.md, putting every appending lane back on the same driver-bound generated path.
 
 **The floor first, the differentiator above it.** gunbc must first hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and a failure there is a below-baseline safety regression, never compensated by higher-order capability. The differentiating claim begins above that floor: because the substrate carries causal, cardinality, algebraic, effect, ownership, cost, and realization facts structurally, the same ladder applies to classes ordinary compilers leave to tests, review, profiling, or production postmortems — a possibly-empty collection flowing into a nonempty consumer, recursion without a descent proof, a non-idempotent effect under automatic retry, a computation exceeding its declared complexity bound, a realization that does not preserve modeled behavior.
 
@@ -181,38 +171,7 @@ The payoff is that **language design itself opens up.** It is normally locked by
 
 ## Recurring failure modes (instances of §3–§5, kept for pattern-matching)
 
-One row per class, each carrying its recognition rule and its receipts, in [docs/design-ledgers.md](docs/design-ledgers.md) — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one, so the section grows without bound while this document's sections are fixed by §1. The index below is the classes; the ledger is the content.
-
-- `hollow_alias`
-- `state_space_conflation`
-- `absorbing_fallback`
-- `empty_observation_narrow`
-- `cache_impurity`
-- `reflection_evidence_structural_proof`
-- `coercion_proven_by_normalized_round_trip`
-- `parallel_representation_debt`
-- `internal_review_finds_missing_tests_external`
-- `unmarked_workaround`
-- `self_authorized_dissolution`
-- `positional_citation`
-- `bound_shaped_closure`
-- `authority_substitution`
-- `reachability_read_as_occupancy`
-- `total_at_the_level_examined_blind`
-- `execution_provenance_loss`
-- `remediation_mutated_view`
-- `diagnostic_name_mechanism_silent`
-- `identity_absent_graph_traversal`
-- `generated_binding_shadows_bare_render`
-- `resolved_reference_outside_execution_closure`
-- `surface_shorthand_preempts_resolved_identity`
-- `meaning_fork`
-- `externalized_degradation`
-- `mistyped_body_radiates_nonlocal_diagnostics`
-- `instrument_output_read_as_subject_content`
-- `executed_conjunct_discriminates_nothing`
-- `unbacked_execution_claim`
-- `mitigation_injected_where_judgment_declined`
+One row per class, each carrying its recognition rule and its receipts, in [docs/design-failure-modes.md](docs/design-failure-modes.md) — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one, so the section grows without bound while this document's sections are fixed by §1. The class names are NOT indexed here either: an index derived from the roster is a second projection of the same rows, and it made this file — the one every session loads in full on every turn — regenerate on every ledger append.
 
 ## Building & checks
 

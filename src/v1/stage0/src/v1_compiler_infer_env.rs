@@ -3,6 +3,8 @@
 
 use self::GlobalBareLookupState::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_coercion::TypeDeclarationProvenance;
+use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_induction::RecursionShape::{
@@ -32,9 +34,9 @@ use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
-    authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
-    kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
-    param_node_type_expr, qualified_last_segment, source_text_at,
+    authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
+    intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
+    param_node_name_at, param_node_type_expr, qualified_last_segment, source_text_at,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
@@ -61,6 +63,7 @@ pub struct TypeEnv {
     pub symbol_index: Rc<SymbolIndex>,
     pub module_path: String,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    pub unit_variant_index_observed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -371,6 +374,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
             String,
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
         >(),
+        unit_variant_index_observed: false,
     })
 }
 
@@ -2181,6 +2185,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 authored_import_names: e.authored_import_names.clone(),
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
+                unit_variant_index_observed: e.unit_variant_index_observed.clone(),
             })
         })
 }
@@ -2231,7 +2236,9 @@ pub fn type_reference_declaration(
                                 mp.clone(),
                                 decl_name.clone(),
                             ),
-                            decl_file: sp.file.clone(),
+                            provenance: crate::v1_std_core::declaration_provenance_of(
+                                b.resolved.clone(),
+                            ),
                         }))
                     } else {
                         std::option::Option::None
@@ -2257,7 +2264,9 @@ pub fn type_reference_declaration(
                             c.module_path.clone(),
                             decl_name.clone(),
                         ),
-                        decl_file: sp.file.clone(),
+                        provenance: crate::v1_std_core::declaration_provenance_of(
+                            c.binding.clone().resolved.clone(),
+                        ),
                     })),
                     std::option::Option::None => std::option::Option::None,
                 },
@@ -2291,12 +2300,14 @@ pub fn operand_declaration_from_qualified_name(
             }) => {
                 if (mp.clone() == module_prefix.clone()) {
                     match b.resolved.clone().ident_span.clone() {
-                        Some(ds) => Some(Rc::new(OperandDeclaration {
+                        Some(_) => Some(Rc::new(OperandDeclaration {
                             declaration: crate::std_decl_ref::decl_ref(
                                 mp.clone(),
                                 decl_name.clone(),
                             ),
-                            decl_file: ds.file.clone(),
+                            provenance: crate::v1_std_core::declaration_provenance_of(
+                                b.resolved.clone(),
+                            ),
                         })),
                         std::option::Option::None => std::option::Option::None,
                     }
@@ -2319,12 +2330,14 @@ pub fn operand_declaration_from_qualified_name(
             .cloned()
             {
                 Some(c) => match c.binding.clone().resolved.clone().ident_span.clone() {
-                    Some(ds) => Some(Rc::new(OperandDeclaration {
+                    Some(_) => Some(Rc::new(OperandDeclaration {
                         declaration: crate::std_decl_ref::decl_ref(
                             c.module_path.clone(),
                             decl_name.clone(),
                         ),
-                        decl_file: ds.file.clone(),
+                        provenance: crate::v1_std_core::declaration_provenance_of(
+                            c.binding.clone().resolved.clone(),
+                        ),
                     })),
                     std::option::Option::None => std::option::Option::None,
                 },
@@ -2402,7 +2415,10 @@ pub fn declaration_ref_of_type_node(
     }
 }
 
-pub fn declaration_file_of(d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> String {
+pub fn declaration_provenance_of_ref(
+    d: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Rc<TypeDeclarationProvenance> {
     {
         let want_name = d.decl_name.clone();
         let want_module = d.module_path.clone();
@@ -2419,15 +2435,9 @@ pub fn declaration_file_of(d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> String {
                 ..
             }) => {
                 if (mp.clone() == want_module.clone()) {
-                    match b.resolved.clone().ident_span.clone() {
-                        Some(s) => {
-                            let f = s.file.clone();
-                            f
-                        }
-                        std::option::Option::None => "".to_string(),
-                    }
+                    crate::v1_std_core::declaration_provenance_of(b.resolved.clone())
                 } else {
-                    "".to_string()
+                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
                 }
             }
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
@@ -2444,16 +2454,16 @@ pub fn declaration_file_of(d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> String {
             .first()
             .cloned()
             {
-                Some(c) => match c.binding.clone().resolved.clone().ident_span.clone() {
-                    Some(s) => {
-                        let f = s.file.clone();
-                        f
-                    }
-                    std::option::Option::None => "".to_string(),
-                },
-                std::option::Option::None => "".to_string(),
+                Some(c) => crate::v1_std_core::declaration_provenance_of(
+                    c.binding.clone().resolved.clone(),
+                ),
+                std::option::Option::None => {
+                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                }
             },
-            std::option::Option::None => "".to_string(),
+            std::option::Option::None => {
+                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+            }
         }
     }
 }

@@ -49,10 +49,19 @@ fn rlm_subject() -> RoadmapLaunchDeploymentSubject {
 }
 
 fn rlm_plan(run: ActionsRunBinding, host: String) -> FleetConvergePlanReceipt {
+  rlm_plan_at_scope(run: run, host: host, scope_wire: fleet_converge_scope_wire(scope: LaunchEnvironment))
+}
+
+// THE FIXTURE USED TO CARRY `scope_wire: "full_host"` -- not merely the wrong scope but a string
+// that is not a wire at all, since the real spelling is `scope:full-host`. Nothing objected,
+// because until plan_scope_blockers landed the RLM fold never read this field. That is the defect
+// the scope requirement exists for, sitting in this file's own fixture: a plan of any scope, or of
+// no decodable scope, satisfied the whole transaction.
+fn rlm_plan_at_scope(run: ActionsRunBinding, host: String, scope_wire: String) -> FleetConvergePlanReceipt {
   FleetConvergePlanReceipt {
     run: run,
     observed_host: host,
-    scope_wire: "full_host",
+    scope_wire: scope_wire,
     member_set_fingerprint_hex: "fnv1a64:0011223344556677",
     plan_artifact_hash: rlm_fixture_plan_hash,
     observed_baseline_hex: "1122334455667788",
@@ -656,4 +665,61 @@ test fn witness_receipt_document_stale_age_and_bound_are_machine_readable() -> B
         && rlm_doc_string(doc: fr, key: "age_seconds") == "540"
         && rlm_doc_string(doc: fr, key: "bound_seconds") == "180"
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// THE TRANSACTION REQUIRES THE LAUNCH-ENVIRONMENT SCOPE, AND THE SCOPE IS FIXED RATHER THAN GIVEN.
+//
+// Every fleet converge scope mints a FleetConvergePlanReceipt of the same type, and each is a
+// perfectly valid receipt of its own plan. These four hold the ENTIRE rest of the fact population
+// complete and vary only the plan receipt's scope, so a red here is attributable to the scope and
+// to nothing else. The green above (witness_complete_population_is_complete) is their positive
+// control: it now runs at the canonical launch-environment wire.
+//
+// THE TERMINAL DOES NOT CATCH ANY OF THESE, which is why the check is needed rather than implied:
+// an allocation-store plan is FullyApplied by the shape of its arm, so the wrong scope arrives
+// already green on the one member a reader would expect to stop it.
+// ---------------------------------------------------------------------------
+
+fn rlm_facts_at_plan_scope(scope_wire: String) -> RoadmapLaunchDeploymentFacts {
+  with_plan(
+    f: rlm_complete_facts(),
+    plan: PlanReceiptRead {
+      receipt: rlm_plan_at_scope(
+        run: rlm_run(run_id: "1001", revision: rlm_fixture_r),
+        host: "srv1",
+        scope_wire: scope_wire,
+      ),
+    },
+  )
+}
+
+test fn witness_a_full_host_plan_cannot_occupy_the_rlm_plan_slot() -> Bool {
+  incomplete_at(
+    facts: rlm_facts_at_plan_scope(scope_wire: fleet_converge_scope_wire(scope: FullHost)),
+    member: "plan_scope",
+  )
+}
+
+test fn witness_a_fabric_cells_plan_cannot_occupy_the_rlm_plan_slot() -> Bool {
+  incomplete_at(
+    facts: rlm_facts_at_plan_scope(scope_wire: fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)),
+    member: "plan_scope",
+  )
+}
+
+test fn witness_an_allocation_store_plan_cannot_occupy_the_rlm_plan_slot() -> Bool {
+  incomplete_at(
+    facts: rlm_facts_at_plan_scope(scope_wire: fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)),
+    member: "plan_scope",
+  )
+}
+
+// AN UNDECODABLE WIRE IS ITS OWN ARM, not folded into the wrong-scope one: a wire this build cannot
+// read is version skew between the plan run and the receipt run, while a wire it reads as another
+// scope is the wrong plan in the slot, and only the first is a build problem. The literal here is
+// the exact string this file's fixture used to carry.
+test fn witness_an_undecodable_plan_scope_wire_blocks_the_transaction() -> Bool {
+  incomplete_at(facts: rlm_facts_at_plan_scope(scope_wire: "full_host"), member: "plan_scope")
 }
