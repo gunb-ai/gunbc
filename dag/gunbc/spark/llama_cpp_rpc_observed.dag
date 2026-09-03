@@ -1,0 +1,1143 @@
+module gunbc.spark.llama_cpp_rpc_observed
+
+import std.types { String, Bool, List, Int, NonEmptyStr, Port }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  PositiveSlotCount, positive_slot_count, positive_slot_count_value,
+  PositiveMeasureCount, positive_measure_count, positive_measure_count_value,
+  TokensPerSecond, tokens_per_second, tokens_per_second_count,
+  PositiveShardCount, positive_shard_count, positive_shard_count_value,
+}
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, ipv4_address_eq }
+import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoint_on }
+
+// A SERVING DEPLOYMENT THAT SPANS TWO HOSTS, WHICH THIS CORPUS HAD NO WAY TO SAY.
+//
+// Every serving structure in gunbc.spark is keyed on ONE HostIdentity: a release, an occurrence, a
+// launch profile, a readiness probe, all per host. That shape carries an assumption it never states
+// -- that a host is a llama.cpp RPC deployment -- and the assumption is FALSE for the deployment the operator
+// specified. Two Sparks hold one model split by layer, and the operator's first sentence is the
+// whole modeling problem: "the two hosts are ONE SERVING UNIT, not two endpoints."
+//
+// WHAT THIS MODULE IS AND IS NOT. It is an OBSERVATION. The specification's own provenance section
+// classifies the running deployment as "an observed running deployment on the experimentation pair,
+// input to convergence, NOT published desired state", and this module holds it at exactly that
+// standing. Nothing here is projected into gunbc.spark.serving_desired, so nothing here can be
+// actuated back onto .232/.233. Promoting it is a separate, declared act.
+//
+// WHAT IS NOT VERIFIED, carried because the spec carries it: reboot survival. Both units are
+// `enabled` and were started through systemd, but neither host has been power-cycled. That is
+// recorded as unobserved rather than assumed either way -- the fabric on the other pair was lost to
+// exactly one power cycle, which is why gunbc.spark.fabric_link_desired exists.
+
+// THE TWO ROLES ARE TWO TYPES, NOT ONE TYPE WITH A ROLE FIELD.
+//
+// A role enum beside a member makes "a deployment with two front doors" and "a deployment whose
+// weights peer is marked front door" both writable, leaving a validator to catch them. Distinct
+// types make them unconstructable: the deployment names one of each, so the invalid shapes have no
+// constructor rather than a check. This is DESIGN's construction-over-validation at the cheapest
+// place to buy it -- the moment the carrier is first authored.
+//
+// THE FRONT DOOR IS THE ONLY ADDRESSABLE END. It serves the OpenAI and Anthropic surfaces, owns the
+// KV cache and the slot scheduler, and drives the weights peer.
+//
+// THE FIELD IS THE CONNECT ADDRESS, NOT THE LISTEN ADDRESS, AND THE DISTINCTION IS A MEANING FORK
+// THIS MODULE ALREADY PAID FOR ONCE. The measured llama-server binds 0.0.0.0; 192.168.1.232 is the
+// address a client dials. This carrier first named the field `bind_address` while
+// llama_cpp_rpc_client_endpoint handed that same value to clients -- operationally correct, and the
+// name asserted the wrong fact, which is exactly the listen-versus-connect fork the ollama path
+// learned earlier. A listen address is a fact about the process's socket and belongs with the
+// runtime realization if it is ever needed; what a llama.cpp RPC deployment owes a caller is where to dial.
+//
+// It is an Ipv4Address rather than a NonEmptyStr because the fourth constructor condition below has
+// to be able to ASK whether two endpoints are the same address, and a string cannot answer that
+// without a second parser.
+type LlamaCppRpcFrontDoor sole_constructor {
+  host: HostIdentity
+  client_address: Ipv4Address
+  port: Port
+}
+
+// THE WEIGHTS PEER HAS NO API AND MUST NEVER RECEIVE CLIENT TRAFFIC, and on this pair that is not a
+// style rule -- it is constraint C1, whose violation is a host loss.
+//
+// MEASURED 2026-09-02, not taken from the handoff: the peer's host answers HTTP 200 on
+// :11434/api/tags and OFFERS TWO MODELS, both about 86.7 GB. One of them is
+// deepseek-v4-gguf:no-h3-stop -- WHICH IS EXACTLY THE MODEL THE SINGLE-HOST SERVING ROSTER SELECTS
+// AS ITS DESIRED STATE. So the collision is not hypothetical and not merely "some load could arrive
+// here": adding this host to that roster would plan a pull-and-load of an 86.7 GB model onto a
+// machine with roughly 16 GiB free, and the two rosters would each be individually correct.
+//
+// The peer's host ALSO runs an unrelated ollama on :11434 which WILL accept work. With roughly 105
+// of 121 GiB already committed to weights and swap DISABLED, a model load accepted there is an
+// immediate OOM kill that takes the front door down with it, because the front door cannot serve
+// without the layers this host holds. So the failure is not "a request went to the wrong port"; it
+// is the loss of the whole llama.cpp RPC deployment.
+//
+// The peer is addressed on the FABRIC, never on the LAN, and the constructor below enforces it.
+type LlamaCppRpcWeightsPeer sole_constructor {
+  host: HostIdentity
+  fabric_address: Ipv4Address
+  port: Port
+}
+
+fn llama_cpp_rpc_front_door(host: HostIdentity, client_address: Ipv4Address, port: Port) -> LlamaCppRpcFrontDoor {
+  LlamaCppRpcFrontDoor { host: host, client_address: client_address, port: port }
+}
+
+fn llama_cpp_rpc_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Port) -> LlamaCppRpcWeightsPeer {
+  LlamaCppRpcWeightsPeer { host: host, fabric_address: fabric_address, port: port }
+}
+
+fn llama_cpp_rpc_slot_plan(per_slot_context: TokenCount, slots: PositiveSlotCount) -> LlamaCppRpcSlotPlan {
+  LlamaCppRpcSlotPlan { per_slot_context: per_slot_context, slots: slots }
+}
+
+// PER-SLOT CONTEXT IS THE AUTHORED FACT AND THE TOTAL BUDGET IS DERIVED, WHICH IS THE WHOLE REPAIR
+// FOR THE `-c` TRAP.
+//
+// llama.cpp's `-c` is the TOTAL KV budget across all slots and is divided by `--parallel`. The
+// operator's table records what that costs when the two are authored independently:
+//
+//     -c 10485760  --parallel 10  ->  1,048,576 per slot   (intended)
+//     -c 10485760  --parallel 16  ->    655,360 per slot   (silent shrink)
+//     -c  6291456  --parallel 16  ->      2,048 per slot   (this bit us once)
+//
+// Every one of those is a WRITABLE state when `-c` and `--parallel` are two authored numbers, and
+// nothing announces the shrink -- the server starts, serves, and answers with a context two orders
+// of magnitude smaller than intended. Authoring the per-slot window instead and DERIVING `-c` makes
+// all three unwritable: there is no pair to disagree, because there is no second number.
+//
+// THIS IS ALSO WHY THE ENGINE IS NAMED IN THIS MODULE'S TYPE AND NOT ASSUMED. gunbc.spark.
+// serving_desired carries a measured note that slot count MULTIPLIES memory and does NOT divide
+// context. That is true, and it is true OF OLLAMA, where the context length is a per-slot server
+// default. The same sentence is false here. One row spanning both engines is a meaning fork whose
+// realization is precisely the 2,048-per-slot line above.
+type LlamaCppRpcSlotPlan sole_constructor {
+  per_slot_context: TokenCount
+  slots: PositiveSlotCount
+}
+
+// The `-c` word the unit actually carries, derived from the pair above rather than authored beside
+// them. A convergence check must NOT assert on this value: `/props` reports
+// `default_generation_settings.n_ctx` as the ALREADY-DIVIDED per-slot figure, so the unit file's
+// number and the served reality are different quantities, and comparing the wrong one is how the
+// silent shrink stays invisible. This exists to RENDER the unit, and llama_cpp_rpc_slot_plan_per_slot below
+// is what a readback is compared against.
+fn llama_cpp_rpc_slot_plan_total_kv(plan: LlamaCppRpcSlotPlan) -> TokenCount {
+  token_count(
+    count: token_count_value(t: plan.per_slot_context) * positive_slot_count_value(slots: plan.slots))
+}
+
+fn llama_cpp_rpc_slot_plan_per_slot(plan: LlamaCppRpcSlotPlan) -> TokenCount {
+  plan.per_slot_context
+}
+
+// ONE SERVING UNIT, and the constructor is where "two hosts" stops being two of anything.
+//
+// Four conditions decide it, and each is a way the specified deployment could be described wrongly
+// while every part looked individually fine:
+//
+//   - the two ends must be DIFFERENT HOSTS. A split across one machine is not a split; it is one
+//     process talking to itself over a network address, and it would report healthy.
+//   - the peer must be addressed ON THE FABRIC LINK the deployment names. This is the condition
+//     with a measured price: the same deployment ran at 4.2 GB/min over the LAN and 144 GB/min over
+//     RoCE -- 34x -- and NOTHING IN THE SERVED BEHAVIOUR DISTINGUISHES THEM except latency. A peer
+//     addressed on the LAN is a working deployment that is silently thirty-four times slower, which
+//     is the class of defect that gets diagnosed as "the model is slow".
+//   - the fabric link must actually TOUCH BOTH HOSTS. A link between two other machines is not the
+//     path these two speak over, and naming it would make the check above pass against the wrong
+//     subject.
+//   - the front door and the peer must not be the same PORT ON THE SAME ADDRESS, which is the
+//     copy-paste of the endpoint block. This condition was CLAIMED here before it was enforced --
+//     the annotation said four and the constructor implemented three -- which is the decoration
+//     case: a stated invariant nothing checks reads as coverage. It is now decidable because the
+//     front door carries an Ipv4Address rather than a string, and it has its own discriminating RED.
+//
+// A deployment that fails any of them has no constructor. It is not reported later.
+type LlamaCppRpcDeployment sole_constructor {
+  alias: NonEmptyStr
+  front_door: LlamaCppRpcFrontDoor
+  weights_peer: LlamaCppRpcWeightsPeer
+  fabric: FabricLink
+  slot_plan: LlamaCppRpcSlotPlan
+}
+
+fn llama_cpp_rpc_construct(
+  alias: NonEmptyStr,
+  front_door: LlamaCppRpcFrontDoor,
+  weights_peer: LlamaCppRpcWeightsPeer,
+  fabric: FabricLink,
+  slot_plan: LlamaCppRpcSlotPlan,
+) -> LlamaCppRpcDeployment? {
+  if host_identity_eq(a: front_door.host, b: weights_peer.host) {
+    none
+  } else if ipv4_address_eq(a: front_door.client_address, b: weights_peer.fabric_address)
+    && front_door.port == weights_peer.port {
+    none
+  } else {
+    match fabric_endpoint_on(link: fabric, host: weights_peer.host) {
+      Absent => none
+      Present { value: peer_end } =>
+        match fabric_endpoint_on(link: fabric, host: front_door.host) {
+          Absent => none
+          Present { value: _ } =>
+            if !ipv4_address_eq(a: peer_end.address, b: weights_peer.fabric_address) {
+              none
+            } else {
+              Present { value: LlamaCppRpcDeployment {
+                alias: alias,
+                front_door: front_door,
+                weights_peer: weights_peer,
+                fabric: fabric,
+                slot_plan: slot_plan,
+              } }
+            }
+        }
+    }
+  }
+}
+
+// THE ONE ADDRESS A CLIENT MAY HOLD. There is deliberately no sibling returning the weights peer as
+// an endpoint: C1 is enforced by there being nothing to call, rather than by a rule saying not to.
+fn llama_cpp_rpc_client_endpoint(d: LlamaCppRpcDeployment) -> String {
+  join(["http://", render_ipv4_address(addr: d.front_door.client_address), ":",
+    to_string(d.front_door.port)], "")
+}
+
+fn llama_cpp_rpc_peer_wire(d: LlamaCppRpcDeployment) -> String {
+  join([render_ipv4_address(addr: d.weights_peer.fabric_address), ":", to_string(d.weights_peer.port)], "")
+}
+
+// A HOST THAT HOLDS WEIGHTS IS NOT A SERVING ENDPOINT, asked as a question a roster can answer.
+//
+// This is the checkable half of C1. The constructor above makes the peer unaddressable WITHIN a
+// deployment; it cannot see a SEPARATE roster that also names that host as a single-host serving
+// cell. That is the actual hazard on .233, which runs an unrelated ollama on :11434 alongside its
+// weights role, and it is how the host would come to accept a load: not through this deployment,
+// but through another one that never knew this one existed.
+fn llama_cpp_rpc_weights_peer_hosts(deployments: List<LlamaCppRpcDeployment>) -> List<HostIdentity> {
+  map(deployments, d => d.weights_peer.host)
+}
+
+fn llama_cpp_rpc_host_is_weights_peer(
+  deployments: List<LlamaCppRpcDeployment>,
+  host: HostIdentity,
+) -> Bool {
+  any(llama_cpp_rpc_weights_peer_hosts(deployments: deployments), h => host_identity_eq(a: h, b: host))
+}
+
+// ================= THE RESERVATION, WHICH IS A STATE MACHINE AND NOT A CENSUS =================
+//
+// A HOST OBSERVED HOLDING ANOTHER DEPLOYMENT'S LAYERS DOES NOT BECOME FREE BY NOT BEING LOOKED AT
+// AGAIN. This is the distinction that makes the interlock below honest, and getting it wrong in
+// either direction is how the hazard ships.
+//
+// The dangerous reading is "we did not re-observe the peer, therefore the host is available" --
+// absence of observation read as evidence of release, which is the failure that has dominated this
+// module's own history. The opposite overclaim is just as wrong and was written here first: asserting
+// the host IS CURRENTLY the weights peer, which no observation in this module establishes. The
+// current process topology of that host is UNOBSERVED, and this module says so.
+//
+// So the carrier is a RESERVATION with a dated origin, and its lifecycle has exactly one shape:
+//
+//   a positive observation MINTS the reservation
+//   the reservation REMAINS ACTIVE by default
+//   only a positive RELEASE RECEIPT clears it
+//
+// WHAT MAY NOT DISCHARGE IT, because each of these is an absence wearing a release's clothes: not
+// re-observing the host; the front door becoming unreachable; the dated observation growing old. The
+// front-door case is the subtle one and is worth naming -- conditioning the hold on the front door
+// still serving would be FAIL-OPEN, because a transient outage would dissolve the reservation while
+// the peer's process, its boot-enabled unit, its memory commitment and its restart path all survive
+// the outage untouched.
+//
+// WHAT DOES DISCHARGE IT is a fresh host-level receipt that positively excludes the host from the
+// current internal-participant population -- process and argv of the front door, the current
+// distributed participant set, the host's own supervisor, process and socket state, the old
+// llama.cpp and ggml-RPC unit enablement, and its current memory state.
+//
+// AND THAT RELEASE IS NOT ITSELF AN ADMISSION. Two gates stand in series and fusing them is its own
+// hazard: "no longer an internal participant" is a topology fact, while "safe to load an 86 GB model
+// here" is a fit question for the unit-grain admission authority. The first does not answer the
+// second.
+// THE ORIGIN IS THE DEPLOYMENT ITSELF, NOT A SENTENCE ABOUT IT. This field was first authored as a
+// NonEmptyStr reading "dated deployment observation 2026-09-02", which is prose in a data slot: no
+// Accepted program can check it, nothing joins it back to the observation it names, and it would go
+// stale silently the moment the observation moved. Carrying the deployment gives the reservation a
+// real referent -- a reader can ask which front door and which peer minted this hold, and the answer
+// is the value rather than a description of one.
+//
+// THE MINT IS THEREFORE TOTAL AND HAS NO FAILURE ARM: a reservation cannot be conjured for a host
+// that no observed deployment names, because the only way to build one is to hand it a deployment.
+type LlamaCppRpcInternalParticipantReservation sole_constructor {
+  host: HostIdentity
+  origin: LlamaCppRpcDeployment
+}
+
+fn llama_cpp_rpc_internal_participant_reservation(
+  origin: LlamaCppRpcDeployment,
+) -> LlamaCppRpcInternalParticipantReservation {
+  LlamaCppRpcInternalParticipantReservation { host: origin.weights_peer.host, origin: origin }
+}
+
+// The reservations no release receipt has cleared. Every internal participant of a positively
+// observed deployment mints one; nothing in this module can clear one, because a release requires
+// evidence this module does not hold.
+fn llama_cpp_rpc_undischarged_peer_reservations() -> List<LlamaCppRpcInternalParticipantReservation> {
+  map(llama_cpp_rpc_observed_units(), d => llama_cpp_rpc_internal_participant_reservation(origin: d))
+}
+
+fn llama_cpp_rpc_undischarged_peer_reservation_hosts() -> List<HostIdentity> {
+  map(llama_cpp_rpc_undischarged_peer_reservations(), r => r.host)
+}
+
+fn llama_cpp_rpc_host_holds_undischarged_reservation(host: HostIdentity) -> Bool {
+  any(llama_cpp_rpc_undischarged_peer_reservation_hosts(), h => host_identity_eq(a: h, b: host))
+}
+
+// ================= THE OBSERVED DEPLOYMENT, 2026-09-02 18:23 UTC =================
+//
+// Read from the operator's handoff specification, which records what was measured live rather than
+// what was intended: slots, per-slot context, route status codes and both hosts' memory at 18:23
+// UTC, throughput between 18:11 and 18:19 UTC on an idle deployment.
+//
+// THE FABRIC ROW IS NOT RE-AUTHORED HERE. It is `fabric_rail0` from gunbc.spark.fabric_link_desired,
+// whose endpoints were read back from the durable /etc/netplan/90-NM-*.yaml on both hosts. The
+// specification's topology section names the same 192.168.100.0/24 link, so citing the existing row
+// rather than restating its addresses is what keeps one fabric fact in one place -- and it means the
+// constructor's fabric conditions above are checked against the measured fabric, not against a
+// second copy of it authored to agree.
+//
+// THAT CITATION CROSSES A TEMPORAL BOUNDARY, AND THE BOUNDARY IS PINNED RATHER THAN ASSUMED.
+// `fabric_rail0` is CURRENT DESIRED STATE and may legitimately be re-addressed; this module is a
+// DATED OBSERVATION of what the deployment used on 2026-09-02. Their equality today is an AGREEMENT
+// between two different subjects, not one fact with one authority, so an edit to the desired row
+// would otherwise rewrite this history silently and with no diagnostic. The whole-value agreement is
+// asserted by test.claim.spark_llama_cpp_rpc_witness
+// the_dated_observation_still_agrees_with_the_fabric_row_it_cites, which pins interface, prefix and
+// MTU as well as the octets because the constructor above refuses on each of them. If it goes red
+// the desired fabric has moved, and the repair is to snapshot the observed rail here as its own
+// dated value -- not to update the literals.
+data llama_cpp_rpc_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
+
+// THE FRONT DOOR'S LAN ADDRESS IS CARRIED HERE AS AN OBSERVATION, AND DELIBERATELY NOT CITED FROM
+// gunbc.fleet_intent_network, WHICH WOULD BE THE OBVIOUS §3 MOVE AND WOULD BE WRONG.
+//
+// That module holds .232/.233 in PROSE only -- there is no typed address row to cite, so nothing is
+// being duplicated here. The reason there is no row is the part that matters: the module states that
+// membership in its `endpoints` IS ENROLLMENT, so authoring an address row there PERFORMS the
+// enrollment rather than describing it. srv7/srv8 are deliberately unenrolled, and enrolling a pair
+// as a side effect of needing somewhere tidy to put an address is exactly the act-fusion that the
+// admission of this pair is supposed to keep separable.
+//
+// So this field is an observation of where a measured front door answered, at a host that is not a
+// fleet member. It confers no membership and must not be read as any.
+//
+// THE FABRIC IS THE OPPOSITE CASE AND IS HANDLED THE OPPOSITE WAY. Its addresses, interface names
+// and MTU ARE owned -- by gunbc.spark.fabric_link_desired, merged -- so this module references that
+// link BY IDENTITY and derives the peer's address from it. No fabric field is restated here.
+data llama_cpp_rpc_observed_front_door: LlamaCppRpcFrontDoor = LlamaCppRpcFrontDoor {
+  host: operator_host_srv7,
+  client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232),
+  port: 30000,
+}
+
+// THIS ROW IS CURRENTLY CORROBORATED BY A LIVE READBACK, WHICH IS NOT THE SAME AS BEING EXECUTED
+// EVIDENCE. On 2026-09-03 the running front door reported total_slots 10 with per-slot n_ctx
+// 1048576 on all ten slots -- the values below, re-observed against the service rather than against
+// the handoff that first supplied them. That is the first row here confirmed by the subject itself.
+//
+// THE WITNESS BELOW STILL EVALUATES THESE MODELLED VALUES AND DOES NOT EXECUTE /props OR /slots, so
+// the corroboration is a fact about 2026-09-03 and not a repository guarantee. Promoting it needs
+// the readback to become a typed instrument receipt the claim consumes; until then the honest
+// standing is "corroborated on that date", and a plan-time readback must re-read these endpoints
+// immediately before freezing anything, because today's observation is not indefinitely fresh.
+data llama_cpp_rpc_observed_slot_plan: LlamaCppRpcSlotPlan = LlamaCppRpcSlotPlan {
+  per_slot_context: token_count(count: 1048576),
+  slots: positive_slot_count(count: positive_measure_count(predecessor: 9)),
+}
+
+fn llama_cpp_rpc_observed_weights_peer() -> LlamaCppRpcWeightsPeer? {
+  match fabric_rail0 {
+    Absent => none
+    Present { value: link } =>
+      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+        Absent => none
+        Present { value: e } =>
+          Present { value: LlamaCppRpcWeightsPeer {
+            host: operator_host_srv8,
+            fabric_address: e.address,
+            port: 50052,
+          } }
+      }
+  }
+}
+
+// The observed deployment, or Absent when any condition that makes it ONE llama.cpp RPC deployment fails to
+// hold. An Absent here is not a deployment with a problem to report later -- it never existed, so
+// nothing downstream can plan from it.
+fn llama_cpp_rpc_observed() -> LlamaCppRpcDeployment? {
+  match fabric_rail0 {
+    Absent => none
+    Present { value: link } =>
+      match llama_cpp_rpc_observed_weights_peer() {
+        Absent => none
+        Present { value: peer } =>
+          llama_cpp_rpc_construct(
+            alias: llama_cpp_rpc_observed_alias,
+            front_door: llama_cpp_rpc_observed_front_door,
+            weights_peer: peer,
+            fabric: link,
+            slot_plan: llama_cpp_rpc_observed_slot_plan,
+          )
+      }
+  }
+}
+
+fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
+  match llama_cpp_rpc_observed() {
+    Present { value: d } => [d]
+    Absent => []
+  }
+}
+
+// ================= WHAT THE UNIT WAS MEASURED TO DELIVER =================
+//
+// THE 50.9-58.8 "AGGREGATE" IS RETRACTED, AND THIS PARAGRAPH IS ITS RETRACTION RATHER THAN ITS
+// RESTATEMENT. This section used to open by presenting that pair as the measured delivery, and the
+// carrier below does NOT hold it -- it holds decode and prefill rates and no aggregate at all.
+// Leaving the old opening in place made the prose describe values the value does not contain, which
+// is worse than either the old figure or the new one: a reader would take the section's first
+// sentence as the fact.
+//
+// It is retracted on its own merits and not for tidiness. No aggregate was ever measured AS an
+// aggregate; the figure was a prefill rate read as a decode rate, which the correction below sets
+// out in full. Nothing here is a floor, a capacity, or a delivery guarantee.
+//
+// WHY THE UNIT IS NOT CONFIGURED AT ITS MEMORY CEILING, which is the fact that stops "more slots"
+// from reading as "more throughput". Twelve slots FIT, and left the peer at 9 GiB free instead of
+// 16, so the slot count is not a capacity limit waiting to be filled.
+//
+// WHAT THE MEASUREMENTS DO NOT ESTABLISH IS THAT TEN IS FASTER THAN TWELVE, and this row previously
+// said they did. The twelve-slot run reported 57.3, which lies INSIDE the ten-slot spread of
+// 50.9-58.8 recorded in the paragraph above. Reading "twelve is slower" out of 57.3 against 58.8
+// compares one arm of a two-sample spread against the better arm of another -- the censored
+// estimator this section opens by refusing, committed two paragraphs later against the same numbers.
+// Ten is therefore OPERATOR-SELECTED and preserves more memory headroom; a throughput ordering
+// between ten and twelve needs repeated interleaved trials at both, which do not exist. Raising the
+// count without that instrument is still unjustified -- but so is the claim that lowering it helped.
+//
+// A PER-SESSION RATE AND A WHOLE-SERVER RATE ARE DIFFERENT QUANTITIES, which is why they are
+// separate fields below and why a reader who takes one for the other will size sessions wrongly.
+// This used to say "slots buy concurrency, NOT speed". That is a claim about what added slots do to
+// per-session rate, and the only experiment bearing on it is the concurrency sweep whose own rows do
+// not reconcile -- so it is withdrawn as unestablished rather than kept as intuition. The
+// distinction between the two quantities does not depend on it.
+//
+// THE ROW ABOVE ONCE READ "single-stream decode is memory-bandwidth-bound at roughly 13-16 tok/s,
+// 13.3 at one and 5.9 at ten". EVERY PART OF THAT WAS WRONG, AND THE WAY IT WAS WRONG IS THIS
+// MODULE'S OWN SUBJECT. Asked directly, the server's `timings` report predicted_per_second 2.78 --
+// 359 ms per token -- against prompt_per_second 14.45. The 13-16 band was the PREFILL rate read as
+// the DECODE rate. Two different quantities, one number, exactly the shape of the `-c` trap this
+// module exists to close, committed in the same file that closes it.
+//
+// It is not a stale reading either: the front-door process has run since 14:19:26 UTC on 2026-09-02
+// and the handoff measurement was 18:11-18:19, so both readings observe ONE INCARNATION and no
+// restart explains the gap. The instrument reported faithfully; its output answered a question
+// nobody asked.
+//
+// THE MECHANISM IN THAT SENTENCE IS ALSO NOT ESTABLISHED, AND SAYING SO COSTS LESS THAN THE
+// ALTERNATIVE. An earlier revision replaced "memory-bandwidth-bound" with a confident denial -- 359
+// ms per token "is not memory bandwidth on this hardware" -- and a positive cause, that the two
+// GPUs alternate BECAUSE the layer split serializes them. Neither is measured. A rate does not name
+// its own bottleneck in either direction, and that was the whole lesson of the figure it replaced.
+//
+// WHAT IS STRUCTURAL, and all that is: one token has a SERIAL DEPENDENCY across the two layer
+// partitions, including a cross-host activation transfer. That follows from the topology and needs
+// no instrument.
+//
+// WHAT IS OBSERVED BESIDE IT, carried as observation and not as its explanation: sampled utilization
+// means of roughly 28% on the front door and 42% on the peer, with repeated 0% samples on both. A
+// utilization sample is the fraction of an interval in which at least one kernel ran -- it is not
+// occupancy, achieved FLOPs, or idle capacity -- so those numbers are consistent with serialization
+// and equally with sampling aliasing, communication waits or scheduling, and they do not decide
+// between them. How much the serial dependency contributes to the measured token interval is
+// UNRESOLVED: retained KV, kernel efficiency, memory behaviour, synchronization and transport
+// latency all remain live contributors.
+//
+// WHAT THE SWEEP DID AND DID NOT SHOW, stated narrowly because the wide version was wrong. Within
+// one concurrency sweep, completed-probe rates did not decline monotonically as probes were added.
+// That is the whole finding. It does NOT establish that an additional active stream is cheap: the
+// sweep never observed how many probes were SIMULTANEOUSLY ACTIVE against ten slots, never observed
+// queue waiting, and never measured the six existing sessions before and during. With --parallel 10
+// and six sessions already decoding, at most four probes could be active at once, and an
+// eight-probe row reporting 3.29 per stream against a 12.8 aggregate reconciles as four active and
+// four queued rather than eight concurrent -- the two figures do not share a denominator.
+//
+// THREE CLAIMS ARE THEREFORE REFUSED HERE RATHER THAN RECORDED: that this box runs at roughly a
+// third of its aggregate capacity, that more concurrent sessions are close to free, and that a
+// restart doubles throughput or occupancy halves it. The observations ORDER future measurements;
+// they do not establish a capacity policy, and a desired state must not be sized from them.
+//
+// WHAT REMAINS TRUE AND LOAD-BEARING is the structural half only: an RPC layer split imposes a
+// serial cross-host dependency per token, and tensor parallelism is a CANDIDATE that changes that
+// dependency. It does not follow that per-session speed cannot improve without removing it -- that
+// sentence stood here and is withdrawn, because the dependency's share of the token interval is
+// unresolved and the other contributors above could move on their own. Nor does it follow that
+// tensor parallelism is faster here: it trades a serialization for per-layer collectives over the
+// fabric, which is a different cost, not an absent one. The trade needs its own instrument.
+//
+// HONEST LIMIT ON ALL OF IT: measured on short completions against a near-empty context. Real
+// sessions at 90k+ decode slower, so these figures bound an idle deployment and are not a service
+// level. Re-derive rather than quote: the producer is the operator's handoff measurement between
+// 18:11 and 18:19 UTC on 2026-09-02, and a claim about delivered throughput needs its own
+// instrument rather than this row.
+// PREFILL AND DECODE ARE SEPARATE FIELDS BECAUSE THEY ARE SEPARATE QUANTITIES. Collapsing them to
+// one "throughput" number is what produced the retracted 13-16 figure, and a carrier that cannot
+// hold both invites the same collapse from the next author.
+// THE TWO READINGS ARE THE FACT; THE ENVELOPE IS DERIVED FROM THEM. This was the other way round
+// and the inversion lost data. The carrier held only slots, a decode low and high, and ONE prefill
+// -- so the first reading's prefill of 14.45 tok/s was not merely rounded, it was DISCARDED, and
+// neither surviving rate stayed attached to the state it was measured in. A consumer received 2..7
+// and 12 and could not recover which rate came from which unit state, or that two process
+// incarnations were involved at all. That is precisely the transport loss this module exists to
+// prevent: the association lived in prose, where no Accepted program can read it.
+//
+// THE REGIME IS A CLOSED COPRODUCT BECAUSE THE TWO STATES ARE NOT POINTS ON A SCALE. One unit had
+// served six long-context sessions for eight hours with slots holding 65k and 157k; the other was
+// sixteen minutes past a restart with slots nearly empty. There is no measured quantity ordering
+// them -- "occupancy" is the name for what differed, not a number anyone recorded -- so an enum of
+// the two observed states is honest where a numeric field would invite interpolation between
+// readings that were never taken.
+type LlamaCppRpcTimingRegime
+  = LongLivedWithRetainedSessions
+  | NearlyEmptyAfterRestart
+
+// A RATE IS CARRIED AS AN INTERVAL BECAUSE THE INSTRUMENT REPORTED FRACTIONS AND THIS CORPUS COUNTS
+// IN WHOLE TOKENS. 2.78 becomes [2, 3] and 14.45 becomes [14, 15]: the interval CONTAINS the
+// reading, so no consumer can recover a precision the measurement did not have, and none can be
+// misled by a rounding direction chosen for them. The alternative -- a scaled rate authority -- is a
+// larger change to std.measure than this observation justifies, and the interval is the conservative
+// reading either way.
+type LlamaCppRpcTimingSample sole_constructor {
+  regime: LlamaCppRpcTimingRegime
+  decode_low: TokensPerSecond
+  decode_high: TokensPerSecond
+  prefill_low: TokensPerSecond
+  prefill_high: TokensPerSecond
+}
+
+// THE PAIR CARRIES THE RESTART BOUNDARY, WHICH IS THE ONLY RELATION BETWEEN THEM ANYONE OBSERVED.
+// Not a PID, not a process digest, not a start timestamp -- none of those were measured, and
+// inventing one to look rigorous would be the fabrication this module refuses elsewhere. What WAS
+// observed is that a restart separates the two readings, so the pair asserts exactly that and
+// nothing finer: these are different incarnations, in this order.
+//
+// THE RELATION IS STRUCTURAL AND SO CARRIES NO FIELD. A one-arm `DifferentIncarnations` marker was
+// authored here and removed: the field names are `before_restart` and `after_restart`, the
+// constructor accepts only a LongLivedWithRetainedSessions sample followed by a
+// NearlyEmptyAfterRestart one, and that second arm NAMES the restart. A field asserting "different
+// incarnations" beside those would be a second representation of what the regimes already say, and
+// the kind that can drift from them. Two incarnations is the only shape this type can hold.
+type LlamaCppRpcTimingPair sole_constructor {
+  before_restart: LlamaCppRpcTimingSample
+  after_restart: LlamaCppRpcTimingSample
+}
+
+type LlamaCppRpcDecodeEnvelope sole_constructor {
+  slots: PositiveSlotCount
+  decode_low: TokensPerSecond
+  decode_high: TokensPerSecond
+  prefill: TokensPerSecond
+}
+
+fn llama_cpp_rpc_timing_sample(
+  regime: LlamaCppRpcTimingRegime,
+  decode_low: TokensPerSecond,
+  decode_high: TokensPerSecond,
+  prefill_low: TokensPerSecond,
+  prefill_high: TokensPerSecond,
+) -> LlamaCppRpcTimingSample? {
+  if tokens_per_second_count(r: decode_low) > tokens_per_second_count(r: decode_high) {
+    none
+  } else if tokens_per_second_count(r: prefill_low) > tokens_per_second_count(r: prefill_high) {
+    none
+  } else {
+    Present { value: LlamaCppRpcTimingSample {
+      regime: regime,
+      decode_low: decode_low,
+      decode_high: decode_high,
+      prefill_low: prefill_low,
+      prefill_high: prefill_high,
+    } }
+  }
+}
+
+// THE PAIR REFUSES TWO SAMPLES IN THE SAME REGIME. Two readings from one state are not a
+// before-and-after across a restart; they are a repeat, and the boundary this type asserts would be
+// a fiction over them.
+fn llama_cpp_rpc_timing_pair(
+  before_restart: LlamaCppRpcTimingSample,
+  after_restart: LlamaCppRpcTimingSample,
+) -> LlamaCppRpcTimingPair? {
+  match before_restart.regime {
+    LongLivedWithRetainedSessions =>
+      match after_restart.regime {
+        NearlyEmptyAfterRestart => Present { value: LlamaCppRpcTimingPair {
+          before_restart: before_restart,
+          after_restart: after_restart,
+        } }
+        LongLivedWithRetainedSessions => none
+      }
+    NearlyEmptyAfterRestart => none
+  }
+}
+
+// THE ENVELOPE IS A PROJECTION OF THE PAIR, NOT A SECOND AUTHORITY. It spans the decode intervals of
+// both samples -- lowest low, highest high -- so it cannot disagree with them, and a reader who
+// wants the association still has it one field away. Prefill is deliberately NOT collapsed here:
+// the two prefill intervals sit either side of each other and a single "the prefill rate" is the
+// exact fiction that produced the retracted 13-16 figure.
+fn llama_cpp_rpc_envelope_of(
+  pair: LlamaCppRpcTimingPair,
+  slots: PositiveSlotCount,
+  prefill: TokensPerSecond,
+) -> LlamaCppRpcDecodeEnvelope? {
+  llama_cpp_rpc_throughput_band(
+    slots: slots,
+    decode_low: min_tokens_per_second(
+      a: pair.before_restart.decode_low, b: pair.after_restart.decode_low),
+    decode_high: max_tokens_per_second(
+      a: pair.before_restart.decode_high, b: pair.after_restart.decode_high),
+    prefill: prefill,
+  )
+}
+
+fn min_tokens_per_second(a: TokensPerSecond, b: TokensPerSecond) -> TokensPerSecond {
+  if tokens_per_second_count(r: a) <= tokens_per_second_count(r: b) { a } else { b }
+}
+
+fn max_tokens_per_second(a: TokensPerSecond, b: TokensPerSecond) -> TokensPerSecond {
+  if tokens_per_second_count(r: a) >= tokens_per_second_count(r: b) { a } else { b }
+}
+
+fn llama_cpp_rpc_throughput_band(
+  slots: PositiveSlotCount,
+  decode_low: TokensPerSecond,
+  decode_high: TokensPerSecond,
+  prefill: TokensPerSecond,
+) -> LlamaCppRpcDecodeEnvelope? {
+  if tokens_per_second_count(r: decode_low) > tokens_per_second_count(r: decode_high) {
+    none
+  } else {
+    Present { value: LlamaCppRpcDecodeEnvelope {
+      slots: slots,
+      decode_low: decode_low,
+      decode_high: decode_high,
+      prefill: prefill,
+    } }
+  }
+}
+
+// THE BAND AS MEASURED, AND THE INSTRUMENT IS THE SERVER'S OWN TIMINGS RATHER THAN A STOPWATCH.
+// Two readings, both single completions on short prompts with cache_n 0: predicted_per_second 2.78
+// with prompt_per_second 14.45 on a unit that had served six long-context sessions for eight hours,
+// and predicted_per_second 6.38 with prompt_per_second 12.18 sixteen minutes after that unit was
+// restarted. Reported in whole tok/s because a decimal would carry precision the spread does not
+// have.
+//
+// THE 2.3x IS REAL AND ITS CAUSE IS NOT ESTABLISHED, and those are two separate statements this
+// annotation previously ran together. It said "the only variable is resident KV". That does not
+// follow. Equal launch argv establishes equal DECLARED LAUNCH CONFIGURATION, and the two readings
+// straddle a RESTART, which changes process incarnation by construction -- and with it worker state,
+// memory placement, caches, clock and scheduler state, RPC connections, concurrent traffic, and the
+// exact bytes mapped. This module's own on-disk-versus-executed-artifact section says neither
+// incarnation is bound to the measured shard bytes, so it cannot then claim the two incarnations
+// differed in one axis only.
+//
+// What the pair supports is narrower and still useful: OCCUPANCY AND PROCESS STATE ARE A LOAD-BEARING
+// AXIS that any future throughput instrument must carry, because a 2.3x sits across it. The slow
+// reading came from a unit whose ten slots held sessions at 65k and 157k and the fast one from a unit
+// whose slots were nearly empty; that association is recorded, not promoted to cause. Separating the
+// two needs matched fresh-then-occupied readings WITHIN one identified incarnation, or repeated such
+// pairs across several -- an experiment nobody has run, and one that does NOT require resurrecting
+// the old process to run later.
+//
+// AND THE "OPERATIONAL CONSEQUENCE" THAT USED TO CLOSE THIS PARAGRAPH IS WITHDRAWN TOO, because it
+// smuggled the retracted cause back in one sentence after the retraction. It said a fresh-only
+// report overstates a loaded unit by roughly DOUBLE and a loaded-only report understates a fresh one
+// by as much -- which asserts the direction, the magnitude, and that both generalize to samples
+// nobody has taken. None of that is established by two differently-situated readings.
+//
+// What survives is the weaker and still actionable form: a sample taken in ONE process state may
+// differ materially from the same configuration in another, and these two observations do not
+// establish the direction or the population magnitude of that difference. That is enough to require
+// a future instrument to carry its state; it is not enough to predict what it will find.
+//
+// A CONCURRENCY SWEEP RUN ON TOP OF AN ALREADY-LOADED UNIT CANNOT SEE THIS AXIS, and the precise
+// reason matters because the loose version of it is also an overclaim. The sweep did not
+// independently VARY or MEASURE the retained-context population -- it is not that total occupancy
+// was held constant, since the added requests themselves change active work and memory state, which
+// is exactly what nobody observed. So the sweep carries no information about the axis it never
+// varied, and a flat per-stream rate across added probes cannot be read as "occupancy is free".
+//
+// THE ROUNDING IS DIRECTIONAL, and what it does and does not buy is now the whole point. The low end
+// rounds DOWN and the high end UP, so the recorded pair is a SUPERSET of the measured one and no
+// reader can recover a tighter figure than was observed.
+//
+// THAT IS NOT A LOWER BOUND ON SERVICE, and the predicate that used to read this end has been deleted
+// for assuming it was. Rounding down is conservative WITHIN THE TWO SAMPLES TAKEN; the population of
+// workloads this unit may meet is unsampled, and a deeper retained context could sit below the low
+// end without contradicting anything here. So the ends bound the OBSERVATIONS, not the service, and
+// nothing in this module is authorised to admit a target against them.
+//
+// WHAT IS DELIBERATELY NOT RECORDED IS AN AGGREGATE. The retracted row carried one, and no aggregate
+// was ever measured as an aggregate -- the figure was a prefill rate. A peer session's concurrency
+// sweep reports probe aggregates, but those exclude the six live sessions' own output and its own
+// rows do not reconcile (eight streams at 3.29 per stream is 26, reported as 12.8), so transcribing
+// them would import an unexplained inconsistency as a modeled fact. An aggregate claim needs its own
+// instrument, and until one exists the honest state is that this module does not carry one.
+// THE TWO SAMPLES AS MEASURED, EACH KEEPING THE STATE IT WAS TAKEN IN.
+//
+// Sample A: predicted_per_second 2.78, prompt_per_second 14.45, on a unit that had served six
+// long-context sessions for eight hours with slots holding 65k and 157k.
+// Sample B: predicted_per_second 6.38, prompt_per_second 12.18, sixteen minutes after that unit was
+// restarted, slots nearly empty.
+//
+// Both are single completions on short prompts with cache_n 0, taken from the server's own `timings`
+// rather than a stopwatch. Sample A's prefill was previously dropped on the floor; it is here.
+fn llama_cpp_rpc_sample_before_restart() -> LlamaCppRpcTimingSample? {
+  llama_cpp_rpc_timing_sample(
+    regime: LongLivedWithRetainedSessions,
+    decode_low: tokens_per_second(count: 2),
+    decode_high: tokens_per_second(count: 3),
+    prefill_low: tokens_per_second(count: 14),
+    prefill_high: tokens_per_second(count: 15),
+  )
+}
+
+fn llama_cpp_rpc_sample_after_restart() -> LlamaCppRpcTimingSample? {
+  llama_cpp_rpc_timing_sample(
+    regime: NearlyEmptyAfterRestart,
+    decode_low: tokens_per_second(count: 6),
+    decode_high: tokens_per_second(count: 7),
+    prefill_low: tokens_per_second(count: 12),
+    prefill_high: tokens_per_second(count: 13),
+  )
+}
+
+fn llama_cpp_rpc_observed_timing_pair() -> LlamaCppRpcTimingPair? {
+  match llama_cpp_rpc_sample_before_restart() {
+    Absent => none
+    Present { value: before } =>
+      match llama_cpp_rpc_sample_after_restart() {
+        Absent => none
+        Present { value: after } =>
+          llama_cpp_rpc_timing_pair(before_restart: before, after_restart: after)
+      }
+  }
+}
+
+// THE ENVELOPE IS NOW DERIVED RATHER THAN AUTHORED, so it cannot drift from the samples it summarises.
+// Its prefill argument is the AFTER-RESTART interval's low end, carried explicitly because the pair
+// holds two prefill intervals and no single figure is "the" prefill rate -- picking one is a lossy
+// projection and is marked as such by having to be passed in.
+fn llama_cpp_rpc_observed_throughput() -> LlamaCppRpcDecodeEnvelope? {
+  match llama_cpp_rpc_observed_timing_pair() {
+    Absent => none
+    Present { value: pair } =>
+      llama_cpp_rpc_envelope_of(
+        pair: pair,
+        slots: llama_cpp_rpc_observed_slot_plan.slots,
+        prefill: pair.after_restart.prefill_low,
+      )
+  }
+}
+
+// ================= THE ARTIFACT ON DISK AT THE PATHS THE UNIT NAMES =================
+//
+// ITS ON-DISK IDENTITY IS BOUND BY AN IN-PLACE MEASUREMENT OF THE BYTES.
+//
+// AND ON-DISK IDENTITY IS NOT EXECUTED-ARTIFACT IDENTITY. This section was first written as "the
+// artifact the unit actually loaded", and that sentence does not follow from the measurement that
+// backs it. Hashing four files establishes THESE PATHS CONTAIN THESE BYTES AT THE TIME OF THE READ.
+// It does not establish that the llama-server process whose throughput and API surface were recorded
+// loaded those bytes: the files can be replaced after a process has mapped them, the service can
+// restart between the two readings, and nothing here observes an incarnation boundary that would
+// rule either out. The two observations may straddle one.
+//
+// This is the same over-claim as the observation mixer removed below, in its other direction, so it
+// gets the same treatment rather than a note asking readers to be careful. The join field is named
+// `on_disk_artifact`, so no consumer can read it as the executed artifact without reading that it is
+// not. WHAT WOULD CLOSE IT is an incarnation identity -- a process start or restart witness the
+// artifact read and the performance read are both keyed to -- and that is the trigger. It cannot be
+// had from the serving surface today: GET /v1/models returns this model with `"digest": ""`, an
+// empty string rather than an absent field, so no probe against the API binds identity however it is
+// written.
+//
+// This carrier first shipped with the identity UNOBSERVED, and that was honest at the time: the
+// serving surface carries no digest -- GET /v1/models returns this model with `"digest": ""`, an
+// empty string rather than an absent field, so no probe against the API can bind identity however it
+// is written -- and the shard files were outside the convergence principal's reach. The operator
+// then granted access, and the gap closed with a MEASUREMENT rather than a promotion of the prose.
+//
+// WHAT ESTABLISHES IT. The four shards were hashed in place on the front-door host with sha256sum,
+// which is an observation of the bytes AT THOSE PATHS, and that measurement alone is what the chain
+// below carries.
+//
+// AN EARLIER VERSION OF THIS NOTE CLAIMED TWO INDEPENDENT CORROBORATING SOURCES, and the model does
+// not carry that. The registration payload written when the model was created does record its own
+// four digests, and they do agree -- but agreement is a RELATION between two observations, and this
+// module stores one canonical chain with no second reading and no relation to compare. Prose that
+// claims evidence the structure cannot distinguish is exactly the inflation §4b names, so the
+// sentence is withdrawn rather than left standing on a corroboration nothing here can check. The
+// direct measurement is sufficient to bind these bytes; modelling the corroboration is a separate
+// act, and it is not performed here.
+//
+// FOUR SHARDS, AND THE FIRST IS NOT THE MODEL. The front door reports shard 00001 as its model_path
+// and that file is about five megabytes -- the index that names the rest. A reader who bound
+// identity to "the model_path" would therefore have pinned the index and left roughly 108 GiB of
+// weights unnamed, which is why identity here is the WHOLE ORDERED CLOSURE and not one path.
+//
+// UPSTREAM PROVENANCE, RECORDED BUT NOT VERIFIED HERE. The shards were fetched from the unsloth
+// DeepSeek-V4-Flash-0731-GGUF repository on huggingface. That is where they CAME FROM; this module
+// does not claim the upstream still serves these bytes, because that would be a fact about a remote
+// registry nobody re-read. What is established is what this host holds.
+// A DIGEST IS A TYPED CONTENT HASH AND ITS POSITION IN THE CHAIN IS PART OF IT.
+//
+// The bound arm first carried List<NonEmptyStr>, and at that width `["banana"]` bound a four-shard
+// artifact: one string, wrong cardinality, no hash family, and no association with any particular
+// shard -- while the predicate below is what a publication step consults. The name claimed exact
+// identity and the carrier could not deliver it.
+//
+// Both halves are closed here. The digest is std.content_hash's Sha256Digest, so a value that is not
+// 64 lower-hex characters has no constructor rather than being caught later; and the ordinal binds
+// each digest to the shard it was read from, because a GGUF shard set is an ordered chain the loader
+// follows from the index and the same four digests in a different order name a different artifact.
+type LlamaCppRpcShardDigest sole_constructor {
+  ordinal: PositiveMeasureCount
+  digest: Sha256Digest
+}
+
+fn llama_cpp_rpc_shard_digest(ordinal: PositiveMeasureCount, hex: String) -> LlamaCppRpcShardDigest? {
+  match sha256_hex_digest(hex: hex) {
+    Absent => none
+    Present { value: d } =>
+      Present { value: LlamaCppRpcShardDigest { ordinal: ordinal, digest: d } }
+  }
+}
+
+// EXACTNESS IS ESTABLISHED WHERE THE VALUE IS MINTED, NOT CHECKED AFTERWARDS.
+//
+// The bound arm previously carried a bare shard list and a SEPARATE predicate decided whether that
+// list was exact. That leaves the inexact value writable and makes correctness depend on every
+// consumer remembering to run the second rule -- validation standing exactly where construction was
+// available. A one-shard closure for a four-shard artifact, and a 1,1,2,3 chain, must fail while the
+// Bound value is being made, so that no inexact Bound value exists to be asked about.
+type LlamaCppRpcBoundArtifactIdentity sole_constructor {
+  shards: List<LlamaCppRpcShardDigest>
+  shard_count: PositiveShardCount
+}
+
+// The only way to mint one. It refuses unless the chain is exactly 1..N in order at the declared
+// count -- length alone is not enough, since 1,1,2,3 has the right cardinality and names a shard set
+// that does not exist. The fold walks the expected ordinal forward and sinks to 0 on the first
+// disagreement; 0 matches no ordinal, because an ordinal is a PositiveMeasureCount and cannot be
+// zero, so the sink is absorbing and a later coincidence cannot restore it.
+fn llama_cpp_rpc_bound_artifact_identity(
+  shards: List<LlamaCppRpcShardDigest>,
+  shard_count: PositiveShardCount,
+) -> LlamaCppRpcBoundArtifactIdentity? {
+  if length(shards) != positive_shard_count_value(shards: shard_count) {
+    none
+  } else if fold(shards, init: 1, f: fn(next, s) {
+      if positive_measure_count_value(count: s.ordinal) == next { next + 1 } else { 0 }
+    }) != positive_shard_count_value(shards: shard_count) + 1 {
+    none
+  } else {
+    Present { value: LlamaCppRpcBoundArtifactIdentity {
+      shards: shards, shard_count: shard_count } }
+  }
+}
+
+type LlamaCppRpcArtifactIdentity
+  = ArtifactIdentityBound { identity: LlamaCppRpcBoundArtifactIdentity }
+  | ArtifactIdentityUnobserved { cause: NonEmptyStr }
+
+type LlamaCppRpcOnDiskArtifact sole_constructor {
+  primary_shard_path: NonEmptyStr
+  shard_count: PositiveShardCount
+  identity: LlamaCppRpcArtifactIdentity
+}
+
+// THE ORDER IS PART OF THE FACT. These are shards 00001 through 00004 in sequence, because a GGUF
+// shard set is an ordered chain the loader follows from the index; a closure holding the right four
+// digests in the wrong order names a different artifact than the one that loaded.
+// AND THE ARTIFACT REFUSES A COUNT ITS OWN IDENTITY CONTRADICTS. The bound identity was validated
+// against a shard count; if the artifact then declares a different one, the record carries two
+// answers to one question and the identity's guarantee is silently void. There is exactly one place
+// that could happen, so it refuses here rather than being asked about later.
+fn llama_cpp_rpc_artifact(
+  primary_shard_path: NonEmptyStr,
+  shard_count: PositiveShardCount,
+  identity: LlamaCppRpcArtifactIdentity,
+) -> LlamaCppRpcOnDiskArtifact? {
+  match identity {
+    ArtifactIdentityUnobserved { cause: _ } =>
+      Present { value: LlamaCppRpcOnDiskArtifact {
+        primary_shard_path: primary_shard_path,
+        shard_count: shard_count,
+        identity: identity,
+      } }
+    ArtifactIdentityBound { identity: bound } =>
+      if positive_shard_count_value(shards: bound.shard_count)
+        != positive_shard_count_value(shards: shard_count) {
+        none
+      } else {
+        Present { value: LlamaCppRpcOnDiskArtifact {
+          primary_shard_path: primary_shard_path,
+          shard_count: shard_count,
+          identity: identity,
+        } }
+      }
+  }
+}
+
+// Shards 00001 through 00004, hashed in place on the front-door host. A hex string that does not
+// parse yields no ShardDigest, so the identity below refuses rather than binding a short chain.
+fn llama_cpp_rpc_observed_shard_digests() -> List<LlamaCppRpcShardDigest> {
+  flat_map(
+    [ llama_cpp_rpc_shard_digest(
+        ordinal: positive_measure_count(predecessor: 0),
+        hex: "2baab0767d2630cb1633495ff6ccf10bdc5b83de7d66a0d3728a1a0f38e96220"),
+      llama_cpp_rpc_shard_digest(
+        ordinal: positive_measure_count(predecessor: 1),
+        hex: "3495d0e8218c5a526d66a4901114a7ee4c5e25f84fe1f4bc632b5cbfdac57ac7"),
+      llama_cpp_rpc_shard_digest(
+        ordinal: positive_measure_count(predecessor: 2),
+        hex: "57ad22e505204245020644de9143accfe3be91951efaa809bf59fa640ec278ea"),
+      llama_cpp_rpc_shard_digest(
+        ordinal: positive_measure_count(predecessor: 3),
+        hex: "87b2e7956b08954dd0d9ba71801f623fdcd1762f252ea3d18018798a1718bfc9") ],
+    o => match o {
+      Present { value: v } => [v]
+      Absent => []
+    })
+}
+
+data llama_cpp_rpc_observed_shard_count: PositiveShardCount = positive_shard_count(count: positive_measure_count(predecessor: 3))
+
+// THIS ROW GOES THROUGH THE CONSTRUCTOR RATHER THAN AROUND IT. A direct record literal is writable
+// inside the defining module, and using one here would have bypassed both refusals above in the one
+// place that actually mints production's artifact -- the constructor would then guard only fixtures.
+fn llama_cpp_rpc_observed_artifact() -> LlamaCppRpcOnDiskArtifact? {
+  match llama_cpp_rpc_bound_artifact_identity(
+    shards: llama_cpp_rpc_observed_shard_digests(),
+    shard_count: llama_cpp_rpc_observed_shard_count) {
+    Absent => none
+    Present { value: bound } =>
+      llama_cpp_rpc_artifact(
+        primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
+        shard_count: llama_cpp_rpc_observed_shard_count,
+        identity: ArtifactIdentityBound { identity: bound })
+  }
+}
+
+// A UNIT WHOSE ARTIFACT IDENTITY IS UNBOUND MAY BE OBSERVED AND MAY NOT BE CONVERGED, and that is
+// the whole reason to type the distinction. Convergence actuates bytes; a plan that cannot name
+// which bytes it is asserting is asserting a path and hoping. This is the predicate a publication
+// step consults, and it is now a TRIVIAL ELIMINATOR: every exactness condition was moved into
+// llama_cpp_rpc_bound_artifact_identity, so a Bound value is exact by construction and there is no
+// second rule for a consumer to forget. It answers true for the observed artifact.
+//
+// READ WHAT IT SAYS AND NOT MORE: true here means THE PATHS HELD THESE BYTES WHEN THEY WERE READ. A
+// converge step that needs "the process now serving loaded exactly these bytes" does not get that
+// fact from this predicate, and there is no arm here that would supply it -- see the incarnation
+// boundary above.
+//
+// DISPOSITION ON ELIMINATING THIS COPRODUCT BY MATCH RATHER THAN THROUGH A DERIVED PROJECTION.
+// Review asked for this to consume a canonical fold or query surface instead of matching the two
+// variants directly. Considered and declined, for three reasons that are checkable rather than
+// stylistic.
+//
+// The precedent it invokes is gunbc.spark.cell_role, where a hand-rolled predicate matched a
+// coproduct against ITSELF for equality while a canonical wire projection of the same variants
+// already existed beside it. Deriving equality from that projection REMOVED a second enumeration.
+// Here there is no such projection: LlamaCppRpcArtifactIdentity has no canonical surface anywhere in
+// the corpus, so routing through one means MINTING one -- creating a construct in order to satisfy a
+// rule about not creating constructs, which is the re-invention §2 warns closes nothing.
+//
+// The two production matches on this type ask DIFFERENT questions, not one question twice.
+// llama_cpp_rpc_artifact asks the bound arm for its shard count in order to refuse a contradiction;
+// this function asks which arm is present. Neither restates the other, so §5's "a check that
+// re-states a constraint the model already carries" does not describe them.
+//
+// And the drift hazard the rule exists to prevent cannot occur here: `Match` over a closed variant
+// set is one of the substrate's six behaviors, and exhaustive elimination of closed variants is part
+// of the ordinary compiler floor DESIGN names. A third arm added to this type fails to compile at
+// BOTH sites rather than silently defaulting at either, so there is nothing silent for a canonical
+// surface to protect.
+//
+// The shape is also the corpus's ordinary one rather than a local shortcut, which is checkable by
+// naming instances rather than asserting a convention: gunbc.oomd_install `unit_is_active` eliminates
+// a six-variant SystemdUnitActiveState to Bool, and `unit_is_enabled` a ten-variant UnitFileState,
+// both on main and both load-bearing. A rule that condemns this two-arm eliminator condemns those,
+// and the fix for them would be the same minting. If that vocabulary is genuinely wanted it is a
+// corpus-wide replacement migration with its own root, not a condition on this module.
+fn llama_cpp_rpc_artifact_is_bound(a: LlamaCppRpcOnDiskArtifact) -> Bool {
+  match a.identity {
+    ArtifactIdentityBound { identity: _ } => true
+    ArtifactIdentityUnobserved { cause: _ } => false
+  }
+}
+
+// ================= WHAT THE FRONT DOOR ACTUALLY ANSWERS =================
+//
+// THIS IS NOT AN OLLAMA, AND A PROBE THAT ASSUMES IT IS READS A HEALTHY UNIT AS DEAD.
+//
+// Measured directly against the front door rather than taken from the handoff: /props answers with
+// total_slots 10 and default_generation_settings.n_ctx 1048576, /v1/models answers with the split
+// alias, and /api/tags answers 404. gunbc.spark.serving_terminal_health and
+// gunbc.spark.serving_readback_parse both read ollama routes, so pointing today's readback at this
+// unit would report every route missing and conclude the host is not serving.
+//
+// THE CONTEXT AUTHORITY IS /props AND THE FIGURE IT REPORTS IS ALREADY DIVIDED. That is what makes
+// it the right thing to compare against and the unit file's `-c` the wrong thing: the two are
+// different quantities, and the silent-shrink failure is invisible to anything that checks the
+// second one.
+//
+// THERE IS NO OLLAMA ARM, AND ITS REMOVAL IS THE POINT OF THIS SECTION. The carrier here used to be
+// `OpenAiCompatibleSurface | OllamaSurface`, with public functions projecting /api/show and
+// /api/tags out of the second arm. Nothing in this observation could ever establish that arm -- the
+// measured front door is not an Ollama, this module says so two paragraphs up, and no witness
+// discriminated it. It was vocabulary inherited from the generic carrier, published as though the
+// dated observation had two possible engines when it observed exactly one, so a consumer could
+// select a route mapping this module never measured. A cross-runtime surface vocabulary is real
+// work for the neutral authority to do AFTER it holds two observed realizations; doing it here from
+// one is inventing the second.
+//
+// SO THE ROUTES ARE THE EXACT ONES MEASURED, carried as fields rather than derived from an engine
+// choice. Read back from the running front door on 2026-09-03: /v1/models and /props and /health all
+// answer 200, and /version answers 404 -- which is what distinguishes this from a vLLM surface, and
+// is recorded because the distinguishing NEGATIVE is what a probe needs in order to refuse rather
+// than to guess.
+type LlamaCppRpcObservedApiSurface sole_constructor {
+  context_authority_route: NonEmptyStr
+  model_listing_route: NonEmptyStr
+  health_route: NonEmptyStr
+}
+
+data llama_cpp_rpc_observed_api_surface: LlamaCppRpcObservedApiSurface = LlamaCppRpcObservedApiSurface {
+  context_authority_route: "/props" as NonEmptyStr,
+  model_listing_route: "/v1/models" as NonEmptyStr,
+  health_route: "/health" as NonEmptyStr,
+}
+
+fn llama_cpp_rpc_context_authority_route(surface: LlamaCppRpcObservedApiSurface) -> NonEmptyStr {
+  surface.context_authority_route
+}
+
+fn llama_cpp_rpc_model_listing_route(surface: LlamaCppRpcObservedApiSurface) -> NonEmptyStr {
+  surface.model_listing_route
+}
+
+// ================= ONE CONSTRUCTOR FOR ONE OBSERVED REALIZATION =================
+//
+// UNTIL THIS TYPE EXISTED, THE OBSERVATIONS WERE ADJACENCY RATHER THAN A JOINED FACT. The unit, its
+// artifact, its API surface and its throughput band sat as four separate module-scope values, and
+// with exactly one of each nothing went wrong -- which is the whole problem, because nothing
+// structural said they described the same executed realization either.
+//
+// THERE IS DELIBERATELY NO GENERAL MIXER, AND THAT IS THE HONEST RUNG RATHER THAN THE TIDY ONE. A
+// public llama_cpp_rpc_observation(unit, artifact, api_surface, throughput) was written first and
+// removed: whatever condition it checked, it still ADMITTED `unit A + artifact B + surface D +
+// throughput C` drawn from different realizations, which is precisely the failure this type claims
+// to close. A slot-count agreement does not fix that -- a band measured at ten slots on a DIFFERENT
+// ENGINE satisfies it -- and a constructor that admits the state it names is worse than no
+// constructor, because it will be cited as having closed the class.
+//
+// WHAT WOULD ACTUALLY CLOSE IT is a shared realization identity that the artifact, the API surface
+// and the throughput band are each keyed to, so that joining observations of two realizations has
+// no constructor. That is not authorable from one observation: with a single realization the
+// identity has nothing to discriminate, so its RED would be unwritable and the key would be
+// decoration. THE TRIGGER IS THEREFORE THE SECOND REALIZATION -- a re-measurement or a second unit
+// -- at which point the identity becomes both constructible and mandatory.
+//
+// Until then only the module's own 2026-09-02 observation can be built, below, and no caller can
+// assemble a different one. That is a narrower capability than a join, and it is the one the
+// evidence supports.
+//
+// THE TRIGGER HAS FIRED (2026-09-03), AND SAYING SO IS THE ONLY EDIT IT LICENSES HERE. A second
+// realization is now running and observed first-hand rather than reported: the front door on the
+// other pair answers /v1/models with owned_by "vllm" and /version with a vLLM build string, over the
+// official DeepSeek-V4-Flash checkpoint. So the paragraph above no longer describes a waiting state
+// -- the shared realization identity it names is now both constructible and mandatory, because there
+// are two realizations for it to discriminate between.
+//
+// IT DOES NOT FOLLOW THAT THIS MODULE GROWS THE SHARED CARRIER, and the distinction is the whole
+// reason this note is a status correction rather than a design change. Deriving the neutral subject
+// INSIDE the module named for one engine is the same induced-from-a-single-engine move the paragraph
+// above refuses, merely performed later and with more material: whatever shape emerged would still
+// be authored in llama.cpp's vocabulary, in a file whose every neighbouring row assumes a ggml-rpc
+// weights peer and a per-slot context. The successor owns the shared realization and evidence
+// carrier; this module stays what its name says it is, a historical observation of one engine, and
+// its fields do not widen. What changes today is that its trigger is no longer pending.
+//
+// THIS PARAGRAPH USED TO CLAIM THE OPPOSITE, AND WITHDRAWING IT IS WHAT THE RENAME IS FOR. It said
+// the deployment type stays IMPLEMENTATION-NEUTRAL -- "no llama.cpp, no IQ3_S, no engine anywhere"
+// -- and treated it as the stable structural subject with the observation as one realization of it.
+// That was false about its own fields. LlamaCppRpcDeployment names exactly ONE ggml-rpc weights peer
+// with an RPC port, and its slot plan derives llama.cpp's TOTAL `-c` from a per-slot context. A
+// four-worker tensor-parallel deployment does not inhabit that shape at all, so the type was an
+// engine-specific record wearing a neutral name -- which is the meaning fork this module was recut
+// to close, not a property it can still claim.
+//
+// THE NEUTRAL SUBJECT IS A LATER, SEPARATE CONSTRUCTION, and it is deliberately not attempted here:
+// it must be derived from two ACTUALLY OBSERVED realizations rather than generalized from this one,
+// because a neutral shape induced from a single engine reproduces that engine's assumptions under a
+// wider name. What survives as the genuinely cross-realization invariant is a rule rather than a
+// record: an internal participant of an active deployment must not simultaneously be published as
+// an independent client endpoint.
+// THE ARTIFACT FIELD IS NAMED FOR WHAT IT IS. `on_disk_artifact` rather than `artifact`, because
+// this record otherwise reads as four facts about one running process and one of them is a fact
+// about a filesystem. The name is the only thing that travels to every consumer.
+type LlamaCppRpcObservedDeployment sole_constructor {
+  unit: LlamaCppRpcDeployment
+  on_disk_artifact: LlamaCppRpcOnDiskArtifact
+  api_surface: LlamaCppRpcObservedApiSurface
+  timing: LlamaCppRpcTimingPair
+  throughput: LlamaCppRpcDecodeEnvelope
+}
+
+// The observation of 2026-09-02, or Absent when any part of it failed to construct. There is no arm
+// that reports a partial observation: a join missing one of its arms is not a weaker observation of
+// the same realization, it is a claim about a realization nobody fully measured.
+fn llama_cpp_rpc_observed_observation() -> LlamaCppRpcObservedDeployment? {
+  match llama_cpp_rpc_observed() {
+    Absent => none
+    Present { value: u } =>
+      match llama_cpp_rpc_observed_throughput() {
+        Absent => none
+        Present { value: band } =>
+          match llama_cpp_rpc_observed_timing_pair() {
+            Absent => none
+            Present { value: pair } =>
+              match llama_cpp_rpc_observed_artifact() {
+                Absent => none
+                Present { value: art } =>
+                  Present { value: LlamaCppRpcObservedDeployment {
+                    unit: u,
+                    on_disk_artifact: art,
+                    api_surface: llama_cpp_rpc_observed_api_surface,
+                    timing: pair,
+                    throughput: band,
+                  } }
+              }
+          }
+      }
+  }
+}

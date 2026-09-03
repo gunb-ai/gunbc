@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 mod required_floor_runner;
+mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
@@ -201,6 +202,13 @@ mod partition_crate_boundary_host;
 
 #[path = "emitted_closure_compile_host.rs"]
 mod emitted_closure_compile_host;
+
+// TEST-ONLY, and wired the same #[path] way as the hosts above rather than through lib.rs: the
+// falsifier exists to be invoked by one #[ignore] test and has no production caller, so declaring
+// it unconditionally would put a module nothing calls into every release build.
+#[cfg(test)]
+#[path = "evaluation_budget_consequence_falsifier_host.rs"]
+mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -4936,6 +4944,26 @@ fn workspace_relative_repo_path(path: &str) -> String {
     } else {
         norm
     }
+}
+
+/// The exact module population returned by one entry resolution, in a stable display order.
+///
+/// This is a projection of the resolver result, never a second import or reference walk. Module
+/// identity joins the resolver's population; source path lets a prospective writer compare the
+/// file it is about to change with the routed entry's semantic subject.
+pub fn resolved_closure_members(graph: &ResolvedGraph) -> Vec<(String, String)> {
+    let mut members: Vec<(String, String)> = graph
+        .modules
+        .iter()
+        .map(|module| {
+            (
+                module.func_env.name.clone(),
+                workspace_relative_repo_path(&module.module.span.file),
+            )
+        })
+        .collect();
+    members.sort();
+    members
 }
 
 /// Entry-path variant of `workspace_relative_repo_path` that NEVER panics.
@@ -18951,24 +18979,6 @@ pub struct ServeEvaluationBudget {
     pub wall_limit_ms: Option<u64>,
 }
 
-/// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
-/// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
-/// consumer can tell a spin from a stall without parsing prose.
-fn serve_budget_refusal_body(
-    entry: &str,
-    clock_key: &str,
-    elapsed_nanos: u128,
-    limit_ms: u64,
-) -> String {
-    format!(
-        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        serve_json_string(entry),
-        clock_key,
-        elapsed_nanos,
-        limit_ms
-    )
-}
-
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
@@ -19067,18 +19077,35 @@ pub fn handle_serve(
     // The budget is announced at startup because "unset" is a policy state that must be visible.
     // A process serving with no bound and a process serving with a bound are different
     // operational facts, and the difference has to be readable without inspecting argv.
+    // ONE CONTRACT, BOUND ONCE, BEFORE THE LISTENER SERVES. Every later use of the evaluated
+    // function name and of the limits reads THIS value; `function` and `serve_budget` are not
+    // consulted again below.
+    let armed_contract = serve_budget_refusal::serve_armed_contract(function.clone(), serve_budget);
+    // THE ANNOUNCEMENT NAMES THE ADDRESS ACTUALLY BOUND, not the one requested. They differ exactly
+    // when the caller asked the OS to choose (`--port 0`), which is the only collision-free way to
+    // take a loopback port; announcing the request there would publish `:0` and leave no way to
+    // reach the server it just started. A reader of this line can now attribute a connection to
+    // THIS process rather than to whoever happened to hold the requested port.
+    let bound = match listener.local_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!(
+                "error: bound {}:{} but could not read its address: {}",
+                host, port, e
+            );
+            std::process::exit(1);
+        }
+    };
     eprintln!(
         "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        host,
-        port,
-        function,
+        bound.ip(),
+        bound.port(),
+        serve_budget_refusal::serve_contract_entry(&armed_contract),
         release_revision,
-        serve_budget
-            .cpu_limit_ms
+        serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
-        serve_budget
-            .wall_limit_ms
+        serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
     );
@@ -19119,56 +19146,80 @@ pub fn handle_serve(
                     // arms and restores — a leaked deadline would be worse than none here,
                     // since `ctx` outlives every request and a stale CPU baseline would refuse
                     // all subsequent requests for the life of the process.
+                    // BOTH DERIVE FROM ONE CONTRACT. The arming subject and the invoked function
+                    // are read from the same value, so the interface no longer permits a process
+                    // armed for one entry to evaluate another and report a refusal naming the
+                    // wrong subject.
                     let result = {
                         let _budget = ctx.enter_evaluation_budget(
-                            &function,
-                            serve_budget.cpu_limit_ms,
-                            serve_budget.wall_limit_ms,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract),
+                            serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract),
                         );
-                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                        v1_interpreter::run_in_context_with_args(
+                            &ctx,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            &args,
+                            true,
+                        )
                     };
                     match result {
-                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
-                            entry,
-                            clock,
-                            elapsed_nanos,
-                            limit_ms,
-                        }) => {
-                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
-                            // the evaluation that would have rendered it is the one that was
-                            // just aborted, so asking it to describe its own abort would put
-                            // recovery behind the evaluator that failed.
-                            //
-                            // 500, not 503: this request is deterministic against a fixed
-                            // policy, so it will cross again on retry. A status meaning
-                            // "temporary capacity" would assert something the model does not
-                            // know, and no `Retry-After` is attached for the same reason
-                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                            eprintln!(
-                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-                                entry,
-                                clock.key(),
-                                elapsed_nanos,
-                                limit_ms
-                            );
-                            serve_write_response(
+                        // ONE CLASSIFICATION, NOT A GUARD PLUS A RE-ASK. The previous shape called
+                        // the producer once for `is_some()` and again under `expect`, so the arm's
+                        // correctness rested on the two calls agreeing rather than on there being
+                        // one decision. The `Option` IS the decision.
+                        Err(ref e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(e) {
+                            Some(refusal) => {
+                                // THE REFUSAL MUST BE ABOUT THE CONTRACT THIS PROCESS ARMED. The
+                                // interpreter reports the entry it was armed with; a mismatch here
+                                // would mean arming and evaluation had different subjects, which
+                                // the single contract value exists to make unreachable. It refuses
+                                // rather than rendering a diagnostic that names the wrong function.
+                                if !serve_budget_refusal::serve_refusal_names_contract(
+                                    &refusal,
+                                    &armed_contract,
+                                ) {
+                                    eprintln!(
+                                        "serve: refusing to render a budget refusal whose entry is not the armed contract's subject"
+                                    );
+                                    serve_write_response(
+                                        &mut stream,
+                                        500,
+                                        "text/plain; charset=utf-8",
+                                        "budget refusal did not name the armed contract\n",
+                                    )
+                                } else {
+                                // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                                // the evaluation that would have rendered it is the one that was
+                                // just aborted, so asking it to describe its own abort would put
+                                // recovery behind the evaluator that failed.
+                                //
+                                // 500, not 503: this request is deterministic against a fixed
+                                // policy, so it will cross again on retry. A status meaning
+                                // "temporary capacity" would assert something the model does not
+                                // know, and no `Retry-After` is attached for the same reason
+                                // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                                eprintln!(
+                                    "{}",
+                                    serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
+                                );
+                                serve_write_response(
+                                    &mut stream,
+                                    500,
+                                    "application/json; charset=utf-8",
+                                    &serve_budget_refusal::serve_budget_refusal_machine_body(
+                                        &refusal,
+                                    ),
+                                )
+                                }
+                            }
+                            None => serve_write_response(
                                 &mut stream,
                                 500,
-                                "application/json; charset=utf-8",
-                                &serve_budget_refusal_body(
-                                    &entry,
-                                    clock.key(),
-                                    elapsed_nanos,
-                                    limit_ms,
-                                ),
-                            )
-                        }
-                        Err(e) => serve_write_response(
-                            &mut stream,
-                            500,
-                            "text/plain; charset=utf-8",
-                            &format!("handler error: {}\n", e),
-                        ),
+                                "text/plain; charset=utf-8",
+                                &format!("handler error: {}\n", e),
+                            ),
+                        },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
                             Some((status, content_type, resp_body)) => serve_write_response(
                                 &mut stream,
@@ -41311,6 +41362,25 @@ fn witness_eval_verdict_from_claim_outcome(
 }
 
 pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
+/// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
+///
+/// The predicate is here rather than in the test body because a test that pattern-matched the
+/// outcome itself would be a second adjudication of the same terminal: RefusedWithCleanupFailure
+/// is a refusal, and a reader writing `matches!(_, Passed(_) | ...)` by hand is one edit away from
+/// treating a cleanup failure as a pass.
+#[cfg(test)]
+pub(crate) use evaluation_budget_consequence_falsifier_host::run_evaluation_budget_consequence_falsifier;
+
+#[cfg(test)]
+pub(crate) fn evaluation_budget_consequence_falsifier_passed(
+    outcome: &evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome,
+) -> bool {
+    matches!(
+        outcome,
+        evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome::Passed(_)
+    )
+}
 
 pub fn run_required_regen(
     candidate_dir_rel: &str,

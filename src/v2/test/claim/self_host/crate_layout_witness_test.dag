@@ -7,8 +7,8 @@ import gunbc.stage0_crate_layout_generated {
   generated_stage0_filenames
 }
 import v2.compiler.self_host.stage0_crate_layout {
-  emit_hand_maintained_pub_mod_block,
-  hand_maintained_pub_mod_basenames,
+  emit_stage0_lib_pub_mod_block,
+  stage0_plain_pub_mod_basenames,
   hand_maintained_stage0_dirs,
   hand_maintained_stage0_filenames
 }
@@ -35,13 +35,13 @@ fn lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
 }
 
 fn witness_generated_pub_mod_block_matches_registrations_holds() -> Bool {
-  generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
+  generated_pub_mod_block == emit_stage0_lib_pub_mod_block()
 }
 
 fn witness_generated_basenames_match_registrations_holds() -> Bool {
   lists_have_same_members(
     a: generated_pub_mod_basenames,
-    b: hand_maintained_pub_mod_basenames()
+    b: stage0_plain_pub_mod_basenames()
   )
 }
 
@@ -61,7 +61,7 @@ fn witness_generated_has_no_phantom_registration_holds() -> Bool {
     xs: generated_pub_mod_basenames,
     empty: true,
     cons: fn(ok, basename) {
-      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
+      ok && string_list_contains(xs: stage0_plain_pub_mod_basenames(), needle: basename)
     }
   )
 }
