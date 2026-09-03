@@ -9031,21 +9031,83 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
+    // `field_summary_for_type` decides field access in TWO parts, and this evaluator used to
+    // consume only the first. `value_shape: OptionalValue` is the checker's FUNCTOR LIFT: field
+    // access through an `Optional` yields an `Optional`, PRESERVING the empty case rather than
+    // erasing it. Reading the field directly off the `Optional` value instead -- which is what
+    // dropping `value_shape` amounts to -- refuses with `NoSuchField { "Optional", .. }` on every
+    // site the checker typed as a lift, so the two arms disagreed by construction. One authority,
+    // both directions: the checker's decision is consumed here rather than re-derived.
+    if matches!(
+        summary.map(|s| &s.value_shape),
+        Some(FieldValueShape::OptionalValue)
+    ) {
+        if let Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } = &base_val
+        {
+            if *type_name == ctx.sym("Optional") {
+                if *variant_name == ctx.sym("Absent") {
+                    return Ok(optional_absent(ctx));
+                }
+                let inner = fields_get(fields, ctx.sym("value"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let lifted = field_access_by_style(access_style, inner, &field_name, env, ctx)?;
+                return Ok(optional_present(lifted, ctx));
+            }
+        }
+    }
+
+    field_access_by_style(access_style, base_val, &field_name, env, ctx)
+}
+
+/// The `access_style` half of a `FieldSummary`, applied to one already-selected value. Split out
+/// so the `OptionalValue` lift above can run it on the payload rather than on the wrapper.
+fn field_access_by_style(
+    access_style: Option<&FieldAccessStyle>,
+    base_val: Value,
+    field_name: &str,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
-            Err(_) => extract_field(&base_val, &field_name, env, ctx),
+            Err(_) => extract_field(&base_val, field_name, env, ctx),
         },
         Some(FieldAccessStyle::TupleSecond) => match expect_list(&base_val, "tuple.second") {
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
-            Err(_) => extract_field(&base_val, &field_name, env, ctx),
+            Err(_) => extract_field(&base_val, field_name, env, ctx),
         },
+        // This arm was written against the NULL-SENTINEL encoding, where an absent optional was
+        // `Value::Null` and a present one was the bare element -- so returning `base_val` WAS the
+        // unwrap. Constructing a real `Optional` variant for `first`/`last` retires that encoding
+        // here, and returning `base_val` would now hand back the wrapper instead of its payload.
+        // The `Absent` case keeps the pre-existing `Value::Null` result rather than being
+        // repaired: the unwrap style has no plain value to yield there, and that gap is the
+        // separately-filed `.value`-spelling ambiguity, not this change's subject.
         Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
             Value::Null => Ok(Value::Null),
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if *type_name == ctx.sym("Optional") => {
+                if *variant_name == ctx.sym("Absent") {
+                    Ok(Value::Null)
+                } else {
+                    Ok(fields_get(fields, ctx.sym("value"))
+                        .cloned()
+                        .unwrap_or(Value::Null))
+                }
+            }
             _ => Ok(base_val),
         },
-        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx),
-        _ => extract_field(&base_val, &field_name, env, ctx),
+        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, field_name, env, ctx),
+        _ => extract_field(&base_val, field_name, env, ctx),
     }
 }
 
