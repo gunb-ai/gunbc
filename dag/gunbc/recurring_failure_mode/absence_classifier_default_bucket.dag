@@ -1,0 +1,52 @@
+module gunbc.recurring_failure_mode.absence_classifier_default_bucket
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data absence_classifier_default_bucket: RecurringFailureMode = RecurringFailureMode {
+  identity: "absence_classifier_default_bucket" as NonEmptyStr,
+
+  receipts: [
+    "**absence-classifier default bucket, unprotected by its residual refusal** (a classifier whose ACCEPTED bucket is defined by the ABSENCE of properties is only as complete as the enumeration of kinds it was derived from, and it fails silently TOWARD THE DEFAULT rather than toward its refusal arm. ",
+
+    "The refusal reads as coverage and is not: a residual can only catch kinds whose absence PATTERN differs from the accepted one, which is a strictly smaller population than the kinds that exist. ",
+
+    "RECOGNITION RULE: A RESIDUAL REFUSAL DOES NOT PROTECT A CLASSIFIER WHOSE ACCEPTED BUCKET IS DEFINED BY ABSENCE; A NEW KIND CAN SILENTLY RESEMBLE THE DEFAULT. ",
+
+    "THE CLASS HAS NOW PRODUCED BOTH POLARITIES FROM ONE CLASSIFIER, which is what makes it structural rather than anecdotal. ",
+
+    "v1.compiler.parse decided 'this module item is a type declaration' from no body AND no transport AND no type annotation. ",
+
+    "OVER-STAMPING: `resource Filesystem` / `Clock` / `Entropy` in std.resources carry none of those three, so all three were stamped TYPE DECLARATIONS -- and the exhaustive match's ModuleItemUnrecognized arm could not fire, because a resource is not unrecognised, it is INDISTINGUISHABLE from a type under that rule. ",
+
+    "The premise that the item kinds were four was falsified by the parser's own item error, which names ten: alias, type, fn, func, service, resource, data, extern, pattern, interface. ",
+
+    "UNDER-STAMPING: the repair keyed the resource arm on `properties` being non-empty, and `type X sole_constructor { .. ",
+
+    "}` carries a property too -- so 202 sole-constructor type declarations across 100 modules were classified as RESOURCES and vanished from the declaration population. ",
+
+    "Opposite direction, same classifier, same root: an absence-and-presence heuristic standing where a positive kind belongs. ",
+
+    "WHY EXCLUSION-BY-NAME IS NOT THE FIX EITHER, though it is what stands today: the surviving repair excludes the ONE modifier the minting authority owns, and it is complete by ENUMERATION OF MINTING SITES rather than by grep -- v1.compiler.parse has exactly two, parsed_sole_constructor_properties (one field-init named sole_constructor, the only source every type-item constructor passes along) and parse_resource_entries; nominal_opaque is dropped lexically by drop_leading_type_modifier and mints nothing; mint_parsed_optional_int_property is confined to nested where-predicate nodes. ",
+
+    "A one-member set established by construction is worth more than a longer list found by search. ",
+
+    "But a second modifier that MINTS a property on a type item reintroduces this in the same silent direction, and no longer list can prevent that. ",
+
+    "NEXT-RUNG TRIGGER, a capability and not an artifact: parse constructors that CARRY the module-item kind they already dispatched on, consumed by an exhaustive match with NO DEFAULT TYPE BUCKET -- at which point membership is decided at construction and the residual refusal becomes real rather than decorative. ",
+
+    "THE SECOND SPECIMEN IS IN A DIFFERENT AUTHORITY AND IS FILED, NOT REPAIRED: v1.compiler.emit_core_support is_bare_leaf_item reads a CAPABILITY-LESS resource as a type declaration -- `resource Network` and `resource AuthContext` in std.resources have no children, no body, no params and no connective -- so the emit-side shape predicates carry the same defect in the same direction. ",
+
+    "Two specimens, one module, unrepaired here because it is a change to a different authority and smuggling it into a parser change would fork the subject. ",
+
+    "THE COUNTERMEASURE, AND IT IS THE MOST TRANSFERABLE THING IN THIS ROW: those two were invisible while ONE classifier answered, because both readers of the question AGREED they were types -- the agreed-wrong pair a disagreement census cannot see by construction ([[disagreement_census_blind_to_agreed_wrong]]), and no amount of running that census harder finds it. ",
+
+    "Splitting the question across two INDEPENDENTLY DERIVED readers -- absence-of-body/transport/annotation in the parser versus connective/params/children in the emitter -- converted their agreement into a disagreement, which is the only form the census can report. ",
+
+    "That split arrived here as a side effect of building the population join, not as a design goal, which is exactly why it is written down: RECOGNITION RULE: WHERE A CENSUS COMPARES TWO READERS, A THIRD INDEPENDENTLY-DERIVED READER IS THE ONLY THING THAT CAN FALSIFY THEIR AGREEMENT -- reach for it ON PURPOSE when an agreed-wrong population is suspected. ",
+
+    "The corpus-wide instrument is `type_occurrence_binding_census --establish`, joining the two readers at occurrence-id grain with uniqueness on both sides and no extra members.)",
+  ],
+
+  evidence: [],
+}

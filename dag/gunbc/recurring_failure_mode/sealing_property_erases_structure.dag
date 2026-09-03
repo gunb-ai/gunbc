@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.sealing_property_erases_structure
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data sealing_property_erases_structure: RecurringFailureMode = RecurringFailureMode {
+  identity: "sealing_property_erases_structure" as NonEmptyStr,
+
+  receipts: [
+    "**a construction-restricting property read as a structure-erasing one** (a declaration is annotated to RESTRICT how its inhabitants may be built, and a consumer that asks about the declaration's SHAPE treats the annotation as a reason to stop looking -- so the deliberate climb on the construction axis silently drops a rung on every axis decided by shape, with no declaration, because the two axes are read by different consumers. ",
+
+    "**THE INVERSION IS THE CLASS**: the annotation exists to make the carrier MORE distinct from its payload, and the consumer's response is to make it INDISTINGUISHABLE from everything. ",
+
+    "Recognition rule, keyed on the SHAPE and not on any one keyword: whenever a declaration-level marker is stored in a general side-channel -- a properties list, an attribute bag, a modifier set -- find every consumer that BRANCHES ON THAT CHANNEL BEING NON-EMPTY rather than on the specific marker, and ask what each of them would have answered had the marker been absent; a consumer that answers 'opaque', 'unknown', or 'skip' for the whole channel has conflated 'this declaration carries a marker I do not model' with 'this declaration has no structure', and every future marker inherits the same silence on arrival. ",
+
+    "**SPECIMEN, with the discriminating pair** (gunbc XL-0-FLOOR, 2026-09-01): `v2.compiler.normalized_tree` `NormalizedTree` was sealed by BL-1 from an alias for `Node` into a `sole_constructor` record so that a wrapper-retention drop would be unwritable. ",
+
+    "`sole_constructor` is carried as a PROPERTY on the declaration node (`v1.compiler.parse` `parsed_sole_constructor_properties`), and `v1.compiler.infer` `exposure_view_for_node` answered `OpaqueTypeHead` for any node whose properties list was non-empty -- so `nominal_product_head_name` answered the empty string for every sealed carrier, `nominal_product_inhabitance_refusal` short-circuited on the empty head, and `declared_type_inhabitance` fell through to `Inhabits`. ",
+
+    "`v2.compiler.source_authority` `normalized_source_ast_equal_witness` then bound a `NormalizedTree` at a formal declared `Node` and the compiler ACCEPTED it: the ordinary-floor violation DESIGN section 4b names as exact application bijection, below baseline. ",
+
+    "The discriminating pair is two record declarations identical to the token except for the word `sole_constructor` -- the sealed one compiled with zero diagnostics where the plain one refused. ",
+
+    "**WHY A CENSUS MISSED IT, which is the part that generalizes**: gunbc#8886 measured 285 sites behind the `v2.*` direct-call argument-type exemption, of which 148 were `Node` against `ResolvedTree`/`ParseTree` and siblings -- every one a transparent-ALIAS false positive. ",
+
+    "This shape never appears in that roster and could not have, because it is a TRUE positive the comparison relation cannot reach: the census enumerates what the relation REFUSES, so a defect the relation is blind to is invisible to the census by construction, and a large census reads as thorough coverage of exactly the region it cannot see. ",
+
+    "**THE MISDIAGNOSIS THIS CLASS INVITES, recorded because this lane was dispatched with it**: the silence sat inside a module the exemption covers, so the exemption was the obvious cause; refuting it took running the identical program in an ordinary module and on a tree with the exemption deleted, both of which stayed silent, while the same run showed the exemption's effect on a kernel red so the arms were provably live. ",
+
+    "A plausible nearby mechanism that is genuinely broken is the most expensive wrong answer available, because repairing it changes nothing and the repair reads as coverage. ",
+
+    "**Rung: mechanically preventable, and the ceiling for this class as a class is the same rung.** The repair makes one marker structure-preserving by positive establishment -- the parser builds the identical declaration node and only the properties list differs -- and every OTHER marker in that channel stays opaque and unmeasured, which is a named residue rather than a covered class. ",
+
+    "The next-rung trigger is a CAPABILITY: markers carried in the declaration's own type rather than in an untyped side-channel, so that a consumer branching on the channel cannot compile.)",
+  ],
+
+  evidence: [],
+}

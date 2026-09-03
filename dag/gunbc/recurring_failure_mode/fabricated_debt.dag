@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.fabricated_debt
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fabricated_debt: RecurringFailureMode = RecurringFailureMode {
+  identity: "fabricated_debt" as NonEmptyStr,
+
+  receipts: [
+    "**fabricated debt** (a declaration is authored for an exposure that does not exist, or that is already declared elsewhere, so the ledger grows a row whose trigger CANNOT FIRE because there is nothing to restore. ",
+
+    "It is the exact inverse of the unfiled gap and it is the more comfortable mistake: filing reads as diligence, the row survives review because every reviewer checks whether a declared drop is HONEST about its loss and none checks whether the loss is REAL, and the cost lands on whoever later tries to retire it. ",
+
+    "**THE HARM IS NOT MERELY CLUTTER, WHICH IS WHY IT IS A CLASS.** A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a row for a non-existent exposure is permanent by construction; it inflates the standing-drops list that DESIGN projects on every turn of every session, and the next reader plans against an exposure nobody has. ",
+
+    "A row DUPLICATING an existing declaration is worse still: it forks the single authority for one safety fact, so the two can be retired independently and the tree ends up asserting both that the class is dropped and that it is restored. ",
+
+    "**THE ORIGIN IS ALWAYS THE SAME, and naming it is the recognition rule: the population was read from a PARAGRAPH rather than measured from the tree.** A loss clause enumerates what was unguarded on the day it was written; capabilities return, get re-homed, or acquire their own declarations, and the sentence does not move. ",
+
+    "So the rule is: before authoring a drop, resolve every named item against the tree -- is this exposure live NOW, and does it already have a row? **TWO RECEIPTS, both caught before authoring, 2026-09-01, while splitting `gunbc.rung_drop` `floor_cut`'s six-capability loss into capability-grain rows.** (1) GENERATED-ARTIFACT DRIFT was on the loss clause's list and is RESTORED -- gunbc#9415 enrolled a required `generated-artifact` phase adjudicating every member of `committed_generated_artifacts`; the same paragraph elsewhere admits the phase took it off the list, so the row contradicted itself and a reader following the enumeration would have declared a drop for a live gate. ",
+
+    "It is now stated as a FRACTION, 1 of 7 discharged and 6 outstanding, because a population that shrinks silently cannot be checked. ",
+
+    "(2) THE PER-WITNESS EVAL DEADLINE was on the same list and ALREADY CARRIES ITS OWN DROP at `gunbc.witness_row_cost` `gunbc_ci_fast_lane_rule_note`; a second row would have been the section 3 fork, and it is cited from the sibling rows rather than re-declared. ",
+
+    "Six items on the paragraph, five real rows. ",
+
+    "**NEIGHBOURS, and the boundaries are what keep this from absorbing them.** Distinct from `unbacked_execution_claim`: there prose asserts a live relation that no authority backs, and the subject EXISTS while the claim about it is false; here the subject itself is absent and the claim of loss is the fabrication. ",
+
+    "Distinct from `rung inflation`, which reports a class as SAFER than its evidence supports -- this reports the tree as MORE EXPOSED than it is, and both mislead the same reader in opposite directions. ",
+
+    "Distinct from `restoration_promise_names_a_route_that_does_not_exist`, which is a REAL exposure with an unsatisfiable trigger; this is an unreal exposure, and the two are found by the same question asked at different ends -- does the trigger name something that exists, and does the LOSS name something that exists. ",
+
+    "**RUNG: 1 (mitigatable) -- caught by a reader resolving the population, which is exactly what happened here and is not a mechanism. ",
+
+    "CEILING: 3, since `does this exposure exist` is decidable for any loss expressed as a citation to a mechanism rather than as prose. ",
+
+    "NEXT-RUNG TRIGGER, a CAPABILITY: a drop row whose lost capability is carried as a resolvable citation to the mechanism that provided it, so a row declaring the loss of something the tree still has -- or something another row already declares -- fails to compile. ",
+
+    "Enumerating populations more carefully by hand does not retire it; it only executes this row's recognition rule once more.)",
+  ],
+
+  evidence: [],
+}
