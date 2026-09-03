@@ -1202,8 +1202,11 @@ test/manual/process_argv_expansion_receipt       case 4 pass -- real jq, exit 0 
 
 - The argv splice defect is repaired at **one seam**, not closed as a class. 21 operations still
   splice a declared `List` parameter through the guessing path.
-- The other three `openbmc.JsonProjection` operations are unmigrated, and two of them
-  (`ObjectMapperServiceCount`, `ObjectMapperServiceAt`) need `--argjson` lowering, which is unbuilt.
+- The other three `openbmc.JsonProjection` operations were unmigrated, and two of them
+  (`ObjectMapperServiceCount`, `ObjectMapperServiceAt`) needed `--argjson` lowering, which was
+  unbuilt. Both are now landed — see §17 (Wave 1A cutover receipt). The remaining unmigrated
+  operation is `ProjectFanConfig`, which additionally needs file-input lowering (the remote
+  population, Wave 2).
 - No negative falsifier exists yet proving a REST path reaches none of these carriers.
 - **The wet receipt does not execute in CI — a declared gap, not an enrollment.** The hermetic
   floor refuses `jq.Process.RunWithStdin` (no `mock_response`) and mocking would defeat the
@@ -1294,3 +1297,43 @@ inflation §4b calls worse than sitting low.
 generalization holds, the successor is that the paragraph becomes a row that reds — changing what
 the lens is *for*: not one witness for one lane, but the mechanism by which a named architectural
 boundary is enforceable at all. A separate change, deliberately not attempted here.
+
+## 17. Wave 1A cutover receipt
+
+Executed on the session tree against `origin/main` @ #10104. Counts are from enumerating `^test fn`
+in each file, not from a chosen subset (§14).
+
+```
+extdeps.tools.jq  jq_invocation_lower now lowers a JqJsonBinding instead of refusing it
+  JqCliOptionArgJson                      --argjson, cited long form, canonical spelling, lex rule
+  refusal causes                          JqBindingNameDuplicate | JqTextBindingUnwired | JqFileInputLoweringUnwired
+  binding argv                            --argjson <name> <value> as THREE words, before the program operand
+  binding spelling keys                   injective over (name, role): role prefix + name, duplicate names refuse
+  JqBindingLoweringUnwired                DELETED (dissolution on climb)
+
+extdeps.bmc.openbmc_fan_control           ObjectMapperServiceAt / ObjectMapperServiceCount operations DELETED
+  consumers rewired                       2 (openbmc_object_mapper_services_rec, openbmc_sensor_service)
+  both now route through                  openbmc_object_mapper_service_at / _count (semantic JqInvocation)
+  argv authored by the domain after cutover 0 -- no --argjson, no -e, no -r, no argv position
+  residual foreign syntax authored        2 jq program rows (S12, mitigatable, trigger recorded)
+  callers match                           OpenBmcServiceObserved | OpenBmcServiceProjectionRefused (+ count sibling)
+```
+
+**Witness standing at cutover:**
+
+```
+test/claim/jq_invocation_lowering_witness   16 / 16 pass  (lowering + S13 classification)
+  of which newly stateable and added          3 (json_binding_lowers_to_exact_argv, duplicate_binding_names_refuse, text_binding_refuses)
+  of which flipped from refusal to positive   1 (the old unlowered_bindings_refuse became json_binding_lowers_to_exact_argv)
+test/claim/bmc_typed_operations_witness      object_mapper_zero/one_cardinality + duplicate_matches pass
+whole-corpus regen                           first_generation_equal=true
+```
+
+**What this receipt does NOT establish** — the table reads stronger than the lane's position:
+
+- Wave 1A lands the **local** `--argjson` vertical. `ProjectFanConfig` still carries a raw argv and
+  needs file-input lowering (`JqFileInputLoweringUnwired`) plus the SSH realization — the remote
+  population is Wave 2, and `sshpass -d 0` still holds fd 0 for stdin-fed remote jq.
+- `JqTextBinding` deliberately refuses: no live consumer this wave, so it must not emit a plausible
+  guess (DESIGN §5). It lowers when a caller needs `--arg name value`.
+- The ObjectMapper callers were verified against the bmc witness mocks; no live BMC was exercised.
