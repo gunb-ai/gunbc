@@ -1,6 +1,7 @@
 module gunbc.floor_cost_distribution
 
 import std.types { Bool, Int, String, NonEmptyStr }
+import std.measure { Millisecond, millisecond, millisecond_count }
 
 // THE DERIVATIONS BEHIND docs/plans/floor-cost-distribution-near-the-ceiling.md, SO THAT DOCUMENT
 // CITES A PRODUCER INSTEAD OF CARRYING COPIED FIGURES.
@@ -25,7 +26,7 @@ import std.types { Bool, Int, String, NonEmptyStr }
 type FloorCostRow {
   identity: String
   module: String
-  cpu_ms: Int
+  cpu_ms: Millisecond
 }
 
 // One run's population, named by its run id so a finding can cite which runs it rests on.
@@ -51,7 +52,11 @@ fn parse_claim_cost_line(line: String) -> FloorCostRow? {
       match parse_int(s: fields[5]) {
         Absent => none
         Present { value: cpu } => Present {
-          value: FloorCostRow { identity: fields[0], module: fields[1], cpu_ms: cpu }
+          value: FloorCostRow {
+            identity: fields[0],
+            module: fields[1],
+            cpu_ms: millisecond(count: cpu)
+          }
         }
       }
     }
@@ -68,20 +73,25 @@ fn parse_claim_cost_tsv(text: String) -> List<FloorCostRow> {
 
 // THE BAND HISTOGRAM (question 1: is the population near the ceiling dense).
 type CostBand {
-  lower_ms: Int
-  upper_ms: Int
+  lower_ms: Millisecond
+  upper_ms: Millisecond
   rows: Int
 }
 
-fn rows_in_band(rows: List<FloorCostRow>, lower_ms: Int, upper_ms: Int) -> Int {
-  count(rows |> filter(r => r.cpu_ms >= lower_ms && r.cpu_ms < upper_ms))
+// COMPARISON GOES THROUGH `millisecond_count` RATHER THAN OVER THE CARRIER, because the carrier is
+// what stops a figure read from one clock being compared against a figure read from another; the
+// count is the projection a comparison is entitled to.
+fn rows_in_band(rows: List<FloorCostRow>, lower_ms: Millisecond, upper_ms: Millisecond) -> Int {
+  count(rows |> filter(r =>
+    millisecond_count(m: r.cpu_ms) >= millisecond_count(m: lower_ms)
+      && millisecond_count(m: r.cpu_ms) < millisecond_count(m: upper_ms)))
 }
 
-fn rows_at_or_above(rows: List<FloorCostRow>, ms: Int) -> Int {
-  count(rows |> filter(r => r.cpu_ms >= ms))
+fn rows_at_or_above(rows: List<FloorCostRow>, ms: Millisecond) -> Int {
+  count(rows |> filter(r => millisecond_count(m: r.cpu_ms) >= millisecond_count(m: ms)))
 }
 
-fn cost_bands(rows: List<FloorCostRow>, edges: List<Int>) -> List<CostBand> {
+fn cost_bands(rows: List<FloorCostRow>, edges: List<Millisecond>) -> List<CostBand> {
   enumerate(edges)
     |> flat_map(e =>
          if e.first + 1 < count(edges) {
@@ -103,60 +113,61 @@ fn row_is_excluded(row: FloorCostRow, excluded_modules: List<String>) -> Bool {
   any(excluded_modules, m => m == row.module)
 }
 
-fn run_crossings(run: RunCost, ceiling_ms: Int, excluded_modules: List<String>) -> List<String> {
+fn run_crossings(run: RunCost, ceiling_ms: Millisecond, excluded_modules: List<String>) -> List<String> {
   run.rows
-    |> filter(r => r.cpu_ms >= ceiling_ms && !row_is_excluded(row: r, excluded_modules: excluded_modules))
+    |> filter(r => millisecond_count(m: r.cpu_ms) >= millisecond_count(m: ceiling_ms)
+         && !row_is_excluded(row: r, excluded_modules: excluded_modules))
     |> map(r => r.identity)
 }
 
-fn run_worst_cpu(run: RunCost, excluded_modules: List<String>) -> Int {
+fn run_worst_cpu(run: RunCost, excluded_modules: List<String>) -> Millisecond {
   fold(
     run.rows |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules)),
-    init: 0,
-    f: (worst, r) => if r.cpu_ms > worst { r.cpu_ms } else { worst }
+    init: millisecond(count: 0),
+    f: (worst, r) => if millisecond_count(m: r.cpu_ms) > millisecond_count(m: worst) { r.cpu_ms } else { worst }
   )
 }
 
 // A FLOOR RUN REFUSES IF ANY ONE ROW CROSSES, so the run-level verdict is existential over rows
 // and the fleet-level figure is a COUNT OF RUNS, never a count of rows: fifteen crossings in one
 // run and one crossing in another are the same number of refused merges.
-fn runs_refused(runs: List<RunCost>, ceiling_ms: Int, excluded_modules: List<String>) -> Int {
+fn runs_refused(runs: List<RunCost>, ceiling_ms: Millisecond, excluded_modules: List<String>) -> Int {
   count(runs |> filter(run => count(run_crossings(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules)) > 0))
 }
 
-fn worst_over_runs(runs: List<RunCost>, excluded_modules: List<String>) -> Int {
-  fold(runs, init: 0, f: (worst, run) => {
+fn worst_over_runs(runs: List<RunCost>, excluded_modules: List<String>) -> Millisecond {
+  fold(runs, init: millisecond(count: 0), f: (worst, run) => {
     let w = run_worst_cpu(run: run, excluded_modules: excluded_modules)
-    if w > worst { w } else { worst }
+    if millisecond_count(m: w) > millisecond_count(m: worst) { w } else { worst }
   })
 }
 
 // MAX-OVER-RUNS, the contention-independent ranking. Membership of any single run's crossing set is
 // a function of that run's load as much as of the row, so a candidate population must be ranked on
 // the worst each row has been observed to cost, never on one run's sample.
-fn identity_max_cpu(runs: List<RunCost>, identity: String) -> Int {
-  fold(runs, init: 0, f: (worst, run) =>
+fn identity_max_cpu(runs: List<RunCost>, identity: String) -> Millisecond {
+  fold(runs, init: millisecond(count: 0), f: (worst, run) =>
     fold(run.rows |> filter(r => r.identity == identity), init: worst, f: (w, r) =>
-      if r.cpu_ms > w { r.cpu_ms } else { w }))
+      if millisecond_count(m: r.cpu_ms) > millisecond_count(m: w) { r.cpu_ms } else { w }))
 }
 
-fn module_max_cpu(runs: List<RunCost>, module: String) -> Int {
-  fold(runs, init: 0, f: (worst, run) =>
+fn module_max_cpu(runs: List<RunCost>, module: String) -> Millisecond {
+  fold(runs, init: millisecond(count: 0), f: (worst, run) =>
     fold(run.rows |> filter(r => r.module == module), init: worst, f: (w, r) =>
-      if r.cpu_ms > w { r.cpu_ms } else { w }))
+      if millisecond_count(m: r.cpu_ms) > millisecond_count(m: w) { r.cpu_ms } else { w }))
 }
 
 // THE REPAIR LADDER: what removing one more module actually buys, which is the quantity that
 // decides whether per-producer repair is the right unit of work.
 type LadderStep {
   removed: String
-  worst_ms: Int
+  worst_ms: Millisecond
   runs_refused: Int
 }
 
 fn repair_ladder(
   runs: List<RunCost>,
-  ceiling_ms: Int,
+  ceiling_ms: Millisecond,
   already_excluded: List<String>,
   order: List<String>
 ) -> List<LadderStep> {
@@ -181,12 +192,12 @@ fn repair_ladder(
 // `min_base_ms` exists because the artifact records whole milliseconds: at a 2ms baseline a
 // one-millisecond scheduling difference is a 50% "inflation" that says nothing about contention.
 // Rows below the floor are dropped rather than smoothed.
-fn identity_inflation_permille(base: RunCost, other: RunCost, min_base_ms: Int) -> List<Int> {
+fn identity_inflation_permille(base: RunCost, other: RunCost, min_base_ms: Millisecond) -> List<Int> {
   base.rows
-    |> filter(b => b.cpu_ms >= min_base_ms)
+    |> filter(b => millisecond_count(m: b.cpu_ms) >= millisecond_count(m: min_base_ms))
     |> flat_map(b => match other.rows |> filter(o => o.identity == b.identity) |> first {
          Absent => []
-         Present { value: o } => [(o.cpu_ms * 1000) / b.cpu_ms]
+         Present { value: o } => [(millisecond_count(m: o.cpu_ms) * 1000) / millisecond_count(m: b.cpu_ms)]
        })
 }
 
@@ -206,6 +217,10 @@ fn permille_percentile(values: List<Int>, percent: Int) -> Int? {
 // THE MARGIN THE MEASURED INFLATION IMPLIES: the largest clean-run cost that still lands under the
 // ceiling after inflation. Integer division floors, which rounds the budget DOWN -- the safe
 // direction for a limit.
-fn implied_clean_run_budget_ms(ceiling_ms: Int, inflation_permille: Int) -> Int {
-  if inflation_permille <= 0 { ceiling_ms } else { (ceiling_ms * 1000) / inflation_permille }
+fn implied_clean_run_budget(ceiling_ms: Millisecond, inflation_permille: Int) -> Millisecond {
+  if inflation_permille <= 0 {
+    ceiling_ms
+  } else {
+    millisecond(count: (millisecond_count(m: ceiling_ms) * 1000) / inflation_permille)
+  }
 }

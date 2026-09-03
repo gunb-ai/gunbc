@@ -2,6 +2,7 @@ module tools.floor_cost_distribution_instrument
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import std.types { Bool, Int, String, NonEmptyStr }
 import gunbc.floor_cost_distribution {
   FloorCostRow,
@@ -17,7 +18,7 @@ import gunbc.floor_cost_distribution {
   repair_ladder,
   identity_inflation_permille,
   permille_percentile,
-  implied_clean_run_budget_ms
+  implied_clean_run_budget
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -40,7 +41,11 @@ import gunbc.floor_cost_distribution {
 // and a run that reads as zero rows is indistinguishable from a run where nothing crossed. That is
 // the absorbing fallback DESIGN section 5 forbids, so the arm below is typed and counted.
 
-data floor_cost_ceiling_ms: Int = 500
+// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`
+// is the authority for the value; this row is the analysis-side reading of it, and it is a
+// Millisecond rather than a bare Int so it cannot be compared against a figure read from another
+// clock -- the exact confusion `std.measure` exists to make unwritable.
+data floor_cost_ceiling: Millisecond = millisecond(count: 500)
 
 // The default clean-run/contended pair the memo's inflation figures rest on, and the default
 // download root. Both are arguments to the functions below; these rows only name the defaults so
@@ -90,7 +95,7 @@ fn refused_load_lines(loads: List<RunLoad>) -> List<String> {
 
 fn band_line(b: CostBand) -> String {
   concat(
-    concat(to_string(b.lower_ms), concat("-", to_string(b.upper_ms))),
+    concat(to_string(millisecond_count(m: b.lower_ms)), concat("-", to_string(millisecond_count(m: b.upper_ms)))),
     concat("\t", to_string(b.rows))
   )
 }
@@ -98,7 +103,7 @@ fn band_line(b: CostBand) -> String {
 fn ladder_line(s: LadderStep) -> String {
   concat(
     s.removed,
-    concat(concat("\tworst=", to_string(s.worst_ms)), concat("\trefused=", to_string(s.runs_refused)))
+    concat(concat("\tworst=", to_string(millisecond_count(m: s.worst_ms))), concat("\trefused=", to_string(s.runs_refused)))
   )
 }
 
@@ -109,7 +114,7 @@ fn percentile_line(values: List<Int>, percent: Int) -> String {
       Absent => "\tno-observation"
       Present { value: v } => concat(
         concat("\t", concat(to_string(v), " permille")),
-        concat("\tclean-run budget ", concat(to_string(implied_clean_run_budget_ms(ceiling_ms: floor_cost_ceiling_ms, inflation_permille: v)), "ms"))
+        concat("\tclean-run budget ", concat(to_string(millisecond_count(m: implied_clean_run_budget(ceiling_ms: floor_cost_ceiling, inflation_permille: v))), "ms"))
       )
     }
   )
@@ -124,8 +129,8 @@ fn floor_cost_distribution_lines(
   contended: NonEmptyStr,
   repaired: List<String>,
   order: List<String>,
-  band_edges: List<Int>,
-  min_base_ms: Int
+  band_edges: List<Millisecond>,
+  min_base_ms: Millisecond
 ) -> List<String> {
   let runs = loaded_runs(loads: loads)
   let refusals = refused_load_lines(loads: loads)
@@ -144,20 +149,20 @@ fn floor_cost_distribution_lines(
             cost_bands(rows: c.rows, edges: band_edges) |> map(b => band_line(b: b))
           ),
           [
-            concat("rows at or above 300ms\t", to_string(rows_at_or_above(rows: c.rows, ms: 300))),
-            concat("rows at or above 400ms\t", to_string(rows_at_or_above(rows: c.rows, ms: 400)))
+            concat("rows at or above 300ms\t", to_string(rows_at_or_above(rows: c.rows, ms: millisecond(count: 300)))),
+            concat("rows at or above 400ms\t", to_string(rows_at_or_above(rows: c.rows, ms: millisecond(count: 400))))
           ]
         )
       }
     ),
     concat(
       [
-        concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling_ms, excluded_modules: []))),
-        concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling_ms, excluded_modules: repaired))),
-        concat("worst row over all runs, repaired excluded\t", to_string(worst_over_runs(runs: runs, excluded_modules: repaired)))
+        concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: []))),
+        concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: repaired))),
+        concat("worst row over all runs, repaired excluded\t", to_string(millisecond_count(m: worst_over_runs(runs: runs, excluded_modules: repaired))))
       ],
       concat(
-        repair_ladder(runs: runs, ceiling_ms: floor_cost_ceiling_ms, already_excluded: repaired, order: order)
+        repair_ladder(runs: runs, ceiling_ms: floor_cost_ceiling, already_excluded: repaired, order: order)
           |> map(s => ladder_line(s: s)),
         match runs |> filter(r => (r.run as String) == (baseline as String)) |> first {
           Absent => [concat("REFUSED no population for baseline run ", baseline as String)]
@@ -192,8 +197,8 @@ fn floor_cost_distribution_report_for(
       contended: contended,
       repaired: repaired,
       order: order,
-      band_edges: [0, 10, 50, 100, 200, 300, 400, 500, 1000000],
-      min_base_ms: 50
+      band_edges: [0, 10, 50, 100, 200, 300, 400, 500, 1000000] |> map(e => millisecond(count: e)),
+      min_base_ms: millisecond(count: 50)
     ),
     "\n"
   )
