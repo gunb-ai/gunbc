@@ -897,7 +897,7 @@ data effect_demand_execute_origin_population: DemandPopulation = PopulationMeasu
 // third arm if any row made one. When the first realization lands this becomes the join's left side
 // and the row that claims it stops being refused -- which is the point, because it means the
 // acceptance bar moves only when a realization moves.
-data effect_demand_v2_realized_operations: List<PrimitiveIdentity> = []
+data effect_demand_v2_realized_operations: List<EffectRealizationKey> = []
 
 fn effect_demand_live_census(observed: List<EffectDemandKey>) -> EffectDemandCensus {
   effect_demand_census(

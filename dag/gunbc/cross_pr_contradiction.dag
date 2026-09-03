@@ -388,11 +388,24 @@ type PrDiffObservation
   | PrDiffEmptyCorroborated { pull_number: Int, head_oid: String }
   | PrDiffUnobserved { pull_number: Int, cause: PrDiffUnobservedCause }
 
+// `DiffRefused` IS PRODUCED BY NO CALLER IN THIS MODULE, AND THAT IS DELIBERATE. `git.Core.Diff`
+// declares only a `diff` output, so a refused diff and an empty one are the same value on this
+// instrument's path and the refusal is folded into `DiffEmptyUnderived`. The arm is produced by
+// `gunbc.path_writer_set`, whose observation runs `git.Core.DiffNameOnlyNoRenames` and therefore CAN
+// tell those apart.
+//
+// The arm lives HERE rather than in a second cause coproduct because "why a pull request's diff
+// could not be observed" is one vocabulary with one set of consequences -- the observation is
+// unread, the population is incomplete, the report may not be mistaken for a clean one -- and
+// forking it per instrument would give one meaning two spellings (DESIGN section 3). This module
+// gains a total arm it does not construct; that is the cost of one authority, and it is smaller
+// than the cost of two.
 type PrDiffUnobservedCause
   = HeadRefUnresolved { ref_name: String, detail: String }
   | HeadRefStale { ref_name: String, expected_oid: String, local_oid: String }
   | MergeBaseUnavailable { head_oid: String, detail: String }
   | DiffEmptyUnderived { head_oid: String, forge_changed_files: Int }
+  | DiffRefused { head_oid: String, detail: String }
 
 fn pr_diff_unobserved_cause_text(cause: PrDiffUnobservedCause) -> String {
   match cause {
@@ -408,6 +421,11 @@ fn pr_diff_unobserved_cause_text(cause: PrDiffUnobservedCause) -> String {
       )
     MergeBaseUnavailable { head_oid: h, detail: d } =>
       concat(concat("no merge base against ", h), concat(": ", d))
+    DiffRefused { head_oid: h, detail: d } =>
+      concat(
+        concat("the diff against ", h),
+        concat(" did not run: ", d)
+      )
     DiffEmptyUnderived { head_oid: h, forge_changed_files: n } =>
       concat(
         concat("the diff against ", h),

@@ -94,6 +94,7 @@ type ImportStripOutcome
   = ImportStatementsStripped {
       rewritten_source: String
       removed_statements: List<String>
+      coordinate_map: List<ImportStripCoordinateSegment>
     }
   | ImportStripRefused {
       refusal: ImportStripRefusal
@@ -105,12 +106,22 @@ type ImportStripOutcome
 type ImportStripProgress
   = ImportStripScanning {
       cursor: Int
+      rewritten_cursor: Int
       kept_segments: List<String>
       removed_statements: List<String>
+      coordinate_map: List<ImportStripCoordinateSegment>
     }
   | ImportStripHalted {
       refusal: ImportStripRefusal
     }
+
+type ImportStripCoordinateSegment {
+  source_file: FilePath
+  original_start: Int
+  original_end: Int
+  rewritten_start: Int
+  rewritten_end: Int
+}
 
 fn import_statement_keyword() -> String {
   "import"
@@ -178,7 +189,7 @@ fn import_strip_step(
 ) -> ImportStripProgress {
   match progress {
     ImportStripHalted { refusal: refusal } => ImportStripHalted { refusal: refusal }
-    ImportStripScanning { cursor: cursor, kept_segments: kept_segments, removed_statements: removed_statements } =>
+    ImportStripScanning { cursor: cursor, rewritten_cursor: rewritten_cursor, kept_segments: kept_segments, removed_statements: removed_statements, coordinate_map: coordinate_map } =>
       if !(statement.span.file == source_file) {
         ImportStripHalted { refusal: ImportSpanNamesAnotherFile { span_file: statement.span.file, source_file: source_file } }
       } else if statement.span.start < 0 || statement.span.end > source_length {
@@ -196,8 +207,16 @@ fn import_strip_step(
         } else {
           ImportStripScanning {
             cursor: statement.span.end,
+            rewritten_cursor: rewritten_cursor + (statement.span.start - cursor),
             kept_segments: kept_segments |> list_push(substring(s: source, start: cursor, end: statement.span.start)),
-            removed_statements: removed_statements |> list_push(statement_text)
+            removed_statements: removed_statements |> list_push(statement_text),
+            coordinate_map: coordinate_map |> list_push(ImportStripCoordinateSegment {
+              source_file: source_file,
+              original_start: cursor,
+              original_end: statement.span.start,
+              rewritten_start: rewritten_cursor,
+              rewritten_end: rewritten_cursor + (statement.span.start - cursor)
+            })
           }
         }
       }
@@ -216,7 +235,7 @@ fn strip_import_statements(
 ) -> ImportStripOutcome {
   let source_length = string_length(s: source)
   let scanned = statements |> fold(
-    init: ImportStripScanning { cursor: 0, kept_segments: [], removed_statements: [] },
+    init: ImportStripScanning { cursor: 0, rewritten_cursor: 0, kept_segments: [], removed_statements: [], coordinate_map: [] },
     f: (progress, statement) => import_strip_step(
       progress: progress,
       source_file: source_file,
@@ -227,10 +246,17 @@ fn strip_import_statements(
   )
   match scanned {
     ImportStripHalted { refusal: refusal } => ImportStripRefused { refusal: refusal }
-    ImportStripScanning { cursor: cursor, kept_segments: kept_segments, removed_statements: removed_statements } =>
+    ImportStripScanning { cursor: cursor, rewritten_cursor: rewritten_cursor, kept_segments: kept_segments, removed_statements: removed_statements, coordinate_map: coordinate_map } =>
       ImportStatementsStripped {
         rewritten_source: join(kept_segments |> list_push(substring(s: source, start: cursor, end: source_length)), ""),
-        removed_statements: removed_statements
+        removed_statements: removed_statements,
+        coordinate_map: coordinate_map |> list_push(ImportStripCoordinateSegment {
+          source_file: source_file,
+          original_start: cursor,
+          original_end: source_length,
+          rewritten_start: rewritten_cursor,
+          rewritten_end: rewritten_cursor + (source_length - cursor)
+        })
       }
   }
 }
