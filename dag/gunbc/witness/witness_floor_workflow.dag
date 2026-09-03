@@ -979,9 +979,9 @@ data required_ci_measurement_receipt_artifact_name: String = "required-ci-measur
 fn required_ci_measurement_finalize_script() -> String {
   concat(
     "if [ ! -f \"", concat(required_ci_measurement_receipt_path, concat(
-      "\" ]; then\n  target/release/claim_executor --measurement-unreached-receipt \"", concat(
+      "\" ]; then\n  if [ -x target/release/claim_executor ]; then\n    target/release/claim_executor --measurement-unreached-receipt \"", concat(
         required_ci_measurement_receipt_path,
-        "\" --measurement-unreached-cause \"measurement process exited before producing a receipt\"\nfi\n"
+        "\" --measurement-unreached-cause \"measurement process exited before producing a receipt\"\n  else\n    printf '%s\\n' '{\"version\":1,\"receipt\":{\"standing\":\"measurement_unreached\",\"cause\":\"instrument could not be built\"}}' > \"required_ci_measurement_receipt.json\"\n  fi\nfi\n"
       )
     ))
   )
@@ -1000,10 +1000,17 @@ fn required_ci_measurement_adjudicate_step() -> Step {
   RunStep {
     name: Present { value: "D0-ADJUDICATE: consume the published measurement receipt" },
     id: none,
-    run: concat("target/release/claim_executor --adjudicate-measurement-receipt ", concat(required_ci_measurement_receipt_path, "\n")),
+    run: concat(
+      "if [ -x target/release/claim_executor ]; then\n  target/release/claim_executor --adjudicate-measurement-receipt ",
+      concat(required_ci_measurement_receipt_path, "\nelse\n  echo 'required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built' >&2\n  exit 1\nfi\n")
+    ),
     shell: none, env: none, working_directory: none,
     if_condition: Present { value: "always() && !cancelled()" }, continue_on_error: none, timeout_minutes: none
   }
+}
+
+fn required_ci_measurement_publish_condition() -> String {
+  "always() && !cancelled()"
 }
 
 // A DECLARED PROVISIONAL BOUND, NOT A DERIVED ONE, AND THE DIFFERENCE IS THE WHOLE POINT.
@@ -1242,7 +1249,7 @@ data required_floor_cross_claim_demand_artifact_name: String = "required-floor-c
 // CANCELLATION IS EXCLUDED, a separate fact from the build guard below: a cancelled run's TSVs are
 // partial by construction, and a partial receipt read as complete is the fabricated-output
 // failure.
-fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path: String) -> Step {
+fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path: String, condition: String) -> Step {
   UsesStep {
     name: Present { value: step_name },
     id: none,
@@ -1256,7 +1263,7 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
       ]
     },
     env: none,
-    if_condition: Present { value: witness_floor_precondition() },
+    if_condition: Present { value: condition },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -1381,7 +1388,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_tsv_upload_step(
           step_name: "D0-PUBLISH: upload the required CI measurement receipt",
           artifact_name: required_ci_measurement_receipt_artifact_name,
-          path: required_ci_measurement_receipt_path
+          path: required_ci_measurement_receipt_path,
+          condition: required_ci_measurement_publish_condition()
         ),
         role: capability_neutral,
         step_name: "D0-PUBLISH: upload the required CI measurement receipt",
@@ -1394,7 +1402,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's admission roster",
           artifact_name: required_floor_disposition_artifact_name,
-          path: required_floor_disposition_path
+          path: required_floor_disposition_path,
+          condition: witness_floor_precondition()
         ),
         role: capability_neutral,
         step_name: "Upload the floor's admission roster",
@@ -1403,7 +1412,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the expected-red roster join",
           artifact_name: expected_red_roster_join_artifact_name,
-          path: expected_red_roster_join_path
+          path: expected_red_roster_join_path,
+          condition: witness_floor_precondition()
         ),
         role: capability_neutral,
         step_name: "Upload the expected-red roster join",
@@ -1412,7 +1422,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the long-home storage agreement",
           artifact_name: long_home_storage_agreement_artifact_name,
-          path: long_home_storage_agreement_path
+          path: long_home_storage_agreement_path,
+          condition: witness_floor_precondition()
         ),
         role: capability_neutral,
         step_name: "Upload the long-home storage agreement",
@@ -1421,7 +1432,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's per-claim cost receipt",
           artifact_name: required_floor_claim_cost_artifact_name,
-          path: required_floor_claim_cost_path
+          path: required_floor_claim_cost_path,
+          condition: witness_floor_precondition()
         ),
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
@@ -1430,7 +1442,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's cross-claim demand census",
           artifact_name: required_floor_cross_claim_demand_artifact_name,
-          path: required_floor_cross_claim_demand_path
+          path: required_floor_cross_claim_demand_path,
+          condition: witness_floor_precondition()
         ),
         role: capability_neutral,
         step_name: "Upload the floor's cross-claim demand census",

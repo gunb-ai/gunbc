@@ -918,6 +918,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("required-ci: FAILED PHASE {failure}");
         }
         if let Some(path) = required_ci_measurement_receipt {
+            // Dissolve this compatibility boundary when every required phase returns its own
+            // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
+            // blocker's phase and identity.
             for failure in &phase_failures {
                 if !measurement_blockers
                     .iter()
