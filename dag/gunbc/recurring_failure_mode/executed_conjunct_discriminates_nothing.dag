@@ -1,0 +1,74 @@
+module gunbc.recurring_failure_mode.executed_conjunct_discriminates_nothing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data executed_conjunct_discriminates_nothing: RecurringFailureMode = RecurringFailureMode {
+  identity: "executed_conjunct_discriminates_nothing" as NonEmptyStr,
+
+  receipts: [
+    "**a conjunct that executes, is reached, is gated on, and still discriminates nothing** (a predicate wired into a live check runs on every call, sits inside a gate that really blocks, and yet deletes cleanly: remove it and every witness stays green, because no fixture ever constructs the population that would make it false. ",
+
+    "**It is invisible precisely BECAUSE reachability is satisfied.** The usual signature of an unenforced mechanism -- nothing calls it -- is absent, so every reachability-based tell reports health, and review reads the conjunct as a wall because it genuinely is evaluated. ",
+
+    "Executed and enforcing are different properties, and no amount of coverage over the calling path distinguishes them. ",
+
+    "**It is bounded against three neighbours and none of their recognition rules will find it.** `reachability_read_as_occupancy` asks whether to DELETE a guard that is quiet, and warns that mechanism-yes / join-yes / occupancy-zero is a healthy guard; this class is not about deletion and not about occupancy -- the conjunct here should stay, and the defect is that it was believed to be doing work it was not. ",
+
+    "Section 6's inert-lens tell is machinery that nothing GATES on; this is gated on. ",
+
+    "Section 4b's decoration case is a check whose RED cannot be authored ANYWHERE; this RED can be authored -- it simply never was, which is the whole difference, and it is the difference between a permanent ceiling and one missing fixture. ",
+
+    "**THE REMEDY HAS TWO HALVES AND THE SECOND IS WHAT MAKES THE FIRST SOUND.** First: for each wall, run the DELETE arm and confirm EXACTLY ONE witness reddens -- not that a witness reddens. ",
+
+    "Second: the subject that isolates the conjunct must be chosen with care, because a red for the wrong reason is how this class survives its own test. ",
+
+    "**A THIRD HALF, AND IT IS THE MIRROR OF THE SECOND (amended 2026-09-03, tidy-koi-619 on gunbc#10257, found by warm-seal-35): CONFIRM THE DELETE ARM ACTUALLY DELETED.** The second half guards a RED for the wrong reason; this guards a GREEN for the wrong reason, and the remedy as written above is satisfiable by a no-op. ",
+
+    "A probe that FAILED TO MUTATE and a probe whose mutation the check TOLERATED print the identical passing value, so 'run the delete arm and read the verdict' cannot distinguish a wall that holds from a wall that was never tested. ",
+
+    "THE PROBE MUST ASSERT THAT IT MUTATED -- count the substitutions, or diff the tree -- as a claim SEPARATE from what the check then says, and then restore and re-run to confirm the green returns, because a one-sided probe does not establish that the verdict tracks the mutation at all. ",
+
+    "SPECIMEN, and it is worth recording because both failure paths are real rather than imagined: proving the discriminating red for every_restored_stall_is_still_rostered took THREE attempts and the first two mutated nothing. ",
+
+    "Attempt one ran the edit through `python3 -c` under DOUBLE QUOTES, so the shell consumed the escape sequences and the replacement matched no text. ",
+
+    "Attempt two chose an anchor that matched TWICE -- the check's own pin list had just been added to the same module as the roster and repeated the same member spellings, which is a general hazard: ANY CHECK THAT ENUMERATES ROSTER MEMBERS CREATES A SECOND POPULATION WITH THE SAME SPELLINGS, so every later sweep over that module must distinguish them. ",
+
+    "Both attempts printed the passing value and would have been read as the wall holding. ",
+
+    "Only the third, anchored on roster-only context, dropped the row and produced the red, with the green returning after restore. ",
+
+    "THE CATCH WAS INCIDENTAL, WHICH IS THE ARGUMENT FOR WRITING IT DOWN: the no-ops were noticed only because the edit script happened to carry an occurrence-count assertion written for an unrelated reason. ",
+
+    "Nothing in the remedy required it. ",
+
+    "**SPECIMEN, with both halves executed** (gunbc#9838, `gunbc.self_host_compile_phase_frontier`): `census_population_is_duplicate_free` was added as a conjunct of `receipt_population_coherent`, evaluated on every coherence check and reachable from the live path; deleting it left the whole witness module green. ",
+
+    "The fixture that isolates it is a receipt whose `refused_files` REPEATS A PATH -- enrolled as `a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence` in `test.claim.self_host_compile_phase_frontier_witness`, with `the_same_receipt_without_the_repeat_is_coherent` as its positive control. ",
+
+    "The subject that looks equally good and is not: a repeated ERROR DIAGNOSTIC IDENTITY also reddens the module, but it breaks a count invariant one line over rather than this conjunct, so it would have scored the DEAD conjunct as LIVE and closed the investigation with the wall still inert. ",
+
+    "**RUNG: mechanically preventable, and the honest ceiling is the same rung rather than higher.** The unenforcing conjunct stays writable; what exists is an executed falsifier per wall, not a construction that forbids authoring one. ",
+
+    "The next-rung trigger is a CAPABILITY and not an artifact: a mechanism that derives, from the check itself, the population its removal would change -- so that a conjunct with an empty such population fails to compile rather than waiting for an author to think of the delete arm. ",
+
+    "Enumerating delete arms by hand does not retire it; it only executes this row's recognition rule once per wall. ",
+
+    "**Its near twin is `instrument_output_read_as_subject_content`, and they meet from opposite sides**: there a report is complete for the REPORTER and read as complete for the SUBJECT; here a conjunct is genuinely executed and read as genuinely discriminating. ",
+
+    "Both are the shape where the health signal the reader actually checks -- completeness there, execution here -- is fully satisfied while the property they believe it establishes does not hold. ",
+
+    "**Neither is found by checking harder along the axis that already reads green.** **SECOND SPECIMEN, 2026-09-02, the same shape one layer down and found by a different tell.** `v1.stage0.required_regen_host` `admit_stage_execution_from_model` built ONE identity list from the stage plan and passed it as BOTH the `planned` and the `executed` field of `RegenStageExecutionObservation`, so `v2.workflow.regen_convergence_transaction` `regen_identity_population_eq` evaluated x == x.clone() on every install of the self-host convergence transaction. ",
+
+    "The conjunct ran, the install boundary really blocked, and `StagePlannedExecutedMismatch` stayed authorable in `v2.test.claim.regen_convergence_transaction_witness_test` while being unreachable from the real acceptance path -- the exact split section 4b's authorable-RED rule exists to catch. ",
+
+    "**THE DELETE ARM IS NOT WHAT FOUND IT; THE PRODUCER COUNT IS**, and that is this specimen's addition to the row: reading the two sides of one population equality back to their PRODUCERS and finding a single producer is cheaper than removing the conjunct and re-running, and it needs no experiment -- any equality whose two arguments trace to one value is this class already. ",
+
+    "**THE REPAIR IS A SECOND PRODUCER, NEVER A SECOND READ OF THE FIRST**: a digest delta over the journalled generated roster, taken before the copy loop and again after the build, carried in its own Rust newtype `ObservedEffectPopulation` with no conversion from the plan, so a later refactor cannot re-collapse the two sides without deleting a type. ",
+
+    "Its discriminating red `stage_execution_joins_the_plan_to_independently_observed_effects` carries TWO arms because one-directional identity checking is how the loss survived: an effect on a path OUTSIDE the plan, which was green before because `allowed_after` blanket-permits every already-dirty stage0 path for the rest of the transaction; and a planned surface the stage left byte-identical, which did refuse before but as `InstalledDigestMismatch` -- a CONTENT verdict standing in for a POPULATION one, so the arm asserts the cause and not that it refused.)",
+  ],
+
+  evidence: [],
+}

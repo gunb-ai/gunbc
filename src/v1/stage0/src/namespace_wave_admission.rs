@@ -885,7 +885,45 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
+/// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
+/// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
+/// because the type module cannot import the rows back without a cycle. Two bindings in
+/// `gunbc.design_ledgers` therefore resolve to a new target, which is `TargetChanged` and is not
+/// one of the auto-admitted dispositions.
+///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY. They add no branch, no
+/// dispatch and no code path; the mechanism that reads them is unchanged and every namespace
+/// rebind in this repository is declared exactly this way. What would be a scaffold here is a
+/// second route around the adjudicator, and there is none: the whole point of the row is to make
+/// the transition adjudicated rather than silent.
+///
+/// DISSOLVE-ON is gunbc#10206 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, no run can produce these two deltas, so the rows become
+/// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
+/// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
+/// forget; the required run reports them as consumed admissions due for deletion on that change.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_preamble_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
         subject: AdmissionSubject::Binding {
