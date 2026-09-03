@@ -89,20 +89,15 @@ import gunbc.spark.oobe_execution_placement {
   ForwarderLocus,
   FleetHostForwarder,
   EphemeralAttemptForwarder,
-  OobeSessionAdmission,
-  SessionReady,
-  SessionRefused,
-  SessionRefusalCause,
+  ParticipantAdmissionRefusal,
   NoQualifiedRenderer,
   NoReadyRelay,
-  RouteNotComposable,
-  ForwardingLeaseNotEstablished,
-  PayloadUseRefused,
+  ParticipantsAdmittedRouteUnbuilt,
+  oobe_participant_admission,
   renderer_admission,
   relay_admission,
   select_renderer,
   select_relay,
-  oobe_session_admission,
   use_decision_for,
   AdmittedForwardingUse,
   ForwardingUseSelection,
@@ -141,28 +136,24 @@ data disposition: LiveTreeDisposition = SubstrateInputsOnly
 // It is pinned to the exact arm so that building the route is what turns it. A witness asserting
 // merely "not ready" would stay green through a regression that refused for some unrelated reason,
 // and would tell nobody what to build next.
-test fn w_session_admission_refuses_at_the_unratified_relay_identity() -> Bool {
-  match oobe_session_admission() {
-    SessionReady { session: _ } => false
-    SessionRefused { cause: c } => match c {
-      NoReadyRelay { cause: rc } => match rc {
-        NoRelayQualifiedInPopulation { considered: n, causes: cs } =>
-          n == 5 && fold(cs, init: false, f: (acc, rcause) => acc || match rcause {
-            RelayIdentityUnallocated { observed_label: l } => l == "pi1"
-            RelayCarriesNoRadio { machine: _ } => false
-            RelayRadioUnassociated { machine: _, radio_interface: _ } => false
-            NoRelayQualifiedInPopulation { considered: _, causes: _ } => false
-          })
-        RelayIdentityUnallocated { observed_label: _ } => false
-        RelayCarriesNoRadio { machine: _ } => false
-        RelayRadioUnassociated { machine: _, radio_interface: _ } => false
-      }
-      NoQualifiedRenderer { cause: _ } => false
-      RouteNotComposable { renderer: _, relay: _ } => false
-      ForwardingLeaseNotEstablished { lease: _ } => false
-      PayloadUseRefused { decision: _ } => false
+test fn w_participant_admission_refuses_at_the_unratified_relay_identity() -> Bool {
+  match oobe_participant_admission() {
+    ParticipantsAdmittedRouteUnbuilt { renderer: _, relay: _ } => false
+    NoQualifiedRenderer { cause: _ } => false
+    NoReadyRelay { cause: rc } => match rc {
+      NoRelayQualifiedInPopulation { considered: n, causes: cs } =>
+        n == 5 && fold(cs, init: false, f: (acc, rcause) => acc || match rcause {
+          RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+          RelayCarriesNoRadio { machine: _ } => false
+          RelayRadioUnassociated { machine: _, radio_interface: _ } => false
+          NoRelayQualifiedInPopulation { considered: _, causes: _ } => false
+        })
+      RelayIdentityUnallocated { observed_label: _ } => false
+      RelayCarriesNoRadio { machine: _ } => false
+      RelayRadioUnassociated { machine: _, radio_interface: _ } => false
     }
   }
+
 }
 
 // THE POSITIVE CONTROL FOR THAT REFUSAL. Without this, the witness above is satisfied by an

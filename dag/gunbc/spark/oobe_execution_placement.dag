@@ -255,126 +255,26 @@ type ForwardingUseDecision
   | ForwardingUseRefused { payload: ForwardingPayloadClass, cause: SecretTrafficRefusalCause }
 
 // ------------------------------------------------------------------------------------------
-// THE ROUTE. A locus-bound endpoint is required rather than a bare socket: 127.0.0.1:18082 denotes
-// a DIFFERENT socket depending on which machine owns it, so a two-leg route cannot prove its own
-// handoff without naming the locus on each side.
-type SocketAtLocus {
-  locus: ForwarderLocus
-  socket: SocketAddress
-}
-
-type OobeEndpointRoute
-  = RendererReachesUnitDirectly { renderer: HostIdentity, unit_endpoint: SocketAddress }
-  | RendererReachesUnitThroughProxy {
-      renderer: HostIdentity,
-      proxy_locus: ForwarderLocus,
-      relay: ObservedMachineIdentity,
-      unit_endpoint: SocketAddress,
-      renderer_listener: SocketAtLocus,
-      proxy_handoff: SocketAtLocus,
-    }
-
-// ------------------------------------------------------------------------------------------
-// A PLAN IS NOT A LEASE, AND A LEASE IS NOT ONE STATE.
+// WHAT THIS MODULE DELIBERATELY NO LONGER DECLARES, AND WHY THE DELETION IS THE FIX.
 //
-// An earlier revision had a single flat coproduct -- admitted, established, refused, released --
-// carrying a crash hole: between launching the forwarding process and constructing the value that
-// says a tunnel exists, no teardown obligation existed anywhere, so a run that died in that window
-// left a live listener nobody owned. The obligation must therefore exist BEFORE the process
-// starts, which is why Reserved is a state and not a formality: a reaper can find it.
+// An earlier head carried the whole downstream vocabulary -- a locus-bound route, a two-leg
+// forwarding plan, a lease lifecycle with teardown obligations and readiness receipts, an
+// established-lease carrier, a ready session, and a SessionReady arm to hold it. Whole-tree
+// resolution found NO CONSTRUCTION of any of them. The advertised production entry point returned
+// a refusal on every path, so the modeled success state had no producer at all, and a witness
+// asserting SessionReady was false was its only mention outside its own declaration.
 //
-// NAMED ForwardingLeaseIdentity AND NOT LeaseIdentity, because that name is taken by
-// product.fabric.execution and the two are not the same fact. The coincidence is real and is not
-// being unified yet: the fabric lease carries a generation because a stale holder can invalidate a
-// live one, and this lane has never observed a stale forwarder, so inventing a generation to match
-// the shape would model a hazard we have not had. The trigger for unification is the first
-// observed stale forwarder.
-type ForwardingLeaseIdentity = NonEmptyStr where brand("ForwardingLeaseIdentity")
-
-// THE OBLIGATION NAMES WHO MUST CLOSE WHAT, and there is ONE PER OWNED LISTENER. The first
-// revision carried a single obligation on a route that has two forwarding processes on two
-// different loci, so at most one of them could ever be discharged by a reaper reading the lease.
-type TeardownObligation {
-  lease: ForwardingLeaseIdentity
-  owner: ForwarderLocus
-  owned_listener: SocketAddress
-}
-
-// THE RELEASE RECEIPT PROVES THE LISTENER IS GONE, NOT THAT THE TARGET IS UNREACHABLE. "The Spark
-// no longer answers" is not evidence the forward was released: the unit may be unreachable for a
-// dozen reasons while our listener is still bound, and treating one as the other would leave a
-// process running under a receipt claiming it stopped.
-type TeardownReceipt {
-  lease: ForwardingLeaseIdentity
-  listener_absent_on: ForwarderLocus
-  listener: SocketAddress
-}
-
-type LeaseResidue
-  = NoResidue
-  | ListenerPossiblyBound { listener: SocketAtLocus }
-  | ForwardingProcessPossiblyAlive { owner: ForwarderLocus }
-
-// The readiness receipt separates "the process launched" from "the endpoint answers". A launched
-// forwarder whose target probe failed must NEVER construct Established -- that is the arm through
-// which a browser would be pointed at a socket carrying nothing.
-type EndpointReadinessReceipt {
-  probed_listener: SocketAtLocus
-  observed_status: Int
-}
-
-// EVERY NON-RELEASED STATE RETAINS THE FULL OBLIGATION POPULATION, release failure included --
-// which is the state where those obligations are most necessary and the one the first revision
-// dropped them in.
-type ForwardingLeaseState
-  = ForwardingLeaseReserved { lease: ForwardingLeaseIdentity, teardown: List<TeardownObligation> }
-  | ForwardingLeaseEstablishing { lease: ForwardingLeaseIdentity, teardown: List<TeardownObligation> }
-  | ForwardingLeaseEstablished {
-      lease: ForwardingLeaseIdentity,
-      teardown: List<TeardownObligation>,
-      readiness: EndpointReadinessReceipt,
-    }
-  | ForwardingLeaseEstablishmentFailed {
-      lease: ForwardingLeaseIdentity,
-      teardown: List<TeardownObligation>,
-      residue: LeaseResidue,
-    }
-  | ForwardingLeaseReleaseFailed {
-      lease: ForwardingLeaseIdentity,
-      teardown: List<TeardownObligation>,
-      residue: LeaseResidue,
-    }
-  | ForwardingLeaseReleased { receipt: List<TeardownReceipt> }
-
-// The lease success carrier, again narrowed: only an ESTABLISHED lease with a readiness receipt
-// can enter a ready session.
-type EstablishedForwardingLease sole_constructor {
-  lease: ForwardingLeaseIdentity
-  teardown: List<TeardownObligation>
-  readiness: EndpointReadinessReceipt
-}
-
-// ------------------------------------------------------------------------------------------
-// THE SESSION. Every field is a success-only carrier, so there is no combination of refusals that
-// composes into a ready session. A browser kernel consumes THIS and never learns SSH exists.
-type OobeBrowserSessionReady sole_constructor {
-  renderer: QualifiedRenderer
-  relay: ReadyRadioRelay
-  route: OobeEndpointRoute
-  lease: EstablishedForwardingLease
-  admitted_use: AdmittedForwardingUse
-}
-
-type SessionRefusalCause
-  = NoQualifiedRenderer { cause: RendererRefusalCause }
-  | NoReadyRelay { cause: RelayRefusalCause }
-  | RouteNotComposable { renderer: HostIdentity, relay: ObservedMachineIdentity }
-  | ForwardingLeaseNotEstablished { lease: ForwardingLeaseState }
-  | PayloadUseRefused { decision: ForwardingUseDecision }
-
-type OobeSessionAdmission
-  = SessionReady { session: OobeBrowserSessionReady }
-  | SessionRefused { cause: SessionRefusalCause }
+// That is §5's specification-without-execution wearing the shape of a finished model, and it is the
+// same defect this PR already removed three times at smaller grain -- a dead import, a paired option
+// list with no call site, an allocation receipt read only by a comment. Carrying a success surface
+// that nothing can produce is the same error at the top of the type graph, and it is worse there,
+// because a reader checking whether a ready session is well-modeled finds a complete-looking answer.
+//
+// So the route, plan, lease and session carriers land WITH the code that constructs them, in the
+// tranche that builds the two-leg route and the durable reservation. Today this module admits
+// renderers and relays and rules on payload use; it does not pretend to reach a session. The entry
+// point below therefore returns a REFUSAL CAUSE rather than a coproduct whose success arm is
+// unreachable -- an honest signature is one nothing has to look inside to distrust.
 
 // ------------------------------------------------------------------------------------------
 // THE MEASURED POPULATION, 2026-09-03.
@@ -721,19 +621,6 @@ type ForwardingUseSelection
   | ForwardingUseDecisionUnique { decision: ForwardingUseDecision }
   | ForwardingUseDecisionAmbiguous { payload: ForwardingPayloadClass, decisions: List<ForwardingUseDecision> }
 
-fn payload_classes_match(a: ForwardingPayloadClass, b: ForwardingPayloadClass) -> Bool {
-  match a {
-    ObservationPayload => match b {
-      ObservationPayload => true
-      SecretBearingPayload => false
-    }
-    SecretBearingPayload => match b {
-      SecretBearingPayload => true
-      ObservationPayload => false
-    }
-  }
-}
-
 fn decision_payload(d: ForwardingUseDecision) -> ForwardingPayloadClass {
   match d {
     ForwardingUseAdmitted { admitted: a } => a.payload
@@ -743,7 +630,7 @@ fn decision_payload(d: ForwardingUseDecision) -> ForwardingPayloadClass {
 
 fn decisions_for_payload(want: ForwardingPayloadClass) -> List<ForwardingUseDecision> {
   fold(measured_route_use_decisions, init: [],
-    f: (acc, d) => if (payload_classes_match(a: decision_payload(d: d), b: want)) { append(acc, d) } else { acc })
+    f: (acc, d) => if (decision_payload(d: d) == want) { append(acc, d) } else { acc })
 }
 
 fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseSelection {
@@ -759,18 +646,30 @@ fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseSelection {
 }
 
 // ------------------------------------------------------------------------------------------
-// THE PRODUCTION ENTRY POINT. Today it REFUSES, and the refusal is the honest state of the world:
-// the only machine carrying a radio has no allocated fleet identity, so no ready session exists to
-// hand a browser kernel. That refusal is executable, discriminating, and will turn green by the
-// operator allocating pi1 -- not by an edit here.
-fn oobe_session_admission() -> OobeSessionAdmission {
+// THE PARTICIPANT ADMISSION, WHICH IS WHAT THIS MODULE ACTUALLY DECIDES TODAY.
+//
+// It returns the CAUSE that stops a session, not a coproduct with an unreachable success arm. The
+// signature is the honest claim: this module can tell you which participant is missing and why, and
+// it cannot yet tell you that a session exists, because the route and lease that would earn one are
+// not built. When they are, this becomes a coproduct again -- and the success arm will arrive with
+// the code that constructs it, which is the condition it failed before.
+//
+// TWO PARTICIPANTS, AND THE ORDER IS NOT ARBITRARY. The relay is asked first because its refusal is
+// the one standing today and the one an operator can act on: pi1 carries the only radio in reach of
+// the fleet and has no ratified fleet identity, so every Spark that has never joined the LAN is
+// unreachable. A renderer refusal is a provisioning problem; this is a decision problem.
+type ParticipantAdmissionRefusal
+  = NoQualifiedRenderer { cause: RendererRefusalCause }
+  | NoReadyRelay { cause: RelayRefusalCause }
+  | ParticipantsAdmittedRouteUnbuilt { renderer: HostIdentity, relay: HostIdentity }
+
+fn oobe_participant_admission() -> ParticipantAdmissionRefusal {
   match select_relay() {
-    RelayDeclined { cause: c } => SessionRefused { cause: NoReadyRelay { cause: c } }
+    RelayDeclined { cause: c } => NoReadyRelay { cause: c }
     RelayReady { relay: r } => match select_renderer() {
-      RendererDeclined { cause: rc } => SessionRefused { cause: NoQualifiedRenderer { cause: rc } }
-      RendererQualified { renderer: q } => SessionRefused {
-        cause: RouteNotComposable { renderer: q.host, relay: FleetAllocatedMachine { host: r.host } },
-      }
+      RendererDeclined { cause: rc } => NoQualifiedRenderer { cause: rc }
+      RendererQualified { renderer: q } =>
+        ParticipantsAdmittedRouteUnbuilt { renderer: q.host, relay: r.host }
     }
   }
 }
