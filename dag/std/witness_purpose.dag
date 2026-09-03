@@ -67,6 +67,30 @@ type WitnessPurpose
   | ExternalFidelity { effect: DeclarationRef }
   | ResourceContract { bound: WitnessResourceBound }
 
+// ONE WITNESS'S DECLARED PURPOSE, as a binding that NAMES the witness rather than a field on it.
+// There is no per-`test fn` declaration slot in the language, so the fact has to be authored
+// beside the witness and point at it. Authored in the witness's OWN module by whoever owns the
+// witness -- which is what makes the population independently defined rather than selected: no
+// central roster names which rows matter, and nobody picks a subset.
+//
+// WHY THIS IS JOINABLE WITHOUT A NEW AUTHORITY, and the reason the binding is a `DeclarationRef`
+// rather than a string. `v1.declaration_index` already records, per module, every typed-literal
+// `DeclarationRef` citation paired with the top-level declaration whose subtree carries it
+// (`CitedSymbol.in_declaration`), and every authored type reference under the same key
+// (`authored_type_references`). So "does a purpose binding exist for this identity" is decidable
+// from the index that already runs, by asking whether some declaration in the module both
+// references this type and cites that witness. A string would not be a citation and would be
+// reachable from no index.
+//
+// THE BINDING IS NOT EVIDENCE THAT THE PURPOSE IS TRUE OF THE ROW. It is the authored claim about
+// what the row is for, and that claim's correspondence to the body stays outside the modeled
+// guarantee -- see the module header's authored-not-inferred rule. What the binding makes
+// possible is ranking a row that DID NOT RUN, which needs only the declaration.
+type WitnessPurposeBinding {
+  witness: DeclarationRef
+  purpose: WitnessPurpose
+}
+
 type TerminatingOneShotFrontier
   = TerminatingOneShotUnavailableDeadlineSubstrateAbsent
   | TerminatingOneShotUnavailableCompletionSubstrateAbsent
