@@ -257,6 +257,31 @@ fn emitted_witness_floor_yml() -> String {
 // tree. A preflight carrying only the first passes the second while the job builds the wrong tree,
 // which is why both `[ "$RUN_SUBJECT_HEAD" = ... ]` and `[ "$ACTUAL_HEAD" = ... ]` are named here.
 //
+// THE CHECKOUT-MISMATCH ARM IS UNREACHABLE FROM THE PRODUCTION SURFACE, NOT UNTESTED, AND THE
+// DISTINCTION IS WRITTEN HERE SO THE NEXT READER DOES NOT HAVE TO REDERIVE IT. Both mismatch arms
+// are emitted and both are asserted above, but only the RUN-SUBJECT one has a live receipt, and
+// the reason is the fix itself rather than a gap in diligence: the checkout is bound to the input
+// (ci_heal_checkout_ref_expression). If expected != github.sha the run-subject arm trips first; if
+// expected == github.sha then the checkout ref IS expected, so HEAD cannot differ. Inducing the
+// checkout arm live means winning a force-push race against the runner's checkout, and making it
+// dispatchable on demand would mean decoupling `ref:` from the input -- weakening the very
+// selection that closes that race. A test runnable only by removing the protection is not a test
+// worth having.
+//
+// SO ITS DISPOSITION IS DEFENSE-IN-DEPTH BEHIND ref: SELECTION, with the discriminating RED at the
+// fixture boundary, where the state IS authorable and IS authored: test.claim.heal_revalidation_
+// witness expected_sha_preflight_binds_run_subject_and_checkout_exactly feeds
+// classify_workflow_dispatch_preflight a checkout head that differs from a matching run subject
+// and requires HealWorkflowDispatchCheckoutMismatch. This file's contribution is the other half --
+// that the comparison reached the emitted workflow rather than stopping at the model. Neither is
+// a live receipt and neither is described as one.
+//
+// LIVE RECEIPTS THAT DO EXIST, named by their producer rather than transcribed: a workflow_dispatch
+// of gunbc.witness_floor_workflow carrying a stale sha refuses at this step in every ordinary
+// checkout lane with every adjudicating step skipped, and one carrying the correct head passes the
+// same step in the same lanes and proceeds into the machinery. The second is not decoration: a
+// preflight that refused everything would satisfy the first arm permanently.
+
 // THIS ROW IS NOT A PER-LANE CHECK AND MUST NOT BE READ AS ONE -- MEASURED, NOT ASSUMED. Deleting
 // the preflight from `prepared_bound_steps` (four lanes lose it, rust-unit-tests keeps its own
 // copy) was executed against this battery: every_ordinary_checkout_lane_preflights_before_its_
