@@ -24,7 +24,7 @@ below is an upper bound wherever a name has several declarers (8 of 79 do: `Refu
 `Present` ×4, `Done` ×3, `ExitSuccess`/`None`/`Suppressed`/`Empty` ×2). 70 of 79 names have exactly
 one declaring module; those attributions are exact.
 
-## The decode primitives — five, and the last two are what make a naive grep lie
+## The decode primitives — seven, and each pass that widened the search found more
 
 The set of PRIMITIVES is much narrower than the set of call sites, and it is what makes the census
 closeable. All of them ultimately bottom out in four `InterpContext` methods (`sym`, `sym_eq`,
@@ -35,8 +35,23 @@ closeable. All of them ultimately bottom out in four `InterpContext` methods (`s
 | P1 | `ctx.sym_eq(sym, "Name")` | type/variant name test | 87 | 79 |
 | P2 | `ctx.field(fields, "name")` | field lookup by literal | 103 | 62 |
 | P3 | `ctx.resolve(sym).as_str()` matched against string-literal arms | rendered-name dispatch | 61 | — |
-| P4 | `run_in_context(ctx, "entry_fn", …)` | call-by-name into the authority | 30 literal (of 142 total; the other 112 take the name from a `.dag`-supplied roster and are NOT exposed) | 17 |
+| P4 | `run_in_context(ctx, "entry_fn", …)` | call-by-name into the authority | 42 literal (of 142 total; the other 100 take the name from a `.dag`-supplied roster and are NOT exposed) | 17 |
 | P5 | file-local wrappers (`field_str`, `field_value`, `field_list`, `variant_field`, …) over P1–P3 | indirection layer | 36 | — |
+| P6 | `str::replace` rewriting a live-HEAD `.dag` file's own text | spelling-keyed EDIT, not lookup | 2 producers, 6 call sites | — |
+| P7 | subprocess ARGV: `--entry <path>` / `--function <name>` | call-by-name through a second door | 35 `--function`, 6 literal `--entry` | 11 |
+
+P6 and P7 were found by the subject-revision pass, not the first sweep. P7 alone is larger than P4 and
+is completely invisible to a `run_in_context` grep — the same "a search written from the known
+specimen returns the specimen's shape" failure, committed twice in this census by its own author.
+
+**P6 is the only primitive in the set that can fail OPEN.** `str::replace` returns the input unchanged
+when the pattern does not match, so a miss produces a silently unrewritten copy. Its two arms differ:
+if the `"module test.claim.filesystem_write_witness\n"` rewrite misses, the scratch copy declares the
+same module path as the in-tree file and the module-path collision wall refuses (loud); if the
+`"/tmp/gunbc_fs_write_witness"` rewrite misses, the witness writes to the shared `/tmp` path instead
+of its unique scratch directory and nothing reports it (silent, and cross-run interfering). One
+primitive, two arms, one loud and one silent — which is why a per-primitive rung is not meaningful and
+the class is scored per arm.
 
 **Mint side** — the same coupling in the opposite direction, where the seed CONSTRUCTS a value the
 `.dag` side then destructures: 262 `type_name:`/`variant_name: ctx.sym("Lit")` sites and 198
@@ -128,7 +143,7 @@ future instrument over this class inherits that requirement: the join key is (na
 revision), not name.
 
 **Consequence for the population above.** P4 is the only primitive whose sites can be
-revision-addressed in this way, and 17 of its 30 literal entries are synthetic fixture names. The
+revision-addressed in this way, and the attribution below shows exactly one such site — this one. The
 P1/P2/P3/P5 sites all decode values produced by the CURRENT resolved graph, so the HEAD join is the
 right join for them. The retraction therefore narrows to P4 and does not disturb the rest — but the
 census reports it because a reader who copies the method would repeat the error.
@@ -138,6 +153,53 @@ census reports it because a reader who copies the method would repeat the error.
 `UnrelatedDecision`. These are not rename victims; they are shapes the host owns with no corpus
 authority, which is the §3 half of the same coupling: nothing on either side can be renamed
 *together* because there is no other side.
+
+## P4 subject-revision attribution (second pass)
+
+The retraction above established that the join key is (name, subject revision). All 42 literal-entry
+`run_in_context` sites — the first pass said 30; a stricter re-extraction finds 42 — attributed by
+reading each caller's context construction:
+
+| subject | sites | how established | files |
+|---|---|---|---|
+| **HEAD / live worktree** (ctx built from `default_source_roots()` / `workspace_root()`) | 17 | context construction reads the live source roots | `required_regen_host.rs` 4, `cli_run/required_floor_runner.rs` 4, `cli_run/materialization_provider_consumer.rs` 4, `cli_run.rs` 2, `cli_run/terminal_ledger_publish.rs` 1, `cli_run/test_module_hygiene_bridge.rs` 1, `derived_realization_schedule.rs` 1 |
+| **In-file synthetic source** (subject is the `r#"…"#` literal beside the call; no tree at all) | 24 | the module text and the entry name are authored together in the same expression | `bin/auth_declared_but_unwired_witness.rs` 10, `bin/interp_recorded_fixture_witness.rs` 4, `cli_run/shared_fill.rs` 4, `v1_interpreter.rs` 4, `compiler_tests.rs` 2 |
+| **Revision-addressed** (`git.Core.Show` of a merge-base ref) | 1 | `cli_run.rs:680`, the carrier-introduction bootstrap — the retracted candidate | `cli_run.rs` |
+
+**The residue is closed.** Exactly one P4 site is revision-addressed, and it is the one already
+adjudicated. The 24 synthetic sites cannot drift against any tree: their authority and their consumer
+are the same expression, so a rename edits both at once — they are not exposure, they are noise in the
+count and are removed from it. The 17 HEAD-subject sites are correctly joined against HEAD, and all 17
+resolve today.
+
+P7's 35 `--function` names are all HEAD-subject and all 11 distinct names resolve today
+(`filesystem_write_keystone_holds`, `witness_write_then_read_roundtrip`,
+`clock_freshness_keystone_holds`, `env_freshness_keystone_holds`, `diagnostic_redfish_keystone_holds`,
+`http_pilot_rest_keystone_holds`, `w_site_label_is_the_module_path_as_package`, and four others), each
+in a `dag/test/claim/*.dag` entry named as a literal `--entry` path beside it.
+
+So the P4/P7 call-by-name axis carries **52 live HEAD-subject sites, 0 stale**, and the census's
+open question moves entirely to the shape axis below.
+
+## The identifier-preserving shape axis — a real, unmeasured sibling
+
+Ruled by the design authority and recorded here rather than discovered later. The class is not "every
+`.dag` rename silently breaks the seed"; it is **any change to a `.dag` schema element consumed
+reflectively by host code is a host↔dag ABI change with no compiler-enforced edge**. A rename is one
+trigger. The class also includes changing a qualified function name, changing a record tag, renaming
+or NESTING or ADDING or REMOVING or RETYPING a field read by name, adding an arm to a host-side closed
+match, changing a serialized wire spelling shared by `.dag` and Rust, and — decisively for this
+document — **changing optionality, cardinality or shape while preserving every identifier**.
+
+**Every primitive P1–P7 is NAME-keyed, so the identifier-preserving shape axis passes all seven and
+still breaks the decode. The population measured here is the NAME-KEYED SUBSET and nothing more.**
+This is not hypothetical: the one case examined closely in this census (§ instance 2) was half a shape
+change — the `.dag` side changed the result from `List<RoadmapAcceptanceEvent>` to a `Load` coproduct
+alongside the rename, and the seed's `Ok(Value::List(events))` arm would have been wrong even had the
+name matched.
+
+The ceiling below is unaffected, and that is the point: a generated typed decoder makes a shape change
+a type error exactly as it makes a rename one. **The ceiling is right; only the census is narrow.**
 
 ## Rung and ceiling
 
@@ -153,6 +215,11 @@ is priced by the harm a fabricated output causes downstream; this one is priced 
 a rename landing and the first execution of the affected path — the cost is deferred detection, not
 corrupted output. It ranks above a merely cosmetic class and below a fail-open one.
 
+**Compiler-silent, not necessarily execution-silent.** It is loud and correct when the decoder
+actually runs. It becomes operationally silent by four routes: the path does not run; a fixture
+bypasses it; a default absorbs the mismatch; or a stale artifact answers instead. (Adopted from the
+design authority's ruling, which reached this independently of the code reading above.)
+
 A caution that falls out of the retraction above: because the class is loud-when-executed, the
 temptation is to hunt it by static join, and a static join over the WRONG subject manufactures
 findings. That happened once in this census, to me, in the space of one pass.
@@ -165,7 +232,8 @@ field the type does not have).
 
 **Next-rung trigger — the CAPABILITY, not an artifact:** *emission of a typed decoder
 (`Value` → mirror type) and a typed constructor for every `.dag` type the seed decodes or mints,
-sufficient to replace every P1–P5 and mint site above, such that no hand-written spelling of a `.dag`
+sufficient to replace every P1–P7 and mint site above, and to make an identifier-preserving shape
+change a type error as well as a rename, such that no hand-written spelling of a `.dag`
 type, variant or field name survives in `src/v1/stage0/src`.* Partial emission does not retire the
 class: any site left on a spelling keeps its own exposure, so the trigger is stated over the
 population, not over one module.
@@ -181,9 +249,10 @@ deferred, and then as a declared §4b(3) row, not as the climb.
 - Per-site execution coverage. File reachability is not site execution; the P4 entry names refuse
   loudly *when run*, and I did not establish which run. This is the residue that matters most: it is
   what separates a spelling that is stale from a spelling that is merely unexercised.
-- Subject-revision attribution for the remaining P4 sites. The retraction above shows the join key is
-  (name, subject revision); I established the subject revision for one site by reading its caller,
-  and did not do so for the rest.
+- **The identifier-preserving shape axis, in full.** Named above, deliberately not measured in this
+  pass. It is the largest single gap between this document and a closed answer.
+- P6's fail-open arm is described but not sized beyond its 6 call sites; `str::replace` against `.dag`
+  text elsewhere in the tree was not swept.
 - The `.dag` FILE-PATH axis: 420 distinct `"*.dag"` string literals in hand `.rs`, most synthetic
   fixture paths. A path rename is the same spelling-keyed coupling in a different alphabet; I did not
   separate the live paths from the synthetic ones.
