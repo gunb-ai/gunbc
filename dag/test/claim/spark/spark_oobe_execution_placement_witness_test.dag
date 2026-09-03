@@ -8,6 +8,9 @@ import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdministrativelyProhibited,
   ForwardingAdmissionUnobserved,
   ForwardingAdmissionSubject,
+  SshAuthenticatedPrincipal,
+  SshLoginPrincipal,
+  SshCertificatePrincipal,
   LocalForward,
   RemoteForward,
   forward_flag,
@@ -135,7 +138,7 @@ fn subject_for(host_label: DnsLabel) -> ForwardingAdmissionSubject {
         qualification: PartiallyQualified,
       },
     },
-    principal: "briansrls",
+    principal: SshLoginPrincipal { login: "briansrls" as PosixLoginName },
     direction: LocalForward,
     target: SocketAddress {
       host: host_by_ipv4(addr: ipv4_address(octet1: 10, octet2: 92, octet3: 7, octet4: 127)),
@@ -175,7 +178,10 @@ test fn w_only_a_measured_admission_permits_a_forward() -> Bool {
 test fn w_the_admission_names_the_principal_direction_and_target_it_was_measured_for() -> Bool {
   match pi1_local_forward_to_unit_admission {
     ForwardingAdmitted { subject: s } =>
-      s.principal == "briansrls"
+      (match s.principal {
+          SshLoginPrincipal { login: l } => l == "briansrls"
+          SshCertificatePrincipal { principal: _ } => false
+        })
         && (match s.direction { LocalForward => true, RemoteForward => false })
         && s.target.port == 80
     ForwardingAdministrativelyProhibited { subject: _ } => false

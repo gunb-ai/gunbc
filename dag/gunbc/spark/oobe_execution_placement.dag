@@ -14,6 +14,9 @@ import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdministrativelyProhibited,
   ForwardingAdmissionUnobserved,
   ForwardingAdmissionSubject,
+  SshAuthenticatedPrincipal,
+  SshLoginPrincipal,
+  SshCertificatePrincipal,
   ForwardDirection,
   LocalForward,
   RemoteForward,
@@ -363,7 +366,7 @@ data pi1_local_forward_to_unit_subject: ForwardingAdmissionSubject = ForwardingA
       qualification: PartiallyQualified,
     },
   },
-  principal: "briansrls",
+  principal: SshLoginPrincipal { login: "briansrls" as PosixLoginName },
   direction: LocalForward,
   target: SocketAddress {
     host: host_by_ipv4(

@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host }
+import extdeps.access.posix { PosixLoginName }
 
 data openssh_forwarding_client_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -76,9 +77,28 @@ type ForwardDirection
 // THE REPOSITORY ALREADY HOLDS A MEASURED PROHIBITION. gunbc.fleet_reach records srv2 refusing TCP
 // forwarding, which is why the srv3 ProxyJump reach realizes by NESTED EXEC rather than -J. That is
 // the counter-example that makes asking mandatory.
+// WHO ASKED, DECOMPOSED RATHER THAN LEFT AS A STRING. The subject's principal was a bare
+// NonEmptyStr, which is the anemic leaf §2 names: it hid a distinction sshd itself makes. An
+// ordinary `ssh user@host` authenticates as a POSIX login on the server, and that login is
+// already modeled -- extdeps.access.posix PosixLoginName -- so writing it as a fresh string was a
+// second representation of an existing concept.
+//
+// BUT IT CANNOT SIMPLY BE PosixLoginName EITHER, and that is why this is a coproduct rather than a
+// tightened field. OpenSSH certificate authentication carries a PRINCIPALS list whose members are
+// not POSIX logins and need not name any account on the server; sshd matches them and then maps to
+// a login separately. Collapsing the two would make a certificate principal indistinguishable from
+// a username, which is exactly the fork that lets one measurement license the wrong request.
+//
+// Everything this repository has measured is the login arm. The certificate arm exists so that the
+// day a forward is admitted under a certificate, the model can say so instead of inventing a
+// username that was never presented.
+type SshAuthenticatedPrincipal
+  = SshLoginPrincipal { login: PosixLoginName }
+  | SshCertificatePrincipal { principal: NonEmptyStr }
+
 type ForwardingAdmissionSubject {
   relay: NetworkHost
-  principal: NonEmptyStr
+  principal: SshAuthenticatedPrincipal
   direction: ForwardDirection
   target: SocketAddress
 }
