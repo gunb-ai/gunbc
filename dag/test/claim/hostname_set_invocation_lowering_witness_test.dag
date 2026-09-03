@@ -1,0 +1,143 @@
+module test.claim.hostname_set_invocation_lowering_witness
+
+import std.algebra { Cons, Empty }
+import std.types { Bool, String }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.cli_surface { cli_argument_text, cli_surface_arguments }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.shell.exec { process_observation }
+import extdeps.tools.hostname {
+  HostnameSetApplied,
+  HostnameSetFailed,
+  HostnameSetInvocation,
+  hostname_set_argv,
+  hostname_set_classify_observation,
+  hostname_set_execute_plan,
+  hostname_set_invocation_cli_arguments,
+  hostname_set_invocation_process_plan,
+  hostnamectl_set_hostname_verb
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HOSTNAMECTL SET-HOSTNAME VERTICAL, LOWERED TO ARGV.
+// docs/plans/cli-invocation-emission-design.md
+//
+// The caller describes WHAT it wants of hostnamectl (a desired label); it never names the
+// subcommand or an argv position. `set-hostname` is a cited row, and the argv is derived. The
+// point of every assertion below is that the caller named no flag.
+//
+// The surface the model produces is [set-hostname, desired] -- the executable is the handler's
+// fixed tool name (hostnamectl.Process.Run's transport row spells it, exactly as jq.Process's
+// row spells "jq"). The full argv the local process runs is hostname_set_argv's projection:
+// ["hostnamectl", "set-hostname", desired].
+
+fn set_invocation(desired: DnsLabel) -> HostnameSetInvocation {
+  HostnameSetInvocation { desired: desired }
+}
+
+fn surface_words(invocation: HostnameSetInvocation) -> List<String> {
+  match hostname_set_invocation_cli_arguments(invocation: invocation) {
+    Accepted { value: surface, diagnostics: _ } =>
+      fold_list(
+        xs: cli_surface_arguments(surface: surface),
+        empty: Empty,
+        cons: fn(acc, a) { list_snoc_item(xs: acc, item: cli_argument_text(argument: a)) }
+      )
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+// THE VERB IS A CITED ROW, READ AS DATA: the argv spelling is the row's spelling. The witness
+// reads the row so a rename cannot silently pass every lowering test while the row says
+// something else -- the row IS the authority the lowering reads.
+test fn set_hostname_verb_is_the_cited_row() -> Bool {
+  (hostnamectl_set_hostname_verb as String) == "set-hostname"
+}
+
+// The invocation lowers to EXACTLY two surface words: the subcommand and the desired operand.
+test fn set_invocation_lowers_to_exact_surface() -> Bool {
+  match surface_words(invocation: set_invocation(desired: "srv9" as DnsLabel)) {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: after } =>
+          match after {
+            Empty => (first == "set-hostname") && (second == "srv9")
+            Cons { head: _, tail: _ } => false
+          }
+      }
+  }
+}
+
+// The full argv the local process runs is the handler's executable plus the surface -- the same
+// words hostnamectl.Process.Run's transport row spells.
+test fn set_full_argv_is_executable_plus_surface() -> Bool {
+  match hostname_set_argv(desired: "srv9" as DnsLabel) {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: after } =>
+          match after {
+            Empty => false
+            Cons { head: third, tail: tail_end } =>
+              match tail_end {
+                Empty => (first == "hostnamectl") && (second == "set-hostname") && (third == "srv9")
+                Cons { head: _, tail: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// PERTURBATION: change the desired label and ONLY the operand changes. This proves the operand
+// is a bound token, not a spelling the caller supplies -- the surface keeps its shape.
+test fn desired_label_perturbation_changes_only_the_operand() -> Bool {
+  match surface_words(invocation: set_invocation(desired: "srv2" as DnsLabel)) {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: after } =>
+          match after {
+            Empty => (first == "set-hostname") && (second == "srv2")
+            Cons { head: _, tail: _ } => false
+          }
+      }
+  }
+}
+
+// Hermetic execution: the sealed plan executes against hostnamectl.Process.Run's mock and the
+// exit contract reads the result as HostnameSetApplied. The domain never reads an exit code.
+test fn set_realizes_hermetically_as_applied() -> Bool {
+  match hostname_set_invocation_process_plan(invocation: set_invocation(desired: "srv9" as DnsLabel)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: plan, diagnostics: _ } =>
+      match hostname_set_classify_observation(observation: hostname_set_execute_plan(plan: plan)) {
+        HostnameSetApplied => true
+        _ => false
+      }
+  }
+}
+
+// THE EXIT CONTRACT: hostnamectl exits 0 when the hostname was set; any nonzero exit is a
+// failure carrying the tool's stderr. Two states, never conflated with absence or refusal.
+test fn nonzero_exit_is_a_failure_with_stderr() -> Bool {
+  match hostname_set_classify_observation(observation: process_observation(exit_code: 1, stdout: "", stderr: "Operation failed: not authorized")) {
+    HostnameSetApplied => false
+    HostnameSetFailed { exit_code: code, stderr: e } => code == 1 && e == "Operation failed: not authorized"
+    _ => false
+  }
+}
+
+test fn zero_exit_is_applied_even_with_verbose_stdout() -> Bool {
+  match hostname_set_classify_observation(observation: process_observation(exit_code: 0, stdout: "   ", stderr: "")) {
+    HostnameSetApplied => true
+    _ => false
+  }
+}
