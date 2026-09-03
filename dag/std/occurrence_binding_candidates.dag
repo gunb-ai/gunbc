@@ -42,7 +42,7 @@ import std.occurrence_identity {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { declaration_ref_eq }
 import std.occurrence_binding_resolve {
-  resolve_reference_occurrence_binding,
+  resolve_reference_occurrence_binding_validated,
   OccurrenceReferenceBindingOutcome,
   OccurrenceReferenceBindingDecided,
   OccurrenceReferenceBindingTransportRefused,
@@ -691,12 +691,32 @@ fn declaration_exposed_on_reference_chain(
 // declarations_by_name buckets every declaration by its authored spelling so a single reference's
 // candidate lookup is a map_get plus a scan of only the same-spelled declarations, never a rescan
 // of the whole declaration population -- the O(declarations x references) shape the pre-strip
-// candidate scan had. entries_by_id is the same validated lookup authority
-// std.occurrence_binding_resolve builds internally; it is retained here only to read authored_name,
-// never to re-decide cardinality.
+// candidate scan had.
+//
+// THE INDEX CARRIES THE VALIDATED TRANSPORT, NOT A COPY OF ONE OF ITS FIELDS, AND THAT IS A COST
+// REPAIR RATHER THAN A REFACTOR. This type previously held `entries_by_id`, described as "the same
+// validated lookup authority std.occurrence_binding_resolve builds internally". It was the same
+// map -- and holding only that one field is what forced the resolver to REBUILD the other four:
+// resolve_reference_via_structural_candidates could not hand a ValidatedOccurrenceTransport down,
+// so it called std.occurrence_binding_resolve resolve_reference_occurrence_binding, whose first
+// act is occurrence_transport_validate over the WHOLE transport -- three full folds across every
+// index entry, declaration and reference, PER REFERENCE RESOLVED.
+//
+// So the "built exactly once" contract this comment opens with was true of the index and false of
+// the path: validation was O(references x population), and the once-built index was defeated one
+// layer below itself. MEASURED, not reasoned: the census instrument
+// (src/v1/stage0/src/bin/type_occurrence_binding_census.rs) resolving dag/std -- 142 files -- ran
+// past a 45-minute wall producing nothing.
+//
+// occurrence_candidate_index_build ALREADY validates exactly once and already had the whole
+// ValidatedOccurrenceTransport in hand; it discarded four fifths of it. Retaining it is strictly
+// FEWER representations of one fact, not more: entries_by_id is reached as
+// `index.validated.entries_by_id`, there is no second copy to drift, and the cardinality decision
+// still happens exactly once downstream. This is DESIGN section 6's bare-minimum-cost standing
+// rule, whose n here is every type occurrence in the corpus.
 
 type OccurrenceCandidateIndex {
-  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  validated: ValidatedOccurrenceTransport
   declarations_by_name: Map<String, List<DeclarationOccurrence>>
   module_by_occurrence: Map<Int, NonEmptyStr>
   exposure_by_occurrence: Map<Int, DeclarationExposure>
@@ -839,7 +859,7 @@ fn occurrence_candidate_index_build(
                                 DeclarationsByNameReady { by_name: by_name } =>
                                   OccurrenceCandidateIndexReady {
                                     index: OccurrenceCandidateIndex {
-                                      entries_by_id: validated.entries_by_id,
+                                      validated: validated,
                                       declarations_by_name: by_name,
                                       module_by_occurrence: module_path_build.module_by_occurrence,
                                       exposure_by_occurrence: exposure_build.exposure_by_occurrence,
@@ -868,7 +888,7 @@ fn candidate_occurrence_ids_for_reference(
   index: OccurrenceCandidateIndex,
   reference: ReferenceOccurrence
 ) -> List<OccurrenceId> {
-  match map_get(index.entries_by_id, reference.occurrence.value) {
+  match map_get(index.validated.entries_by_id, reference.occurrence.value) {
     Absent => []
     Present { value: entry } =>
       match map_get(index.declarations_by_name, entry.projection.authored_name) {
@@ -1721,7 +1741,6 @@ fn structural_binding_walk_selected_references(
       StructuralBindingWalkReady {
         population: bound_reference_population_from_projections(
           projections: resolve_all_references_via_structural_candidates(
-            transport: transport,
             index: index,
             references: references,
           ),
@@ -2518,8 +2537,11 @@ fn resolve_type_reference_containment_binding(
 // are surfaced as their own typed, located outcomes so a caller can never mistake 'no edge' for
 // 'one edge'.
 
+// NO `transport` PARAMETER, DELIBERATELY. The index now carries the VALIDATED transport, and a
+// second unvalidated OccurrenceTransport beside it would be two representations of one fact with
+// nothing forcing them to be the same transport -- the caller could hand in a different one and
+// the mismatch would resolve silently against whichever the arm happened to read.
 fn resolve_reference_via_structural_candidates(
-  transport: OccurrenceTransport,
   index: OccurrenceCandidateIndex,
   reference: ReferenceOccurrence
 ) -> ReferenceBindingProjection {
@@ -2527,8 +2549,8 @@ fn resolve_reference_via_structural_candidates(
     index: index,
     reference: reference,
   )
-  match resolve_reference_occurrence_binding(
-    transport: transport,
+  match resolve_reference_occurrence_binding_validated(
+    validated: index.validated,
     occurrence: reference.occurrence,
     supplied_candidates: candidates,
   ) {
@@ -2592,7 +2614,6 @@ fn resolve_reference_binding_via_structural_candidates(
       ReferenceBindingProjectionDeclarationBucketRefused { occurrence: occurrence }
     OccurrenceCandidateIndexReady { index: index } =>
       resolve_reference_via_structural_candidates(
-        transport: transport,
         index: index,
         reference: reference,
       )
@@ -2600,12 +2621,10 @@ fn resolve_reference_binding_via_structural_candidates(
 }
 
 fn resolve_all_references_via_structural_candidates(
-  transport: OccurrenceTransport,
   index: OccurrenceCandidateIndex,
   references: List<ReferenceOccurrence>
 ) -> List<ReferenceBindingProjection> {
   references |> map(reference => resolve_reference_via_structural_candidates(
-    transport: transport,
     index: index,
     reference: reference,
   ))
