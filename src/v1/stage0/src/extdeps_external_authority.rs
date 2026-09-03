@@ -211,7 +211,7 @@ pub fn external_model_scope_portfolio_decision(
 ) -> Rc<ScopeDecision> {
     external_model_scope_decision_of_findings(mods.iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: _, m: Rc<DeclaredScopeFacts>| {
+        |acc: Rc<Vec<Rc<ScopeFinding>>>, m: Rc<DeclaredScopeFacts>| {
             v1_rt::concat(acc, external_model_scope_findings(m.clone()))
         },
     ))

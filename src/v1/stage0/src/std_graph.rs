@@ -325,7 +325,7 @@ pub fn graph_reverse_reachable_members(
             start.clone(),
             reverse_adjacency(names.clone(), graph.clone()),
             Rc::new(SccComponentAcc {
-                visited: v1_rt::rc_empty_set::<_>(),
+                visited: v1_rt::rc_empty_set::<String>(),
                 members: Rc::new(vec![]),
             }),
         );

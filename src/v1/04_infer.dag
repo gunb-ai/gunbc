@@ -4112,7 +4112,9 @@ fn direct_call_arg_type_mismatch(
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  let substitution_is_optional = substitution_basis.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
+  if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
@@ -5288,6 +5290,15 @@ fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<
   }
 }
 
+fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let name = expr_var_name_at(texpr: n, source_indices: source_indices)
+  if string_length(s: name) == 0 { false }
+  else {
+    let first = substring(s: name, start: 0, end: 1)
+    ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"] |> any(letter => letter == first)
+  }
+}
+
 fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
@@ -5309,15 +5320,13 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
     let contextual_expected = match arg_value(n: a).expr_data {
-      ExprVar { binding_kind: _ } => if formal_conformance_type.connective == Disj { Present { value: formal_conformance_type } } else { none }
-      ExprLambda => Present { value: formal_param_type }
-      ExprRecordLit { parent_enum: _ } => Present { value: formal_param_type }
-      ExprListLit => none
-      _ => none
+      ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
+      ExprRecordLit { parent_enum: _ } => formal_conformance_type
+      _ => formal_param_type
     }
     let expected = if has_formal && (type_node_is_callable(n: formal_param_type)
       || !direct_call_formal_has_unbound_type_variable(n: formal_param_type)) {
-      contextual_expected
+      Present { value: contextual_expected }
     } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
@@ -5729,15 +5738,31 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
                       }
                     Absent =>
-                      let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
-                        span: span,
-                        name_span: span
-                      ))
+                      match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
+                        Present { value: exp_enum } =>
+                          InferResult {
+                            typed: make_named_expr_node(
+                              occurrence_identity: texpr.occurrence_identity,
+                              name: name,
+                              expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
+                              children: [],
+                              inferred: Present { value: Resolved { node: exp_enum } },
+                              span: span,
+                              name_span: span
+                            ),
+                            diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                          }
+                        Absent =>
+                          let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+                          ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+                            name: name,
+                            expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                            children: [],
+                            inferred: Present { value: Resolved { node: gbinding.resolved } },
+                            span: span,
+                            name_span: span
+                          ))
+                      }
                   }
                 Absent =>
                   let expected_variant_enum = expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)

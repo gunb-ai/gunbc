@@ -106,7 +106,7 @@ pub fn collect_typed_service_calls(
         let result = collect_typed_service_calls_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -206,7 +206,7 @@ pub fn collect_called_func_names(
         let result = collect_called_func_names_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
