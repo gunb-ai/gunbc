@@ -25,10 +25,22 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, oper
 // reporting success -- the runtime-observation-read-as-durable-state failure, at the layer that
 // makes every serving fact above it unreachable after a reboot.
 //
-// A RAIL IS THE SUBJECT, NOT AN INTERFACE, and the rail's identity is the interface NAME -- which is
-// the SAME on both hosts. This is the NVIDIA connect-two-sparks convention and it is load-bearing
-// rather than cosmetic: NCCL selects a rail by matching interface to subnet, so the pairing that
-// works for `ping` is not the pairing that works for collective traffic.
+// A RAIL IS THE SUBJECT, NOT AN INTERFACE, and the two ends of one rail must name the SAME
+// interface. This is the NVIDIA connect-two-sparks convention and it is load-bearing rather than
+// cosmetic: NCCL selects a rail by matching interface to subnet, so the pairing that works for `ping`
+// is not the pairing that works for collective traffic.
+//
+// INTERFACE EQUALITY IS A WITHIN-LINK COMPATIBILITY LAW, NOT AN IDENTITY. This sentence used to say
+// the rail's identity WAS the interface name, which was true only while one pair was modeled. Both
+// pairs run the same NIC spellings on all four machines, so an interface name selects a link only by
+// accident of there being one candidate. Fleet link identity is PAIR PLUS RAIL, which is what the
+// qualified names below carry and what the distinctness witness enforces.
+//
+// The consequence is for consumers rather than for this file: anything binding to a rail -- the vLLM
+// or Ray adapter selecting the srv6 front door, for instance -- must resolve the named link and take
+// its endpoint on that host. Not by interface name, not by position in the roster, and not by the
+// literal address. An observed `VLLM_HOST_IP` equal to that endpoint's address is corroboration that
+// the binding is right; it is never the authority that selects it.
 //
 // This module first shipped the opposite rule, on a peer session's report that the names were
 // CROSSED between hosts, and both of us then read it back off the durable files and found they are
