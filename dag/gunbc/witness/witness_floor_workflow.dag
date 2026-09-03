@@ -19,6 +19,7 @@ import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list 
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
+import v2.workflow.ci_heal_revalidation_preflight_emit { ci_heal_revalidation_preflight_script }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
@@ -411,13 +412,47 @@ fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -
 // does not enumerate (the `.dag` side is clean and the drifted artifact is hand-authored Rust).
 data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
+// THE HEAL REVALIDATION INPUT. A heal that repairs a branch pushes a new head H1 with the Actions
+// job credential, and GitHub starts no run for that push -- so H1 arrives carrying H0's receipts,
+// which are receipts about a tree that no longer exists. tools.ci_heal_dispatch closes that by
+// dispatching this workflow, and a dispatch that cannot say WHICH head it got would report a
+// verdict about a head it cannot name: a fabricated revalidation, worse than the honest gap.
+//
+// So the input is the binding, not a label. The dispatch ref is necessarily a moving branch
+// pointer (GitHub's endpoint accepts nothing else); this input carries the immutable subject
+// beside it, and every ordinary lane binds BOTH its run subject (github.sha, which is what the
+// check is attached to) and its own checkout against it before a witness can count. Absent, the
+// run is an ordinary manual dispatch and claims no revalidation.
+data ci_heal_expected_healed_sha_input_name: String = "expected_healed_sha"
+
+data ci_heal_expected_healed_sha_input: DispatchInput = DispatchInput {
+  name: ci_heal_expected_healed_sha_input_name,
+  description: Present {
+    value: "Immutable healed commit required by an auto-heal revalidation run"
+  },
+  required: false,
+  default: none,
+  type: InputString
+}
+
+// THE CHECKOUT SELECTS THE EXPECTED HEAD WHEN ONE IS NAMED, and the preflight below still compares
+// -- the two are not redundant. Selecting the ref removes the window in which the branch advances
+// between dispatch and checkout; comparing github.sha catches the window BEFORE that, in which the
+// branch advanced before GitHub resolved the dispatch ref into the run subject. Selection alone
+// would produce a run whose checkout is H1 and whose CHECK is attached to H2, which is exactly the
+// silent wrong answer this input exists to make unwritable.
+data ci_heal_checkout_ref_expression: String = "${{ inputs.expected_healed_sha || github.sha }}"
+
 fn witness_floor_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout" },
     id: none,
     uses: checkout_action,
     with: Present {
-      value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "ref", value: yaml_string(s: ci_heal_checkout_ref_expression))
+      ]
     },
     env: none,
     if_condition: none,
@@ -1156,6 +1191,37 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 // Duplicating the narrower build in the floor lane would buy nothing: the lanes are
 // runtime-independent by construction (no `needs` edge, no artifact handoff), so their bootstraps
 // are independent CPU, not a shared prerequisite one could save.
+data heal_revalidation_preflight_step_name: String = "Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA"
+
+// THE PREFLIGHT IS FIRST AFTER CHECKOUT IN EVERY WITNESS-BEARING LANE, and that position is the
+// whole claim: a comparison that runs after a witness has already reported cannot unreport it.
+// The script is v2.workflow.ci_heal_revalidation_preflight_emit -- orchestration intent, with bash
+// as the GitHub Actions foreign-executor realization -- so the refusal arms are modeled control
+// flow rather than hand-authored yaml. The heal job does NOT carry it: heal checks out the
+// triggering branch head in order to push a repair onto it, so binding that checkout to an
+// expected healed sha would refuse the very job that produces one.
+fn heal_revalidation_preflight_step() -> Step {
+  RunStep {
+    name: Present { value: heal_revalidation_preflight_step_name },
+    id: none,
+    run: ci_heal_revalidation_preflight_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_revalidation_preflight_bound_step() -> WitnessFloorBoundStep {
+  WitnessFloorBoundStep {
+    step: heal_revalidation_preflight_step(),
+    role: capability_neutral,
+    step_name: heal_revalidation_preflight_step_name,
+  }
+}
+
 fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -1168,6 +1234,7 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       role: capability_neutral,
       step_name: "Checkout",
     },
+    heal_revalidation_preflight_bound_step(),
     WitnessFloorBoundStep {
       step: toolchain_home_isolation_step(),
       role: capability_neutral,
@@ -1588,6 +1655,7 @@ fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
       role: capability_neutral,
       step_name: "Checkout",
     },
+    heal_revalidation_preflight_bound_step(),
     WitnessFloorBoundStep {
       step: toolchain_home_isolation_step(),
       role: capability_neutral,
@@ -1908,13 +1976,22 @@ fn heal_repo_local_git_config_step() -> Step {
 
 data heal_commit_push_step_id: String = "heal_commit_push"
 
+// GITHUB_TOKEN IS PROJECTED HERE BECAUSE THE DISPATCH READS IT AS A PROCESS VARIABLE, and the
+// grant is added WITH its executing consumer rather than in advance of one. GitHub Actions injects
+// `github.token` into `secrets.GITHUB_TOKEN` and into the checkout action's credential, but not
+// into the step environment; extdeps.github.workflows github.Workflows resolves its bearer solely
+// from auth_source EnvVar GITHUB_TOKEN, so without this binding CreateDispatch would refuse 401.
+// This is the only step in the workflow that carries it, and it carries it because the heal
+// dispatch composed into its script is the only caller.
 fn heal_commit_push_step() -> Step {
   RunStep {
     name: Present { value: "Commit and push the regeneration" },
     id: Present { value: heal_commit_push_step_id },
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -2428,7 +2505,7 @@ data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   run_name: none,
   on: [
-    WorkflowDispatch { inputs: [] },
+    WorkflowDispatch { inputs: [ci_heal_expected_healed_sha_input] },
     MergeGroup,
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {

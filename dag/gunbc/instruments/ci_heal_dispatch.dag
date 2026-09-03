@@ -7,10 +7,18 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { CommitSha, NonEmptyStr }
 import extdeps.shell
 import extdeps.github.workflows
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_name }
 
 data ci_heal_dispatch_owner: String = gunbc_repository.owner
 data ci_heal_dispatch_repo: String = gunbc_repository.name
-data ci_heal_dispatch_workflow_id: String = "ci.yml"
+// THE WORKFLOW IS NAMED BY ITS ARTIFACT VARIANT, NOT BY A FILENAME LITERAL. This row read
+// "ci.yml" for a fortnight after the 2026-08-15 floor cut deleted that workflow: a literal cannot
+// go stale loudly, so the dispatcher pointed at a file with no existence and nothing said so.
+// gunbc.generated_artifact GeneratedArtifact is the single authority for which emissions this
+// repository commits and where; naming the variant means the census is coproduct exhaustiveness --
+// deleting WitnessFloorYamlArtifact would refuse this module at compile time rather than leaving a
+// dangling string. The heal job is a job OF that emission, so the variant is also the true subject.
+data ci_heal_dispatch_workflow_id: String = artifact_name(a: WitnessFloorYamlArtifact)
 
 // The heal job does not mint a gh-api shell call. It invokes the modeled
 // github.Workflows.CreateDispatch operation, whose REST transport is the realization handler. The
