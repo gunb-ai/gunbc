@@ -566,10 +566,17 @@ fn admit_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> 
   }
 }
 
+// THE ORDINAL IS POSITION IN THE SCANNED POPULATION, NOT POSITION WITHIN ONE LEDGER, which is why
+// the accumulated count is passed DOWN as a base rather than only summed up. Review 59427 caught the
+// earlier shape: each ledger numbered its own events from zero while this fold merely added the
+// counts, so two ledgers both reported a hit at ordinal 3 and the number identified no event. It was
+// survivable only because the Resolved arm implies one hit, which is a property of today's callers
+// rather than of the value -- exactly the kind of correctness that stops holding when a later reader
+// asks a question the current one does not.
 fn scan_admitted_ledgers(ledgers: List<AdmittedInventoryLedger>, asset: PhysicalAssetIdentity) -> AssetLotScan {
   fold(ledgers, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, l) {
-    let inner = scan_one_admitted_ledger(ledger: l, asset: asset)
-    AssetLotScan { hits: concat(acc.hits, inner.hits), next_ordinal: acc.next_ordinal + inner.next_ordinal }
+    let inner = scan_one_admitted_ledger(ledger: l, asset: asset, base_ordinal: acc.next_ordinal)
+    AssetLotScan { hits: concat(acc.hits, inner.hits), next_ordinal: inner.next_ordinal }
   })
 }
 
@@ -643,8 +650,12 @@ type AssetLotScan sole_constructor {
 // and flags the function as unrostered residue. The single fold removes both at once: one traversal,
 // and every arm of the match below stays explicitly enumerated, which is what makes adding a
 // variant to InventoryEvent a compile error here rather than a silently dropped event kind.
-fn scan_one_admitted_ledger(ledger: AdmittedInventoryLedger, asset: PhysicalAssetIdentity) -> AssetLotScan {
-  fold(ledger.events, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, e) {
+fn scan_one_admitted_ledger(
+  ledger: AdmittedInventoryLedger,
+  asset: PhysicalAssetIdentity,
+  base_ordinal: Nat,
+) -> AssetLotScan {
+  fold(ledger.events, init: AssetLotScan { hits: [], next_ordinal: base_ordinal }, f: fn(acc, e) {
     let found = match e {
       QuantityInstalled { lot: _, quantity: _, origin: _, assets: a } =>
         fold(a, init: [], f: fn(inner, x) {

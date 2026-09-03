@@ -45,7 +45,7 @@ import product.inventory {
 // and hand it in having possessed no admitted ledger at all. Taking it as a parameter would be the
 // detached-verdict pairing this program has already had to close once at the realization boundary.
 // assess_filament_supply therefore takes RAW lot-and-event evidence, admits every ledger itself, and
-// derives the standing inside the same call that mints the capability.
+// derives the standing inside the same call that returns the candidate assessment.
 //
 // THE UNADMITTED PAIR THE CALLER SUPPLIES. It is deliberately NOT AdmittedInventoryLedger: if the
 // caller could only pass admitted ledgers, the refused-evidence case would be unreachable here and
@@ -401,8 +401,3 @@ fn assess_filament_supply(
     }
   }
 }
-
-// THE OWNED FILAMENT SUPPLY, EMPTY UNTIL SPOOLS ARE PHYSICALLY RECEIVED AND LABELLED. Same rule as
-// the printer roster next door: authoring rows for feedstock nobody has unboxed would be a
-// fabricated fact, and every attribution built on it would inherit that.
-data owned_filament_supply_inventory: List<PhysicalAsset> = []

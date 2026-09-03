@@ -317,3 +317,23 @@ test fn w_a_later_refusal_withdraws_the_earlier_installations_provenance() -> Bo
     AssetSourceLotConflict { asset: _, first_lot: _, further_lots: _ } => false
   }
 }
+
+// THE ORDINAL NUMBERS THE SCANNED POPULATION, NOT ONE LEDGER'S EVENTS. Two admitted ledgers are
+// scanned here and the asset is named only in the SECOND, at a position that is index 3 within that
+// ledger and index 7 across both. Review 59427 found the earlier shape, where each ledger numbered
+// from zero and the outer fold merely summed the counts: this row would then have reported 3, the
+// same number the first ledger would report for its own fourth event, so the ordinal identified no
+// event at all. It was survivable only because the Resolved arm implies a single hit -- a property
+// of today's callers rather than of the value. Asserting the CROSS-LEDGER number is what makes the
+// two shapes distinguishable; asserting the resolved lot alone would pass under either.
+test fn w_the_event_ordinal_counts_across_ledgers_not_within_one() -> Bool {
+  let first = admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 1, assets: [other()])])
+  let second = admitted(id: lot_b(), label: "lot-b" as NonEmptyStr, tail: [install(lot: lot_b(), quantity: 1, assets: [requested()])])
+  match asset_source_lot_standing(ledgers: concat(first, second), asset: requested()) {
+    AssetSourceLotResolved { asset: _, lot: l, event_ordinal: o } =>
+      minted_id_eq(left: l.identity, right: lot_b()) && o == 7
+    AssetSourceLotUnobserved { asset: _ } => false
+    AssetSourceLotEvidenceDuplicate { asset: _, occurrences: _ } => false
+    AssetSourceLotConflict { asset: _, first_lot: _, further_lots: _ } => false
+  }
+}
