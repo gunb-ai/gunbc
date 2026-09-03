@@ -1,0 +1,71 @@
+module test.claim.process_lease_plan_is_not_a_refusal_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PLAN IS WHAT `Apply` EXECUTES, SO A REFUSAL IS NOT ONE. gunbc.session_lease used to carry
+// RefuseForeignOwner as a third ProcessLeasePlan, which made `Apply { plan: RefuseForeignOwner }`
+// -- execute the refusal -- a writable state that every consumer of the decision had to answer
+// for and that no producer could ever reach. decision_for_process_port_verdict already answers a
+// foreign owner on the `Refuse` arm, with the reason attached, so the plan was a second
+// representation of one fact rather than a fourth outcome.
+//
+// These two fixtures are what keeps that wall observed. Both import the real module, so
+// re-adding the variant makes the negative go quiet and this file fail. The pair discriminates:
+// they differ only in WHICH plan is written into the same `Apply`, so a green negative cannot be
+// explained by `Apply` being unusable.
+
+data refusal_as_a_plan_source: String = "module process_lease_plan_negative\nimport gunbc.session_lease { ProcessLeasePlan }\nimport std.upsert_decision { UpsertDecision, Apply }\nfn f() -> UpsertDecision<ProcessLeasePlan> {\n  Apply { plan: RefuseForeignOwner }\n}\n"
+
+data start_as_a_plan_source: String = "module process_lease_plan_positive\nimport gunbc.session_lease { ProcessLeasePlan, Start }\nimport std.upsert_decision { UpsertDecision, Apply }\nfn f() -> UpsertDecision<ProcessLeasePlan> {\n  Apply { plan: Start }\n}\n"
+
+// THE COUNT IS SCOPED TO A CLASS AND A SUBJECT, WHICH IS WHAT THIS INSTRUMENT CAN SAY.
+// compile_dag_diagnostic_census reports the rows of the WHOLE compilation the fixture is handed
+// to, its imported closure included -- its own carrier note says so -- so a total count is a
+// claim about the corpus rather than about the fixture. Measured here: the two sources carry 3
+// and 2 rows and differ at exactly one key. Scoping to it is what makes the remaining row
+// attributable to the plan these two fixtures differ by.
+data target_class: String = "InternalError"
+
+data target_subject: String = "variable:RefuseForeignOwner"
+
+// Absent, not zero, on the NotRunnable arm: a census that could not run is not a census that
+// saw nothing, and collapsing them would be the fail-open the census module deleted from its
+// own API.
+fn census_rows(source: String) -> List<CompileDiagnosticCensusRow>? {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => Present { value: rows }
+    CensusNotRunnable { cause: _ } => Absent
+  }
+}
+
+fn target_key_count_of(source: String) -> Int {
+  match census_rows(source: source) {
+    Present { value: rows } =>
+      census_total_count(
+        rows: rows
+          |> filter(r =>
+            (r.diagnostic_class as String) == target_class
+              && r.subject_name == target_subject
+              && r.blocking
+          )
+      )
+    Absent => -1
+  }
+}
+
+test fn w_a_refusal_cannot_be_written_as_a_lease_plan() -> Bool {
+  target_key_count_of(source: refusal_as_a_plan_source) == 1
+}
+
+test fn w_a_real_plan_on_the_same_arm_is_admitted() -> Bool {
+  target_key_count_of(source: start_as_a_plan_source) == 0
+}

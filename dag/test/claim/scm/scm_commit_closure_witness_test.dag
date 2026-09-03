@@ -679,7 +679,7 @@ test fn a_present_child_round_trips_as_a_complete_closure() -> Bool {
     closure: CommitClosure { store: full.store, root: full.root }
   ) {
     ClosureDocEncodeRefused { cause: _ } => false
-    
+
     ClosureDocEncoded { value: encoded } =>
       match parse_json_document(s: serialize_json(v: encoded)) {
         JsonDocumentUnreadable { gap: _ } => false
@@ -869,13 +869,13 @@ test fn a_completed_parent_first_graft_has_the_naturally_built_image() -> Bool {
   closure_is_complete(closure: closure)
     && match encode_complete_closure_document(closure: closure) {
       ClosureDocEncodeRefused { cause: _ } => false
-      
+
       ClosureDocEncoded { value: grafted_image } =>
         match encode_complete_closure_document(
           closure: CommitClosure { store: full.store, root: full.root }
         ) {
           ClosureDocEncodeRefused { cause: _ } => false
-          
+
           ClosureDocEncoded { value: natural_image } =>
             serialize_json(v: grafted_image) == serialize_json(v: natural_image)
         }
@@ -896,7 +896,7 @@ test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool 
         closure: CommitClosure { store: full.store, root: full.root }
       ) {
         ClosureDocEncodeRefused { cause: _ } => false
-        
+
         ClosureDocEncoded { value: natural_image } =>
           serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
             != serialize_json(v: natural_image)
@@ -955,7 +955,7 @@ test fn a_complete_closure_spells_its_child_contained() -> Bool {
     closure: CommitClosure { store: completed, root: full.root }
   ) {
     ClosureDocEncodeRefused { cause: _ } => false
-    
+
     ClosureDocEncoded { value: image } =>
       match target_arm_of_first_child(objects: document_objects(v: image)) {
         Absent => false
