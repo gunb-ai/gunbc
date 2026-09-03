@@ -1,6 +1,8 @@
 module v1.compiler.emit
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
+
+import std.coercion { TypeRealizationDecision }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
@@ -30,7 +32,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, GlobalBareLookupState, empty_symbol_index }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -38,7 +40,7 @@ import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node
 
 import std.types { is_container_type }
 
-import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_realization, type_realization_decision, DeclarationIdentityAbsent }
+import v1.compiler.coercion { realized_checkpoint, coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_realization, type_realization_decision, DeclarationIdentityAbsent }
 
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -2762,7 +2764,157 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
   })
 }
 
-fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, NewlineIndex>) -> String {
+// WHY AN ACCEPTED CAST CAN HAVE NOTHING FOR THE HOST TO DO, AND WHY THAT IS DECIDED ON STRUCTURE.
+// `type NonEmptyStr = String where non_empty` and `type PathSegment = NonEmptyStr where
+// brand("PathSegment")` are three .dag types over ONE host carrier: each of them emits as the
+// target's String. A source cast between any two of them changes which accepted .dag type the value
+// inhabits and asks the target for no operation whatsoever, so the emission is the operand
+// unchanged. It is NOT a cast template -- Rust's is `{expr} as {type}`, which is not valid Rust for
+// a refinement, so a row in that table would make the table lie about the external language -- and
+// it is NOT the absence dressed as an operator by a `{expr}` template, which would hide an absence
+// inside a realization row. Before this walk existed the third arm ran and a panic was fabricated
+// into generated Rust: an unsupported cast reported as a runtime abort rather than a located
+// refusal, which is the DESIGN section 5 fail-open this decision removes for the identical case.
+//
+// THE DECISION MAY NOT BE KEYED ON RENDERED TYPE NAMES, because those names are already wrong for
+// exactly this class. render_node_type peels ONE refinement level: a refinement's base is an
+// UNRESOLVED named reference at emission, so it renders by name rather than through its
+// declaration, and an authored `NonEmptyStr -> PathSegment` cast rendered as `String ->
+// NonEmptyStr` -- the fabricated panic named a cast the author never wrote. Keying on the spelling
+// `brand`, on a "string-like" predicate, or on general source type compatibility would each answer
+// a different question than the one being asked, which is only: does the target have any operation
+// to perform.
+//
+// WHAT COUNTS AS A TRANSPARENT EDGE, AND WHERE THE WALK STOPS. A where-refinement is transparent
+// because the seed's own renderer already drops it, brand predicates included; a resolved alias
+// reference is transparent because it names a declaration rather than a carrier; and an UNRESOLVED
+// named reference is followed through the same type environment the front end resolved the program
+// with, which is what lets the walk see past the one-level peel. Optional cardinality and applied
+// type parameters are NOT transparent -- `X?` and `List<X>` are different host representations from
+// `X` -- so the walk stops there rather than erasing a cast across a real representation change. A
+// GROUNDED carrier stops it too and is the terminal the comparison wants. Fuel bounds a resolution
+// edge that points back at itself, and a self-resolving name is stopped by identity before that.
+fn transparent_representation_root(n: Node, env: TypeEnv, target: RenderTarget, fuel: Int) -> Node {
+  if fuel <= 0 {
+    n
+  } else if n.return_cardinality == CardOptional {
+    n
+  } else if n.connective == Conj && n.type_annotation != none {
+    match n.children |> first {
+      Present { value: base } => transparent_representation_root(n: base, env: env, target: target, fuel: fuel - 1)
+      Absent => n
+    }
+  } else if n.connective == NoConnective && n.children |> count == 0 && n.params |> count == 0 {
+    match n.inferred {
+      Present { value: Resolved { node: rt } } => transparent_representation_root(n: rt, env: env, target: target, fuel: fuel - 1)
+      _ => transparent_named_carrier_root(n: n, env: env, target: target, fuel: fuel)
+    }
+  } else {
+    n
+  }
+}
+
+fn transparent_named_carrier_root(n: Node, env: TypeEnv, target: RenderTarget, fuel: Int) -> Node {
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  if representation_carrier_is_grounded(decision: type_reference_realization(n: n, dag_name: name, target: target)) {
+    n
+  } else if name == "" {
+    n
+  } else {
+    match lookup_type_by_name(env: env, name: name) {
+      Present { value: decl } =>
+        if node_occurrence_ids_equal(left: decl.occurrence_identity, right: n.occurrence_identity) {
+          n
+        } else {
+          transparent_representation_root(n: decl, env: env, target: target, fuel: fuel - 1)
+        }
+      Absent => n
+    }
+  }
+}
+
+fn representation_carrier_is_grounded(decision: TypeRealizationDecision) -> Bool {
+  match realized_checkpoint(decision: decision) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A CARRIER WITH NO OCCURRENCE IDENTITY ANSWERS ABSENT, not "some identity". OccurrenceSynthetic
+// carries no id, so two synthetic carriers are not evidence of one carrier; reading them as equal
+// would erase a cast on the strength of a MISSING fact, which is the widening DESIGN section 5
+// forbids.
+fn occurrence_identity_id(identity: NodeOccurrenceIdentity) -> OccurrenceId? {
+  match identity {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrenceSynthetic => none
+  }
+}
+
+fn node_occurrence_ids_equal(left: NodeOccurrenceIdentity, right: NodeOccurrenceIdentity) -> Bool {
+  let l = occurrence_identity_id(identity: left)
+  let r = occurrence_identity_id(identity: right)
+  if l == none || r == none {
+    false
+  } else {
+    occurrence_id_eq(left: l.value, right: r.value)
+  }
+}
+
+// TWO GROUNDED CARRIERS ARE ONE REPRESENTATION EXACTLY WHEN THEY ARE THE SAME MODELED REALIZATION
+// ROW. The comparison is on the CHECKPOINT the coercion authority selected -- the row that says
+// what this .dag type becomes in this target -- and not on any string the emitter rendered. Where
+// no checkpoint grounds either side, the fallback is the carriers' own occurrence identity, so a
+// pair the realization authority cannot speak for is identical only when it is literally one node.
+fn realization_checkpoints_identical(a: TypeRealizationDecision, b: TypeRealizationDecision) -> Bool {
+  match realized_checkpoint(decision: a) {
+    Present { value: ca } =>
+      match realized_checkpoint(decision: b) {
+        Present { value: cb } =>
+          ca.dag_name == cb.dag_name && ca.target_type == cb.target_type && ca.grounding_type == cb.grounding_type
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn representation_roots_identical(a: Node, b: Node, env: TypeEnv, target: RenderTarget) -> Bool {
+  let da = type_reference_realization(n: a, dag_name: authored_name_at(source_indices: env.source_indices, node: a), target: target)
+  let db = type_reference_realization(n: b, dag_name: authored_name_at(source_indices: env.source_indices, node: b), target: target)
+  if representation_carrier_is_grounded(decision: da) && representation_carrier_is_grounded(decision: db) {
+    realization_checkpoints_identical(a: da, b: db)
+  } else {
+    node_occurrence_ids_equal(left: a.occurrence_identity, right: b.occurrence_identity)
+  }
+}
+
+// Positive structural evidence that two accepted .dag types are ONE host representation. This may
+// only ever move a cast OUT of the unsupported arm; it never admits one, so a wrong answer here
+// cannot fabricate an operation the target does not perform.
+fn cast_representation_identical(source_type: Node, target_type_node: Node, env: TypeEnv, target: RenderTarget) -> Bool {
+  representation_roots_identical(
+    a: transparent_representation_root(n: source_type, env: env, target: target, fuel: 64),
+    b: transparent_representation_root(n: target_type_node, env: env, target: target, fuel: 64),
+    env: env,
+    target: target)
+}
+
+fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env: TypeEnv, target: RenderTarget) -> Bool {
+  match expr.inferred {
+    Present { value: Resolved { node: n } } => cast_representation_identical(source_type: n, target_type_node: cast_target_node, env: env, target: target)
+    _ => false
+  }
+}
+
+// THREE MEANINGS, IN ORDER, AND THE THIRD IS UNCHANGED. Rendered-representation identity and
+// declared-carrier identity are two INDEPENDENTLY SUFFICIENT witnesses that the target has no
+// operation to perform -- neither is derived from the other, and neither is authority over the
+// other: the first sees carriers the resolver cannot reach from this seam, the second sees carriers
+// whose rendering the one-level peel gets wrong. Only after both decline is a real host conversion
+// selected from the target's CastSyntax, and only after THAT declines does the pre-existing
+// unsupported disposition stand.
+fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)
   let src_ty = match expr.inferred {
@@ -2770,6 +2922,8 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
     _ => ""
   }
   if src_ty != "" && src_ty == ty_str {
+    expr_str
+  } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
     expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
@@ -3464,6 +3618,7 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
     emit_cast: expr =>
       emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: target,
         recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        env: scope.type_env,
         source_indices: si),
     emit_for_each: expr =>
       emit_typed_for_each_shared(

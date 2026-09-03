@@ -10409,6 +10409,7 @@ fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
         cast_target_node: cast_target(texpr: expr),
         target: Rust,
         recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+        env: scope.type_env,
         source_indices: scope.type_env.source_indices)
     _ => emit_error_expr(message: "emit_rust_expr_cast expected ExprCast", target: Rust)
   }

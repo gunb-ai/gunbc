@@ -22745,6 +22745,7 @@ pub fn emit_rust_expr_cast(
                     1024,
                 )
             },
+            scope.type_env.clone(),
             scope.type_env.clone().source_indices.clone(),
         ),
         _ => crate::v1_compiler_emit::emit_error_expr(

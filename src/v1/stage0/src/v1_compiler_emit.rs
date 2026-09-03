@@ -20,10 +20,15 @@ pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
+pub use crate::std_coercion::TypeRealizationDecision;
+use crate::std_coercion::TypeRealizationDecision::*;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
-use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_occurrence_identity::occurrence_id_eq;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
+    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+};
+pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -34,9 +39,9 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
-    can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
-    target_callable, target_optional_template, type_realization_decision,
-    type_reference_realization,
+    can_cast, coerce_container_template, coerce_primitive_type, literal_suffix,
+    realized_checkpoint, render_cast, target_callable, target_optional_template,
+    type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
@@ -54,7 +59,7 @@ pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels,
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
-pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
+pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_by_name};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
@@ -5629,11 +5634,219 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
     })
 }
 
+pub fn transparent_representation_root(
+    mut n: Rc<Node>,
+    mut env: Rc<TypeEnv>,
+    mut target: RenderTarget,
+    mut fuel: i64,
+) -> Rc<Node> {
+    loop {
+        if (fuel.clone() <= 0) {
+            break n.clone();
+        } else {
+            if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+                break n.clone();
+            } else {
+                if ((n.connective.clone() == Connective::Conj)
+                    && (n.type_annotation.clone() != std::option::Option::None))
+                {
+                    match n.children.clone().first().cloned() {
+                        Some(base) => {
+                            let __tco_0 = base.clone();
+                            let __tco_1 = (fuel - 1);
+                            n = __tco_0;
+                            fuel = __tco_1;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            break n.clone();
+                        }
+                    }
+                } else {
+                    if (((n.connective.clone() == Connective::NoConnective)
+                        && ((n.children.clone().len() as i64) == 0))
+                        && ((n.params.clone().len() as i64) == 0))
+                    {
+                        match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                let __tco_0 = rt.clone();
+                                let __tco_1 = (fuel - 1);
+                                n = __tco_0;
+                                fuel = __tco_1;
+                                continue;
+                            }
+                            _ => {
+                                break transparent_named_carrier_root(
+                                    n.clone(),
+                                    env.clone(),
+                                    target.clone(),
+                                    fuel.clone(),
+                                );
+                            }
+                        }
+                    } else {
+                        break n.clone();
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn transparent_named_carrier_root(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    target: RenderTarget,
+    fuel: i64,
+) -> Rc<Node> {
+    {
+        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        if representation_carrier_is_grounded(
+            crate::v1_compiler_coercion::type_reference_realization(
+                n.clone(),
+                name.clone(),
+                target.clone(),
+            ),
+        ) {
+            n.clone()
+        } else {
+            if (name.clone() == "".to_string()) {
+                n.clone()
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
+                    Some(decl) => {
+                        if node_occurrence_ids_equal(
+                            decl.occurrence_identity.clone(),
+                            n.occurrence_identity.clone(),
+                        ) {
+                            n.clone()
+                        } else {
+                            transparent_representation_root(
+                                decl.clone(),
+                                env.clone(),
+                                target.clone(),
+                                (fuel.clone() - 1),
+                            )
+                        }
+                    }
+                    std::option::Option::None => n.clone(),
+                }
+            }
+        }
+    }
+}
+
+pub fn representation_carrier_is_grounded(decision: Rc<TypeRealizationDecision>) -> bool {
+    match crate::v1_compiler_coercion::realized_checkpoint(decision.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn occurrence_identity_id(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+    }
+}
+
+pub fn node_occurrence_ids_equal(
+    left: Rc<NodeOccurrenceIdentity>,
+    right: Rc<NodeOccurrenceIdentity>,
+) -> bool {
+    {
+        let l = occurrence_identity_id(left.clone());
+        let r = occurrence_identity_id(right.clone());
+        if ((l.clone() == std::option::Option::None) || (r.clone() == std::option::Option::None)) {
+            false
+        } else {
+            crate::std_occurrence_identity::occurrence_id_eq(l.clone().unwrap(), r.clone().unwrap())
+        }
+    }
+}
+
+pub fn realization_checkpoints_identical(
+    a: Rc<TypeRealizationDecision>,
+    b: Rc<TypeRealizationDecision>,
+) -> bool {
+    match crate::v1_compiler_coercion::realized_checkpoint(a.clone()) {
+        Some(ca) => match crate::v1_compiler_coercion::realized_checkpoint(b.clone()) {
+            Some(cb) => {
+                (((ca.dag_name.clone() == cb.dag_name.clone())
+                    && (ca.target_type.clone() == cb.target_type.clone()))
+                    && (ca.grounding_type.clone() == cb.grounding_type.clone()))
+            }
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
+pub fn representation_roots_identical(
+    a: Rc<Node>,
+    b: Rc<Node>,
+    env: Rc<TypeEnv>,
+    target: RenderTarget,
+) -> bool {
+    {
+        let da = crate::v1_compiler_coercion::type_reference_realization(
+            a.clone(),
+            crate::v1_std_core::authored_name_at(env.source_indices.clone(), a.clone()),
+            target.clone(),
+        );
+        let db = crate::v1_compiler_coercion::type_reference_realization(
+            b.clone(),
+            crate::v1_std_core::authored_name_at(env.source_indices.clone(), b.clone()),
+            target.clone(),
+        );
+        if (representation_carrier_is_grounded(da.clone())
+            && representation_carrier_is_grounded(db.clone()))
+        {
+            realization_checkpoints_identical(da.clone(), db.clone())
+        } else {
+            node_occurrence_ids_equal(a.occurrence_identity.clone(), b.occurrence_identity.clone())
+        }
+    }
+}
+
+pub fn cast_representation_identical(
+    source_type: Rc<Node>,
+    target_type_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+    target: RenderTarget,
+) -> bool {
+    representation_roots_identical(
+        transparent_representation_root(source_type.clone(), env.clone(), target.clone(), 64),
+        transparent_representation_root(target_type_node.clone(), env.clone(), target.clone(), 64),
+        env.clone(),
+        target.clone(),
+    )
+}
+
+pub fn cast_source_representation_identical(
+    expr: Rc<Node>,
+    cast_target_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+    target: RenderTarget,
+) -> bool {
+    match expr.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => cast_representation_identical(
+            n.clone(),
+            cast_target_node.clone(),
+            env.clone(),
+            target.clone(),
+        ),
+        _ => false,
+    }
+}
+
 pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>) -> String + Clone,
+    env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -5652,20 +5865,36 @@ pub fn emit_typed_cast_shared(
         if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
             expr_str
         } else {
-            if crate::v1_compiler_coercion::can_cast(target.clone(), src_ty.clone(), ty_str.clone())
-            {
-                crate::v1_compiler_coercion::render_cast(expr_str, ty_str.clone(), target.clone())
+            if cast_source_representation_identical(
+                expr.clone(),
+                cast_target_node.clone(),
+                env.clone(),
+                target.clone(),
+            ) {
+                expr_str
             } else {
-                emit_error_expr(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
-                            " to ".to_string(),
-                        ),
-                        ty_str.clone(),
-                    ),
+                if crate::v1_compiler_coercion::can_cast(
                     target.clone(),
-                )
+                    src_ty.clone(),
+                    ty_str.clone(),
+                ) {
+                    crate::v1_compiler_coercion::render_cast(
+                        expr_str,
+                        ty_str.clone(),
+                        target.clone(),
+                    )
+                } else {
+                    emit_error_expr(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
+                                " to ".to_string(),
+                            ),
+                            ty_str.clone(),
+                        ),
+                        target.clone(),
+                    )
+                }
             }
         }
     }
@@ -7680,6 +7909,7 @@ pub fn emit_unified_typed_expr(
                             render_pattern.clone(),
                         )
                     },
+                    scope.type_env.clone(),
                     si.clone(),
                 )
             },

@@ -1,0 +1,33 @@
+module fixture.closure.rustc_nested_refinement_cast_probe
+
+import std.types { Bool, String, Int, Float }
+
+// THE POSITIVE CONTROL FOR REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS, POSED TO RUSTC
+// RATHER THAN TO A SUBSTRING ORACLE (gunbc#10266). Every alias below emits as the target's String,
+// so none of these six casts has any host operation to perform and each must emit its operand
+// unchanged. Before v1.compiler.emit cast_representation_identical, five of the six emitted
+// panic!("unsupported cast from ..") into the generated Rust: the never type let that type-check,
+// so a SPELLING oracle asserting the absence of that substring is the only text-level evidence
+// available, and it says nothing about whether what replaced it MEANS the operand. rustc does.
+//
+// THE FILE IS THE SUBJECT AND ITS SIX CASTS ARE THE COVERAGE. Both directions are exercised
+// deliberately: widening into a refinement and projecting back out are separate emitter decisions,
+// and a repair handling only the widening leaves every projection still fabricating a panic.
+// int_to_float is here as the CONTRAST, not as filler -- a genuine host conversion, which must
+// still go through the target's own cast syntax rather than be erased to the operand.
+fn segment_non_empty(value: String) -> Bool {
+  !(value == "")
+}
+
+type FlatSegment = String where segment_non_empty
+type BrandedSegment = FlatSegment where segment_non_empty
+type NestedPredicateSegment = FlatSegment where segment_non_empty
+
+fn widen_flat(raw: String) -> FlatSegment { raw as FlatSegment }
+fn widen_branded_from_flat(v: FlatSegment) -> BrandedSegment { v as BrandedSegment }
+fn widen_branded_from_string(raw: String) -> BrandedSegment { raw as BrandedSegment }
+fn project_branded_to_flat(b: BrandedSegment) -> FlatSegment { b as FlatSegment }
+fn project_branded_to_string(b: BrandedSegment) -> String { b as String }
+fn widen_nested_predicate(raw: String) -> NestedPredicateSegment { raw as NestedPredicateSegment }
+
+fn int_to_float(i: Int) -> Float { i as Float }

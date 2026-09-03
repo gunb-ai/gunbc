@@ -1,27 +1,39 @@
 module test.claim.emitter_nested_refinement_cast_witness_test
 
-// Emission-level control for the carrier class that broke gunbc#7480: a where-refinement whose BASE
-// is itself a refined type (NonEmptyStr where pred) is a carrier composition the v1 Rust emitter
-// cannot lower, so instead of refusing at emit time it emits panic!("unsupported cast from String
-// to NonEmptyStr") into the generated Rust. The round-trip witness in
-// content_hash_family_grounded_witness_test.dag does NOT discriminate this class — it was proven
-// green against both the defective and the repaired carrier, because the defect is emission-only
-// and never reaches R0 evaluation. This file is the emission-level evidence the round-trip witness
-// cannot supply. Two poles, both executed: single_refinement is the accepted positive control (the
-// repaired shape, String where pred, emits no unsupported cast), and nested_refinement is a
-// KNOWN-RED RECEIPT, not a RED control: it PASSES while the deficit remains, so its polarity is
-// inverted from a conventional control -- it goes red when the emitter is fixed, which is the
-// signal to rewrite both poles. The deficit is deliberately asserted as PRESENT rather than fixed:
-// repairing the emitter to lower nested refinements is an emitter feature outside this PR's scope,
-// so the deficit is recorded here as a typed, counted, executing fact instead of an unmarked
-// silence (DESIGN section 4b — no untracked stall; the reported rung must equal the rung executed
-// evidence establishes). NOTE the emitter arm itself is a section 5 fail-open: an unsupported cast
-// should be a located refusal at emit time, never a panic fabricated into generated code — in
-// gunbc#7480 exactly one such panic masked a second one, and the masked one would have paniced at
-// runtime on any accepted non-SHA OCI digest. dissolve-on:
-// feature:emitter-nested-refinement-lowering — when the emitter either lowers nested refinements or
-// refuses them at emit time, the known-red receipt flips and BOTH poles are rewritten to assert the
-// refusal.
+// PERMANENT REGRESSION EVIDENCE FOR REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS
+// (gunbc#10266). `type NonEmptyStr = String where non_empty` and `type PathSegment = NonEmptyStr
+// where brand("PathSegment")` are three .dag types over ONE host carrier -- all three emit as the
+// target's String -- so a cast between any two of them changes which accepted .dag type the value
+// inhabits and asks the target for NO operation at all. v1.compiler.emit
+// cast_representation_identical decides that from resolved carrier occurrence identity and emits
+// the operand unchanged.
+//
+// THIS FILE USED TO HOLD THE OPPOSITE ASSERTION, and the flip is the point rather than a rewrite.
+// Until this change nested_refinement_carrier_deficit_remains_observable was a KNOWN-RED RECEIPT
+// with inverted polarity: it PASSED while the emitter fabricated panic!("unsupported cast from
+// String to NonEmptyStr") into generated Rust, and its own note named the flip as the signal to
+// rewrite both poles. Its dissolve-on trigger, feature:emitter-nested-refinement-lowering, has
+// fired. Per DESIGN section 4b(4) the receipt is not retired on the climb -- it is rewritten to
+// assert the repaired direction and kept enrolled, because a class whose evidence retires when it
+// starts passing has no way to report that it stopped.
+//
+// WHY THE SUBSTRING IS THE ABSENCE AND NOT A SPELLING OF THE FIX. These poles assert what must NOT
+// appear -- no unsupported-cast disposition anywhere in the emitted module -- because asserting the
+// PRESENCE of some emitted text would pin one rendering of "the operand unchanged" and go red on
+// any faithful change to it. The complementary question, whether what replaced the panic MEANS the
+// operand, is not answerable by a substring at all; it is posed to rustc through the
+// fixture-closure route by fixtures/fixture_closure_rustc/nested_refinement_cast_probe.dag.
+//
+// THE THREE-DIRECTION SHAPE IS THE COVERAGE. Widening into a refinement, widening across a nested
+// one, and projecting back out are separate emitter decisions: a repair handling only the widening
+// leaves every projection still fabricating a panic, which is exactly the state gunbc#10266
+// measured. single_refinement is the pre-existing positive control and is unchanged.
+//
+// NOT CLAIMED: that every unsupported cast is now a located compile-time refusal. The third arm of
+// emit_typed_cast_shared still fabricates a panic for a cast that is neither representation-
+// identical nor available in the target's cast syntax. That is the fail-open recorded by
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target and it is untouched here;
+// this change removes the identical case from that arm, it does not repair the arm.
 
 fn w_single_refinement_emits_no_unsupported_cast() -> Bool {
   compile_dag_rust_emit_check(
@@ -32,12 +44,50 @@ fn w_single_refinement_emits_no_unsupported_cast() -> Bool {
   )
 }
 
-fn w_nested_refinement_still_emits_unsupported_cast() -> Bool {
+fn w_nested_refinement_emits_no_unsupported_cast() -> Bool {
   compile_dag_rust_emit_check(
     "module emitnested_nested\n\nimport std.types { Bool, NonEmptyStr, String }\n\nfn encoded_ok(value: String) -> Bool {\n  !(value == \"\")\n}\n\ntype NestedCarrier = NonEmptyStr where encoded_ok\n\nfn parse_nested(raw: String) -> NestedCarrier {\n  raw as NestedCarrier\n}\n\nfn render_nested(c: NestedCarrier) -> String {\n  c as String\n}\n",
     "src/emitnested_nested.rs",
+    ["fn parse_nested"],
+    ["unsupported cast"]
+  )
+}
+
+fn w_intermediate_refinement_casts_emit_no_unsupported_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_middle\n\nimport std.types { Bool, String }\n\nfn encoded_ok(value: String) -> Bool {\n  !(value == \"\")\n}\n\ntype SingleCarrier = String where encoded_ok\n\ntype NestedCarrier = SingleCarrier where encoded_ok\n\nfn widen(v: SingleCarrier) -> NestedCarrier {\n  v as NestedCarrier\n}\n\nfn project(c: NestedCarrier) -> SingleCarrier {\n  c as SingleCarrier\n}\n",
+    "src/emitnested_middle.rs",
+    ["fn widen"],
+    ["unsupported cast"]
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE ERASURE ITSELF, and the reason the three poles above are evidence
+// rather than a check that cannot fail. Representation identity may only ever move a cast OUT of
+// the unsupported arm, so the failure this class must not have is the OPPOSITE one: two carriers
+// that are genuinely different erased to the operand. String and Int are different grounded
+// carriers with no Rust cast rule between them, so the unsupported disposition must still stand
+// here. If cast_representation_identical ever widens to answer true on absence of evidence -- a
+// synthetic occurrence read as a match, a string-like predicate, a name comparison -- this pole is
+// what goes red.
+fn w_unrelated_carriers_still_refuse_the_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_unrelated\n\nimport std.types { Int, String }\n\nfn coerce(raw: String) -> Int {\n  raw as Int\n}\n",
+    "src/emitnested_unrelated.rs",
     ["unsupported cast"],
     []
+  )
+}
+
+// A GENUINE HOST CONVERSION MUST STILL BE ONE. Int -> Float is a real Rust cast (`{expr} as
+// {type}`), so it must be selected from the target's CastSyntax and not erased to the operand by
+// the identity decision sitting in front of it.
+fn w_numeric_conversion_still_uses_cast_syntax() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_numeric\n\nimport std.types { Int, Float }\n\nfn widen_numeric(i: Int) -> Float {\n  i as Float\n}\n",
+    "src/emitnested_numeric.rs",
+    ["as f64"],
+    ["unsupported cast"]
   )
 }
 
@@ -45,6 +95,18 @@ test fn single_refinement_carrier_emits_no_unsupported_cast() -> Bool {
   w_single_refinement_emits_no_unsupported_cast()
 }
 
-test fn nested_refinement_carrier_deficit_remains_observable() -> Bool {
-  w_nested_refinement_still_emits_unsupported_cast()
+test fn nested_refinement_carrier_emits_no_unsupported_cast() -> Bool {
+  w_nested_refinement_emits_no_unsupported_cast()
+}
+
+test fn intermediate_refinement_casts_emit_no_unsupported_cast() -> Bool {
+  w_intermediate_refinement_casts_emit_no_unsupported_cast()
+}
+
+test fn unrelated_carriers_still_refuse_the_cast() -> Bool {
+  w_unrelated_carriers_still_refuse_the_cast()
+}
+
+test fn numeric_conversion_still_uses_cast_syntax() -> Bool {
+  w_numeric_conversion_still_uses_cast_syntax()
 }
