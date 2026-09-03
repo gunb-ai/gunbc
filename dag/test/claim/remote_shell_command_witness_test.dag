@@ -4,6 +4,7 @@ import gunbc.remote_shell_command {
   simple_command,
   emit_remote_shell,
   remote_exec_command_string,
+  remote_exec_command_rendered,
   SimpleCommandBuilt,
   SimpleCommandRefused,
   RemoteExecCommandBuilt,
@@ -80,6 +81,6 @@ test fn witness_remote_exec_command_string_builds_under_posix_shell_interpretati
   match remote_exec_command_string(argv: ["jq", ".status"], interpretation: PosixShellInterpreted) {
     RemoteExecCommandRefused { cause: _ } => false
     RemoteExecCommandBuilt { command: c } =>
-      c as String == "'jq' '.status'"
+      remote_exec_command_rendered(command: c) as String == "'jq' '.status'"
   }
 }

@@ -113,21 +113,35 @@ fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
   join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " ") as NonEmptyStr
 }
 
+// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one: the single
+// admitted route is remote_exec_command_string below, which takes a typed argv vector and an
+// observed interpretation and emits the grammar-owned single-quote encoding. A recipient at the
+// transport boundary unwraps via remote_exec_command_rendered to obtain the NonEmptyStr for the
+// physical exec channel — a construction gate, not a validation check.
+type RemoteExecCommand sole_constructor {
+  rendered: NonEmptyStr
+}
+
 type RemoteExecCommandRefusalCause
   = SimpleCommandArgvRefused { cause: SimpleCommandRefusalCause }
   | RemoteExecInterpretationUnknown
 
 type RemoteExecCommandOutcome
-  = RemoteExecCommandBuilt { command: NonEmptyStr }
+  = RemoteExecCommandBuilt { command: RemoteExecCommand }
   | RemoteExecCommandRefused { cause: RemoteExecCommandRefusalCause }
+
+// The sole unwrap for the transport boundary. Only this module exports it; if it were not needed,
+// removing it would prove nothing beyond the transport here — but without it, every consumer must
+// re-pattern-match the sole_constructor, which is the same number of lines and changes nothing
+// about the gate. Export it for readability; no downstream module may mint a RemoteExecCommand.
+fn remote_exec_command_rendered(command: RemoteExecCommand) -> NonEmptyStr { command.rendered }
 
 // The composition constraint, spelled as code rather than as prose: append(ssh_exec_prefix,
 // inner.argv) -- what extdeps.exec.command command_over_transport's SshExec branch does today -- is
 // wrong in KIND, because RFC 4254 carries one command STRING, not a suffixed argv. This function
-// produces that one string as its OWN typed output (RemoteExecCommandBuilt.command: NonEmptyStr),
-// for a caller to hand to ssh.Session.Exec's `command` field -- a composition of two targets (outer
-// local ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the
-// other.
+// produces that one string as its OWN typed output (RemoteExecCommandBuilt.command: RemoteExecCommand),
+// for a caller to hand to the physical exec channel — a composition of two targets (outer local
+// ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the other.
 
 fn remote_exec_command_string(
   argv: List<NonEmptyStr>,
@@ -138,7 +152,10 @@ fn remote_exec_command_string(
     PosixShellInterpreted =>
       match simple_command(argv: argv) {
         SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
-        SimpleCommandBuilt { command: cmd } => RemoteExecCommandBuilt { command: emit_remote_shell(command: cmd) }
+        SimpleCommandBuilt { command: cmd } =>
+          RemoteExecCommandBuilt {
+            command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
+          }
       }
   }
 }

@@ -22,7 +22,9 @@ import extdeps.tools.jq {
 }
 import gunbc.remote_shell_command {
   openbmc_dropbear_interpretation,
+  RemoteExecCommand,
   RemoteExecInterpretationUnknown,
+  remote_exec_command_rendered,
   Unknown,
 }
 import extdeps.bmc.openbmc_fan_control {
@@ -149,7 +151,7 @@ test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool {
       match openbmc_remote_jq_command(plan: plan, interpretation: openbmc_dropbear_interpretation) {
         OpenBmcRemoteJqCommandRefused { cause: _ } => false
         OpenBmcRemoteJqCommandBuilt { command: command } =>
-          command as String
+          remote_exec_command_rendered(command: command) as String
             == "'jq' '--raw-output' '--exit-status' '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length' '/etc/openbmc/fan_config.json'"
       }
   }

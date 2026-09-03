@@ -12,6 +12,7 @@ import extdeps.ssh.password_session {
 }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.languages.json.emit {
+  JsonValue,
   json_array,
   json_int,
   json_kv,
@@ -40,9 +41,11 @@ import extdeps.tools.jq {
   jq_admitted_plan_surface,
   jq_classify_observation,
   jq_execute_admitted_plan,
-  jq_invocation_process_plan
+  jq_invocation_process_plan,
+  jq_executable,
 }
 import gunbc.remote_shell_command {
+  RemoteExecCommand,
   RemoteExecCommandInterpretation,
   RemoteExecCommandBuilt,
   RemoteExecCommandRefused,
@@ -50,6 +53,7 @@ import gunbc.remote_shell_command {
   RemoteExecInterpretationUnknown,
   SimpleCommandArgvRefused,
   Unknown,
+  remote_exec_command_rendered,
   remote_exec_command_string,
 }
 import v2.std.compilers.cli_surface {
@@ -951,7 +955,7 @@ fn openbmc_object_mapper_service_at(content: String, index: Int) -> OpenBmcServi
     bindings: [
       JqJsonBinding {
         name: JqBindingName { name: "index" },
-        value: serialize_json(json_int(index)) as NonEmptyStr,
+        value: json_int(n: index),
       }
     ],
     input: JqInputStdin { content: content },
@@ -1390,15 +1394,15 @@ type OpenBmcRemoteJqRefusal
   | OpenBmcRemoteJqCommandStringRefused { cause: RemoteExecCommandRefusalCause }
 
 type OpenBmcRemoteJqCommandOutcome
-  = OpenBmcRemoteJqCommandBuilt { command: NonEmptyStr }
+  = OpenBmcRemoteJqCommandBuilt { command: RemoteExecCommand }
   | OpenBmcRemoteJqCommandRefused { cause: OpenBmcRemoteJqRefusal }
 
 // The remote words are the jq executable plus the already-emitted surface words -- the semantic
-// layer chose every flag, and this function adds only the executable identity, exactly as the
-// local realization's handler does.
+// layer chose every flag, and this function adds only the executable identity (from jq's own
+// `jq_executable` row, never a literal), exactly as the local realization's handler does.
 fn openbmc_remote_jq_words(surface: CliSurface) -> List<NonEmptyStr> {
   append(
-    ["jq"],
+    [jq_executable],
     items: cli_surface_arguments(surface: surface) |> map(arg => cli_argument_text(argument: arg) as NonEmptyStr),
   )
 }
@@ -1427,16 +1431,19 @@ type OpenBmcRemoteJqOutcome
   = OpenBmcRemoteJqExecuted { observation: ProcessObservation }
   | OpenBmcRemoteJqRefused { cause: OpenBmcRemoteJqRefusal }
 
+// Unknown until a live target confirms a POSIX shell interpretation
+// (remote_exec_command_live_confirmation); the path REFUSES rather than fabricating one.
 fn openbmc_remote_jq_execute(
   session: PasswordSshSession,
   plan: JqAdmittedProcessPlan,
 ) -> OpenBmcRemoteJqOutcome {
-  // Unknown until a live target confirms a POSIX shell interpretation
-  // (remote_exec_command_live_confirmation); the path REFUSES rather than fabricating one.
   match openbmc_remote_jq_command(plan: plan, interpretation: Unknown) {
     OpenBmcRemoteJqCommandRefused { cause: cause } =>
       OpenBmcRemoteJqRefused { cause: cause }
-    OpenBmcRemoteJqCommandBuilt { command: command } => {
+    OpenBmcRemoteJqCommandBuilt { command: sealed } => {
+      // Unwrap at the physical boundary: the sealed RemoteExecCommand becomes the transport's
+      // command string. No other module may construct a RemoteExecCommand.
+      let command = remote_exec_command_rendered(command: sealed)
       let ran = openbmc.PasswordSshTransport.RunCommand(
         host: session.host,
         username: session.username,
