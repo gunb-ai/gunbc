@@ -23,16 +23,16 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // THE INPUT IS THE `required-floor-claim-cost` ARTIFACT that every required-floor run uploads --
 // the COMPLETE executed population, not the 25-row `[over-cost]` preview the job log prints.
 
+// `eval_steps` IS THE THIRD COLUMN THIS ANALYSIS NEEDS, and the only one of the three that is not
+// a clock. Evaluator steps are counted by the interpreter and netted by the same shared-fill rule
+// the CPU figure is, so a row's step count is a property of what it evaluated and carries no term
+// for the machine it evaluated on. It is what lets `identity_inflation_permille_at_equal_work`
+// below separate "this row got more expensive" from "this row got inflated" without choosing a
+// control population at all.
 type FloorCostRow {
   identity: String
   module: String
   cpu_ms: Millisecond
-  // THE THIRD COLUMN THIS ANALYSIS NEEDS, and it is the only one that is not a clock. Evaluator
-  // steps are counted by the interpreter and netted by the same shared-fill rule the CPU figure
-  // is, so a row's step count is a property of what it evaluated and carries no term for the
-  // machine it evaluated on. It is what lets `identity_inflation_permille_at_equal_work` below
-  // separate "this row got more expensive" from "this row got inflated" without choosing a
-  // control population at all.
   eval_steps: Int
 }
 
