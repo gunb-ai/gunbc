@@ -884,9 +884,6 @@ pub struct TransitionAdmission {
 /// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
-const CALL_REACHABILITY_GROUNDING_LABEL: &str =
-    "call-reachability grounding gunbc#10156 2026-09-03";
-
 /// TWENTIETH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
 /// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
 /// because the type module cannot import the rows back without a cycle. Two bindings in
@@ -904,6 +901,30 @@ const CALL_REACHABILITY_GROUNDING_LABEL: &str =
 /// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
 /// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
 /// forget; the required run reports them as consumed admissions due for deletion on that change.
+///
+/// TWENTIETH DISSOLUTION (2026-09-03). The 17 call-reachability-grounding rows of the
+/// EIGHTEENTH TRANSITION are removed by their own trigger, which fired: gunbc#10156 merged at
+/// 54b1323245, so main carries the move into `v2.std.fn_index` and no run after it can produce
+/// those deltas. The required run on e9af304a3b reported them as `17 consumed admission(s) due
+/// for deletion on this roster-touching change`, with `verdict=FloorClean` in that same run --
+/// so the phase failure was this and one stale citation, and nothing else.
+///
+/// I AM THE TOUCHER MY OWN TRANSITION MADE. This branch touched the roster to declare the
+/// gunbc#10206 split, and that is what charged it the obligation to delete another transition's
+/// consumed rows. The rule working, not a sweep of convenience, and why no follow-up PR is owed.
+/// The resting state after this change is this branch's own two rows.
+///
+/// THE ORDINAL IS AUTHOR-ASSIGNED AND THIS FILE HAS ALREADY RECORDED THREE COLLISIONS ON IT. If a
+/// concurrent branch also observed these 17 and authored a record, ONE of the two must go -- two
+/// ordinal-bearing writeups of one event is the section 3 violation the history above describes,
+/// and it survives a git conflict rather than being caught by it. This record yields to any
+/// earlier-pushed one.
+///
+/// THE LABEL CONSTANT DIES WITH ITS ROWS. `CALL_REACHABILITY_GROUNDING_LABEL` existed only to
+/// spell those 17 labels, so it is deleted here rather than left unreferenced -- CI builds this
+/// crate under `RUSTFLAGS=-D warnings`, where an unused const is a hard error and not clutter.
+/// A dissolution that removes rows but keeps their vocabulary alive leaves the next author a
+/// name with no subject, which is the same stale-carrier shape the roster's history warns about.
 ///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
@@ -923,176 +944,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "failure_mode_preamble_blocks",
             spelling: "recurring_failure_mode_roster",
             target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.bmc_onboarding_quarantine_witness_test",
-            in_declaration: "onboarding_quarantine_lexemes",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "edit_locus_nodes_for_module",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "module_path_for_decl",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "effect_reach_classification_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "bind_g2_root",
-            spelling: "tail_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_home_decls_present",
-            spelling: "decls_in_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "literal_path_carriers_from_atoms",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_edges",
-            spelling: "call_reachable_decls_from_root",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "callees_from_atom_scan",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
