@@ -1,6 +1,7 @@
 module v2.workflow.required_ci_measurement
 
 import std.types { String, List, Bool }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_int, json_string }
 
 // D0: measurement, publication and adjudication are three different facts. A subject may
 // refuse while its measurement completed; that refusal remains publishable evidence. Failure
@@ -15,13 +16,6 @@ type RequiredCiMeasurement
   = MeasurementCompleted { blockers: List<RequiredCiBlocker> }
   | MeasurementUnreached { cause: String }
 
-fn required_ci_measurement_publishable(measurement: RequiredCiMeasurement) -> Bool {
-  match measurement {
-    MeasurementCompleted { blockers: _ } => true
-    MeasurementUnreached { cause: _ } => true
-  }
-}
-
 fn required_ci_measurement_admitted(measurement: RequiredCiMeasurement) -> Bool {
   match measurement {
     MeasurementCompleted { blockers: Empty {} } => true
@@ -30,3 +24,14 @@ fn required_ci_measurement_admitted(measurement: RequiredCiMeasurement) -> Bool 
   }
 }
 
+// The .dag model owns the fallback wire document. Rust's serde representation is the bootstrap
+// realization of this schema; it is not a second authoring surface for the build-unreached bytes.
+fn required_ci_measurement_unreached_json(cause: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "version", value: json_int(n: 1)),
+    json_kv(key: "receipt", value: json_object(members: [
+      json_kv(key: "standing", value: json_string(s: "measurement_unreached")),
+      json_kv(key: "cause", value: json_string(s: cause))
+    ]))
+  ]))
+}

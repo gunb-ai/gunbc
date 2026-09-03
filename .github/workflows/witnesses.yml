@@ -185,13 +185,7 @@ jobs:
         continue-on-error: true
       - name: "D0-MEASURE: seal an unreached receipt when the instrument did not return"
         run: |
-          if [ ! -f "required_ci_measurement_receipt.json" ]; then
-            if [ -x target/release/claim_executor ]; then
-              target/release/claim_executor --measurement-unreached-receipt "required_ci_measurement_receipt.json" --measurement-unreached-cause "measurement process exited before producing a receipt"
-            else
-              printf '%s\n' '{"version":1,"receipt":{"standing":"measurement_unreached","cause":"instrument could not be built"}}' > "required_ci_measurement_receipt.json"
-            fi
-          fi
+          if '[' '!' '-f' 'required_ci_measurement_receipt.json' ']'; then if '[' '-x' 'target/release/claim_executor' ']'; then 'target/release/claim_executor' '--measurement-unreached-receipt' 'required_ci_measurement_receipt.json' '--measurement-unreached-cause' 'measurement process exited before producing a receipt'; fi; if '[' '!' '-x' 'target/release/claim_executor' ']'; then 'printf' '%s\n' '{"version": 1, "receipt": {"standing": "measurement_unreached", "cause": "instrument could not be built"}}' > 'required_ci_measurement_receipt.json'; fi; fi
         if: always() && !cancelled()
       - name: "D0-PUBLISH: upload the required CI measurement receipt"
         uses: actions/upload-artifact@v4
@@ -203,12 +197,8 @@ jobs:
         if: always() && !cancelled()
       - name: "D0-ADJUDICATE: consume the published measurement receipt"
         run: |
-          if [ -x target/release/claim_executor ]; then
-            target/release/claim_executor --adjudicate-measurement-receipt required_ci_measurement_receipt.json
-          else
-            echo 'required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built' >&2
-            exit 1
-          fi
+          if '[' '-x' 'target/release/claim_executor' ']'; then 'target/release/claim_executor' '--adjudicate-measurement-receipt' 'required_ci_measurement_receipt.json'; fi
+          if '[' '!' '-x' 'target/release/claim_executor' ']'; then 'echo' 'required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built' >&2; exit 1; fi
         if: always() && !cancelled()
       - name: Upload the floor's admission roster
         uses: actions/upload-artifact@v4

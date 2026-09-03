@@ -72,6 +72,10 @@ import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
+import v2.workflow.required_ci_measurement_shell {
+  required_ci_measurement_finalize_stmts,
+  required_ci_measurement_adjudicate_stmts
+}
 import v2.std.diagnostic { Outcome }
 import std.types { List, String, Int }
 
@@ -976,15 +980,41 @@ fn witness_floor_run_step() -> Step {
 data required_ci_measurement_receipt_path: String = "required_ci_measurement_receipt.json"
 data required_ci_measurement_receipt_artifact_name: String = "required-ci-measurement-receipt"
 
+fn required_ci_measurement_finalize_script_outcome() -> String? {
+  match bash_fold_serialize_program(
+    stmts: required_ci_measurement_finalize_stmts(receipt_path: required_ci_measurement_receipt_path),
+    set_e: false
+  ) {
+    Accepted { value: script, diagnostics: _ } => Present { value: script }
+    Rejected { diagnostics: _ } => none
+  }
+}
+
 fn required_ci_measurement_finalize_script() -> String {
-  concat(
-    "if [ ! -f \"", concat(required_ci_measurement_receipt_path, concat(
-      "\" ]; then\n  if [ -x target/release/claim_executor ]; then\n    target/release/claim_executor --measurement-unreached-receipt \"", concat(
-        required_ci_measurement_receipt_path,
-        "\" --measurement-unreached-cause \"measurement process exited before producing a receipt\"\n  else\n    printf '%s\\n' '{\"version\":1,\"receipt\":{\"standing\":\"measurement_unreached\",\"cause\":\"instrument could not be built\"}}' > \"required_ci_measurement_receipt.json\"\n  fi\nfi\n"
-      )
-    ))
-  )
+  match required_ci_measurement_finalize_script_outcome() {
+    Present { value: script } => script
+    Absent => ""
+  }
+}
+
+fn required_ci_measurement_adjudicate_script_outcome() -> String? {
+  match bash_fold_serialize_program(
+    stmts: required_ci_measurement_adjudicate_stmts(receipt_path: required_ci_measurement_receipt_path),
+    set_e: false
+  ) {
+    Accepted { value: script, diagnostics: _ } => Present { value: script }
+    Rejected { diagnostics: _ } => none
+  }
+}
+
+fn required_ci_measurement_scripts_are_renderable() -> Bool {
+  match required_ci_measurement_finalize_script_outcome() {
+    Present { value: _ } => match required_ci_measurement_adjudicate_script_outcome() {
+      Present { value: _ } => true
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 fn required_ci_measurement_finalize_step() -> Step {
@@ -1000,10 +1030,10 @@ fn required_ci_measurement_adjudicate_step() -> Step {
   RunStep {
     name: Present { value: "D0-ADJUDICATE: consume the published measurement receipt" },
     id: none,
-    run: concat(
-      "if [ -x target/release/claim_executor ]; then\n  target/release/claim_executor --adjudicate-measurement-receipt ",
-      concat(required_ci_measurement_receipt_path, "\nelse\n  echo 'required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built' >&2\n  exit 1\nfi\n")
-    ),
+    run: match required_ci_measurement_adjudicate_script_outcome() {
+      Present { value: script } => script
+      Absent => ""
+    },
     shell: none, env: none, working_directory: none,
     if_condition: Present { value: "always() && !cancelled()" }, continue_on_error: none, timeout_minutes: none
   }
@@ -2839,7 +2869,7 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && emit_copy_qualification_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && emit_copy_qualification_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() {
         WitnessFloorGenerated {
           content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
         }
