@@ -87,6 +87,51 @@ import gunbc.generated_artifact {
 // mints the candidate. Until that lands, the explicit hand queue is the honest interim mitigation
 // and is what this model prices.
 
+// WHY THIS MODULE IS NOT MERGED YET, AND WHAT WOULD CHANGE THAT. Held at operator ruling
+// 2026-09-03 pending an OPERATIONAL CONSUMER. The state machine and `projection_member_eligibility`
+// are evidence today, not production: no site in this repository currently asks "may this member
+// be derived here". That was established by enumeration rather than by assumption, and the
+// enumeration is recorded here because a search whose result is NOTHING is the finding most likely
+// to be repeated. Four sites partition the generated-artifact population, on four different axes,
+// and NONE of them asks this module's question:
+//   gunbc.heal_push_plan                          CREDENTIAL -- may the resolved credential push
+//                                                 this path. Says nothing about derivability.
+//   v2.workflow.required_regen regen_scope_select AFFECTED SET -- did the change touch this member.
+//                                                 Independent axis: a member can be affected and
+//                                                 still be a bootstrap mirror, or unaffected and a
+//                                                 plain ledger.
+//   gunbc.stage0.stage0_rust_source_lifecycle_scaffold
+//                                                 GENERATED VS HAND-MAINTAINED -- an identity join
+//                                                 against registry membership, which
+//                                                 `committed_generated_artifacts` already answers.
+//   gunbc.generated_artifact_emit main_wet        NO FILTER AT ALL -- it folds the whole committed
+//                                                 population and writes all members in one pass,
+//                                                 both stage0 .rs mirrors included. Verified
+//                                                 against a real regeneration run, not read off
+//                                                 the source.
+// Consulting this module from any of the four would be a CATEGORY ERROR rather than a wiring
+// change: same population, different question.
+//
+// THE NEAR MISS, NAMED BECAUSE IT IS THE STRONGEST CANDIDATE AND IT STILL FAILS. The repository
+// already knows the fact `projection_member_eligibility` encodes. The repair steps in
+// gunbc.generated_artifact_merge_driver and gunbc.proactive_verification_ledger
+// `spine_regen_recipe` both prescribe a SECOND build-and-verify pass, for precisely the stated
+// reason that the regen route emits the seed by running a binary built FROM the seed, so one pass
+// can self-verify for the wrong reason. That is this module's bootstrap-mirror carve-out, already
+// load-bearing. It is still not a consumer on two independent grounds: it is a printed STRING an
+// author or workflow follows rather than a function over `GeneratedArtifact`, so there is no call
+// site to rewire; and it is GLOBAL rather than per-member, applying the second pass to the whole
+// seed emission without ever asking which members need it. Turning it per-member would change that
+// recipe's contract, which is BUILDING the seam this module plugs into rather than finding one --
+// the inversion DESIGN section 6 refuses. So: the distinction is real and the corpus already pays
+// for it, but it pays as a blanket second pass rather than as a decision.
+//
+// TRIGGER, capability-grained and owned by someone else's future work: WHEN THE MERGE DRIVER'S
+// STEP-3 REASONING BECOMES A MODELED OPERATION RATHER THAN A PRINTED STRING, ELIGIBILITY HAS A
+// HOME. Until then this module is cited as a model and its witnesses as evidence for the ORDER
+// claim; it is NOT coverage for any admission behaviour, because nothing admits anything through
+// it.
+
 // ---------------------------------------------------------------------------
 // Authority and its projection
 // ---------------------------------------------------------------------------
