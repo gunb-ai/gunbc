@@ -6,19 +6,30 @@ import v2.std.optional {
   Present,
   Absent
 }
-import v2.std.diagnostic { Accepted }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.native_agreement {
   NativeAgreementDivergence,
   runtime_value_octet_label
 }
 import v2.std.runtime { RuntimeValue }
-import v2.std.verdict { Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred }
+import v2.std.verdict { Verdict, Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred }
 
 fn native_agreement_divergence_from_run<Subj>(
   member_id: String,
   run: TestClaimRun<Subj, RuntimeValue>
 ) -> Optional<NativeAgreementDivergence> {
-  match run.verdict {
+  native_agreement_divergence_from_verdict(member_id: member_id, verdict: run.verdict)
+}
+
+// THE SUBJECT OF THIS FOLD IS THE VERDICT, NOT THE RUN. It read `run.verdict` and nothing else,
+// so taking the whole `TestClaimRun` made its only caller a full emit-vs-eval execution: the
+// cache receipt is unreachable input that no witness can supply, which is why the Rejected arm
+// below had no executable evidence until the parameter was narrowed to what the fold reads.
+fn native_agreement_divergence_from_verdict<V>(
+  member_id: String,
+  verdict: Verdict<V, RuntimeValue>
+) -> Optional<NativeAgreementDivergence> {
+  match verdict {
     Pass => Absent
     SemanticMismatch {
       actual: Accepted { value: native_val, diagnostics: _ },
@@ -31,6 +42,19 @@ fn native_agreement_divergence_from_run<Subj>(
           member_id: member_id,
           interpreted_value: runtime_value_octet_label(value: receipt.expected),
           native_value: runtime_value_octet_label(value: native_val)
+        }
+      }
+    SemanticMismatch {
+      actual: Rejected { diagnostics: _ },
+      falsification: Present {
+        value: receipt
+      }
+    } =>
+      Present {
+        value: NativeAgreementDivergence {
+          member_id: member_id,
+          interpreted_value: runtime_value_octet_label(value: receipt.expected),
+          native_value: "rejected"
         }
       }
     SemanticMismatch { actual: _, falsification: Absent } =>

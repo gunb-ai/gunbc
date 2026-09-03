@@ -1,0 +1,156 @@
+module product.printed_chassis.manufacturing_manifest
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply {
+  PhysicalAsset,
+  PhysicalAssetIdentity,
+}
+
+// THE MANIFEST BINDS A PRINTED THING TO THE PROCESS THAT PRODUCED IT, and it exists because the
+// coupon authority already declared that binding unsolved. coupon_v1_open_obligations carries
+// PhysicalPrintInstanceAttributionUnsolved routed to AttributeByManufacturingManifestAndHandling;
+// this module is that route, not a new idea. Two coupons off two printers are geometrically
+// IDENTICAL -- the orientation datum makes one orientable, never attributable -- so the binding
+// cannot be recovered by inspecting the plastic and must be captured while the part is still on the
+// bed it was printed on.
+//
+// A PRINTER IS A PhysicalAsset AND THIS MODULE MINTS NO SECOND IDENTITY FOR ONE. product.
+// placement_supply already carries identity, a catalog DeclarationRef naming the vendor product row,
+// an optional physical serial and procurement provenance, and its charter already assigns
+// vendor/product facts to extdeps and owned inventory to the product layer. A machine that produces
+// parts rather than occupying a shelf is the same physical object with a ROLE; minting
+// PrinterNodeIdentity beside PhysicalAssetIdentity would be two names for one unit, which is the
+// net-concepts-by-re-invention failure DESIGN section 2 names. The brief calls it "node-ness of the
+// printers" and that name is what made a new concept look necessary.
+
+// THE ADMISSION EXISTS BECAUSE THE IDENTITY CARRIER IS WEAKER THAN THE CONSUMER NEEDS, and saying
+// so is the honest alternative to strengthening it here.
+//
+// PhysicalAssetIdentity is a branded NonEmptyStr. A brand stops an arbitrary NonEmptyStr standing in
+// for one, and it does NOT make a duplicate or an unregistered identity unwritable -- so a consumer
+// handed a bare PhysicalAssetIdentity has a string that looks authoritative and may name nothing.
+// The repair is NOT a stronger printer-only identity: that would put two identities on one machine
+// and re-open exactly what the paragraph above closed. It is a sealed admission at the CONSUMING
+// boundary, which is the same shape as the realization contract's AdmittedRealizationV0 -- a value
+// only a join against the authority can mint, so the manifest consumes a checked binding rather
+// than a hopeful string. A later corpus-wide migration of PhysicalAssetIdentity to an
+// allocator-minted identity replaces this bounded wall without disturbing its consumers.
+type AdmittedPrinterAsset sole_constructor {
+  asset: PhysicalAsset
+}
+
+fn admitted_printer_identity(a: AdmittedPrinterAsset) -> PhysicalAssetIdentity {
+  a.asset.identity
+}
+
+fn admitted_printer_catalog(a: AdmittedPrinterAsset) -> DeclarationRef {
+  a.asset.catalog
+}
+
+// EVERY REFUSAL NAMES WHAT IT LOOKED FOR AND WHAT IT FOUND. A single PrinterAssetRefused carrying a
+// reason string would make these four indistinguishable to a consumer and unreportable to an
+// operator holding the machine.
+type PrinterAssetAdmission
+  = PrinterAssetAdmitted { binding: AdmittedPrinterAsset }
+  | PrinterAssetAbsent { requested: PhysicalAssetIdentity }
+  | PrinterAssetDuplicate { requested: PhysicalAssetIdentity, matches: Int }
+  | PrinterCatalogMismatch { requested: PhysicalAssetIdentity, expected_module: NonEmptyStr, found_module: NonEmptyStr }
+
+fn physical_asset_identity_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+  a as String == b as String
+}
+
+// THE SCAN CARRIES THE MATCHES RATHER THAN A COUNT PLUS A VALUE, because a count and a separately
+// held candidate can disagree. Holding the matched rows is what lets the duplicate arm report how
+// many without a second traversal, and it is why this fold has no early exit: an early exit would
+// find the first match and never learn that a second exists, which is the whole point of the
+// duplicate refusal.
+type PrinterAssetScan sole_constructor {
+  matches: List<PhysicalAsset>
+}
+
+fn scan_printer_assets(inventory: List<PhysicalAsset>, requested: PhysicalAssetIdentity) -> PrinterAssetScan {
+  PrinterAssetScan {
+    matches: filter(inventory, a => physical_asset_identity_eq(a: a.identity, b: requested))
+  }
+}
+
+// THE PRODUCT ROW EVERY ADMITTED PRINTER MUST NAME, CARRIED AS A DeclarationRef SO THE CITATION HAS
+// A REFERENT SOMETHING CAN CHECK. Written as a bare module-path string this was a literal whose only
+// corroboration was a witness restating the same literal -- two authored copies agreeing with each
+// other, which DESIGN section 5 names directly: a measurement copied from the same tree is not an
+// oracle. As a DeclarationRef it is RESOLVED BY A GATE: the required floor's declarations phase
+// refuses CITED-MODULE-ABSENT for any cited module path the corpus does not declare -- measured, by
+// that phase failing this PR over a sibling fixture that cited an invented module -- so a renamed or
+// deleted extdeps module breaks the build here instead of leaving this row silently naming nothing. Importing the module's own extdeps_model_scope would be the purer
+// derivation and is not available: 275 modules declare that name and the whole-tree namespace is
+// flat, which gunbc.design.reference_instrument already hit and answered with this same symbolic
+// form.
+data a1_mini_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.printing.bambu_lab_a1_mini",
+  decl_name: "a1_mini_build_envelope",
+  field: WholeDeclaration
+}
+
+// The MODULE is what identifies the product, projected off the ref above. A catalog row's decl_name
+// varies by which declaration in that module the row happens to cite, so comparing whole refs would
+// refuse rows that name the same product through a different declaration.
+data a1_mini_catalog_module: NonEmptyStr = a1_mini_catalog_ref.module_path
+
+// WHETHER AN ASSET'S CATALOG NAMES A PRODUCT THIS PROGRAM CAN QUALIFY, as one authority. It is
+// lifted out of the admission fold rather than left inline because the roster witness needs the same
+// question answered, and a witness that spells the comparison itself is a second place the rule
+// lives -- it would keep passing after this module changed which product it qualifies.
+fn asset_catalog_qualifies(a: PhysicalAsset) -> Bool {
+  a.catalog.module_path as String == a1_mini_catalog_module as String
+}
+
+// AN EMPTY INVENTORY REFUSES, AND THAT IS THE CORRECT DAY-ONE STATE rather than a gap to be filled
+// before this is useful. Until a printer is registered with its serial, no coupon can be attributed
+// to it -- which is exactly the fail-closed behaviour this module exists to provide. The tempting
+// arm is to admit an unregistered identity "for now" so that a print can proceed; that is the
+// absorbing fallback, and it fails open precisely at the moment the operator most needs the binding
+// to be real.
+fn admit_printer_asset(inventory: List<PhysicalAsset>, requested: PhysicalAssetIdentity) -> PrinterAssetAdmission {
+  let scan = scan_printer_assets(inventory: inventory, requested: requested)
+  let n = count(scan.matches)
+  if n == 0 {
+    PrinterAssetAbsent { requested: requested }
+  } else {
+    if n > 1 {
+      PrinterAssetDuplicate { requested: requested, matches: n }
+    } else {
+      fold(scan.matches, init: PrinterAssetAbsent { requested: requested }, f: fn(_, a) {
+        let catalog_matches = asset_catalog_qualifies(a: a)
+        if catalog_matches {
+          PrinterAssetAdmitted { binding: AdmittedPrinterAsset { asset: a } }
+        } else {
+          PrinterCatalogMismatch {
+            requested: requested,
+            expected_module: a1_mini_catalog_module,
+            found_module: a.catalog.module_path,
+          }
+        }
+      })
+    }
+  }
+}
+
+// THE OWNED PRINTER INVENTORY, EMPTY UNTIL THE MACHINES ARE PHYSICALLY IN HAND. This roster is the
+// authority admit_printer_asset joins against, and it is deliberately not pre-populated: authoring
+// rows for hardware nobody has received would be a fabricated fact, and every attribution built on
+// it would inherit that.
+//
+// WHAT FILLS IT IS RECEIPT AND DURABLE INDIVIDUATION, NOT A SERIAL READING. An earlier wording here
+// said the roster is filled by reading the serial off each machine, which conflated two states the
+// carrier already distinguishes: PhysicalAsset.physical_serial is OPTIONAL, so a printer present on
+// the bench with its serial unread and a printer that has not arrived are not the same fact, and
+// collapsing them reports a machine the operator is standing in front of as absent. A row is
+// allocated when the physical object is received and durably bound to an identity -- an operator-
+// applied label suffices -- and the manufacturer serial, when read, CORROBORATES that binding rather
+// than establishing it. Neither label text nor serial derives the identity. If a serial is later
+// required before a coupon may be attributed, that is a condition this module states in ADMISSION as
+// its own refusal arm, where it is visible and countable, never by withholding the row and letting
+// absence stand in for it.
+data owned_printer_inventory: List<PhysicalAsset> = []

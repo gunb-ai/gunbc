@@ -27,6 +27,7 @@ type GeneratedArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0ExecutableAssemblyGeneratedDagArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
+  | FileTransportRealizationGeneratedRsArtifact
   | Fci1BoundedExecutionContextArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
@@ -36,7 +37,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, CouponCadQueryProgramArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, CouponCadQueryProgramArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -118,6 +119,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
     Stage0ExecutableAssemblyGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_executable_assembly_generated.dag" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
+    FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
     Fci1BoundedExecutionContextArtifact => ArtifactLocation { directory: "tools", name: "fabric_ci_fci1_bounded_execution_context.env" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
@@ -187,6 +189,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0ExecutableAssemblyGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Fci1BoundedExecutionContextArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
@@ -237,6 +240,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     Stage0ExecutableAssemblyGeneratedDagArtifact => match b { Stage0ExecutableAssemblyGeneratedDagArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
+    FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
     Fci1BoundedExecutionContextArtifact => match b { Fci1BoundedExecutionContextArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }

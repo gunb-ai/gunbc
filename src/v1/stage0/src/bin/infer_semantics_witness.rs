@@ -1733,22 +1733,26 @@ fn type_resolution_verdict_reports_under_resolved_separately_from_refusal() {
     }
 }
 
-/// THE SIX KNOWN FALSE-REFUSALS. Each is a service operation whose last segment is
+/// THE FIVE KNOWN FALSE-REFUSALS. Each is a service operation whose last segment is
 /// a container name; `check_service_field_access_node` renders one as a LEAF TYPE
 /// NODE via `nominal_type_ref`, so each does reach this walk. None is a container,
 /// so refusing any of them would be wrong, and the fix a refusal asks for —
 /// declare an arity row — would be the wrong action.
 ///
 /// They are excluded by AUTHORSHIP, not by an exception list: a synthesized node
-/// carries a `<kernel:…>` span that is in no source index. A seventh service
+/// carries a `<kernel:…>` span that is in no source index. A sixth service
 /// operation named after a container therefore needs no edit here.
+///
+/// (`os.Hostname.Set` left this list with the CLI-invocation migration: the op's
+/// hand-authored transport row was deleted and the hostnamectl set-hostname
+/// vertical realizes through hostnamectl.Process.Run, whose last segment is not a
+/// container name.)
 fn service_operations_named_after_containers_are_not_refused() {
     let known_false_refusals = [
         "cron.Tab.List",
         "Filesystem.List",
         "github.Pulls.List",
         "tmux.Session.List",
-        "os.Hostname.Set",
         "req.Header.Set",
     ];
     for op in known_false_refusals {

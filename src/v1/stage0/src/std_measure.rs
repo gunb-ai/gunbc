@@ -8,6 +8,7 @@ use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
+use self::PositiveShardCount::*;
 use self::PositiveSlotCount::*;
 use self::Quantity::*;
 use self::Scale::*;
@@ -133,6 +134,13 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
     {
         let k = kibi_factor();
         ((k.clone() * k.clone()) * k.clone())
+    }
+}
+
+pub fn mebibyte_scale_factor_bytes() -> Nat {
+    {
+        let k = kibi_factor();
+        (k.clone() * k.clone())
     }
 }
 
@@ -359,6 +367,10 @@ pub fn kibibyte_count(k: Kibibyte) -> Nat {
 
 pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
     byte_size((kibibyte_count(k.clone()) * kibi_factor()))
+}
+
+pub fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
+    byte_size((mebibyte_count(m.clone()) * mebibyte_scale_factor_bytes()))
 }
 
 pub type BitWidth = Rc<Measure<Information, One, i64>>;
@@ -599,6 +611,33 @@ pub fn events_per_minute(count: Nat) -> EventsPerMinute {
 
 pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
     measure_count(r.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PositiveShardCount {
+    PositiveShardCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveShardCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveShardCount::PositiveShardCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn positive_shard_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveShardCount> {
+    Rc::new(PositiveShardCount::PositiveShardCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_shard_count_value(shards: Rc<PositiveShardCount>) -> i64 {
+    match (*shards.clone()).clone() {
+        PositiveShardCount::PositiveShardCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
 }
 
 pub fn watt(count: Nat) -> Watt {

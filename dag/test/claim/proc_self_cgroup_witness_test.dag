@@ -169,6 +169,9 @@ test fn proc_self_cgroup_malformed_is_distinct_holds() -> Bool {
     MembershipMissing => false
     MembershipAmbiguous { first: _, second: _ } => false
     CurrentCgroupObserved { relative_path: _ } => false
+    MembershipMalformed { cause: ProcSelfCgroupLineMissingSecondColon } => false
+    MembershipMalformed { cause: ProcSelfCgroupLineEmptyHierarchy } => false
+    MembershipMalformed { cause: ProcSelfCgroupLineEmptyPath } => false
   }
 }
 
