@@ -108,21 +108,80 @@ fn vllm_rank_participant(
 // the same list. Only the first is a missing rank; the second is a real population. Nothing
 // downstream can tell them apart from the list, so the collector must say which it was, and a
 // partial return refuses rather than being read as a population with a gap.
+//
+// THE PARTICIPANTS LIVE INSIDE THE OBSERVATION, WHICH IS WHAT MAKES THE PROVENANCE MEAN ANYTHING.
+// They were previously a separate argument beside it, so a caller could hand fixture-built
+// participants to an observation stamped `AcquiredFromHostVantage` and read acquired coherence back
+// out -- provenance as a label a caller applies to someone else's data rather than a fact about
+// where that data came from. A list and its provenance are one act of collection; splitting them let
+// the accepted arm be laundered, so they are one value.
 type VllmJoinedObservation sole_constructor {
   provenance: VllmObservationProvenance
   incarnation: VllmEngineIncarnation
   returned_completely: Bool
+  participants: List<VllmRankParticipant>
 }
 
-fn vllm_joined_observation(
-  provenance: VllmObservationProvenance,
+// A FIXTURE OBSERVATION IS STAMPED, NOT ARGUED. There is no constructor that takes a provenance, so
+// the hermetic path cannot name itself acquired however it is called.
+fn vllm_fixture_observation(
   incarnation: VllmEngineIncarnation,
   returned_completely: Bool,
+  participants: List<VllmRankParticipant>,
 ) -> VllmJoinedObservation {
   VllmJoinedObservation {
-    provenance: provenance,
+    provenance: HermeticFixture,
     incarnation: incarnation,
     returned_completely: returned_completely,
+    participants: participants,
+  }
+}
+
+// A VANTAGE IS THE PLACE A PARTICIPANT WAS READ FROM, and it is the price of the acquired stamp.
+type VllmHostVantage sole_constructor {
+  host: HostIdentity
+}
+
+fn vllm_host_vantage(host: HostIdentity) -> VllmHostVantage {
+  VllmHostVantage { host: host }
+}
+
+type VllmAcquiredObservationAdmission
+  = AcquiredObservationAdmitted { observation: VllmJoinedObservation }
+  | AcquiredObservationRefused { unvantaged_hosts: List<HostIdentity> }
+
+// AND THE ACQUIRED STAMP IS EARNED PER PARTICIPANT.
+//
+// The vantages are the acquisition act: each one says a host was actually read. A participant whose
+// host carries no vantage was not acquired from anywhere, so the whole observation refuses rather
+// than being admitted with one fabricated member -- the arm that would otherwise let a single
+// invented rank ride into production evidence beside real ones. Refusal names every uncovered host,
+// because an operator fixing one at a time pays a collection cycle per finding against a service
+// whose incarnation changes between attempts.
+//
+// This does NOT reach structural impossibility: nothing yet mints a vantage from a real connection,
+// so the ceiling here is the missing host adapter, which is this class's next-rung trigger. What it
+// removes today is the FREE relabel -- acquired provenance now costs a vantage per host rather than
+// a keyword.
+fn vllm_acquired_observation(
+  vantages: List<VllmHostVantage>,
+  incarnation: VllmEngineIncarnation,
+  returned_completely: Bool,
+  participants: List<VllmRankParticipant>,
+) -> VllmAcquiredObservationAdmission {
+  let uncovered = flat_map(participants, p =>
+    if any(vantages, v => host_identity_eq(a: v.host, b: p.host)) { [] } else { [p.host] })
+  if length(uncovered) > 0 {
+    AcquiredObservationRefused { unvantaged_hosts: uncovered }
+  } else {
+    AcquiredObservationAdmitted {
+      observation: VllmJoinedObservation {
+        provenance: AcquiredFromHostVantage,
+        incarnation: incarnation,
+        returned_completely: returned_completely,
+        participants: participants,
+      },
+    }
   }
 }
 
@@ -147,7 +206,7 @@ type VllmRankPopulationFinding
   | TensorParallelRankDoesNotMatchGlobalRank { global_rank: Nat, tensor_parallel_rank: Nat }
   | ParticipantOnUnselectedHost { host: HostIdentity }
   | SelectedHostCarriedNoRank { host: HostIdentity }
-  | WorkerBirthIdentityShared { worker_birth_identity: NonEmptyStr }
+  | WorkerBirthIdentityShared { host: HostIdentity, worker_birth_identity: NonEmptyStr }
   | ParticipantFromAnotherIncarnation { engine_core_identity: NonEmptyStr }
 
 type VllmRankPopulationDecision
@@ -163,9 +222,9 @@ type VllmRankPopulationDecision
 fn decide_vllm_rank_population(
   resolved: VllmResolvedParallelConfiguration,
   selected_unit: VllmSelectedServingUnit,
-  participants: List<VllmRankParticipant>,
   observation: VllmJoinedObservation,
 ) -> VllmRankPopulationDecision {
+  let participants = observation.participants
   let completeness =
     if observation.returned_completely { [] } else { [ObservationDidNotReturnCompletely] }
   let decomposition =
@@ -269,6 +328,12 @@ fn vllm_host_findings(
 // across launches -- the failure this whole line exists to prevent -- and two ranks sharing one birth
 // identity is one process being counted twice, which is how a single-host deployment can present as
 // a pair.
+//
+// THE BIRTH IDENTITY IS SCOPED TO ITS HOST, because it is a pid and a pid is host-local. Compared as
+// a bare string across the population it refused a legitimate cross-host pair whenever two machines
+// happened to birth their worker at the same pid -- a collision this exact two-host unit can produce
+// on any launch, and one that would have read as "one process counted twice" about two real
+// processes. The duplicate that matters is two ranks claiming one process, which requires one host.
 fn vllm_identity_findings(
   observation: VllmJoinedObservation,
   participants: List<VllmRankParticipant>,
@@ -283,8 +348,9 @@ fn vllm_identity_findings(
       }),
     flat_map(participants, p =>
       if length(filter(participants, q =>
-           q.worker_birth_identity as String == p.worker_birth_identity as String)) > 1 {
-        [WorkerBirthIdentityShared { worker_birth_identity: p.worker_birth_identity }]
+           q.worker_birth_identity as String == p.worker_birth_identity as String
+             && host_identity_eq(a: q.host, b: p.host))) > 1 {
+        [WorkerBirthIdentityShared { host: p.host, worker_birth_identity: p.worker_birth_identity }]
       } else { [] }))
 }
 

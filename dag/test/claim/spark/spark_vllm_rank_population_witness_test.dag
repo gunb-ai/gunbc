@@ -8,7 +8,10 @@ import gunbc.spark.vllm_rank_population {
   VllmEngineIncarnation, vllm_engine_incarnation,
   VllmResolvedParallelConfiguration, vllm_resolved_parallel_configuration,
   VllmRankParticipant, vllm_rank_participant,
-  VllmJoinedObservation, vllm_joined_observation,
+  VllmJoinedObservation, vllm_fixture_observation,
+  VllmHostVantage, vllm_host_vantage,
+  VllmAcquiredObservationAdmission, AcquiredObservationAdmitted, AcquiredObservationRefused,
+  vllm_acquired_observation,
   VllmSelectedServingUnit, vllm_selected_serving_unit,
   VllmRankPopulationDecision, RankPopulationCoherent, RankPopulationRefused,
   VllmRankPopulationFinding,
@@ -40,8 +43,9 @@ fn w_tp2() -> VllmResolvedParallelConfiguration {
 
 fn w_unit() -> VllmSelectedServingUnit { vllm_selected_serving_unit(participant_hosts: [w_host_a, w_host_b]) }
 
-fn w_obs(complete: Bool) -> VllmJoinedObservation {
-  vllm_joined_observation(provenance: HermeticFixture, incarnation: w_inc(), returned_completely: complete)
+fn w_obs(complete: Bool, participants: List<VllmRankParticipant>) -> VllmJoinedObservation {
+  vllm_fixture_observation(
+    incarnation: w_inc(), returned_completely: complete, participants: participants)
 }
 
 fn w_p(rank: Nat, host: HostIdentity, birth: NonEmptyStr) -> VllmRankParticipant {
@@ -57,7 +61,8 @@ fn w_good_participants() -> List<VllmRankParticipant> {
 
 fn w_decide(participants: List<VllmRankParticipant>) -> VllmRankPopulationDecision {
   decide_vllm_rank_population(
-    resolved: w_tp2(), selected_unit: w_unit(), participants: participants, observation: w_obs(complete: true))
+    resolved: w_tp2(), selected_unit: w_unit(),
+    observation: w_obs(complete: true, participants: participants))
 }
 
 fn w_refused_with(participants: List<VllmRankParticipant>, f: VllmRankPopulationFinding) -> Bool {
@@ -78,7 +83,7 @@ fn finding_tag(f: VllmRankPopulationFinding) -> String {
     TensorParallelRankDoesNotMatchGlobalRank { global_rank: _, tensor_parallel_rank: _ } => "tp-mismatch"
     ParticipantOnUnselectedHost { host: _ } => "unselected-host"
     SelectedHostCarriedNoRank { host: _ } => "host-no-rank"
-    WorkerBirthIdentityShared { worker_birth_identity: _ } => "shared-birth"
+    WorkerBirthIdentityShared { host: _, worker_birth_identity: _ } => "shared-birth"
     ParticipantFromAnotherIncarnation { engine_core_identity: _ } => "other-incarnation"
   }
 }
@@ -144,11 +149,27 @@ test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool {
     f: SelectedHostCarriedNoRank { host: w_host_b })
 }
 
-test fn w_two_ranks_sharing_one_worker_birth_refuses() -> Bool {
+// TWO RANKS CLAIMING ONE PROCESS ON ONE HOST is the duplicate that matters -- a single-host
+// deployment presenting as a pair.
+test fn w_two_ranks_sharing_one_worker_birth_on_one_host_refuses() -> Bool {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-same-pid" as NonEmptyStr),
-                   w_p(rank: 1, host: w_host_b, birth: "w-same-pid" as NonEmptyStr)],
-    f: WorkerBirthIdentityShared { worker_birth_identity: "w-same-pid" as NonEmptyStr })
+                   w_p(rank: 1, host: w_host_a, birth: "w-same-pid" as NonEmptyStr)],
+    f: WorkerBirthIdentityShared { host: w_host_a, worker_birth_identity: "w-same-pid" as NonEmptyStr })
+}
+
+// AND THE SAME PID ON TWO DIFFERENT HOSTS IS A LEGITIMATE PAIR, not a duplicate. A pid is host-local,
+// so comparing birth identities as bare strings across the population refused a real cross-host unit
+// whenever both machines happened to birth their worker at the same number -- something this exact
+// two-host launch can produce any time. This is the discriminating RED for that scoping: it was
+// refused before the host was part of the comparison.
+test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_birth() -> Bool {
+  match w_decide(participants: [
+      w_p(rank: 0, host: w_host_a, birth: "w-pid-4126" as NonEmptyStr),
+      w_p(rank: 1, host: w_host_b, birth: "w-pid-4126" as NonEmptyStr)]) {
+    RankPopulationCoherent { provenance: _ } => true
+    RankPopulationRefused { findings: _ } => false
+  }
 }
 
 test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
@@ -165,7 +186,7 @@ test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
 test fn w_an_incomplete_observation_refuses_even_with_every_rank_present() -> Bool {
   match decide_vllm_rank_population(
     resolved: w_tp2(), selected_unit: w_unit(),
-    participants: w_good_participants(), observation: w_obs(complete: false)) {
+    observation: w_obs(complete: false, participants: w_good_participants())) {
     RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "incomplete")
     RankPopulationCoherent { provenance: _ } => false
   }
@@ -177,7 +198,7 @@ test fn w_a_pipeline_parallel_decomposition_of_the_same_world_size_refuses() -> 
   match decide_vllm_rank_population(
     resolved: vllm_resolved_parallel_configuration(
       tensor_parallel_degree: 1, pipeline_parallel_degree: 2, data_parallel_degree: 1, world_size: 2),
-    selected_unit: w_unit(), participants: w_good_participants(), observation: w_obs(complete: true)) {
+    selected_unit: w_unit(), observation: w_obs(complete: true, participants: w_good_participants())) {
     RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "not-tp")
     RankPopulationCoherent { provenance: _ } => false
   }
@@ -188,7 +209,7 @@ test fn w_a_decomposition_inconsistent_with_its_world_size_refuses() -> Bool {
   match decide_vllm_rank_population(
     resolved: vllm_resolved_parallel_configuration(
       tensor_parallel_degree: 2, pipeline_parallel_degree: 1, data_parallel_degree: 1, world_size: 4),
-    selected_unit: w_unit(), participants: w_good_participants(), observation: w_obs(complete: true)) {
+    selected_unit: w_unit(), observation: w_obs(complete: true, participants: w_good_participants())) {
     RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "decomposition")
     RankPopulationCoherent { provenance: _ } => false
   }
@@ -208,9 +229,9 @@ test fn w_a_right_sized_population_with_wrong_ranks_still_refuses() -> Bool {
 test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool {
   match decide_vllm_rank_population(
     resolved: w_tp2(), selected_unit: w_unit(),
-    participants: [w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr),
-                   w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr)],
-    observation: w_obs(complete: false)) {
+    observation: w_obs(complete: false, participants: [
+      w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr),
+      w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr)])) {
     RankPopulationRefused { findings: fs } => length(fs) > 4
     RankPopulationCoherent { provenance: _ } => false
   }
@@ -248,4 +269,38 @@ test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() 
         worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
     ],
     f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 0, tensor_parallel_rank: 7 })
+}
+
+// ── ACQUIRED PROVENANCE IS EARNED, NOT DECLARED ─────────────────────────────────────────────────
+//
+// Participants and provenance used to be independent arguments, so this exact population -- built
+// here, in a test, out of fixture hosts -- could be handed to an observation stamped
+// `AcquiredFromHostVantage` and read back as acquired coherence. That is fixture data laundered into
+// production evidence at the one place the accepted arm is supposed to mean something. There is now
+// no constructor that takes a provenance: the hermetic path stamps itself, and the acquired path
+// costs a vantage per participant host.
+test fn w_acquiring_a_participant_from_a_host_with_no_vantage_refuses() -> Bool {
+  match vllm_acquired_observation(
+    vantages: [vllm_host_vantage(host: w_host_a)],
+    incarnation: w_inc(), returned_completely: true, participants: w_good_participants()) {
+    AcquiredObservationRefused { unvantaged_hosts: hs } => any(hs, h => h as String == w_host_b as String)
+    AcquiredObservationAdmitted { observation: _ } => false
+  }
+}
+
+// AND A FULLY VANTAGED ACQUISITION CARRIES ITS PROVENANCE THROUGH THE DECISION -- the positive
+// control without which the refusal above is satisfied by a constructor that refuses everything.
+test fn w_a_fully_vantaged_acquisition_decides_as_acquired() -> Bool {
+  match vllm_acquired_observation(
+    vantages: [vllm_host_vantage(host: w_host_a), vllm_host_vantage(host: w_host_b)],
+    incarnation: w_inc(), returned_completely: true, participants: w_good_participants()) {
+    AcquiredObservationRefused { unvantaged_hosts: _ } => false
+    AcquiredObservationAdmitted { observation: o } => match decide_vllm_rank_population(resolved: w_tp2(), selected_unit: w_unit(), observation: o) {
+        RankPopulationCoherent { provenance: p } => match p {
+          AcquiredFromHostVantage => true
+          HermeticFixture => false
+        }
+        RankPopulationRefused { findings: _ } => false
+      }
+  }
 }
