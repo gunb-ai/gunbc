@@ -1,0 +1,213 @@
+module test.claim.spark.spark_vllm_rank_population_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.vllm_rank_population {
+  VllmObservationProvenance, HermeticFixture, AcquiredFromHostVantage,
+  VllmEngineIncarnation, vllm_engine_incarnation,
+  VllmResolvedParallelConfiguration, vllm_resolved_parallel_configuration,
+  VllmRankParticipant, vllm_rank_participant,
+  VllmJoinedObservation, vllm_joined_observation,
+  VllmSelectedServingUnit, vllm_selected_serving_unit,
+  VllmRankPopulationDecision, RankPopulationCoherent, RankPopulationRefused,
+  VllmRankPopulationFinding,
+  ObservationDidNotReturnCompletely, DecompositionDoesNotAccountForWorldSize,
+  NotATensorParallelDecomposition, ParticipantCountDoesNotMatchWorldSize,
+  RankObservedMoreThanOnce, RankOutsideExpectedSet,
+  ParticipantOnUnselectedHost, SelectedHostCarriedNoRank,
+  WorkerBirthIdentityShared, ParticipantFromAnotherIncarnation,
+  decide_vllm_rank_population, vllm_rank_population_is_coherent,
+}
+
+// ── HERMETIC FIXTURES ───────────────────────────────────────────────────────────────────────────
+//
+// The accepted case mirrors what was read off the live pair -- world_size 2, TP 2, PP 1, DP 1, one
+// rank per host, distinct worker births, one engine incarnation -- with fixture host names, so a
+// coherent decision built here can never be mistaken for the production unit. Provenance carries
+// HermeticFixture through the decision for the same reason.
+data w_host_a: HostIdentity = "w-rank0-host" as HostIdentity
+data w_host_b: HostIdentity = "w-rank1-host" as HostIdentity
+data w_host_elsewhere: HostIdentity = "w-unselected-host" as HostIdentity
+
+fn w_inc() -> VllmEngineIncarnation { vllm_engine_incarnation(engine_core_identity: "w-engine-1" as NonEmptyStr) }
+fn w_other_inc() -> VllmEngineIncarnation { vllm_engine_incarnation(engine_core_identity: "w-engine-2" as NonEmptyStr) }
+
+fn w_tp2() -> VllmResolvedParallelConfiguration {
+  vllm_resolved_parallel_configuration(
+    tensor_parallel_degree: 2, pipeline_parallel_degree: 1, data_parallel_degree: 1, world_size: 2)
+}
+
+fn w_unit() -> VllmSelectedServingUnit { vllm_selected_serving_unit(participant_hosts: [w_host_a, w_host_b]) }
+
+fn w_obs(complete: Bool) -> VllmJoinedObservation {
+  vllm_joined_observation(provenance: HermeticFixture, incarnation: w_inc(), returned_completely: complete)
+}
+
+fn w_p(rank: Nat, host: HostIdentity, birth: NonEmptyStr) -> VllmRankParticipant {
+  vllm_rank_participant(
+    global_rank: rank, tensor_parallel_rank: rank, host: host,
+    worker_birth_identity: birth, incarnation: w_inc())
+}
+
+fn w_good_participants() -> List<VllmRankParticipant> {
+  [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+   w_p(rank: 1, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)]
+}
+
+fn w_decide(participants: List<VllmRankParticipant>) -> VllmRankPopulationDecision {
+  decide_vllm_rank_population(
+    resolved: w_tp2(), selected_unit: w_unit(), participants: participants, observation: w_obs(complete: true))
+}
+
+fn w_refused_with(participants: List<VllmRankParticipant>, f: VllmRankPopulationFinding) -> Bool {
+  match w_decide(participants: participants) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == finding_tag(f: f))
+    RankPopulationCoherent { provenance: _ } => false
+  }
+}
+
+fn finding_tag(f: VllmRankPopulationFinding) -> String {
+  match f {
+    ObservationDidNotReturnCompletely => "incomplete"
+    DecompositionDoesNotAccountForWorldSize => "decomposition"
+    NotATensorParallelDecomposition => "not-tp"
+    ParticipantCountDoesNotMatchWorldSize => "count"
+    RankObservedMoreThanOnce { rank: _ } => "duplicate"
+    RankOutsideExpectedSet { rank: _ } => "extra"
+    ParticipantOnUnselectedHost { host: _ } => "unselected-host"
+    SelectedHostCarriedNoRank { host: _ } => "host-no-rank"
+    WorkerBirthIdentityShared { worker_birth_identity: _ } => "shared-birth"
+    ParticipantFromAnotherIncarnation { engine_core_identity: _ } => "other-incarnation"
+  }
+}
+
+// ── THE POSITIVE CONTROL ────────────────────────────────────────────────────────────────────────
+//
+// Without this every refusal below is satisfiable by a law that refuses everything.
+test fn w_the_observed_shape_is_coherent() -> Bool {
+  vllm_rank_population_is_coherent(decision: w_decide(participants: w_good_participants()))
+}
+
+// AND ITS PROVENANCE SURVIVES THE DECISION, so a consumer requiring acquired evidence can tell that
+// this coherence came from a fixture rather than from a host.
+test fn w_a_fixture_coherence_is_still_marked_a_fixture() -> Bool {
+  match w_decide(participants: w_good_participants()) {
+    RankPopulationCoherent { provenance: p } => match p {
+      HermeticFixture => true
+      AcquiredFromHostVantage => false
+    }
+    RankPopulationRefused { findings: _ } => false
+  }
+}
+
+// ── THE REFUSAL MATRIX ──────────────────────────────────────────────────────────────────────────
+// A MISSING RANK REFUSES VIA THE COUNT, which is the pigeonhole argument doing its work: one
+// participant cannot be a world size of two, so no enumerated expected list is needed to notice.
+test fn w_a_missing_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr)],
+    f: ParticipantCountDoesNotMatchWorldSize)
+}
+
+test fn w_a_duplicated_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 0, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
+    f: RankObservedMoreThanOnce { rank: 0 })
+}
+
+test fn w_a_rank_outside_the_expected_set_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 2, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
+    f: RankOutsideExpectedSet { rank: 2 })
+}
+
+test fn w_a_participant_on_an_unselected_host_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 1, host: w_host_elsewhere, birth: "w-pid-2" as NonEmptyStr)],
+    f: ParticipantOnUnselectedHost { host: w_host_elsewhere })
+}
+
+// BOTH RANKS ON ONE SELECTED HOST IS THE CASE A ONE-DIRECTION CHECK MISSES: no participant sits on an
+// unselected host, yet half the unit carries nothing.
+test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)],
+    f: SelectedHostCarriedNoRank { host: w_host_b })
+}
+
+test fn w_two_ranks_sharing_one_worker_birth_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-same-pid" as NonEmptyStr),
+                   w_p(rank: 1, host: w_host_b, birth: "w-same-pid" as NonEmptyStr)],
+    f: WorkerBirthIdentityShared { worker_birth_identity: "w-same-pid" as NonEmptyStr })
+}
+
+test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   vllm_rank_participant(
+                     global_rank: 1, tensor_parallel_rank: 1, host: w_host_b,
+                     worker_birth_identity: "w-pid-2" as NonEmptyStr, incarnation: w_other_inc())],
+    f: ParticipantFromAnotherIncarnation { engine_core_identity: "w-engine-2" as NonEmptyStr })
+}
+
+// A PARTIAL COLLECTION REFUSES RATHER THAN READING AS A SMALL POPULATION. Same participants as the
+// coherent case; only the completeness flag differs.
+test fn w_an_incomplete_observation_refuses_even_with_every_rank_present() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: w_tp2(), selected_unit: w_unit(),
+    participants: w_good_participants(), observation: w_obs(complete: false)) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "incomplete")
+    RankPopulationCoherent { provenance: _ } => false
+  }
+}
+
+// A WORLD SIZE OF 2 THAT IS PIPELINE-PARALLEL IS NOT THIS UNIT, which is the confusion a bare world
+// size cannot resolve.
+test fn w_a_pipeline_parallel_decomposition_of_the_same_world_size_refuses() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: vllm_resolved_parallel_configuration(
+      tensor_parallel_degree: 1, pipeline_parallel_degree: 2, data_parallel_degree: 1, world_size: 2),
+    selected_unit: w_unit(), participants: w_good_participants(), observation: w_obs(complete: true)) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "not-tp")
+    RankPopulationCoherent { provenance: _ } => false
+  }
+}
+
+// AND A DECOMPOSITION THAT DOES NOT MULTIPLY TO ITS OWN WORLD SIZE REFUSES.
+test fn w_a_decomposition_inconsistent_with_its_world_size_refuses() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: vllm_resolved_parallel_configuration(
+      tensor_parallel_degree: 2, pipeline_parallel_degree: 1, data_parallel_degree: 1, world_size: 4),
+    selected_unit: w_unit(), participants: w_good_participants(), observation: w_obs(complete: true)) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "decomposition")
+    RankPopulationCoherent { provenance: _ } => false
+  }
+}
+
+// THE PIGEONHOLE ACTUALLY BINDS: a population of the right SIZE whose ranks are duplicated and
+// out-of-range is still refused, so "count matches" alone is not what makes a population coherent.
+test fn w_a_right_sized_population_with_wrong_ranks_still_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 5, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 5, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
+    f: RankOutsideExpectedSet { rank: 5 })
+}
+
+// EVERY FINDING IS COLLECTED, NOT THE FIRST. An operator re-collecting once per finding pays a full
+// observation cycle against a service whose incarnation changes between attempts.
+test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: w_tp2(), selected_unit: w_unit(),
+    participants: [w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr),
+                   w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr)],
+    observation: w_obs(complete: false)) {
+    RankPopulationRefused { findings: fs } => length(fs) > 4
+    RankPopulationCoherent { provenance: _ } => false
+  }
+}
