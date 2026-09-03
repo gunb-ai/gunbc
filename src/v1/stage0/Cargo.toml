@@ -85,6 +85,16 @@ path = "src/bin/claim_executor.rs"
 name = "carrier_realization_census"
 path = "src/bin/carrier_realization_census.rs"
 
+# XL-0T-CUTOVER census: over the complete production TypeOccurrence population, what the
+# module-wide bare-name TypeEnv path (X, as repaired by #9813) binds versus what the exact
+# per-occurrence containment authority (Y,
+# std.occurrence_binding_candidates.resolve_type_reference_containment_binding) binds. The
+# denominator is the corpus, so it is an instrument rather than a test, and it is named here
+# so no number it reports is ever transcribed as an authority (DESIGN section 6).
+[[bin]]
+name = "type_occurrence_binding_census"
+path = "src/bin/type_occurrence_binding_census.rs"
+
 # Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
 [[bin]]
 name = "discover_source_root_ingest"
