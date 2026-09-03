@@ -91,6 +91,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardObserveOnly, DashboardActuating,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
+  macbook_local_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
   dashboard_actuation_posture_label,
@@ -846,6 +847,28 @@ fn roadmap_serve_handle(
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_live_dashboard_instance(),
+    method_label: method,
+    path: path,
+    body: body,
+    release_revision: release_revision,
+  ))
+}
+
+// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function -- the shape
+// gunbc.roadmap_dashboard_instance declares and srv1_lab already follows -- so serving the
+// workspace from the development checkout is one row here rather than a resolver that reads the
+// process's own working directory. The alternative was tempting and worse: observing the repo root
+// at request time would make the served identity depend on where the binary happened to be
+// launched, which is an ambient fact, and it would re-answer per request a question that is fixed
+// for a process's whole life.
+fn roadmap_serve_handle_macbook_local(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: macbook_local_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,

@@ -338,7 +338,7 @@ import gunbc.git_diff_change_window {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.fleet_desired_observe {
-  fleet_revision_standing,
+  admitted_revision_standing,
   FleetRevisionStanding,
   RevisionConverged, RevisionDrifted, RevisionUnobserved,
 }
@@ -5504,7 +5504,14 @@ fn belt_launch_host_standing_for_instance_with_capacity(
       match belt_transition_admission_for_instance(instance: instance) {
         ActuationRefused { reason } => launch_host_halt_transition(instance_id: instance_id, reason: reason)
         ActuationAdmitted =>
-          match launch_host_stage_revision(instance_id: instance_id, revision: fleet_revision_standing(repo: instance.repo_root)) {
+          match launch_host_stage_revision(
+            instance_id: instance_id,
+            revision: admitted_revision_standing(
+              repo: instance.repo_root,
+              remote: instance.admitted_revision.remote,
+              ref_name: instance.admitted_revision.ref_name,
+            ),
+          ) {
             HostRevisionHalted { standing } => standing
             HostRevisionConverged { revision } =>
               LaunchHostObserved {
@@ -6243,15 +6250,21 @@ fn belt_verification_presentation_detail(
 }
 
 // THE EXECUTION STANDING IS OBSERVED AT THE MINT SITE from the instance the tick ran for and the
-// revision standing of that instance's tree -- the same fleet_revision_standing read the dispatch
-// preflight makes -- and the mode is the production row the tick itself consumed. A drifted or
+// revision standing of that instance's tree -- the same admitted_revision_standing read the
+// dispatch preflight makes, against the same per-instance admitting ref, because a tick receipt
+// that answered from a different authority than the gate would report a revision the gate never
+// admitted -- and the mode is the production row the tick itself consumed. A drifted or
 // unobservable revision withholds the binding rather than recording a revision the tick did not
 // serve.
 fn belt_tick_execution_standing_for_instance(
   instance: HostDashboardInstance,
   mode: SpawnMode,
 ) -> BeltTickExecutionStanding {
-  match fleet_revision_standing(repo: instance.repo_root) {
+  match admitted_revision_standing(
+    repo: instance.repo_root,
+    remote: instance.admitted_revision.remote,
+    ref_name: instance.admitted_revision.ref_name,
+  ) {
     RevisionConverged { revision: r } =>
       TickExecuted {
         instance_id: instance.instance_id as String,

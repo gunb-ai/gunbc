@@ -1,9 +1,10 @@
 module gunbc.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_binary_path }
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
+import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.provider_account {
   AdmittedAccountBinding,
   CodexAccountSelection,
@@ -11,6 +12,7 @@ import gunbc.provider_account {
   CodexLabelledAccount,
   ProviderAccountLabel,
   EvidencedSharingDiscipline,
+  codex_account_state_root,
   codex_roadmap_account_evidence,
   codex_roadmap_account_selection,
   admitted_single_session_binding,
@@ -199,6 +201,40 @@ type HostDashboardInstance {
   actuation: DashboardActuationPosture
   provision_transport: DashboardProvisionTransport
   source_seed: DashboardSourceSeed
+  admitted_revision: DashboardAdmittedRevisionSource
+}
+
+// WHICH AUTHORITY ADMITS A REVISION FOR THIS INSTANCE -- a required field, so that no instance can
+// exist without answering it.
+//
+// The launch gate asks whether the tree an instance dispatches from is the ADMITTED revision, and
+// until now the answer came from one hardcoded pair: refs/fleet/desired, advertised by origin. That
+// is the right authority for a fleet host and the wrong question for a development checkout, which
+// is not a fleet member and whose HEAD is ahead of the admitted fleet revision by construction --
+// that being the entire point of a development checkout.
+//
+// The refusal that must NOT be built here is the exempting one. "Skip the revision gate for local
+// instances" is a toggle whose only effect is to proceed as if the refusal had not fired, which is
+// the escape hatch DESIGN 5 names; it would also make the gate untestable on the one machine a
+// human iterates on. So the gate keeps its exact form -- HEAD compared against a named ref, drift
+// refuses, unobserved refuses -- and only the NAMED REF varies. A development instance points at a
+// ref in its own repository that the operator advances deliberately; dispatching from a tree nobody
+// admitted stays refused, and admitting your own tree becomes a visible act with a receipt in the
+// reflog rather than a bypass with no trace.
+//
+// It is a record rather than a coproduct because both fields are genuinely free: the pair is
+// (which remote advertises it, which ref it is), and a closed variant set would have to be widened
+// for every future admitting authority while carrying no fact the pair does not already carry.
+type DashboardAdmittedRevisionSource {
+  remote: String
+  ref_name: GitRef
+}
+
+// The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than
+// spelled at each instance so that the fleet answer stays one value across every fleet host.
+data fleet_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
+  remote: "origin",
+  ref_name: fleet_desired_ref_name,
 }
 
 // A dashboard is an explicit host instance, not an ambient serve process. One value moves the
@@ -569,8 +605,117 @@ fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLooku
   if repo_root == (srv1_live_dashboard_instance().repo_root as String) {
     DashboardInstanceResolved { instance: srv1_live_dashboard_instance() }
   } else {
-    DashboardInstanceRootUnknown { repo_root: repo_root }
+    if repo_root == (macbook_local_dashboard_instance().repo_root as String) {
+      DashboardInstanceResolved { instance: macbook_local_dashboard_instance() }
+    } else {
+      DashboardInstanceRootUnknown { repo_root: repo_root }
+    }
   }
+}
+
+data macbook_local_dashboard_id: NonEmptyStr = "macbook-local" as NonEmptyStr
+
+data macbook_operator_home_root: FilePath = "/Users/briansrls" as FilePath
+
+data macbook_local_repo_root: FilePath = "/Users/briansrls/gunbc" as FilePath
+
+data macbook_local_instance_root: FilePath = "/Users/briansrls/.local/share/gunbc-macbook-local" as FilePath
+
+data macbook_local_codex_home: FilePath = codex_account_state_root(
+  home: macbook_operator_home_root,
+  selection: codex_roadmap_account_selection(),
+) as String as FilePath
+
+// THE OPERATOR MACBOOK AS A DECLARED INSTANCE, so that serving the workspace from the development
+// checkout stops being a process that describes a machine it is not running on.
+//
+// Before this row, dashboard_instance_for_repo_root resolved exactly one root and every other
+// checkout answered DashboardInstanceRootUnknown, so a locally served page reported instance
+// srv1-live, host srv1 and repo /opt/gunbc/gunbc while running on a laptop. Nothing was wrong in
+// srv1's own terms -- the page simply had no way to say whose it was.
+//
+// FOUR FIELDS DIFFER FROM srv1-live FOR REASONS, not for local convenience:
+//
+// dispatch_state_scope is InstanceOwned rather than HostShared. srv1 puts worktrees and attempt
+// state beside the deployment under /opt/gunbc; on a development machine the repository root is
+// also the operator's working checkout, so host-shared roots would scatter dispatch debris through
+// the tree a human is editing. Instance-owned keeps every written path under one root that can be
+// removed whole.
+//
+// tmux_server is NAMED rather than Default. The default tmux server on this machine belongs to the
+// operator, and belt observation lists sessions on the server it is given: a shared default would
+// make the operator's own shells indistinguishable from dispatch sessions to the reaper. The named
+// server is the same isolation the labs already declare, for the same reason.
+//
+// listen_host is loopback rather than 0.0.0.0. srv1 binds every interface because the dashboard is
+// meant to be reachable across the LAN; a laptop on untrusted networks serving an ACTUATING
+// dispatch surface is a different exposure, and nothing needs to reach this one but the browser on
+// the same machine.
+//
+// provision_transport is Local rather than ssh:srv1, which is the honest reading of a host that
+// provisions itself and is why DashboardLocalProvision already exists as a variant.
+//
+// WHAT THIS ROW DOES NOT DO, stated because an actuating instance reads like a grant: it does not
+// make dispatch possible here. The revision gate still asks whether this tree is the admitted fleet
+// revision and still refuses, which is the correct answer while the admitting authority for a
+// development checkout is unmodeled. This row makes the machine nameable; it does not answer for
+// what may be launched on it.
+fn macbook_local_dashboard_instance() -> HostDashboardInstance {
+  HostDashboardInstance {
+    instance_id: macbook_local_dashboard_id,
+    host_identity: "macbook" as NonEmptyStr,
+    provision_parent_root: "/Users/briansrls/.local/share" as FilePath,
+    instance_root: macbook_local_instance_root,
+    local_origin_root: macbook_local_repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: macbook_local_repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(
+      toolchain: macbook_local_toolchain,
+      serve_binary: macbook_local_serve_binary,
+    ),
+    provider_state: DashboardExistingProviderState {
+      root: macbook_local_codex_home,
+      executable: none,
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: macbook_local_serve_binary,
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 8081,
+    tmux_server: dashboard_named_tmux_server(instance_id: macbook_local_dashboard_id),
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: macbook_local_admitted_revision_source,
+  }
+}
+
+data macbook_local_serve_binary: FilePath = "/Users/briansrls/gunbc/target/release/gunbc" as FilePath
+
+// THE DEVELOPMENT CHECKOUT'S ADMITTING REF, and the deliberate act that advances it.
+//
+// The remote is "." -- the repository itself -- because a laptop's admitted revision is not a fact
+// origin has any business advertising, and pushing a personal admission ref to a shared remote
+// would make one operator's local iteration visible to every fleet host reading refs. The same
+// typed ls-remote reads both: git resolves "." as a remote against the local repository, so this is
+// one operation with two bindings rather than a second code path for the local case.
+//
+// Advancing it is `git update-ref refs/gunbc/local-admitted HEAD`, and the friction is the feature.
+// An operator who has edited the tree and wants to dispatch against those edits states so; an
+// operator who has not gets the same drift refusal a fleet host gets, naming both revisions. The
+// reflog on this ref is the record of what was admitted and when, which a bypass flag would not
+// have produced.
+data macbook_local_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
+  remote: ".",
+  ref_name: "refs/gunbc/local-admitted" as GitRef,
 }
 
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
@@ -606,6 +751,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
   }
 }
 
@@ -696,6 +842,7 @@ fn isolated_dashboard_instance(
       anchor_ref: source_anchor_ref,
       history_remote: "origin" as NonEmptyStr,
     },
+    admitted_revision: fleet_admitted_revision_source,
   }
 }
 

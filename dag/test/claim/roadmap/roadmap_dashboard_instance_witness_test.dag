@@ -22,6 +22,7 @@ import gunbc.host_layout {
   srv1_codex_bundled_executable,
 }
 import gunbc.roadmap_dashboard_instance {
+  fleet_admitted_revision_source,
   HostDashboardInstance,
   DashboardObserveOnly,
   DashboardActuating,
@@ -798,6 +799,7 @@ fn witness_production_slot(
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
   }
 }
 
