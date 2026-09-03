@@ -623,6 +623,13 @@ fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
 // of the ordinary compiler floor DESIGN names. A third arm added to this type fails to compile at
 // BOTH sites rather than silently defaulting at either, so there is nothing silent for a canonical
 // surface to protect.
+//
+// The shape is also the corpus's ordinary one rather than a local shortcut, which is checkable by
+// naming instances rather than asserting a convention: gunbc.oomd_install `unit_is_active` eliminates
+// a six-variant SystemdUnitActiveState to Bool, and `unit_is_enabled` a ten-variant UnitFileState,
+// both on main and both load-bearing. A rule that condemns this two-arm eliminator condemns those,
+// and the fix for them would be the same minting. If that vocabulary is genuinely wanted it is a
+// corpus-wide replacement migration with its own root, not a condition on this module.
 fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
   match a.identity {
     ArtifactIdentityBound { identity: _ } => true
