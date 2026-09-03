@@ -499,8 +499,9 @@ fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: Strin
 // CONTAINMENT IS ALL THIS FUNCTION CAN ASK, AND FOR THE LOCAL-REPO LANE IT IS NOT THE WALL.
 // The reconciliation above proves only that some schedule entry's path contains the row's pattern.
 // For LocalRepoWetLane the real coverage check is the required floor's identity-grain join
-// (v2.workflow.local_repo_wet_terminal local_repo_wet_join), which refuses a missing, duplicated,
-// foreign-candidate or unscheduled terminal. This arm exists so the new classification is not
+// (v2.workflow.wet_evidence wet_evidence_validate, reached for this lane through
+// v2.workflow.local_repo_wet_terminal local_repo_wet_finalize), which refuses a missing,
+// duplicated, unscheduled terminal or one whose prepared subject differs. This arm exists so the new classification is not
 // silently unreconciled here while its members sit on a roster this function never reads.
 fn local_repo_wet_schedule_covers_pattern(pattern: String) -> Bool {
   any(

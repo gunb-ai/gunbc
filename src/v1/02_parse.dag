@@ -41,7 +41,7 @@ import v1.std.core {
   ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShCaret,
   ShStrBegin, ShStrMid, ShStrEnd,
   ShNewline, ShEof, ShUnknown,
-  SourceSpan,
+  SourceSpan, NonEmptyStr,
   ErrorNode, make_error_node, ParseError, InternalError,
   with_required_cardinality,
   error_type, is_compiler_error,
@@ -81,6 +81,12 @@ import std.occurrence_identity {
   node_occurrence_identity_minted,
 }
 import std.algebra { FreeMonoid, Empty, Cons }
+import std.import {
+  ParsedImportStatement,
+  ParsedImportStatements,
+  ImportStatementsParsed,
+  ImportStatementParseRefused,
+}
 
 import std.syntax {
   Add, BinOp, LitStr, LiteralValue,
@@ -1252,6 +1258,7 @@ fn occurrence_allocator_after_inferred_node(
     Present { value: Resolved { node: node } } => occurrence_allocator_after_node(alloc: alloc, node: node)
     Present { value: CompilerError { message: _, span: _ } } => alloc
     Present { value: TypeVariable { id: _ } } => alloc
+    Present { value: Divergent } => alloc
     Absent => alloc
   }
 }
@@ -1918,6 +1925,33 @@ fn occurrence_transport_from_parse_context(ctx: ParseContext) -> OccurrenceTrans
   }
 }
 
+// The opening parse context for one token vector. Extracted so the import-extent reading below
+// enters the grammar under the SAME context the full reading does rather than assembling a second
+// one beside it -- a context that differed in interning or occurrence allocation would be a second
+// answer to what the parser sees.
+fn parse_context_for_tokens(
+  tokens: List<Token>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  occurrence_base: AuthoredTokenOrdinalSpace,
+  heads_only: Bool
+) -> ParseContext {
+  ParseContext {
+    source_indices: source_indices,
+    intern_table: pre_intern_tokens(tokens: tokens, table: intern_table),
+    occurrence_allocator: occurrence_id_allocator_advance_to(
+      alloc: occurrence_base.allocator,
+      min_next: intern_table.authored_token_ordinals
+    ),
+    occurrence_index: Present {
+      value: OccurrenceIndex { entries: [] },
+    },
+    declaration_occurrences: Present { value: [] },
+    reference_occurrences: Present { value: [] },
+    heads_only: heads_only,
+  }
+}
+
 fn parse_with_table_at(
   tokens: List<Token>,
   source_indices: Map<String, NewlineIndex>,
@@ -1929,18 +1963,13 @@ fn parse_with_table_at(
     alloc: occurrence_base.allocator,
     min_next: intern_table.authored_token_ordinals
   )
-  let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
-  let ctx = ParseContext {
+  let ctx = parse_context_for_tokens(
+    tokens: tokens,
     source_indices: source_indices,
-    intern_table: pre_interned,
-    occurrence_allocator: occurrence_allocator,
-    occurrence_index: Present {
-      value: OccurrenceIndex { entries: [] },
-    },
-    declaration_occurrences: Present { value: [] },
-    reference_occurrences: Present { value: [] },
-    heads_only: heads_only,
-  }
+    intern_table: intern_table,
+    occurrence_base: occurrence_base,
+    heads_only: heads_only
+  )
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
     let occurrence_transport = occurrence_transport_from_parse_context(ctx: r.ctx)
@@ -2118,6 +2147,97 @@ fn parse_imports_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) ->
   } else {
     ImportsResult { imports: acc, tokens: tokens, ctx: ctx, err: none }
   }
+}
+
+// THE EXTENT OF AN IMPORT STATEMENT IS A FACT ABOUT ITS PARSE, and this is the only production
+// that can state it. An import node carries the `import` keyword as its span and the module path as
+// its ident_span, so where the statement STOPS is known only while its tokens are being consumed --
+// and a consumer that needs to remove one (std.import) must be handed a delimited region rather
+// than left to recognise `import` in the text, which a member list running over several lines and a
+// string containing the word both defeat.
+//
+// THERE IS NO SECOND GRAMMAR HERE. Statements are produced by parse_import, exactly as the full
+// reading produces them; this walk decides only where that production started and stopped, from the
+// token stream's own position before and after it. A rule added or corrected in parse_import is
+// reflected here with no edit.
+// The last non-newline token in a consumed window. parse_import consumes the newlines that FOLLOW a
+// statement and they are not part of it: ending the extent at them would make removing a statement
+// also remove the blank line after it, which is a second and unstated edit.
+fn last_consumed_token_end(all: List<Token>, from: Int, until: Int, end: Int?) -> Int? {
+  if from >= until {
+    end
+  } else {
+    match get(xs: all, index: from) {
+      Absent => last_consumed_token_end(all: all, from: from + 1, until: until, end: end)
+      Present { value: t } =>
+        if is_newline_shape(shape: t.shape) {
+          last_consumed_token_end(all: all, from: from + 1, until: until, end: end)
+        } else {
+          last_consumed_token_end(all: all, from: from + 1, until: until, end: Present { value: t.span.end })
+        }
+    }
+  }
+}
+
+fn parse_import_statement_extents_acc(
+  tokens: TokenStream,
+  ctx: ParseContext,
+  acc: List<ParsedImportStatement>
+) -> ParsedImportStatements {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "import") {
+    let before = tokens.pos
+    let r = parse_import(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) {
+      return ImportStatementParseRefused { cause: "an import statement did not parse" as NonEmptyStr }
+    }
+    match token_stream_first(stream: tokens) {
+      Absent => ImportStatementParseRefused { cause: "an import statement parsed from no token" as NonEmptyStr }
+      Present { value: first } =>
+        match last_consumed_token_end(all: tokens.all, from: before, until: r.tokens.pos, end: none) {
+          Absent => ImportStatementParseRefused { cause: "an import statement parsed without consuming a token" as NonEmptyStr }
+          Present { value: end } =>
+            parse_import_statement_extents_acc(
+              tokens: r.tokens,
+              ctx: parse_context_after_node(ctx: r.ctx, node: r.import),
+              acc: list_push(acc, ParsedImportStatement {
+                span: SourceSpan { file: first.span.file, start: first.span.start, end: end },
+                imported_module: r.import.name
+              })
+            )
+        }
+    }
+  } else {
+    ImportStatementsParsed { statements: acc }
+  }
+}
+
+// The reading is entered at the module declaration because that is where the grammar admits
+// imports; reaching them costs one `expect` and one parse_dotted_ident, both parser primitives and
+// neither a production of its own. A source that does not open with a module declaration has no
+// import statements to delimit, and says so rather than reporting none.
+fn parse_import_statement_extents(
+  tokens: List<Token>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable
+) -> ParsedImportStatements {
+  let ctx = parse_context_for_tokens(
+    tokens: tokens,
+    source_indices: source_indices,
+    intern_table: intern_table,
+    occurrence_base: intern_table.authored_token_ordinals,
+    heads_only: false
+  )
+  let stream = skip_newlines(tokens: token_stream_new(all: tokens))
+  let r = expect(tokens: stream, expected: ExpectKeyword { text: "module" })
+  if has_err(err: r.err) {
+    return ImportStatementParseRefused { cause: "source does not open with a module declaration" as NonEmptyStr }
+  }
+  let r = parse_dotted_ident(tokens: r.tokens)
+  if has_err(err: r.err) {
+    return ImportStatementParseRefused { cause: "module declaration does not name a dotted module path" as NonEmptyStr }
+  }
+  parse_import_statement_extents_acc(tokens: skip_newlines(tokens: r.tokens), ctx: ctx, acc: [])
 }
 
 fn parse_items(tokens: TokenStream, ctx: ParseContext) -> ItemsResult {

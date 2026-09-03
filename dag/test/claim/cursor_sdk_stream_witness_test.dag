@@ -39,6 +39,10 @@ test fn finished_run_result_reconciles() -> Bool {
   match cursor_sdk_stream_reconcile_run_result(raw: finished_result) {
     CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: _, raw: _ } => true
     CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalError, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalError, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
   }
 }
 
@@ -51,6 +55,10 @@ test fn auth_error_classifies() -> Bool {
         CursorSdkTerminalErrorAbsent => false
       }
     CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
   }
 }
 
@@ -63,6 +71,10 @@ test fn rate_limit_error_classifies() -> Bool {
         CursorSdkTerminalErrorAbsent => false
       }
     CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
   }
 }
 
@@ -129,6 +141,10 @@ test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
         CursorSdkTerminalErrorAbsent => true
       }
     CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorObserved { message: _, code: _ }, raw: _ } => false
+    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalCancelled, error: CursorSdkTerminalErrorAbsent, raw: _ } => false
   }
 }
 

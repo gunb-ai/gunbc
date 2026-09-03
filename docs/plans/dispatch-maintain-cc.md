@@ -23,7 +23,8 @@ actuator adds only runtime dedup + execution).
   serving lane … becomes live when a realization handler binds a handler_name dispatch").
   No POST route or request-body handler exists anywhere in the corpus.
 - **Double-spawn gate**: `dag/gunbc/session_lease.dag` — observation→verdict→plan
-  (`Start` / `DrainMatchingStaleThenStart` / `RefuseForeignOwner`) over `std.upsert_decision`.
+  (`Start` / `DrainMatchingStaleThenStart`) over `std.upsert_decision`, with a foreign owner
+  refused on the decision rather than planned.
   Reuse the same shape keyed on tmux session name per node_id (a session lease, not a port
   lease; same discipline: observation carries facts, classifier decides).
 - **Lifecycle binding** (`dag/gunbc/code_change_workflow.dag`): phase 2, explicitly out of MVP.

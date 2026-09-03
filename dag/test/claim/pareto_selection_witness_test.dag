@@ -5,10 +5,12 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.interval { degenerate_interval, closed_interval, IntervalConstruction, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
+  axis_roster_contradiction,
   AxisGoal, HigherIsBetter, LowerIsBetter,
   SelectionAxis, AxisReading, ParetoEntry, ParetoStanding, Domination,
   ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
   PairStanding, PairDominates, PairNoDominance, PairRefused, PairPendingEvidence,
+  PairEvidenceIncomplete,
   AxisComparison, Better, Same, Worse, UndecidedOnEvidence, axis_comparison_interval,
   compare_pair, entry_standing, pareto_label,
 }
@@ -32,6 +34,7 @@ data power_only: List<SelectionAxis> = [axis_power]
 // A second axis row carrying the SAME identity under a different goal - the duplicate the
 // selection must refuse rather than resolve first-one-wins.
 data axis_cost_duplicate: SelectionAxis = SelectionAxis { identity: axis_cost_id, goal: HigherIsBetter }
+data axis_power_duplicate: SelectionAxis = SelectionAxis { identity: axis_power_id, goal: LowerIsBetter }
 data duplicated_axes: List<SelectionAxis> = [axis_cost, axis_cost_duplicate, axis_power]
 
 data no_missing: List<NonEmptyStr> = []
@@ -122,6 +125,33 @@ data entry_double_reading: ParetoEntry = ParetoEntry {
 // The CLEAN field for the domination and trade-off controls; the holed field adds the
 // reading-hole entry for the fail-closed control; the reversed field proves order
 // invariance; the duplicated field plants one identity twice.
+// THE DANGEROUS CASE, AND IT NEEDED ITS OWN ROW. entry_quote_pending declares a gap but is the
+// WORST entry on power (that axis is HigherIsBetter), so it could never dominate anything and
+// proves nothing about whether the gate is load-bearing. This row is the one that matters: cost 1
+// and power 999 make it beat every other entry on both funded axes, and it declares an outstanding
+// quote. Reading-only dominance and declared-gap ineligibility point in opposite directions here,
+// which is exactly the case a silent gate cannot be trusted on.
+//
+// It is deliberately NOT a member of clean_field - the other controls pin that field's standings -
+// and lives in gap_best_field with the entries it is compared against.
+data id_gap_but_best: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_but_best", field: WholeDeclaration }
+
+data entry_gap_but_best: ParetoEntry = ParetoEntry {
+  identity: id_gap_but_best,
+  display_label: "gap-but-best",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 1) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 999) },
+  ],
+  missing_inputs: ["a written quote is outstanding, so this row's cost is not evidence"],
+}
+
+data gap_best_field: List<ParetoEntry> = [
+  entry_gap_but_best,
+  entry_dear_weak,
+  entry_cheap_strong,
+]
+
 data clean_field: List<ParetoEntry> = [
   entry_cheap_strong,
   entry_dear_weak,
@@ -286,6 +316,7 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
   let standing_surfaces_it = standing_is_refused(s: entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_never_dominates = match compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
@@ -293,6 +324,7 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
   let hole_poisons_the_field = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_poisons_from_the_front = standing_is_refused(s: entry_standing(subject: entry_dear_weak, field: holed_field_hole_first, axes: both_axes, sensitivities: spine_sensitivities))
@@ -317,6 +349,7 @@ fn standing_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>)
     PairNoDominance => false,
     PairRefused { cause } => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
 }
 
@@ -363,10 +396,226 @@ test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
     PairPendingEvidence { undecided_axes } => false,
+    PairEvidenceIncomplete { missing } => false,
   }
 }
 
 fn flag(b: Bool) -> NonEmptyStr { if b { "pass" } else { "FAIL" } }
+
+// CONTROL 11 - A DECLARED GAP IS NOT ELIGIBLE TO DOMINATE, AND THE PAIR API SAYS SO. This is the
+// defect that closed here, found while migrating a private consumer: compare_pair computed the
+// dominance question from readings alone and never read missing_inputs, while entry_standing
+// excluded exactly those challengers through challenger_applies. Two answers to one question, and
+// the exported one was the permissive arm - a caller reaching the pair API directly got
+// PairDominates for a candidate whose own standing is NotComputable.
+//
+// entry_gap_but_best is the fixture that makes the gate load-bearing rather than merely stated: it
+// beats every other entry on BOTH funded axes and declares an outstanding quote, so readings and
+// declaration point opposite ways. Turning the gate off makes both halves of this control red.
+//
+// The arm is its own, not PairNoDominance and not PairRefused: nothing was shown about this
+// candidate either way, and declaring your missing inputs is the honest behaviour the spine asks
+// for rather than a malformed entry. The cause names the entry and its obligations, so a caller
+// learns what would make the question answerable.
+//
+// The control runs the OTHER direction too: an entry that cannot be evaluated cannot be shown
+// DOMINATED either, so both operands are gated rather than just the challenger.
+test fn a_declared_gap_is_ineligible_to_dominate() -> Bool {
+  let would_win_on_readings = match compare_pair(a: entry_gap_but_best, b: entry_dear_weak, axes: both_axes) {
+    PairEvidenceIncomplete { missing } => count(missing) > 0
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+  }
+  let not_shown_dominated = match compare_pair(a: entry_cheap_strong, b: entry_gap_but_best, axes: both_axes) {
+    PairEvidenceIncomplete { missing } => true
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+  }
+  would_win_on_readings && not_shown_dominated
+}
+
+// THE TWO PATHS NOW AGREE, which is the actual repair. Before this cut the pair API and the standing
+// path disagreed about the same candidate. entry_gap_but_best would dominate both peers on readings
+// alone, so if the field fold ever stopped excluding it, dear_weak would name it as a dominator -
+// a candidate whose own standing is NotComputable being cited as the reason another row died.
+//
+// Its second half is what the eligibility read now DERIVES from the pair arm rather than restating
+// beside it: challenger_applies is down to the self-comparison guard, so this control is the only
+// thing standing between that deletion and a silent behaviour change.
+test fn the_pair_api_and_the_standing_path_agree_about_a_gap() -> Bool {
+  let gapped_row_is_not_computable = match entry_standing(subject: entry_gap_but_best, field: gap_best_field, axes: both_axes, sensitivities: spine_sensitivities) {
+    NotComputable { missing } => count(missing) > 0
+    ProvisionallyNonDominated { sensitivities } => false
+    DominatedBy { dominators } => false
+    PendingEvidence { undecided } => false
+    SelectionRefused { cause } => false
+  }
+  let never_a_dominator = match entry_standing(subject: entry_dear_weak, field: gap_best_field, axes: both_axes, sensitivities: spine_sensitivities) {
+    DominatedBy { dominators } => count(filter(dominators, d => declaration_ref_eq(a: d.candidate, b: id_gap_but_best))) == 0
+    ProvisionallyNonDominated { sensitivities } => false
+    NotComputable { missing } => false
+    PendingEvidence { undecided } => false
+    SelectionRefused { cause } => false
+  }
+  gapped_row_is_not_computable && never_a_dominator
+}
+
+// AN HONEST GAP MUST NOT MASK A PROJECTOR DEFECT ON THE OTHER OPERAND, IN EITHER DIRECTION. This is
+// the control for review 5091604216, and it is the one the pre-existing duplicate-focused controls
+// could not express: entry_reading_hole declares COMPLETE inputs while missing a funded reading -- a
+// projector contradiction, not an honest gap -- and entry_gap_but_best declares a gap truthfully.
+// Pairing them is the case where the old duplicate-only pre-scan found nothing malformed, took the
+// declared-gap arm, and returned an honest PairEvidenceIncomplete while the field path returned
+// SelectionRefused on the very same evidence.
+//
+// Both operand orders are required because the pre-scan reads a and b through one shared reader now;
+// a repair that only fixed the subject side would leave the challenger side answering differently,
+// which is the same disagreement one argument position over.
+//
+// THE KILLING MUTATION, named so a later reader can re-run it: restore the duplicate-only pre-scan
+// (match ReadingAbsent => acc in the function compare_pair consults) and this control goes red while
+// every duplicate-based control stays green -- which is precisely why those controls did not catch it.
+test fn an_honest_gap_does_not_mask_a_contradiction_on_the_other_side() -> Bool {
+  let hole_as_challenger = match compare_pair(a: entry_reading_hole, b: entry_gap_but_best, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  let hole_as_subject = match compare_pair(a: entry_gap_but_best, b: entry_reading_hole, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  hole_as_challenger && hole_as_subject
+}
+
+// THE PAIR PATH MUST REFUSE A MALFORMED AXIS ROSTER TOO, and until review 5092638535 it did not.
+// witness_duplicate_axis_identity_refuses exercises only entry_standing, so it stayed green with no
+// pair-layer guard existing at all -- the control was real but its subject was narrower than the
+// claim it appeared to make. With duplicated_axes, compare_pair used to return an ordinary
+// PairNoDominance: the first cost row said Better, the same cost identity repeated under the
+// opposite goal said Worse, the power row said Better, and nothing recorded a refusal.
+//
+// KILLING MUTATION: delete the axis_roster_contradiction gate from compare_pair. This control goes
+// red while witness_duplicate_axis_identity_refuses stays green -- which is the whole point, and the
+// reason the pre-existing control could not have caught it.
+test fn a_duplicated_axis_roster_refuses_the_pair_too() -> Bool {
+  let refused = match compare_pair(a: entry_cheap_strong, b: entry_dear_weak, axes: duplicated_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairNoDominance => false
+    PairDominates { winning_axes } => false
+    PairEvidenceIncomplete { missing } => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  let standing_agrees = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: clean_field, axes: duplicated_axes, sensitivities: spine_sensitivities))
+  refused && standing_agrees
+}
+
+// A CAUSE POPULATION MUST BE SIZED BY DISTINCT DEFECTS, NOT BY MALFORMED ROWS. This is the whole
+// reason the Bool was replaced: if the returned causes are the authority, their CARDINALITY tells a
+// caller how many separate repairs are owed, and a count that follows occurrences misstates that.
+// One identity duplicated three times is ONE defect to fix, not three.
+//
+// The cases below are the discriminator, and the middle one is why counting is not enough on its own:
+// a two-copy duplicate and a three-copy duplicate must both yield exactly one cause, so a scan that
+// merely halved the count, or emitted n-1, would pass [A,A] and fail [A,A,A].
+//   [A, A]        -> exactly one cause, naming A
+//   [A, A, A]     -> exactly one cause, naming A
+//   [A, A, B, B]  -> exactly two causes, one naming each
+//   [A, B]        -> none
+// Identity is the authority, so this is a structural scan carrying a seen-identity population, NOT
+// string deduplication of rendered messages -- two defects that happened to render alike must still
+// count twice, and one defect rendered under two spellings must still count once.
+//
+// KILLING MUTATION: restore the per-occurrence append (drop the seen-identity guard in
+// axis_roster_contradiction). [A,A] then yields two causes and this control reds, while every other
+// axis control stays green because they only ask whether a refusal occurred.
+fn names_identity(causes: List<NonEmptyStr>, id: DeclarationRef) -> Int {
+  count(filter(causes, c => string_contains(s: c as String, pattern: declaration_ref_display_key(ref: id))))
+}
+
+test fn a_cause_population_is_sized_by_distinct_defects() -> Bool {
+  let two_copies = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate])
+  let three_copies = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate, axis_cost])
+  let two_defects = axis_roster_contradiction(axes: [axis_cost, axis_cost_duplicate, axis_power, axis_power_duplicate])
+  count(two_copies) == 1 && names_identity(causes: two_copies, id: axis_cost_id) == 1
+    && count(three_copies) == 1 && names_identity(causes: three_copies, id: axis_cost_id) == 1
+    && count(two_defects) == 2
+    && names_identity(causes: two_defects, id: axis_cost_id) == 1
+    && names_identity(causes: two_defects, id: axis_power_id) == 1
+    && count(axis_roster_contradiction(axes: both_axes)) == 0
+}
+
+// A SUBJECT DOES NOT DOMINATE ITSELF, AND THIS CONTROL OWNS THE WHOLE PRECEDENCE IT DESCRIBES.
+// The source states an order:
+//
+//   malformed axis roster > malformed projector > self relation > honest gap > evidence fold
+//
+// Three cases established the self-relation ANSWER. They did not pin its POSITION, and a control
+// that runs the headline behaviour while leaving every boundary un-executed is the same defect this
+// PR keeps producing in prose: the comment "a gap cannot make a subject fail to tie with itself" was
+// true of the code and asserted by nothing. Reported on review 5095502958, whose rule is the sharper
+// form of my own tally -- every CLAUSE in a precedence claim needs a mutation that can cross that
+// boundary, because running the headline is not running the order.
+//
+// Six observations, and each of the last three exists to make one reordering visible:
+//   1. wide reading vs itself            -> PairNoDominance   (kills the fall-through: identical
+//                                                              wide intervals are UndecidedOnEvidence
+//                                                              between INDEPENDENT subjects)
+//   2. same identity, differing readings -> PairNoDominance   (kills the fall-through harder: it
+//                                                              answered PairDominates -- a candidate
+//                                                              dominating itself)
+//   3. both rows together in one field   -> SelectionRefused  (keeps 1 and 2 from reading as
+//                                                              "duplicates are fine now")
+//   4. self under a DUPLICATED AXIS ROSTER -> PairRefused     (moving self above axis admission
+//                                                              makes this PairNoDominance; 1-3 stay green)
+//   5. PROJECTOR-MALFORMED self            -> PairRefused     (moving self above projector admission
+//                                                              makes this PairNoDominance; 1-3 stay green)
+//   6. HONESTLY GAPPED self                -> PairNoDominance (moving self BELOW declared_gap_cause
+//                                                              makes this PairEvidenceIncomplete;
+//                                                              1-3 stay green. This is the sentence
+//                                                              the comment asserted and nothing ran.)
+//
+// Killing mutations, all executed: the intermediate refusal implementation; the fall-through with no
+// identity arm; and each of the three reorderings above.
+fn pair_is_no_dominance(p: PairStanding) -> Bool {
+  match p {
+    PairNoDominance => true
+    PairDominates { winning_axes } => false
+    PairPendingEvidence { undecided_axes } => false
+    PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
+  }
+}
+
+fn pair_is_refused(p: PairStanding) -> Bool {
+  match p {
+    PairRefused { cause } => count(cause) > 0
+    PairNoDominance => false
+    PairDominates { winning_axes } => false
+    PairPendingEvidence { undecided_axes } => false
+    PairEvidenceIncomplete { missing } => false
+  }
+}
+
+test fn a_subject_does_not_dominate_itself() -> Bool {
+  let wide_vs_self = pair_is_no_dominance(p: compare_pair(a: entry_wide_twin, b: entry_wide_twin, axes: both_axes))
+  let same_id_differing_readings = pair_is_no_dominance(p: compare_pair(a: entry_same_id_other_readings, b: entry_cheap_strong, axes: both_axes))
+  let field_still_refuses = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: [entry_cheap_strong, entry_same_id_other_readings], axes: both_axes, sensitivities: spine_sensitivities))
+  let malformed_axes_outrank_self = pair_is_refused(p: compare_pair(a: entry_cheap_strong, b: entry_cheap_strong, axes: duplicated_axes))
+  let malformed_projector_outranks_self = pair_is_refused(p: compare_pair(a: entry_reading_hole, b: entry_reading_hole, axes: both_axes))
+  let self_outranks_an_honest_gap = pair_is_no_dominance(p: compare_pair(a: entry_gap_but_best, b: entry_gap_but_best, axes: both_axes))
+  wide_vs_self && same_id_differing_readings && field_still_refuses
+    && malformed_axes_outrank_self && malformed_projector_outranks_self && self_outranks_an_honest_gap
+}
 
 fn pareto_witness_report() -> NonEmptyStr {
   join([
@@ -380,6 +629,13 @@ fn pareto_witness_report() -> NonEmptyStr {
     " duplicate_axis_refuses=", flag(b: witness_duplicate_axis_identity_refuses()),
     " duplicate_candidate_refuses=", flag(b: witness_duplicate_candidate_identity_refuses()),
     " duplicate_reading_refuses=", flag(b: witness_duplicate_reading_refuses_the_pair()),
+    " gap_ineligible_to_dominate=", flag(b: a_declared_gap_is_ineligible_to_dominate()),
+    " pair_and_standing_agree=", flag(b: the_pair_api_and_the_standing_path_agree_about_a_gap()),
+    " duplicate_outranks_gap=", flag(b: a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()),
+    " gap_does_not_mask_contradiction=", flag(b: an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()),
+    " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
+    " causes_sized_by_defects=", flag(b: a_cause_population_is_sized_by_distinct_defects()),
+    " no_self_dominance=", flag(b: a_subject_does_not_dominate_itself()),
   ], "")
 }
 
@@ -392,6 +648,13 @@ fn pareto_witness_main() -> ProcessExit {
     && witness_axis_orientation_is_consulted()
     && witness_shared_label_still_compares()
     && witness_field_order_is_irrelevant()
+    && a_declared_gap_is_ineligible_to_dominate()
+    && the_pair_api_and_the_standing_path_agree_about_a_gap()
+    && a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api()
+    && an_honest_gap_does_not_mask_a_contradiction_on_the_other_side()
+    && a_duplicated_axis_roster_refuses_the_pair_too()
+    && a_cause_population_is_sized_by_distinct_defects()
+    && a_subject_does_not_dominate_itself()
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
@@ -405,6 +668,36 @@ fn pareto_witness_main() -> ProcessExit {
 // (DESIGN 4b(4)): each one returned a CONFIDENT answer before the cut.
 
 fn le_int(a: Int, b: Int) -> Bool { a <= b }
+
+// SELF-COMPARISON FIXTURES. entry_wide_twin carries a genuinely WIDE reading, which is what makes
+// case 1 discriminating: identical wide intervals are UndecidedOnEvidence between two independent
+// subjects, so a fall-through implementation answers PairPendingEvidence here and only a
+// constructed self-comparison answer reaches PairNoDominance. entry_same_id_other_readings shares
+// one identity with entry_cheap_strong while carrying strictly better exact readings, so a
+// fall-through implementation reports a candidate DOMINATING ITSELF.
+data entry_wide_twin: ParetoEntry = ParetoEntry {
+  identity: id_wide_twin,
+  display_label: "wide twin",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: span(low: 10, high: 20) },
+    AxisReading { axis: axis_power_id, interval_micro: span(low: 30, high: 40) },
+  ],
+  missing_inputs: no_missing,
+}
+
+data entry_same_id_other_readings: ParetoEntry = ParetoEntry {
+  identity: id_cheap_strong,
+  display_label: "same identity, better readings",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 50) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 900) },
+  ],
+  missing_inputs: no_missing,
+}
+
+data id_wide_twin: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_twin", field: WholeDeclaration }
+
+
 
 // A widening fixture. A refused construction would be a fixture defect, and it is surfaced as an
 // obviously-wrong degenerate rather than silently swapped into order -- the refusal arm belongs to
@@ -491,6 +784,7 @@ test fn overlap_with_no_worse_axis_is_pending_not_dominance() -> Bool {
     PairDominates { winning_axes } => false
     PairNoDominance => false
     PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
   }
 }
 
@@ -504,6 +798,7 @@ test fn a_known_worse_axis_is_no_dominance_not_pending() -> Bool {
     PairPendingEvidence { undecided_axes } => false
     PairDominates { winning_axes } => false
     PairRefused { cause } => false
+    PairEvidenceIncomplete { missing } => false
   }
 }
 
@@ -622,4 +917,31 @@ test fn a_declared_gap_does_not_excuse_a_duplicate_reading() -> Bool {
     && !standing_is_incomparable(s: with_duplicate)
     && standing_is_incomparable(s: honest_gap)
     && !standing_is_refused(s: honest_gap)
+}
+
+// CONTROL 12 - MALFORMED BEATS INCOMPLETE AT THE PAIR LAYER TOO, IN BOTH OPERAND POSITIONS.
+// The precedence above is not new; what was new is that this cut broke it one layer down. The gap
+// gate added to compare_pair returned before any reading was examined, so entry_gap_and_duplicate
+// stopped reporting PairRefused and started reporting an honest incompleteness - the same defect the
+// control above forbids at the standing layer, reintroduced at the pair layer where no control
+// watched. Reported on review of this change (review 58743).
+//
+// It reuses the fixture directly above rather than minting a second one: the two controls are the
+// same claim asked at the two layers, so they must be asked of the same entry or they can drift.
+test fn a_duplicate_reading_outranks_a_declared_gap_in_the_pair_api() -> Bool {
+  let as_challenger = match compare_pair(a: entry_gap_and_duplicate, b: entry_dear_weak, axes: both_axes) {
+    PairRefused { cause } => count(cause) > 0
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  let as_subject = match compare_pair(a: entry_cheap_strong, b: entry_gap_and_duplicate, axes: both_axes) {
+    PairRefused { cause } => true
+    PairEvidenceIncomplete { missing } => false
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairPendingEvidence { undecided_axes } => false
+  }
+  as_challenger && as_subject
 }
