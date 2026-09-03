@@ -851,19 +851,25 @@ pub struct TransitionAdmission {
 /// the observation; choosing the replacement carrier is not this cut's to make.
 ///
 /// TWENTY-FIRST DISSOLUTION (2026-09-03, gunbc#10197). The 17 `call-reachability grounding
-/// gunbc#10156` rows are deleted, by their own trigger, which they stated in advance: #10156 merged
-/// (54b13232458), so main carries the grounding and no run's base and head can differ on it. The
-/// required run on this branch reported them exactly as that entry predicted -- `17 consumed
-/// admission(s) due for deletion on this roster-touching change)` -- and this change is the
-/// roster's next touch, so the obligation lands here. Nothing about them was re-derived: the
-/// trigger fired, the rows go.
+/// gunbc#10156` rows are gone, by their own trigger: #10156 merged (54b13232458), so main carries
+/// the grounding and no run's base and head can differ on it. This branch observed them CONSUMED on
+/// its own required run and deleted them here; gunbc#10028 independently deleted the same 17 on
+/// main's side while this branch was in CI. Both were right -- the trigger obliges EVERY concurrent
+/// roster-touching change -- so this is the concurrent-discovery shape the nineteenth and twentieth
+/// entries already recorded, arriving a third time.
 ///
-/// THE COST THE EIGHTEENTH ENTRY NAMED IS NOW OBSERVED FROM THE OTHER SIDE, and it is worth one
-/// sentence because that entry predicted it about a future branch and this is that branch. A change
-/// that touches this roster for its OWN reason inherits the deletion of someone else's consumed
-/// rows, so this cut -- a per-row file split of an unrelated authority -- must also author a record
-/// for a call-reachability transition it did not cause. The mechanism is working as designed; what
-/// it costs is that the two events are permanently coupled in one commit.
+/// SO THIS ENTRY IS A RECORD AND NOT A CLAIM OF AUTHORSHIP, and the distinction matters because
+/// #10028 deleted the rows and authored NO entry. Its diff left this file with the rows gone and
+/// their EIGHTEENTH TRANSITION doc block still standing above an array that no longer contained
+/// them -- a block describing seventeen rows a reader cannot find. That orphaned block is removed
+/// here. There is no competing record to collide with, so this is the single authority for the
+/// event rather than the second one, which is the only condition under which writing it is correct.
+///
+/// THE ORDINAL COLLISION THE TWENTIETH ENTRY CALLED A PROPERTY OF THE CARRIER IS NOW OBSERVED A
+/// FOURTH TIME, at 57 rows, at 3, and now at 17. Its diagnosis stands unchanged and unimproved by
+/// this instance: an author-assigned ordinal, in prose, in a file every lane must write by
+/// construction, cannot be made safe by diligence. Nothing here attempts to fix that; the
+/// replacement carrier is not this cut's to choose either.
 ///
 /// NINETEENTH TRANSITION (2026-09-03). Per-row file split of the declared rung-drop rows,
 /// gunbc#10197: `gunbc.rung_drop`'s 30 rows move out of the monolith into one module each under
@@ -890,10 +896,11 @@ pub struct TransitionAdmission {
 /// a count that matched while the identities did not would be the coincidence this roster's rule
 /// exists to refuse.
 ///
-/// MEASURED, NOT PREDICTED: required run 33789531276 on 694cebad90c, base da71b057882, which
-/// reported `16 unadjudicated delta(s)` with the floor CLEAN in the same run
-/// (`verdict=FloorClean unexpected_failures=0`), so the phase failure was these rows and nothing
-/// else. The 16 were read off that run's own per-delta lines rather than re-derived by hand.
+/// MEASURED, NOT PREDICTED: required run 33789531276, base da71b057882, which reported `16
+/// unadjudicated delta(s)` with the floor CLEAN in the same run, so the phase failure was these
+/// rows and nothing else. The 16 were read off that run's own per-delta lines rather than
+/// re-derived by hand, and run 33797225221 then reported 26 deltas with zero unadjudicated, zero
+/// stale and zero consumed -- which is the green that makes them evidence rather than intent.
 ///
 /// TRIGGER: #10197 MERGING. After that, main carries the split, so a later run's base and head both
 /// have it and no run can produce these deltas.
@@ -908,6 +915,46 @@ pub struct TransitionAdmission {
 const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "collect_pattern_rc_variant_guards",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_typed_match_arm_strs",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_arm_has_refutable_plain_field",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_pattern_preludes",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
