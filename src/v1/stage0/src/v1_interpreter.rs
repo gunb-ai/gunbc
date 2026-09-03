@@ -9947,13 +9947,27 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.first" { "first" } => {
+                // std.algebra free_monoid_collection_templates declares
+                //   first [ReceiverSelf] -> OptionalOf { inner: ReceiverElement }
+                // so the result is an Optional OF THE ELEMENT: at element type U? the two
+                // absences are distinct levels. Constructing them here -- rather than
+                // returning a bare element or a Value::Null sentinel -- is the same
+                // call-site construction `map_lookup_as_optional` already performs for maps.
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(match items.front().cloned() {
+                    Some(v) => optional_present(v, $ctx),
+                    None => optional_absent($ctx),
+                })
             },
 
             arm "method_call.last" { "last" } => {
+                // Same declaration, same construction: last [ReceiverSelf] ->
+                // OptionalOf { inner: ReceiverElement }.
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(match items.last().cloned() {
+                    Some(v) => optional_present(v, $ctx),
+                    None => optional_absent($ctx),
+                })
             },
 
             arm "method_call.reverse" { "reverse" } => {
