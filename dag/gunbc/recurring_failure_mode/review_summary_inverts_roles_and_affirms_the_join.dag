@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.review_summary_inverts_roles_and_affirms_the_join
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data review_summary_inverts_roles_and_affirms_the_join: RecurringFailureMode = RecurringFailureMode {
+  identity: "review_summary_inverts_roles_and_affirms_the_join" as NonEmptyStr,
+
+  receipts: [
+    "**a review summary that inverts real roles and then affirms the join** (a review names files that all exist, assigns each the wrong role, and closes by asserting the one property it was uniquely positioned to test. ",
+
+    "Specimen: review 58215 approved gunbc#9937 at `fafd2adc7e1` with *'restoration of two ledger rows to recurring_failure_mode.dag ... ",
+
+    "plus an accompanying prose update in the gap-analysis doc ... ",
+
+    "Diff is narrow and matches the PR title.'* The carrier held ONE added row, not two; that row was a NEW class row, not a restoration of anything; the actual restoration was the docs file it demoted to 'accompanying'; and the diff did NOT match the title, because the `.dag` file had been swept in by a staged-change leak the PR body never declared. ",
+
+    "**DISTINGUISH IT FROM A HALLUCINATED SUBJECT, which is the neighbouring failure and a much easier one:** review 58070 described a `match` arm that appeared nowhere in its diff, and an invention is refutable by grep. ",
+
+    "Here EVERY NOUN IS PRESENT IN THE TREE and only the relations between them are wrong, so the usual defence -- check that the cited things exist -- returns all-clear. ",
+
+    "**THE AFFIRMATION IS THE HARM AND NOT THE MISDESCRIPTION.** A lane cannot audit its own title-versus-diff agreement with fresh eyes; a reviewer can, and this one asserted that agreement in the exact PR where it failed. ",
+
+    "A review that stays silent on a property leaves the check undone; a review that affirms it wrongly marks the check DONE, which is worse and is why this is not merely a low-quality summary. ",
+
+    "RECOGNITION RULE, and it is decidable rather than a matter of reading care: join the changed-FILE set against what the title and body claim to change, at file grain, and refuse any file the body does not account for. ",
+
+    "That join is mechanical, needs no understanding of the diff, and would have fired here. ",
+
+    "**THE BACKSTOP QUESTION IS THE SECOND HALF OF THE ROW, and its answer is honest rather than comforting:** the leaked roster row carried no regenerated `DESIGN.md` or `docs/design-ledgers.md`, and by construction the required build lane's generated-artifact phase compares every `CommitRequired` projection against its authority, so it WOULD have refused. ",
+
+    "It did not get the chance -- that lane was CANCELLED on the leaked sha when the next push superseded it, and the leak was caught by the author re-reading the diff. ",
+
+    "So the backstop is real and was not what caught it, and a row claiming the gate held here would be asserting an execution that never ran. ",
+
+    "**Rung: mitigatable** -- the harm is contained only by a second reader noticing, and on the specimen the second reader was the author. ",
+
+    "**Ceiling: mechanically preventable**, and no higher: whether a summary DESCRIBES a diff correctly is not decidable, so no construction forbids the bad summary -- but the one clause that did the damage is decidable, because a changed-file set and a body are both machine-readable. ",
+
+    "**Next-rung trigger, at capability grain: no review verdict is admissible unless a changed-FILE-set join against the declared scope has executed and passed** -- not a reviewer instructed to check it, which is the same assertion that failed here, and not a lint on summary wording, which would ratchet the prose while leaving the join undone.)",
+  ],
+
+  evidence: [],
+}
