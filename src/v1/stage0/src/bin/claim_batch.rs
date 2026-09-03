@@ -480,6 +480,18 @@ fn resolve_timed(
                 graph.modules.len(),
                 graph.item_registry.len(),
             );
+            // THE MEMBERSHIP BEHIND THE COUNT, printed from the resolver's returned graph.
+            // A semantic digest can say after a long dispatch that its subject changed, and the
+            // scalar above can say only how large that subject was. Neither lets a lane about to
+            // edit a file determine whether it is inside the held subject. This projection does
+            // not walk imports or resolve a second time: the graph already retained the exact
+            // module population to execute the routed entry, and this prints that authority.
+            for (module, file) in v1_compiler::cli_run::resolved_closure_members(&graph) {
+                eprintln!(
+                    "[resolve] {}: closure member module={:?} file={:?}",
+                    entry, module, file
+                );
+            }
             timings.resolves += 1;
             timings.resolve_ms += ms;
             if timings.resolves == 1 {
@@ -1379,6 +1391,46 @@ mod witness_report_line_tests {
         let line = witness_report_line("some_witness", &receipt(500, 500));
         assert!(line.contains("cpu=500ms"), "{line}");
         assert!(line.contains("wall=500ms"), "{line}");
+    }
+}
+
+#[cfg(test)]
+mod resolved_closure_membership_tests {
+    use std::rc::Rc;
+    use v1_compiler::cli_run::resolved_closure_members;
+    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+
+    /// The producer reads the resolver result itself and carries identities, not only the count.
+    /// Reversing source order is the discriminating input for the stable display order, and the
+    /// two distinct paths prevent a module-only or file-only projection from satisfying the row.
+    #[test]
+    fn prints_the_resolvers_module_population_with_source_paths_in_stable_order() {
+        let sources = Rc::new(
+            vec![
+                Rc::new(SourceFile {
+                    path: "fixture/zeta.dag".to_string(),
+                    content: "module fixture.zeta\n".to_string(),
+                }),
+                Rc::new(SourceFile {
+                    path: "fixture/alpha.dag".to_string(),
+                    content: "module fixture.alpha\n".to_string(),
+                }),
+            ]
+            .into(),
+        );
+        let resolved = compile_to_resolved(sources);
+        let graph = resolved
+            .graph
+            .clone()
+            .expect("the two-module fixture resolves");
+
+        assert_eq!(
+            resolved_closure_members(&graph),
+            vec![
+                ("fixture.alpha".to_string(), "fixture/alpha.dag".to_string()),
+                ("fixture.zeta".to_string(), "fixture/zeta.dag".to_string()),
+            ]
+        );
     }
 }
 

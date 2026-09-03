@@ -4896,6 +4896,26 @@ pub fn workspace_relative_repo_path(path: &str) -> String {
     }
 }
 
+/// The exact module population returned by one entry resolution, in a stable display order.
+///
+/// This is a projection of the resolver result, never a second import or reference walk. Module
+/// identity joins the resolver's population; source path lets a prospective writer compare the
+/// file it is about to change with the routed entry's semantic subject.
+pub fn resolved_closure_members(graph: &ResolvedGraph) -> Vec<(String, String)> {
+    let mut members: Vec<(String, String)> = graph
+        .modules
+        .iter()
+        .map(|module| {
+            (
+                module.func_env.name.clone(),
+                workspace_relative_repo_path(&module.module.span.file),
+            )
+        })
+        .collect();
+    members.sort();
+    members
+}
+
 /// Entry-path variant of `workspace_relative_repo_path` that NEVER panics.
 ///
 /// A user-supplied entry can legitimately sit outside every source root (an absolute path under
