@@ -1,0 +1,102 @@
+module gunbc.recurring_failure_mode.stale_base_branch_reads_as_pending_work
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data stale_base_branch_reads_as_pending_work: RecurringFailureMode = RecurringFailureMode {
+  identity: "stale_base_branch_reads_as_pending_work" as NonEmptyStr,
+
+  receipts: [
+    "**a stale-base branch reads as ordinary pending work, in CONTENT form with no ref-level tell** (a branch whose substantive content has ALREADY LANDED through another PR presents, after main moves on, as a perfectly ordinary feature branch: its merge-base predates the landing, so its three-dot diff against main shows only insertions and no deletions, and every sentence a reviewer would write about it -- adds the note, properly scoped, no code touched -- is ACCURATE RELATIVE TO THAT BASE and wrong relative to main. ",
+
+    "Merging it re-injects an older, smaller version of content main has since extended. ",
+
+    "**THE KNOWN FORM OF THIS HAZARD IS THE REF FORM AND IT IS NARROWER THAN THE CLASS.** The ref form announces itself: a surviving branch on a squash-merged PR, a same-sha duplicate, an auto-opened PR with a template body -- something structural to notice, and the three prior instances were all found that way. ",
+
+    "THIS instance had no duplicate ref, no auto-open and no surviving-branch signal. ",
+
+    "The only tell was that the branch's copy of the one file it touched was SHORTER THAN MAIN'S, and NOTHING IN A +73/-0 DIFF SAYS SO -- a diff renders what the branch adds to its base, never what its base is missing. ",
+
+    "SPECIMEN, 2026-09-03, gunbc#10234: main 544 lines / branch 340 lines on `src/v2/workflow/floor_pure_producer_share.dag`, merge-base 00bb2f473a, three-dot +73/-0, two-dot +225/-21. ",
+
+    "Its content had landed as gunbc#10158 and been extended by gunbc#10141. ",
+
+    "**THE HARM IS THAT THE LINE STOPS WITH THE WRONG PRESCRIPTION.** A merge conflict DID fire, so nothing merged silently and the class sits at mitigatable rather than below the floor -- but the notice instructed `rebase on main, resolve the conflicts, and push`, and following it would have produced a revert wearing a resolution's clothes. ",
+
+    "There was no content decision available to make: one side was simply stale, so a reviewer weighing the two sides was choosing between a current note and a historical copy of it while believing they were reconciling two intentions. ",
+
+    "A loud stop whose prescribed repair is the harmful arm is worse than a quiet one, because the diligence of following instructions is what causes the loss. ",
+
+    "**THE DECIDABLE CHECK, WHICH IS WHY THE CEILING IS NOT THE CURRENT RUNG:** the comparison that exposes it is mechanical and needs no judgment -- for each file a PR changes, compare the BRANCH'S version against MAIN'S rather than reading the diff, and treat main-longer-and-containing-the-branch's-additions as supersession rather than conflict. ",
+
+    "Equivalently: a merge-base that predates a merge which touched the same file is a supersession candidate, and that is computable from the ref graph alone. ",
+
+    "What is NOT decidable in general is content subsumption, so the honest gate refuses for ANALYSIS rather than auto-closing. ",
+
+    "**RUNG FOUND AT: MITIGATABLE.** The conflict contains the harm by stopping the merge; nothing computes the distinction, and the diagnostic actively misdirects. ",
+
+    "**CEILING: MECHANICALLY PREVENTABLE**, because the merge-base-versus-file-touching-merge comparison is derivable from refs and can refuse before a human is asked to resolve. ",
+
+    "Not higher: a stale branch is representable by construction -- forbidding one would mean forbidding branches from being behind, which this repository deliberately allows, since PRs here merge behind main routinely. ",
+
+    "**NEXT TRIGGER, naming the capability and not an artifact:** a producer that, for each file a pull request changes, joins the branch version against main's and against the merge-base, and emits a typed supersession verdict distinct from a content conflict -- SUFFICIENT FOR routing the two to different prescriptions, since the whole harm is that one prescription is issued for both. ",
+
+    "A checklist item asking reviewers to compare line counts would be satisfied while the capability stayed dead. ",
+
+    "**BOUNDARY against `merge_region_excludes_shared_tail`:** that class is about a conflict region resolved WRONGLY on a live carrier where both sides are current; this one is about a conflict that should never have been presented as a conflict at all. ",
+
+    "Their repairs are disjoint -- one fixes how a region is resolved, the other decides whether the region is a decision. ",
+
+    "**THE CLASS PRODUCED A CONFIRMING INSTANCE WITHIN THE HOUR, AND THE INSTANCE IS AN APPROVAL.** This row asserts that every sentence a reviewer writes about a stale-base branch is accurate relative to that base. ",
+
+    "A scheduled review of the specimen PR approved it -- `APPROVE -- annotation-only change on an existing carrier, no substrate impact`, and separately that `the revision addresses a prior codex REQUEST_CHANGES by correcting the re-derivation claim`. ",
+
+    "Both statements are true of the branch, which was 204 lines behind main, and both are unhelpful about main, where the same paragraph still carried the unrepaired sentence. ",
+
+    "So the reviewer was not careless and did not need to be: the artifact it was handed contains no representation of what main has since become, which is the whole class. ",
+
+    "That is the recorded reason this row's trigger names a PRODUCER and not reviewer diligence -- diligence is precisely what was exercised here, and it produced an approval of superseded content. ",
+
+    "**A SECOND SUB-CLAIM WAS WRITTEN HERE AND WITHDRAWN, RECORDED BECAUSE THE WITHDRAWAL IS THIS ROW'S OWN SUBJECT.** An earlier revision said the review landed twenty minutes AFTER the PR was closed, and concluded that the review scheduler does not read closure. ",
+
+    "THE ORDER IS THE REVERSE: the review completed 2026-09-03T15:39:02Z and the closure followed at 15:41:20Z, about two minutes later. ",
+
+    "Nothing in this specimen shows a scheduler reviewing a closed pull request, so the closure-semantics claim had no receipt and is withdrawn -- it may well be true of the scheduler and would need a review whose completion genuinely follows a closure. ",
+
+    "It is left in the row rather than deleted because a ledger row asserting a behaviour its own cited receipt does not show is the fabricated-citation class appearing INSIDE the row that files its neighbour, and the scoping repair is the same one that spared a true citation six lines above the note this specimen came from: repair the false claim, do not delete the true one beside it.)",
+
+    "**THE ANALYST FORM, BESIDE THE READER FORM ABOVE (amended 2026-09-03, tidy-koi-619 and warm-seal-35, three git specimens inside one evening; a fourth was carried and removed, see below).** Everything above describes the ARTIFACT misleading someone who reads it. This form is the person who MEASURES CORRECTLY AND LABELS THE MEASUREMENT WRONG. ",
+
+    "THE INVALID STATE, SCOPED TO WHAT THIS ROW'S TRIGGER CAN RETIRE: a DIFF DIRECTION labelled as the question it does not answer, when analysing whether a branch's content has already landed. The general form -- any label authored separately from the measurement it names, with no mechanical relationship to the number beside it -- is REAL AND DELIBERATELY NOT CLAIMED HERE. This row's trigger names a producer scoped to 'each file a pull request changes', so it can never retire an instance with no pull request in it, and a row carrying a loss its trigger cannot reach is the grain mismatch DESIGN section 4b(3) names as a review tell. That boundary was established by review 59526 on gunbc#10286, against an earlier revision of this amendment which asserted the general form here. ",
+
+    "It is worse than the reader form rather than milder: the reader form yields a MISSED fact, this yields a SPECIFIC FALSE CLAIM, and a specific false claim gets acted on. ",
+
+    "THE GIT INSTANCE: diff(merge-base, head) is WHAT THE PULL REQUEST DOES and is the only direction that describes a merge; diff(head, main) and two-dot main..branch are WHAT THE BRANCH LACKS. Both readings are true; only the label is wrong. ",
+
+    "SPECIMEN ONE (gunbc#10242 and gunbc#10276): reported that merging two survivor branches would DELETE eight and then four named files, including a witness test that had landed twenty minutes earlier, and posted it on a closed pull request AS A CORRECTION. Measured, the branches' own diffs are 3A/26M/2R/0D and 2M/0D -- zero deletions, and the named test is in neither diff. The 'deletion set' was main's FORWARD MOVEMENT read out of the wrong direction. THE TELL PRESENT AND MISSED: across four branches of one session the counts were 22, 14, 7 and 4, MONOTONE IN BRANCH AGE. A deletion set does not correlate with staleness; a forward-movement set does so by definition. ",
+
+    "SPECIMEN TWO (gunbc#10265, the MIRROR DIRECTION): the rule held correctly, a MERGE-BASE hunk quoted, labelled an answer about MAIN. ",
+
+    "A THIRD SPECIMEN WAS CARRIED HERE AND HAS BEEN REMOVED, and recording the removal is worth more than the specimen was: two greps in ONE shell command over two job logs, output read as belonging to the first. It was included BECAUSE it has no branch in it, on the reasoning that this forecloses the objection that the class is about git. That reasoning was exactly backwards. No branch in it is why it CANNOT belong here: a producer joining branch, main and merge-base cannot make a hand-authored log label unwritable, so the specimen sat under a trigger that could never retire it. The general class may earn its own row with its own capability; it does not get to live under this one. ",
+
+    "SPECIMEN FOUR (gunbc#10284, the sharpest): `git diff origin/main..$BR --stat` run under an echo string reading 'what the branch would ADD to main', returning 36 files, 743 insertions and 4,680 DELETIONS -- which read for about ten seconds as a mass revert about to be proposed. Two-dot main..branch shows what the branch LACKS; three-dot shows four deletions. THE LABEL WAS WRITTEN BEFORE THE COMMAND RAN, so the output could only confirm it. A PRE-WRITTEN LABEL IS NOT A LABEL, IT IS A HYPOTHESIS WEARING ONE. ",
+
+    "THE REPAIR FOR THE SPECIMENS THIS ROW KEEPS is the trigger already named: the supersession producer's output leaves the analyst nothing to compose or label by hand, which is where all three git specimens failed. The wider repair -- make every producer emit its own identity, so the diff prints the ref expression it evaluated -- would also cover them, but it is a DIFFERENT capability and naming it here would grow this row's trigger past what retires it. ",
+
+    "WHAT DECIDES THIS BELONGS HERE RATHER THAN IN A ROW OF ITS OWN, and it is also the strongest support for this row's existing trigger: THE FIRST TWO SPECIMENS OCCURRED WHILE ANALYSING AN INSTANCE OF THIS VERY CLASS. Both branches were stale-base survivors whose content had already landed. Neither analyst stumbled into a neighbouring failure; each failed AT the class while examining it, having stated the distinction correctly to the other in writing beforehand. The row already argues the trigger must name a PRODUCER rather than reviewer diligence, citing an approval of superseded content; this is stronger, because the approval shows someone MISLED BY THE ARTIFACT while these show two analysts who KNEW THE RULE, HAD JUST WRITTEN IT DOWN, AND STILL MISLABELLED A DIRECTION WITHIN HOURS. If holding the rule is not sufficient, diligence is definitively not the repair. ",
+
+    "THE TRIGGER IS NOT EXTENDED AND MUST NOT BE: the producer already named -- joining branch against main AND against the merge-base and emitting a typed supersession verdict -- covers this form, because its output leaves nothing to COMPOSE OR LABEL BY HAND, and that is where all three kept specimens failed. A trigger that grows to name a second capability is how a row stops being retirable. ",
+
+    "THE FALLBACK WHEN YOU CANNOT TELL WHICH WAY YOU MEASURED, recorded because it is what held while every directional claim beside it was retracted: ZERO BRANCH-ONLY FILES, plus the branch's content verified PRESENT ON MAIN BY CONTENT rather than by ancestry, since a squash destroys ancestry. It needs no direction to be correct and was sufficient to close both pull requests on its own. ",
+
+    "A NEIGHBOUR CITED RATHER THAN RESTATED, because restating a neighbour's fact here is the failure this ledger exists to prevent: the empty-result half is `empty_capture_read_as_clean_result`, and citing it is load-bearing because BOTH AUTHORS OF THIS AMENDMENT INDEPENDENTLY REPORTED AS A FRESH METHOD NOTE A SPECIMEN THAT ROW ALREADY NAMES -- `gh api` job logs writing ZERO BYTES without --allow-escape-sequences, refusing on stderr. One of us was one message from filing a second authority for it. ",
+
+    "TWO OF THIS AMENDMENT'S OWN NEAR-MISSES BELONG TO THAT NEIGHBOUR AND NOT HERE, and measuring them split them: `git show` against an unfetched sha exits 128 and prints 108 bytes of `fatal:` while writing an empty file, later read as zero declarations in an 83-row module; and the `gh api` sweep exited 1 under a `2>/dev/null | grep -c ... || true` that deleted the exit code and the message in the same command that produced the wrong answer. For both, that row's remedy works as written -- consult the typed status. ",
+
+    "A THIRD HAS NO TYPED STATUS TO CONSULT, and it is recorded WITH ITS CONTROL because without the control it is a curiosity and with it a defect. Both arms as a pair: `gh run list --commit` on a ref that does not exist, and on a REAL commit that genuinely has no runs, both return rc=0, three bytes of stdout `[]` and zero bytes of stderr -- BYTE-IDENTICAL ON EVERY CHANNEL THE CALLER CAN READ, exit code included. TWO DISTINCT STATES COLLAPSED INTO ONE VALUE. The remedy is named rather than left as a gap: not read the status, but ESTABLISH THAT THE SUBJECT EXISTS BEFORE CONSUMING AN OBSERVATION ABOUT IT -- a `git cat-file -e` existence probe separates the two arms where no channel of the instrument can. An empty observation set is readable only once the subject is known to be in the domain, which is 'a zero is only readable beside a nonzero' moved from the COUNT to the SUBJECT. The repair belongs to that neighbour and is pointed at rather than performed here. ",
+
+    "ONE RECOGNITION RULE BELONGING TO THAT SAME NEIGHBOUR, placed here only because this amendment was the edit in flight on this carrier and two lanes appending to one roster is how the duplicate-declaration defect of 2026-09-03 was created: `2>/dev/null` and `|| true` INSIDE A MEASUREMENT are a mechanical, greppable tell. Both are legitimate in a probe whose failure is expected and uninteresting; in an instrument they delete exactly the evidence that the instrument did not run.",
+  ],
+
+  evidence: [],
+}

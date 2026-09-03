@@ -1,0 +1,52 @@
+module gunbc.recurring_failure_mode.selection_view_read_as_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data selection_view_read_as_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "selection_view_read_as_population" as NonEmptyStr,
+
+  receipts: [
+    "**a selection view read as the population** (a decidable predicate is written over MEASURED values -- cost at or above N, latency under N, rows a report printed -- and its output is then treated as the population of the class under study. ",
+
+    "Membership in that set is a property of THE MEASUREMENT, not of the subject: it moves when the instrument moves, when load moves, when the reporter truncates, while the subject is unchanged. ",
+
+    "The set and the population are two objects joined by an assumption nobody states, and the assumption is false exactly when the measured quantity carries an unbounded term the threshold cannot see beneath. ",
+
+    "**WHAT MAKES THIS DIFFERENT FROM ITS NEIGHBOURS IS THE ROUTE IT ARRIVES BY, AND THAT IS ALSO THE WHOLE DIFFICULTY: IT ARRIVES AS THE FIX FOR A REAL OBJECTION.** `instrument_output_read_as_subject_content` is a report read past its own promise, and its closest unnamed relative here is a statistic computed over the observations that SURVIVED a threshold on the very variable being estimated -- filed separately as `censored_estimator_drops_its_own_tail`, and cited here by identity because that row now resolves in this tree; it was carried descriptively while it was unlanded, since a boundary drawn against a symbol that does not resolve is worse than a boundary drawn descriptively. ",
+
+    "Both of those are errors in the READING. ",
+
+    "This one is produced BY diligence. ",
+
+    "The predicate is decidable, it is honestly derived, and it is very often the correct answer to a legitimate refusal -- which is precisely why the next question does not get asked. ",
+
+    "**BEING CAREFUL IS WHAT MAKES IT INVISIBLE: the diligence is spent on the repair, and the repair's correctness is what stops anyone asking whether it answers the question that was posed.** A defect arriving inside a correct fix is not caught by the diligence that produced the fix. ",
+
+    "SPECIMEN, WITH BOTH ENDS BELONGING TO THE SAME AUTHOR THREE HOURS APART, which is why it is filed rather than blamed. ",
+
+    "(i) A peer lane computed a median and p95 over the rows a required-floor run's `[over-cost]` listing PRINTED -- an instrument that ranks by cost and truncates to a fixed head, and whose own closing line says so and names the per-claim cost artifact the run uploads as the complete population. ",
+
+    "This author correctly told them an order statistic of a truncated tail describes nothing, because the truncation is a property of the REPORTER. ",
+
+    "THE TWO PRODUCERS ARE NAMED RATHER THAN THEIR OUTPUTS TRANSCRIBED, per DESIGN section 6: the truncated view is that `[over-cost]` listing, and the population is `required_floor_claim_cost.tsv` as uploaded by the same run -- either is re-derivable from any floor run, and no count here needs to be trusted. ",
+
+    "(ii) The same author then had a declared drop refused for defining its population as `every required row whose headroom is smaller than the observed inflation` while calling that inflation censored with no upper bound -- an undecidable membership predicate, correctly refused under DESIGN section 4b(3). ",
+
+    "The fix was a decidable admission rule over each run's own per-claim cost artifact, which was the right repair for the refusal, and its output was then written into the row AS THE POPULATION. ",
+
+    "With an unbounded contention term, no lower threshold can prove the rows beneath it unaffected, so the set was a view the whole time. ",
+
+    "REPAIR: name the closed subject universe from the SUBJECT rather than from any measurement -- for the specimen, every required identity for which the cpu deadline is armed while it executes under the uncontrolled shared-runner envelope -- and keep the threshold set, which is genuinely useful, under an honest name: an EXPOSED ATTENTION SUBSET for prioritising work. ",
+
+    "A COROLLARY WORTH CARRYING SEPARATELY, because conflating the two hides the seam: the evidence floor behind such a threshold may be MONOTONE while the membership set is NOT. ",
+
+    "An observed floor only rises, so a constant derived from it only falls; individual identities still enter and leave the subset as their measured values vary. ",
+
+    "Monotonicity of the bound says nothing about stability of the set. ",
+
+    "**RECOGNITION RULE: when a set is produced by comparing a MEASURED value against a threshold, ask what the set would contain if the measurement were taken again under different conditions -- and ask it hardest when the predicate was just written to satisfy a reviewer, because that is the moment the answer feels settled.**)",
+  ],
+
+  evidence: [],
+}
