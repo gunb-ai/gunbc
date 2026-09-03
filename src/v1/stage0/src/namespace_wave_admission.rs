@@ -691,9 +691,35 @@ pub struct TransitionAdmission {
 /// the change that went looking for it. Removing them here is the trigger being honoured rather
 /// than a sweep of convenience, and it is why no separate follow-up PR is owed.
 ///
-/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
-/// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// THE RESTING STATE IS EMPTY, and empty is not permissive — a run with a real delta still refuses
+/// it as UNADJUDICATED, closed by authoring a row and never by a silent admission. That is the
+/// mechanism this roster's single current row went through rather than around.
+///
+/// THE ONE ROW STANDING (gunbc#10218) admits a single occurrence-binding relocation.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so
+/// importing a specific product's helper to obtain an equality would invert the layering. The
+/// spelling is unchanged on both sides and only its TARGET moved, which is exactly TargetChanged.
+///
+/// ITS CONSUMPTION IS DECIDABLE AND ITS DELETION IS OWED. Once gunbc#10218 merges, the base itself
+/// binds `physical_asset_identity_eq` to product.placement_supply, the delta stops being produced,
+/// and this row matches nothing — reported as a stale admission, which is a finding. It is
+/// therefore due for deletion on the next change that touches this roster, by the same rule the
+/// paragraphs above applied to the 57 rows before it.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "gunbc#10218 identity-equality re-home: PhysicalAssetIdentity comparison moves to the \
+            module that owns the type",
+    subject: AdmissionSubject::Binding {
+        module: "product.printed_chassis.manufacturing_manifest",
+        in_declaration: "scan_printer_assets",
+        spelling: "physical_asset_identity_eq",
+        target: "product.placement_supply",
+    },
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
