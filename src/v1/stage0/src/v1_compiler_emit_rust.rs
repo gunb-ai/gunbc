@@ -289,14 +289,15 @@ pub use crate::v1_std_core::{
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
     index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
-    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
-    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes,
+    match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
+    param_node_type_expr, qualified_last_segment, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
+    service_config_auth, service_config_auth_input, service_config_auth_source,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
+    transport_auth_header_name, transport_auth_token, transport_base_path, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
     with_required_cardinality,
@@ -20648,14 +20649,6 @@ v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(),
     }
 }
 
-pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind { declaration: _, .. } => true,
-        MatchPattern::Wildcard => true,
-        _ => false,
-    }
-}
-
 pub fn variant_pattern_shape_for(
     name: String,
     parent_enum: Option<String>,
@@ -20764,7 +20757,7 @@ if (inner.clone() == "".to_string()) {
                             if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
                                 {
                                     let fb_pat = crate::v1_std_core::field_binding_pattern(fb.clone());
-if match_pattern_is_irrefutable(fb_pat.clone()) {
+if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat.clone()) {
                                         Rc::new(vec![])
                                     } else {
                                         match (*fb_pat.clone()).clone() {
@@ -20890,7 +20883,7 @@ if (inner_preludes.clone() == "".to_string()) {
                                     } else {
                                         {
                                             let bound_str = emit_pattern(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let tail = if match_pattern_is_irrefutable(fb_pat_here.clone()) {
+let tail = if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat_here.clone()) {
                                                 ";".to_string()
                                             } else {
                                                 " else { unreachable!() };".to_string()
@@ -27551,9 +27544,9 @@ pub fn rc_arm_has_refutable_plain_field(
             for fb in fbs.iter().cloned() {
                 if ((crate::v1_std_core::field_binding_name_at(fb.clone(), source_indices.clone())
                     != ref_field.clone())
-                    && !match_pattern_is_irrefutable(crate::v1_std_core::field_binding_pattern(
-                        fb.clone(),
-                    )))
+                    && !crate::v1_std_core::match_pattern_is_irrefutable(
+                        crate::v1_std_core::field_binding_pattern(fb.clone()),
+                    ))
                 {
                     __found = true;
                     break;
@@ -27897,7 +27890,9 @@ pub fn emit_typed_match_arm_strs(
         let has_irrefutable = {
             let mut __found = false;
             for a in arms.iter().cloned() {
-                if match_pattern_is_irrefutable(crate::v1_std_core::arm_pattern(a.clone())) {
+                if crate::v1_std_core::match_pattern_is_irrefutable(
+                    crate::v1_std_core::arm_pattern(a.clone()),
+                ) {
                     __found = true;
                     break;
                 }

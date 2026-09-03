@@ -30,8 +30,8 @@ use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcar
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
-    no_span, none_type, preserve_outer_optional_cardinality, qualified_last_segment,
-    with_optional_cardinality,
+    match_pattern_is_irrefutable, no_span, none_type, preserve_outer_optional_cardinality,
+    qualified_last_segment, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
@@ -953,15 +953,6 @@ pub fn constructor_fields(
     }
 }
 
-pub fn pattern_is_irrefutable(p: Rc<MatchPattern>) -> bool {
-    match (*p.clone()).clone() {
-        MatchPattern::Wildcard => true,
-        MatchPattern::Bind { declaration: _, .. } => true,
-        MatchPattern::VariantPattern { .. } => false,
-        MatchPattern::LitPattern { value: _, .. } => false,
-    }
-}
-
 pub fn pattern_row_head(row: Rc<Vec<Rc<MatchPattern>>>) -> Rc<MatchPattern> {
     match row.clone().first().cloned() {
         Some(p) => p.clone(),
@@ -970,7 +961,7 @@ pub fn pattern_row_head(row: Rc<Vec<Rc<MatchPattern>>>) -> Rc<MatchPattern> {
 }
 
 pub fn pattern_row_is_irrefutable(row: Rc<Vec<Rc<MatchPattern>>>) -> bool {
-    pattern_is_irrefutable(pattern_row_head(row.clone()))
+    crate::v1_std_core::match_pattern_is_irrefutable(pattern_row_head(row.clone()))
 }
 
 pub fn pattern_matches_constructor(p: Rc<MatchPattern>, ctor: String) -> bool {
@@ -1033,7 +1024,7 @@ pub fn specialize_pattern_row(
                 .skip(1 as usize)
                 .collect::<Vec<_>>(),
         );
-        if pattern_is_irrefutable(head.clone()) {
+        if crate::v1_std_core::match_pattern_is_irrefutable(head.clone()) {
             Rc::new(vec![v1_rt::concat(
                 Rc::new({
                     let mut __result = Vec::new();

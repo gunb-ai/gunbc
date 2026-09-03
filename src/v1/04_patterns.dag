@@ -7,6 +7,7 @@ import std.types { SourceSpan }
 import std.syntax { LiteralValue }
 
 import v1.std.core {
+  match_pattern_is_irrefutable,
   Node,
   find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
   ExprData, NoExprData,
@@ -498,15 +499,6 @@ fn constructor_fields(type_node: Node, ctor: String, env: TypeEnv, module_name: 
   }
 }
 
-fn pattern_is_irrefutable(p: MatchPattern) -> Bool {
-  match p {
-    Wildcard => true
-    Bind { declaration: _ } => true
-    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => false
-    LitPattern { value: _ } => false
-  }
-}
-
 fn pattern_row_head(row: List<MatchPattern>) -> MatchPattern {
   match row |> first {
     Present { value: p } => p
@@ -515,7 +507,7 @@ fn pattern_row_head(row: List<MatchPattern>) -> MatchPattern {
 }
 
 fn pattern_row_is_irrefutable(row: List<MatchPattern>) -> Bool {
-  pattern_is_irrefutable(p: pattern_row_head(row: row))
+  match_pattern_is_irrefutable(pattern: pattern_row_head(row: row))
 }
 
 fn pattern_matches_constructor(p: MatchPattern, ctor: String) -> Bool {
@@ -548,7 +540,7 @@ fn field_binding_pattern_for(bindings: List<Node>, field_name: String, source_in
 fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<ConstructorField>, source_indices: Map<String, NewlineIndex>) -> List<List<MatchPattern>> {
   let head = pattern_row_head(row: row)
   let rest = row |> skip(1)
-  if pattern_is_irrefutable(p: head) {
+  if match_pattern_is_irrefutable(pattern: head) {
     [concat(fields |> map(f => Wildcard), rest)]
   } else if pattern_matches_constructor(p: head, ctor: ctor) {
     match head {
