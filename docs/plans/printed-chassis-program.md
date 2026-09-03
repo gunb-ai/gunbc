@@ -53,7 +53,7 @@ because a step without one cannot be said to be done.
 | Step | Project | Terminal evidence | State |
 |---|---|---|---|
 | **PRINT-0** | MEASURE | Board outline typed from the vendor manual (243.840 x 266.700 mm exact, axes corrected); micro-ATX lettered grid under its own standard authority; standoff placement derived from per-location evidence standings | **done** |
-| **PRINT-1** | TOOLCHAIN | Build envelope, filament classes, slicer platform claims as separate authorities, **and a concrete A1 mini product row that the coupon fit witness consumes** | reopened |
+| **PRINT-1** | TOOLCHAIN | Build envelope, filament classes, slicer platform claims as separate authorities, **and a concrete A1 mini product row that the coupon fit witness consumes** | **done** (binding mutation-verified) |
 | **PRINT-2** | MEASURE | Measurement authority: absent refuses, duplicate-key conflict refuses, precision budget enforced | **done** |
 | **PRINT-3** | CAL | Coupon authority: ladder as modeled experimental design, rungs and plate derived | **done** |
 | **PRINT-4** | TOOLCHAIN | Realization contract v0: contract derives its own rungs; a wrong-step handler is caught and located | **done** |
@@ -83,13 +83,28 @@ onward now carries the cable obligation in its own terminal evidence: endpoints,
 volume, clip positions, strain relief, moving-versus-fixed classification, and declared separation
 from blades and hot surfaces.
 
-**N = 17.** PRINT-0 through PRINT-4 are landed and executing (27 witnesses); PRINT-1 is REOPENED because the build envelope is authored inside the fit witness rather than owned by a printer product row, so that witness would stay green if the product authority changed or vanished. PRINT-5 through PRINT-7
-are the pre-arrival critical path and depend on no operator input. PRINT-8 is the first step that
-needs hardware.
+**N = 17.** PRINT-0 through PRINT-6 are landed and executing. PRINT-1's reopening is CLOSED: the
+build envelope is owned by `extdeps.printing.bambu_lab_a1_mini` and the coupon fit witness reads
+`a1_mini_build_envelope` rather than an inline literal. That was verified by MUTATION rather than by
+reading the import — shrinking the product row's x from 180 mm to 50 mm flips
+`w_the_hole_ladder_coupon_fits_the_a1_mini` from green to red, so the binding is live and not
+nominal. The check was run because the module's own annotation asserted "changing this row is what
+moves that witness", and an annotation asserting a property the code does not have is exactly what
+#10119 had to repair four times.
+
+PRINT-5 and PRINT-6 landed with #10119, so the pre-arrival critical path is now **PRINT-7 alone**,
+and it is BLOCKED rather than merely pending: re-inspecting an emitted STEP/3MF needs a CAD kernel,
+and the trigger for that is a base image with glibc >= 2.38 or an x86_64 runner. PRINT-8 is the first
+step that needs the hardware itself, and it is not blocked by PRINT-7 — the coupon can be printed and
+measured before any kernel readback exists, it just cannot issue an absolute process-qualification
+receipt until PRINT-7 closes.
 
 ### What blocks what
 
-- **Nothing blocks PRINT-5..7.** These are the two-day cut.
+- **PRINT-5..6 are landed.** PRINT-7 is BLOCKED on a CAD kernel — measured, not assumed: CadQuery
+  installs on this arm64 container and clears `libGL.so.1`, then `casadi` requires `GLIBCXX_3.4.32`
+  which requires `GLIBC_2.38`, and this box is glibc 2.36. The trigger is a base image or an x86_64
+  runner, NOT a pip install.
 - **Joint family** (dovetail / tongue-and-groove / keyed slide / pin) gates the
   ProductionInterfaceCoupon only — a later half of PRINT-8, not the MachineProcessCoupon.
 - **PETG** gates PRINT-10 onward. PLA carries PRINT-8 and PRINT-9 and stops there: no PLA-to-PETG
