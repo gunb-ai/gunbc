@@ -18,6 +18,10 @@ import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_grow
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
+import gunbc.bootstrap_operation_seed_growth {
+  bootstrap_operation_seed_growth_justification,
+  cli_dispatch_host_boundary_seed_growth_justification
+}
 import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
@@ -220,6 +224,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
     target_invocation_seed_growth_justification,
+    bootstrap_operation_seed_growth_justification,
+    cli_dispatch_host_boundary_seed_growth_justification,
     generated_artifact_boundary_seed_growth_justification,
     regen_convergence_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
