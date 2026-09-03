@@ -1,6 +1,7 @@
 module v2.test.claim.enforcement.determinism_transitive_witness
 
 import v2.lens.determinism {
+  determinism_findings,
   determinism_transitive_findings,
   determinism_transitive_holds
 }
@@ -118,6 +119,69 @@ test fn the_live_subject_is_not_empty() -> Bool {
       item: determinism_live_entry_module,
       eq: fn(a, b) { a == b }
     )
+}
+
+// ── THE SHAPE GAP, HELD OPEN BY EXECUTION ─────────────────────────────────────────────────────
+//
+// THE TWO ROWS ABOVE PASS AND THAT IS NOT EVIDENCE OF ANYTHING. The live judgment CANNOT FAIL over
+// a fn_arrow_decl_facts_live population, so its green carries no information, and the positive
+// control does not detect this: the population is non-empty and the entry module is present, which
+// is exactly the precondition passing while the check itself is blind. A non-empty subject is a
+// necessary precondition masquerading as the check.
+//
+// THE CAUSE IS A SHAPE MISMATCH BETWEEN TWO SYMBOLS AND IT IS NAMED SO IT CAN BE CHECKED.
+// `v1_compiler.coproduct_reflection` `marshal_skeleton` builds every fn-arrow body node through
+// `conj_record`, i.e. `TypeNode { connective: Conj }`. `v2.std.node_query` `node_is_call` matches
+// `ComputationNode { behavior: Transform }` and is false otherwise. So `node_callee_symbol` is
+// Absent at every skeleton node and `v2.lens.determinism` classifies every body Deterministic by
+// non-membership. Pre-existing and not a regression: both symbols are unchanged by the change that
+// restored this consumer, so no §4b(3) drop is filed -- a capability that was never real was never
+// dropped. It is a §4b(2) STALL whose next-rung trigger is the CAPABILITY: the fn-arrow body
+// skeleton represents a call at a shape `node_is_call` accepts.
+//
+// THESE TWO ROWS ARE THE STALL'S EXECUTING CONTROL, and they are here rather than in a plan doc
+// because a stall tracked by prose is retired by someone remembering. They differ in ONE field --
+// the node kind -- and carry the same callee atom, so together they assert that this lens is
+// CORRECT AND LIVE while the subject shape cannot represent what it detects. Both pass today. When
+// the marshal capability lands, the blind arm reds and names itself for removal; that red is the
+// trigger firing, and it is what makes the paragraph in v2.lens.determinism retire by execution.
+//
+// The callee spelling is `map_keys` because v2.lens.determinism's own header cites it as the
+// order-leaking realization (v1_rt map_keys over im::HashMap on std RandomState), so the atom names
+// a primitive the classifier genuinely refuses rather than an invented one.
+
+fn shape_gap_callee_atom() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^map_keys } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The shape `node_is_call` accepts.
+fn shape_gap_transform_shaped_call() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [ Edge { label: Positional, target: shape_gap_callee_atom() } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The shape `conj_record` actually emits for every fn-arrow body node.
+fn shape_gap_conj_shaped_call() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: shape_gap_callee_atom() } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn the_determinism_lens_fires_on_a_transform_shaped_call() -> Bool {
+  length(xs: determinism_findings(root: shape_gap_transform_shaped_call())) > 0
+}
+
+test fn the_determinism_lens_is_blind_to_the_conj_shape_the_skeleton_emits() -> Bool {
+  length(xs: determinism_findings(root: shape_gap_conj_shaped_call())) == 0
 }
 
 // ── fixtures ──────────────────────────────────────────────────────────────────────────────────

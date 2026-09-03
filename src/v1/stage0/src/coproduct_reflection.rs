@@ -966,23 +966,38 @@ fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>
 }
 
 // Does this node REFERENCE a declared parameter `name`? Two body forms do: an `ExprVar` value
-// read (`x`) resolved to a `LocalValueBinding` (so a `FunctionValueBinding` global or
-// `VariantValueBinding` constructor sharing the name is excluded); and an `ExprCall` whose
-// callee IS the parameter (`predicate(x)`) -- the callee is the call node's own name, not a
-// child, invisible to a children-only walk.
+// read (`x`); and an `ExprCall` whose callee IS the parameter (`predicate(x)`) -- the callee is
+// the call node's own name, not a child, invisible to a children-only walk.
+//
+// The guard is LEXICAL -- `name` is one of the enclosing declaration's own parameter names --
+// and deliberately consults no phase beyond parse. It previously demanded, additionally, that
+// the `ExprVar` carry `binding_kind: Some(LocalValueBinding)`, to exclude a `FunctionValueBinding`
+// global or a `VariantValueBinding` constructor sharing the name. That demand was BOTH vacuous
+// and, since the producer's substrate became parse-only items, unsatisfiable:
+//
+//  - vacuous, because `binding_kind` is populated by INFER (`v1_compiler_infer`), whose
+//    `qualified_value_projection` declines the global projection outright when
+//    `spine_root_is_shadowed` holds. A parameter shadows a like-named global or constructor
+//    throughout its own body, so a bare read that PASSES the `param_names` guard has no
+//    reachable non-local binding for the strict arm to exclude.
+//  - unsatisfiable, because parse writes `binding_kind: None` at every `ExprVar` construction
+//    site and nothing between parse and this reader fills it. Under a parse-only substrate the
+//    strict arm was therefore FALSE at every body reference: no identity atom was attached to
+//    any parameter-reference site, every parameter read dead, and every wall standing on this
+//    reachability query went DARK while still reporting green.
+//
+// Shadowing by an inner `let`/lambda local of the same name is not newly admitted here: it was
+// already admitted by `LocalValueBinding`, which does not distinguish a parameter from any other
+// local, and it is the residue already declared as `v2.lens.wiring_liveness`
+// construction_justification HONEST BOUNDARY (3).
 fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
     if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
         return false;
     }
-    match node.expr_data.as_ref() {
-        ExprData::ExprVar {
-            binding_kind: Some(bk),
-        } => {
-            matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
-        }
-        ExprData::ExprCall { .. } => true,
-        _ => false,
-    }
+    matches!(
+        node.expr_data.as_ref(),
+        ExprData::ExprVar { .. } | ExprData::ExprCall { .. }
+    )
 }
 
 // Does this node REFERENCE some local binding (param OR let/lambda-local), by name? The

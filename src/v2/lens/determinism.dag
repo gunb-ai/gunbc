@@ -233,33 +233,64 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // this judgment "determinism" would not have made that live read tree-grain. So the facts arrive as
 // PARAMETERS and no live producer is imported here.
 //
-// THE LIVE CONSUMER EXISTS AND CLAUSE 2's TRIGGER HAS FIRED (gunbc#10245). The trigger is a
-// CAPABILITY -- a consumer whose declared substrate and cadence truthfully match the inputs it
-// reads, whose failure reaches the required PR floor, and which cannot predict-skip -- so it is
-// answered criterion by criterion rather than by pointing at an artifact.
-// v2.test.claim.enforcement.determinism_transitive_witness determinism_transitive_live_closure_holds
-// meets all four: it declares ReadsLiveTree in its own entry file, which is both the substrate
-// declaration and the thing that makes it unskippable by affected-set selection; it reads exactly
-// the roots it names, since fn_arrow_decl_facts_live now takes pool_roots and the same roots bound
-// the closure it walks; and it is an ordinary required-floor row, not a long-lane or cadence one.
-// A vacuity control stands beside it, because a live green over a subject that yields no
-// declarations would satisfy the letter of all four and prove nothing.
+// CLAUSE 2 IS NOT SATISFIED, AND THIS PARAGRAPH SAYS SO BEFORE IT SAYS ANYTHING THAT SOUNDS LIKE
+// PROGRESS. The trigger is a CAPABILITY -- a consumer whose declared substrate and cadence
+// truthfully match the inputs it reads, WHOSE FAILURE REACHES THE REQUIRED PR FLOOR, and which
+// cannot predict-skip. v2.test.claim.enforcement.determinism_transitive_witness
+// determinism_transitive_live_closure_holds meets three of those four. It declares ReadsLiveTree in
+// its own entry file, which is both the substrate declaration and what makes it unskippable by
+// affected-set selection; it reads exactly the roots it names, since fn_arrow_decl_facts_live now
+// takes pool_roots and the same roots bind the closure it walks; and it is an ordinary
+// required-floor row, not a long-lane or cadence one. IT HAS NO FAILURE THAT REACHES ANYTHING,
+// because through this substrate it cannot fail at all, and a consumer that cannot fail does not
+// discharge a clause about where its failure lands.
 //
-// WHAT UNBLOCKED IT, since a reader finding this true needs to know what changed rather than to
-// re-derive it: the acquisition had no caller-named subject, so no live-tree consumer of this
-// producer could reach the floor's per-subject line at any grain -- decomposition INVERTED on a
-// zero-arity whole-tree walk. gunbc#10245 gave it one. The scope this buys is exactly what the
-// consumer declares and no more; widening it is a cost decision, not a property established here.
+// THE MECHANISM, named at the symbols rather than described, because "the wall is dark" is the kind
+// of claim that has to be checkable. `v1_compiler.coproduct_reflection` `marshal_skeleton` returns
+// `conj_record` at both of its return sites, and `conj_record` builds every node as
+// `TypeNode { connective: Conj }`. `v2.std.node_query` `node_is_call` matches
+// `ComputationNode { behavior: Transform }` and answers false on everything else. A Conj TypeNode
+// cannot satisfy that match, so `node_callee_symbol` is Absent at every node of every fn-arrow body
+// skeleton, `local_determinism_axis` returns Deterministic unconditionally, and
+// `determinism_transitive_holds` over a `fn_arrow_decl_facts_live` population is GREEN BY
+// CONSTRUCTION. This is DESIGN §4b's own question asked too late: the check's RED is not authorable
+// over this subject shape, so the row carries no information while looking exactly like coverage.
+//
+// THIS IS NOT A §4b(3) DECLARED DROP, and calling it one would be its own dishonesty. Nothing
+// regressed. Both symbols above predate gunbc#10245 unchanged, so the wall was never lit through
+// this path -- and a capability that was never real is not a capability that was dropped. The
+// honest instruments are §4b(1) and §4b(2): the class's rung is the MINIMUM across its in-scope
+// paths, and through the live path it is none, so the fixture rows' rung does not stand in for it;
+// and the stall is tracked by naming the NEXT-RUNG TRIGGER AS A CAPABILITY -- the fn-arrow body
+// skeleton represents a call at a shape `node_is_call` accepts. Re-shaping `conj_record` is a
+// corpus-wide cut, since every lens reading these skeletons consumes that shape, and it is tracked
+// as its own item rather than carried here.
+//
+// THE STALL IS RETIRED BY EXECUTION, NOT BY MEMORY. The two-arm discriminator in
+// v2.test.claim.enforcement.determinism_transitive_witness holds the gap open: one synthetic Node
+// shaped `ComputationNode { behavior: Transform }` and one shaped `TypeNode { connective: Conj }`,
+// same callee atom, asserting that this lens FIRES on the first and is BLIND to the second. Both
+// arms pass today, which is the executing record that the lens is correct and live while the
+// subject shape cannot express what it detects. When the capability lands, the blind arm reds and
+// names itself for removal.
+//
+// WHAT gunbc#10245 DID BUY, stated without letting it stand in for the clause. The acquisition had
+// no caller-named subject, so no live-tree consumer of this producer could reach the floor's
+// per-subject line at any grain -- decomposition INVERTED on a zero-arity whole-tree walk. It has
+// one now, and the consumer above executes on it. That is a real climb for the PRODUCER and it is
+// not the clause; the clause additionally wants the consumer's failure to reach the floor, and the
+// shape gap is what still stands between those two facts.
 //
 // THIS PARAGRAPH HAS BEEN WRONG ONCE, IN THE OTHER DIRECTION, AND THAT HISTORY IS KEPT BECAUSE IT
 // IS THE USEFUL PART. Until review 59343 caught it, it named that same witness as a live consumer
 // "stamped ReadsLiveTree, whose failure reaches the required PR floor" AFTER gunbc#10156 had
 // withdrawn the consumer and removed the stamp -- rung inflation in the precise §4b(1) sense, a
-// module describing a guarantee its own sibling file contradicted. It was rewritten to be true at
-// withdrawal time, and is rewritten here rather than left standing, because restoring the consumer
-// makes the withdrawal-time wording false from the opposite side. Two files carry the two halves of
-// this clause's story and they have contradicted each other once; the fix both times is to edit
-// them in one change.
+// module describing a guarantee its own sibling file contradicted. The draft this replaced made the
+// same error a third time and in a subtler place: the consumer was genuinely restored, the stamp
+// genuinely re-added, and three of four criteria genuinely met, so the paragraph read as verified
+// while the one criterion it could not meet was the one nobody had executed against. Two files
+// carry the two halves of this clause's story and they have contradicted each other twice; the fix
+// every time is to edit them in one change, and to run the wall before describing it.
 //
 // The clause deliberately does not say "corpus cadence forever": if a later compiler representation
 // carries transitive declaration reachability on the InferredTree itself, a pure tree-grain
