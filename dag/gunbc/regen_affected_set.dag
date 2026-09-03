@@ -71,6 +71,7 @@ type GeneratedAggregateProductOwner {
 
 type GeneratedAggregateProductGenerationRole
   = AggregateGenerationInput
+  | AggregateGenerationSubject
   | AggregateNonSeedGeneratedOutput
 
 // Compiler substrate whose generated representation is itself an input to the next seed. These
@@ -104,6 +105,12 @@ data regen_bootstrap_edges: List<BootstrapEdge> = [
 // their producer modules retain their ordinary generation roles. Keeping ownership separate
 // prevents naming an aggregate from demoting its emitter out of the generation-input roster.
 data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwner> = [
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "gunbc_cli_dispatch_generated.rs",
+    generation_role: AggregateGenerationSubject,
+    reason: "emit_gunbc_cli_dispatch_generated synthesizes the modeled CLI grammar and dispatch carrier as Rust text rather than a same-named DAG module mirror; its bytes do not produce the next generation, while the independent seed-membership authority records that lib.rs compiles it into the seed"
+  },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.compiler_tests_rust",
     product: "compiler_tests.rs",
@@ -228,6 +235,7 @@ fn regen_generated_product_generation_role_labels(product: String) -> List<Strin
     |> filter(row => row.product == product)
     |> map(row => match row.generation_role {
       AggregateGenerationInput => "GenerationInput"
+      AggregateGenerationSubject => "GenerationSubject"
       AggregateNonSeedGeneratedOutput => "NonSeedGeneratedOutput"
     })
 }

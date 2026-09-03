@@ -31,11 +31,12 @@ type GeneratedArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
   | PlanArtifact { plan: Plan }
+  | CouponCadQueryProgramArtifact
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, CouponCadQueryProgramArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -110,6 +111,8 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
         name: generated_artifact_merge_driver_script_name
       }
     RunnerDeployArtifact => ArtifactLocation { directory: ".github", name: "fleet-runner-deploy.manifest" }
+    CouponCadQueryProgramArtifact =>
+      ArtifactLocation { directory: "manufacturing", name: "hole_diameter_ladder_r1.py" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -146,6 +149,18 @@ fn artifact_path(a: GeneratedArtifact) -> String {
 // if its generation refuses -- it is simply not expected on disk. Answering CommitRequired for
 // every plan is what let a deleted projection read as an absent one, and once a drift phase
 // adjudicates the population that reads as an obligation to recreate the deleted file.
+// THE COUPON PROGRAM IS GENERATED BUT NOT COMMITTED, because RepoConsumer answers a narrower
+// question than "what eventually consumes these bytes": it answers WHY THEY MUST PERSIST IN A GIT
+// CHECKOUT. A CAD kernel executing an emitted program establishes no such requirement -- the kernel
+// reads a materialized workspace, not a checkout -- so widening this roster for it would conflate
+// the program consumer, the solid consumer, the mesh consumer, the slicer and the printer under one
+// name. The arm becomes justified only when a concrete workflow says an operator or workstation
+// must obtain THIS FILE from a repository checkout; at that point it is narrow
+// (FabricationWorkstationCheckout), with a receipt.
+//
+// NotCommitted does not mean ungeneratable: it excludes the artifact from the committed drift
+// population, which is exactly right for a projection whose terminal consumer is a fabrication
+// workspace with a pinned kernel rather than this tree.
 fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
@@ -166,6 +181,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
         PlanIsAuthorityOnly { ruling: _ } => NotCommitted
       }
     RunnerDeployArtifact => NotCommitted
+    CouponCadQueryProgramArtifact => NotCommitted
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -215,6 +231,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
     GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
+    CouponCadQueryProgramArtifact => match b { CouponCadQueryProgramArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }

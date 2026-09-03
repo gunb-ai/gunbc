@@ -1,0 +1,277 @@
+module tools.floor_cost_distribution_instrument
+
+import extdeps.filesystem.filesystem_io
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import std.types { Bool, Int, String, NonEmptyStr }
+import gunbc.floor_cost_distribution {
+  FloorCostRow,
+  RunCost,
+  CostBand,
+  LadderStep,
+  parse_claim_cost_tsv,
+  cost_bands,
+  rows_at_or_above,
+  runs_refused,
+  worst_over_runs,
+  module_max_cpu,
+  repair_ladder,
+  identity_inflation_permille,
+  permille_percentile,
+  implied_clean_run_budget
+}
+
+// THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
+//
+// Recipe, and it needs no floor run -- the inputs are artifacts the required floor already
+// uploads on every run:
+//
+//   gh run download <run-id> -n required-floor-claim-cost -D <dir>/<run-id>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+//     --function floor_cost_distribution_report
+//
+// WHY THIS IS A SEPARATE MODULE FROM `gunbc.floor_cost_distribution`: reading bytes off disk is a
+// realization and the analysis is an interface (DESIGN section 3). The split is what lets the
+// witness exercise every derivation on a hand-built fixture with no artifacts present, so the
+// evidence does not depend on which runs happen to be downloaded.
+//
+// AN ABSENT OR UNREADABLE FILE REFUSES AND IS NAMED. It does not contribute an empty population:
+// an empty artifact silently emptied a ten-way identity intersection during the original analysis,
+// and a run that reads as zero rows is indistinguishable from a run where nothing crossed. That is
+// the absorbing fallback DESIGN section 5 forbids, so the arm below is typed and counted.
+
+// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`
+// is the authority for the value; this row is the analysis-side reading of it, and it is a
+// Millisecond rather than a bare Int so it cannot be compared against a figure read from another
+// clock -- the exact confusion `std.measure` exists to make unwritable.
+data floor_cost_ceiling: Millisecond = millisecond(count: 500)
+
+// The default clean-run/contended pair the memo's inflation figures rest on, and the default
+// download root. Both are arguments to the functions below; these rows only name the defaults so
+// the recipe above is runnable as written.
+data floor_cost_artifact_root: String = "/tmp/floor-cost"
+data floor_cost_artifact_file: String = "required_floor_claim_cost.tsv"
+
+type RunLoad
+  = RunLoaded { run: RunCost }
+  | RunUnreadable { run: NonEmptyStr, path: String }
+  | RunEmpty { run: NonEmptyStr, path: String }
+
+fn run_cost_path(root: String, run: NonEmptyStr) -> String {
+  concat(concat(root, concat("/", run as String)), concat("/", floor_cost_artifact_file))
+}
+
+fn load_run_cost(root: String, run: NonEmptyStr) -> RunLoad {
+  let path = run_cost_path(root: root, run: run)
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    RunUnreadable { run: run, path: path }
+  } else {
+    let rows = parse_claim_cost_tsv(text: read.content)
+    if count(rows) == 0 {
+      RunEmpty { run: run, path: path }
+    } else {
+      RunLoaded { run: RunCost { run: run, rows: rows } }
+    }
+  }
+}
+
+fn loaded_runs(loads: List<RunLoad>) -> List<RunCost> {
+  loads |> flat_map(l => match l {
+    RunLoaded { run: r } => [r]
+    RunUnreadable { run: _, path: _ } => []
+    RunEmpty { run: _, path: _ } => []
+  })
+}
+
+fn refused_load_lines(loads: List<RunLoad>) -> List<String> {
+  loads |> flat_map(l => match l {
+    RunLoaded { run: _ } => []
+    RunUnreadable { run: r, path: p } => [concat(concat("REFUSED unreadable run=", r as String), concat(" path=", p))]
+    RunEmpty { run: r, path: p } => [concat(concat("REFUSED empty run=", r as String), concat(" path=", p))]
+  })
+}
+
+fn band_line(b: CostBand) -> String {
+  concat(
+    concat(to_string(millisecond_count(m: b.lower_ms)), concat("-", to_string(millisecond_count(m: b.upper_ms)))),
+    concat("\t", to_string(b.rows))
+  )
+}
+
+fn ladder_line(s: LadderStep) -> String {
+  concat(
+    s.removed,
+    concat(concat("\tworst=", to_string(millisecond_count(m: s.worst_ms))), concat("\trefused=", to_string(s.runs_refused)))
+  )
+}
+
+fn percentile_line(values: List<Int>, percent: Int) -> String {
+  concat(
+    concat("p", to_string(percent)),
+    match permille_percentile(values: values, percent: percent) {
+      Absent => "\tno-observation"
+      Present { value: v } => concat(
+        concat("\t", concat(to_string(v), " permille")),
+        concat("\tclean-run budget ", concat(to_string(millisecond_count(m: implied_clean_run_budget(ceiling_ms: floor_cost_ceiling, inflation_permille: v))), "ms"))
+      )
+    }
+  )
+}
+
+// The whole analysis over one loaded set of runs. `baseline` and `contended` name the pair the
+// inflation percentiles are paired over; `repaired` is the counterfactual exclusion set; `order`
+// is the ladder's removal order.
+fn floor_cost_distribution_lines(
+  loads: List<RunLoad>,
+  baseline: NonEmptyStr,
+  contended: NonEmptyStr,
+  repaired: List<String>,
+  order: List<String>,
+  band_edges: List<Millisecond>,
+  min_base_ms: Millisecond
+) -> List<String> {
+  let runs = loaded_runs(loads: loads)
+  let refusals = refused_load_lines(loads: loads)
+  let latest = runs |> filter(r => (r.run as String) == (contended as String)) |> first
+  concat(
+    concat(
+      concat(
+        [concat("runs loaded\t", to_string(count(runs)))],
+        refusals
+      ),
+      match latest {
+        Absent => [concat("REFUSED no population for contended run ", contended as String)]
+        Present { value: c } => concat(
+          concat(
+            [concat("band histogram for run ", c.run as String)],
+            cost_bands(rows: c.rows, edges: band_edges) |> map(b => band_line(b: b))
+          ),
+          [
+            concat("rows at or above 300ms\t", to_string(rows_at_or_above(rows: c.rows, ms: millisecond(count: 300)))),
+            concat("rows at or above 400ms\t", to_string(rows_at_or_above(rows: c.rows, ms: millisecond(count: 400))))
+          ]
+        )
+      }
+    ),
+    concat(
+      [
+        concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: []))),
+        concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: repaired))),
+        concat("worst row over all runs, repaired excluded\t", to_string(millisecond_count(m: worst_over_runs(runs: runs, excluded_modules: repaired))))
+      ],
+      concat(
+        repair_ladder(runs: runs, ceiling_ms: floor_cost_ceiling, already_excluded: repaired, order: order)
+          |> map(s => ladder_line(s: s)),
+        match runs |> filter(r => (r.run as String) == (baseline as String)) |> first {
+          Absent => [concat("REFUSED no population for baseline run ", baseline as String)]
+          Present { value: b } => match latest {
+            Absent => []
+            Present { value: c } => {
+              let infl = identity_inflation_permille(base: b, other: c, min_base_ms: min_base_ms)
+              concat(
+                [concat("paired inflation observations\t", to_string(count(infl)))],
+                [50, 90, 95, 99] |> map(p => percentile_line(values: infl, percent: p))
+              )
+            }
+          }
+        }
+      )
+    )
+  )
+}
+
+fn floor_cost_distribution_report_for(
+  root: String,
+  run_ids: List<NonEmptyStr>,
+  baseline: NonEmptyStr,
+  contended: NonEmptyStr,
+  repaired: List<String>,
+  order: List<String>
+) -> String {
+  join(
+    floor_cost_distribution_lines(
+      loads: run_ids |> map(r => load_run_cost(root: root, run: r)),
+      baseline: baseline,
+      contended: contended,
+      repaired: repaired,
+      order: order,
+      band_edges: [0, 10, 50, 100, 200, 300, 400, 500, 1000000] |> map(e => millisecond(count: e)),
+      min_base_ms: millisecond(count: 50)
+    ),
+    "\n"
+  )
+}
+
+// THE ZERO-ARGUMENT ENTRY POINT, so the recipe at the top of this module is runnable as written and
+// the memo can cite a producer rather than carry figures.
+//
+// THE RUN IDS ARE DATA HERE BECAUSE THE FINDING IS ABOUT THESE RUNS. A measurement over "whatever
+// happened to be downloaded" is not re-derivable -- a second reader would get different numbers and
+// have no way to tell a real change from a different sample. Naming them is the citation.
+data floor_cost_sampled_runs: List<NonEmptyStr> = [
+  "33668368846" as NonEmptyStr,
+  "33670164259" as NonEmptyStr,
+  "33673806092" as NonEmptyStr,
+  "33680659583" as NonEmptyStr,
+  "33681059548" as NonEmptyStr,
+  "33682522296" as NonEmptyStr,
+  "33683651328" as NonEmptyStr,
+  "33688140761" as NonEmptyStr,
+  "33690512169" as NonEmptyStr,
+  "33691893294" as NonEmptyStr
+]
+
+// The clean/contended pair the inflation percentiles are paired over. `33690512169` is the last
+// FloorClean run before gunbc#10133 landed; `33691893294` is the merge commit of #10133 and the
+// most contended run in the sample, which is why it is the one the band histogram is read from.
+data floor_cost_baseline_run: NonEmptyStr = "33690512169" as NonEmptyStr
+data floor_cost_contended_run: NonEmptyStr = "33691893294" as NonEmptyStr
+
+// The modules gunbc#10133 repaired. Excluding them replays every run as if the repair had already
+// landed, which is what separates the repair's effect from the contention of the run it landed on.
+data floor_cost_repaired_modules: List<String> = [
+  "test.claim.self_host_compile_phase_live_gate_witness",
+  "test.claim.self_host_compile_phase_frontier_witness",
+  "test.claim.compiler_frontend_program_status_witness"
+]
+
+// Ladder order: remaining modules by max-over-runs cost, worst first.
+data floor_cost_ladder_order: List<String> = [
+  "v2.test.emit.rust_produced_decl_emit",
+  "v2.test.execution.emit_host_field_access_equals_eval",
+  "v2.test.execution.emit_host_fold_closure_equals_eval",
+  "v2.test.emit.semantic_decl_serialize_parity",
+  "v2.test.execution.emit_host_meet_join_equals_eval",
+  "v2.test.execution.emit_host_complement_equals_eval",
+  "v2.test.emit.produced_decl_two_target",
+  "v2.test.execution.emit_host_add_equals_eval",
+  "v2.test.emit.semantic_decl_routing_generic",
+  "v2.test.claim.enforcement.lens_module_gate_witness"
+]
+
+fn floor_cost_distribution_report() -> String {
+  floor_cost_distribution_report_for(
+    root: floor_cost_artifact_root,
+    run_ids: floor_cost_sampled_runs,
+    baseline: floor_cost_baseline_run,
+    contended: floor_cost_contended_run,
+    repaired: floor_cost_repaired_modules,
+    order: floor_cost_ladder_order
+  )
+}
+
+// THE ACTUATOR. It REFUSES when any named run failed to load rather than reporting over whatever
+// was readable: a report derived from six of ten runs is a different measurement wearing the same
+// name, and the percentiles below it would be a statement about which downloads happened to
+// succeed. The refusal names the runs, so the operator's next move is a download and not a guess.
+fn floor_cost_distribution_check() -> ProcessExit {
+  let loads = floor_cost_sampled_runs |> map(r => load_run_cost(root: floor_cost_artifact_root, run: r))
+  let refusals = refused_load_lines(loads: loads)
+  if count(refusals) > 0 {
+    exit_failure(reason: join(concat(["floor cost distribution: refusing an incomplete sample"], refusals), "\n"))
+  } else {
+    ExitSuccess
+  }
+}
