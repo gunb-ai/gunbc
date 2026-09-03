@@ -230,7 +230,7 @@ test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both
 // nothing on the wire establishes it. Both producers refuse an undecodable value rather than
 // building a carrier around it, so no consumer is handed a revision that is not one.
 test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
-  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: trunk_push(head_sha: "not-a-sha"),
     evidence: github_evidence,
   ) {
@@ -250,7 +250,7 @@ test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
 // collapse into one and still pass, making refusals undebuggable since the remedies differ: wrong
 // producer, wrong repo, an untrusted fork's head, not finished.
 test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
-  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: ev(
       activity: "completed",
       workflow_path: ".github/workflows/fleet-converge.yml",
@@ -267,7 +267,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
       p == ".github/workflows/fleet-converge.yml" && q == artifact_path(a: WitnessFloorYamlArtifact)
     _ => false
   }
-    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -284,7 +284,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
         o == "other/fork"
       _ => false
     }
-    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -301,7 +301,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
         o == "someone/fork"
       _ => false
     }
-    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
       event: ev(
         activity: "requested",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -324,7 +324,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
 // state most likely read as "nothing happened" -- and exactly the state that must not be mistaken
 // for a floor that ran.
 test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
-  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: ev(
       activity: "completed",
       workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -344,7 +344,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
       }
     _ => false
   }
-    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -371,7 +371,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
 // about a run that was never the floor sends a reader to investigate a failure that does not
 // exist, ending in confusion rather than a fix.
 test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bool {
-  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: ev(
       activity: "completed",
       workflow_path: ".github/workflows/fleet-converge.yml",

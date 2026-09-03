@@ -2116,6 +2116,8 @@ fn belt_pass_outcome_from_json(doc: JsonValue) -> BeltPassOutcomeDecode {
           }
         _ => BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is unknown" }
       }
+    JsonMemberFound { value: _ } =>
+      BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is not a string" }
     JsonMemberAbsent =>
       BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is missing" }
     JsonMemberDuplicated { count: _ } =>

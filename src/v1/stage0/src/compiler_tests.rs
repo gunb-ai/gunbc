@@ -1108,30 +1108,107 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe.dag".to_string(),
-                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
-                });
-                let r = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![source]),
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                // The SAME module, differing only in WHICH output field carries the
+                // unmodeled key. Any span that does not belong to the offending field
+                // is identical across the pair, so assertion four cannot be satisfied
+                // by a location that merely lands somewhere inside the service.
+                let first_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let second_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"stdout\"\n      out: String from \"not_a_channel\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let probe = |content: &str| {
+                    let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: "probe.dag".to_string(),
+                        content: content.to_string(),
+                    });
+                    let r = crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![source]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    );
+                    let located = r
+                        .diagnostics
+                        .iter()
+                        .filter_map(|d| match &*d.diagnostic {
+                            crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                                missing_realization_fact,
+                                span,
+                                ..
+                            } if missing_realization_fact.contains("not_a_channel") => {
+                                Some((span.start, span.end, missing_realization_fact.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    let emitted = r
+                        .files
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<_>>();
+                    (located, emitted, format!("{:?}", r.diagnostics))
+                };
+                let (a_hits, a_files, a_all) = probe(first_field_offends);
+                let (b_hits, b_files, _) = probe(second_field_offends);
+
+                // ONE: the refusal class, and exactly one row of it.
+                assert_eq!(
+                    a_hits.len(),
+                    1,
+                    "an unmodeled output key must refuse with exactly one TransportEmissionNotModeled naming the key, got: {}",
+                    a_all
                 );
-                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
-                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
-                        missing_realization_fact,
-                        ..
-                    } => missing_realization_fact.contains("not_a_channel"),
-                    _ => false,
-                });
+                assert_eq!(b_hits.len(), 1, "the mutated module must refuse the same way");
+                let (a_start, a_end, a_fact) = a_hits[0].clone();
+                let (b_start, b_end, _) = b_hits[0].clone();
+
+                // TWO: the EXACT refused output key, not merely that something was unmodeled.
                 assert!(
-                    named,
-                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
-                    r.diagnostics
+                    a_fact.contains("not_a_channel"),
+                    "the refusal must name the offending key. Got: {}",
+                    a_fact
                 );
+
+                // THREE: the span belongs to THAT key -- checked by slicing the span
+                // back out of the source it points into, not by trusting the offsets.
+                // The span covers the offending FIELD'S NAME rather than the key
+                // literal, so the slice is the field name and the assertion says so
+                // exactly; asserting it merely "contains" something would pass on a
+                // span that had swallowed the whole output block.
+                let a_text = &first_field_offends[a_start as usize..a_end as usize];
+                let b_text = &second_field_offends[b_start as usize..b_end as usize];
+                assert_eq!(
+                    a_text, "first",
+                    "the span must cover the field carrying the unmodeled key. It covers: {:?}",
+                    a_text
+                );
+
+                // FOUR, the discriminator: moving the unmodeled key to a DIFFERENT field
+                // must MOVE the location. Without this a span pointing anywhere fixed
+                // inside the service satisfies one through three and proves nothing.
+                // Asserted on the RESOLVED TEXT and not only on the offsets, because
+                // equal-length fields could move the numbers without the location ever
+                // having been derived from the offending field at all.
+                assert_eq!(
+                    b_text, "out",
+                    "when the unmodeled key moves to the other field, the span must follow it. It covers: {:?}",
+                    b_text
+                );
+                assert_ne!(
+                    (a_start, a_end),
+                    (b_start, b_end),
+                    "the refusal is not located: the span did not move when the offending key moved to another field. Both refusals point at {}..{}",
+                    a_start,
+                    a_end
+                );
+
+                // The line stops: a refused operation emits no module carrying the
+                // refusal into its own runtime.
                 assert!(
-                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    !a_files.iter().any(|p| p == "src/probe.rs"),
                     "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
-                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
+                    a_files
+                );
+                assert!(
+                    !b_files.iter().any(|p| p == "src/probe.rs"),
+                    "likewise when the offending field moves. Emitted: {:?}",
+                    b_files
                 );
             })
             .expect("failed to spawn thread")
@@ -3186,6 +3263,97 @@ mod compiler_tests {
             unavailable.contains("unit-variant marker identity evidence unavailable for Time"),
             "an unobserved empty census must refuse instead of answering non-marker: {}",
             unavailable
+        );
+    }
+
+    #[test]
+    fn renderer_hop_decides_realization_from_declaration_identity_without_an_env() {
+        // A type-expression renderer that is handed a Node and source_indices and NO env still
+        // DECIDES realization from the declaration identity it reads off that node: it computes
+        // dag_name at runtime with authored_name_at and hands it to the structural and numeric
+        // gates in v1.compiler.coercion. Each pair below holds the authored NAME constant and
+        // varies ONLY the declaring file, so no rule keyed on the name, and no disabled gate,
+        // satisfies both halves.
+        fn reference_at(name: &str, decl_file: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let span = std::rc::Rc::new(crate::std_types::SourceSpan {
+                file: decl_file.to_string(),
+                start: 0,
+                end: 0,
+            });
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                occurrence_identity: std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                name: name.to_string(),
+                ident: None,
+                span: span.clone(),
+                ident_span: Some(span),
+                children: std::rc::Rc::new(im::Vector::new()),
+                connective: crate::v1_std_core::Connective::NoConnective,
+                params: std::rc::Rc::new(im::Vector::new()),
+                inferred: None,
+                return_cardinality: crate::v1_std_core::Cardinality::Required,
+                uses: std::rc::Rc::new(im::Vector::new()),
+                body: None,
+                transport: None,
+                properties: std::rc::Rc::new(im::Vector::new()),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
+            })
+        }
+        // No inference is bound, which is the position a record FIELD type expression occupies in
+        // production, and the empty source_indices map means authored_name_at answers node.name.
+        // The fixture therefore supplies a NAME and a DECLARING FILE and nothing else.
+        fn base(name: &str, decl_file: &str) -> String {
+            crate::v1_compiler_emit::render_named_type_base(
+                reference_at(name, decl_file),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+                std::rc::Rc::new(HashMap::new()),
+            )
+        }
+        // PAIR 1 -- the structural roster (structural_declaration_modules_for).
+        assert_eq!(
+            base("Bool", "src/v2/std/logic.dag"),
+            "Bool",
+            "a structurally-declared Bool must render its dag spelling through the renderer hop"
+        );
+        assert_eq!(
+            base("Bool", "dag/std/types.dag"),
+            "bool",
+            "the prelude Bool must still reach the checkpoint row through the same renderer"
+        );
+        // PAIR 2 -- the numeric roster (numeric_realization_declaring_modules). Nat has no
+        // checkpoint row, so this pair reaches provenance_realizes_natively rather than
+        // provenance_declares_structurally: both deciding arms are witnessed at this hop.
+        assert_eq!(
+            base("Nat", "dag/std/nat.dag"),
+            "i64",
+            "the grounded numeric declaration must realize as the host numeric"
+        );
+        assert_eq!(
+            base("Nat", "src/v2/std/nat.dag"),
+            "Nat",
+            "the Peano declaration of the same spelling must NOT realize as a machine integer"
+        );
+        // POSITIVE CONTROL. Without it every row above is satisfied by a renderer that had simply
+        // stopped consulting identity and echoed the authored name, which is half of each pair.
+        assert_eq!(
+            base("Int", "src/v2/std/integer.dag"),
+            "i64",
+            "a table-present name bypasses identity and must still render the host spelling"
+        );
+        // MEASURED VACUITY, asserted rather than omitted. String is the obvious subject and
+        // cannot witness this hop: the structural arm renders qualified_last_segment(dag_name)
+        // and the checkpoint arm renders that row target_type, and for String both are "String".
+        // This row goes red if either spelling ever diverges, at which point String becomes an
+        // eligible subject and gets a pair like the two above.
+        assert_eq!(
+            base("String", "dag/std/string_type.dag"),
+            base("String", "dag/std/types.dag"),
+            "String is indistinguishable in rendered bytes across the structural gate"
         );
     }
 

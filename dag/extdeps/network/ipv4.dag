@@ -66,6 +66,42 @@ fn render_ipv4_address(addr: Ipv4Address) -> NonEmptyStr {
   ], ".") as NonEmptyStr
 }
 
+// A PREFIX LENGTH IS PART OF THE ADDRESS AUTHORITY, not a bare Int at each consumer. It uses the
+// same `Int where range` idiom Octet above uses, for the same reason: /33 has no constructor rather
+// than a validator. The upper bound is 32 because this is the IPv4 module; IPv6 prefixes are a
+// different authority's concern.
+type PrefixLength = Int where range(min: 0, max: 32)
+
+// The CIDR spelling, which is what /etc/netplan, `ip addr` and every router table write. It is a
+// rendering of two facts this module already owns, not a third representation of an address.
+fn render_ipv4_cidr(addr: Ipv4Address, prefix: PrefixLength) -> NonEmptyStr {
+  join([render_ipv4_address(addr: addr) as String, to_string(prefix)], "/") as NonEmptyStr
+}
+
+// Whether two addresses share a network at a given prefix. Written as an octet-wise comparison over
+// the four whole octets a /8, /16, /24 or /32 fixes, plus the partial octet a /30 splits -- so it is
+// exact for the prefixes this repository actually uses and REFUSES to answer for the rest, rather
+// than approximating. A /30 is the point-to-point case every fabric link here is built from.
+fn ipv4_same_network(a: Ipv4Address, b: Ipv4Address, prefix: PrefixLength) -> Bool? {
+  if prefix == 30 {
+    Present { value: a.octet1 == b.octet1 && a.octet2 == b.octet2 && a.octet3 == b.octet3 && (a.octet4 / 4) == (b.octet4 / 4) }
+  } else if prefix == 24 {
+    Present { value: a.octet1 == b.octet1 && a.octet2 == b.octet2 && a.octet3 == b.octet3 }
+  } else if prefix == 16 {
+    Present { value: a.octet1 == b.octet1 && a.octet2 == b.octet2 }
+  } else if prefix == 8 {
+    Present { value: a.octet1 == b.octet1 }
+  } else if prefix == 32 {
+    Present { value: ipv4_address_eq(a: a, b: b) }
+  } else {
+    none
+  }
+}
+
+fn ipv4_address_eq(a: Ipv4Address, b: Ipv4Address) -> Bool {
+  a.octet1 == b.octet1 && a.octet2 == b.octet2 && a.octet3 == b.octet3 && a.octet4 == b.octet4
+}
+
 type OctetResult =
     OctetOk { value: Octet }
   | OctetErr { error: Ipv4ParseError }

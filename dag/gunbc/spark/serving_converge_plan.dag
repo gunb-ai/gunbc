@@ -75,6 +75,7 @@ import gunbc.spark.serving_member_realization {
 }
 import gunbc.spark.cell_role {
   SparkCellRole, SparkServingCell, SparkTrainingCell, spark_cell_role_of,
+  SparkCellRoleAssignment, spark_cell_role_in, spark_cell_role_assignments,
   SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
 }
 import gunbc.spark.serving_realization {
@@ -641,7 +642,20 @@ fn spark_serving_role_scoped_desired_members(
   occurrence: SparkServingOccurrence,
   serving_release: SparkServingRelease,
 ) -> SparkServingRoleScopedDesired {
-  match spark_cell_role_of(host: occurrence.host) {
+  spark_serving_role_scoped_desired_members_in(
+    assignments: spark_cell_role_assignments,
+    occurrence: occurrence,
+    serving_release: serving_release)
+}
+
+// The roster is a parameter so the training arm below stays exercisable by evidence regardless of
+// which hosts currently hold which role -- see gunbc.spark.cell_role spark_cell_role_in.
+fn spark_serving_role_scoped_desired_members_in(
+  assignments: List<SparkCellRoleAssignment>,
+  occurrence: SparkServingOccurrence,
+  serving_release: SparkServingRelease,
+) -> SparkServingRoleScopedDesired {
+  match spark_cell_role_in(assignments: assignments, host: occurrence.host) {
     SparkCellRoleAbsent =>
       SparkServingRoleScopedDesiredRefused {
         cause: "spark serving plan refused: the host holds no Spark cell role, and a machine nobody assigned must not receive serving desired state by default",

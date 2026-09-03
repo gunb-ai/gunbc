@@ -1,3 +1,40 @@
+// CLIPPY ROSTER -- 256 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::assertions_on_constants,  // 1
+    clippy::clone_on_copy,  // 1
+    clippy::cloned_ref_to_slice_refs,  // 2
+    clippy::collapsible_str_replace,  // 1
+    clippy::disallowed_macros,  // 94
+    clippy::doc_lazy_continuation,  // 2
+    clippy::empty_line_after_doc_comments,  // 4
+    clippy::enum_variant_names,  // 1
+    clippy::iter_kv_map,  // 1
+    clippy::manual_is_multiple_of,  // 1
+    clippy::manual_strip,  // 3
+    clippy::map_identity,  // 2
+    clippy::missing_const_for_thread_local,  // 2
+    clippy::needless_borrow,  // 2
+    clippy::needless_lifetimes,  // 1
+    clippy::only_used_in_recursion,  // 1
+    clippy::ptr_arg,  // 4
+    clippy::redundant_closure,  // 3
+    clippy::single_char_add_str,  // 2
+    clippy::too_many_arguments,  // 2
+    clippy::type_complexity,  // 7
+    clippy::unnecessary_to_owned,  // 12
+    clippy::unneeded_struct_pattern,  // 1
+    clippy::useless_vec,  // 1
+    dead_code,  // 88
+    unused_imports,  // 14
+    unused_mut,  // 3
+)]
+
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
@@ -196,6 +233,67 @@ use crate::std_keyed_row::KeyedRow;
 pub enum ResolveTypecheckGate {
     Strict,
     DiscoveryCorpusAdvisory,
+}
+
+#[cfg(test)]
+mod generated_cli_dispatch_allocator_integration_tests {
+    use std::rc::Rc;
+
+    use crate::gunbc_cli_dispatch_surface::{
+        CliArmRealization, CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
+        CliSurfaceEmission,
+    };
+
+    /// DISCRIMINATING RED for the allocator-to-emitter edge. The substrate fixture proves the
+    /// allocator's bounded choice; this seed-side fixture proves the Rust emitter actually uses
+    /// that choice at both the declaration and call sites. Hard-coding `_0` in the emitter makes
+    /// this fail even while every allocator-only assertion remains green.
+    #[test]
+    fn generated_dispatch_consumes_shifted_executor_name_at_definition_and_use() {
+        let collision = "__gunbc_dispatch_executor_0".to_string();
+        let shifted = "__gunbc_dispatch_executor_1";
+        let rows = Rc::new(
+            vec![Rc::new(CliSubcommandRow {
+                verb: "fixture".to_string(),
+                variant: "Fixture".to_string(),
+                doc: Rc::new(Vec::new().into()),
+                operands: Rc::new(Vec::new().into()),
+                options: Rc::new(
+                    vec![Rc::new(CliOptionRow {
+                        field: collision.clone(),
+                        long: collision,
+                        value: Rc::new(CliOptionValue::CliToggleValue),
+                        arity: CliOptionArity::CliAtMostOne,
+                        doc: Rc::new(Vec::new().into()),
+                        emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+                    })]
+                    .into(),
+                ),
+                realization: Rc::new(CliArmRealization::CliRetainedHostKernel),
+                emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+            })]
+            .into(),
+        );
+
+        let emitted = crate::v1_compiler_emit_rust::emit_gunbc_cli_dispatch_generated_for_rows(
+            "fixture_crate".to_string(),
+            rows,
+        )
+        .content
+        .clone();
+        assert_eq!(
+            emitted.matches(&format!("{shifted}: &H")).count(),
+            1,
+            "shifted executor must be the generated dispatch parameter: {emitted}"
+        );
+        assert_eq!(
+            emitted
+                .matches(&format!("=> {shifted}.retained_host_kernel"))
+                .count(),
+            1,
+            "shifted executor must be used at the retained-host call site: {emitted}"
+        );
+    }
 }
 
 fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
@@ -1286,7 +1384,7 @@ mod process_cwd_mutation_reachability_gate {
                 // A raw-string opener: `r`, then zero or more `#`, then `"`, and not preceded by
                 // an identifier character (else it is the tail of a name like `attr`).
                 if c == 'r'
-                    && i.checked_sub(1).map_or(true, |prev| {
+                    && i.checked_sub(1).is_none_or(|prev| {
                         !(chars[prev].is_ascii_alphanumeric() || chars[prev] == '_')
                     })
                 {
@@ -18243,12 +18341,17 @@ mod budget_completion_tests {
             "claim",
             9_000_000,
             4_000_000,
+            77,
         );
         assert_eq!(
             receipt.wall_nanos, 9_000_000,
             "wall is the measurement basis"
         );
         assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
+        assert_eq!(
+            receipt.eval_steps, 77,
+            "the work measure is carried beside both clocks, not derived from either"
+        );
         assert_ne!(
             receipt.wall_nanos, receipt.cpu_nanos,
             "the two clocks must be carried independently, not aliased"
@@ -19194,6 +19297,176 @@ pub enum ExitClass {
     Success,
     Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
+}
+
+fn bootstrap_invocation_receipt_path(receipt_root: &str) -> Result<std::path::PathBuf, String> {
+    static INVOCATION_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::fs::create_dir_all(receipt_root).map_err(|error| {
+        format!("could not create bootstrap receipt root `{receipt_root}`: {error}")
+    })?;
+    let sequence = INVOCATION_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Ok(std::path::Path::new(receipt_root)
+        .join(format!("receipt-{}-{sequence}", std::process::id())))
+}
+
+/// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
+/// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
+/// this declaration knows only source/declaration identity, named String bindings, an internal
+/// receipt channel, and the BootstrapSuccessorOperation execution class enforced by the model.
+/// It reuses the retained resolver/evaluator in-process and never shells out to another gunbc.
+pub fn run_bootstrap_dag_operation(
+    source_roots: &[String],
+    entry_path: &str,
+    declaration_module: &str,
+    declaration_name: &str,
+    mut public_operands: Vec<(String, String)>,
+    receipt_parameter: &str,
+    receipt_root: &str,
+) -> ! {
+    if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
+        eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
+        std::process::exit(2);
+    }
+    let receipt_path = match bootstrap_invocation_receipt_path(receipt_root) {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("REFUSED: {error}");
+            std::process::exit(1);
+        }
+    };
+    let receipt_path = receipt_path.to_string_lossy().into_owned();
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry_path) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            eprintln!("REFUSED: bootstrap operation resolve failed at `{entry_path}`: {cause}");
+            std::process::exit(1);
+        }
+    };
+    if graph
+        .diagnostics
+        .iter()
+        .any(|diagnostic| is_interpreter_blocking_diagnostic(diagnostic.diagnostic.clone()))
+    {
+        eprintln!("REFUSED: bootstrap operation `{entry_path}` has blocking diagnostics");
+        std::process::exit(1);
+    }
+    let declaration_present = graph.item_registry.values().any(|item| {
+        item.module_name == declaration_module
+            && item.name == declaration_name
+            && matches!(item.kind, ItemKind::FnItem | ItemKind::FuncItem)
+    });
+    if !declaration_present {
+        eprintln!(
+            "REFUSED: bound bootstrap declaration `{declaration_module}.{declaration_name}` \
+             is absent from `{entry_path}`"
+        );
+        std::process::exit(1);
+    }
+    public_operands.push((receipt_parameter.to_string(), receipt_path.clone()));
+    let arguments = public_operands
+        .into_iter()
+        .map(|(name, value)| (Some(name), str_value(value)))
+        .collect::<Vec<_>>();
+    let ctx = make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let qualified_declaration = format!("{declaration_module}.{declaration_name}");
+    let terminal = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        &qualified_declaration,
+        &arguments,
+        true,
+    ) {
+        Ok(value) => classify_exit(&value, &ctx),
+        Err(error) => {
+            eprintln!(
+                "REFUSED: bootstrap operation `{declaration_module}.{declaration_name}` \
+                 evaluation failed: {error:?}"
+            );
+            std::process::exit(1);
+        }
+    };
+    let receipt = match std::fs::read_to_string(&receipt_path) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            eprintln!("REFUSED: bootstrap operation receipt `{receipt_path}` unreadable: {error}");
+            std::process::exit(1);
+        }
+    };
+    print!("{receipt}");
+    if !receipt.ends_with('\n') {
+        println!();
+    }
+    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
+    match terminal {
+        ExitClass::Success => {
+            eprintln!(
+                "BOOTSTRAP-RECEIPT seed={seed_identity} entry={entry_path} \
+                 declaration={declaration_module}.{declaration_name} \
+                 class=BootstrapSuccessorOperation terminal=ExitSuccess"
+            );
+            std::process::exit(0);
+        }
+        ExitClass::Failure { code, reason } => {
+            let status = if code == 0 { 1 } else { code };
+            eprintln!(
+                "BOOTSTRAP-RECEIPT seed={seed_identity} entry={entry_path} \
+                 declaration={declaration_module}.{declaration_name} \
+                 class=BootstrapSuccessorOperation terminal=ExitFailure({status}){}",
+                reason
+                    .map(|text| format!(" reason={text}"))
+                    .unwrap_or_default()
+            );
+            std::process::exit(status);
+        }
+        ExitClass::NotProcessExit { type_name } => {
+            eprintln!(
+                "REFUSED: bootstrap declaration `{declaration_module}.{declaration_name}` \
+                 returned `{type_name}`, not ProcessExit"
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
+#[cfg(test)]
+mod bootstrap_operation_launcher_tests {
+    use super::bootstrap_invocation_receipt_path;
+
+    /// Threads exercise the per-process sequence; the explicit PID assertions are the
+    /// discriminator for the separate process-invocation boundary. Removing either component
+    /// makes this control red instead of leaving the other component to mask the collision.
+    #[test]
+    fn concurrent_threads_receive_distinct_paths_and_each_path_carries_process_identity() {
+        let root =
+            std::env::temp_dir().join(format!("gunbc-bootstrap-path-test-{}", std::process::id()));
+        let root_text = root.to_string_lossy().into_owned();
+        let left = std::thread::spawn({
+            let root_text = root_text.clone();
+            move || bootstrap_invocation_receipt_path(&root_text).unwrap()
+        });
+        let right = std::thread::spawn({
+            let root_text = root_text.clone();
+            move || bootstrap_invocation_receipt_path(&root_text).unwrap()
+        });
+        let left = left.join().unwrap();
+        let right = right.join().unwrap();
+        let process_component = format!("receipt-{}-", std::process::id());
+        assert!(left
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with(&process_component)));
+        assert!(right
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with(&process_component)));
+        assert_ne!(left, right);
+        assert_ne!(
+            left.with_extension("artifact"),
+            right.with_extension("artifact")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
 
 pub fn classify_exit(
@@ -29173,6 +29446,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 1_000,
                     cpu_nanos: 1_000,
                     eval_self_nanos: 1_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
                 PerformanceReceipt {
@@ -29181,6 +29455,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 50_000,
                     cpu_nanos: 50_000,
                     eval_self_nanos: 50_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
                 PerformanceReceipt {
@@ -29189,6 +29464,7 @@ mod discovery_summary_merge_tests {
                     wall_nanos: 5_000,
                     cpu_nanos: 5_000,
                     eval_self_nanos: 5_000,
+                    eval_steps: 0,
                     sample_count: 1,
                 },
             ],
@@ -39541,6 +39817,12 @@ pub struct WitnessExecutionOccurrence {
     pub outcome: String,
     pub wall_nanos: u128,
     pub cpu_nanos: u128,
+    /// Evaluator steps this claim took, marginal of stored shared-artifact fills — the
+    /// deterministic work measure beside the two clocks, invariant across the execution
+    /// envelope in a way neither clock is. Recorded, published, and compared against nothing:
+    /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing, and this column is the
+    /// evidence a step-denominated verdict would later be built on, not that verdict.
+    pub eval_steps: u64,
     /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
     /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
     /// claim has no cost to be over, and inferring that from the duration would make a slow
@@ -40213,19 +40495,20 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms"
+        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
             row.verdict_reached,
             row.wall_nanos / 1_000_000,
             row.cpu_nanos / 1_000_000,
+            row.eval_steps,
             row.cost_line_ms
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
