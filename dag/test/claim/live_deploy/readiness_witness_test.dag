@@ -211,6 +211,8 @@ test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
     } =>
       m == "extdeps.tools.sleep" && n == "sleep_delay_seconds_second_carrier_projection"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 

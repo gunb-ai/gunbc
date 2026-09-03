@@ -231,6 +231,61 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
 ]
 
+// grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
+// It was enrolled on recompute AND sharing before the serve-below-recompute criterion above
+// existed, so it stood on two of the three tests this file now requires, and gunbc#10141's
+// carrier-overlap wall refused it on a NEIGHBOUR's null result -- it serves
+// v2.test.manual.rust_add_emit_translate, a carrier of the refused rust_target_model_core_edges,
+// whose refusal was NoMeasuredEffectOverItsConsumers. A null about a different producer is
+// evidence neither of a cost here nor of its absence, so the state was UNMEASURED, not fine.
+//
+// TWO PRESENT-VS-ABSENT PAIRS, dispatched on branches rather than as pull requests because CI
+// builds refs/pull/N/MERGE and a PR pair measures two different trees the moment main moves:
+// 33701546412/33701544509 and 33705546522/33705544280, each present/absent off one main commit
+// differing in this one line. THE ARM IS VERIFIED TO HAVE VARIED rather than assumed: the key
+// carries 148 fills over 60 consumer modules in both present arms and is WHOLLY ABSENT from both
+// absent ledgers, while the other five keys carry identical fill counts in all four runs.
+//
+// CONDITIONED ON, and stated because rust_target_model_staging measured clean beside a wider row
+// and inherited that row's regression the moment the wider row was withdrawn: both bash warm rows
+// plus bash_fold_serialize_node, formal_productions_from_catalog_node and
+// bash_fold_relation_row_witness enrolled in every arm, and no rust row enrolled in any.
+//
+// THE CONTROL IS NOT THE ROSTER-EXTERNAL CORPUS, and that correction is the transferable part.
+// Normalising the subject's consumers against rows in no consumer module of any enrolled key
+// reports a ~12% win, and it is mostly composition: eval_steps is in required_floor_claim_cost.tsv
+// and is host-independent, so the subject's own rows split into those whose steps FELL (the serve
+// reached them) and those whose steps are BYTE-IDENTICAL across arms (the serve never reached
+// them, same claims, same runs). The second group is a control the change provably cannot have
+// touched, and it moves almost as much as the first. Rows elsewhere are an ASSUMPTION about the
+// corpus; rows doing byte-identical work are an OBSERVATION about the row.
+//
+// AGAINST THAT CONTROL THE SERVE BEATS THE RECOMPUTE IN BOTH PAIRS, by roughly a tenth on the
+// rows it reaches, with about an eighth of their eval_steps avoided; the two pairs' bootstrap
+// intervals overlap and neither admits 1. Re-derive with the instrument named rather than
+// trusting this sentence. The estimate is biased TOWARD the null, not toward this result: a row
+// the serve reached whose step count happened not to move lands in the control group.
+//
+// SO THE ROW STAYS, on all three conjuncts rather than two. The refusal that opened this question
+// is already gone, and by the same reasoning rather than by exemption: gunbc#10141's overlap join
+// is narrowed to refused rows whose verdict records a MEASURED cost, so
+// `refused_row_carriers_transfer` answers false for NoMeasuredEffectOverItsConsumers and the wall
+// never reaches core_edges' carriers. THAT IS OBSERVED AND NOT ONLY DESIGNED: floor run
+// 33703215821 is FloorClean with this key enrolled and core_edges in the refused roster -- same
+// roster, same carriers, no refusal. An overlap with a producer whose own measurement found no
+// effect either way was never evidence about this one.
+//
+// ONE OBSERVATION LEFT UNEXPLAINED ON PURPOSE, because an unsupported cause in a carrier is read
+// as a lead and spends the next reader's time before it spends their doubt: 12 claims carry
+// EXACTLY 1044 more eval_steps with this row enrolled -- a constant, not a distribution, across
+// claims of very different sizes. It was pre-registered from pair 1 and reproduced 12 of 12 at
+// exactly 1044 in pair 2, so it is structural and deterministic rather than a run artifact. It is
+// not roster resolution: install_pure_producer_share decodes both lists once per prepared subject.
+// It is not admission diverting calls from the cheaper per-frame memo: eval_pure_named_call is
+// reached only when pure_call_memo_key returns None, so the tiers are disjoint by key
+// availability. Cause unknown; all 12 route through v2.test.manual.rust_add_emit_translate's
+// fixture, which is where to look and is not a mechanism.
+//
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
 // catalog node, a production identity) but are not nullary, so they fill on first touch
 // and later claims hit on the content-hashed, fully-verified argument row. Measured owners

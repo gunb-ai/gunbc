@@ -170,5 +170,7 @@ fn host_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
     } =>
       m == "gunbc.host_effect_realize" && n == "host_effect_apply_gated"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
