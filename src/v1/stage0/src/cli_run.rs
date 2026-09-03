@@ -3425,23 +3425,6 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
         .clone()
 }
 
-/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
-/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
-pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
-    let roots = default_source_roots();
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let index = build_module_path_index(&roots);
-    let expected = index
-        .iter()
-        .filter(|(module_path, rel_path)| {
-            !excludes
-                .iter()
-                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
-        })
-        .count();
-    loaded >= expected
-}
-
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
     let synthetic = "module gunbc.ci_layer_roots\n\n\
          data witness_layer_roots: List<String> = [\"alpha_layer_root\", \"beta_layer_root\", \"gamma_layer_root\"]\n";
