@@ -230,6 +230,75 @@ fn llama_cpp_rpc_host_is_weights_peer(
   any(llama_cpp_rpc_weights_peer_hosts(deployments: deployments), h => host_identity_eq(a: h, b: host))
 }
 
+// ================= THE RESERVATION, WHICH IS A STATE MACHINE AND NOT A CENSUS =================
+//
+// A HOST OBSERVED HOLDING ANOTHER DEPLOYMENT'S LAYERS DOES NOT BECOME FREE BY NOT BEING LOOKED AT
+// AGAIN. This is the distinction that makes the interlock below honest, and getting it wrong in
+// either direction is how the hazard ships.
+//
+// The dangerous reading is "we did not re-observe the peer, therefore the host is available" --
+// absence of observation read as evidence of release, which is the failure that has dominated this
+// module's own history. The opposite overclaim is just as wrong and was written here first: asserting
+// the host IS CURRENTLY the weights peer, which no observation in this module establishes. The
+// current process topology of that host is UNOBSERVED, and this module says so.
+//
+// So the carrier is a RESERVATION with a dated origin, and its lifecycle has exactly one shape:
+//
+//   a positive observation MINTS the reservation
+//   the reservation REMAINS ACTIVE by default
+//   only a positive RELEASE RECEIPT clears it
+//
+// WHAT MAY NOT DISCHARGE IT, because each of these is an absence wearing a release's clothes: not
+// re-observing the host; the front door becoming unreachable; the dated observation growing old. The
+// front-door case is the subtle one and is worth naming -- conditioning the hold on the front door
+// still serving would be FAIL-OPEN, because a transient outage would dissolve the reservation while
+// the peer's process, its boot-enabled unit, its memory commitment and its restart path all survive
+// the outage untouched.
+//
+// WHAT DOES DISCHARGE IT is a fresh host-level receipt that positively excludes the host from the
+// current internal-participant population -- process and argv of the front door, the current
+// distributed participant set, the host's own supervisor, process and socket state, the old
+// llama.cpp and ggml-RPC unit enablement, and its current memory state.
+//
+// AND THAT RELEASE IS NOT ITSELF AN ADMISSION. Two gates stand in series and fusing them is its own
+// hazard: "no longer an internal participant" is a topology fact, while "safe to load an 86 GB model
+// here" is a fit question for the unit-grain admission authority. The first does not answer the
+// second.
+// THE ORIGIN IS THE DEPLOYMENT ITSELF, NOT A SENTENCE ABOUT IT. This field was first authored as a
+// NonEmptyStr reading "dated deployment observation 2026-09-02", which is prose in a data slot: no
+// Accepted program can check it, nothing joins it back to the observation it names, and it would go
+// stale silently the moment the observation moved. Carrying the deployment gives the reservation a
+// real referent -- a reader can ask which front door and which peer minted this hold, and the answer
+// is the value rather than a description of one.
+//
+// THE MINT IS THEREFORE TOTAL AND HAS NO FAILURE ARM: a reservation cannot be conjured for a host
+// that no observed deployment names, because the only way to build one is to hand it a deployment.
+type LlamaCppRpcInternalParticipantReservation sole_constructor {
+  host: HostIdentity
+  origin: LlamaCppRpcDeployment
+}
+
+fn llama_cpp_rpc_internal_participant_reservation(
+  origin: LlamaCppRpcDeployment,
+) -> LlamaCppRpcInternalParticipantReservation {
+  LlamaCppRpcInternalParticipantReservation { host: origin.weights_peer.host, origin: origin }
+}
+
+// The reservations no release receipt has cleared. Every internal participant of a positively
+// observed deployment mints one; nothing in this module can clear one, because a release requires
+// evidence this module does not hold.
+fn llama_cpp_rpc_undischarged_peer_reservations() -> List<LlamaCppRpcInternalParticipantReservation> {
+  map(llama_cpp_rpc_observed_units(), d => llama_cpp_rpc_internal_participant_reservation(origin: d))
+}
+
+fn llama_cpp_rpc_undischarged_peer_reservation_hosts() -> List<HostIdentity> {
+  map(llama_cpp_rpc_undischarged_peer_reservations(), r => r.host)
+}
+
+fn llama_cpp_rpc_host_holds_undischarged_reservation(host: HostIdentity) -> Bool {
+  any(llama_cpp_rpc_undischarged_peer_reservation_hosts(), h => host_identity_eq(a: h, b: host))
+}
+
 // ================= THE OBSERVED DEPLOYMENT, 2026-09-02 18:23 UTC =================
 //
 // Read from the operator's handoff specification, which records what was measured live rather than
@@ -277,6 +346,16 @@ data llama_cpp_rpc_observed_front_door: LlamaCppRpcFrontDoor = LlamaCppRpcFrontD
   port: 30000,
 }
 
+// THIS ROW IS CURRENTLY CORROBORATED BY A LIVE READBACK, WHICH IS NOT THE SAME AS BEING EXECUTED
+// EVIDENCE. On 2026-09-03 the running front door reported total_slots 10 with per-slot n_ctx
+// 1048576 on all ten slots -- the values below, re-observed against the service rather than against
+// the handoff that first supplied them. That is the first row here confirmed by the subject itself.
+//
+// THE WITNESS BELOW STILL EVALUATES THESE MODELLED VALUES AND DOES NOT EXECUTE /props OR /slots, so
+// the corroboration is a fact about 2026-09-03 and not a repository guarantee. Promoting it needs
+// the readback to become a typed instrument receipt the claim consumes; until then the honest
+// standing is "corroborated on that date", and a plan-time readback must re-read these endpoints
+// immediately before freezing anything, because today's observation is not indefinitely fresh.
 data llama_cpp_rpc_observed_slot_plan: LlamaCppRpcSlotPlan = LlamaCppRpcSlotPlan {
   per_slot_context: token_count(count: 1048576),
   slots: positive_slot_count(count: positive_measure_count(predecessor: 9)),
@@ -328,11 +407,16 @@ fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
 
 // ================= WHAT THE UNIT WAS MEASURED TO DELIVER =================
 //
-// A BAND, NOT A NUMBER, AND THE REASON IS IN THE MEASUREMENT ITSELF. Ten slots produced 58.8
-// aggregate decode tok/s on one run and 50.9 on a repeat of the same configuration. Encoding 58.8
-// would be a censored estimator presented as a threshold: it takes the better arm of a two-sample
-// spread and reports it as the property, and the repeat already falsifies that precision. So the
-// observation carries both ends and nothing here is a floor.
+// THE 50.9-58.8 "AGGREGATE" IS RETRACTED, AND THIS PARAGRAPH IS ITS RETRACTION RATHER THAN ITS
+// RESTATEMENT. This section used to open by presenting that pair as the measured delivery, and the
+// carrier below does NOT hold it -- it holds decode and prefill rates and no aggregate at all.
+// Leaving the old opening in place made the prose describe values the value does not contain, which
+// is worse than either the old figure or the new one: a reader would take the section's first
+// sentence as the fact.
+//
+// It is retracted on its own merits and not for tidiness. No aggregate was ever measured AS an
+// aggregate; the figure was a prefill rate read as a decode rate, which the correction below sets
+// out in full. Nothing here is a floor, a capacity, or a delivery guarantee.
 //
 // WHY THE UNIT IS NOT CONFIGURED AT ITS MEMORY CEILING, which is the fact that stops "more slots"
 // from reading as "more throughput". Twelve slots FIT, and left the peer at 9 GiB free instead of
@@ -347,8 +431,12 @@ fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
 // between ten and twelve needs repeated interleaved trials at both, which do not exist. Raising the
 // count without that instrument is still unjustified -- but so is the claim that lowering it helped.
 //
-// AND SLOTS BUY CONCURRENCY, NOT SPEED. A reader who takes an aggregate figure as a per-session
-// speed will size sessions wrongly, which is why the two are separate quantities below.
+// A PER-SESSION RATE AND A WHOLE-SERVER RATE ARE DIFFERENT QUANTITIES, which is why they are
+// separate fields below and why a reader who takes one for the other will size sessions wrongly.
+// This used to say "slots buy concurrency, NOT speed". That is a claim about what added slots do to
+// per-session rate, and the only experiment bearing on it is the concurrency sweep whose own rows do
+// not reconcile -- so it is withdrawn as unestablished rather than kept as intuition. The
+// distinction between the two quantities does not depend on it.
 //
 // THE ROW ABOVE ONCE READ "single-stream decode is memory-bandwidth-bound at roughly 13-16 tok/s,
 // 13.3 at one and 5.9 at ten". EVERY PART OF THAT WAS WRONG, AND THE WAY IT WAS WRONG IS THIS
@@ -362,11 +450,24 @@ fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
 // restart explains the gap. The instrument reported faithfully; its output answered a question
 // nobody asked.
 //
-// AND THE MECHANISM IN THAT SENTENCE WAS WRONG TOO, WHICH MATTERS MORE THAN THE NUMBER. 359 ms per
-// token is not memory bandwidth on this hardware. The two GPUs ALTERNATE -- sampled means of roughly
-// 28% on the front door and 42% on the peer, with repeated 0% samples on both -- because an RPC
-// layer split runs one host's layers, ships activations, then idles while the other host runs its
-// half. A token cannot be faster than one full trip through that pipeline.
+// THE MECHANISM IN THAT SENTENCE IS ALSO NOT ESTABLISHED, AND SAYING SO COSTS LESS THAN THE
+// ALTERNATIVE. An earlier revision replaced "memory-bandwidth-bound" with a confident denial -- 359
+// ms per token "is not memory bandwidth on this hardware" -- and a positive cause, that the two
+// GPUs alternate BECAUSE the layer split serializes them. Neither is measured. A rate does not name
+// its own bottleneck in either direction, and that was the whole lesson of the figure it replaced.
+//
+// WHAT IS STRUCTURAL, and all that is: one token has a SERIAL DEPENDENCY across the two layer
+// partitions, including a cross-host activation transfer. That follows from the topology and needs
+// no instrument.
+//
+// WHAT IS OBSERVED BESIDE IT, carried as observation and not as its explanation: sampled utilization
+// means of roughly 28% on the front door and 42% on the peer, with repeated 0% samples on both. A
+// utilization sample is the fraction of an interval in which at least one kernel ran -- it is not
+// occupancy, achieved FLOPs, or idle capacity -- so those numbers are consistent with serialization
+// and equally with sampling aliasing, communication waits or scheduling, and they do not decide
+// between them. How much the serial dependency contributes to the measured token interval is
+// UNRESOLVED: retained KV, kernel efficiency, memory behaviour, synchronization and transport
+// latency all remain live contributors.
 //
 // WHAT THE SWEEP DID AND DID NOT SHOW, stated narrowly because the wide version was wrong. Within
 // one concurrency sweep, completed-probe rates did not decline monotonically as probes were added.
@@ -382,12 +483,13 @@ fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
 // restart doubles throughput or occupancy halves it. The observations ORDER future measurements;
 // they do not establish a capacity policy, and a desired state must not be sized from them.
 //
-// WHAT REMAINS TRUE AND LOAD-BEARING is the structural half: an RPC layer split serializes the two
-// hosts by construction, so per-session speed cannot improve without removing the alternation.
-// Tensor parallelism is what removes it -- both GPUs computing each layer simultaneously instead of
-// taking turns -- and that is a REALIZATION choice, not a tuning knob on this one. Whether it is
-// FASTER here is unmeasured: it introduces per-layer collectives over the fabric, so it trades a
-// serialization for a synchronization and the trade needs its own instrument.
+// WHAT REMAINS TRUE AND LOAD-BEARING is the structural half only: an RPC layer split imposes a
+// serial cross-host dependency per token, and tensor parallelism is a CANDIDATE that changes that
+// dependency. It does not follow that per-session speed cannot improve without removing it -- that
+// sentence stood here and is withdrawn, because the dependency's share of the token interval is
+// unresolved and the other contributors above could move on their own. Nor does it follow that
+// tensor parallelism is faster here: it trades a serialization for per-layer collectives over the
+// fabric, which is a different cost, not an absent one. The trade needs its own instrument.
 //
 // HONEST LIMIT ON ALL OF IT: measured on short completions against a near-empty context. Real
 // sessions at 90k+ decode slower, so these figures bound an idle deployment and are not a service
@@ -397,11 +499,130 @@ fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
 // PREFILL AND DECODE ARE SEPARATE FIELDS BECAUSE THEY ARE SEPARATE QUANTITIES. Collapsing them to
 // one "throughput" number is what produced the retracted 13-16 figure, and a carrier that cannot
 // hold both invites the same collapse from the next author.
+// THE TWO READINGS ARE THE FACT; THE ENVELOPE IS DERIVED FROM THEM. This was the other way round
+// and the inversion lost data. The carrier held only slots, a decode low and high, and ONE prefill
+// -- so the first reading's prefill of 14.45 tok/s was not merely rounded, it was DISCARDED, and
+// neither surviving rate stayed attached to the state it was measured in. A consumer received 2..7
+// and 12 and could not recover which rate came from which unit state, or that two process
+// incarnations were involved at all. That is precisely the transport loss this module exists to
+// prevent: the association lived in prose, where no Accepted program can read it.
+//
+// THE REGIME IS A CLOSED COPRODUCT BECAUSE THE TWO STATES ARE NOT POINTS ON A SCALE. One unit had
+// served six long-context sessions for eight hours with slots holding 65k and 157k; the other was
+// sixteen minutes past a restart with slots nearly empty. There is no measured quantity ordering
+// them -- "occupancy" is the name for what differed, not a number anyone recorded -- so an enum of
+// the two observed states is honest where a numeric field would invite interpolation between
+// readings that were never taken.
+type LlamaCppRpcTimingRegime
+  = LongLivedWithRetainedSessions
+  | NearlyEmptyAfterRestart
+
+// A RATE IS CARRIED AS AN INTERVAL BECAUSE THE INSTRUMENT REPORTED FRACTIONS AND THIS CORPUS COUNTS
+// IN WHOLE TOKENS. 2.78 becomes [2, 3] and 14.45 becomes [14, 15]: the interval CONTAINS the
+// reading, so no consumer can recover a precision the measurement did not have, and none can be
+// misled by a rounding direction chosen for them. The alternative -- a scaled rate authority -- is a
+// larger change to std.measure than this observation justifies, and the interval is the conservative
+// reading either way.
+type LlamaCppRpcTimingSample sole_constructor {
+  regime: LlamaCppRpcTimingRegime
+  decode_low: TokensPerSecond
+  decode_high: TokensPerSecond
+  prefill_low: TokensPerSecond
+  prefill_high: TokensPerSecond
+}
+
+// THE PAIR CARRIES THE RESTART BOUNDARY, WHICH IS THE ONLY RELATION BETWEEN THEM ANYONE OBSERVED.
+// Not a PID, not a process digest, not a start timestamp -- none of those were measured, and
+// inventing one to look rigorous would be the fabrication this module refuses elsewhere. What WAS
+// observed is that a restart separates the two readings, so the pair asserts exactly that and
+// nothing finer: these are different incarnations, in this order.
+//
+// THE RELATION IS STRUCTURAL AND SO CARRIES NO FIELD. A one-arm `DifferentIncarnations` marker was
+// authored here and removed: the field names are `before_restart` and `after_restart`, the
+// constructor accepts only a LongLivedWithRetainedSessions sample followed by a
+// NearlyEmptyAfterRestart one, and that second arm NAMES the restart. A field asserting "different
+// incarnations" beside those would be a second representation of what the regimes already say, and
+// the kind that can drift from them. Two incarnations is the only shape this type can hold.
+type LlamaCppRpcTimingPair sole_constructor {
+  before_restart: LlamaCppRpcTimingSample
+  after_restart: LlamaCppRpcTimingSample
+}
+
 type LlamaCppRpcDecodeEnvelope sole_constructor {
   slots: PositiveSlotCount
   decode_low: TokensPerSecond
   decode_high: TokensPerSecond
   prefill: TokensPerSecond
+}
+
+fn llama_cpp_rpc_timing_sample(
+  regime: LlamaCppRpcTimingRegime,
+  decode_low: TokensPerSecond,
+  decode_high: TokensPerSecond,
+  prefill_low: TokensPerSecond,
+  prefill_high: TokensPerSecond,
+) -> LlamaCppRpcTimingSample? {
+  if tokens_per_second_count(r: decode_low) > tokens_per_second_count(r: decode_high) {
+    none
+  } else if tokens_per_second_count(r: prefill_low) > tokens_per_second_count(r: prefill_high) {
+    none
+  } else {
+    Present { value: LlamaCppRpcTimingSample {
+      regime: regime,
+      decode_low: decode_low,
+      decode_high: decode_high,
+      prefill_low: prefill_low,
+      prefill_high: prefill_high,
+    } }
+  }
+}
+
+// THE PAIR REFUSES TWO SAMPLES IN THE SAME REGIME. Two readings from one state are not a
+// before-and-after across a restart; they are a repeat, and the boundary this type asserts would be
+// a fiction over them.
+fn llama_cpp_rpc_timing_pair(
+  before_restart: LlamaCppRpcTimingSample,
+  after_restart: LlamaCppRpcTimingSample,
+) -> LlamaCppRpcTimingPair? {
+  match before_restart.regime {
+    LongLivedWithRetainedSessions =>
+      match after_restart.regime {
+        NearlyEmptyAfterRestart => Present { value: LlamaCppRpcTimingPair {
+          before_restart: before_restart,
+          after_restart: after_restart,
+        } }
+        LongLivedWithRetainedSessions => none
+      }
+    NearlyEmptyAfterRestart => none
+  }
+}
+
+// THE ENVELOPE IS A PROJECTION OF THE PAIR, NOT A SECOND AUTHORITY. It spans the decode intervals of
+// both samples -- lowest low, highest high -- so it cannot disagree with them, and a reader who
+// wants the association still has it one field away. Prefill is deliberately NOT collapsed here:
+// the two prefill intervals sit either side of each other and a single "the prefill rate" is the
+// exact fiction that produced the retracted 13-16 figure.
+fn llama_cpp_rpc_envelope_of(
+  pair: LlamaCppRpcTimingPair,
+  slots: PositiveSlotCount,
+  prefill: TokensPerSecond,
+) -> LlamaCppRpcDecodeEnvelope? {
+  llama_cpp_rpc_throughput_band(
+    slots: slots,
+    decode_low: min_tokens_per_second(
+      a: pair.before_restart.decode_low, b: pair.after_restart.decode_low),
+    decode_high: max_tokens_per_second(
+      a: pair.before_restart.decode_high, b: pair.after_restart.decode_high),
+    prefill: prefill,
+  )
+}
+
+fn min_tokens_per_second(a: TokensPerSecond, b: TokensPerSecond) -> TokensPerSecond {
+  if tokens_per_second_count(r: a) <= tokens_per_second_count(r: b) { a } else { b }
+}
+
+fn max_tokens_per_second(a: TokensPerSecond, b: TokensPerSecond) -> TokensPerSecond {
+  if tokens_per_second_count(r: a) >= tokens_per_second_count(r: b) { a } else { b }
 }
 
 fn llama_cpp_rpc_throughput_band(
@@ -446,17 +667,23 @@ fn llama_cpp_rpc_throughput_band(
 // pairs across several -- an experiment nobody has run, and one that does NOT require resurrecting
 // the old process to run later.
 //
-// The operational consequence survives the weaker claim intact: a report that samples only a fresh
-// unit overstates what a loaded one delivers by roughly double, and one that samples only a loaded
-// unit understates a fresh one by as much.
+// AND THE "OPERATIONAL CONSEQUENCE" THAT USED TO CLOSE THIS PARAGRAPH IS WITHDRAWN TOO, because it
+// smuggled the retracted cause back in one sentence after the retraction. It said a fresh-only
+// report overstates a loaded unit by roughly DOUBLE and a loaded-only report understates a fresh one
+// by as much -- which asserts the direction, the magnitude, and that both generalize to samples
+// nobody has taken. None of that is established by two differently-situated readings.
 //
-// This is also why a concurrency sweep run entirely on top of an already-loaded unit cannot see the
-// effect at all: every sample sits at ONE occupancy, so occupancy is held constant by the
-// experiment's own shape and cannot appear in its output. A flat per-stream rate across added probes
-// is therefore evidence about ADDED PROBES AT FIXED OCCUPANCY and evidence about nothing else -- and
-// since that sweep did not observe how many probes were simultaneously active, it does not settle
-// even that. It certainly does not license "occupancy is free", which is the reading the 2.3x above
-// contradicts.
+// What survives is the weaker and still actionable form: a sample taken in ONE process state may
+// differ materially from the same configuration in another, and these two observations do not
+// establish the direction or the population magnitude of that difference. That is enough to require
+// a future instrument to carry its state; it is not enough to predict what it will find.
+//
+// A CONCURRENCY SWEEP RUN ON TOP OF AN ALREADY-LOADED UNIT CANNOT SEE THIS AXIS, and the precise
+// reason matters because the loose version of it is also an overclaim. The sweep did not
+// independently VARY or MEASURE the retained-context population -- it is not that total occupancy
+// was held constant, since the added requests themselves change active work and memory state, which
+// is exactly what nobody observed. So the sweep carries no information about the axis it never
+// varied, and a flat per-stream rate across added probes cannot be read as "occupancy is free".
 //
 // THE ROUNDING IS DIRECTIONAL, and what it does and does not buy is now the whole point. The low end
 // rounds DOWN and the high end UP, so the recorded pair is a SUPERSET of the measured one and no
@@ -474,13 +701,61 @@ fn llama_cpp_rpc_throughput_band(
 // rows do not reconcile (eight streams at 3.29 per stream is 26, reported as 12.8), so transcribing
 // them would import an unexplained inconsistency as a modeled fact. An aggregate claim needs its own
 // instrument, and until one exists the honest state is that this module does not carry one.
-fn llama_cpp_rpc_observed_throughput() -> LlamaCppRpcDecodeEnvelope? {
-  llama_cpp_rpc_throughput_band(
-    slots: llama_cpp_rpc_observed_slot_plan.slots,
+// THE TWO SAMPLES AS MEASURED, EACH KEEPING THE STATE IT WAS TAKEN IN.
+//
+// Sample A: predicted_per_second 2.78, prompt_per_second 14.45, on a unit that had served six
+// long-context sessions for eight hours with slots holding 65k and 157k.
+// Sample B: predicted_per_second 6.38, prompt_per_second 12.18, sixteen minutes after that unit was
+// restarted, slots nearly empty.
+//
+// Both are single completions on short prompts with cache_n 0, taken from the server's own `timings`
+// rather than a stopwatch. Sample A's prefill was previously dropped on the floor; it is here.
+fn llama_cpp_rpc_sample_before_restart() -> LlamaCppRpcTimingSample? {
+  llama_cpp_rpc_timing_sample(
+    regime: LongLivedWithRetainedSessions,
     decode_low: tokens_per_second(count: 2),
-    decode_high: tokens_per_second(count: 7),
-    prefill: tokens_per_second(count: 12),
+    decode_high: tokens_per_second(count: 3),
+    prefill_low: tokens_per_second(count: 14),
+    prefill_high: tokens_per_second(count: 15),
   )
+}
+
+fn llama_cpp_rpc_sample_after_restart() -> LlamaCppRpcTimingSample? {
+  llama_cpp_rpc_timing_sample(
+    regime: NearlyEmptyAfterRestart,
+    decode_low: tokens_per_second(count: 6),
+    decode_high: tokens_per_second(count: 7),
+    prefill_low: tokens_per_second(count: 12),
+    prefill_high: tokens_per_second(count: 13),
+  )
+}
+
+fn llama_cpp_rpc_observed_timing_pair() -> LlamaCppRpcTimingPair? {
+  match llama_cpp_rpc_sample_before_restart() {
+    Absent => none
+    Present { value: before } =>
+      match llama_cpp_rpc_sample_after_restart() {
+        Absent => none
+        Present { value: after } =>
+          llama_cpp_rpc_timing_pair(before_restart: before, after_restart: after)
+      }
+  }
+}
+
+// THE ENVELOPE IS NOW DERIVED RATHER THAN AUTHORED, so it cannot drift from the samples it summarises.
+// Its prefill argument is the AFTER-RESTART interval's low end, carried explicitly because the pair
+// holds two prefill intervals and no single figure is "the" prefill rate -- picking one is a lossy
+// projection and is marked as such by having to be passed in.
+fn llama_cpp_rpc_observed_throughput() -> LlamaCppRpcDecodeEnvelope? {
+  match llama_cpp_rpc_observed_timing_pair() {
+    Absent => none
+    Present { value: pair } =>
+      llama_cpp_rpc_envelope_of(
+        pair: pair,
+        slots: llama_cpp_rpc_observed_slot_plan.slots,
+        prefill: pair.after_restart.prefill_low,
+      )
+  }
 }
 
 // ================= THE ARTIFACT ON DISK AT THE PATHS THE UNIT NAMES =================
@@ -734,22 +1009,40 @@ fn llama_cpp_rpc_artifact_is_bound(a: LlamaCppRpcOnDiskArtifact) -> Bool {
 // it the right thing to compare against and the unit file's `-c` the wrong thing: the two are
 // different quantities, and the silent-shrink failure is invisible to anything that checks the
 // second one.
-type LlamaCppRpcApiSurface = OpenAiCompatibleSurface | OllamaSurface
-
-data llama_cpp_rpc_observed_api_surface: LlamaCppRpcApiSurface = OpenAiCompatibleSurface
-
-fn llama_cpp_rpc_context_authority_route(surface: LlamaCppRpcApiSurface) -> NonEmptyStr {
-  match surface {
-    OpenAiCompatibleSurface => "/props" as NonEmptyStr
-    OllamaSurface => "/api/show" as NonEmptyStr
-  }
+//
+// THERE IS NO OLLAMA ARM, AND ITS REMOVAL IS THE POINT OF THIS SECTION. The carrier here used to be
+// `OpenAiCompatibleSurface | OllamaSurface`, with public functions projecting /api/show and
+// /api/tags out of the second arm. Nothing in this observation could ever establish that arm -- the
+// measured front door is not an Ollama, this module says so two paragraphs up, and no witness
+// discriminated it. It was vocabulary inherited from the generic carrier, published as though the
+// dated observation had two possible engines when it observed exactly one, so a consumer could
+// select a route mapping this module never measured. A cross-runtime surface vocabulary is real
+// work for the neutral authority to do AFTER it holds two observed realizations; doing it here from
+// one is inventing the second.
+//
+// SO THE ROUTES ARE THE EXACT ONES MEASURED, carried as fields rather than derived from an engine
+// choice. Read back from the running front door on 2026-09-03: /v1/models and /props and /health all
+// answer 200, and /version answers 404 -- which is what distinguishes this from a vLLM surface, and
+// is recorded because the distinguishing NEGATIVE is what a probe needs in order to refuse rather
+// than to guess.
+type LlamaCppRpcObservedApiSurface sole_constructor {
+  context_authority_route: NonEmptyStr
+  model_listing_route: NonEmptyStr
+  health_route: NonEmptyStr
 }
 
-fn llama_cpp_rpc_model_listing_route(surface: LlamaCppRpcApiSurface) -> NonEmptyStr {
-  match surface {
-    OpenAiCompatibleSurface => "/v1/models" as NonEmptyStr
-    OllamaSurface => "/api/tags" as NonEmptyStr
-  }
+data llama_cpp_rpc_observed_api_surface: LlamaCppRpcObservedApiSurface = LlamaCppRpcObservedApiSurface {
+  context_authority_route: "/props" as NonEmptyStr,
+  model_listing_route: "/v1/models" as NonEmptyStr,
+  health_route: "/health" as NonEmptyStr,
+}
+
+fn llama_cpp_rpc_context_authority_route(surface: LlamaCppRpcObservedApiSurface) -> NonEmptyStr {
+  surface.context_authority_route
+}
+
+fn llama_cpp_rpc_model_listing_route(surface: LlamaCppRpcObservedApiSurface) -> NonEmptyStr {
+  surface.model_listing_route
 }
 
 // ================= ONE CONSTRUCTOR FOR ONE OBSERVED REALIZATION =================
@@ -778,17 +1071,29 @@ fn llama_cpp_rpc_model_listing_route(surface: LlamaCppRpcApiSurface) -> NonEmpty
 // assemble a different one. That is a narrower capability than a join, and it is the one the
 // evidence supports.
 //
-// THE UNIT STAYS IMPLEMENTATION-NEUTRAL AND THIS TYPE IS WHERE THAT IS PAID FOR. No llama.cpp, no
-// IQ3_S, no engine anywhere in LlamaCppRpcDeployment: it is the stable structural subject -- a front door, a
-// weights peer, a fabric and a slot plan -- while LlamaCppRpcObservedDeployment is ONE MEASURED
-// REALIZATION of that subject.
+// THIS PARAGRAPH USED TO CLAIM THE OPPOSITE, AND WITHDRAWING IT IS WHAT THE RENAME IS FOR. It said
+// the deployment type stays IMPLEMENTATION-NEUTRAL -- "no llama.cpp, no IQ3_S, no engine anywhere"
+// -- and treated it as the stable structural subject with the observation as one realization of it.
+// That was false about its own fields. LlamaCppRpcDeployment names exactly ONE ggml-rpc weights peer
+// with an RPC port, and its slot plan derives llama.cpp's TOTAL `-c` from a per-slot context. A
+// four-worker tensor-parallel deployment does not inhabit that shape at all, so the type was an
+// engine-specific record wearing a neutral name -- which is the meaning fork this module was recut
+// to close, not a property it can still claim.
+//
+// THE NEUTRAL SUBJECT IS A LATER, SEPARATE CONSTRUCTION, and it is deliberately not attempted here:
+// it must be derived from two ACTUALLY OBSERVED realizations rather than generalized from this one,
+// because a neutral shape induced from a single engine reproduces that engine's assumptions under a
+// wider name. What survives as the genuinely cross-realization invariant is a rule rather than a
+// record: an internal participant of an active deployment must not simultaneously be published as
+// an independent client endpoint.
 // THE ARTIFACT FIELD IS NAMED FOR WHAT IT IS. `on_disk_artifact` rather than `artifact`, because
 // this record otherwise reads as four facts about one running process and one of them is a fact
 // about a filesystem. The name is the only thing that travels to every consumer.
 type LlamaCppRpcObservedDeployment sole_constructor {
   unit: LlamaCppRpcDeployment
   on_disk_artifact: LlamaCppRpcOnDiskArtifact
-  api_surface: LlamaCppRpcApiSurface
+  api_surface: LlamaCppRpcObservedApiSurface
+  timing: LlamaCppRpcTimingPair
   throughput: LlamaCppRpcDecodeEnvelope
 }
 
@@ -802,15 +1107,20 @@ fn llama_cpp_rpc_observed_observation() -> LlamaCppRpcObservedDeployment? {
       match llama_cpp_rpc_observed_throughput() {
         Absent => none
         Present { value: band } =>
-          match llama_cpp_rpc_observed_artifact() {
+          match llama_cpp_rpc_observed_timing_pair() {
             Absent => none
-            Present { value: art } =>
-              Present { value: LlamaCppRpcObservedDeployment {
-                unit: u,
-                on_disk_artifact: art,
-                api_surface: llama_cpp_rpc_observed_api_surface,
-                throughput: band,
-              } }
+            Present { value: pair } =>
+              match llama_cpp_rpc_observed_artifact() {
+                Absent => none
+                Present { value: art } =>
+                  Present { value: LlamaCppRpcObservedDeployment {
+                    unit: u,
+                    on_disk_artifact: art,
+                    api_surface: llama_cpp_rpc_observed_api_surface,
+                    timing: pair,
+                    throughput: band,
+                  } }
+              }
           }
       }
   }

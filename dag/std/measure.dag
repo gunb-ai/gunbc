@@ -594,9 +594,6 @@ fn events_per_minute_count(r: EventsPerMinute) -> Nat {
   measure_count(r)
 }
 
-// TOKENS PER SECOND, which is the same family move EventsPerMinute above makes at a different
-// period and for a different counted thing.
-//
 // HOW MANY FILES ONE ARTIFACT IS SPLIT INTO, on the Count axis beside PositiveSlotCount and built
 // the same way over PositiveMeasureCount.
 //

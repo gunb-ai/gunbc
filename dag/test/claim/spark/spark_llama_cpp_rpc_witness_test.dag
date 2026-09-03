@@ -25,6 +25,8 @@ import gunbc.spark.llama_cpp_rpc_observed {
   llama_cpp_rpc_observed_units,
   llama_cpp_rpc_observed_slot_plan,
   llama_cpp_rpc_host_is_weights_peer,
+  llama_cpp_rpc_undischarged_peer_reservation_hosts,
+  llama_cpp_rpc_host_holds_undischarged_reservation,
   ArtifactIdentityBound,
   ArtifactIdentityUnobserved,
   llama_cpp_rpc_observed_artifact,
@@ -195,49 +197,53 @@ test fn an_inverted_throughput_band_refuses() -> Bool {
 }
 
 
-// THE CROSS-ROSTER REFUSAL, RESTORED AFTER A READBACK FALSIFIED THE REASON IT WAS REMOVED.
+// THE INTERLOCK IS A RESERVATION, NOT A CURRENT PROCESS CENSUS, AND THE NAME USED TO SAY OTHERWISE.
 //
-// This claim was deleted on the ground that llama_cpp_rpc_observed_units() had become a DATED
-// observation of a deployment that no longer runs, so a wall built on it would forbid current
-// enrollment on the authority of something dead. That ground was WRONG, and it was wrong because it
-// came from a report rather than an observation -- the exact substitution this module exists to
-// refuse, committed while recutting the module that refuses it.
+// This claim was called `no_serving_cell_is_also_a_weights_peer`, which asserts that the reserved
+// host IS CURRENTLY the weights peer. Nothing establishes that. The dated observation says it WAS
+// one; the current process topology of that host is UNOBSERVED, and a boolean named for a census it
+// never performed is the same absence-as-fact error this module keeps having to unlearn -- once when
+// a peer's report stood in for a readback, and once here in the opposite direction.
 //
-// WHAT THE READBACK ESTABLISHED, on 2026-09-03 against the live service and not from any summary:
-// 192.168.1.232:30000 answers /v1/models with owned_by "llamacpp", serving
-// deepseek-v4-flash:iq3s-split at ftype "IQ3_S - 3.4375 bpw", size 116063994204, n_ctx 1048576; and
-// /props answers 200 while /version answers 404, which is a llama.cpp surface and not a vLLM one.
-// The llama.cpp RPC realization is therefore the LIVE realization, not a retired one.
+// WHAT IS ENFORCED IS THE RESERVATION'S LIFECYCLE. A positive observation minted it; only a positive
+// release receipt clears it; not looking again is not a release. So the refusal does not need to
+// prove the host is still a participant. It needs to refuse the one dangerous inference -- "we did
+// not re-observe the peer, therefore the host is free" -- and that is exactly what it refuses.
 //
-// AND THE HAZARD IS LIVE WITH IT. 192.168.1.233:11434 answers /api/tags with
-// deepseek-v4-gguf:no-h3-stop at 86720111694 bytes, IQ2_XXS -- an 86 GB model offered by the host
-// that holds the upper layers, which is precisely what the serving-cell roster selects. Two rosters
-// would each be locally correct and the load would be fatal: with the front door's own weights
-// already committed against roughly 121 GiB of unified memory and swap disabled, there is no spill,
-// and an OOM on the peer takes the front door down with it because the front door cannot serve
-// without those layers.
+// FRONT-DOOR LIVENESS IS DELIBERATELY NOT A CONDITION OF THIS CLAIM. Making it one would read as
+// prudence and be FAIL-OPEN: a transient outage would dissolve the hold while the peer's process, its
+// boot-enabled unit, its memory commitment and its restart path all survived it untouched. The
+// reservation outlives the front door by construction.
 //
-// WHAT THE READBACK DID NOT ESTABLISH, recorded so the next reader does not over-read it. The RPC
-// port 50052 was unreachable from the observing container on both 192.168.100.11 and
-// 192.168.1.233. That is a VANTAGE-POINT limit -- 192.168.100.0/24 is the RoCE fabric and is not
-// routed to the observer -- so it is not evidence the peer is down, and it is not evidence it is up.
-// Where a vLLM deployment is running, if it is, is also unestablished: it answers on none of
-// :8000, :8080, or :30000 on either host. Neither gap weakens this claim, because the claim turns on
-// the front door being live and the peer host offering a competing model, and both were measured.
+// WHAT THE 2026-09-03 READBACK ADDS IS URGENCY AND CONTINUITY, NOT THE JOIN. Measured against the
+// live service: 192.168.1.232:30000 answers /v1/models with owned_by "llamacpp" at ftype
+// "IQ3_S - 3.4375 bpw", /props reports total_slots 10 with per-slot n_ctx 1048576 on all ten and
+// is_sleeping false, /slots showed 2 of 10 processing at the read instant, and /version answers 404.
+// So a matching front door is live and carrying work. That corroborates the danger and it does NOT
+// join the reserved host into the current topology -- and "2 processing" is work at ONE INSTANT, not
+// continuous load, not an owner, and not a queue depth.
+//
+// THE HAZARD IS STATED AT THE STRENGTH THE EVIDENCE SUPPORTS. 192.168.1.233:11434 answers /api/tags
+// with deepseek-v4-gguf:no-h3-stop at 86720111694 bytes, IQ2_XXS, so an actuation path to an 86 GB
+// artifact EXISTS on the reserved host and is exactly what the serving-cell roster selects. Whether
+// loading it would certainly OOM today is NOT established -- that needs a current memory census and
+// current peer residency, neither of which was observed. The honest form: loading it is potentially
+// catastrophic under the last observed internal-participant and memory state, and current evidence
+// has not discharged that risk. Refusing does not require converting an unresolved catastrophic risk
+// into a falsely certain claim about today.
 //
 // THE RULE IS DISJOINTNESS BETWEEN TWO ROSTERS, NOT A NAMED HOST. Nothing here says "srv8 may never
-// serve" -- that would transcribe today's assignment and go stale the moment the fleet is
-// repartitioned. It says an internal participant of a constructed deployment is not simultaneously a
-// client-routable serving cell, which stays the right rule under any partition.
+// serve". It says a host carrying an undischarged internal-participant reservation may not enter an
+// independent serving roster, which stays the right rule under any partition and dissolves the
+// moment a release receipt exists.
 //
-// THE NON-EMPTINESS CONJUNCT IS NOT DECORATION. `any` over an empty list is false and its negation
-// is true, so the disjointness half alone goes GREEN when no deployment constructs -- a wall
-// reporting that nothing collides because nothing exists. This claim would then be carried as C1
-// coverage while establishing nothing.
-test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
-  length(llama_cpp_rpc_observed_units()) > 0
+// THE NON-EMPTINESS CONJUNCT IS NOT DECORATION. `any` over an empty list is false and its negation is
+// true, so the disjointness half alone goes GREEN when no reservation exists -- a wall reporting that
+// nothing collides because nothing is reserved.
+test fn no_serving_cell_uses_an_undischarged_llama_cpp_rpc_peer_reservation() -> Bool {
+  length(llama_cpp_rpc_undischarged_peer_reservation_hosts()) > 0
     && !any(spark_serving_cell_hosts(), h =>
-         llama_cpp_rpc_host_is_weights_peer(deployments: llama_cpp_rpc_observed_units(), host: h))
+         llama_cpp_rpc_host_holds_undischarged_reservation(host: h))
 }
 
 
