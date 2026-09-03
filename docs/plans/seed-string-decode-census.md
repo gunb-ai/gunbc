@@ -33,8 +33,12 @@ one declaring module; those attributions are exact.
 ## The decode primitives — seven, and each pass that widened the search found more
 
 The set of PRIMITIVES is much narrower than the set of call sites, and it is what makes the census
-closeable. All of them ultimately bottom out in four `InterpContext` methods (`sym`, `sym_eq`,
-`field`, `resolve`), declared together in `v1_interpreter`.
+closeable. **P1–P5 bottom out in four `InterpContext` methods** (`sym`, `sym_eq`, `field`, `resolve`),
+declared together in `v1_interpreter`. **P6 and P7 do not touch `InterpContext` at all** — P6 is a
+`str::replace` over file text and P7 is a subprocess argument vector — and that is precisely why they
+were missed: every earlier sweep was keyed on the interpreter surface, so a name crossing into `.dag`
+by any other route was outside the search by construction. The primitives are grouped by the ROUTE a
+name takes, not by a shared implementation.
 
 | # | primitive | shape | sites (hand `.rs`) | distinct names |
 |---|---|---|---|---|
@@ -43,7 +47,7 @@ closeable. All of them ultimately bottom out in four `InterpContext` methods (`s
 | P3 | `ctx.resolve(sym).as_str()` matched against string-literal arms | rendered-name dispatch | 61 | — |
 | P4 | `run_in_context(ctx, "entry_fn", …)` | call-by-name into the authority | 42 literal (of 142 total; the other 100 take the name from a `.dag`-supplied roster and are NOT exposed) | 17 |
 | P5 | file-local wrappers (`field_str`, `field_value`, `field_list`, `variant_field`, …) over P1–P3 | indirection layer | 36 | — |
-| P6 | `str::replace` rewriting a live-HEAD `.dag` file's own text | spelling-keyed EDIT, not lookup | 2 producers, 6 call sites | — |
+| P6 | `str::replace` rewriting a live-HEAD `.dag` file's own text | spelling-keyed EDIT, not lookup | 5 (3 + 2, in 2 producer fns reached from 6 call sites) | — |
 | P7 | subprocess ARGV: `--entry <path>` / `--function <name>` | call-by-name through a second door | 35 `--function`, 6 literal `--entry` | 11 |
 
 **The set is SEVEN KNOWN, NOT PROVABLY CLOSED**, and the method matters more than the number.
@@ -72,7 +76,9 @@ loud: a missed module-path rewrite produced a same-name duplicate that the modul
 refuses, while a missed `/tmp` rewrite made the witness write to the SHARED path instead of its
 per-run scratch directory — unreported, with the damage landing as cross-run interference in some
 other session's witness. Being caught by a neighbouring wall is a property of that wall, not of this
-rewrite, so **all five substitutions across both producers now refuse**, not just the silent one. The
+rewrite, so **all five substitutions now refuse** — three in `unique_fs_witness_entry` and two in
+`closure_scale_witness_entry`, the two producer functions reached from six call sites — not just the
+silent one. The
 refusal names the PATTERN and the SOURCE FILE, because whoever trips it will be editing the `.dag`
 with no reason to know a Rust harness depends on its literal text. Evidence: a discriminating RED
 (pattern edited out → refuses, asserting the refusal names both), a positive control (pattern present
@@ -320,8 +326,8 @@ deferred, and then as a declared §4b(3) row, not as the climb.
   what separates a spelling that is stale from a spelling that is merely unexercised.
 - **The identifier-preserving shape axis, in full.** Named above, deliberately not measured in this
   pass. It is the largest single gap between this document and a closed answer.
-- P6's fail-open arm is described but not sized beyond its 6 call sites; `str::replace` against `.dag`
-  text elsewhere in the tree was not swept. Given the reframing above, the wider sweep is the
+- P6's fail-open arm is described but not sized beyond its 5 substitutions in 2 producers;
+  `str::replace` against `.dag` text elsewhere in the tree was not swept. Given the reframing above, the wider sweep is the
   substitution-whose-failure-arm-widens class, not the `.dag`-text subset.
 - Two findings about the REVIEW instrument surfaced while this census was in flight and are recorded
   separately, in [review-instrument-observations.md](review-instrument-observations.md), because they
