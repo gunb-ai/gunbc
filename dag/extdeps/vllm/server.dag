@@ -222,22 +222,33 @@ data vllm_ray_health_coverage: VllmHealthCoverageFact = VllmHealthCoverageFact {
   established_against: vllm_source_revision_read,
 }
 
-// WHICH EVIDENCE MAY ESTABLISH KV CAPACITY -- AS A DECISION OVER PROPOSED EVIDENCE, NOT AS A CHOICE
-// BETWEEN TWO SIMULTANEOUS FACTS.
+// AND THE BACKEND IS ASKED, NOT MERELY RECORDED.
 //
-// An earlier spelling was a coproduct whose arms were `GroupAwareStartupLogLine` and
-// `BlockCountTimesMinimumBlockSizeIsNotCapacity`. Those are not alternatives -- BOTH hold at once:
-// the startup line IS the authority AND the multiplication is NOT. Selecting one arm therefore left
-// the rejection carried by prose and by the spelling of an uninhabited alternative, which is the
-// decorative-wall shape this repository refuses.
+// The field was written once and read by nothing, while the annotation above claimed a consumer
+// asking about another backend "gets no answer here rather than a borrowed one". Prose cannot make
+// that true: the only way to reach the coverage was to take the Ray row, and a consumer holding a
+// multiprocessing deployment would have read Ray's answer off it with nothing to stop them. An inert
+// field beneath a sentence describing what it prevents is the decoration this module refuses
+// elsewhere, and it is the same shape as a recorded-but-unexamined rank.
 //
-// As a decision it becomes executable: propose a kind of evidence, get an admission or a typed
-// refusal, and both directions are reachable from a test. THE REFUSAL IS ALSO STATED AS THE GENERAL
-// LAW rather than as an arithmetic complaint -- for a uniform cache layout the product may happen to
-// be numerically right, and a rule that says "this product is wrong" would be falsified by that
-// coincidence. What is universally true is that those two cache-config fields are not a GENERALLY
-// SUFFICIENT authority, because a multi-group layout can carry per-group block sizes the gauge's
-// resolved minimum does not represent.
+// So coverage is REACHED THROUGH THE BACKEND, and a backend with no established row refuses. The
+// refusal is the point: vLLM has more than one distributed executor and they do not share this
+// behaviour, so silence is the correct answer for one this repository has not read the source for.
+type VllmHealthCoverageAnswer
+  = HealthCoverageEstablished { coverage: VllmHealthWorkerCoverage, established_against: VllmSourceRevision }
+  | HealthCoverageNotEstablishedForBackend
+
+fn vllm_health_coverage_for(backend: VllmExecutorBackend) -> VllmHealthCoverageAnswer {
+  match backend {
+    RayDistributedExecutor =>
+      HealthCoverageEstablished {
+        coverage: vllm_ray_health_coverage.coverage,
+        established_against: vllm_ray_health_coverage.established_against,
+      }
+    MultiprocessingDistributedExecutor => HealthCoverageNotEstablishedForBackend
+  }
+}
+
 // THIS DECIDES WHICH KIND OF SOURCE WOULD BE AUTHORITATIVE. IT DOES NOT ADMIT ANY EVIDENCE.
 //
 // The arm previously carried a `VllmGroupAwareCapacityCapture` built from two arbitrary strings by a

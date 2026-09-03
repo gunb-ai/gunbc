@@ -57,6 +57,13 @@ import extdeps.vllm.server {
   VllmHealthWorkerCoverage,
   HealthDoesNotProbeDistributedWorkers,
   HealthProbesEveryDistributedWorker,
+  VllmExecutorBackend,
+  RayDistributedExecutor,
+  MultiprocessingDistributedExecutor,
+  VllmHealthCoverageAnswer,
+  HealthCoverageEstablished,
+  HealthCoverageNotEstablishedForBackend,
+  vllm_health_coverage_for,
   VllmCapacitySourceKind,
   GroupAwareStartupLog,
   CacheConfigBlockFields,
@@ -234,9 +241,26 @@ test fn w_the_capacity_assessment_carries_the_exact_source_revision() -> Bool {
 //
 // Each of these was previously flippable with the whole suite staying green.
 test fn w_ray_health_does_not_probe_distributed_workers() -> Bool {
-  match vllm_ray_health_coverage.coverage {
-    HealthDoesNotProbeDistributedWorkers => true
-    HealthProbesEveryDistributedWorker => false
+  match vllm_health_coverage_for(backend: RayDistributedExecutor) {
+    HealthCoverageEstablished { coverage: c, established_against: _ } => match c {
+      HealthDoesNotProbeDistributedWorkers => true
+      HealthProbesEveryDistributedWorker => false
+    }
+    HealthCoverageNotEstablishedForBackend => false
+  }
+}
+
+// AND A BACKEND THIS REPOSITORY HAS NOT READ THE SOURCE FOR GETS SILENCE, NOT RAY'S ANSWER.
+//
+// `backend` was written once and read by nothing, under an annotation claiming a consumer asking
+// about another backend "gets no answer here rather than a borrowed one" -- which prose cannot make
+// true. The only reachable path was the Ray row, so a multiprocessing deployment would have read
+// Ray's coverage off it. This is the discriminating RED for that: it was unauthorable before the
+// lookup existed, because there was no question to ask.
+test fn w_a_backend_with_no_established_coverage_refuses_rather_than_borrowing() -> Bool {
+  match vllm_health_coverage_for(backend: MultiprocessingDistributedExecutor) {
+    HealthCoverageNotEstablishedForBackend => true
+    HealthCoverageEstablished { coverage: _, established_against: _ } => false
   }
 }
 
