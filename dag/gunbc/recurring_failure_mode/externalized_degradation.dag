@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.externalized_degradation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data externalized_degradation: RecurringFailureMode = RecurringFailureMode {
+  identity: "externalized_degradation" as NonEmptyStr,
+
+  receipts: [
+    "**externalized degradation** (an actor that accepted an obligation or risk, or caused a cost, silently shifts the resulting burden to another principal while preserving the apparent name, price, or contract. ",
+
+    "Recognition rule: identify the accepted obligation or causal responsibility, trigger the adverse state, and follow who bears the marginal burden; if another principal's burden rises while the responsible actor neither absorbs it through its reserve, refusal, or remedy path nor exposes a separately named, priced, and refusable transfer, the burden was externalized. ",
+
+    "A disclosed, refusable allocation agreed before contract formation is the transfer arm; an undisclosed or unilateral later shift is refused. ",
+
+    "The honest arms are absorb-and-reserve or separately name-and-price the transfer.)",
+  ],
+
+  evidence: [],
+}

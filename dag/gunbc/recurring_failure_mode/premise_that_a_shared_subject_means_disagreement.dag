@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data premise_that_a_shared_subject_means_disagreement: RecurringFailureMode = RecurringFailureMode {
+  identity: "premise_that_a_shared_subject_means_disagreement" as NonEmptyStr,
+
+  receipts: [
+    "**A PREMISE THAT MAKES A COST LOOK CORRECT RENDERS THE REGION BEHIND IT UNEXAMINABLE, AND THE TELL IS REPEATED REPAIRS THAT ALL STOP AT THE SAME BOUNDARY.** The invalid state is a stated justification -- not a check, not a type -- that classifies an observed cost as intended, so no instrument is ever pointed at it and its absence looks like the absence of a problem rather than the absence of a measurement. ",
+
+    "SPECIMEN, and it is this carrier's own history: `gunbc.recurring_failure_mode` was repaired twice for merge contention -- blob to `data` rows, then rows to one line each -- and BOTH repairs measured only the APPEND OF A WHOLE ROW. Both rested on a premise stated in the first: that two lanes editing the SAME class conflicting is \"correct, because that is real disagreement about one fact.\" ",
+
+    "THE PREMISE IS FALSE FOR THIS CARRIER, and the discriminator is what actually accretes on a class. What lands is INDEPENDENT RECEIPTS from unrelated lanes -- a second specimen, a climb receipt, a corroboration reached from the opposite direction -- not competing claims about one fact. On 2026-09-02/03 three lanes appended three independent receipts to `state_space_conflation` and resolved it by hand-negotiating byte order; that row reached 23,023 characters. Independent accretion is not disagreement, so the conflict was textual contention wearing the mask the premise had fitted for it. ",
+
+    "**WHAT MAKES THIS A CLASS RATHER THAN ONE MISTAKE IS THE SHAPE OF THE EVIDENCE: the premise was load-bearing for two repairs, and neither repair's author looked inside a row.** A false premise does not merely produce a wrong answer -- it produces NO answer, because it removes the question. That is why it survived a measurement campaign that was otherwise careful: the same lane that measured `git merge-file` at a named merge base to characterise the block-tail defect never measured an intra-row edit, because the premise said the result would be correct. ",
+
+    "RECOGNITION RULE: when a repair of a recurring cost is being scoped, find the sentence that explains why the ADJACENT cost is acceptable, and ask what measurement would falsify it. If no measurement was ever run against it -- and especially if the same boundary has now been re-approached more than once -- the premise is a candidate, not a finding, and the cheap discriminator is to run the instrument the premise made look unnecessary. Here that was one `git merge-file` on two lanes editing one row: 0 conflicts on different receipts, 1 minimal conflict on two appends. ",
+
+    "**WHAT IS NOT CLAIMED.** This is not the claim that stated justifications are suspect in general, which would be unusable. The class is narrower and its two conditions are jointly required: a premise that classifies an observed, RECURRING cost as intended, AND a repair history in which the same boundary was approached more than once without that cost being measured. One repair stopping at a boundary is ordinary scoping. ",
+
+    "RUNG: mitigatable, and honestly so. The harm is deferred author time -- three lanes hand-negotiating byte order on one row -- and it is contained only by someone eventually re-deriving the premise, which is a review practice and not a mechanism. ",
+
+    "CEILING, derived rather than aspirational: this cannot climb to construction, because whether a stated justification is true is not decidable from the tree -- the premise here was refuted by an empirical fact about how lanes ACTUALLY append, which no property of the source expresses. It is a ratchet forever in the sense of DESIGN section 5. ",
+
+    "NEXT-RUNG TRIGGER, a capability and not an artifact: the ability to measure contention on a carrier CONTINUOUSLY rather than at repair time -- a per-declaration conflict count over merge history -- so that a region the premise renders unexaminable still produces a number that rises. That is what would have made the intra-row cost visible without anyone doubting the sentence.",
+  ],
+
+  evidence: [],
+}
