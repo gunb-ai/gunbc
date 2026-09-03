@@ -600,6 +600,27 @@ fn events_per_minute_count(r: EventsPerMinute) -> Nat {
   measure_count(r)
 }
 
+// HOW MANY FILES ONE ARTIFACT IS SPLIT INTO, on the Count axis beside PositiveSlotCount and built
+// the same way over PositiveMeasureCount.
+//
+// Zero is excluded by CONSTRUCTION rather than by a check, and the argument is the sibling's: a
+// zero-shard artifact is not a smaller artifact, it is an absent one -- there is nothing to load, so
+// the row describes a model that cannot be served. A caller with no artifact removes the artifact
+// rather than declaring it as zero files.
+type PositiveShardCount
+  = PositiveShardCountValue { count: PositiveMeasureCount }
+
+fn positive_shard_count(count: PositiveMeasureCount) -> PositiveShardCount {
+  PositiveShardCountValue { count: count }
+}
+
+fn positive_shard_count_value(shards: PositiveShardCount) -> Int {
+  match shards {
+    PositiveShardCountValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
+}
+
 fn watt(count: Nat) -> Watt {
   Measure { count: count }
 }
