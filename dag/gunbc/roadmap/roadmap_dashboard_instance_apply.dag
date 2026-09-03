@@ -100,6 +100,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
   macbook_local_dashboard_instance,
+  srv2_deploy_dashboard_instance,
   dashboard_instance_provision_op_row,
   dashboard_instance_reconcile,
   dashboard_instance_dispatch_worktree_root,
@@ -2205,6 +2206,31 @@ fn macbook_local_dashboard_ensure_roots() -> DashboardApplyFold {
 // either way, because "which roots already existed" is as much of an answer as "it worked".
 fn macbook_local_ensure_roots_cli() -> ProcessExit {
   let fold = macbook_local_dashboard_ensure_roots()
+  if fold.running {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: join([
+        "ensure-roots refused at step ", fold.refused_step, ": ", fold.refused_detail,
+      ], ""),
+    }
+  }
+}
+
+// THE srv2 DEPLOYMENT'S ROOT PROVISIONING, bound to the same generic fold the MacBook uses. The
+// instance root must exist before any dispatch gate can be evaluated: deployment-transition
+// standing is established by LISTING the root, so an absent directory is not "no inhibition" but
+// "inhibition unreadable", and the gate correctly refuses rather than assuming absence. That is why
+// this is a prerequisite rather than a convenience, and why it is a modeled plan rather than a
+// mkdir -- the roots an instance owns are declared once in its provision plan, and adding one there
+// adds it here with no edit.
+fn srv2_deploy_dashboard_ensure_roots() -> DashboardApplyFold {
+  dashboard_instance_ensure_dispatch_roots(instance: srv2_deploy_dashboard_instance())
+}
+
+fn srv2_deploy_ensure_roots_cli() -> ProcessExit {
+  let fold = srv2_deploy_dashboard_ensure_roots()
   if fold.running {
     ExitSuccess
   } else {

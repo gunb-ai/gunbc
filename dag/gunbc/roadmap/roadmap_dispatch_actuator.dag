@@ -1690,10 +1690,41 @@ fn attempt_current_pointer_argv_for_instance(
   )
 }
 
+// WHICH DIRECTORY THE ATTEMPT PANE STANDS IN, and it is a PROVIDER fact rather than an attempt
+// fact. A vendor CLI is handed the attempt as its WORKING DIRECTORY -- that is how claude and codex
+// are told which tree to edit, so for them the pane cwd IS the subject and must stay the worktree.
+//
+// The gunbc harness is told the same thing as an ARGUMENT (--arg worktree=), because
+// gunbc_harness_spawn_argv resolves the worker's own modules from absolute source roots under the
+// controller's repo_root -- the separation that function's annotation draws between the TOOL and
+// the SUBJECT. Standing that process in the worktree contradicts it: `gunbc run` takes its process
+// workspace root from the cwd, and repo_relative_path_normalized PANICS on any module path outside
+// it, so the controller's own dag/ is rejected by the worker that was pointed at it on purpose.
+//
+// Found by execution, not by reading: the first wet dispatch on srv2-deploy spawned, the pane
+// exited 101, and provider-events.jsonl carried
+// "path /home/briansrls/gunbc-srv2-deploy/dag is not under process workspace root
+// .../attempts/shell-typed-invocation-<key>". The attempt worktree, the branch, the state directory
+// and the current-pointer were all correct -- only the directory the process stood in was wrong,
+// which is why every receipt looked right while nothing ran.
+fn dispatch_pane_working_directory(
+  provider: DispatchCliProvider,
+  instance: HostDashboardInstance,
+  worktree_path: String,
+) -> String {
+  match provider {
+    GunbcHarnessProvider => instance.repo_root as String
+    ClaudeCodeProvider => worktree_path
+    CodexDispatchProvider => worktree_path
+    CursorDispatchProvider => worktree_path
+  }
+}
+
 fn tmux_idle_spawn_argv_for_instance(
   instance: HostDashboardInstance,
   session_name: String,
   worktree_path: String,
+  pane_working_directory: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -1703,7 +1734,7 @@ fn tmux_idle_spawn_argv_for_instance(
     args: shape_tmux_new_session_argv_for(
       scope: instance.tmux_server,
       session_name: session_name,
-      working_dir: worktree_path,
+      working_dir: pane_working_directory,
       inner_argv: [
         dispatch_capability_program(
           environment: instance.execution_environment,
@@ -2000,6 +2031,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
     instance: instance,
     session_name: session_name,
     worktree_path: worktree_path,
+    pane_working_directory: dispatch_pane_working_directory(
+      provider: provider,
+      instance: instance,
+      worktree_path: worktree_path,
+    ),
   )
   let events_path = dispatch_attempt_events_path_for_instance(
     instance: instance,
