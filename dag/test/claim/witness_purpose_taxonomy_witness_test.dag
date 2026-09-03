@@ -45,7 +45,7 @@ fn fixture_population_ref() -> DeclarationRef {
 
 fn fixture_refuser_ref() -> DeclarationRef {
   decl_ref(
-    module_path: "dag.test.claim.witness_purpose_taxonomy_witness",
+    module_path: "test.claim.witness_purpose_taxonomy_witness",
     decl_name: "fixture_population_ref",
   )
 }
