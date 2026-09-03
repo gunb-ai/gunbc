@@ -273,10 +273,18 @@ type BuildReceipt {
   reused: Bool
 }
 
+// THE SNAPSHOT AND TOOLCHAIN ARMS CARRY THE DETAIL, NOT THE OUTCOME THEY CAME FROM.
+// `SnapshotRefused` and `ToolchainObservationRefused` are VARIANTS of SnapshotOutcome and
+// ObservedToolchain, so naming one in a field position typed the field as the whole outcome --
+// and `WorktreeNotSnapshotted` could then be written carrying a SUCCESSFUL snapshot. Every
+// reader had to answer for that, and nothing could produce it. The detail string is the only
+// thing either refusal actually carries, and both producers already destructure it at the
+// call site, so holding it directly is what the code was doing in every direction but the
+// declaration.
 type BuildRefusal
   = ProgramNotBuildable { program: String, offered: String }
-  | WorktreeNotSnapshotted { refusal: SnapshotRefused }
-  | ToolchainNotObserved { refusal: ToolchainObservationRefused }
+  | WorktreeNotSnapshotted { detail: String }
+  | ToolchainNotObserved { detail: String }
   | SourceTreeOidUnusable { hex: String }
   | SubjectNotAdmitted { cause: BuildSubjectRefusalCause }
   | ProducerUnreachable { detail: String }
@@ -294,9 +302,9 @@ fn build_refusal_sentence(cause: BuildRefusal) -> String {
   match cause {
     ProgramNotBuildable { program, offered } =>
       join(["no program named ", program, " is offered (offered: ", offered, ")"], "")
-    WorktreeNotSnapshotted { refusal: SnapshotRefused { detail } } =>
+    WorktreeNotSnapshotted { detail } =>
       join(["the working tree could not be snapshotted: ", detail], "")
-    ToolchainNotObserved { refusal: ToolchainObservationRefused { detail } } =>
+    ToolchainNotObserved { detail } =>
       join(["the local toolchain could not be observed: ", detail], "")
     SourceTreeOidUnusable { hex } => join(["unusable tree oid: ", hex], "")
     SubjectNotAdmitted { cause: subject_cause } =>
@@ -574,12 +582,12 @@ fn devboot_build(
       }
     ProgramSelected { package, cargo_target, bin_name } =>
       match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
-        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: SnapshotRefused { detail: detail } } }
+        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { detail: detail } }
         SnapshotTaken { tree_hex } =>
           match observe_toolchain(repo_root: repo_root) {
             ToolchainObservationRefused { detail } =>
               BuildRefused {
-                cause: ToolchainNotObserved { refusal: ToolchainObservationRefused { detail: detail } },
+                cause: ToolchainNotObserved { detail: detail },
               }
             ToolchainObserved { toolchain, host } =>
               match git_object_id_from_untagged_hex(hex: tree_hex) {

@@ -426,8 +426,8 @@ test fn the_dated_observation_still_agrees_with_the_fabric_row_it_cites() -> Boo
             Absent => false
             Present { value: door } =>
               (link.name as String) == "cx7-rail0"
-                && render_ipv4_address(a: peer.address) == "192.168.100.11"
-                && render_ipv4_address(a: door.address) == "192.168.100.10"
+                && render_ipv4_address(addr: peer.address) == "192.168.100.11"
+                && render_ipv4_address(addr: door.address) == "192.168.100.10"
                 && (peer.interface as String) == "enp1s0f0np0"
                 && (door.interface as String) == "enp1s0f0np0"
                 && peer.prefix == 24
