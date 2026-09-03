@@ -17,7 +17,7 @@ correct from the outside:
 
 | play | outcome | where it is recorded |
 | --- | --- | --- |
-| serve the shared producer across claim frames | **measured and refused**, three candidate rows, every one made its consumers worse | `v2.workflow.floor_pure_producer_share` `floor_cross_claim_refused_candidates` |
+| serve the shared producer across claim frames | **measured and refused against gunbc#10094's O(size) serve** — three candidate rows, every one made its consumers worse. Those measurements are HISTORICAL: this PR's zero-walk serve fires their own re-enrol trigger, so their current state is **UNMEASURED**, neither admitted nor measured-out, pending a controlled present/absent pair nobody has run | `v2.workflow.floor_pure_producer_share` `floor_cross_claim_refused_candidates` |
 | find the one dominant shared producer, as gunbc#10133 did | **refuted twice**, independently | `eval_steps` fingerprint in `docs/plans/floor-cost-distribution-near-the-ceiling.md`; and the present-vs-absent runs behind the refused rows above |
 | repair the worst row per-producer | **8ms**, against a question 87 rows deep | the top-down table in the same memo |
 | read the interrupted rows' printed cost as a margin | **not a cost at all** — an interrupted row reports the ceiling that interrupted it | `v2.workflow.required_floor`, and the in-band sentence the floor prints beside it |
