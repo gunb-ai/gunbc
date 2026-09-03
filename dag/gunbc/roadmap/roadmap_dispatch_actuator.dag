@@ -47,6 +47,9 @@ import gunbc.session_lease {
 }
 import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
 import std.measure { ByteSize, byte_size_count }
+import std.algebra { trim }
+import extdeps.systemd.systemctl
+import extdeps.systemd { SystemdUnitProperty, LoadState, ActiveState, ExecMainStatus }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
@@ -689,6 +692,33 @@ fn dispatch_attempt_state_path_for_instance(
     node_id as String,
     "-a",
     attempt_key,
+  ], "")
+}
+
+// THE WORKER'S OWN STDOUT IS A LOG, NOT AN EVENT STREAM, and separating them is the repair for a
+// conflation this lane shipped. provider-events.jsonl is not "where the attempt's output goes": it
+// carries a DECLARED SCHEMA -- turn.started, item.*, turn.completed, turn.failed, error -- that
+// gunbc.roadmap_provider_events reads through jq with fromjson. Pointing the worker's progress
+// output at it (`[file] write ...`, `✓ ... done in 48 seconds`) made jq exit 5 on the first line
+// and the whole attempt's agent evidence refuse as unreadable.
+//
+// The refusal was correct and is why this was cheap to find: it named the file, the line and the
+// column rather than fabricating an activity state. What was wrong was the producer, and the fix is
+// not to loosen the reader but to stop writing the wrong content into a typed stream. The worker's
+// stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
+// speaks the schema.
+fn dispatch_attempt_worker_log_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/worker-stdout.log",
   ], "")
 }
 
@@ -1466,6 +1496,7 @@ fn gunbc_harness_spawn_argv(
   brief: String,
   timeout_program: String,
   request_scratch_path: String,
+  events_path: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1478,6 +1509,7 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["brief=", brief], ""),
     "--arg", join(["timeout_program=", timeout_program], ""),
     "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+    "--arg", join(["events_path=", events_path], ""),
   ]
 }
 
@@ -1583,6 +1615,11 @@ fn dispatch_provider_inner_argv_for_instance(
           brief: brief,
           timeout_program: instance.toolchain.timeout as String,
           request_scratch_path: dispatch_attempt_request_scratch_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          ),
+          events_path: dispatch_attempt_events_path_for_instance(
             instance: instance,
             node_id: node_id,
             attempt_key: attempt_key,
@@ -1751,7 +1788,7 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
-  events_path: String,
+  worker_log_path: String,
 ) -> List<String> {
   [
     systemd_run_property(
@@ -1759,8 +1796,8 @@ fn dispatch_worker_unit_properties(
       value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)),
     ),
     systemd_run_property(name: "WorkingDirectory", value: working_directory),
-    systemd_run_property(name: "StandardOutput", value: join(["append:", events_path], "")),
-    systemd_run_property(name: "StandardError", value: join(["append:", events_path], "")),
+    systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
+    systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
   ]
 }
 
@@ -1770,7 +1807,7 @@ fn dispatch_worker_unit_argv(
   node_id: String,
   attempt_key: String,
   working_directory: String,
-  events_path: String,
+  worker_log_path: String,
   inner_argv: List<String>,
 ) -> HostExecArgv {
   host_exec_argv(
@@ -1780,7 +1817,7 @@ fn dispatch_worker_unit_argv(
       properties: dispatch_worker_unit_properties(
         instance: instance,
         working_directory: working_directory,
-        events_path: events_path,
+        worker_log_path: worker_log_path,
       ),
       setenv_bindings: [],
       command_argv: inner_argv,
@@ -1808,6 +1845,7 @@ fn dispatch_session_container_for_provider(
   attempt_key: String,
   session_name: String,
   events_path: String,
+  worker_log_path: String,
   pane_working_directory: String,
   tmux_spawn: HostExecArgv,
   pipe_command: TmuxPipeCommand,
@@ -1834,7 +1872,7 @@ fn dispatch_session_container_for_provider(
                 node_id: node_id,
                 attempt_key: attempt_key,
                 working_directory: pane_working_directory,
-                events_path: events_path,
+                worker_log_path: worker_log_path,
                 inner_argv: provider_inner,
               ),
             },
@@ -2285,6 +2323,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
         attempt_key: attempt_key,
         session_name: session_name,
         events_path: events_path,
+        worker_log_path: dispatch_attempt_worker_log_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
         pane_working_directory: dispatch_pane_working_directory(
           provider: provider,
           instance: instance,
@@ -2855,6 +2898,96 @@ fn dispatch_session_cleanup_detail(
 // ownership fingerprint. A present session with an absent/refused pane observation remains
 // cleanup-refused. The wire therefore says stop, clear, or unavailable mechanically from
 // DispatchSessionCleanup instead of presenting every tmux container as a live agent.
+
+// THE UNIT-BACKED ATTEMPT'S PROCESS EVIDENCE, answering the same question the pane answers for a
+// tmux-backed one. The Agent obligation deliberately needs BOTH a terminal provider event and a
+// compatible process exit -- provider_execution_reconcile_process refuses a turn.completed whose
+// process exited nonzero as conflicting terminal evidence -- so emitting events was never going to
+// be sufficient on its own. This is the second source, not a second opinion.
+//
+// LoadState IS READ FIRST AND IT IS THE ONLY HONEST ABSENCE. A unit the user manager never heard of
+// answers ActiveState `inactive` with a successful exit, which is indistinguishable from a unit
+// that ran and stopped -- so deciding absence from ActiveState would report every finished attempt
+// as one that never started. `not-found` is the manager saying it has no such unit, and it is the
+// only reading that means absent.
+//
+// A REFUSED READ IS NOT AN ABSENT UNIT. Every capture refusal maps to WorkerProcessUnobserved
+// carrying its cause, never to WorkerProcessAbsent: "the manager says no such unit" and "I could
+// not ask the manager" are different facts with different remedies, and collapsing them would let
+// a broken transport read as a worker that never ran.
+type AttemptUnitObservation
+  = AttemptUnitAbsent
+  | AttemptUnitActive
+  | AttemptUnitFinished { exit_status: String }
+  | AttemptUnitUnreadable { reason: String }
+
+// THE READ IS A DIRECT SERVICE CALL, NOT A ROUTED HOST OPERATION, and the reason is the import
+// graph rather than preference. gunbc.systemctl_show_read routes through gunbc.host_operation_exec,
+// which depends on gunbc.host_effect, which reaches this module through
+// live_deploy.candidate -> roadmap_belt -> roadmap_belt_actuate. Importing the routed read here is
+// a cycle, and the acyclicity law is the one structural rule the import graph has. The transport
+// indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
+// the host whose units it is reading, so the local manager IS the subject.
+fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: property)
+  if read.success {
+    AttemptUnitFinished { exit_status: trim(read.value) }
+  } else {
+    AttemptUnitUnreadable {
+      reason: join(["systemctl --user show refused for ", unit as String], ""),
+    }
+  }
+}
+
+fn attempt_unit_observation(unit: NonEmptyStr) -> AttemptUnitObservation {
+  match attempt_unit_property(unit: unit, property: LoadState) {
+    AttemptUnitUnreadable { reason: why } => AttemptUnitUnreadable { reason: why }
+    AttemptUnitAbsent => AttemptUnitAbsent
+    AttemptUnitActive => AttemptUnitActive
+    AttemptUnitFinished { exit_status: load } =>
+      if load == "not-found" {
+        AttemptUnitAbsent
+      } else {
+        match attempt_unit_property(unit: unit, property: ActiveState) {
+          AttemptUnitUnreadable { reason: why } => AttemptUnitUnreadable { reason: why }
+          AttemptUnitAbsent => AttemptUnitAbsent
+          AttemptUnitActive => AttemptUnitActive
+          AttemptUnitFinished { exit_status: active } =>
+            if active == "active" {
+              AttemptUnitActive
+            } else {
+              attempt_unit_property(unit: unit, property: ExecMainStatus)
+            }
+        }
+      }
+  }
+}
+
+fn worker_process_from_attempt_unit(
+  observation: AttemptUnitObservation,
+  unit: NonEmptyStr,
+) -> WorkerProcessEvidence {
+  match observation {
+    AttemptUnitAbsent => WorkerProcessAbsent
+    AttemptUnitActive => WorkerProcessRunning { command: unit }
+    AttemptUnitFinished { exit_status: status } =>
+      match parse_int(text: status) {
+        Present { value: code } =>
+          WorkerProcessExited { exit_code: code, last_command: unit as String }
+        Absent =>
+          WorkerProcessUnobserved {
+            reason: join([
+              "unit ", unit as String, " has stopped but ExecMainStatus did not parse as an exit code: ",
+              status,
+            ], "") as NonEmptyStr,
+          }
+      }
+    AttemptUnitUnreadable { reason: why } =>
+      WorkerProcessUnobserved {
+        reason: join(["unit ", unit as String, " could not be read: ", why], "") as NonEmptyStr,
+      }
+  }
+}
 
 fn worker_process_from_attempt_pane(
   pane: TmuxAttemptPaneEntry,

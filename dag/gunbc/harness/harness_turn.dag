@@ -38,7 +38,89 @@ type HarnessTurnConfig {
   max_tokens: Int
   system_prompt: String
   request_scratch_path: FilePath
+  events_path: FilePath
   environment: HarnessToolEnvironment
+}
+
+// THE HARNESS EMITS THE PROVIDER EVENT SCHEMA ITSELF, rather than having its liveness reconstructed
+// from outside. gunbc.roadmap_provider_events already declares what an attempt's event stream is --
+// turn.started, item.started, item.completed, turn.completed, turn.failed, error, read line by line
+// through jq -- and every consumer of agent evidence is written against it. A second stream shape
+// for this one provider would be the section 3 fork; emitting the existing one makes the harness a
+// first-class provider on a contract that already has readers.
+//
+// IT IS EMITTED BY THE TURN, NOT OBSERVED FROM THE PROCESS, and that is the load-bearing choice. An
+// external observer can see that a process exists and can see that it stopped; only the turn knows
+// whether it stopped having COMPLETED or having run out of steps, and only the turn knows a tool
+// round happened at all. A terminal event written here is the completion receipt that separates
+// done from crashed -- the distinction an outside observation of a vanished process cannot make,
+// whatever container is holding it.
+//
+// THE WHOLE FILE IS REWRITTEN EACH STEP because Filesystem.Write is the modeled write and it is a
+// replace. That is not a workaround: the event list is the fold's own accumulator, so rewriting it
+// is a projection of state the loop already carries, and it means a reader sees progress DURING the
+// turn rather than only at exit -- which a block-buffered stdout capture cannot offer.
+type HarnessEventWrite
+  = HarnessEventsWritten
+  | HarnessEventsUnwritable { detail: String }
+
+fn harness_event_type_only(event_type: String) -> String {
+  serialize_json(v: json_object([json_kv(key: "type", value: json_string(s: event_type))]))
+}
+
+fn harness_event_item(event_type: String, item_type: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: event_type)),
+    json_kv(key: "item", value: json_object([
+      json_kv(key: "type", value: json_string(s: item_type)),
+    ])),
+  ]))
+}
+
+fn harness_event_agent_message(message: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "item.completed")),
+    json_kv(key: "item", value: json_object([
+      json_kv(key: "type", value: json_string(s: "agent_message")),
+      json_kv(key: "message", value: json_string(s: message)),
+    ])),
+  ]))
+}
+
+fn harness_event_turn_failed(message: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.failed")),
+    json_kv(key: "error", value: json_object([
+      json_kv(key: "message", value: json_string(s: message)),
+    ])),
+  ]))
+}
+
+fn harness_tool_round_events(uses: List<HarnessWireBlock>) -> List<String> {
+  fold(
+    uses,
+    init: [],
+    f: (acc, u) => concat(acc, [
+      harness_event_item(event_type: "item.started", item_type: "command_execution"),
+      harness_event_item(event_type: "item.completed", item_type: "command_execution"),
+    ]),
+  )
+}
+
+fn harness_events_body(events: List<String>) -> String {
+  concat(join(events, "\n"), "\n")
+}
+
+fn harness_write_events(config: HarnessTurnConfig, events: List<String>) -> HarnessEventWrite {
+  let written = Filesystem.Write(
+    path: config.events_path as String,
+    content: harness_events_body(events: events),
+  )
+  if written.success {
+    HarnessEventsWritten
+  } else {
+    HarnessEventsUnwritable { detail: written.error }
+  }
 }
 
 // A TERMINAL IS A PROVIDER OBSERVATION OR A HARNESS REFUSAL, and neither of them is "the task is
@@ -250,56 +332,104 @@ fn harness_post_round(
 // THE LOOP. Each round either reaches a provider terminal, or executes the tool calls and recurses
 // with a strictly smaller budget. There is no arm that continues without either consuming a step or
 // terminating, which is what makes the descent argument readable rather than asserted.
+fn harness_event_write_refusal(config: HarnessTurnConfig, detail: String) -> HarnessTurnOutcome {
+  TurnRequestUnwritable {
+    path: config.events_path as String,
+    detail: join(["provider event stream could not be written: ", detail], ""),
+  }
+}
+
 fn harness_turn_loop(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
   steps_remaining: Int,
   steps_taken: Int,
+  events: List<String>,
 ) -> HarnessTurnOutcome {
   if steps_remaining <= 0 {
-    TurnStepBudgetExhausted { steps_taken: steps_taken }
+    let exhausted = concat(events, [
+      harness_event_turn_failed(
+        message: "step budget exhausted before the provider reached a terminal stop",
+      ),
+    ])
+    match harness_write_events(config: config, events: exhausted) {
+      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+      HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
+    }
   } else {
     match harness_post_round(config: config, messages: messages) {
-      HarnessResponseUnreadable { cause: c } => TurnResponseUnreadable { cause: c }
+      HarnessResponseUnreadable { cause: c } => {
+        let failed = concat(events, [harness_event_turn_failed(message: c)])
+        match harness_write_events(config: config, events: failed) {
+          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+          HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+        }
+      }
       HarnessResponseParsed { blocks, stop_reason, input_tokens, output_tokens } => {
         let uses = harness_tool_use_blocks(blocks: blocks)
         if list_length(items: uses) == 0 {
-          TurnProviderStopped {
-            wire_stop_reason: harness_stop_reason_wire(reason: stop_reason),
-            assistant_text: harness_blocks_text(blocks: blocks),
-            steps_taken: steps_taken + 1,
-            input_tokens: input_tokens,
-            output_tokens: output_tokens,
+          let text = harness_blocks_text(blocks: blocks)
+          let completed = concat(events, [
+            harness_event_agent_message(message: text),
+            harness_event_type_only(event_type: "turn.completed"),
+          ])
+          match harness_write_events(config: config, events: completed) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnProviderStopped {
+                wire_stop_reason: harness_stop_reason_wire(reason: stop_reason),
+                assistant_text: text,
+                steps_taken: steps_taken + 1,
+                input_tokens: input_tokens,
+                output_tokens: output_tokens,
+              }
           }
         } else {
-          harness_turn_loop(
-            config: config,
-            messages: concat(
-              messages,
-              [
-                harness_assistant_message_json(blocks: blocks),
-                harness_tool_result_message_json(
-                  results: map(uses, u => harness_execute_and_encode(
-                    environment: config.environment,
-                    block: u,
-                  )),
+          let results = map(uses, u => harness_execute_and_encode(
+            environment: config.environment,
+            block: u,
+          ))
+          let stepped = concat(events, harness_tool_round_events(uses: uses))
+          match harness_write_events(config: config, events: stepped) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              harness_turn_loop(
+                config: config,
+                messages: concat(
+                  messages,
+                  [
+                    harness_assistant_message_json(blocks: blocks),
+                    harness_tool_result_message_json(results: results),
+                  ],
                 ),
-              ],
-            ),
-            steps_remaining: steps_remaining - 1,
-            steps_taken: steps_taken + 1,
-          )
+                steps_remaining: steps_remaining - 1,
+                steps_taken: steps_taken + 1,
+                events: stepped,
+              )
+          }
         }
       }
     }
   }
 }
 
+// turn.started IS WRITTEN BEFORE THE FIRST POST, NOT CARRIED UNTIL THE FIRST WRITE POINT. The loop
+// only writes when a round resolves, and the first round is the slowest thing in the turn -- a cold
+// model call runs one to two minutes here. Seeding the accumulator without flushing it left the
+// event stream EMPTY for exactly that window, so an observer polling during the longest part of the
+// turn saw an initialized-but-silent stream and could not distinguish it from a worker that never
+// started. Writing here makes "the agent began" observable at the moment it becomes true.
 fn harness_run_turn(config: HarnessTurnConfig, prompt: String, step_budget: Int) -> HarnessTurnOutcome {
-  harness_turn_loop(
-    config: config,
-    messages: [harness_user_text_message_json(text: prompt)],
-    steps_remaining: step_budget,
-    steps_taken: 0,
-  )
+  let started = [harness_event_type_only(event_type: "turn.started")]
+  match harness_write_events(config: config, events: started) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten =>
+      harness_turn_loop(
+        config: config,
+        messages: [harness_user_text_message_json(text: prompt)],
+        steps_remaining: step_budget,
+        steps_taken: 0,
+        events: started,
+      )
+  }
 }

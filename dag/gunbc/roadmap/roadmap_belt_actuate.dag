@@ -76,6 +76,9 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
+  dispatch_attempt_unit_name,
+  attempt_unit_observation,
+  worker_process_from_attempt_unit,
   DispatchSpawnPlan,
   DispatchSpawnReady,
   DispatchSpawnRefused,
@@ -3450,9 +3453,21 @@ fn belt_sessions_observe() -> BeltObserve {
   )
 }
 
+// NO PANE MEANS ASK THE OTHER CONTAINER, NOT CONCLUDE ABSENCE. An attempt is held by exactly one
+// container -- a tmux pane for the vendor CLIs, a transient unit for the gunbc harness -- so these
+// are two observations over DISJOINT populations rather than a precise reading with a widened
+// fallback behind it. Answering WorkerProcessAbsent from a missing pane reported every unit-backed
+// attempt as a worker that never started, which is what the dashboard showed while three workers
+// were running.
+//
+// The order is pane-then-unit only because the pane observation is already in hand; it is not a
+// preference between them. A vendor attempt whose pane is genuinely gone asks the manager, gets
+// not-found, and answers WorkerProcessAbsent exactly as before -- so this adds a population without
+// changing the answer for the one that already worked.
 fn attempt_process_for_node(
   panes: BeltAttemptPanes,
   node_id: String,
+  attempt_key: String,
 ) -> WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
@@ -3464,7 +3479,13 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent => WorkerProcessAbsent
+        Absent => {
+          let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+          worker_process_from_attempt_unit(
+            observation: attempt_unit_observation(unit: unit),
+            unit: unit,
+          )
+        }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -3857,6 +3878,7 @@ fn belt_workflow_progress_for_attempt_ref(
       process: attempt_process_for_node(
         panes: panes,
         node_id: attempt.node_id,
+        attempt_key: attempt.attempt_key,
       ),
       validation_summary: belt_validation_summary_for_node(
         instance: instance,
@@ -3980,6 +4002,7 @@ fn belt_workflow_progress_for_attempt_ref(
       process: attempt_process_for_node(
         panes: panes,
         node_id: attempt.node_id,
+        attempt_key: current_key,
       ),
       validation_summary: belt_validation_summary_for_node(
         instance: instance,

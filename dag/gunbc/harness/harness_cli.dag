@@ -39,6 +39,8 @@ data harness_macbook_working_directory: FilePath = "/Users/briansrls/gunbc" as F
 
 data harness_request_scratch_path: FilePath = "/tmp/gunbc-harness-request.json" as FilePath
 
+data harness_probe_events_path: FilePath = "/tmp/gunbc-harness-probe-events.jsonl" as FilePath
+
 data harness_default_duration_limit_seconds: Int = 120
 
 data harness_default_step_budget: Int = 8
@@ -62,6 +64,7 @@ fn harness_macbook_config() -> HarnessTurnConfig {
     max_tokens: harness_default_max_tokens,
     system_prompt: harness_default_system_prompt,
     request_scratch_path: harness_request_scratch_path,
+    events_path: harness_probe_events_path,
     environment: harness_macbook_environment(),
   }
 }
@@ -128,6 +131,7 @@ fn harness_worker_config(
   worktree: FilePath,
   timeout_program: FilePath,
   request_scratch_path: FilePath,
+  events_path: FilePath,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: harness_router_backend_url(),
@@ -135,6 +139,7 @@ fn harness_worker_config(
     max_tokens: harness_default_max_tokens,
     system_prompt: harness_worker_system_prompt,
     request_scratch_path: request_scratch_path,
+    events_path: events_path,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
       timeout_program: timeout_program,
@@ -156,12 +161,14 @@ fn harness_worker_cli(
   brief: String,
   timeout_program: String,
   request_scratch_path: String,
+  events_path: String,
 ) -> ProcessExit {
   let outcome = harness_run_turn(
     config: harness_worker_config(
       worktree: worktree as FilePath,
       timeout_program: timeout_program as FilePath,
       request_scratch_path: request_scratch_path as FilePath,
+      events_path: events_path as FilePath,
     ),
     prompt: brief,
     step_budget: harness_worker_step_budget,
