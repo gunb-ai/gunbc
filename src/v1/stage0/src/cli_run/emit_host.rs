@@ -536,14 +536,34 @@ pub fn compile_dag_reference_occurrence_binding_census(
     let mut ordinals_by_file: std::collections::HashMap<String, i64> =
         std::collections::HashMap::new();
     for reference in references {
-        let consumer_module = consumer_by_occurrence
+        // BOTH LOOKUPS ARE TOTAL BY CONSTRUCTION -- every reference was pushed from a module whose
+        // path was recorded in the same loop, and every occurrence in the transport carries a
+        // projection with an authored name. A miss therefore means the walk changed under this
+        // instrument, and a sentinel module or an empty spelling would enter the denominator as a
+        // FABRICATED row: exactly the class this census refuses to publish (DESIGN section 5 -- a
+        // failure arm must refuse, never widen). So the miss stops the line and says which
+        // occurrence it was, rather than being absorbed into a row that reads as an observation.
+        let Some(consumer_module) = consumer_by_occurrence
             .get(&reference.occurrence.value)
             .cloned()
-            .unwrap_or_else(|| "(module unavailable)".to_string());
-        let authored_name = names
-            .get(&reference.occurrence.value)
-            .cloned()
-            .unwrap_or_default();
+        else {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: format!(
+                    "reference binding census: occurrence {} is in the references view with no \
+                     recorded consumer module; the walk that fills both changed under this instrument",
+                    reference.occurrence.value
+                ),
+            };
+        };
+        let Some(authored_name) = names.get(&reference.occurrence.value).cloned() else {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: format!(
+                    "reference binding census: occurrence {} is in the references view with no \
+                     entry in the occurrence index, so it has no authored spelling",
+                    reference.occurrence.value
+                ),
+            };
+        };
         let file_reference_ordinal = *ordinals_by_file
             .entry(reference.diagnostic_span.file.clone())
             .and_modify(|n| *n += 1)
@@ -570,12 +590,28 @@ pub fn compile_dag_reference_occurrence_binding_census(
                 let binding_source = if authored_name.contains('.') {
                     UnlistedImportBindingSource::DefinerResolvable
                 } else {
-                    let listed = graph
+                    // A MISSING CONSUMER MODULE MUST NOT DECIDE THIS. `unwrap_or_default()` here
+                    // yielded an EMPTY import list, which makes `listed` false, which stamps the row
+                    // PoolCoincidence -- a fabricated semantic disposition produced by a failed
+                    // lookup and indistinguishable in the output from an observed one. That is the
+                    // absorbing fallback of DESIGN section 5 at its most expensive, because this
+                    // exact field is what the census reports about. The module is in the same graph
+                    // the reference was walked from, so a miss is a broken invariant, not a case.
+                    let Some(module) = graph
                         .modules
                         .iter()
                         .find(|module| module.type_env.module_path == consumer_module)
-                        .map(import_module_paths_for_typed_module)
-                        .unwrap_or_default()
+                    else {
+                        return ReferenceOccurrenceBindingCensus::Refused {
+                            cause: format!(
+                                "reference binding census: consumer module '{consumer_module}' \
+                                 carries occurrence {} but is absent from the resolved graph, so \
+                                 its import list cannot decide ListedImport against PoolCoincidence",
+                                reference.occurrence.value
+                            ),
+                        };
+                    };
+                    let listed = import_module_paths_for_typed_module(module)
                         .contains(&provider.provider_module);
                     if listed {
                         UnlistedImportBindingSource::ListedImport
