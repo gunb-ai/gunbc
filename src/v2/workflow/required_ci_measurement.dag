@@ -17,11 +17,23 @@ type RequiredCiMeasurement
   = MeasurementCompleted { blockers: List<RequiredCiBlocker> }
   | MeasurementUnreached { cause: String }
 
-fn required_ci_measurement_admitted(measurement: RequiredCiMeasurement) -> Bool {
+fn fold_required_ci_measurement<T>(
+  measurement: RequiredCiMeasurement,
+  completed: fn(List<RequiredCiBlocker>) -> T,
+  unreached: fn(String) -> T
+) -> T {
   match measurement {
-    MeasurementCompleted { blockers: blockers } => is_empty(xs: blockers)
-    MeasurementUnreached { cause: _ } => false
+    MeasurementCompleted { blockers: blockers } => completed(blockers)
+    MeasurementUnreached { cause: cause } => unreached(cause)
   }
+}
+
+fn required_ci_measurement_admitted(measurement: RequiredCiMeasurement) -> Bool {
+  fold_required_ci_measurement(
+    measurement: measurement,
+    completed: fn(blockers) { is_empty(xs: blockers) },
+    unreached: fn(_) { false }
+  )
 }
 
 // The .dag model owns the fallback wire document. Rust's serde representation is the bootstrap
