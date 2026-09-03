@@ -113,17 +113,27 @@ import gunbc.merge_admission {
 // `required-witnesses-floor` was GREEN, so this break is cleanly separable from the cost class the
 // paragraph below names and is not more floor variance.
 //
-// AND THE VERDICT IS EVENT-CONDITIONAL AS WELL AS LATE, which is the same class one step quieter.
-// `heal-generated-artifacts` FAILED on #10236's pull_request run, naming those two duplicate
-// declarations, and was SKIPPED on the main run of the identical commit content -- so the job that
-// actually caught the defect does not execute on the branch the defect lands on. In this module's
-// vocabulary that is not a fourth policy: it is the same absent-receipt input reached by a
-// different route, evidence that is absent at the moment of admission because for that event it
-// never runs rather than because it has not yet arrived. It is called out because a restoration
-// trigger written as "every required context reported non-failure" would be satisfied by a roster
-// whose catching lane is conditional, which is why `gunbc.rung_drop`
-// `merge_admission_absent_required_context` asks for a TERMINAL VERDICT per required context
-// instead. WHICH CONDITION SKIPS IT IS NOT CHASED HERE and is not asserted.
+// THE REQUIRED LANE DETECTED IT CORRECTLY AND REPORTED TWENTY MINUTES TOO LATE, which is the whole
+// of the gap and is cleaner than the reading this paragraph carried first. There is no routing
+// question and no conditional lane: `required-witnesses-build` refused the duplicates exactly as it
+// should have -- `generated-artifact CarrierRefused cause=resolve`, the authority declining to
+// answer -- and its job completed at 20:04:14Z against a merge at 19:49:43Z. TWENTY MINUTES AND
+// THIRTY-ONE SECONDS OF UNADJUDICATED INTERVAL. The detection is not the defect; the interval in
+// which the merge is admissible without it is.
+//
+// A RETRACTION, KEPT RATHER THAN QUIETLY EDITED OUT. An earlier revision of this paragraph said the
+// catching lane was `heal-generated-artifacts` and that it was event-conditional, because heal
+// FAILED on the pull-request run and was SKIPPED on the main run of identical content. THAT IS
+// REFUTED BY THE JOB GRAPH: heal's step record shows it died at step 2, `Checkout triggering branch
+// head`, at 19:52:01Z, with `Regenerate every committed generated artifact` SKIPPED -- the
+// regenerator never executed, so heal detected nothing. It failed because the merge had deleted the
+// branch head it wanted, three seconds after the run was created. That is a DOWNSTREAM CONSEQUENCE
+// OF THE MERGE being read as a detection of the defect, and it is recorded here because the
+// misreading survived four readers passing a narrative around and was caught only by someone
+// reading the job graph instead. The failure mode is `gunbc.recurring_failure_mode`
+// `green_reported_over_a_population_the_instrument_does_not_own` seen from the other side: a job's
+// CONCLUSION is not evidence about the subject it is named for unless its step record shows it
+// reached the step that judges.
 //
 // THE TWO KNOWN MAIN FLAKES COMPOSE HERE RATHER THAN BEING INDEPENDENT, which is worth stating
 // because each was dispatched separately. `gunbc.rung_drop`
