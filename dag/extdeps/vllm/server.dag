@@ -16,8 +16,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE SUBJECT IS THE HTTP SURFACE THIS REPOSITORY REACHED, and deliberately not the full API. An
-// endpoint modelled with no gunbc caller is inventory, not grounding.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -30,91 +28,133 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+// EVERY FACT BELOW IS BOUND TO ONE BUILD, AND THE REPOSITORY-ROOT ANCHOR ABOVE DOES NOT GROUND THEM.
+//
+// A project URI is an adequate subject anchor -- it says which product this module is about. It is
+// NOT a citation for route populations, executor health behaviour, or what a metric does and does not
+// report, because every one of those is version-sensitive and this project moves fast. Carrying the
+// exact build the facts were established against is what stops a later reader applying them to a
+// different one, and it is what makes them falsifiable: a claim about "vLLM" cannot be checked, and a
+// claim about this build can.
+type VllmBuildIdentity sole_constructor {
+  version_string: NonEmptyStr
+}
+
+fn vllm_build_identity(version_string: NonEmptyStr) -> VllmBuildIdentity {
+  VllmBuildIdentity { version_string: version_string }
+}
+
+data vllm_build_observed_2026_09_03: VllmBuildIdentity = vllm_build_identity(version_string: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
+
 // THE ROUTE SPLIT IS THE LOAD-BEARING FACT IN THIS MODULE, not the route list.
 //
-// vLLM serves two populations of routes from one port. The always-served ones answer on any
-// deployment. The development-mode ones are served only when the server was LAUNCHED with
-// development mode enabled -- they are not a capability the running server can be asked to grow, and
-// their absence is a 404 indistinguishable by shape from a route that does not exist.
+// vLLM serves two populations from one port. One answers on an ordinary deployment. The other is
+// registered only when the server was LAUNCHED with development mode enabled -- not a capability a
+// running server can be asked to grow.
 //
-// That distinction is why this is modelled at all: the evidence needed to establish a distributed
-// worker population lives ENTIRELY in the development-mode population, so whether those routes
-// answer decides whether a rank receipt is obtainable without relaunching the server.
-type VllmRouteAvailability
-  = AlwaysServed
-  | ServedOnlyUnderDevelopmentMode
+// THE NAMES ARE DELIBERATELY WEAKER THAN "ALWAYS". An earlier spelling called the first population
+// AlwaysServed, which claims every such route answers on every deployment. That is not establishable
+// from having probed one server: /metrics in particular is suppressible by launch configuration. The
+// honest distinction is which population a route BELONGS to -- ordinarily registered versus gated
+// behind a launch flag -- and that is what decides whether evidence is reachable without a relaunch.
+type VllmRoutePopulation
+  = OrdinarilyRegistered
+  | RegisteredOnlyUnderDevelopmentMode
 
 type VllmRoute sole_constructor {
   path: NonEmptyStr
-  availability: VllmRouteAvailability
+  population: VllmRoutePopulation
+  established_against: VllmBuildIdentity
 }
 
-data vllm_route_models: VllmRoute = VllmRoute {
-  path: "/v1/models" as NonEmptyStr, availability: AlwaysServed }
-data vllm_route_version: VllmRoute = VllmRoute {
-  path: "/version" as NonEmptyStr, availability: AlwaysServed }
-data vllm_route_health: VllmRoute = VllmRoute {
-  path: "/health" as NonEmptyStr, availability: AlwaysServed }
-data vllm_route_ping: VllmRoute = VllmRoute {
-  path: "/ping" as NonEmptyStr, availability: AlwaysServed }
-data vllm_route_metrics: VllmRoute = VllmRoute {
-  path: "/metrics" as NonEmptyStr, availability: AlwaysServed }
+fn vllm_route(path: NonEmptyStr, population: VllmRoutePopulation) -> VllmRoute {
+  VllmRoute { path: path, population: population, established_against: vllm_build_observed_2026_09_03 }
+}
 
-data vllm_route_server_info: VllmRoute = VllmRoute {
-  path: "/server_info" as NonEmptyStr, availability: ServedOnlyUnderDevelopmentMode }
-data vllm_route_get_world_size: VllmRoute = VllmRoute {
-  path: "/get_world_size" as NonEmptyStr, availability: ServedOnlyUnderDevelopmentMode }
-data vllm_route_collective_rpc: VllmRoute = VllmRoute {
-  path: "/collective_rpc" as NonEmptyStr, availability: ServedOnlyUnderDevelopmentMode }
+data vllm_route_models: VllmRoute = vllm_route(path: "/v1/models" as NonEmptyStr, population: OrdinarilyRegistered)
+data vllm_route_version: VllmRoute = vllm_route(path: "/version" as NonEmptyStr, population: OrdinarilyRegistered)
+data vllm_route_health: VllmRoute = vllm_route(path: "/health" as NonEmptyStr, population: OrdinarilyRegistered)
+data vllm_route_ping: VllmRoute = vllm_route(path: "/ping" as NonEmptyStr, population: OrdinarilyRegistered)
+data vllm_route_metrics: VllmRoute = vllm_route(path: "/metrics" as NonEmptyStr, population: OrdinarilyRegistered)
 
-data vllm_routes: List<VllmRoute> = [
-  vllm_route_models,
-  vllm_route_version,
-  vllm_route_health,
-  vllm_route_ping,
-  vllm_route_metrics,
+data vllm_route_server_info: VllmRoute = vllm_route(path: "/server_info" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
+data vllm_route_get_world_size: VllmRoute = vllm_route(path: "/get_world_size" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
+data vllm_route_collective_rpc: VllmRoute = vllm_route(path: "/collective_rpc" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
+
+// The routes capable of answering a distributed-topology question. Named as a set because that is
+// the fact consumers need: not "these three paths exist" but "the parallel question is answerable
+// ONLY from this population", which is what makes its unavailability a vantage limit.
+data vllm_parallel_evidence_routes: List<VllmRoute> = [
   vllm_route_server_info,
   vllm_route_get_world_size,
   vllm_route_collective_rpc,
 ]
 
-// /health DOES NOT PROBE DISTRIBUTED WORKERS, AND THIS ROW EXISTS SO NOBODY READS IT AS IF IT DID.
+data vllm_routes: List<VllmRoute> = [
+  vllm_route_models, vllm_route_version, vllm_route_health, vllm_route_ping, vllm_route_metrics,
+  vllm_route_server_info, vllm_route_get_world_size, vllm_route_collective_rpc,
+]
+
+// /health DOES NOT PROBE DISTRIBUTED WORKERS UNDER THE RAY EXECUTOR, and this row exists so nobody
+// reads a 200 as if it did.
 //
-// The HTTP health route delegates to engine health, and under the Ray executor that implementation
-// assumes the workers are healthy and returns successfully without contacting them -- upstream marks
-// the gap with its own TODO. So a 200 here is a statement about the front door's engine handle and
-// carries NO information about whether any remote worker is alive.
-//
-// Modelled as a typed row rather than left to reviewer memory because the tempting misuse is
-// specific and cheap: a health probe is the one call always available, so it is exactly what someone
-// reaches for when the development-mode routes are absent -- which is precisely the case where the
-// answer is needed and precisely the case where this route cannot give it.
-// The second arm is not speculative padding: upstream's own TODO in that implementation says the
-// worker check is the thing not done. So this row records which side of that TODO the cited version
-// is on, and flips arm when upstream closes it rather than being deleted and re-reasoned.
-type VllmHealthRouteWorkerCoverage
+// THE FACT IS BACKEND-BOUND, WHICH THE FIRST VERSION OF THIS ROW MISSED. It is not a property of the
+// health route; it is a property of a particular executor's implementation of engine health, which
+// assumes its workers are healthy and returns without contacting them, marked by upstream's own TODO.
+// A different executor may probe. So the row names the backend it holds for, and a consumer asking
+// about some other backend gets no answer here rather than a borrowed one.
+// Two arms because vLLM genuinely has more than one distributed executor and they do not share this
+// behaviour -- which is the whole reason the fact is backend-bound rather than route-bound.
+type VllmExecutorBackend
+  = RayDistributedExecutor
+  | MultiprocessingDistributedExecutor
+
+type VllmHealthWorkerCoverage
   = HealthDoesNotProbeDistributedWorkers
   | HealthProbesEveryDistributedWorker
 
-data vllm_health_route_worker_coverage: VllmHealthRouteWorkerCoverage = HealthDoesNotProbeDistributedWorkers
+type VllmHealthCoverageFact sole_constructor {
+  backend: VllmExecutorBackend
+  coverage: VllmHealthWorkerCoverage
+  established_against: VllmBuildIdentity
+}
 
-// THE CACHE-CONFIG GAUGE REPORTS CONFIGURATION, NOT CAPACITY, AND THE DIFFERENCE IS NOT COSMETIC.
-//
-// vllm:cache_config_info is generated from the fields of the engine's CacheConfig. It carries
-// num_gpu_blocks and a RESOLVED MINIMUM block_size across ranks. It does not carry the engine's
-// group-aware KV capacity.
-//
-// SO THE OBVIOUS PRODUCT IS NOT THE CAPACITY LAW. Multiplying num_gpu_blocks by block_size looks
-// like a token pool and is arithmetically fine, but a model with a multi-group cache layout can have
-// different per-group block sizes and windows, so the true capacity is computed group-aware and then
-// logged at startup -- "GPU KV cache size: N tokens" and a maximum-concurrency line -- after
-// reducing every worker's cache configuration to the minimum block count across ranks.
-//
-// This row is here because that product WAS computed from these two fields in this repository, and
-// published, before the discrepancy was caught. The fields are legitimate observations; the quotient
-// is not a capacity claim, and the type says so rather than trusting the next reader to know.
-type VllmCacheCapacityAuthority
-  = GroupAwareStartupLogLine
-  | BlockCountTimesMinimumBlockSizeIsNotCapacity
+data vllm_ray_health_coverage: VllmHealthCoverageFact = VllmHealthCoverageFact {
+  backend: RayDistributedExecutor,
+  coverage: HealthDoesNotProbeDistributedWorkers,
+  established_against: vllm_build_observed_2026_09_03,
+}
 
-data vllm_cache_capacity_authority: VllmCacheCapacityAuthority = GroupAwareStartupLogLine
+// WHICH EVIDENCE MAY ESTABLISH KV CAPACITY -- AS A DECISION OVER PROPOSED EVIDENCE, NOT AS A CHOICE
+// BETWEEN TWO SIMULTANEOUS FACTS.
+//
+// An earlier spelling was a coproduct whose arms were `GroupAwareStartupLogLine` and
+// `BlockCountTimesMinimumBlockSizeIsNotCapacity`. Those are not alternatives -- BOTH hold at once:
+// the startup line IS the authority AND the multiplication is NOT. Selecting one arm therefore left
+// the rejection carried by prose and by the spelling of an uninhabited alternative, which is the
+// decorative-wall shape this repository refuses.
+//
+// As a decision it becomes executable: propose a kind of evidence, get an admission or a typed
+// refusal, and both directions are reachable from a test. THE REFUSAL IS ALSO STATED AS THE GENERAL
+// LAW rather than as an arithmetic complaint -- for a uniform cache layout the product may happen to
+// be numerically right, and a rule that says "this product is wrong" would be falsified by that
+// coincidence. What is universally true is that those two cache-config fields are not a GENERALLY
+// SUFFICIENT authority, because a multi-group layout can carry per-group block sizes the gauge's
+// resolved minimum does not represent.
+type VllmCapacityEvidenceProposal
+  = GroupAwareStartupLogCapture
+  | CacheConfigBlockFields
+
+type VllmCapacityEvidenceVerdict
+  = CapacityEvidenceAdmitted
+  | CapacityEvidenceRefused { cause: String }
+
+fn decide_vllm_capacity_evidence(proposal: VllmCapacityEvidenceProposal) -> VllmCapacityEvidenceVerdict {
+  match proposal {
+    GroupAwareStartupLogCapture => CapacityEvidenceAdmitted
+    CacheConfigBlockFields =>
+      CapacityEvidenceRefused {
+        cause: "cache-config block fields are not a generally sufficient KV capacity authority: the gauge reports a resolved MINIMUM block size across ranks, and a multi-group cache layout can carry per-group block sizes and windows that minimum does not represent, so the product is not the engine's group-aware capacity even where it coincides with it",
+      }
+  }
+}

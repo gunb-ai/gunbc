@@ -4,106 +4,204 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.vllm_observed {
-  VllmObservedRuntime,
-  vllm_observed_runtime_2026_09_03,
+  VllmModelsRouteReadback,
+  VllmVersionRouteReadback,
+  VllmCacheConfigGaugeReadback,
+  VllmReadbackAcquisition,
+  VllmReadbackTransaction,
+  vllm_readback_acquisition,
+  vllm_models_route_readback,
+  vllm_version_route_readback,
+  vllm_cache_config_gauge_readback,
+  vllm_evidence_route_outcome,
+  VllmEvidenceRouteOutcome,
   VllmTpRealizationMissingEvidence,
   ResolvedParallelConfigurationNotObserved,
   JoinedRankPopulationNotObserved,
   VllmTpRealizationRefusal,
-  vllm_tp_realization_2026_09_03,
-  vllm_tp_realization_refusal_cause,
+  vllm_readback_transaction,
+  vllm_missing_evidence_for,
   vllm_tp_realization_missing_wire,
-  VllmObservedCapacity,
-  CapacityNotObserved,
-  vllm_observed_capacity_2026_09_03,
+  vllm_tp_realization_refusal_cause,
+  vllm_capacity_from_cache_config_fields,
+  vllm_readback_2026_09_03,
 }
 import extdeps.vllm.server {
   VllmRoute,
-  VllmRouteAvailability,
-  AlwaysServed,
-  ServedOnlyUnderDevelopmentMode,
-  vllm_routes,
-  vllm_route_server_info,
-  vllm_route_get_world_size,
-  vllm_route_collective_rpc,
+  VllmRoutePopulation,
+  OrdinarilyRegistered,
+  RegisteredOnlyUnderDevelopmentMode,
+  VllmBuildIdentity,
+  vllm_build_identity,
+  vllm_parallel_evidence_routes,
   vllm_route_health,
+  vllm_ray_health_coverage,
+  VllmHealthWorkerCoverage,
+  HealthDoesNotProbeDistributedWorkers,
+  HealthProbesEveryDistributedWorker,
+  VllmCapacityEvidenceProposal,
+  GroupAwareStartupLogCapture,
+  CacheConfigBlockFields,
+  VllmCapacityEvidenceVerdict,
+  CapacityEvidenceAdmitted,
+  CapacityEvidenceRefused,
+  decide_vllm_capacity_evidence,
 }
 
-// THE SERVED ID IS NOT THE ARTIFACT, WHICH IS THE ONE THING THIS OBSERVATION EXISTS TO SETTLE.
+// ── FIXTURES, HERMETIC AND NOT REPRESENTABLE AS ACQUIRED EVIDENCE ───────────────────────────────
 //
-// The id says "iq3s-split" and names a quantisation this deployment is not running. Two sessions
-// concluded the wrong thing about the weights from it -- once in a design ruling that propagated.
-// This claim pins the disagreement itself: the id advertises iq3s AND the artifact root is the
-// official checkpoint snapshot. A future edit that "tidies" the id to match the root would erase the
-// evidence that an alias can lie, so both halves are asserted together.
-test fn w_the_served_id_advertises_a_quantisation_the_artifact_root_contradicts() -> Bool {
-  contains(vllm_observed_runtime_2026_09_03.served_model_id as String, "iq3s")
-    && contains(
-         vllm_observed_runtime_2026_09_03.model_artifact_root as String,
-         "models--deepseek-ai--DeepSeek-V4-Flash")
-    && !contains(vllm_observed_runtime_2026_09_03.model_artifact_root as String, "iq3s")
+// These drive the CONSTRUCTOR rather than reading the production row. A witness that destructures a
+// data declaration is a type dependency: it consumes no decision, and it stays green while the
+// function that builds that data is broken. Every claim below calls something.
+data w_fixture_host: HostIdentity = "w-vllm-front-door" as HostIdentity
+
+fn w_acquisition(host: HostIdentity) -> VllmReadbackAcquisition {
+  vllm_readback_acquisition(
+    front_door_host: host,
+    observed_on: "w-fixture-date" as NonEmptyStr,
+    build: vllm_build_identity(version_string: "w-fixture-build" as NonEmptyStr))
 }
 
-// THE READBACK REFUSES, AND REFUSES AT THE EARLIER STAGE.
+fn w_models_route() -> VllmModelsRouteReadback {
+  vllm_models_route_readback(
+    served_model_id: "w-model:iq3s-alias" as NonEmptyStr,
+    configured_model_path: "w/path/to/checkpoint" as NonEmptyStr,
+    max_model_len: "1024" as NonEmptyStr)
+}
+
+fn w_outcomes(answered: Bool) -> List<VllmEvidenceRouteOutcome> {
+  map(vllm_parallel_evidence_routes, r => vllm_evidence_route_outcome(route: r, answered: answered))
+}
+
+fn w_transaction(host: HostIdentity, answered: Bool) -> VllmReadbackTransaction {
+  vllm_readback_transaction(
+    acquisition: w_acquisition(host: host),
+    models_route: w_models_route(),
+    version_route: vllm_version_route_readback(server_version: "w-fixture-build" as NonEmptyStr),
+    cache_config_gauge: vllm_cache_config_gauge_readback(
+      kv_cache_dtype: "w-dtype" as NonEmptyStr,
+      gpu_memory_utilization: "0.5" as NonEmptyStr,
+      prefix_caching_enabled: true),
+    parallel_evidence_outcomes: w_outcomes(answered: answered),
+  )
+}
+
+// ── THE BINDING, WHICH IS THE DEFECT THIS REWORK EXISTS TO CLOSE ────────────────────────────────
 //
-// If someone later constructs a tensor-parallel realization from this observation, this goes red --
-// which is the whole point, because the observation did not become sufficient by being reused.
-test fn w_the_readback_refuses_before_it_reaches_the_population_question() -> Bool {
-  match vllm_tp_realization_2026_09_03.missing {
+// The refusal used to be a separate row that named its own host, so the readback could say srv5
+// while the refusal said srv6 and every witness stayed green. The constructor now derives it. This
+// drives the constructor with two DIFFERENT hosts and asserts the refusal followed each -- which is
+// a claim about the derivation, not about either row.
+test fn w_the_refusal_host_is_derived_from_the_acquisition_it_belongs_to() -> Bool {
+  w_transaction(host: w_fixture_host, answered: false).realization.front_door_host as String
+    == w_fixture_host as String
+  && w_transaction(host: operator_host_srv5, answered: false).realization.front_door_host as String
+       == operator_host_srv5 as String
+}
+
+// ── THE STAGE IS DERIVED FROM THE OUTCOMES, BOTH DIRECTIONS ─────────────────────────────────────
+//
+// Nothing answered means the configuration stage was never reached, so the refusal is the earlier
+// arm. Something answering moves the open question to the population. Both are driven through the
+// real function, so an implementation that hardcoded either arm fails here.
+test fn w_the_missing_stage_follows_whether_any_evidence_route_answered() -> Bool {
+  match vllm_missing_evidence_for(outcomes: w_outcomes(answered: false)) {
     ResolvedParallelConfigurationNotObserved => true
     JoinedRankPopulationNotObserved => false
   }
+  && match vllm_missing_evidence_for(outcomes: w_outcomes(answered: true)) {
+    JoinedRankPopulationNotObserved => true
+    ResolvedParallelConfigurationNotObserved => false
+  }
 }
 
-// THE REFUSAL NAMES A MISSING POSITIVE FACT, NEVER AN UNANSWERED PORT.
+// AND THE TRANSACTION CARRIES THAT SAME DERIVATION rather than a separately supplied stage.
+test fn w_the_transaction_carries_the_derived_stage_and_not_a_supplied_one() -> Bool {
+  match w_transaction(host: w_fixture_host, answered: true).realization.missing {
+    JoinedRankPopulationNotObserved => true
+    ResolvedParallelConfigurationNotObserved => false
+  }
+}
+
+// ── THE WORDING PROPERTY, OVER THE WHOLE VOCABULARY ─────────────────────────────────────────────
 //
-// This is the discriminating claim for the wording ruling. A refusal phrased as "rank two did not
-// answer" would model the absence of something vLLM never promised -- a tensor-parallel worker is
-// not required to serve its own front door -- and would go green the moment an unrelated server
-// appeared on that port. Both arms are checked, so the property belongs to the vocabulary rather
-// than to the row that happens to be current.
+// A refusal phrased as "rank two did not answer" would model the absence of something vLLM never
+// promised, and would go green the moment an unrelated server appeared on that port. Quantified over
+// both arms so the property belongs to the vocabulary rather than to whichever row is current.
 test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
   all(
     [ResolvedParallelConfigurationNotObserved, JoinedRankPopulationNotObserved],
     m => !contains(vllm_tp_realization_missing_wire(missing: m), "port")
            && !contains(vllm_tp_realization_missing_wire(missing: m), "unreachable")
            && !contains(vllm_tp_realization_missing_wire(missing: m), "did not answer"))
-    && contains(vllm_tp_realization_refusal_cause(refusal: vllm_tp_realization_2026_09_03),
+    && contains(
+         vllm_tp_realization_refusal_cause(
+           refusal: w_transaction(host: w_fixture_host, answered: false).realization),
          "missing positive fact")
 }
 
-// THE EVIDENCE THAT WOULD DISCHARGE THE REFUSAL IS EXACTLY THE EVIDENCE THAT WAS NOT SERVED.
+// ── THE CAPACITY LAW, AS A DECISION WITH BOTH DIRECTIONS REACHABLE ──────────────────────────────
 //
-// Every route capable of answering the parallel question is development-mode gated, and none of the
-// always-served routes is. That is what makes the refusal a vantage limit rather than an oversight:
-// there was no always-served call that would have answered it.
-test fn w_every_route_that_could_answer_the_parallel_question_is_development_gated() -> Bool {
-  all(
-    [vllm_route_server_info, vllm_route_get_world_size, vllm_route_collective_rpc],
-    r => match r.availability {
-      ServedOnlyUnderDevelopmentMode => true
-      AlwaysServed => false
-    })
-}
-
-// AND HEALTH IS NOT A SUBSTITUTE FOR THEM. The always-served route someone would reach for instead
-// is /health, and it is always served -- so nothing structural stops the substitution, which is why
-// extdeps.vllm.server carries a typed row saying it does not probe workers.
-test fn w_health_is_always_served_and_therefore_the_tempting_wrong_substitute() -> Bool {
-  match vllm_route_health.availability {
-    AlwaysServed => true
-    ServedOnlyUnderDevelopmentMode => false
+// The previous shape was a coproduct whose two arms were simultaneous facts, so the rejection of the
+// multiplication was carried by prose and by an uninhabited alternative. As a decision both
+// directions execute, and the refusal is checked to state the GENERAL law rather than an arithmetic
+// complaint -- for a uniform layout the product may coincide with the right answer.
+test fn w_cache_config_block_fields_are_refused_as_a_capacity_authority() -> Bool {
+  match decide_vllm_capacity_evidence(proposal: CacheConfigBlockFields) {
+    CapacityEvidenceRefused { cause: c } => contains(c, "not a generally sufficient")
+    CapacityEvidenceAdmitted => false
   }
 }
 
-// CAPACITY IS ABSENT RATHER THAN ESTIMATED.
-//
-// A block count and a minimum block size were observed and their product was published as a token
-// pool before the discrepancy was caught. This asserts the carrier holds no capacity at all, so the
-// arithmetic cannot re-enter through a field.
-test fn w_no_capacity_is_carried_until_the_group_aware_log_line_is_read() -> Bool {
-  match vllm_observed_capacity_2026_09_03 {
-    CapacityNotObserved => true
-    CapacityFromGroupAwareStartupLog { pool_tokens: _ } => false
+test fn w_the_group_aware_startup_capture_is_the_admitted_capacity_evidence() -> Bool {
+  match decide_vllm_capacity_evidence(proposal: GroupAwareStartupLogCapture) {
+    CapacityEvidenceAdmitted => true
+    CapacityEvidenceRefused { cause: _ } => false
   }
+}
+
+// AND THE OBSERVATION MODULE ACTUALLY CONSULTS THAT LAW rather than restating it.
+test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
+  match vllm_capacity_from_cache_config_fields() {
+    CapacityEvidenceRefused { cause: _ } => true
+    CapacityEvidenceAdmitted => false
+  }
+}
+
+// ── THE UPSTREAM FACTS THAT HAD NO WITNESS AT ALL ───────────────────────────────────────────────
+//
+// Each of these was previously flippable with the whole suite staying green.
+test fn w_ray_health_does_not_probe_distributed_workers() -> Bool {
+  match vllm_ray_health_coverage.coverage {
+    HealthDoesNotProbeDistributedWorkers => true
+    HealthProbesEveryDistributedWorker => false
+  }
+}
+
+// AND HEALTH IS ORDINARILY REGISTERED, WHICH IS WHAT MAKES IT THE TEMPTING WRONG SUBSTITUTE: it is
+// reachable exactly when the evidence routes are not.
+test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bool {
+  match vllm_route_health.population {
+    OrdinarilyRegistered => true
+    RegisteredOnlyUnderDevelopmentMode => false
+  }
+  && all(vllm_parallel_evidence_routes, r => match r.population {
+       RegisteredOnlyUnderDevelopmentMode => true
+       OrdinarilyRegistered => false
+     })
+}
+
+// ── THE PRODUCTION ROW, PINNED ONCE ─────────────────────────────────────────────────────────────
+//
+// The id advertises a quantisation the configured path contradicts. This is the one claim that reads
+// the production row, because the disagreement IS the observation -- and it is asserted as a
+// disagreement so a later edit that tidies the id to match the path cannot quietly erase the
+// evidence that an alias can lie.
+test fn w_the_served_id_advertises_a_quantisation_the_configured_path_contradicts() -> Bool {
+  contains(vllm_readback_2026_09_03.models_route.served_model_id as String, "iq3s")
+    && !contains(vllm_readback_2026_09_03.models_route.configured_model_path as String, "iq3s")
+    && match vllm_readback_2026_09_03.realization.missing {
+         ResolvedParallelConfigurationNotObserved => true
+         JoinedRankPopulationNotObserved => false
+       }
 }
