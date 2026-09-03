@@ -1071,6 +1071,22 @@ fn llama_cpp_rpc_model_listing_route(surface: LlamaCppRpcObservedApiSurface) -> 
 // assemble a different one. That is a narrower capability than a join, and it is the one the
 // evidence supports.
 //
+// THE TRIGGER HAS FIRED (2026-09-03), AND SAYING SO IS THE ONLY EDIT IT LICENSES HERE. A second
+// realization is now running and observed first-hand rather than reported: the front door on the
+// other pair answers /v1/models with owned_by "vllm" and /version with a vLLM build string, over the
+// official DeepSeek-V4-Flash checkpoint. So the paragraph above no longer describes a waiting state
+// -- the shared realization identity it names is now both constructible and mandatory, because there
+// are two realizations for it to discriminate between.
+//
+// IT DOES NOT FOLLOW THAT THIS MODULE GROWS THE SHARED CARRIER, and the distinction is the whole
+// reason this note is a status correction rather than a design change. Deriving the neutral subject
+// INSIDE the module named for one engine is the same induced-from-a-single-engine move the paragraph
+// above refuses, merely performed later and with more material: whatever shape emerged would still
+// be authored in llama.cpp's vocabulary, in a file whose every neighbouring row assumes a ggml-rpc
+// weights peer and a per-slot context. The successor owns the shared realization and evidence
+// carrier; this module stays what its name says it is, a historical observation of one engine, and
+// its fields do not widen. What changes today is that its trigger is no longer pending.
+//
 // THIS PARAGRAPH USED TO CLAIM THE OPPOSITE, AND WITHDRAWING IT IS WHAT THE RENAME IS FOR. It said
 // the deployment type stays IMPLEMENTATION-NEUTRAL -- "no llama.cpp, no IQ3_S, no engine anywhere"
 // -- and treated it as the stable structural subject with the observation as one realization of it.
