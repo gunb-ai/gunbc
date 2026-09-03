@@ -42,8 +42,8 @@ import gunbc.floor_cost_distribution {
   permille_percentile,
   implied_clean_run_budget,
   ClaimCostReading,
-  ObservedCost,
-  RightCensoredCost,
+  ObservedCpuReading,
+  RightCensoredCpuReading,
   WorstCost,
   WorstObserved,
   WorstIsLowerBound,
@@ -72,13 +72,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Shape: two runs over the same three identities in two modules, one of which ("hot") crosses the
 // 500ms ceiling on run B only. That is the exact shape the real analysis turns on -- a row whose
 // membership in the crossing set depends on the run rather than on the row.
-data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 400) }, eval_steps: 9000 }
-data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 200) }, eval_steps: 4000 }
-data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 50) }, eval_steps: 900 }
+data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 400) }, eval_steps: 9000 }
+data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 4000 }
+data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 50) }, eval_steps: 900 }
 
-data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 600) }, eval_steps: 9000 }
-data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 300) }, eval_steps: 4400 }
-data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 100) }, eval_steps: 900 }
+data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 600) }, eval_steps: 9000 }
+data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 300) }, eval_steps: 4400 }
+data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 900 }
 
 // THE CENSORED FIXTURE ROW, and it is deliberately given a bound of 502ms against a 500ms
 // ceiling -- the shape every interrupted row in the real artifact has, because a row is stopped
@@ -93,7 +93,7 @@ data row_c_censored: FloorCostRow = FloorCostRow {
   identity: "m.hot.k",
   module: "m.hot",
   verdict_reached: false,
-  cost: RightCensoredCost { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500) },
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500) },
   eval_steps: 163840
 }
 
@@ -594,7 +594,7 @@ test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_co
     identity: "m.hot.x",
     module: "m.hot",
     verdict_reached: false,
-    cost: RightCensoredCost { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500) },
+    cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500) },
     eval_steps: 8000
   }
   let missing = SameHeadAttemptPair {

@@ -55,11 +55,32 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // the shared `cpu_ms` column no longer parses at all -- which is the correct fail-closed answer:
 // its rows cannot be separated into the two populations, and reading them as costs is the defect.
 //
-// The authority for the modelled fact is `v2.workflow.claim_cost_observation`; this is the
-// artifact-side reading of it, carrying `Millisecond` because that is what this analysis compares.
+// THE ARM NAMES CARRY `CpuReading` BECAUSE THIS IS A DIFFERENT CONTRACT FROM THE MODELLED FACT,
+// AND AN EARLIER DRAFT OF THIS FILE PROVED WHY THAT MATTERS. The authority for the modelled
+// observation is `v2.workflow.claim_cost_observation`, whose `RightCensoredCost` carries a witness
+// identity, BOTH clock axes, and the ceiling. This type is the artifact-side reading of one TSV
+// row restricted to the CPU axis: `ClaimCostColumns` indexes no wall column at all, so this reader
+// structurally CANNOT fill `wall_lower_bound_ms` -- and a projection that cannot carry the
+// authority's fields is not that authority's type.
+//
+// THE EARLIER DRAFT SPELLED THESE ARMS `ObservedCost` AND `RightCensoredCost`, which gave one
+// spelling two materially different declarations in one change -- DESIGN section 3's meaning fork,
+// and section 2's failed decomposition, since net concepts had grown by re-invention. The comment
+// naming the single authority sat two lines above the re-minting of that authority's concept.
+// IT WAS ALSO THE CAUSE OF A DIAGNOSTIC THAT LOOKED LIKE A COMPILER BUG: this module does not
+// import the authority, but with that module merely PRESENT IN THE RESOLVED POOL the bare name
+// bound to the FOREIGN product ambiently and silently, so one arm widened to this coproduct and
+// its sibling stayed the foreign bare product -- `Coproduct(ClaimCostReading) vs
+// Product(RightCensoredCost)`. The asymmetry between the two arms was never arbitrary; it was the
+// collision. `ObservedCost` had no pool competitor and so widened correctly BY LUCK, which is why
+// BOTH arms are renamed here rather than only the one that broke.
+//
+// So the rule this type is obeying: a module that names another as the authority for a concept may
+// not declare a type whose SPELLING already belongs to that authority. Either consume it, or carry
+// a different name because it is a different contract. This is the second.
 type ClaimCostReading
-  = ObservedCost { cpu_ms: Millisecond }
-  | RightCensoredCost { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
+  = ObservedCpuReading { cpu_ms: Millisecond }
+  | RightCensoredCpuReading { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
 
 // The cost figure a derivation is ENTITLED to treat as a POINT, and `Absent` for a censored row.
 // Every consumer asking a POINT question goes through this, so a bound cannot reach a site that
@@ -67,7 +88,7 @@ type ClaimCostReading
 // seed's `exact_cost_ms` enforces on the producing side.
 //
 // THE QUANTIFIER IS OVER POINT QUESTIONS AND NOT OVER ARITHMETIC, which is narrower than it first
-// reads and deliberately so. `row_crossing` matches `RightCensoredCost` directly and does compare
+// reads and deliberately so. `row_crossing` matches `RightCensoredCpuReading` directly and does compare
 // its bound, because a CROSSING is a lower-bound question that a bound can legitimately answer.
 // That is not a bypass of this accessor; it is the case split this module exists to force, and it
 // carries a third `RowCrossingUndecidable` arm for the bounds that cannot answer. Writing the
@@ -75,8 +96,8 @@ type ClaimCostReading
 // crossing guard falsifies.
 fn observed_cpu_ms(reading: ClaimCostReading) -> Millisecond? {
   match reading {
-    ObservedCost { cpu_ms: c } => Present { value: c }
-    RightCensoredCost { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => none
+    ObservedCpuReading { cpu_ms: c } => Present { value: c }
+    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => none
   }
 }
 
@@ -85,15 +106,15 @@ fn observed_cpu_ms(reading: ClaimCostReading) -> Millisecond? {
 // is sound: "this row cost at least N" is true on both arms, "this row cost N" is true on one.
 fn cpu_at_least_ms(reading: ClaimCostReading) -> Millisecond {
   match reading {
-    ObservedCost { cpu_ms: c } => c
-    RightCensoredCost { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } => b
+    ObservedCpuReading { cpu_ms: c } => c
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } => b
   }
 }
 
 fn reading_is_censored(reading: ClaimCostReading) -> Bool {
   match reading {
-    ObservedCost { cpu_ms: _ } => false
-    RightCensoredCost { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
+    ObservedCpuReading { cpu_ms: _ } => false
+    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
   }
 }
 
@@ -225,7 +246,7 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
 // THIS ALSO REMOVES A DEPENDENCE ON BRANCH-JOIN INFERENCE, and that is worth stating rather than
 // leaving as a silent consequence. When both arms were spelled inline, the whole-corpus strict
 // path refused the join -- `if branches resolve to incompatible types: Coproduct(ClaimCostReading)
-// vs Product(RightCensoredCost)` -- while the entry-scoped path accepted the same bytes and ran
+// vs Product(RightCensoredCpuReading)` -- while the entry-scoped path accepted the same bytes and ran
 // them green. Each arm now widens against a DECLARED return type at a function boundary instead of
 // against its sibling, which is a contract the checker is given rather than one it must infer.
 // The acceptance-path disagreement itself is NOT diagnosed by this edit and is reported separately;
@@ -234,7 +255,7 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
 fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
   match parse_int(s: fields[columns.observed_cpu_ms]) {
     Absent => none
-    Present { value: cpu } => Present { value: ObservedCost { cpu_ms: millisecond(count: cpu) } }
+    Present { value: cpu } => Present { value: ObservedCpuReading { cpu_ms: millisecond(count: cpu) } }
   }
 }
 
@@ -247,7 +268,7 @@ fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) 
     Present { value: bound } => match parse_int(s: fields[columns.censoring_cpu_limit_ms]) {
       Absent => none
       Present { value: ceiling } => Present {
-        value: RightCensoredCost {
+        value: RightCensoredCpuReading {
           cpu_lower_bound_ms: millisecond(count: bound),
           censoring_ceiling_ms: millisecond(count: ceiling)
         }
@@ -433,9 +454,9 @@ type RowCrossing
 // guessing in either direction.
 fn row_crossing(row: FloorCostRow, ceiling_ms: Millisecond) -> RowCrossing {
   match row.cost {
-    ObservedCost { cpu_ms: c } =>
+    ObservedCpuReading { cpu_ms: c } =>
       if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) { RowCrossed } else { RowBelowLine }
-    RightCensoredCost { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } =>
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } =>
       if millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
         RowCrossed
       } else {
