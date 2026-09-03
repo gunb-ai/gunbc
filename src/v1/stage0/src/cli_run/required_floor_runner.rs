@@ -1222,8 +1222,8 @@ impl LocalRepoWetObserved {
         }
     }
 
-    /// The host realization of `local_repo_wet_expectation_met` for the one expectation arm
-    /// `LocalRepoWetExpectation` carries. Exhaustive on the observed side by construction.
+    /// The host realization of `wet_disposition_is_agreement` for the one arm of
+    /// `ClaimExpectation` this lane realizes. Exhaustive on the observed side by construction.
     fn meets_pass_expectation(&self) -> bool {
         matches!(self, LocalRepoWetObserved::Passed)
     }
@@ -1335,7 +1335,7 @@ pub(crate) enum LocalRepoWetExecution {
 
 /// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once and unconditionally, with execution as an
 /// argument. Host realization of `v2.workflow.local_repo_wet_terminal.local_repo_wet_finalize` and
-/// of the `local_repo_wet_join` it defers to: the same three finalization causes and the same
+/// of the `wet_evidence_validate` it defers to: the same three finalization causes and the same
 /// bidirectional join, separated by remedy rather than collapsed into "the receipt is bad".
 ///
 /// An empty schedule with no invocation HOLDS: a lane that scheduled nobody claims nobody. It is
@@ -1388,7 +1388,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
             .collect();
         match hits.len() {
             0 => refusals.push(format!(
-                "{}: LocalRepoWetTerminalMissing — scheduled, and the executor produced no terminal \
+                "{}: WetTerminalMissing — scheduled, and the executor produced no terminal \
                  for it",
                 row.identity
             )),
@@ -1396,19 +1396,19 @@ pub(crate) fn finalize_local_repo_wet_lane(
                 let t = hits[0];
                 if t.candidate != candidate {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignCandidate — terminal names {}, this floor \
+                        "{}: WetBindingPreparedSubjectDiffers — terminal names {}, this floor \
                          is evaluating {candidate}",
                         row.identity, t.candidate
                     ));
                 } else if t.entry != row.entry {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignEntry — the roster's entry {:?} is not the \
+                        "{}: WetTerminalForeignEntry — the roster's entry {:?} is not the \
                          source the prepared subject resolved ({})",
                         row.identity, row.entry, t.entry
                     ));
                 } else if t.function != row.function {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignFunction — terminal names {}, the roster \
+                        "{}: WetTerminalForeignFunction — terminal names {}, the roster \
                          scheduled {}",
                         row.identity, t.function, row.function
                     ));
@@ -1420,7 +1420,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
                         format!(" — {detail}")
                     };
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalVerdictNotExpected — expected passed, observed \
+                        "{}: WetTerminalVerdictNotExpected — expected passed, observed \
                          {}{suffix}",
                         row.identity,
                         t.observed.name()
@@ -1430,7 +1430,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
                 }
             }
             n => refusals.push(format!(
-                "{}: LocalRepoWetTerminalDuplicated — {n} terminals claim this identity and neither \
+                "{}: WetTerminalDuplicated — {n} terminals claim this identity and neither \
                  can be trusted over the other",
                 row.identity
             )),
@@ -1441,7 +1441,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
     for t in &terminals {
         if !schedule.iter().any(|row| row.identity == t.identity) {
             refusals.push(format!(
-                "{}: LocalRepoWetTerminalUnscheduled — a terminal for an identity this lane never \
+                "{}: WetTerminalUnscheduled — a terminal for an identity this lane never \
                  scheduled",
                 t.identity
             ));
@@ -1490,13 +1490,13 @@ fn local_repo_wet_schedule(
     for item in items {
         let v1_interpreter::Value::Record { type_name, fields } = item else {
             return Err(format!(
-                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got {}",
+                "local_repo_wet_schedule: expected WetScheduledClaim, got {}",
                 floor_value_shape(Some(&item))
             ));
         };
-        if !hermetic.sym_eq(*type_name, "LocalRepoWetScheduled") {
+        if !hermetic.sym_eq(*type_name, "WetScheduledClaim") {
             return Err(format!(
-                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got record {}",
+                "local_repo_wet_schedule: expected WetScheduledClaim, got record {}",
                 hermetic.resolve(*type_name)
             ));
         }
@@ -1509,41 +1509,87 @@ fn local_repo_wet_schedule(
                 )),
             }
         };
-        let identity = str_field("identity")?;
         let function = str_field("function")?;
         let entry = str_field("entry")?;
-        // THE ENTRY MODULE IS DERIVED FROM THE IDENTITY, NOT FROM THE PATH. The identity is
-        // `<module>.<function>` and the module is what the prepared subject is keyed by; the
-        // roster's `entry` field is the file the local recipe names, which is a different
-        // question (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
-        let entry_module = match identity.strip_suffix(&format!(".{function}")) {
-            Some(m) if !m.is_empty() => m.to_string(),
-            _ => {
+        // THE IDENTITY IS A STRUCTURED `WitnessIdentity`, NOT A SPELLED NAME. It carries
+        // `module_path` and `function` as separate fields, so the qualified name is DERIVED here
+        // rather than parsed back out of a string — which is what the authority does in
+        // `witness_identity_qualified_name`, and deriving it twice the same way is the point.
+        let (module_path, identity_function) = match hermetic.field(&fields, "identity") {
+            Some(v1_interpreter::Value::Record {
+                type_name: id_type,
+                fields: id_fields,
+            }) => {
+                if !hermetic.sym_eq(*id_type, "WitnessIdentity") {
+                    return Err(format!(
+                        "local_repo_wet_schedule: identity must be a WitnessIdentity, got record {}",
+                        hermetic.resolve(*id_type)
+                    ));
+                }
+                let id_str = |name: &str| -> Result<String, String> {
+                    match hermetic.field(id_fields, name) {
+                        Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                        other => Err(format!(
+                            "local_repo_wet_schedule: identity.{name} must be String, got {}",
+                            floor_value_shape(other)
+                        )),
+                    }
+                };
+                (id_str("module_path")?, id_str("function")?)
+            }
+            other => {
                 return Err(format!(
-                    "local_repo_wet_schedule: identity {identity:?} does not end in .{function} \
-                     — the roster's identity and function disagree"
+                    "local_repo_wet_schedule: identity must be a WitnessIdentity record, got {}",
+                    floor_value_shape(other)
                 ));
             }
         };
-        // `LocalRepoWetExpectation` HAS ONE ARM, so there is nothing to collapse. A second arm
-        // reaching here refuses rather than defaulting: the widening that admits an expected-red
-        // member must arrive with the executor arm that realizes it, and this refusal is what
-        // stops the authority from claiming a behaviour production cannot perform.
-        match hermetic.field(&fields, "expected") {
+        let identity = format!("{module_path}.{identity_function}");
+        // THE ENTRY MODULE IS READ FROM THE IDENTITY, NOT PARSED OUT OF IT. `WitnessIdentity`
+        // carries `module_path` as its own field, so what used to be a suffix-strip is now a
+        // projection (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
+        //
+        // THE AGREEMENT WALL SURVIVES AND GOT STRONGER RATHER THAN WEAKER. The old check inferred
+        // disagreement from a failed suffix-strip, which could only notice it when the spelled
+        // identity did not END in the function. The row carries the function name TWICE — once in
+        // `identity.function`, once as its own `function` field — so the two are compared directly
+        // and any disagreement refuses, not only the ones a suffix happens to expose. An empty
+        // module_path is refused for the same reason the strip refused an empty prefix: a member
+        // whose module is unnamed cannot key a prepared subject.
+        if identity_function != function {
+            return Err(format!(
+                "local_repo_wet_schedule: identity.function {identity_function:?} and the row's \
+                 function {function:?} disagree — one member, two names"
+            ));
+        }
+        if module_path.is_empty() {
+            return Err(format!(
+                "local_repo_wet_schedule: identity {identity:?} carries an empty module_path"
+            ));
+        }
+        let entry_module = module_path;
+        // `ClaimExpectation` HAS TWO ARMS WHERE ITS PREDECESSOR HAD ONE, AND THIS LANE STILL
+        // REALIZES EXACTLY ONE. That is the whole reason this refusal is kept rather than widened
+        // with the type: the shared expectation vocabulary can now SAY `ExpectedRed`, and nothing
+        // in this executor RUNS an expected-red member. A wider type is not a wider capability, and
+        // defaulting here would let the authority claim a behaviour production cannot perform.
+        // The widening that admits an expected-red member must arrive with the executor arm that
+        // realizes it, and this line is what forces those two to land together.
+        match hermetic.field(&fields, "expectation") {
             Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
                 match hermetic.resolve(*variant_name).as_str() {
-                    "LocalRepoWetExpectPassed" => {}
+                    "ExpectedToHold" => {}
                     other => {
                         return Err(format!(
                             "local_repo_wet_schedule: expectation {other} has no executor arm in this \
-                             lane; only LocalRepoWetExpectPassed is realizable today"
+                             lane; only ExpectedToHold is realizable today"
                         ));
                     }
                 }
             }
             other => {
                 return Err(format!(
-                    "local_repo_wet_schedule: expected must be a typed variant, got {}",
+                    "local_repo_wet_schedule: expectation must be a typed variant, got {}",
                     floor_value_shape(other)
                 ));
             }
@@ -1575,7 +1621,7 @@ fn local_repo_wet_schedule(
 /// IT PRODUCES TERMINALS AND ADJUDICATES NOTHING. Every disagreement between the roster and what
 /// ran — a member with no receipt, a receipt naming another entry, a verdict that was not the
 /// expected one — is decided by `finalize_local_repo_wet_lane` against the SAME schedule, which is
-/// the host realization of `local_repo_wet_join`. An executor that judged its own completeness
+/// the host realization of `wet_evidence_validate`. An executor that judged its own completeness
 /// would be a second authority for the join, and the one whose payload the finalizer then trusted.
 pub(crate) fn run_local_repo_wet_lane(
     prepared: &PreparedRepository,
@@ -7469,7 +7515,7 @@ mod changed_witness_projection_tests {
         .expect_err("a scheduled member with no terminal must refuse");
         assert!(
             refused.contains("1 refusal(s)")
-                && refused.contains("LocalRepoWetTerminalMissing")
+                && refused.contains("WetTerminalMissing")
                 && refused.contains("w_other"),
             "exactly the skipped member refuses, by name, got: {refused}"
         );
@@ -7491,7 +7537,7 @@ mod changed_witness_projection_tests {
         .expect_err("an unscheduled terminal must refuse");
         assert!(
             refused.contains("1 refusal(s)")
-                && refused.contains("LocalRepoWetTerminalUnscheduled")
+                && refused.contains("WetTerminalUnscheduled")
                 && refused.contains("w_nobody_scheduled"),
             "got: {refused}"
         );
@@ -7507,7 +7553,7 @@ mod changed_witness_projection_tests {
         let refused =
             finalize(&schedule, vec![terminal]).expect_err("a failed member must not be admitted");
         assert!(
-            refused.contains("LocalRepoWetTerminalVerdictNotExpected")
+            refused.contains("WetTerminalVerdictNotExpected")
                 && refused.contains("observed failed"),
             "got: {refused}"
         );
@@ -7524,7 +7570,7 @@ mod changed_witness_projection_tests {
         let refused = finalize(&schedule, vec![terminal])
             .expect_err("a roster entry that is not the resolved source must refuse");
         assert!(
-            refused.contains("LocalRepoWetTerminalForeignEntry")
+            refused.contains("WetTerminalForeignEntry")
                 && refused.contains("somewhere_else_test.dag"),
             "got: {refused}"
         );
