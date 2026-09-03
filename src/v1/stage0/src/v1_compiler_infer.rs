@@ -5290,8 +5290,7 @@ pub fn declared_alias_target_matches_produced(
                 };
                 (((target_name.clone() != "".to_string())
                     && (target_name.clone() != expected_name.clone()))
-                    && (crate::v1_std_core::qualified_last_segment(target_name.clone())
-                        == crate::v1_std_core::qualified_last_segment(produced_name.clone())))
+                    && (target_name.clone() == produced_name.clone()))
             }
             std::option::Option::None => false,
         }

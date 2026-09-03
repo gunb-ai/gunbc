@@ -3754,6 +3754,11 @@ fn structured_application_site_type_mismatch_with_peeled(
   }
 }
 
+// SEED WALKER DISPOSITION (DESIGN section 6): this is one instance of the v1 seed's existing
+// self-recursive Node collector idiom, not a new substrate traversal authority. v1 cannot import
+// v2's fold_node/node_query without inverting the bootstrap (v1 compiles v2). Its bounded depth is
+// explicit here, and it dissolves with the sibling seed walkers when v2 self-host replaces v1.
+// Generalizing only these carrier reads would add a second traversal shape rather than remove one.
 fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   let here = authored_name_at(source_indices: source_indices, node: n)
   if depth >= 16 { here }
@@ -3767,6 +3772,10 @@ fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
+// A qualified identity may never be reduced to its last segment here: a.Item and b.Item are
+// distinct declarations even though their nicknames coincide. Full carried names are the
+// strongest identity available for this legacy field-initializer seam; if either side cannot
+// retain that identity, decline the alias admission and let the mismatch stay loud.
 fn declared_alias_target_matches_produced(expected: Node, produced: Node, env: TypeEnv) -> Bool {
   let expected_name = authored_name_at(source_indices: env.source_indices, node: expected)
   let produced_name = authored_name_at(source_indices: env.source_indices, node: produced)
@@ -3779,7 +3788,7 @@ fn declared_alias_target_matches_produced(expected: Node, produced: Node, env: T
       }
       target_name != ""
         && target_name != expected_name
-        && qualified_last_segment(name: target_name) == qualified_last_segment(name: produced_name)
+        && target_name == produced_name
     Absent => false
   }
 }
@@ -4079,6 +4088,8 @@ fn container_element_nominal_brand_mismatch(
   } else { false }
 }
 
+// Same seed-walker disposition as carried_structural_type_name above: bounded to the finite Node
+// value, retained only in the bootstrap seed, and dissolved by the v2 self-host fold cut.
 fn direct_call_formal_has_unbound_type_variable(n: Node) -> Bool {
   let here = match n.inferred {
     Present { value: TypeVariable { id: _ } } => true

@@ -612,6 +612,11 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
 // A global-bare hit still names one exact declaration and its completed census. Resolve each
 // formal at that declaration's containment position, once while that authority is present, rather
 // than reconstructing it later through the caller TypeEnv.
+// SEED WALKER DISPOSITION (DESIGN section 6): v1's canonical traversal idiom is a purpose-specific
+// self-recursive Node collector; importing v2 fold_node/node_query here would invert the bootstrap
+// because v1 compiles v2. This collector walks only the finite declaration type tree and dissolves
+// with the sibling v1 walkers at the v2 self-host cut. A one-off shared walker for this carrier
+// would add a traversal representation rather than consolidate the seed's existing population.
 fn declaration_unbound_leaf_names(n: Node, env: TypeEnv) -> List<String> {
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   let here = if n.connective == NoConnective
@@ -625,6 +630,9 @@ fn declaration_unbound_leaf_names(n: Node, env: TypeEnv) -> List<String> {
   concat(here, n.children |> flat_map(ch => declaration_unbound_leaf_names(n: ch, env: env)))
 }
 
+// Parent generics synthesized into constructor/function formals can occur only in a parameter;
+// the generic-name set therefore ranges over the complete formal and return type surface before
+// constructing any carried formal, rather than deriving from the return alone.
 fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String, node: Node) -> List<ResolvedFormal> {
   let tp_names = fn_type_param_names(item: node, source_indices: type_env.source_indices)
   let declaration_env = census_declaration_type_env(
@@ -640,7 +648,13 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
       Absent => error_type
     }
   }
-  let declaration_generic_names = concat(tp_names, declaration_unbound_leaf_names(n: return_type, env: declaration_env))
+  let declaration_generic_names = concat(
+    tp_names,
+    concat(
+      declaration_unbound_leaf_names(n: return_type, env: declaration_env),
+      node.params |> flat_map(p => declaration_unbound_leaf_names(n: param_node_type_expr(n: p), env: declaration_env))
+    )
+  )
   node.params
     |> filter(p => !(tp_names |> any(tp => tp == param_node_name_at(n: p, source_indices: type_env.source_indices))))
     |> map(p => {
