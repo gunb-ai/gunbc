@@ -586,6 +586,39 @@ The duplicate-measurement repair already has the right semantics for this: looku
 contradiction. A future adjudication relation may supersede a measurement, but selection must never
 be smuggled into ordinary resolution.
 
+### The bench procedure, in the order it must physically happen
+
+Written out because the ordering is the whole content: two steps here capture facts that **no later
+measurement can reconstruct**, and both are cheap only while the parts are still on the machines.
+
+1. **Label both printers before either is powered on.** A physical label, applied by hand — `A` and
+   `B` is sufficient. This is the durable individuation the roster needs; the identity is allocated
+   here, not derived from anything read later. Record the machine each label went on.
+2. **Label both spools before either is loaded.** Same rule, `PLA-A` / `PLA-B`. Do this while they
+   are still sealed and distinguishable as objects rather than as "the one in the left printer".
+3. **Read the serials, if convenient — and do not wait on them.** The serial *corroborates* the
+   binding made in step 1; it does not establish it. If a serial is unreadable, the printer is still
+   registered. If an RFID tag reads, record it as evidence beside the label, never instead of it.
+   Label and tag disagreeing is a refusal to resolve later, not a coin flip.
+4. **Load spool A into printer A, spool B into printer B, and write down which went where.** This
+   pairing is the treatment variable of the entire experiment. It is not recoverable from the plastic.
+5. **Print the same coupon on both machines, concurrently.** Same generated artifact, same profile,
+   same nozzle. Concurrency matters: it holds ambient conditions roughly fixed across the pair.
+6. **Bind each coupon to its printer and spool BEFORE it leaves the bed.** Write on it, bag it and
+   label the bag, or photograph it in place — any durable mark. **This is the irreversible step.**
+   The two coupons are geometrically identical *by design*, so once both are off their beds and on
+   the same table, nothing measured afterwards can tell them apart. Getting this wrong does not
+   degrade the experiment; it voids it.
+7. **Then repeat as a second attempt: A2 and B2**, same supplies, same nozzle, same profile, no
+   intervening calibration unless it is recorded. A1/B1 versus A2/B2 answers *print-to-print*
+   variation. Two copies on one plate would instead answer *bed-position* variation — a different
+   question with a different receipt name, and conflating them is how a machine difference gets
+   attributed to a corner of a build plate.
+
+What is deliberately **not** on this list: any dimension read off a coupon, any compensation constant,
+any judgement about which machine is better. Those are measurements, and they are all still available
+tomorrow. Steps 1, 2, 4 and 6 are the only ones that expire.
+
 
 ## The floor-budget cluster, and why this program did not take the coverage loss
 
