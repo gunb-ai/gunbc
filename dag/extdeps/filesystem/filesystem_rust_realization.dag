@@ -29,8 +29,10 @@ module extdeps.filesystem.rust_realization
 // producing something plausible from inputs it has misunderstood.
 //
 // So the row below is a whole function definition, and BOTH consumers copy these exact bytes. The
-// emitted crate places it in its lib.rs root beside the other shared definitions and reaches it
-// through `use crate::`; the seed receives the same text as a committed generated artifact and
+// emitted crate places it in its `v1_rt` runtime module and reaches it through `v1_rt::`; the
+// crate root was tried first and does not work, because the seed is split across crates and a
+// root-level definition is not reachable from them; the seed receives the same text as a
+// committed generated artifact and
 // calls it. Nothing transforms the text on either path, so there is no seam left to maintain into
 // disagreement.
 //
@@ -60,16 +62,58 @@ module extdeps.filesystem.rust_realization
 // absent, legitimate create refused because an INTERNAL filename was occupied -- at a lower
 // frequency, which is worse than the original for being harder to observe.
 //
-// So the loop ALLOCATES: an occupied candidate is skipped and the next one tried; any other open
-// error is the host's and is returned unchanged; exhaustion is CHECKED and refuses with a typed
-// cause rather than wrapping around onto a sequence it has already used. Crucially the occupied arm
-// does not remove the file it found -- that file belongs to another attempt, and deleting it would
-// convert a naming collision into data loss.
-data rust_file_write_create_new_fn_def: String = "fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {\n    use std::io::Write;\n    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n    const GUNBC_CREATE_MAX_CANDIDATES: u32 = 1024;\n    let mut attempted: u32 = 0;\n    let (mut staged, staging_path) = loop {\n        if attempted >= GUNBC_CREATE_MAX_CANDIDATES {\n            return Err(std::io::Error::new(\n                std::io::ErrorKind::AlreadyExists,\n                \"gunbc create-new: exhausted staging candidates without acquiring one\",\n            ));\n        }\n        attempted += 1;\n        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);\n        let candidate = format!(\"{}.gunbc-create-{}-{}\", file_path, std::process::id(), seq);\n        match std::fs::OpenOptions::new()\n            .write(true)\n            .create_new(true)\n            .open(&candidate)\n        {\n            Ok(file) => break (file, candidate),\n            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,\n            Err(host) => return Err(host),\n        }\n    };\n    if let Err(staging_err) = staged.write_all(content) {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(staging_err);\n    }\n    if let Err(sync_err) = staged.sync_all() {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(sync_err);\n    }\n    drop(staged);\n    let published = std::fs::hard_link(&staging_path, file_path);\n    let _ = std::fs::remove_file(&staging_path);\n    published\n}\n"
+// So the loop SEARCHES: an occupied candidate is skipped and the next one tried; any other open
+// error is the host's and is returned unchanged; reaching the attempt budget REFUSES, carrying the
+// distinct StagingCandidateBudgetExhausted diagnostic under ErrorKind::Other. That is a distinct
+// DIAGNOSTIC, not a typed Rust cause -- there is no custom payload to downcast to, and calling it
+// typed would claim a structure the code does not have. What it does buy is mechanical: real target
+// occupancy is AlreadyExists, an internal budget end is Other, and no production decision should
+// parse the message text. Crucially the occupied arm does not remove the file it found -- that file
+// belongs to another attempt, and deleting it would convert a naming collision into data loss.
+//
+// EXHAUSTION IS NOT AlreadyExists, AND THAT IS THE SAME DISTINCTION ONE LEVEL UP. The first loop
+// reported exhaustion with ErrorKind::AlreadyExists, which external review caught. AlreadyExists is
+// precisely the kind by which a caller of a create-only write concludes THE TARGET IS PRESENT, DO
+// NOT OVERWRITE IT. Returning it when the target is absent and the real cause is an internal
+// staging deficit is #10069's defect re-expressed in the TYPE rather than in the filename: an
+// internal condition wearing the domain refusal's identity, so no consumer can distinguish "your
+// file is already there" from "this function could not obtain a private name". The two demand
+// opposite responses -- the first is a correct terminal refusal, the second is a defect that should
+// be reported as one -- so they may not share a discriminant.
+//
+// THE u64 WRAP IS NOT A SEPARATE HAZARD, and the reason is a property of the loop rather than of the
+// counter. Wrapping would make the sequence revisit values it has used, which before the loop would
+// have been a silent collision; now a revisited value is simply an occupied candidate, which is the
+// one case the loop is built to survive. A wrap check would therefore refuse a state the function
+// already handles correctly -- validation standing where construction is present.
+// THE ATTEMPT BUDGET IS A NAMED REALIZATION LIMIT, NOT A DERIVED ONE, AND SAYING SO IS THE POINT.
+//
+// There is no filesystem law from which "the correct number of stale internal names to tolerate"
+// follows, so deriving one would be a false warrant. What the number bounds is WORK, not safety:
+// any finite ceiling keeps the operation fail-closed, because the arm it selects REFUSES. It is
+// therefore stated as what it is -- one WriteCreateNew act may perform at most this many exclusive
+// staging-candidate acquisition attempts before refusing with StagingCandidateBudgetExhausted.
+//
+// It lives here, named, rather than as a literal inside the generated Rust, so that the function
+// and its controls consume ONE authority. A test that retyped 1024 would be a second authority for
+// the same fact, and would keep passing if this row changed -- which is the failure this module
+// exists to remove, in miniature.
+data rust_file_create_staging_candidate_attempt_limit: Int = 1024
+
+fn rust_file_create_staging_candidate_attempt_limit_def() -> String {
+  concat(
+    "pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = ",
+    "{rust_file_create_staging_candidate_attempt_limit}",
+    ";\n",
+  )
+}
+
+data rust_file_write_create_new_fn_def: String = "fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {\n    use std::io::Write;\n    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n    let mut attempted: u32 = 0;\n    let (mut staged, staging_path) = loop {\n        if attempted >= GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT {\n            return Err(std::io::Error::other(format!(\n                \"gunbc create-new: StagingCandidateBudgetExhausted attempted={} limit={}\",\n                attempted, GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT\n            )));\n        }\n        attempted += 1;\n        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);\n        let candidate = format!(\"{}.gunbc-create-{}-{}\", file_path, std::process::id(), seq);\n        match std::fs::OpenOptions::new()\n            .write(true)\n            .create_new(true)\n            .open(&candidate)\n        {\n            Ok(file) => break (file, candidate),\n            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,\n            Err(host) => return Err(host),\n        }\n    };\n    if let Err(staging_err) = staged.write_all(content) {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(staging_err);\n    }\n    if let Err(sync_err) = staged.sync_all() {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(sync_err);\n    }\n    drop(staged);\n    let published = std::fs::hard_link(&staging_path, file_path);\n    let _ = std::fs::remove_file(&staging_path);\n    published\n}\n"
 
 // THE SEED'S COPY, AS A COMMITTED GENERATED ARTIFACT.
 //
-// The emitted crate receives the definition through its own lib.rs root. The seed cannot: it is
+// The emitted crate receives the definition through its own `v1_rt` runtime module. The seed
+// cannot use that path: it is
 // ordinary Rust compiled by cargo, and it cannot execute a String. So it receives the SAME BYTES as
 // a generated .rs module that the stage0 crate compiles and calls, enrolled in
 // gunbc.generated_artifact like every other committed projection -- which means the regeneration
@@ -83,6 +127,18 @@ fn expected_gunbc_file_transport_generated_rs() -> String {
     "// Generated by v1 compiler -- do not edit.\n",
     "// Source module: extdeps.filesystem.rust_realization\n",
     "\n",
-    "pub ", rust_file_write_create_new_fn_def,
+    rust_file_create_new_canonical_block(),
   ], "")
+}
+
+// ONE CANONICAL BLOCK, SO THE TWO PROJECTIONS CANNOT DISAGREE ABOUT WHAT THEY CARRY. The limit and
+// the function that reads it are a single unit: a projection that copied the function while leaving
+// the constant behind would not compile, which is the property that keeps them from drifting apart.
+fn rust_file_create_new_canonical_block() -> String {
+  concat(
+    rust_file_create_staging_candidate_attempt_limit_def(),
+    "\n",
+    "pub ",
+    rust_file_write_create_new_fn_def,
+  )
 }

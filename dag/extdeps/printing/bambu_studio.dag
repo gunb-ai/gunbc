@@ -124,4 +124,3 @@ data bambu_studio_platform_support: List<PlatformSupportClaim> = concat(
   bambu_studio_spec_sheet_platforms,
   bambu_studio_release_artifact_platforms
 )
-

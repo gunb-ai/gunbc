@@ -1,6 +1,6 @@
 module v1.compiler.runtime_rust
 
-import extdeps.filesystem.rust_realization { rust_file_write_create_new_fn_def }
+import extdeps.filesystem.rust_realization { rust_file_create_new_canonical_block }
 
 fn rt_header() -> String {
   concat(
@@ -591,7 +591,7 @@ fn rt_rc_container_ops() -> String {
 // partition crates re-export only what stage0_crates names explicitly.
 fn rt_filesystem() -> String {
   concat(
-    "pub ", rust_file_write_create_new_fn_def, "\n",
+    rust_file_create_new_canonical_block(), "\n",
     "#[derive(Debug, Clone)]\n",
     "pub struct FilesystemReadResult {\n",
     "    pub content: String,\n",

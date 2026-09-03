@@ -1725,15 +1725,27 @@ struct CrossClaimPureMemo {
     /// recompute, never a wrong value. Served-on-hash-alone, main's floor produced six emit
     /// failures whose values belonged to OTHER calls of the same producer (no field
     /// 'produced_decl_support' on type 'TargetModel', run 33269961629).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
+    /// THE RETAINED VALUE IS THE REIFIED `Value`, NOT THE PORTABLE FORM, AND THAT IS WHAT
+    /// MAKES A SERVE ZERO-WALK. Publication still reifies to `PortableValue` first — that walk
+    /// is the TOTAL portability check and the byte-budget measurement — but the portable form
+    /// is then converted ONCE, here, and every later claim is handed an `Rc` clone. `Value`'s
+    /// containers are all `Rc`-backed and `Symbol` is a process-canonical `&'static str`, so a
+    /// value reconstructed from a portable form carries nothing frame-bound: field order sorts
+    /// on process-global pointer identity, and equality no longer depends on which frame
+    /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
+    /// used to rebuild per consuming frame, at O(1) instead of O(size).
+    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
     /// from missing hits.
     overflow: u64,
     /// Estimated retained bytes over every stored entry (argument rows AND values, collision
-    /// buckets included), computed from the reified `PortableValue` at publication — reification
-    /// is total, so the size is known before the store lands. The ACTUAL byte bound review
+    /// buckets included), measured on the `PortableValue` at publication — reification is
+    /// total, so the size is known before the store lands. It is measured on the portable form
+    /// and CHARGED for the `Value` retained in its place: the two carry the same reachable
+    /// content (the same `Rc<str>` spellings, the same numbers, the same field count), so the
+    /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
@@ -2080,16 +2092,11 @@ fn try_cross_claim_pure_memo(
     // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
     // the full portable argument row, so an intra-frame hash collision cannot alias either.
     let portable_args = portable_args_from_ctx(ctx, args)?;
-    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key).and_then(
-        |entries: &Vec<(Vec<(Option<String>, PortableValue)>, Value)>| {
-            entries.iter().find_map(|(stored_args, v)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| v.clone())
-            })
-        },
-    ) {
-        return Some(v);
-    }
-    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| {
+    // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
+    // per-context hit cache this path used to maintain is gone with the walk it existed to
+    // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
+    // machinery it obsoletes.
+    let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
         m.borrow().map.get(&memo_key).and_then(|bucket| {
             bucket.iter().find_map(|(stored_args, stored)| {
                 cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
@@ -2097,12 +2104,6 @@ fn try_cross_claim_pure_memo(
         })
     })?;
     cross_claim_observe_hit(func_name);
-    let value = value_from_portable_ctx(ctx, &portable);
-    ctx.cross_claim_hit_cache
-        .borrow_mut()
-        .entry(memo_key)
-        .or_default()
-        .push((portable_args, value.clone()));
     Some(value)
 }
 
@@ -2233,10 +2234,14 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedByteBudget;
         }
         m.bytes += entry_bytes;
+        // Reify ONCE, at publication, and retain the value every later claim will be handed.
+        // The portable form has done its two jobs by here — it proved total portability and it
+        // measured the entry — and nothing downstream needs it again.
+        let served = value_from_portable_ctx(ctx, &portable);
         m.map
             .entry(memo_key)
             .or_default()
-            .push((portable_args, portable));
+            .push((portable_args, served));
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -2811,6 +2816,60 @@ mod cross_claim_memo_tests {
             try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
             "control: the resolved roster identity stores and serves"
         );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED FOR THE ZERO-WALK SERVE. The re-enrol trigger `v2.workflow.floor_pure_producer_share`
+    // carries is "a serve that does not re-intern and re-sort per consuming frame — an
+    // interner-stable representation the tier can hand over without walking the whole value".
+    // This is the executed evidence that it holds, and it discriminates: under the previous
+    // serve every consuming frame ran `value_from_portable_ctx` over the whole value, so two
+    // frames received two DISTINCT allocations of an equal value and `Rc::ptr_eq` was false.
+    // Structural equality cannot see the difference — it was equal before and is equal now —
+    // so the assertion is on ALLOCATION IDENTITY, which is what "did not walk it" means.
+    #[test]
+    fn two_frames_are_served_the_same_allocation_rather_than_two_reconstructions() {
+        use super::{
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let filling = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args: [(Option<String>, Value); 0] = [];
+        // A nested value, so a walk would have to rebuild an inner container too.
+        let value = list_value(vec![
+            Value::Str(RcStr::from("alpha")),
+            list_value(vec![Value::Int(1), Value::Int(2)]),
+        ]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&filling, &fn_node, "prepare_grammar", &args, &value, None),
+            CrossClaimStoreOutcome::Stored
+        );
+
+        let consumer_a = fresh_ctx();
+        let consumer_b = fresh_ctx();
+        let served_a = try_cross_claim_pure_memo(&consumer_a, &fn_node, "prepare_grammar", &args)
+            .expect("frame A is served");
+        let served_b = try_cross_claim_pure_memo(&consumer_b, &fn_node, "prepare_grammar", &args)
+            .expect("frame B is served");
+
+        let (Value::List(a), Value::List(b)) = (&served_a, &served_b) else {
+            panic!("expected two served lists, got {served_a:?} and {served_b:?}");
+        };
+        assert!(
+            Rc::ptr_eq(a, b),
+            "two consuming frames must share one allocation: a serve that reconstructs the \
+             value per frame is the cost this tier's re-enrol trigger names"
+        );
+        // And the served value is still the value that was stored, in both frames.
+        assert_eq!(served_a, value);
+        assert_eq!(served_b, value);
         super::clear_cross_claim_pure_memos();
     }
 
@@ -4174,13 +4233,6 @@ pub struct InterpContext {
     // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values already served from the cross-claim tier: reconstruction
-    /// still rebuilds the value containers (but carries canonical symbols without re-interning),
-    /// so a hot producer served on every call would pay that per CALL; this bounds it to once
-    /// per frame. Keyed identically to the global tier; lives and dies with the frame.
-    cross_claim_hit_cache: std::cell::RefCell<
-        HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
-    >,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -4487,7 +4539,6 @@ impl InterpContext {
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
-            cross_claim_hit_cache: std::cell::RefCell::new(HashMap::new()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new({
                 let mut interner = SymbolInterner::default();
@@ -11490,6 +11541,62 @@ fn subject_module_value(
     }
 }
 
+/// Encode one source's parsed import statements: the parser's delimited spans, or the typed
+/// refusal. A source that did not parse and a source with no imports are different values here
+/// because they are different facts, and a caller that stripped nothing from the first would
+/// report a clean rewrite of a file it never read.
+fn parsed_import_statements_value(
+    outcome: &crate::std_import::ParsedImportStatements,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ParsedImportStatements as P;
+    match outcome {
+        P::ImportStatementsParsed { statements } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementsParsed"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("statements"),
+                list_value(
+                    statements
+                        .iter()
+                        .map(|statement| Value::Record {
+                            type_name: ctx.sym("ParsedImportStatement"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (
+                                    ctx.sym("span"),
+                                    Value::Record {
+                                        type_name: ctx.sym("SourceSpan"),
+                                        fields: Rc::new(sorted_fields(vec![
+                                            (
+                                                ctx.sym("file"),
+                                                str_value(statement.span.file.clone()),
+                                            ),
+                                            (ctx.sym("start"), Value::Int(statement.span.start)),
+                                            (ctx.sym("end"), Value::Int(statement.span.end)),
+                                        ])),
+                                    },
+                                ),
+                                (
+                                    ctx.sym("imported_module"),
+                                    str_value(statement.imported_module.clone()),
+                                ),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+        P::ImportStatementParseRefused { cause } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementParseRefused"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("cause"),
+                str_value(cause.clone()),
+            )])),
+        },
+    }
+}
+
 fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
@@ -12933,10 +13040,17 @@ mod write_file_create_new_tests {
             .to_path_buf()
     }
 
+    // THE BLOCK, NOT THE FUNCTION. Extraction starts at the generated CONSTANT, not at `pub fn`.
+    // Starting at the function would leave a real blind spot the moment the limit became a named
+    // authority: seed renders 1024, v1_rt renders a stale 512, the function bytes match, BOTH
+    // projections compile, this control stays green, and the two behave differently. "It would not
+    // compile without the constant" proves presence, never agreement.
+    const CANONICAL_BLOCK_MARKER: &str = "pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT";
+
     fn extract_create_new_definition(source: &str, what: &str) -> String {
         let start = source
-            .find("pub fn gunbc_file_write_create_new")
-            .unwrap_or_else(|| panic!("{what} does not carry the create-new definition"));
+            .find(CANONICAL_BLOCK_MARKER)
+            .unwrap_or_else(|| panic!("{what} does not carry the create-new canonical block"));
         let rest = &source[start..];
         let end = rest
             .find("\n}\n")
@@ -12956,13 +13070,19 @@ mod write_file_create_new_tests {
         let seed = extract_create_new_definition(&seed_src, "the generated seed module");
         let runtime = extract_create_new_definition(&runtime_src, "emitted v1_rt");
 
-        // (2) exactly once in the runtime projection -- a second copy would be a second authority
-        assert_eq!(
-            runtime_src
-                .matches("pub fn gunbc_file_write_create_new")
-                .count(),
-            1,
-            "v1_rt must carry the definition exactly once",
+        // (2) exactly once in the runtime projection -- a second copy would be a second authority,
+        // checked for the constant AND the function, since either alone could be duplicated.
+        for marker in [CANONICAL_BLOCK_MARKER, "pub fn gunbc_file_write_create_new"] {
+            assert_eq!(
+                runtime_src.matches(marker).count(),
+                1,
+                "v1_rt must carry {marker} exactly once",
+            );
+        }
+        // The block really must carry the limit, or the extraction range proves nothing about it.
+        assert!(
+            seed.starts_with(CANONICAL_BLOCK_MARKER),
+            "the compared range must begin at the generated limit, not at the function",
         );
         // (3) the two extracted byte ranges are identical
         assert_eq!(
@@ -13027,36 +13147,165 @@ mod write_file_create_new_tests {
     // loss. It goes red against a one-shot candidate, which the previous control could not do.
     #[test]
     fn an_occupied_staging_candidate_is_skipped_rather_than_refused() {
+        // A FRESH PROCESS, NOT A FORK. The previous version of this control forked and asserted the
+        // child's first candidate was seq 0. That was wrong, and external review caught it: fork
+        // COPIES the counter's current value, and cargo runs these tests as threads of ONE process
+        // where sibling tests have already advanced it. The planted name was then not a candidate at
+        // all, so the control passed without ever exercising an occupied candidate -- the identical
+        // vacuity this test exists to rule out. Only a new process gives the static its initializer.
+        let exe = std::env::current_exe().expect("test binary");
+        let helper = exact_helper_name(&exe, HELPER_LEAF);
+        let out = std::process::Command::new(exe)
+            .args(["--exact", &helper, "--nocapture", "--test-threads=1"])
+            .env(HELPER_ENV, "1")
+            .output()
+            .expect("re-exec the test binary");
+        let rendered = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        // The helper is inert without the variable, so prove the child actually RAN it -- otherwise a
+        // renamed test would leave this green while asserting nothing.
+        assert!(
+            rendered.contains("1 passed"),
+            "the helper child must run exactly one test; got:\n{rendered}",
+        );
+        assert!(
+            out.status.success(),
+            "an occupied staging candidate must be skipped, the next acquired, the target \
+             published, and the planted file left untouched; got:\n{rendered}",
+        );
+    }
+
+    // THE BUDGET REFUSAL HAS TO BE REACHED, NOT ASSERTED. Nothing above this exercises the arm that
+    // ends the candidate search, so without it the limit is a number no executed path ever meets.
+    // It occupies exactly the CONFIGURED number of candidates -- read from the one authority, never
+    // retyped -- so that changing the limit changes this control rather than leaving it stale.
+    #[test]
+    fn the_candidate_budget_refuses_rather_than_publishing_or_looping() {
+        let exe = std::env::current_exe().expect("test binary");
+        let helper = exact_helper_name(&exe, BUDGET_HELPER_LEAF);
+        let out = std::process::Command::new(exe)
+            .args(["--exact", &helper, "--nocapture", "--test-threads=1"])
+            .env(BUDGET_HELPER_ENV, "1")
+            .output()
+            .expect("re-exec the test binary");
+        let rendered = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        assert!(
+            rendered.contains("1 passed"),
+            "the budget helper child must run exactly one test; got:\n{rendered}",
+        );
+        assert!(
+            out.status.success(),
+            "an exhausted candidate budget must refuse, leave the target absent, and leave every \
+             planted candidate untouched; got:\n{rendered}",
+        );
+    }
+
+    const BUDGET_HELPER_ENV: &str = "GUNBC_STAGING_CANDIDATE_BUDGET_CHILD";
+    const BUDGET_HELPER_LEAF: &str = "::staging_candidate_budget_child_helper";
+
+    #[test]
+    fn staging_candidate_budget_child_helper() {
+        if std::env::var(BUDGET_HELPER_ENV).is_err() {
+            return;
+        }
+        let limit =
+            crate::gunbc_file_transport_generated::GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT;
+        let dir = std::env::temp_dir().join(format!("gunbc-budget-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // Occupy every candidate this call is permitted to try, and no more.
+        let planted: Vec<String> = (0..limit)
+            .map(|seq| format!("{}.gunbc-create-{}-{}", target, std::process::id(), seq))
+            .collect();
+        for (seq, name) in planted.iter().enumerate() {
+            std::fs::write(name, format!("occupant {seq}")).expect("plant a candidate");
+        }
+
+        let refusal = super::write_file_create_new(&target, b"a fresh repository")
+            .expect_err("an exhausted candidate budget must refuse");
+        // NOT AlreadyExists: the target is absent, and conflating the two is the defect this
+        // whole module exists to remove.
+        assert_eq!(refusal.kind(), std::io::ErrorKind::Other, "{refusal}");
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains("StagingCandidateBudgetExhausted")
+                && rendered.contains(&format!("attempted={limit}"))
+                && rendered.contains(&format!("limit={limit}")),
+            "the refusal must name the cause and the budget it reached: {rendered}",
+        );
+        assert!(
+            !path.exists(),
+            "no target may be published when the budget is exhausted"
+        );
+        for (seq, name) in planted.iter().enumerate() {
+            assert_eq!(
+                std::fs::read_to_string(name).expect("a planted candidate must survive"),
+                format!("occupant {seq}"),
+                "a refusal must not delete another attempt's file",
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Ask the harness for a helper's own full path rather than spelling it here: a hardcoded module
+    // path would go stale on a rename and leave the control running nothing at all.
+    fn exact_helper_name(exe: &std::path::Path, leaf: &str) -> String {
+        let listed = std::process::Command::new(exe)
+            .args(["--list"])
+            .output()
+            .expect("list tests");
+        let listing = String::from_utf8_lossy(&listed.stdout);
+        let matches: Vec<&str> = listing
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .filter(|name| name.ends_with(leaf))
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected exactly one helper named {leaf}, found {matches:?}",
+        );
+        matches[0].to_string()
+    }
+
+    const HELPER_ENV: &str = "GUNBC_OCCUPIED_STAGING_CANDIDATE_CHILD";
+    const HELPER_LEAF: &str = "::occupied_staging_candidate_child_helper";
+
+    // Runs for real ONLY in the child process the control above spawns, where this is the first and
+    // only caller and the sequence therefore starts at its initializer.
+    #[test]
+    fn occupied_staging_candidate_child_helper() {
+        if std::env::var(HELPER_ENV).is_err() {
+            return;
+        }
         let dir = std::env::temp_dir().join(format!("gunbc-occupied-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join("repo.json");
         let target = path.to_str().unwrap().to_string();
 
-        // A forked child gives a known-fresh sequence: its first candidate is seq 0.
-        let child = unsafe { libc::fork() };
-        assert!(child >= 0, "fork");
-        if child == 0 {
-            let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
-            let ok = std::fs::write(&planted, b"a stale internal candidate").is_ok()
-                && super::write_file_create_new(&target, b"a fresh repository").is_ok()
-                && std::fs::read(&target).ok().as_deref() == Some(b"a fresh repository".as_slice())
-                // the occupied candidate must survive: it is another attempt's file
-                && std::fs::read(&planted).ok().as_deref()
-                    == Some(b"a stale internal candidate".as_slice());
-            unsafe { libc::_exit(if ok { 0 } else { 1 }) };
-        }
-        let mut status: libc::c_int = 0;
-        unsafe { libc::waitpid(child, &mut status, 0) };
-        let code = (status >> 8) & 0xff;
-        assert_eq!(
-            code, 0,
-            "an occupied staging candidate must be skipped, the next acquired, the target published, \
-             and the planted file left untouched",
-        );
+        let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
+        std::fs::write(&planted, b"a stale internal candidate").expect("plant the first candidate");
 
+        super::write_file_create_new(&target, b"a fresh repository")
+            .expect("an occupied staging candidate must be skipped, not refused");
         assert_eq!(
             std::fs::read(&path).expect("target must be published"),
             b"a fresh repository",
+        );
+        // The occupied candidate must survive: it is another attempt's file, and removing it would
+        // convert a naming collision into data loss.
+        assert_eq!(
+            std::fs::read(&planted).expect("the planted candidate must survive"),
+            b"a stale internal candidate",
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -17365,6 +17614,16 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::doc_graph_dangling_link_count(),
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+
+            arm "free_call.parsed_import_statements" { "parsed_import_statements" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let observed =
+                    crate::v1_gunbc_parsed_import_statements::parsed_import_statements(
+                        file, source,
+                    );
+                Ok(Some(parsed_import_statements_value(&observed, $ctx)))
+            },
 
             arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
                 let file = expect_str($positional.first().copied(), $name)?;

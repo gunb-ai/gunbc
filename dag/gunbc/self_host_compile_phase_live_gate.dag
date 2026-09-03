@@ -256,14 +256,14 @@ fn live_observation_from_measurement(
 // The verdict for a measurement, which is the only entry point a consumer should use: it cannot be
 // handed an observation that no measurement produced.
 fn live_tree_verdict_for_measurement(
-  series: List<CompilePhaseFrontierReceipt>,
+  standing: CompilePhaseFrontierStanding,
   m: EmissionMeasurement,
   toolchain: LiveToolchainReading
 ) -> LiveFrontierVerdict {
   match live_observation_from_measurement(m: m, toolchain: toolchain) {
     LiveObservationNotTaken { cause: why } => LiveFrontierUnmeasured { reason: why }
     LiveObservationTaken { observation: observation } =>
-      live_tree_frontier_verdict(series: series, observation: observation)
+      live_tree_frontier_verdict(standing: standing, observation: observation)
   }
 }
 
@@ -279,11 +279,28 @@ fn live_phase_board(observation: LiveCompilePhaseObservation) -> PersistedPhaseB
 // board; a live tree carries no such authored disposition, so any identity the live board holds
 // and the latest receipt does not refuses here. The remedy is to append a receipt -- to make the
 // exposure a declared, checked fact -- and not to teach this gate to guess a cause.
+// THE PARAMETER IS THE STANDING AND NOT THE SERIES, and the distinction is the difference between
+// a parameter the body consumes and a parameter it merely passes through. Every use of `series`
+// below was one call to `compile_phase_frontier_standing`; nothing else in this fold ever looked at
+// a receipt list. Taking the series therefore declared a dependency wider than the body has, and
+// the width was not free: it forced the fold to be RE-DERIVED at every call even when every caller
+// meant the same persisted series, because the shared value was one level inside the parameter
+// rather than being the parameter.
+//
+// TAKING THE STANDING KEEPS EVERY CALLER HONEST IN BOTH DIRECTIONS. A caller judging the live tree
+// against THE persisted frontier passes `current_compile_phase_frontier_standing()`, which names
+// that subject exactly and is servable across claim frames. A caller judging a PERTURBED series --
+// which is what this module's witnesses exist to do -- passes
+// `compile_phase_frontier_standing(series: <perturbed>)` and gets a genuine re-derivation, because
+// its subject genuinely differs. Neither spelling can be mistaken for the other at a call site,
+// which the old signature could not say: `series: self_host_compile_phase_frontier_receipts` and
+// `series: self_host_compile_phase_frontier_receipts |> skip(n: 1)` are one character apart and
+// mean entirely different subjects.
 fn live_tree_frontier_verdict(
-  series: List<CompilePhaseFrontierReceipt>,
+  standing: CompilePhaseFrontierStanding,
   observation: LiveCompilePhaseObservation
 ) -> LiveFrontierVerdict {
-  match compile_phase_frontier_standing(series: series) {
+  match standing {
     CompilePhaseFrontierInvalid { reason: why } => LiveFrontierRefused {
       identities: [],
       reason: concat(
