@@ -19,10 +19,6 @@ import tools.multi_module_compile_fixture {
   FixtureCompileCompleted,
   compile_fixture
 }
-import gunbc.namespace_step0_canary {
-  namespace_step0_canary_contract,
-  namespace_step0_manifest_identity
-}
 import gunbc.namespace_step0_subject_collector {
   Step0SubjectVector,
   Step0SubjectMember,

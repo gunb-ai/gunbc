@@ -1,0 +1,307 @@
+module test.claim.path_writer_set_witness_test
+
+import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.cross_pr_contradiction { HeadRefStale, DiffRefused, DiffEmptyUnderived }
+import gunbc.path_writer_set {
+  PathMatchRule,
+  ExactPath,
+  DirectoryPrefix,
+  path_match_rule,
+  path_match_rule_text,
+  path_touches_subject,
+  PullIdentity,
+  PrPathObservation,
+  PrPathsRead,
+  PrPathsEmptyDerived,
+  PrPathsEmptyCorroborated,
+  PrPathsUnobserved,
+  WriterSetReport,
+  writer_set_report,
+  report_is_complete,
+  report_unobserved,
+  writer_set_lines,
+  writer_set_exit,
+  diff_path_scope_text,
+  writer_set_diff_scope
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING FIXTURES FOR THE WRITER-SET QUERY.
+//
+// Every subject here is authored in this file. The live population is the open pull requests, which
+// change hourly, so a witness reading them would assert whatever the fleet happened to be doing and
+// could not go red on a defect. These fixtures cannot lose their subject.
+
+fn pull(number: Int, author: String) -> PullIdentity {
+  PullIdentity {
+    number: number,
+    author: author,
+    head_ref_name: concat("session/branch-", to_string(number)),
+    title: concat("some work on ", to_string(number))
+  }
+}
+
+fn read_of(number: Int, author: String, touched: List<String>) -> PrPathObservation {
+  PrPathsRead { pull: pull(number: number, author: author), head_oid: concat("oid-", to_string(number)), touched: touched }
+}
+
+data subject_file: String = "dag/gunbc/fixture_contended_authority.dag"
+
+// ---------------------------------------------------------------------------------------------
+// THE MATCH RULE.
+
+// THE RULE IS DERIVED FROM THE SPELLING, AND THE TWO SPELLINGS ASK DIFFERENT QUESTIONS. This is the
+// pair that goes red if `path_match_rule` ever guesses -- for instance by treating a subject with
+// no dot as a directory. Both halves are asserted: a prefix rule applied to an exact subject would
+// pass the first clause alone.
+test fn the_trailing_separator_decides_the_rule() -> Bool {
+  let exact = path_match_rule(subject: "dag/gunbc/pr_digests.dag")
+  let prefix = path_match_rule(subject: "dag/gunbc/")
+  match exact {
+    ExactPath =>
+      match prefix {
+        DirectoryPrefix => true
+        ExactPath => false
+      }
+    DirectoryPrefix => false
+  }
+}
+
+// A SIBLING WHOSE NAME EXTENDS THE SUBJECT IS NOT THE SUBJECT. `dag/gunbc/pr_digests.dag` and
+// `dag/gunbc/pr_digests.dag.bak` share a prefix, and an exact query answered by prefix matching
+// would name a writer of a file nobody asked about. This goes red the moment `ExactPath` is
+// implemented as `starts_with`.
+test fn an_exact_subject_does_not_match_a_longer_path() -> Bool {
+  path_touches_subject(changed: "dag/gunbc/pr_digests.dag", subject: "dag/gunbc/pr_digests.dag", rule: ExactPath)
+    && !path_touches_subject(changed: "dag/gunbc/pr_digests.dag.bak", subject: "dag/gunbc/pr_digests.dag", rule: ExactPath)
+}
+
+test fn a_directory_subject_matches_beneath_it_and_nothing_else() -> Bool {
+  path_touches_subject(changed: "dag/gunbc/instruments/ci_gates.dag", subject: "dag/gunbc/instruments/", rule: DirectoryPrefix)
+    && !path_touches_subject(changed: "dag/gunbc/pr_digests.dag", subject: "dag/gunbc/instruments/", rule: DirectoryPrefix)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN.
+
+// THE POSITIVE CONTROL. Two branches touching one file, one branch touching something else: the
+// writer set is the two, and the third is observed and absent from it rather than unread.
+test fn every_pull_request_touching_the_subject_is_a_writer() -> Bool {
+  let report = writer_set_report(
+    subject: subject_file,
+    observations: [
+      read_of(number: 101, author: "alice", touched: [subject_file, "docs/notes.md"]),
+      read_of(number: 102, author: "bob", touched: ["src/v2/other.dag"]),
+      read_of(number: 103, author: "carol", touched: ["docs/notes.md", subject_file])
+    ]
+  )
+  report.writers.length() == 2
+    && filter(report.writers, w => w.pull.number == 101).length() == 1
+    && filter(report.writers, w => w.pull.number == 103).length() == 1
+    && report_is_complete(report: report)
+}
+
+// THE WRITER ROW CARRIES THE PATHS THAT MATCHED, and under a directory subject that list IS the
+// answer. A row reduced to a boolean would pass a test that only counted writers.
+test fn a_writer_row_names_the_paths_that_matched() -> Bool {
+  let report = writer_set_report(
+    subject: "dag/gunbc/instruments/",
+    observations: [
+      read_of(
+        number: 201,
+        author: "dave",
+        touched: ["dag/gunbc/instruments/ci_gates.dag", "dag/gunbc/instruments/emit_host_gate.dag", "README.md"]
+      )
+    ]
+  )
+  report.writers.length() == 1
+    && filter(report.writers, w => w.matched.length() == 2).length() == 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// EMPTY IS NOT ABSENT.
+
+// THE PAIR THAT MATTERS. Both arms contribute no writer; only one of them leaves the report
+// complete and its "nobody" believable. A model that rendered an unread pull request as one that
+// touches nothing would make these two indistinguishable, and this witness is what fails when it
+// does. It asserts BOTH the completeness verdict and the exit status, because the exit status is
+// what a script branches on and a completeness flag nothing consumes is a decoration.
+test fn an_unread_pull_request_and_a_contentless_one_are_different_states() -> Bool {
+  let contentless = writer_set_report(
+    subject: subject_file,
+    observations: [PrPathsEmptyCorroborated { pull: pull(number: 301, author: "erin"), head_oid: "oid-301" }]
+  )
+  let unread = writer_set_report(
+    subject: subject_file,
+    observations: [
+      PrPathsUnobserved {
+        pull: pull(number: 302, author: "frank"),
+        cause: HeadRefStale { ref_name: "origin/x", expected_oid: "aaaa", local_oid: "bbbb" }
+      }
+    ]
+  )
+  contentless.writers.length() == 0
+    && unread.writers.length() == 0
+    && report_is_complete(report: contentless)
+    && !report_is_complete(report: unread)
+    && exit_is_success(exit: writer_set_exit(report: contentless))
+    && !exit_is_success(exit: writer_set_exit(report: unread))
+}
+
+fn exit_is_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// A BRANCH THAT IS AN ANCESTOR OF THE BASE IS EMPTY BY DERIVATION AND STILL COMPLETE. The third
+// non-writer arm, held apart from the unread one for the same reason.
+test fn a_derived_empty_branch_leaves_the_report_complete() -> Bool {
+  let report = writer_set_report(
+    subject: subject_file,
+    observations: [PrPathsEmptyDerived { pull: pull(number: 303, author: "grace"), head_oid: "oid-303" }]
+  )
+  report.writers.length() == 0 && report_is_complete(report: report)
+}
+
+// A DIFF THAT DID NOT RUN IS UNOBSERVED. This is the arm `gunbc.cross_pr_contradiction` cannot
+// produce and this producer can, and it must not be quietly equivalent to a branch that touches
+// nothing.
+test fn a_refused_diff_is_unobserved() -> Bool {
+  let report = writer_set_report(
+    subject: subject_file,
+    observations: [
+      PrPathsUnobserved {
+        pull: pull(number: 304, author: "heidi"),
+        cause: DiffRefused { head_oid: "oid-304", detail: "fatal: bad object" }
+      }
+    ]
+  )
+  report_unobserved(report: report).length() == 1 && !report_is_complete(report: report)
+}
+
+// AN EMPTY LOCAL DIFF THE FORGE CONTRADICTS IS ALSO UNOBSERVED, not a contentless branch.
+test fn a_forge_disagreement_over_an_empty_diff_is_not_an_observation() -> Bool {
+  let report = writer_set_report(
+    subject: subject_file,
+    observations: [
+      PrPathsUnobserved {
+        pull: pull(number: 305, author: "ivan"),
+        cause: DiffEmptyUnderived { head_oid: "oid-305", forge_changed_files: 7 }
+      }
+    ]
+  )
+  !report_is_complete(report: report)
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE ANSWER SAYS.
+
+fn lines_contain(lines: List<String>, needle: String) -> Bool {
+  filter(lines, l => string_contains(l, needle)).length() > 0
+}
+
+// NOBODY IS SAID IN WORDS, AND ONLY WHEN IT IS TRUE. A complete report with no writers says so; an
+// INCOMPLETE one with no writers must not, because that sentence would be the answer the asker is
+// most likely to accept without checking. The two clauses are the discriminating pair: a renderer
+// that printed the same sentence for both would pass the first alone.
+test fn nobody_is_an_answer_only_over_a_complete_population() -> Bool {
+  let complete = writer_set_lines(
+    report: writer_set_report(
+      subject: subject_file,
+      observations: [PrPathsEmptyCorroborated { pull: pull(number: 401, author: "judy"), head_oid: "oid-401" }]
+    )
+  )
+  let incomplete = writer_set_lines(
+    report: writer_set_report(
+      subject: subject_file,
+      observations: [
+        PrPathsUnobserved {
+          pull: pull(number: 402, author: "ken"),
+          cause: DiffRefused { head_oid: "oid-402", detail: "fatal: bad object" }
+        }
+      ]
+    )
+  )
+  lines_contain(lines: complete, needle: concat("no open pull request touches ", subject_file))
+    && !lines_contain(lines: incomplete, needle: concat("no open pull request touches ", subject_file))
+    && lines_contain(lines: incomplete, needle: "the population is incomplete")
+}
+
+// THE ANSWER NAMES WHO, NOT JUST HOW MANY. The author and the branch are what the asker acts on;
+// a row carrying only a number would pass every counting witness above.
+test fn a_writer_row_names_the_author_and_the_branch() -> Bool {
+  let lines = writer_set_lines(
+    report: writer_set_report(
+      subject: subject_file,
+      observations: [read_of(number: 501, author: "mallory", touched: [subject_file])]
+    )
+  )
+  lines_contain(lines: lines, needle: "#501")
+    && lines_contain(lines: lines, needle: "mallory")
+    && lines_contain(lines: lines, needle: "session/branch-501")
+    && lines_contain(lines: lines, needle: concat("  touches\t", subject_file))
+}
+
+// EVERY UNREAD PULL REQUEST IS NAMED IN THE OUTPUT WITH ITS CAUSE. A count alone tells the asker
+// the answer is incomplete without telling them which branch to go and look at.
+test fn an_unread_pull_request_is_named_with_its_cause() -> Bool {
+  let lines = writer_set_lines(
+    report: writer_set_report(
+      subject: subject_file,
+      observations: [
+        PrPathsUnobserved {
+          pull: pull(number: 601, author: "niaj"),
+          cause: HeadRefStale { ref_name: "origin/session/branch-601", expected_oid: "aaaa", local_oid: "bbbb" }
+        }
+      ]
+    )
+  )
+  lines_contain(lines: lines, needle: "unobserved\t#601")
+    && lines_contain(lines: lines, needle: "niaj")
+    && lines_contain(lines: lines, needle: "the local ref is stale")
+}
+
+// THE NAIVE COUNT IS THE CORRECT COUNT, AND THIS IS THE WITNESS THAT KEEPS IT SO.
+//
+// The obvious way to count this report's answer is `grep -c '^writer'`. Under the first cut of the
+// renderer -- summary `writers<TAB>8` above rows `writer<TAB>#10263...` -- that command returned
+// nine for eight writers, counting the header as a datum, and it is how this instrument's own
+// author first misreported its output. The repair was to rename the summary keys so the naive
+// command is CORRECT rather than warned about, and this witness is the thing that fails if any
+// future summary key reintroduces the prefix. It asserts the property directly -- lines beginning
+// `writer` number exactly the writers, lines beginning `unobserved` number exactly the unobserved --
+// over a report that has BOTH kinds of row, which is the only shape where the collision is visible.
+test fn writer_set_row_keys_do_not_collide_with_summary_keys() -> Bool {
+  let report = writer_set_report(
+    subject: subject_file,
+    observations: [
+      read_of(number: 701, author: "olivia", touched: [subject_file]),
+      read_of(number: 702, author: "peggy", touched: [subject_file]),
+      PrPathsUnobserved {
+        pull: pull(number: 703, author: "quentin"),
+        cause: DiffRefused { head_oid: "oid-703", detail: "fatal: bad object" }
+      }
+    ]
+  )
+  let lines = writer_set_lines(report: report)
+  filter(lines, l => starts_with(s: l, prefix: "writer")).length() == 2
+    && filter(lines, l => starts_with(s: l, prefix: "unobserved")).length() == 1
+    && report.writers.length() == 2
+    && report_unobserved(report: report).length() == 1
+}
+
+// THE REPORT STATES ITS OWN SCOPE. A writer set taken with rename detection ON is a different
+// observation, and a report that did not say which it was would be quoted as the other.
+test fn the_report_states_its_rule_and_its_diff_scope() -> Bool {
+  let lines = writer_set_lines(
+    report: writer_set_report(subject: "dag/gunbc/", observations: [])
+  )
+  lines_contain(lines: lines, needle: path_match_rule_text(rule: DirectoryPrefix))
+    && lines_contain(lines: lines, needle: diff_path_scope_text(scope: writer_set_diff_scope))
+    && lines_contain(lines: lines, needle: "rename detection disabled")
+}

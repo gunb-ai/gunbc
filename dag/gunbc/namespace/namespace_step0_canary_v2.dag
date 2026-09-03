@@ -28,8 +28,9 @@ import gunbc.namespace_step0_binding_provenance_contract {
 // So the command below is a LIVE CANDIDATE OBSERVATION and its result is what moves or does not.
 // Editing a receipt literal after reading some other command's output is not movement.
 //
-// V1 RECEIPT ZERO IS NOT MUTATED OR REINTERPRETED BY THIS CONTRACT. It stands as a historical
-// receipt whose truthful standing at its own tree was Step0SubjectNotEntered. This contract
+// V1 RECEIPT ZERO IS NOT MUTATED OR REINTERPRETED BY THIS CONTRACT. The retired authority was
+// deleted; gunbc.namespace_step0_canary_v1_history namespace_step0_canary_v1_historical_receipt
+// retains only its historical observation, whose truthful standing was Step0SubjectNotEntered. This contract
 // ESTABLISHES its own zero, under its own identity, from its own first live run -- and that zero may
 // immediately read SubjectEntered with a completed containment compile, because a newly established
 // baseline is a measurement rather than an achievement. Nothing here manufactures a prerequisite to
@@ -205,12 +206,60 @@ fn step0_import_dependence_not_judged() -> Step0ImportDependenceStanding {
 // the rewrite -- and a raw byte span is not that identity, because deleting an import shifts every
 // later offset in the file. That join is Step 0 evidence work with its own owner; it is deliberately
 // not pulled in here to make two red totals sound cleaner than they are.
+// THE DIFFERENCED POPULATION IS A TYPED FIELD OF THE DIFFERENTIAL, because the headline and the
+// differential do NOT range over the same rows and nothing said so. step0_blocking_measure filters
+// to row.blocking; step0_histogram_differential is handed the FULL census. Both figures were
+// arithmetically correct and were printed side by side, and a reader who differenced the blocking
+// occurrences could not reconcile the result with gross_increases -- the LABELLING was the defect.
+// A caption cannot carry that fact: a caption is prose the substrate cannot read (DESIGN 4c), and
+// the reader who needs it is reading a value. So the domain travels INSIDE the value, and every
+// renderer of a delta prints it from there.
+type Step0DifferentialDomain
+  = EveryCensusRow
+  | BlockingCensusRowsOnly
+
+fn step0_differential_domain_label(domain: Step0DifferentialDomain) -> NonEmptyStr {
+  match domain {
+    EveryCensusRow => "every census row, blocking and advisory alike" as NonEmptyStr
+    BlockingCensusRowsOnly => "only census rows whose blocking flag is set" as NonEmptyStr
+  }
+}
+
+// FOUR PRIMITIVE OCCURRENCE MOVEMENTS, NOT TWO GROSS ONES, and the split is what makes a
+// conservation identity WRITABLE at all. The prior model folded a post-only bucket's whole count
+// into gross_increases, so shared-bucket growth and wholly-new buckets were one number: no identity
+// could be stated over them, and therefore nothing could catch a domain mismatch between the
+// headline and the delta -- precisely the class this receipt exists to refuse. gross_increases and
+// gross_decreases survive as DERIVED projections rather than stored fields (DESIGN section 2), so
+// the two views cannot disagree.
 type Step0HistogramDifferential {
-  gross_increases: Int
-  gross_decreases: Int
+  domain: Step0DifferentialDomain
+  pre_occurrences: Int
+  post_occurrences: Int
+  shared_increases: Int
+  shared_decreases: Int
+  pre_only_occurrences: Int
+  post_only_occurrences: Int
   unchanged_buckets: Int
   pre_only_buckets: Int
   post_only_buckets: Int
+}
+
+fn step0_differential_gross_increases(differential: Step0HistogramDifferential) -> Int {
+  differential.shared_increases + differential.post_only_occurrences
+}
+
+fn step0_differential_gross_decreases(differential: Step0HistogramDifferential) -> Int {
+  differential.shared_decreases + differential.pre_only_occurrences
+}
+
+// THE CONSERVATION IDENTITY, AND IT IS A JOIN BETWEEN TWO PRODUCERS RATHER THAN measure() ==
+// measure(). The left side is each arm's own occurrence total, summed over the row lists directly.
+// The right side is the bucket-by-bucket fold's four movements. They are computed by different
+// walks over the same rows, so a delta whose domain does not match the totals it is differenced
+// against cannot satisfy it. A violation is a refusal, never a printed number.
+fn step0_differential_conserves(differential: Step0HistogramDifferential) -> Bool {
+  (differential.post_occurrences - differential.pre_occurrences) == ((differential.shared_increases + differential.post_only_occurrences) - (differential.shared_decreases + differential.pre_only_occurrences))
 }
 
 type Step0DifferentialStanding
