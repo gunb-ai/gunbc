@@ -19,7 +19,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ampere_altra_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
+// THE UNQUALIFIED NAME USED TO DENOTE THE QUALIFIED PRODUCT, WHICH IS A MEANING FORK. This was
+// named ampere_altra_rev_a1_datasheet_authority while its locator is the Altra MAX datasheet, and
+// its sibling below carries the explicit `classic` qualifier for the non-Max part. So the bare
+// family name denoted the narrower product and the qualified-sounding name denoted the broader
+// one -- one spelling suggesting a meaning it does not carry, which 3 forbids independently of
+// whether any fact was misattributed.
+//
+// NO FACT MOVED, AND THE DISCRIMINATING PAIR IS WHY THAT IS CHECKABLE RATHER THAN ASSERTED. Altra
+// and Altra Max differ in last-level cache, so the two L3 rows below are a natural discriminator:
+// ampere_altra_max_l3_capacity is 16 MiB and cites this authority, ampere_altra_classic_l3_capacity
+// is 32 MiB and cites the classic one. Both were already correct, so this rename is a pure
+// spelling change over 30 references and changes no citation, no value and no authority.
+data ampere_altra_max_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_15_20230809_b7cdce449e_424d129849.pdf"
@@ -111,7 +123,7 @@ data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorT
   maximum_continuous_junction_temperature: celsius(100),
   thermal_throttle_temperature: celsius(105),
   thermal_shutdown_temperature: celsius(120),
-  authority: ampere_altra_rev_a1_datasheet_authority,
+  authority: ampere_altra_max_rev_a1_datasheet_authority,
 }
 
 // Ampere Altra Max Rev A1 datasheet issue 1.25, table 14: M128-30 maximum continuous junction temperature TCJ=100C, SoC thermal throttling TM1=105C, and thermal shutdown TM2=120C. These are processor facts. A fleet fan policy may derive its emergency ramp from them, but must not rewrite them as operator preference.
@@ -128,15 +140,15 @@ data ampere_altra_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
 data ampere_altra_l1_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "data_capacity_per_core"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "line_size"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
 ]
 
@@ -151,11 +163,11 @@ data ampere_altra_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
 data ampere_altra_l2_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l2_cache_geometry", field_name: "capacity_per_core"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l2_cache_geometry", field_name: "line_size"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
 ]
 
@@ -170,11 +182,11 @@ data ampere_altra_max_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry
 data ampere_altra_max_l3_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_l3_cache_geometry", field_name: "capacity"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_l3_cache_geometry", field_name: "line_size"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
 ]
 
@@ -233,11 +245,11 @@ data ampere_lga4926_socket: CpuSocket = CpuSocket {
 data socket_lga4926_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "termination"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "contact_count"),
-    authority: ampere_altra_rev_a1_datasheet_authority,
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
   },
 ]
 

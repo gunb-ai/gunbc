@@ -4,15 +4,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, List }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.guarantee_rung_drop {
-  GuaranteeStall,
-  Mitigatable,
-  MechanicallyPreventable,
-  AwaitsOneGrounding,
-  BoundedPopulation,
-  ClimbableButUnbuilt,
-  UncountedNotEnumerable,
-}
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, ClimbableButUnbuilt, UncountedNotEnumerable }
 
 // WHY THIS CARRIER EXISTS BESIDE THE WALL RATHER THAN INSIDE THE PLAN IT ENFORCES. The
 // enforcement mechanism was dispatched OUTSIDE the import/namespace program deliberately --
