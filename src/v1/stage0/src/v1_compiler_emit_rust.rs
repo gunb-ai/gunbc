@@ -35320,7 +35320,7 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let staging_path = format!(\"{}.gunbc-create-{}\", file_path, std::process::id());\n        let mut staged = std::fs::OpenOptions::new().write(true).create_new(true).open(&staging_path)?;\n        if let Err(staging_err) = staged.write_all(content.as_bytes()) {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(staging_err);\n        }\n        if let Err(sync_err) = staged.sync_all() {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(sync_err);\n        }\n        drop(staged);\n        let published = std::fs::hard_link(&staging_path, &file_path);\n        let _ = std::fs::remove_file(&staging_path);\n        published\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
