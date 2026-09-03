@@ -25,6 +25,9 @@ import extdeps.tools.jq {
   JqProgram,
   JqProgramExit,
   JqRawOutput,
+  JqJsonBinding,
+  JqBindingName,
+  JqLastResultExit,
   jq_authority,
   JqOutcome,
   JqOutputAbsent,
@@ -781,42 +784,6 @@ service openbmc.JsonProjection {
     }
   }
 
-  operation ObjectMapperServiceCount {
-    input { content: String }
-    output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell {
-      argv: ["jq", "-er", ".data[0] | keys | length"]
-      stdin: content
-    }
-    exit {
-      0 => Unit
-      nonzero => String "ObjectMapper service count projection failed"
-    }
-  }
-
-  operation ObjectMapperServiceAt {
-    input { content: String, index: Int }
-    output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell {
-      argv: ["jq", "-er", "--argjson", "index", "{index}", ".data[0] | keys | .[$index]"]
-      stdin: content
-    }
-    exit {
-      0 => Unit
-      nonzero => String "ObjectMapper service projection failed"
-    }
-  }
-
 }
 
 fn openbmc_read_file(
@@ -942,6 +909,121 @@ fn openbmc_sensor_integer_projection_result(
   }
 }
 
+// WAVE 1A, LANDED. The two ObjectMapper projections the sensor-service enumeration makes were
+// argv-spelled shell operations (["jq","-er","--argjson","index","{index}", ...] and
+// ["jq","-er",".data[0] | keys | length"]). Each is now a semantic JqInvocation whose flags and
+// bindings are derived: the program is the domain's, --argjson and --exit-status are jq's. The
+// callers below decode a JqOutcome and stop reading success/value/stderr.
+//
+// ServiceAt carries a typed JSON binding (index) through --argjson and reads under JqLastResultExit:
+// the program emits the service name at that index, or nothing/exit-1 for an out-of-range index.
+type OpenBmcServiceProjectionResult
+  = OpenBmcServiceObserved { service: NonEmptyStr }
+  | OpenBmcServiceProjectionRefused { reason: String }
+
+type OpenBmcServiceCountResult
+  = OpenBmcServiceCountObserved { count: Int }
+  | OpenBmcServiceCountRefused { reason: String }
+
+data openbmc_object_mapper_service_at_program: String = ".data[0] | keys | .[$index]"
+data openbmc_object_mapper_service_count_program: String = ".data[0] | keys | length"
+
+fn openbmc_object_mapper_service_at(content: String, index: Int) -> OpenBmcServiceProjectionResult {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: openbmc_object_mapper_service_at_program },
+    bindings: [
+      JqJsonBinding {
+        name: JqBindingName { name: "index" },
+        value: serialize_json(json_int(index)) as NonEmptyStr,
+      }
+    ],
+    input: JqInputStdin { content: content },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcServiceProjectionRefused {
+        reason: "ObjectMapper service projection could not be lowered to a jq invocation",
+      }
+    Accepted { value: plan, diagnostics: _ } => {
+      let observed = jq_execute_admitted_plan(plan: plan)
+      openbmc_object_mapper_service_at_result(
+        outcome: jq_classify_observation(plan: plan, observation: observed),
+      )
+    }
+  }
+}
+
+fn openbmc_object_mapper_service_at_result(
+  outcome: JqOutcome,
+) -> OpenBmcServiceProjectionResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcServiceProjectionRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcServiceProjectionRefused {
+        reason: "ObjectMapper has no service at this index",
+      }
+    JqOutputPresent { text: text } =>
+      match trim(text) {
+        Empty =>
+          OpenBmcServiceProjectionRefused {
+            reason: "ObjectMapper service name is blank",
+          }
+        non_empty => OpenBmcServiceObserved { service: non_empty as NonEmptyStr }
+      }
+  }
+}
+
+fn openbmc_object_mapper_service_count(content: String) -> OpenBmcServiceCountResult {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: openbmc_object_mapper_service_count_program },
+    bindings: Empty,
+    input: JqInputStdin { content: content },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcServiceCountRefused {
+        reason: "ObjectMapper service count could not be lowered to a jq invocation",
+      }
+    Accepted { value: plan, diagnostics: _ } => {
+      let observed = jq_execute_admitted_plan(plan: plan)
+      openbmc_object_mapper_service_count_result(
+        outcome: jq_classify_observation(plan: plan, observation: observed),
+      )
+    }
+  }
+}
+
+fn openbmc_object_mapper_service_count_result(
+  outcome: JqOutcome,
+) -> OpenBmcServiceCountResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcServiceCountRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcServiceCountRefused {
+        reason: "ObjectMapper service count is absent",
+      }
+    JqOutputPresent { text: text } =>
+      match parse_int(s: trim(text)) {
+        Absent =>
+          OpenBmcServiceCountRefused {
+            reason: "ObjectMapper service count is not an integer",
+          }
+        Present { value: count } =>
+          if count < 0 {
+            OpenBmcServiceCountRefused {
+              reason: "ObjectMapper service count is negative",
+            }
+          } else {
+            OpenBmcServiceCountObserved { count: count }
+          }
+      }
+  }
+}
+
 type OpenBmcTachThresholdSource
   = OpenBmcWarningLowThreshold
   | OpenBmcCriticalLowThreshold
@@ -990,21 +1072,18 @@ fn openbmc_object_mapper_services_rec(
       services: openbmc_collection_from_values(values: built),
     }
   } else {
-    let projected = openbmc.JsonProjection.ObjectMapperServiceAt(
-      content: content,
-      index: index,
-    )
-    if !projected.success || trim(projected.value) == "" {
-      OpenBmcSensorServicesRefused {
-        reason: join(["ObjectMapper service projection failed: ", projected.stderr], ""),
-      }
-    } else {
-      openbmc_object_mapper_services_rec(
-        content: content,
-        index: index + 1,
-        count: count,
-        built: append(built, items: [trim(projected.value) as NonEmptyStr]),
-      )
+    match openbmc_object_mapper_service_at(content: content, index: index) {
+      OpenBmcServiceObserved { service: service } =>
+        openbmc_object_mapper_services_rec(
+          content: content,
+          index: index + 1,
+          count: count,
+          built: append(built, items: [service]),
+        )
+      OpenBmcServiceProjectionRefused { reason: reason } =>
+        OpenBmcSensorServicesRefused {
+          reason: join(["ObjectMapper service projection failed: ", reason], ""),
+        }
     }
   }
 }
@@ -1020,33 +1099,18 @@ fn openbmc_sensor_service(
   if !remote.success {
     OpenBmcSensorServicesRefused { reason: remote.stderr }
   } else {
-    let count_result = openbmc.JsonProjection.ObjectMapperServiceCount(
-      content: remote.stdout,
-    )
-    if !count_result.success {
-      OpenBmcSensorServicesRefused {
-        reason: join(["ObjectMapper service count failed: ", count_result.stderr], ""),
-      }
-    } else {
-      match parse_int(s: trim(count_result.value)) {
-        Absent =>
-          OpenBmcSensorServicesRefused {
-            reason: "ObjectMapper service count is not an integer",
-          }
-        Present { value: count } =>
-          if count < 0 {
-            OpenBmcSensorServicesRefused {
-              reason: "ObjectMapper service count is negative",
-            }
-          } else {
-            openbmc_object_mapper_services_rec(
-              content: remote.stdout,
-              index: 0,
-              count: count,
-              built: [],
-            )
-          }
-      }
+    match openbmc_object_mapper_service_count(content: remote.stdout) {
+      OpenBmcServiceCountRefused { reason: reason } =>
+        OpenBmcSensorServicesRefused {
+          reason: join(["ObjectMapper service count failed: ", reason], ""),
+        }
+      OpenBmcServiceCountObserved { count: count } =>
+        openbmc_object_mapper_services_rec(
+          content: remote.stdout,
+          index: 0,
+          count: count,
+          built: [],
+        )
     }
   }
 }
