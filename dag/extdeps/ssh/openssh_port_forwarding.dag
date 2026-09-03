@@ -1,6 +1,7 @@
 module extdeps.ssh.openssh_port_forwarding
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, List }
+import extdeps.ssh.client_options { SshClientOption, BatchMode, ExitOnForwardFailure, serialize_ssh_client_options }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -127,9 +128,20 @@ type PortForwardSpec {
 // This was not reasoned from the manual: an attempt that re-used an occupied port was observed to
 // print "bind: Address already in use" and "Could not request local forwarding", and the caller
 // that had NOT set this option would have carried on believing it held a tunnel.
-data exit_on_forward_failure_option: NonEmptyStr = "ExitOnForwardFailure=yes"
+// THESE ARE TYPED OPTIONS, NOT SPELLINGS. An earlier revision authored "ExitOnForwardFailure=yes"
+// and "BatchMode=yes" as raw strings beside extdeps.ssh.client_options, which already owns the
+// SshClientOption vocabulary and the one place "-o" and the "=" pairing exist. Two authorities for
+// one keyword's wire form is the §3 fork, and it is the kind that survives a rename upstream by
+// silently disagreeing with its sibling.
+data exit_on_forward_failure_option: SshClientOption = ExitOnForwardFailure { enabled: true }
 
-data batch_mode_option: NonEmptyStr = "BatchMode=yes"
+data batch_mode_option: SshClientOption = BatchMode { enabled: true }
+
+// The forwarding client always sets both, so the pair is bound once rather than at each call site.
+data openssh_forwarding_client_options: List<SshClientOption> = [
+  extdeps.ssh.openssh_port_forwarding.exit_on_forward_failure_option,
+  extdeps.ssh.openssh_port_forwarding.batch_mode_option,
+]
 
 fn forward_flag(direction: ForwardDirection) -> NonEmptyStr {
   match direction {
