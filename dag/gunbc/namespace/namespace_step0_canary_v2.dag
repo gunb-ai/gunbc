@@ -28,8 +28,9 @@ import gunbc.namespace_step0_binding_provenance_contract {
 // So the command below is a LIVE CANDIDATE OBSERVATION and its result is what moves or does not.
 // Editing a receipt literal after reading some other command's output is not movement.
 //
-// V1 RECEIPT ZERO IS NOT MUTATED OR REINTERPRETED BY THIS CONTRACT. It stands as a historical
-// receipt whose truthful standing at its own tree was Step0SubjectNotEntered. This contract
+// V1 RECEIPT ZERO IS NOT MUTATED OR REINTERPRETED BY THIS CONTRACT. The retired authority was
+// deleted; gunbc.namespace_step0_canary_v1_history namespace_step0_canary_v1_historical_receipt
+// retains only its historical observation, whose truthful standing was Step0SubjectNotEntered. This contract
 // ESTABLISHES its own zero, under its own identity, from its own first live run -- and that zero may
 // immediately read SubjectEntered with a completed containment compile, because a newly established
 // baseline is a measurement rather than an achievement. Nothing here manufactures a prerequisite to

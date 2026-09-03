@@ -248,9 +248,29 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 //
 // AGAINST THAT CONTROL THE SERVE BEATS THE RECOMPUTE IN BOTH PAIRS, by roughly a tenth on the
 // rows it reaches, with about an eighth of their eval_steps avoided; the two pairs' bootstrap
-// intervals overlap and neither admits 1. Re-derive with the instrument named rather than
-// trusting this sentence. The estimate is biased TOWARD the null, not toward this result: a row
-// the serve reached whose step count happened not to move lands in the control group.
+// intervals overlap and neither admits 1. The estimate is biased TOWARD the null, not toward this
+// result: a row the serve reached whose step count happened not to move lands in the control group.
+//
+// WHAT RE-DERIVES WHICH HALF OF THAT, BECAUSE ONE INSTRUMENT DOES NOT EXIST. An earlier revision
+// of this paragraph said `re-derive with the instrument named`, and named none: the run ids above
+// are the measurement's STORAGE and `eval_steps` is its OUTPUT column, and neither performs the
+// control split or the interval. Promising a producer that does not exist is worse than
+// transcribing a figure, because a reader who tries to act on the sentence finds nothing to run --
+// and it is a different defect from the one the paragraphs above avoid, which name real
+// instruments (claim_batch under GUNBC_RECOMPUTE_TRACE=1, and the floor's own cost artifact).
+// Corrected rather than softened (raised as REQUEST_CHANGES by codex, review 59321):
+//   RE-DERIVABLE with no instrument at all, from the four run ids plus
+//   `required_floor_claim_cost.tsv`: join the subject's rows across a pair at identity grain,
+//   take the consumer set from the present arm's own `[floor-shared-fill] modules=` field, split
+//   those rows into steps-FELL and steps-BYTE-IDENTICAL, and ratio the aggregates. That is the
+//   decisive comparison, and it needs arithmetic rather than tooling.
+//   NOT RE-DERIVABLE that way: the bootstrap intervals. Resampling needs an RNG the report path
+//   does not have, so they stand as observed and cannot be reproduced from anything named here.
+//   The claim they support -- that neither interval admits 1 -- therefore rests on the original
+//   measurement rather than on anything a later reader can re-run.
+// The row's admission stands on the ratio, which is re-derivable; the intervals corroborate it
+// and are not load-bearing for it. Dropping the split and the intervals while keeping the
+// confident register would have been the same defect with the evidence removed.
 //
 // SO THE ROW STAYS, on all three conjuncts rather than two. The refusal that opened this question
 // is already gone, and by the same reasoning rather than by exemption: gunbc#10141's overlap join

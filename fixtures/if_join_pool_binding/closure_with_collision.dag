@@ -1,0 +1,21 @@
+module fixtures.if_join_pool_binding.closure_with_collision
+
+// THE RED ARM. Entry here puts BOTH modules in one closure and the compile REFUSES at
+// `declaring_module`'s if-expression:
+//
+//   if branches resolve to incompatible types:
+//     Coproduct(PoolSpecimenShape) vs Product(PoolSpecimenSquare)
+//
+// The refusal names `declaring_module`, which neither declares nor imports the competing type --
+// an innocent site. Note this module need not import the colliding SPELLING at all; importing any
+// other member of `colliding_module` is enough, because pool MEMBERSHIP is the variable.
+import fixtures.if_join_pool_binding.declaring_module { PoolSpecimenShape, pick_shape }
+import fixtures.if_join_pool_binding.colliding_module { PoolSpecimenSquare }
+
+fn refusing_use(c: Bool) -> PoolSpecimenShape {
+  pick_shape(c: c)
+}
+
+fn foreign_square() -> PoolSpecimenSquare {
+  PoolSpecimenSquare { s: 3 }
+}
