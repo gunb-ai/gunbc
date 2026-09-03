@@ -40298,17 +40298,37 @@ fn spawn_floor_heartbeat() {
     // the leaf recorded zero high events while its parent slices recorded 141M, so the level
     // that is throttling is not the level that owns the limit, and only the walk shows it.
     let mut beat: u64 = 0;
-    // THE STALL WINDOW, CARRIED BEAT TO BEAT so every run -- green ones above all -- prints the
-    // two figures the stall refusal actually decides on. The line already carried `cpu_ms` and a
-    // cumulative `majflt`, and neither is that: `cpu_ms` is utime PLUS stime, and the kernel bills
-    // reclaim labour to the faulting process as system time, so it reads a pure treadmill as
-    // roughly one-third computing. A census over 60 recent floor runs reconstructed a share from
-    // those fields and ranked a REFUSING run healthier than a green one, which is what a
-    // reconstruction from the wrong quantity buys.
+    // THE STALL WINDOW, OPENED HERE AT SPAWN rather than at the first beat, for the same reason
+    // `started` and `cpu_baseline_ms` are taken here: so the FIRST emitted sample closes a real
+    // window (spawn to beat one) instead of a sentinel. Opening it inside the loop left every run
+    // printing `na` on its first beat, which is worst exactly where this line matters most -- a
+    // short green run that ends after one beat would carry no comparable stall figure at all,
+    // which is the observability hole this repair exists to close (review 59540).
+    //
+    // The line already carried `cpu_ms` and a cumulative `majflt`, and neither is the refusal's
+    // quantity: `cpu_ms` is utime PLUS stime, and the kernel bills reclaim labour to the faulting
+    // process as system time, so it reads a pure treadmill as roughly one-third computing. A
+    // census over 60 recent floor runs reconstructed a share from those fields and ranked a
+    // REFUSING run healthier than a green one, which is what a reconstruction from the wrong
+    // quantity buys.
     //
     // These deltas feed `memory_governor`'s own mirrors, so this is one producer read twice, at a
     // second window, rather than a second computation that agrees today and drifts later.
-    let mut stall_window: Option<required_floor_runner::FloorStallWindow> = None;
+    let mut stall_window = match (
+        crate::memory_governor::self_major_faults(),
+        crate::memory_governor::self_user_cpu_ms(),
+    ) {
+        (Some(major_faults), Some(self_user_cpu_ms)) => {
+            Some(required_floor_runner::FloorStallWindow {
+                started: std::time::Instant::now(),
+                major_faults,
+                self_user_cpu_ms,
+            })
+        }
+        // Unreadable counters stay unreadable: the sentinel survives for platforms with no
+        // procfs, where a check that cannot observe must not fabricate a reading.
+        _ => None,
+    };
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(period_s));
         let seam = FLOOR_SEAM
@@ -40326,9 +40346,10 @@ fn spawn_floor_heartbeat() {
                 Some(f.saturating_sub(prev.major_faults)),
                 Some(c.saturating_sub(prev.self_user_cpu_ms)),
             ),
-            // The FIRST beat has no window to close, and a window that cannot be read has no
-            // figures. Both render the sentinel rather than a zero -- a zero share is the most
-            // severe reading this line can carry, so fabricating one manufactures a stall.
+            // A window that cannot be read has no figures, and renders the sentinel rather than
+            // a zero -- a zero share is the most severe reading this line can carry, so
+            // fabricating one manufactures a stall. With the window opened at spawn this arm is
+            // reached only where the counters themselves do not read.
             _ => required_floor_runner::floor_stall_metric_fields(0, None, None),
         };
         if let (Some(f), Some(c)) = (now_faults, now_user_cpu) {
