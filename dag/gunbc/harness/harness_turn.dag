@@ -393,7 +393,27 @@ fn harness_post_round(
 // is a bound on pathological growth, not the compaction strategy -- the trigger worth building is
 // task-oriented (a repeated command, a round that changed nothing), and this is the mechanism such
 // a trigger would eventually drive.
-data harness_retained_tool_rounds: Int = 6
+// THE TRIGGER IS THE MEASURED INPUT, NOT A ROUND COUNT, and the first cut got this exactly wrong.
+// It retained a fixed six rounds, which fires at about thirteen messages REGARDLESS OF SIZE -- so on
+// a run using 40k tokens of a 1048576-token window, roughly 4% of the budget, the worker had its own
+// working history discarded about once per round. Measured on t01: 25 rounds executed, 14 messages
+// retained, compaction notice present, nothing near the window. A worker that repeatedly forgets
+// what it just learned is a plausible cause of the non-convergence this was meant to measure.
+//
+// So compaction now fires only when the backend's own counted input crosses a share of the budget.
+// Below that the history is kept whole, which is the right default when the window is three orders
+// of magnitude larger than the conversation. The share is three quarters: high enough that ordinary
+// runs never compact, low enough that the drop happens before the context refusal rather than at it.
+data harness_compaction_input_share_numerator: Int = 3
+
+data harness_compaction_input_share_denominator: Int = 4
+
+data harness_retained_tool_rounds: Int = 24
+
+fn harness_compaction_due(input_tokens: Int, budget: TokenCount) -> Bool {
+  input_tokens * harness_compaction_input_share_denominator
+    >= token_count_value(t: budget) * harness_compaction_input_share_numerator
+}
 
 fn harness_compaction_notice(dropped_rounds: Int) -> JsonValue {
   harness_user_text_message_json(text: join([
@@ -404,7 +424,19 @@ fn harness_compaction_notice(dropped_rounds: Int) -> JsonValue {
   ], ""))
 }
 
-fn harness_compact_messages(messages: List<JsonValue>) -> List<JsonValue> {
+fn harness_compact_messages(
+  messages: List<JsonValue>,
+  input_tokens: Int,
+  budget: TokenCount,
+) -> List<JsonValue> {
+  if !harness_compaction_due(input_tokens: input_tokens, budget: budget) {
+    messages
+  } else {
+    harness_compact_messages_now(messages: messages)
+  }
+}
+
+fn harness_compact_messages_now(messages: List<JsonValue>) -> List<JsonValue> {
   let total = list_length(items: messages)
   let retained = harness_retained_tool_rounds * 2
   if total <= retained + 1 {
@@ -504,13 +536,17 @@ fn harness_turn_loop(
             HarnessEventsWritten =>
               harness_turn_loop(
                 config: config,
-                messages: harness_compact_messages(messages: concat(
-                  messages,
-                  [
-                    harness_assistant_message_json(blocks: blocks),
-                    harness_tool_result_message_json(results: results),
-                  ],
-                )),
+                messages: harness_compact_messages(
+                  messages: concat(
+                    messages,
+                    [
+                      harness_assistant_message_json(blocks: blocks),
+                      harness_tool_result_message_json(results: results),
+                    ],
+                  ),
+                  input_tokens: input_tokens,
+                  budget: config.context_budget,
+                ),
                 steps_remaining: steps_remaining - 1,
                 steps_taken: steps_taken + 1,
                 events: stepped,
