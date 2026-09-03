@@ -50,7 +50,7 @@ fn fixture_root() -> String {
 }
 
 fn pool_roots_arg(roots: &[&str]) -> Vec<(Option<String>, Value)> {
-    let items: im::Vector<Value> = roots.iter().map(|r| str_value(r)).collect();
+    let items: im::Vector<Value> = roots.iter().copied().map(str_value).collect();
     vec![(Some("pool_roots".to_string()), Value::List(Rc::new(items)))]
 }
 
