@@ -20,7 +20,7 @@ import extdeps.github.rulesets {
   RulesetBypassActor,
   merge_queue_grouping_strategy_wire_label,
 }
-import gunbc.witness_floor_workflow { witness_floor_workflow }
+import gunbc.witness_floor_workflow { witness_floor_triggers }
 import v2.std.collection { Absent, Present }
 
 // WHAT A MERGE QUEUE IS, AS A FACT ABOUT ADMISSION RATHER THAN ABOUT THROUGHPUT.
@@ -363,11 +363,18 @@ type MergeQueueTerminal
   | MergeQueueOperational { grouping_strategy: String, nonexclusive: QueueNonexclusiveCause }
   | MergeQueueExclusive { grouping_strategy: String }
 
-// THE merge_group ENROLMENT IS READ OFF THE WORKFLOW AUTHORITY, NOT RESTATED. The workflow's `on`
-// list is the same row the emitted YAML is projected from, so deleting the trigger drops this
-// terminal rather than leaving a second declaration agreeing with nothing.
+// THE merge_group ENROLMENT IS READ OFF THE WORKFLOW AUTHORITY, NOT RESTATED. witness_floor_triggers
+// is the same row the emitted YAML's `on` block is projected from, so deleting the trigger drops
+// this terminal rather than leaving a second declaration agreeing with nothing.
+//
+// IT READS THE TRIGGER ROW AND NOT `witness_floor_workflow.on`, WHICH IS THE SAME AUTHORITY AT A
+// USABLE COST. Reaching the field forces the whole Workflow value -- every job, step and
+// expression -- to answer a question about four trigger constructors, and the floor measured that
+// at over its 500ms per-claim CPU budget on five witnesses at once. The workflow is assembled FROM
+// this row, so reading the row is not a shortcut past the authority; it is the authority, without
+// the jobs attached.
 fn floor_workflow_admits_merge_group() -> Bool {
-  any(witness_floor_workflow.on, t => match t { MergeGroup => true _ => false })
+  any(witness_floor_triggers(), t => match t { MergeGroup => true _ => false })
 }
 
 // AN UNAVAILABLE ROSTER PRODUCES A CAUSE, NEVER AN ABSENCE OF ONE. This is the arm that makes
