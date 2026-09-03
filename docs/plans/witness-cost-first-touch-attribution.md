@@ -724,11 +724,38 @@ document describes is therefore the exception rather than the common case, which
 warning already stated above: splitting re-attributes a shared fold and changes no real cost, and
 the shared fold is not what most near-ceiling rows have.
 
-The one worked counterexample is gunbc#10170, where four `rust_body_add_emit` rows reached five
-canonical fixtures through a ~5k-line module. Removing that import path took them from
-506/425/416/362ms to 180/174/172/168ms — and the spread collapsing from 144ms to 12ms is what
-distinguishes a genuine shared root from four rows that each happened to get cheaper. A constant
-subtracted from four independent costs leaves the spread; this did not.
+**A worked counterexample was claimed here and then REFUTED by this document's own discriminator,
+which is worth more than the example would have been.** The claim was that gunbc#10170 relocated
+five canonical fixtures out of a ~5k-line module and took four `rust_body_add_emit` rows from
+506/425/416/362ms to 180/174/172/168ms, with the spread collapsing 144ms → 12ms.
+
+Two floor artifacts refute it. Pre-relocation (run `33707763185`) and post-relocation (run
+`33711894017`), same four identities:
+
+| | cpu_ms | eval_steps |
+| --- | --- | --- |
+| pre | 314 · 305 · 290 · 318 | 171091 · 166669 · 162507 · 171124 |
+| post | 339 · 327 · 317 · 344 | 171052 · 166630 · 162468 · 171085 |
+
+**`eval_steps` moved 0.02%** — 39 steps out of 171091. The work did not change, so the relocation
+removed no evaluation work from these claims. CPU is *higher* after, which is within noise and makes
+the honest reading "no measured effect in either direction". The 506 baseline was a contended-run
+outlier: those rows were already at 314/305/290/318 with a spread of 28 before anything was touched,
+so both the "drop" and the "spread collapse" were artifacts of the baseline. And 180/174/172/168
+came from a targeted `claim_batch` — a fraction of the corpus, a different execution envelope, and
+not a floor result.
+
+**The mechanism that caught it is the one this section argues for.** Steps are deterministic where
+milliseconds are not; a cost story that milliseconds support and steps refute is the clock talking.
+The same discriminator that says work is not ownership says here that a millisecond drop is not a
+work reduction.
+
+The measured lead, found by the instrument that actually establishes ownership rather than by step
+clustering, is the cross-claim demand census keyed by PRODUCER IDENTITY:
+`target_project_arrow_body_to_value_expression`, 95 claims / 117 evals, 4396ms total with
+**4350ms cross-claim** across the emit family including all four rows. That is a producer named by
+the demand artifact, not a cluster inferred from step totals — and admission still requires the
+controlled present-versus-absent pair, which has not been run.
 
 ### Screening candidates from the census, by reading a declaration
 
