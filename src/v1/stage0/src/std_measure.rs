@@ -953,6 +953,19 @@ pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
 }
 
+pub type ParameterCount = Rc<Measure<Count, Mega, i64>>;
+
+pub fn parameter_count(millions: Nat) -> ParameterCount {
+    Rc::new(Measure {
+        count: millions.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn parameter_count_value(p: ParameterCount) -> Nat {
+    measure_count(p.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -962,6 +975,19 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;
+
+pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
 }
 
 pub fn millicore(count: Nat) -> Millicore {

@@ -177,6 +177,16 @@ test fn w_synthetic_derive_undecided_carries_incomplete_failure() -> Bool {
     } => true
     PathAdditivityRefutationAtBand { receipt: refutation_receipt } => false
     PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
+    PathAdditivityUndecidedAtBand { failure: AdditivityInputAmbiguous { arrangement: _, band: _, exposure: _, matching_rows: _ } } => false
+    PathAdditivityUndecidedAtBand {
+      failure: AdditivityInputMissing { missing_arrangement: BothSlitsOpen, band: _, exposure: _ },
+    } => false
+    PathAdditivityUndecidedAtBand {
+      failure: AdditivityInputMissing { missing_arrangement: SlitOneOpen, band: _, exposure: _ },
+    } => false
+    PathAdditivityUndecidedAtBand {
+      failure: AdditivityInputMissing { missing_arrangement: BothSlitsBlocked, band: _, exposure: _ },
+    } => false
   }
 }
 
